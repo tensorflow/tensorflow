@@ -41,6 +41,14 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
   RecordMutation(graph, *op, "setting attribute");
 }
 
+void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+               TF_Status* status) {
+
+  mutex_lock l(graph->mu);
+  op->node.ClearAttr(attr_name);
+  RecordMutation(graph, *op, "clearing attribute");
+}
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   mutex_lock l(graph->mu);
   op->node.set_requested_device(device);
@@ -80,7 +88,7 @@ void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
   status->status = graph->graph.UpdateEdge(&new_src.oper->node, new_src.index,
                                            &dst.oper->node, dst.index);
 
-  if (status->status.ok()) {
+  if (TF_GetCode(status) == TF_OK) {
     // This modification only updates the destination node for
     // the purposes of running this graph in a session. Thus, we don't
     // record the source node as being modified.
@@ -110,7 +118,7 @@ void ExtendSession(TF_Session* session, TF_Status* status) {
   session->extend_before_run = false;
 }
 
-std::string GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
+std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   Node* node = &output.oper->node;
   CppShapeInferenceResult::HandleData handle_data;
   handle_data.set_is_set(true);
@@ -135,9 +143,8 @@ std::string GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output) {
   return result;
 }
 
-void SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
-                                   const void* proto, size_t proto_len,
-                                   TF_Status* status) {
+void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
+                           size_t proto_len, TF_Status* status) {
   tensorflow::CppShapeInferenceResult::HandleData handle_data;
   if (!handle_data.ParseFromArray(proto, proto_len)) {
     status->status = tensorflow::errors::InvalidArgument(
@@ -155,10 +162,23 @@ void SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
     tensorflow::shape_inference::ShapeHandle shape;
     status->status =
         ic->MakeShapeFromShapeProto(shape_and_type_proto.shape(), &shape);
-    if (status->status.ok()) return;
+    if (TF_GetCode(status) != TF_OK) return;
     shapes_and_types.emplace_back(shape, shape_and_type_proto.dtype());
   }
   ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
+}
+
+void AddWhileInputHack(TF_Graph* graph, TF_Output new_src, TF_Operation* dst,
+                       TF_Status* status) {
+  mutex_lock l(graph->mu);
+  status->status = graph->graph.AddWhileInputHack(&new_src.oper->node,
+                                                  new_src.index, &dst->node);
+  if (TF_GetCode(status) == TF_OK) {
+    // This modification only updates the destination node for
+    // the purposes of running this graph in a session. Thus, we don't
+    // record the source node as being modified.
+    RecordMutation(graph, *dst, "adding input tensor");
+  }
 }
 
 }  // namespace tensorflow

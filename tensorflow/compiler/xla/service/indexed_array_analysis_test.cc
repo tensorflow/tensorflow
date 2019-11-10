@@ -13,15 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <ctype.h>
-
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "absl/strings/ascii.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 
 namespace xla {
 namespace {
-class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
+class IndexedArrayAnalysisTest : public HloTestBase {
  protected:
   void AssertArrayForRootExpressionIs(const string& hlo_text,
                                       const string& root_expression) {
@@ -43,7 +42,7 @@ class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
     string result;
 
     for (char c : text) {
-      if (!isspace(c)) {
+      if (!absl::ascii_isspace(c)) {
         result.push_back(c);
       } else if (!result.empty() && result.back() != ' ') {
         result.push_back(' ');
@@ -61,12 +60,12 @@ class IndexedArrayAnalysisTest : public HloVerifiedTestBase {
                                           const string& root_expression,
                                           bool print_constants) {
     IndexedArrayAnalysis indexed_tensor_analysis;
-    ParseAndVerifyModule(hlo_text);
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                            ParseAndReturnVerifiedModule(hlo_text));
 
-    TF_ASSERT_OK_AND_ASSIGN(
-        IndexedArrayAnalysis::Array* const array_result,
-        indexed_tensor_analysis.GetArrayFor(
-            module().entry_computation()->root_instruction()));
+    TF_ASSERT_OK_AND_ASSIGN(IndexedArrayAnalysis::Array* const array_result,
+                            indexed_tensor_analysis.GetArrayFor(
+                                m->entry_computation()->root_instruction()));
     string string_result = CanonicalizeWhitespace(
         indexed_tensor_analysis.ToString(array_result, print_constants));
     LOG(INFO) << string_result;
@@ -82,11 +81,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
 }
 )";
 
@@ -99,14 +98,14 @@ TEST_F(IndexedArrayAnalysisTest, SimpleOneToOneConstantGather) {
 HloModule SimpleGather
 
 ENTRY main {
-  operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
+  operand = s32[3,3] constant({{1,2,3},{1,2,3},{1,2,3}})
   indices = s32[5] parameter(0)
   ROOT gather = s32[5,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
 }
 )";
 
@@ -119,14 +118,14 @@ TEST_F(IndexedArrayAnalysisTest, GatherIsNotScalarIndexed0) {
 HloModule SimpleGather
 
 ENTRY main {
-  operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
+  operand = s32[3,3] constant({{1,2,3},{1,2,3},{1,2,3}})
   indices = s32[5,2] parameter(0)
   ROOT gather = s32[5] gather(operand, indices),
-      output_window_dims={},
-      elided_window_dims={0,1},
-      gather_dims_to_operand_dims={0,1},
+      offset_dims={},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
       index_vector_dim=1,
-      window_bounds={1,1}
+      slice_sizes={1,1}
 }
 )";
 
@@ -141,11 +140,11 @@ ENTRY main {
   operand = s32[3,3,1] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,3] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0,2},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0,2},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3,1}
+      slice_sizes={1,3,1}
 }
 )";
 
@@ -160,11 +159,11 @@ ENTRY main {
   operand = s32[3,3,1] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,2,3] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={2},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1,2},
+      collapsed_slice_dims={2},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={2,3,1}
+      slice_sizes={2,3,1}
 }
 )";
 
@@ -179,11 +178,11 @@ ENTRY main {
   operand = s32[3,3] parameter(0)
   indices = s32[5] parameter(1)
   ROOT gather = s32[5,2] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,2}
+      slice_sizes={1,2}
 }
 )";
 
@@ -195,21 +194,21 @@ TEST_F(IndexedArrayAnalysisTest, GatherOfGather_OneToOne) {
 HloModule SimpleGather
 
 ENTRY main {
-  operand = s32[3,3] constant(s32[3,3]{{1,2,3},{1,2,3},{1,2,3}})
+  operand = s32[3,3] constant({{1,2,3},{1,2,3},{1,2,3}})
   indices_a = s32[5] parameter(0)
   indices_b = s32[2] parameter(1)
   gather_a = s32[5,3] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
   ROOT gather_b = s32[2,3] gather(gather_a, indices_b),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,3}
+      slice_sizes={1,3}
 }
 )";
 
@@ -228,17 +227,17 @@ ENTRY main {
   indices_a = s32[5,7] parameter(1)
   indices_b = s32[2] parameter(2)
   gather_a = s32[5,3,7] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3,1}
+      slice_sizes={3,1}
   ROOT gather_b = s32[5,3,2] gather(gather_a, indices_b),
-      output_window_dims={0,1},
-      elided_window_dims={2},
-      gather_dims_to_operand_dims={2},
+      offset_dims={0,1},
+      collapsed_slice_dims={2},
+      start_index_map={2},
       index_vector_dim=1,
-      window_bounds={5,3,1}
+      slice_sizes={5,3,1}
 }
 )";
 
@@ -256,17 +255,17 @@ ENTRY main {
   indices_a = s32[2] parameter(1)
   indices_b = s32[5,7] parameter(2)
   gather_a = s32[2,6] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT gather_b = s32[5,6,7] gather(gather_a, indices_b),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,6}
+      slice_sizes={1,6}
 }
 )";
 
@@ -284,17 +283,17 @@ ENTRY main {
   indices_a = s32[5,7] parameter(1)
   indices_b = s32[4,8] parameter(2)
   gather_a = s32[5,3,7] gather(operand, indices_a),
-      output_window_dims={1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=2,
-      window_bounds={3,1}
+      slice_sizes={3,1}
   ROOT gather_b = s32[4,5,3,8] gather(gather_a, indices_b),
-      output_window_dims={1,2},
-      elided_window_dims={2},
-      gather_dims_to_operand_dims={2},
+      offset_dims={1,2},
+      collapsed_slice_dims={2},
+      start_index_map={2},
       index_vector_dim=2,
-      window_bounds={5,3,1}
+      slice_sizes={5,3,1}
 }
 )";
 
@@ -309,14 +308,14 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather0) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  operand = s32[3,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT reshape = s32[5,2,2] reshape(gather)
 }
 )";
@@ -330,14 +329,14 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather1) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  operand = s32[3,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5,7] parameter(0)
   gather = s32[5,4,7] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT reshape = s32[5,2,2,7] reshape(gather)
 }
 )";
@@ -352,17 +351,17 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather2) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,2,6] constant(s32[3,2,6]{
+  operand = s32[3,2,6] constant({
       {{1,2,3,4,5,6},{1,2,3,4,5,6}},
       {{1,2,3,4,5,6},{1,2,3,4,5,6}},
       {{1,2,3,4,5,6},{1,2,3,4,5,6}}})
   indices = s32[5,7] parameter(0)
   gather = s32[5,2,6,7] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1,2},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,2,6}
+      slice_sizes={1,2,6}
   ROOT reshape = s32[5,3,4,7] reshape(gather)
 }
 )";
@@ -377,15 +376,15 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather3) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[2,6] constant(s32[2,6]{
+  operand = s32[2,6] constant({
       {1,2,3,4,5,6},{1,2,3,4,5,6}})
   indices = s32[1] parameter(0)
   gather = s32[1,6] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT reshape = s32[1,1,6] reshape(gather)
 }
 )";
@@ -405,17 +404,17 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather4) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[2,3]{1,0} constant(s32[2,3] { { 1, 2, 3 }, { 1, 2, 3 } })
+  operand = s32[2,3]{1,0} constant({ { 1, 2, 3 }, { 1, 2, 3 } })
 
   i.0 = s64[1,3]{1,0} parameter(0)
-  g.0 = s32[1,3,3]{2,1,0} gather(operand, i.0), output_window_dims={2},
-    elided_window_dims={0}, gather_dims_to_operand_dims={0},
-    index_vector_dim=2, window_bounds={1,3}
+  g.0 = s32[1,3,3]{2,1,0} gather(operand, i.0), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0},
+    index_vector_dim=2, slice_sizes={1,3}
 
   i.1 = s64[1] parameter(1)
-  g.1 = s32[1,1,3]{2,1,0} gather(g.0, i.1), output_window_dims={0,2},
-    elided_window_dims={1}, gather_dims_to_operand_dims={1},
-    index_vector_dim=1, window_bounds={1,1,3}
+  g.1 = s32[1,1,3]{2,1,0} gather(g.0, i.1), offset_dims={0,2},
+    collapsed_slice_dims={1}, start_index_map={1},
+    index_vector_dim=1, slice_sizes={1,1,3}
 
   ROOT reshape = s32[1,3]{1,0} reshape(g.1)
 }
@@ -438,14 +437,14 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather5) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[1,6] constant(s32[1,6]{{1,2,3,4,5,6}})
+  operand = s32[1,6] constant({{1,2,3,4,5,6}})
   indices = s32[1] parameter(0)
   gather = s32[1,6] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT reshape = s32[1,1,6] reshape(gather)
 }
 )";
@@ -465,15 +464,15 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather6) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[1,2,6] constant(s32[1,2,6]{{
+  operand = s32[1,2,6] constant({{
       {1,2,3,4,5,6},{1,2,3,4,5,6}}})
   indices = s32[1] parameter(0)
   gather = s32[1,1,6] gather(operand, indices),
-      output_window_dims={1,2},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={1,2},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={1,1,6}
+      slice_sizes={1,1,6}
   ROOT reshape = s32[1,1,1,6] reshape(gather)
 }
 )";
@@ -481,8 +480,8 @@ ENTRY main {
   const char* expected_root_expression = R"(
 (scalar-indexed-const
   (constant s32[2,1,1,1,6] s32[2,1,1,1,6] {
-    { /*i0=0*/ { /*i1=0*/ { /*i2=0*/ {1, 2, 3, 4, 5, 6} } } },
-    { /*i0=1*/ { /*i1=0*/ { /*i2=0*/ {1, 2, 3, 4, 5, 6} } } } })
+    { /*i0=0*/ { /*i1=0*/ { /*i2=0*/ { 1, 2, 3, 4, 5, 6 } } } },
+    { /*i0=1*/ { /*i1=0*/ { /*i2=0*/ { 1, 2, 3, 4, 5, 6 } } } } })
   (reshape %indices to s32[])
   0->[])
 )";
@@ -496,15 +495,15 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGather7) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[2,6] constant(s32[2,6]{
+  operand = s32[2,6] constant({
       {1,2,3,4,5,6},{1,2,3,4,5,6}})
   indices = s32[1,5] parameter(0)
   gather = s32[1,5,6] gather(operand, indices),
-      output_window_dims={2},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={2},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,6}
+      slice_sizes={1,6}
   ROOT reshape = s32[1,1,5,6] reshape(gather)
 }
 )";
@@ -512,8 +511,8 @@ ENTRY main {
   const char* expected_root_expression = R"(
 (scalar-indexed-const
   (constant s32[2,1,1,6] s32[2,1,1,6] {
-    { /*i0=0*/ { /*i1=0*/ {1, 2, 3, 4, 5, 6} } },
-    { /*i0=1*/ { /*i1=0*/ {1, 2, 3, 4, 5, 6} } } })
+    { /*i0=0*/ { /*i1=0*/ { 1, 2, 3, 4, 5, 6 } } },
+    { /*i0=1*/ { /*i1=0*/ { 1, 2, 3, 4, 5, 6 } } } })
   (reshape %indices to s32[5])
   0->[2])
 )";
@@ -527,14 +526,14 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold0) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,2,3,4},{1,2,3,4}})
+  operand = s32[3,4] constant({{1,2,3,4},{1,2,3,4},{1,2,3,4}})
   indices = s32[5,6] parameter(0)
   gather = s32[5,4,6] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT reshape = s32[5,2,2,2,3] reshape(gather)
 }
 )";
@@ -556,17 +555,17 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold1) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,5,2] constant(s32[3,5,2]{
+  operand = s32[3,5,2] constant({
       {{1,2},{3,4},{5,6},{7,8},{9,10}},
       {{1,2},{3,4},{5,6},{7,8},{9,10}},
       {{1,2},{3,4},{5,6},{7,8},{9,10}}})
   indices = s32[7] parameter(0)
   gather = s32[3,2,7] gather(operand, indices),
-      output_window_dims={0,1},
-      elided_window_dims={1},
-      gather_dims_to_operand_dims={1},
+      offset_dims={0,1},
+      collapsed_slice_dims={1},
+      start_index_map={1},
       index_vector_dim=1,
-      window_bounds={3,1,2}
+      slice_sizes={3,1,2}
   ROOT reshape = s32[6,7] reshape(gather)
 }
 )";
@@ -588,17 +587,17 @@ TEST_F(IndexedArrayAnalysisTest, ReshapeOfGatherNoFold2) {
 HloModule ReshapeOfGather
 
 ENTRY main {
-  operand = s32[3,4,1] constant(s32[3,4,1]{
+  operand = s32[3,4,1] constant({
     {{1},{2},{3},{4}},
     {{1},{2},{3},{4}},
     {{1},{2},{3},{4}}})
   indices = s32[5,6] parameter(0)
   gather = s32[5,4,6,1] gather(operand, indices),
-      output_window_dims={1,3},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1,3},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=2,
-      window_bounds={1,4,1}
+      slice_sizes={1,4,1}
   ROOT reshape = s32[5,2,2,2,3,1] reshape(gather)
 }
 )";
@@ -620,14 +619,14 @@ TEST_F(IndexedArrayAnalysisTest, UnaryOpOfGather) {
 HloModule UnaryOpOfGather
 
 ENTRY main {
-  operand = f32[3,4] constant(f32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  operand = f32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   indices = s32[5] parameter(0)
   gather = f32[5,4] gather(operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT tanh = f32[5,4] tanh(gather)
 }
 )";
@@ -645,16 +644,16 @@ TEST_F(IndexedArrayAnalysisTest, AddBroadcastedScalarWithGather) {
 HloModule AddBroadcastedScalarWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant = s32[] constant(5)
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT add = s32[5,4] add(gather, constant_broadcasted)
 }
 )";
@@ -673,16 +672,16 @@ TEST_F(IndexedArrayAnalysisTest,
 HloModule SubtractBroadcastedScalarWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant = s32[] constant(5)
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT sub = s32[5,4] subtract(gather, constant_broadcasted)
 }
 )";
@@ -701,16 +700,16 @@ TEST_F(IndexedArrayAnalysisTest,
 HloModule SubtractBroadcastedScalarWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant = s32[] constant(5)
   constant_broadcasted = s32[5,4] broadcast(constant), dimensions={}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT sub = s32[5,4] subtract(constant_broadcasted, gather)
 }
 )";
@@ -728,16 +727,16 @@ TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather) {
 HloModule AddBroadcastedVectorWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant_vect = s32[4] constant({10,11,12,13})
   constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={1}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT add = s32[5,4] add(gather, constant_broadcasted)
 }
 )";
@@ -755,16 +754,16 @@ TEST_F(IndexedArrayAnalysisTest, AddBroadcastedVectorWithGather_Negative) {
 HloModule AddBroadcastedVectorWithGather
 
 ENTRY main {
-  gather_operand = s32[3,4] constant(s32[3,4]{{1,2,3,4},{1,3,2,4},{4,3,2,1}})
+  gather_operand = s32[3,4] constant({{1,2,3,4},{1,3,2,4},{4,3,2,1}})
   constant_vect = s32[5] constant({10,11,12,13,14})
   constant_broadcasted = s32[5,4] broadcast(constant_vect), dimensions={0}
   indices = s32[5] parameter(0)
   gather = s32[5,4] gather(gather_operand, indices),
-      output_window_dims={1},
-      elided_window_dims={0},
-      gather_dims_to_operand_dims={0},
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
       index_vector_dim=1,
-      window_bounds={1,4}
+      slice_sizes={1,4}
   ROOT add = s32[5,4] add(gather, constant_broadcasted)
 }
 )";
@@ -797,6 +796,171 @@ ENTRY main {
 )";
 
   AssertArrayForRootExpressionIs(hlo_text, "%add");
+}
+
+TEST_F(IndexedArrayAnalysisTest, DotOpBasic_0) {
+  string hlo_text = R"(
+HloModule DotOp
+
+ENTRY main {
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_rhs_constant = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  indices = s32[5] parameter(0)
+  dot_lhs = s32[5,4] gather(gather_operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
+      index_vector_dim=1,
+      slice_sizes={1,4}
+  ROOT dot = s32[5,3] dot(dot_lhs, dot_rhs_constant), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
+(scalar-indexed-const
+  (constant s32[3,3] s32[3,3] {
+    { 70, 80, 90 },
+    { 158, 184, 210 },
+    { 246, 288, 330 } })
+  %indices 0->[0]))");
+}
+
+TEST_F(IndexedArrayAnalysisTest, DotOpBasic_1) {
+  string hlo_text = R"(
+HloModule DotOp
+
+ENTRY main {
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_rhs_constant = s32[3,3] constant({{1,2,3},{4,5,6},{7,8,9}})
+  indices = s32[5] parameter(0)
+  dot_lhs = s32[3,5] gather(gather_operand, indices),
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
+      index_vector_dim=1,
+      slice_sizes={3,1}
+  ROOT dot = s32[5,3] dot(dot_lhs, dot_rhs_constant), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
+(scalar-indexed-const
+  (constant s32[4,3] s32[4,3] {
+    { 84, 99, 114 },
+    { 96, 114, 132 },
+    { 108, 129, 150 },
+    { 120, 144, 168 } })
+   %indices 0->[1]))");
+}
+
+TEST_F(IndexedArrayAnalysisTest, DotOpBasic_2) {
+  string hlo_text = R"(
+HloModule DotOp
+
+ENTRY main {
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_lhs_constant = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  indices = s32[5] parameter(0)
+  dot_rhs = s32[3,5] gather(gather_operand, indices),
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
+      index_vector_dim=1,
+      slice_sizes={3,1}
+  ROOT dot = s32[4,5] dot(dot_lhs_constant, dot_rhs), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
+(scalar-indexed-const
+  (constant s32[4,4] s32[4,4] {
+    { 38, 44, 50, 56 },
+    { 83, 98, 113, 128 },
+    { 128, 152, 176, 200 },
+    { 173, 206, 239, 272 } })
+  %indices 1->[1])
+)");
+}
+
+TEST_F(IndexedArrayAnalysisTest, DotOpBasic_3) {
+  string hlo_text = R"(
+HloModule DotOp
+
+ENTRY main {
+  gather_operand = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  dot_lhs_constant = s32[4,3] constant({{1,2,3},{4,5,6},{7,8,9},{10,11,12}})
+  indices = s32[5] parameter(0)
+  dot_rhs = s32[5,3] gather(gather_operand, indices),
+      offset_dims={1},
+      collapsed_slice_dims={0},
+      start_index_map={0},
+      index_vector_dim=1,
+      slice_sizes={1,3}
+  ROOT dot = s32[4,5] dot(dot_lhs_constant, dot_rhs), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
+(scalar-indexed-const
+  (constant s32[4,4] s32[4,4] {
+    { 14, 32, 50, 68 },
+    { 32, 77, 122, 167 },
+    { 50, 122, 194, 266 },
+    { 68, 167, 266, 365 } })
+  %indices 1->[0])
+)");
+}
+
+TEST_F(IndexedArrayAnalysisTest, DotOpWithBatch) {
+  string hlo_text = R"(
+HloModule DotOp
+
+ENTRY main {
+  gather_operand = s32[2,3,2] constant({{{1,2},{3,4},{5,6}},{{7,8},{9,10},{11,12}}})
+  dot_lhs_constant = s32[2,2,3] constant({{{1,2,3},{4,5,6}},{{7,8,9},{10,11,12}}})
+  indices = s32[4] parameter(0)
+  dot_rhs = s32[2,3,4] gather(gather_operand, indices),
+      offset_dims={0,1},
+      collapsed_slice_dims={2},
+      start_index_map={2},
+      index_vector_dim=1,
+      slice_sizes={2,3,1}
+  ROOT dot = s32[2,2,4] dot(dot_lhs_constant, dot_rhs),
+      lhs_contracting_dims={2}, rhs_contracting_dims={1},
+      lhs_batch_dims={0}, rhs_batch_dims={0}
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, R"(
+(scalar-indexed-const
+  (constant s32[2,2,2] s32[2,2,2] {
+    { { 22, 28 },
+      { 49, 64 } },
+    { { 220, 244 },
+      { 301, 334 } } })
+  %indices 3->[2])
+)");
+}
+
+TEST_F(IndexedArrayAnalysisTest, DotOpNegative) {
+  string hlo_text = R"(
+HloModule DotOp
+
+ENTRY main {
+  gather_operand = s32[3,4] constant({{1,2,3,4},{5,6,7,8},{9,10,11,12}})
+  dot_rhs_constant = s32[2,3] constant({{1,2,3},{4,5,6}})
+  indices = s32[2] parameter(0)
+  dot_lhs = s32[3,2] gather(gather_operand, indices),
+      offset_dims={0},
+      collapsed_slice_dims={1},
+      start_index_map={1},
+      index_vector_dim=1,
+      slice_sizes={3,1}
+  ROOT dot = s32[3,3] dot(dot_lhs, dot_rhs_constant), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  AssertArrayWithConstantsForRootExpressionIs(hlo_text, "%dot");
 }
 
 }  // namespace

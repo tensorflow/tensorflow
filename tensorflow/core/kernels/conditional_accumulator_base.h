@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
-#define TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
+#define TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
 
 #include <deque>
 
@@ -52,7 +52,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   //   name:  A name to use for the ConditionalAccumulator.
   ConditionalAccumulatorBase(const DataType& dtype,
                              const PartialTensorShape& shape,
-                             const string& name);
+                             const string& name, const string& reduction_type);
 
   typedef AsyncOpKernel::DoneCallback DoneCallback;
 
@@ -68,7 +68,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
 
   const DataType& dtype() const { return dtype_; }
 
-  string DebugString() override { return "A conditional accumulator"; }
+  string DebugString() const override { return "A conditional accumulator"; }
 
   // SetGlobalStep is a modifier method for current_global_step.
   // It returns an InvalidArgument error if the new_global_step is less than
@@ -125,6 +125,7 @@ class ConditionalAccumulatorBase : public ResourceBase {
   const DataType dtype_;
   const PartialTensorShape shape_;
   const string name_;
+  const string reduction_type_;
   mutex mu_;
   int counter_ GUARDED_BY(mu_);
   int64 current_global_step_ GUARDED_BY(mu_);
@@ -199,4 +200,4 @@ class TypeConverter<Eigen::half, U> {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CONDITIONAL_ACCUMULATOR_BASE_H_

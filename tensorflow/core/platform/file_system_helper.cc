@@ -20,12 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace internal {
@@ -59,7 +59,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
   string eval_pattern = pattern;
   std::vector<string> all_files;
-  string dir = std::string(io::Dirname(fixed_prefix));
+  string dir(io::Dirname(fixed_prefix));
   // If dir is empty then we need to fix up fixed_prefix and eval_pattern to
   // include . as the top level directory.
   if (dir.empty()) {
@@ -82,6 +82,10 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     dir_q.pop_front();
     std::vector<string> children;
     Status s = fs->GetChildren(current_dir, &children);
+    // In case PERMISSION_DENIED is encountered, we bail here.
+    if (s.code() == tensorflow::error::PERMISSION_DENIED) {
+      continue;
+    }
     ret.Update(s);
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.
@@ -92,7 +96,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
               const string child_path = io::JoinPath(current_dir, children[i]);
               // In case the child_path doesn't start with the fixed_prefix then
               // we don't need to explore this path.
-              if (!str_util::StartsWith(child_path, fixed_prefix)) {
+              if (!absl::StartsWith(child_path, fixed_prefix)) {
                 children_dir_status[i] = Status(tensorflow::error::CANCELLED,
                                                 "Operation not needed");
               } else {

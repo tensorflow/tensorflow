@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -41,7 +42,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-static Device* NewDevice(const string& type, const string& name) {
+static std::unique_ptr<Device> NewDevice(const string& type,
+                                         const string& name) {
   class FakeDevice : public Device {
    public:
     explicit FakeDevice(const DeviceAttributes& attr) : Device(nullptr, attr) {}
@@ -52,7 +54,8 @@ static Device* NewDevice(const string& type, const string& name) {
   attr.set_name(name);
   attr.set_device_type(type);
   attr.mutable_locality()->set_numa_node(3);  // a non-default value
-  return new FakeDevice(attr);
+  attr.set_incarnation(random::New64());
+  return absl::make_unique<FakeDevice>(attr);
 }
 
 static int64 kStepId = 123;
@@ -64,14 +67,14 @@ class FakeWorker : public TestWorkerInterface {
       : name_(name),
         device_mgr_(dev_mgr),
         device_resolver_(dres),
-        buf_rendezvous_(kStepId) {}
+        buf_rendezvous_(kStepId, dev_mgr) {}
 
   // Direct access to a BufRendezvous that holds whatever the remote
   // worker is supposed to have.
   BufRendezvous* buf_rendezvous() { return &buf_rendezvous_; }
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     std::vector<DeviceAttributes> dev_attr;
     device_mgr_->ListDeviceAttributes(&dev_attr);
@@ -94,17 +97,20 @@ class FakeWorker : public TestWorkerInterface {
         buf_rendezvous_.StartAbort(errors::Internal("Cancelled"));
       });
     });
+    VLOG(2) << "ConsumeBuf key=" << request->buf_rendezvous_key()
+            << " src_device=" << request->src_device()
+            << " src_incarnation=" << request->src_incarnation();
     buf_rendezvous_.ConsumeBuf(
-        request->buf_rendezvous_key(),
-        [this, opts, request, response, done](const Status& s,
-                                              BufRendezvous::Hook* h) {
+        request->buf_rendezvous_key(), request->src_device(),
+        request->src_incarnation(),
+        [opts, response, done](const Status& s, BufRendezvous::Hook* h) {
           if (s.ok()) {
             opts->ClearCancelCallback();
             // Since this is not really RDMA into pre-allocated memory send the
             // bytes in the response.
             RecvBufRespExtra extra;
             int64 num_bytes = h->prod_value->TotalBytes();
-            extra.set_tensor_content(string(
+            extra.add_tensor_content(string(
                 reinterpret_cast<const char*>(DMAHelper::base(h->prod_value)),
                 num_bytes));
             response->mutable_transport_options()->PackFrom(extra);
@@ -146,7 +152,6 @@ class FakeCache : public TestWorkerCache {
     WorkerInterface* wi = it->second;
     GetStatusRequest req;
     GetStatusResponse resp;
-    Notification note;
     Status status = wi->GetStatus(&req, &resp);
     if (!status.ok()) {
       done(status);
@@ -165,7 +170,9 @@ class FakeCache : public TestWorkerCache {
 
 class CollRMADistTest : public ::testing::Test {
  protected:
-  CollRMADistTest() {}
+  CollRMADistTest()
+      : work_queue_(
+            std::make_shared<UnboundedWorkQueue>(Env::Default(), "test")) {}
 
   ~CollRMADistTest() override {
     for (DeviceMgr* dm : device_mgrs_) {
@@ -183,20 +190,18 @@ class CollRMADistTest : public ::testing::Test {
     const int num_workers = 2;
     const int num_devices = 1;
     string device_type = "CPU";
-    ConfigProto config;
     string dev0_worker_name;
     for (int w = 0; w < num_workers; ++w) {
       string name = strings::StrCat("/job:worker/replica:0/task:", w);
       if (w == 0) {
         dev0_worker_name = name;
-        // TODO(tucker): Change to use config when available.
-        // config.set_collective_group_leader(name);
       }
-      DefineWorker(config, name, device_type, num_devices);
+      DefineWorker(name, device_type, num_devices);
     }
     // All tests simulate requests from worker 0 to worker 1.
     rma_.reset(new CollectiveRemoteAccessDistributed(
-        device_mgrs_[0], dev_resolvers_[dev0_worker_name], &wc_, kStepId));
+        device_mgrs_[0], dev_resolvers_[dev0_worker_name], work_queue_, &wc_,
+        kStepId));
 
     const int kNumElts = 8;
     expected_value_ = Tensor(DT_FLOAT, {kNumElts});
@@ -209,18 +214,19 @@ class CollRMADistTest : public ::testing::Test {
     }
   }
 
-  void DefineWorker(const ConfigProto& config, const string& worker_name,
-                    const string& device_type, int num_devices) {
-    std::vector<Device*> devices;
+  void DefineWorker(const string& worker_name, const string& device_type,
+                    int num_devices) {
+    std::vector<std::unique_ptr<Device>> devices;
     for (int i = 0; i < num_devices; ++i) {
       devices.push_back(NewDevice(
           device_type,
           strings::StrCat(worker_name, "/device:", device_type, ":", i)));
     }
-    DeviceMgr* dev_mgr = new DeviceMgr(devices);
+    DeviceMgr* dev_mgr = new StaticDeviceMgr(std::move(devices));
     device_mgrs_.push_back(dev_mgr);
     std::vector<string>* dv = &dev_by_task_[worker_name];
-    for (auto d : devices) {
+    dv->clear();
+    for (auto d : dev_mgr->ListDevices()) {
       dv->push_back(d->name());
     }
     DeviceResolverDistributed* dev_res =
@@ -229,6 +235,16 @@ class CollRMADistTest : public ::testing::Test {
     FakeWorker* fw = new FakeWorker(worker_name, dev_mgr, dev_res);
     workers_.push_back(fw);
     wc_.AddWorker(worker_name, fw);
+  }
+
+  void RestartWorker(const string& worker_name, const string& device_type,
+                     int num_devices) {
+    auto it = dev_resolvers_.find(worker_name);
+    if (it != dev_resolvers_.end()) {
+      delete it->second;
+      dev_resolvers_.erase(it);
+    }
+    DefineWorker(worker_name, device_type, num_devices);
   }
 
   void ValidateResultTensor() {
@@ -244,6 +260,7 @@ class CollRMADistTest : public ::testing::Test {
   std::vector<DeviceMgr*> device_mgrs_;
   std::unordered_map<string, DeviceResolverDistributed*> dev_resolvers_;
   std::unordered_map<string, std::vector<string>> dev_by_task_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   std::vector<FakeWorker*> workers_;
   std::unique_ptr<CollectiveRemoteAccessDistributed> rma_;
   mutex mu_;
@@ -266,11 +283,10 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [this, &producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       });
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -281,7 +297,7 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
@@ -299,7 +315,6 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
   Status producer_status;
   FakeWorker* wi = workers_[1];
   const string kBufKey = "fake_buf_key";
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -310,14 +325,14 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
   wi->buf_rendezvous()->ProvideBuf(
       kBufKey, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
       AllocatorAttributes(),
-      [this, &producer_note, &producer_status](const Status& s) {
+      [&producer_note, &producer_status](const Status& s) {
         producer_status.Update(s);
         producer_note.Notify();
       });
@@ -332,7 +347,6 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
   Notification consumer_note;
   Status consumer_status;
   const string kBufKey = "fake_buf_key";
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -343,13 +357,64 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
       false,                                              // peer_is_local
       kBufKey, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
       device_locality_, 0 /*dev_to_dev_stream_index*/,
-      [this, &consumer_status, &consumer_note](const Status& s) {
+      [&consumer_status, &consumer_note](const Status& s) {
         consumer_status = s;
         consumer_note.Notify();
       });
   rma_->StartAbort(errors::Internal("Deliberate Failure"));
   consumer_note.WaitForNotification();
   EXPECT_EQ(consumer_status.error_message(), "Cancelled");
+}
+
+TEST_F(CollRMADistTest, WorkerRestart) {
+  Notification consumer_note;
+  Notification producer_note;
+  Status consumer_status;
+  Status producer_status;
+  FakeWorker* wi = workers_[1];
+  const string buf_key = "fake_buf_key";
+  Device* dst_device = nullptr;
+  string dev_name = "CPU:0";
+  TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
+  DeviceContext* to_device_ctx = nullptr;
+  rma_->RecvFromPeer(
+      "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
+      "/job:worker/replica:0/task:1",                     // peer_task
+      false,                                              // peer_is_local
+      buf_key, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
+      device_locality_, 0 /*dev_to_dev_stream_index*/,
+      [&consumer_status, &consumer_note](const Status& s) {
+        consumer_status = s;
+        consumer_note.Notify();
+      });
+  wi->buf_rendezvous()->ProvideBuf(
+      buf_key, nullptr /*device*/, nullptr /*dev_ctx*/, &expected_value_,
+      AllocatorAttributes(),
+      [&producer_note, &producer_status](const Status& s) {
+        producer_status.Update(s);
+        producer_note.Notify();
+      });
+  consumer_note.WaitForNotification();
+  TF_EXPECT_OK(consumer_status);
+  producer_note.WaitForNotification();
+  TF_EXPECT_OK(producer_status);
+  ValidateResultTensor();
+
+  // Restart task 1 and check that recv from task 1 to task 0 fails.
+  RestartWorker("/job:worker/replica:0/task:1", "CPU", 1);
+  Notification post_restart_note;
+  rma_->RecvFromPeer(
+      "/job:worker/replica:0/task:1/device:" + dev_name,  // peer_dev
+      "/job:worker/replica:0/task:1",                     // peer_task
+      false,                                              // peer_is_local
+      buf_key, dst_device, to_device_ctx, alloc_attr_, &to_tensor_,
+      device_locality_, 0 /*dev_to_dev_stream_index*/,
+      [&consumer_status, &post_restart_note](const Status& s) {
+        consumer_status = s;
+        post_restart_note.Notify();
+      });
+  post_restart_note.WaitForNotification();
+  EXPECT_TRUE(errors::IsFailedPrecondition(consumer_status));
 }
 
 }  // namespace

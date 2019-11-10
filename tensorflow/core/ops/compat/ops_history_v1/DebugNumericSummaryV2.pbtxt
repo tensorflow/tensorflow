@@ -1,0 +1,29 @@
+op {
+  name: "DebugNumericSummaryV2"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "tensor_debug_mode"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+  attr {
+    name: "tensor_id"
+    type: "int"
+    default_value {
+      i: -1
+    }
+  }
+}

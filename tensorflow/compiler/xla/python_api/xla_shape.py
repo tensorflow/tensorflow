@@ -18,16 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import numpy as _np  # Avoids becoming a part of public Tensorflow API.
+
+from six.moves import xrange
 
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python_api import types
 
 
 class Shape(object):
-  """Wraps a xla_data_pb2.Shape message with a convenient Python type.
+  """Wraps a xla_data_pb2.ShapeProto message with a convenient Python type.
 
-  Provides direct access to the underlying xla_data_pb2.Shape message in the
+  Provides direct access to the underlying xla_data_pb2.ShapeProto message in
+  the
   message attribute, along with accessor wrappers to the message's fields.
   Avoid direct access to .message unless interacting directly with protobuf APIs
   like CopyFrom. In other words, prefer hauling the shape around in a Shape, and
@@ -48,7 +51,7 @@ class Shape(object):
     Raises:
       ValueError: if element_type is TUPLE but dimensions are not Shape objects.
     """
-    self.message = xla_data_pb2.Shape()
+    self.message = xla_data_pb2.ShapeProto()
     self.message.element_type = element_type
     if element_type == xla_data_pb2.TUPLE:
       if not all(isinstance(subshape, Shape) for subshape in dimensions):
@@ -111,7 +114,7 @@ def _CreateShapeFromNumpy(ndarray):  # pylint: disable=invalid-name
 
   # Set the shape's layout based on the ordering of ndarray.
   # Numpy arrays come in two orders: Fortran (column-major) and C (row-major).
-  if np.isfortran(ndarray):
+  if _np.isfortran(ndarray):
     # Column-major layout. This corresponds to a "dimension order is
     # minor-to-major" layout in XLA.
     layout = range(ndarray.ndim)

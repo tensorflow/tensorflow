@@ -1,14 +1,14 @@
 op {
   graph_op_name: "ReverseV2"
   endpoint {
-    name: "manip.reverse"
+    name: "reverse"
   }
   endpoint {
-    name: "reverse"
-    deprecation_message: "tf.reverse is deprecated, please use tf.manip.reverse instead."
+    name: "manip.reverse"
+    deprecation_version: 2
   }
   endpoint {
     name: "reverse_v2"
-    deprecation_message: "tf.reverse_v2 is deprecated, please use tf.manip.reverse instead."
+    deprecation_version: 2
   }
 }

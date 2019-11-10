@@ -112,6 +112,7 @@ Status EnvPragma(Sqlite* db, const char* pragma, const char* var) {
 /* static */
 Status Sqlite::Open(const string& path, int flags, Sqlite** db) {
   flags |= SQLITE_OPEN_PRIVATECACHE;
+  flags |= SQLITE_OPEN_URI;
   sqlite3* sqlite = nullptr;
   int rc = sqlite3_open_v2(path.c_str(), &sqlite, flags, nullptr);
   if (rc != SQLITE_OK) {

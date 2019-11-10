@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>
@@ -163,7 +164,10 @@ class StatsCalculator {
   };
 
   const std::map<std::string, Detail>& GetDetails() const { return details_; }
-  void UpdateDetails(const std::map<std::string, Detail>& details);
+
+  void AddNodeStats(const std::string& name, const std::string& type,
+                    int64_t run_order, int64_t start_us, int64_t rel_end_us,
+                    int64_t mem_used);
 
  private:
   void OrderNodesByMetric(SortingMetric sorting_metric,

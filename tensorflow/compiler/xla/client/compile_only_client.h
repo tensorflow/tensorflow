@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_CLIENT_COMPILE_ONLY_CLIENT_H_
 
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/compile_only_service.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -52,12 +52,19 @@ class CompileOnlyClient : public Client {
   // code. |metadata|, if provided, is populated during compilation.
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(
-      const tensorflow::gtl::ArraySlice<AotXlaComputationInstance> computations,
+      const absl::Span<const AotXlaComputationInstance> computations,
       const AotCompilationOptions& options,
       std::unique_ptr<AotCompilationMetadata>* metadata = nullptr);
 
+  // Create a Hlo module config for the given program shape and arguments.
+  // execution_options is optional; if not given a default is used.
+  StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
+      const ProgramShape& program_shape,
+      absl::Span<const Shape* const> argument_shapes,
+      const ExecutionOptions* execution_options);
+
   // Returns the size of a pointer in bytes for a given triple.
-  static int64 PointerSizeForTriple(tensorflow::StringPiece triple);
+  static int64 PointerSizeForTriple(absl::string_view triple);
 
  private:
   CompileOnlyService* compiler_service_;

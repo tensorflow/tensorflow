@@ -85,7 +85,7 @@ TEST_F(EqualGraphDefTest, NoMatch) {
   Input(e_.opts().WithName("A"));
   Input(a_.opts().WithName("B"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ("Did not find expected node 'A = Input[]()'", diff_);
+  EXPECT_EQ("Did not find expected node '{{node A}} = Input[]()'", diff_);
 }
 
 TEST_F(EqualGraphDefTest, MissingNode) {
@@ -93,7 +93,7 @@ TEST_F(EqualGraphDefTest, MissingNode) {
   Input(e_.opts().WithName("B"));
   Input(a_.opts().WithName("A"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ("Did not find expected node 'B = Input[]()'", diff_);
+  EXPECT_EQ("Did not find expected node '{{node B}} = Input[]()'", diff_);
 }
 
 TEST_F(EqualGraphDefTest, ExtraNode) {
@@ -101,7 +101,7 @@ TEST_F(EqualGraphDefTest, ExtraNode) {
   Input(a_.opts().WithName("A"));
   Input(a_.opts().WithName("B"));
   EXPECT_FALSE(Match());
-  EXPECT_EQ("Found unexpected node 'B = Input[]()'", diff_);
+  EXPECT_EQ("Found unexpected node '{{node B}} = Input[]()'", diff_);
 }
 
 TEST_F(EqualGraphDefTest, NodeOrder) {

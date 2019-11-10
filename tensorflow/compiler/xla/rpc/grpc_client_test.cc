@@ -23,12 +23,12 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "grpcpp/security/credentials.h"
 
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/client/client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/rpc/grpc_stub.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/net.h"
 #include "tensorflow/core/platform/subprocess.h"
@@ -46,7 +46,7 @@ class GRPCClientTestBase : public ::testing::Test {
     int port = tensorflow::internal::PickUnusedPortOrDie();
     subprocess_.SetProgram(
         service_main_path,
-        {service_main_path, tensorflow::strings::Printf("--port=%d", port)});
+        {service_main_path, absl::StrFormat("--port=%d", port)});
     subprocess_.SetChannelAction(tensorflow::CHAN_STDOUT,
                                  tensorflow::ACTION_DUPPARENT);
     subprocess_.SetChannelAction(tensorflow::CHAN_STDERR,
@@ -54,9 +54,8 @@ class GRPCClientTestBase : public ::testing::Test {
     CHECK(subprocess_.Start());
     LOG(INFO) << "Launched subprocess";
 
-    auto channel =
-        ::grpc::CreateChannel(tensorflow::strings::Printf("localhost:%d", port),
-                              ::grpc::InsecureChannelCredentials());
+    auto channel = ::grpc::CreateChannel(absl::StrFormat("localhost:%d", port),
+                                         ::grpc::InsecureChannelCredentials());
     channel->WaitForConnected(gpr_time_add(
         gpr_now(GPR_CLOCK_REALTIME), gpr_time_from_seconds(10, GPR_TIMESPAN)));
     LOG(INFO) << "Channel to server is connected on port " << port;
@@ -96,12 +95,11 @@ TEST_F(GRPCClientTestBase, AxpyTenValues) {
   std::vector<float> expected = {
       1.85840735, -1.85840735, 2.28318531,   -2.28318531,  -6.42477796,
       6.42477796, 10.56637061, -10.56637061, -14.70796327, 14.70796327};
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR1<float>(expected);
+  Literal expected_literal = LiteralUtil::CreateR1<float>(expected);
   TF_ASSERT_OK_AND_ASSIGN(auto computation, builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(auto result_literal, client_->ExecuteAndTransfer(
                                                    computation, {}, nullptr));
-  EXPECT_TRUE(LiteralTestUtil::Near(*expected_literal, *result_literal,
+  EXPECT_TRUE(LiteralTestUtil::Near(expected_literal, result_literal,
                                     ErrorSpec(0.0001)));
 }
 

@@ -23,10 +23,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import traceback
-
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
+from tensorflow.python.util import tf_stack
 
 
 # Registry mechanism below is based on mapreduce.python.mrpython.Register.
@@ -40,7 +39,7 @@ class Registry(object):
   def __init__(self, name):
     """Creates a new registry."""
     self._name = name
-    self._registry = dict()
+    self._registry = {}
 
   def register(self, candidate, name=None):
     """Registers a Python object "candidate" for the given "name".
@@ -55,17 +54,22 @@ class Registry(object):
     if not name:
       name = candidate.__name__
     if name in self._registry:
-      (filename, line_number, function_name, _) = (
-          self._registry[name][_LOCATION_TAG])
-      raise KeyError("Registering two %s with name '%s' !"
-                     "(Previous registration was in %s %s:%d)" %
-                     (self._name, name, function_name, filename, line_number))
+      frame = self._registry[name][_LOCATION_TAG]
+      raise KeyError(
+          "Registering two %s with name '%s'! "
+          "(Previous registration was in %s %s:%d)" %
+          (self._name, name, frame.name, frame.filename, frame.lineno))
 
     logging.vlog(1, "Registering %s (%s) in %s.", name, candidate, self._name)
     # stack trace is [this_function, Register(), user_function,...]
     # so the user function is #2.
-    stack = traceback.extract_stack()
-    self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: stack[2]}
+    stack = tf_stack.extract_stack(limit=3)
+    stack_index = min(2, len(stack)-1)
+    if stack_index >= 0:
+      location_tag = stack[stack_index]
+    else:
+      location_tag = ("UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN", "UNKNOWN")
+    self._registry[name] = {_TYPE_TAG: candidate, _LOCATION_TAG: location_tag}
 
   def list(self):
     """Lists registered items.

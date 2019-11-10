@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -48,6 +49,11 @@ GraphDef CreateTestProto() {
   node->set_name("name2");
   node->set_op("op2");
   return g;
+}
+
+static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
+  EXPECT_TRUE(absl::StrContains(s, expected))
+      << "'" << s << "' does not contain '" << expected << "'";
 }
 
 }  // namespace
@@ -86,7 +92,7 @@ TEST_F(DefaultEnvTest, IncompleteReadOutOfRange) {
 
 TEST_F(DefaultEnvTest, ReadFileToString) {
   for (const int length : {0, 1, 1212, 2553, 4928, 8196, 9000, (1 << 20) - 1,
-                           1 << 20, (1 << 20) + 1}) {
+                           1 << 20, (1 << 20) + 1, (256 << 20) + 100}) {
     const string filename = strings::StrCat(BaseDir(), "/bar/..//file", length);
 
     // Write a file with the given length
@@ -117,6 +123,11 @@ TEST_F(DefaultEnvTest, ReadWriteBinaryProto) {
   GraphDef result;
   TF_EXPECT_OK(ReadBinaryProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
+
+  // Reading as text or binary proto should also work.
+  GraphDef result2;
+  TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
+  EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, ReadWriteTextProto) {
@@ -132,6 +143,11 @@ TEST_F(DefaultEnvTest, ReadWriteTextProto) {
   GraphDef result;
   TF_EXPECT_OK(ReadTextProto(env_, filename, &result));
   EXPECT_EQ(result.DebugString(), proto.DebugString());
+
+  // Reading as text or binary proto should also work.
+  GraphDef result2;
+  TF_EXPECT_OK(ReadTextOrBinaryProto(env_, filename, &result2));
+  EXPECT_EQ(result2.DebugString(), proto.DebugString());
 }
 
 TEST_F(DefaultEnvTest, FileToReadonlyMemoryRegion) {
@@ -345,9 +361,23 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // Write something to the temporary file.
   std::unique_ptr<WritableFile> file_to_write;
   TF_CHECK_OK(env->NewWritableFile(filename, &file_to_write));
+#if defined(PLATFORM_GOOGLE)
+  TF_CHECK_OK(file_to_write->Append("Nu"));
+  TF_CHECK_OK(file_to_write->Append(absl::Cord("ll")));
+#else
+  // TODO(ebrevdo): Remove this version.
   TF_CHECK_OK(file_to_write->Append("Null"));
+#endif
   TF_CHECK_OK(file_to_write->Close());
   TF_CHECK_OK(env->FileExists(filename));
+
+  // Open the file in append mode, check that Tell() reports the appropriate
+  // offset.
+  std::unique_ptr<WritableFile> file_to_append;
+  TF_CHECK_OK(env->NewAppendableFile(filename, &file_to_append));
+  int64 pos;
+  TF_CHECK_OK(file_to_append->Tell(&pos));
+  ASSERT_EQ(4, pos);
 
   // Read from the temporary file and check content.
   std::unique_ptr<RandomAccessFile> file_to_read;
@@ -373,8 +403,39 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 
   EXPECT_TRUE(env->CreateUniqueFileName(&filename, suffix));
 
-  EXPECT_TRUE(str_util::StartsWith(filename, prefix));
+  EXPECT_TRUE(absl::StartsWith(filename, prefix));
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
+}
+
+TEST_F(DefaultEnvTest, GetThreadInformation) {
+  Env* env = Env::Default();
+  // TODO(fishx): Turn on this test for Apple.
+#if !defined(__APPLE__)
+  EXPECT_NE(env->GetCurrentThreadId(), 0);
+#endif
+  string thread_name;
+  bool res = env->GetCurrentThreadName(&thread_name);
+#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+  EXPECT_FALSE(res);
+#elif !defined(__APPLE__)
+  EXPECT_TRUE(res);
+  EXPECT_GT(thread_name.size(), 0);
+#endif
+}
+
+TEST_F(DefaultEnvTest, GetChildThreadInformation) {
+  Env* env = Env::Default();
+  Thread* child_thread = env->StartThread({}, "tf_child_thread", [env]() {
+  // TODO(fishx): Turn on this test for Apple.
+#if !defined(__APPLE__)
+    EXPECT_NE(env->GetCurrentThreadId(), 0);
+#endif
+    string thread_name;
+    bool res = env->GetCurrentThreadName(&thread_name);
+    EXPECT_TRUE(res);
+    ExpectHasSubstr(thread_name, "tf_child_thread");
+  });
+  delete child_thread;
 }
 
 }  // namespace tensorflow

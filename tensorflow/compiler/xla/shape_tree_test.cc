@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/shape_tree.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -51,10 +52,10 @@ class ShapeTreeTest : public ::testing::Test {
 
 TEST_F(ShapeTreeTest, DefaultConstructor) {
   ShapeTree<int> int_tree;
-  EXPECT_TRUE(ShapeUtil::IsNil(int_tree.shape()));
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(int_tree.shape()));
 
   ShapeTree<bool> bool_tree;
-  EXPECT_TRUE(ShapeUtil::IsNil(bool_tree.shape()));
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(bool_tree.shape()));
 }
 
 void ShapeTreeTest::TestShapeConstructor(const Shape& shape,
@@ -172,7 +173,7 @@ TEST_F(ShapeTreeTest, TupleShape) {
 
   // Write zero to all data elements.
   shape_tree.ForEachMutableElement(
-      [&sum](const ShapeIndex& /*index*/, int* data) { *data = 0; });
+      [](const ShapeIndex& /*index*/, int* data) { *data = 0; });
   EXPECT_EQ(0, shape_tree.element({}));
   EXPECT_EQ(0, shape_tree.element({0}));
   EXPECT_EQ(0, shape_tree.element({1}));
@@ -227,20 +228,22 @@ TEST_F(ShapeTreeTest, NestedTupleShape) {
 
 TEST_F(ShapeTreeTest, InvalidIndexingTuple) {
   ShapeTree<int> shape_tree{tuple_shape_};
-
+#ifndef NDEBUG
   EXPECT_DEATH(shape_tree.element({4}), "");
+#endif
 }
 
 TEST_F(ShapeTreeTest, InvalidIndexingNestedTuple) {
   ShapeTree<int> shape_tree{nested_tuple_shape_};
-
+#ifndef NDEBUG
   EXPECT_DEATH(shape_tree.element({0, 0}), "");
+#endif
 }
 
 TEST_F(ShapeTreeTest, ShapeTreeOfNonCopyableType) {
   ShapeTree<std::unique_ptr<int>> shape_tree{tuple_shape_};
   EXPECT_EQ(shape_tree.element({2}).get(), nullptr);
-  *shape_tree.mutable_element({2}) = MakeUnique<int>(42);
+  *shape_tree.mutable_element({2}) = absl::make_unique<int>(42);
   EXPECT_EQ(*shape_tree.element({2}), 42);
 }
 
@@ -602,12 +605,15 @@ void BM_Iterate(int iters, int depth, int fan_out) {
   }
 }
 
-BENCHMARK(BM_Construct)->ArgPair(2, 8);
-BENCHMARK(BM_ConstructUnowned)->ArgPair(2, 8);
-BENCHMARK(BM_Copy)->ArgPair(2, 8);
-BENCHMARK(BM_Move)->ArgPair(2, 8);
-BENCHMARK(BM_ForEach)->ArgPair(2, 8);
-BENCHMARK(BM_Iterate)->ArgPair(2, 8);
+#define BENCHMARK_WITH_ARGS(name) \
+  BENCHMARK(name)->ArgPair(2, 8)->ArgPair(1, 1000)
+
+BENCHMARK_WITH_ARGS(BM_Construct);
+BENCHMARK_WITH_ARGS(BM_ConstructUnowned);
+BENCHMARK_WITH_ARGS(BM_Copy);
+BENCHMARK_WITH_ARGS(BM_Move);
+BENCHMARK_WITH_ARGS(BM_ForEach);
+BENCHMARK_WITH_ARGS(BM_Iterate);
 
 }  // namespace
 }  // namespace xla

@@ -15,14 +15,14 @@ limitations under the License.
 
 // Helper functions to run 3d pooling on GPU using CuDNN.
 
-#ifndef TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
-#define TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
+#ifndef TENSORFLOW_CORE_KERNELS_CUDNN_POOLING_GPU_H_
+#define TENSORFLOW_CORE_KERNELS_CUDNN_POOLING_GPU_H_
 
 #include <array>
 
 #include "tensorflow/core/framework/op_kernel.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/stream_executor.h"
 #endif
 
@@ -30,7 +30,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Runs (avg/max)pooling on GPU.
 // Dimension order for all array arguments is: x, y, z.
@@ -67,4 +67,4 @@ class DnnPooling3dGradOp {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_CUDNN_POOLING_GPU_H_
+#endif  // TENSORFLOW_CORE_KERNELS_CUDNN_POOLING_GPU_H_

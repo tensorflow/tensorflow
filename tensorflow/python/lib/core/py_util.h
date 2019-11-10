@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_PYTHON_LIB_CORE_UTIL_H_
-#define TENSORFLOW_PYTHON_LIB_CORE_UTIL_H_
+#ifndef TENSORFLOW_PYTHON_LIB_CORE_PY_UTIL_H_
+#define TENSORFLOW_PYTHON_LIB_CORE_PY_UTIL_H_
 
 #include "tensorflow/core/platform/types.h"
 
@@ -24,4 +24,4 @@ namespace tensorflow {
 string PyExceptionFetch();
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_PYTHON_LIB_CORE_UTIL_H_
+#endif  // TENSORFLOW_PYTHON_LIB_CORE_PY_UTIL_H_

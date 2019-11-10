@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
 
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace xla {
@@ -32,10 +33,11 @@ Status SequentialThunk::Initialize(const GpuExecutable& executable,
   return Status::OK();
 }
 
-Status SequentialThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream) {
+Status SequentialThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   for (const auto& thunk : thunks_) {
-    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(buffer_allocations, stream));
+    TF_RETURN_IF_ERROR(thunk->ExecuteOnStream(params));
   }
   return Status::OK();
 }

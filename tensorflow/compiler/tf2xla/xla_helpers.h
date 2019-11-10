@@ -18,32 +18,16 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 #define TENSORFLOW_COMPILER_TF2XLA_XLA_HELPERS_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
 // Helper methods for building XLA computations.
 class XlaHelpers {
  public:
-  // Returns a handle representing the minimum value of a scalar
-  // element of data_type. -inf for floating-point types.
-  static xla::XlaOp MinValue(xla::XlaBuilder* b, DataType data_type);
-
-  // Returns a handle representing the minimum finite value of a scalar
-  // element of data_type.
-  static xla::XlaOp MinFiniteValue(xla::XlaBuilder* b, DataType data_type);
-
-  // Returns a handle representing the maximum value of a scalar
-  // element of data_type. inf for floating point types.
-  static xla::XlaOp MaxValue(xla::XlaBuilder* b, DataType data_type);
-
-  // Returns a handle representing the maximum finite value of a scalar
-  // element of data_type.
-  static xla::XlaOp MaxFiniteValue(xla::XlaBuilder* b, DataType data_type);
-
   // Returns a handle representing the zero value of a scalar
   // element of data_type.
   static xla::XlaOp Zero(xla::XlaBuilder* b, DataType data_type);
@@ -51,10 +35,6 @@ class XlaHelpers {
   // Returns a handle representing the one value of a scalar
   // element of data_type.
   static xla::XlaOp One(xla::XlaBuilder* b, DataType data_type);
-
-  // Returns the machine epsilon for floating-point type `data_type`, i.e.,
-  // the difference between 1.0 and the next representable value.
-  static xla::XlaOp Epsilon(xla::XlaBuilder* b, DataType data_type);
 
   // Returns a handle representing the given value of an integer scalar
   // element of data_type.
@@ -70,24 +50,8 @@ class XlaHelpers {
   // Reshapes literal 'input' to have 'shape'. Both the original shape and
   // 'shape' must contain the same number of elements.
   static Status ReshapeLiteral(const xla::Literal& input,
-                               gtl::ArraySlice<int64> shape,
+                               absl::Span<const int64> shape,
                                xla::Literal* output);
-
-  // Sets `argmax` to the argmax of `input` along `axis`. `input_shape` and
-  // `input_dtype` are the shape and dtype of `input` respectively, and
-  // `output_type` is the dtype to use for `argmax`.
-  static Status ArgMax(xla::XlaBuilder* builder, XlaOpKernelContext* ctx,
-                       const xla::XlaOp& input, const TensorShape& input_shape,
-                       DataType input_type, DataType output_type, int axis,
-                       xla::XlaOp* argmax);
-
-  // Sets `argmin` to the argmin of `input` along `axis`. `input_shape` and
-  // `input_dtype` are the shape and dtype of `input` respectively, and
-  // `output_type` is the dtype to use for `argmin`.
-  static Status ArgMin(xla::XlaBuilder* builder, XlaOpKernelContext* ctx,
-                       const xla::XlaOp& input, const TensorShape& input_shape,
-                       DataType input_type, DataType output_type, int axis,
-                       xla::XlaOp* argmin);
 
   // Converts `indices` into a one-hot representation. `depth` is the size
   // of the new axis to add. `axis` is the position at which to add the new
@@ -106,8 +70,7 @@ class XlaHelpers {
 
   // A helper for creating a ConvertElementType xla op given a DataType rather
   // than the xla::PrimitiveType.
-  static xla::XlaOp ConvertElementType(xla::XlaBuilder* const builder,
-                                       const xla::XlaOp& operand,
+  static xla::XlaOp ConvertElementType(const xla::XlaOp& operand,
                                        const DataType new_element_type);
 };
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
@@ -25,7 +26,8 @@ namespace graph_transforms {
 
 namespace {
 inline bool IsMerge(const NodeDef& node_def) {
-  return node_def.op() == "Merge" || node_def.op() == "RefMerge";
+  return node_def.op() == "Merge" || node_def.op() == "RefMerge" ||
+         node_def.op() == "_XlaMerge";
 }
 
 void RecordMatchedNodes(const NodeMatch& match,
@@ -88,12 +90,12 @@ void NodeNamePartsFromInput(const string& input_name, string* prefix,
     *suffix = ":" + input_parts[1];
   }
   StringPiece node_name_piece(input_parts[0]);
-  if (str_util::ConsumePrefix(&node_name_piece, "^")) {
+  if (absl::ConsumePrefix(&node_name_piece, "^")) {
     *prefix = "^";
   } else {
     *prefix = "";
   }
-  *node_name = std::string(node_name_piece);
+  *node_name = string(node_name_piece);
 }
 
 string NodeNameFromInput(const string& input_name) {
@@ -200,7 +202,7 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
       // for merge only wait for one non-control input.
       int32 num_control_edges = 0;
       for (int i = 0; i < node_def.input_size(); ++i) {
-        if (str_util::StartsWith(node_def.input(i), "^")) {
+        if (absl::StartsWith(node_def.input(i), "^")) {
           num_control_edges++;
         }
       }
@@ -247,9 +249,16 @@ Status SortByExecutionOrder(const GraphDef& input_graph_def,
     }
   }
 
-  if (processed < input_graph_def.node_size()) {
-    return errors::InvalidArgument(input_graph_def.node_size() - processed,
-                                   " nodes in a cycle");
+  if (processed < num_nodes) {
+    LOG(WARNING) << "IN " << __func__ << (num_nodes - processed)
+                 << " NODES IN A CYCLE";
+    for (int64 i = 0; i < num_nodes; i++) {
+      if (pending_count[i] != 0) {
+        LOG(WARNING) << "PENDING: " << SummarizeNodeDef(input_graph_def.node(i))
+                     << "WITH PENDING COUNT = " << pending_count[i];
+      }
+    }
+    return errors::InvalidArgument(num_nodes - processed, " nodes in a cycle");
   }
   return Status::OK();
 }
@@ -589,10 +598,16 @@ Status TensorShapeFromString(const string& shape_string, TensorShape* result) {
   if (shape_string.empty()) {
     return errors::InvalidArgument("Specificed shape is empty.");
   }
+  std::vector<string> dims_as_str = str_util::Split(shape_string, ",");
   std::vector<int64> dims;
-  if (!str_util::SplitAndParseAsInts(shape_string, ',', &dims)) {
-    return errors::InvalidArgument("Could parse as shape: '", shape_string,
-                                   "'");
+  for (const string& dim : dims_as_str) {
+    int64 tmp;
+    if (strings::safe_strto64(dim, &tmp)) {
+      dims.push_back(tmp);
+    } else {
+      return errors::InvalidArgument("Could parse as shape: '", shape_string,
+                                     "'");
+    }
   }
   *result = TensorShape(dims);
   return Status::OK();

@@ -21,6 +21,8 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_control_flow_ops
@@ -35,7 +37,7 @@ class XlaDeviceTest(xla_test.XLATestCase):
               [16384, 1], [1, 16384], [1, 20000, 1, 1]]
     for dtype in self.numeric_types:
       for shape in shapes:
-        with self.test_session() as sess:
+        with self.session() as sess:
           with ops.device("CPU"):
             x = array_ops.placeholder(dtype, shape)
           with self.test_scope():
@@ -47,11 +49,39 @@ class XlaDeviceTest(xla_test.XLATestCase):
           result = sess.run(z, {x: inputs})
         self.assertAllCloseAccordingToType(result, inputs + inputs)
 
+  def testCopiesOfUnsupportedTypesFailGracefully(self):
+    """Tests that copies of unsupported types don't crash."""
+    test_types = set([
+        np.uint8, np.uint16, np.uint32, np.uint64, np.int8, np.int16, np.int32,
+        np.int64, np.float16, np.float32, np.float16,
+        dtypes.bfloat16.as_numpy_dtype
+    ])
+    shape = (10, 10)
+    for unsupported_dtype in test_types - self.all_types:
+      with self.session() as sess:
+        with ops.device("CPU"):
+          x = array_ops.placeholder(unsupported_dtype, shape)
+        with self.test_scope():
+          y, = array_ops.identity_n([x])
+        with ops.device("CPU"):
+          z = array_ops.identity(y)
+
+          inputs = np.random.randint(-100, 100, shape)
+          inputs = inputs.astype(unsupported_dtype)
+          # Execution should either succeed or raise an InvalidArgumentError,
+          # but not crash. Even "unsupported types" may succeed here since some
+          # backends (e.g., the CPU backend) are happy to handle buffers of
+          # unsupported types, even if they cannot compute with them.
+          try:
+            sess.run(z, {x: inputs})
+          except errors.InvalidArgumentError:
+            pass
+
   def testControlTrigger(self):
-    with self.test_session() as sess:
+    with self.session() as sess:
       with self.test_scope():
         x = gen_control_flow_ops.control_trigger()
-      sess.run(x)
+      self.evaluate(x)
 
 
 if __name__ == "__main__":

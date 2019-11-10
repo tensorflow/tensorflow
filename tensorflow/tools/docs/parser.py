@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,10 +29,34 @@ import re
 
 import astor
 import six
+from six.moves import zip
 
 from google.protobuf.message import Message as ProtoMessage
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
+from tensorflow.tools.docs import doc_controls
+
+
+def is_free_function(py_object, full_name, index):
+  """Check if input is a free function (and not a class- or static method).
+
+  Args:
+    py_object: The the object in question.
+    full_name: The full name of the object, like `tf.module.symbol`.
+    index: The {full_name:py_object} dictionary for the public API.
+
+  Returns:
+    True if the obeject is a stand-alone function, and not part of a class
+    definition.
+  """
+  if not tf_inspect.isfunction(py_object):
+    return False
+
+  parent_name = six.ensure_str(full_name).rsplit('.', 1)[0]
+  if tf_inspect.isclass(index[parent_name]):
+    return False
+
+  return True
 
 
 # A regular expression capturing a python identifier.
@@ -73,7 +98,7 @@ class _Errors(object):
     return self._errors == other._errors  # pylint: disable=protected-access
 
 
-def documentation_path(full_name):
+def documentation_path(full_name, is_fragment=False):
   """Returns the file path for the documentation for the given API symbol.
 
   Given the fully qualified name of a library symbol, compute the path to which
@@ -83,12 +108,22 @@ def documentation_path(full_name):
 
   Args:
     full_name: Fully qualified name of a library symbol.
-
+    is_fragment: If `False` produce a direct markdown link (`tf.a.b.c` -->
+      `tf/a/b/c.md`). If `True` produce fragment link, `tf.a.b.c` -->
+      `tf/a/b.md#c`
   Returns:
     The file path to which to write the documentation for `full_name`.
   """
-  dirs = full_name.split('.')
-  return os.path.join(*dirs) + '.md'
+  parts = six.ensure_str(full_name).split('.')
+  if is_fragment:
+    parts, fragment = parts[:-1], parts[-1]
+
+  result = six.ensure_str(os.path.join(*parts)) + '.md'
+
+  if is_fragment:
+    result = six.ensure_str(result) + '#' + six.ensure_str(fragment)
+
+  return result
 
 
 def _get_raw_docstring(py_object):
@@ -135,8 +170,7 @@ class ReferenceResolver(object):
       doc.
   """
 
-  def __init__(self, duplicate_of, doc_index, is_class, is_module,
-               py_module_names):
+  def __init__(self, duplicate_of, doc_index, is_fragment, py_module_names):
     """Initializes a Reference Resolver.
 
     Args:
@@ -144,15 +178,15 @@ class ReferenceResolver(object):
         symbols.
       doc_index: A `dict` mapping symbol name strings to objects with `url`
         and `title` fields. Used to resolve @{$doc} references in docstrings.
-      is_class: A map from full names to bool for each symbol.
-      is_module: A map from full names to bool for each symbol.
+      is_fragment: A map from full names to bool for each symbol. If True the
+        object lives at a page fragment `tf.a.b.c` --> `tf/a/b#c`. If False
+        object has a page to itself: `tf.a.b.c` --> `tf/a/b/c`.
       py_module_names: A list of string names of Python modules.
     """
     self._duplicate_of = duplicate_of
     self._doc_index = doc_index
-    self._is_class = is_class
-    self._is_module = is_module
-    self._all_names = set(is_class.keys())
+    self._is_fragment = is_fragment
+    self._all_names = set(is_fragment.keys())
     self._py_module_names = py_module_names
 
     self.current_doc_full_name = None
@@ -179,21 +213,18 @@ class ReferenceResolver(object):
     Returns:
       an instance of `ReferenceResolver` ()
     """
-    is_class = {
-        name: tf_inspect.isclass(visitor.index[name])
-        for name, obj in visitor.index.items()
-    }
+    is_fragment = {}
+    for name, obj in visitor.index.items():
+      has_page = (
+          tf_inspect.isclass(obj) or tf_inspect.ismodule(obj) or
+          is_free_function(obj, name, visitor.index))
 
-    is_module = {
-        name: tf_inspect.ismodule(visitor.index[name])
-        for name, obj in visitor.index.items()
-    }
+      is_fragment[name] = not has_page
 
     return cls(
         duplicate_of=visitor.duplicate_of,
         doc_index=doc_index,
-        is_class=is_class,
-        is_module=is_module,
+        is_fragment=is_fragment,
         **kwargs)
 
   @classmethod
@@ -209,6 +240,10 @@ class ReferenceResolver(object):
     Args:
       filepath: The file path to write the json to.
     """
+    try:
+      os.makedirs(os.path.dirname(filepath))
+    except OSError:
+      pass
     json_dict = {}
     for key, value in self.__dict__.items():
       # Drop these two fields. `_doc_index` is not serializable. `_all_names` is
@@ -222,7 +257,7 @@ class ReferenceResolver(object):
       json_dict[key.lstrip('_')] = value
 
     with open(filepath, 'w') as f:
-      json.dump(json_dict, f)
+      json.dump(json_dict, f, indent=2, sort_keys=True)
 
   def replace_references(self, string, relative_path_to_root):
     """Replace "@{symbol}" references with links to symbol's documentation page.
@@ -255,7 +290,7 @@ class ReferenceResolver(object):
         self.add_error(e.message)
         return 'BAD_LINK'
 
-    string = re.sub(SYMBOL_REFERENCE_RE, strict_one_ref, string)
+    string = re.sub(SYMBOL_REFERENCE_RE, strict_one_ref, six.ensure_str(string))
 
     def sloppy_one_ref(match):
       try:
@@ -300,7 +335,7 @@ class ReferenceResolver(object):
   @staticmethod
   def _link_text_to_html(link_text):
     code_re = '`(.*?)`'
-    return re.sub(code_re, r'<code>\1</code>', link_text)
+    return re.sub(code_re, r'<code>\1</code>', six.ensure_str(link_text))
 
   def py_master_name(self, full_name):
     """Return the master name for a Python symbol name."""
@@ -338,19 +373,7 @@ class ReferenceResolver(object):
       raise TFDocsError(
           'Cannot make link to "%s": Not in index.' % master_name)
 
-    # If this is a member of a class, link to the class page with an anchor.
-    ref_path = None
-    if not (self._is_class[master_name] or self._is_module[master_name]):
-      idents = master_name.split('.')
-      if len(idents) > 1:
-        class_name = '.'.join(idents[:-1])
-        assert class_name in self._all_names
-        if self._is_class[class_name]:
-          ref_path = documentation_path(class_name) + '#%s' % idents[-1]
-
-    if not ref_path:
-      ref_path = documentation_path(master_name)
-
+    ref_path = documentation_path(master_name, self._is_fragment[master_name])
     return os.path.join(relative_path_to_root, ref_path)
 
   def _one_ref(self, match, relative_path_to_root):
@@ -368,11 +391,11 @@ class ReferenceResolver(object):
       manual_link_text = False
 
     # Handle different types of references.
-    if string.startswith('$'):  # Doc reference
+    if six.ensure_str(string).startswith('$'):  # Doc reference
       return self._doc_link(string, link_text, manual_link_text,
                             relative_path_to_root)
 
-    elif string.startswith('tensorflow::'):
+    elif six.ensure_str(string).startswith('tensorflow::'):
       # C++ symbol
       return self._cc_link(string, link_text, manual_link_text,
                            relative_path_to_root)
@@ -380,7 +403,8 @@ class ReferenceResolver(object):
     else:
       is_python = False
       for py_module_name in self._py_module_names:
-        if string == py_module_name or string.startswith(py_module_name + '.'):
+        if string == py_module_name or string.startswith(
+            six.ensure_str(py_module_name) + '.'):
           is_python = True
           break
       if is_python:  # Python symbol
@@ -400,7 +424,7 @@ class ReferenceResolver(object):
     string = string[1:]  # remove leading $
 
     # If string has a #, split that part into `hash_tag`
-    hash_pos = string.find('#')
+    hash_pos = six.ensure_str(string).find('#')
     if hash_pos > -1:
       hash_tag = string[hash_pos:]
       string = string[:hash_pos]
@@ -481,7 +505,10 @@ def _gen_pairs(items):
   assert len(items) % 2 == 0
   items = iter(items)
   while True:
-    yield next(items), next(items)
+    try:
+      yield next(items), next(items)
+    except StopIteration:
+      return
 
 
 class _FunctionDetail(
@@ -496,10 +523,10 @@ class _FunctionDetail(
 
   def __str__(self):
     """Return the original string that represents the function detail."""
-    parts = [self.keyword + ':\n']
+    parts = [six.ensure_str(self.keyword) + ':\n']
     parts.append(self.header)
     for key, value in self.items:
-      parts.append('  ' + key + ': ')
+      parts.append('  ' + six.ensure_str(key) + ': ')
       parts.append(value)
 
     return ''.join(parts)
@@ -563,7 +590,7 @@ def _parse_function_details(docstring):
   item_re = re.compile(r'^   ? ?(\*?\*?\w[\w.]*?\s*):\s', re.MULTILINE)
 
   for keyword, content in pairs:
-    content = item_re.split(content)
+    content = item_re.split(six.ensure_str(content))
     header = content[0]
     items = list(_gen_pairs(content[1:]))
 
@@ -610,7 +637,8 @@ def _parse_md_docstring(py_object, relative_path_to_root, reference_resolver):
 
   atat_re = re.compile(r' *@@[a-zA-Z_.0-9]+ *$')
   raw_docstring = '\n'.join(
-      line for line in raw_docstring.split('\n') if not atat_re.match(line))
+      line for line in six.ensure_str(raw_docstring).split('\n')
+      if not atat_re.match(six.ensure_str(line)))
 
   docstring, compatibility = _handle_compatibility(raw_docstring)
   docstring, function_details = _parse_function_details(docstring)
@@ -674,8 +702,9 @@ def _get_arg_spec(func):
 
 
 def _remove_first_line_indent(string):
-  indent = len(re.match(r'^\s*', string).group(0))
-  return '\n'.join([line[indent:] for line in string.split('\n')])
+  indent = len(re.match(r'^\s*', six.ensure_str(string)).group(0))
+  return '\n'.join(
+      [line[indent:] for line in six.ensure_str(string).split('\n')])
 
 
 PAREN_NUMBER_RE = re.compile(r'^\(([0-9.e-]+)\)')
@@ -737,9 +766,9 @@ def _generate_signature(func, reverse_index):
         default_text = reverse_index[id(default)]
       elif ast_default is not None:
         default_text = (
-            astor.to_source(ast_default).rstrip('\n').replace('\t', '\\t')
-            .replace('\n', '\\n').replace('"""', "'"))
-        default_text = PAREN_NUMBER_RE.sub('\\1', default_text)
+            six.ensure_str(astor.to_source(ast_default)).rstrip('\n').replace(
+                '\t', '\\t').replace('\n', '\\n').replace('"""', "'"))
+        default_text = PAREN_NUMBER_RE.sub('\\1', six.ensure_str(default_text))
 
         if default_text != repr(default):
           # This may be an internal name. If so, handle the ones we know about.
@@ -773,9 +802,9 @@ def _generate_signature(func, reverse_index):
 
   # Add *args and *kwargs.
   if argspec.varargs:
-    args_list.append('*' + argspec.varargs)
+    args_list.append('*' + six.ensure_str(argspec.varargs))
   if argspec.varkw:
-    args_list.append('**' + argspec.varkw)
+    args_list.append('**' + six.ensure_str(argspec.varkw))
 
   return args_list
 
@@ -855,7 +884,7 @@ class _FunctionPageInfo(object):
 
   @property
   def short_name(self):
-    return self._full_name.split('.')[-1]
+    return six.ensure_str(self._full_name).split('.')[-1]
 
   @property
   def defined_in(self):
@@ -946,6 +975,7 @@ class _ClassPageInfo(object):
     self._aliases = None
     self._doc = None
     self._guides = None
+    self._namedtuplefields = None
 
     self._bases = None
     self._properties = []
@@ -973,7 +1003,7 @@ class _ClassPageInfo(object):
   @property
   def short_name(self):
     """Returns the documented object's short name."""
-    return self._full_name.split('.')[-1]
+    return six.ensure_str(self._full_name).split('.')[-1]
 
   @property
   def defined_in(self):
@@ -1029,6 +1059,17 @@ class _ClassPageInfo(object):
     self._guides = guides
 
   @property
+  def namedtuplefields(self):
+    return self._namedtuplefields
+
+  def set_namedtuplefields(self, py_class):
+    if issubclass(py_class, tuple):
+      if all(
+          hasattr(py_class, attr)
+          for attr in ('_asdict', '_fields', '_make', '_replace')):
+        self._namedtuplefields = py_class._fields
+
+  @property
   def bases(self):
     """Returns a list of `_LinkInfo` objects pointing to the class' parents."""
     return self._bases
@@ -1055,9 +1096,12 @@ class _ClassPageInfo(object):
       base_url = parser_config.reference_resolver.reference_to_url(
           base_full_name, relative_path)
 
-      link_info = _LinkInfo(short_name=base_full_name.split('.')[-1],
-                            full_name=base_full_name, obj=base,
-                            doc=base_doc, url=base_url)
+      link_info = _LinkInfo(
+          short_name=six.ensure_str(base_full_name).split('.')[-1],
+          full_name=base_full_name,
+          obj=base,
+          doc=base_doc,
+          url=base_url)
       bases.append(link_info)
 
     self._bases = bases
@@ -1065,7 +1109,15 @@ class _ClassPageInfo(object):
   @property
   def properties(self):
     """Returns a list of `_PropertyInfo` describing the class' properties."""
-    return self._properties
+    props_dict = {prop.short_name: prop for prop in self._properties}
+    props = []
+    if self.namedtuplefields:
+      for field in self.namedtuplefields:
+        props.append(props_dict.pop(field))
+
+    props.extend(sorted(props_dict.values()))
+
+    return props
 
   def _add_property(self, short_name, full_name, obj, doc):
     """Adds a `_PropertyInfo` entry to the `properties` list.
@@ -1076,6 +1128,9 @@ class _ClassPageInfo(object):
       obj: The property object itself
       doc: The property's parsed docstring, a `_DocstringInfo`.
     """
+    # Hide useless namedtuple docs-trings
+    if re.match('Alias for field number [0-9]+', six.ensure_str(doc.docstring)):
+      doc = doc._replace(docstring='', brief='')
     property_info = _PropertyInfo(short_name, full_name, obj, doc)
     self._properties.append(property_info)
 
@@ -1155,6 +1210,7 @@ class _ClassPageInfo(object):
       py_class: The class object being documented
       parser_config: An instance of ParserConfig.
     """
+    self.set_namedtuplefields(py_class)
     doc_path = documentation_path(self.full_name)
     relative_path = os.path.relpath(
         path='.', start=os.path.dirname(doc_path) or '.')
@@ -1175,14 +1231,17 @@ class _ClassPageInfo(object):
 
       # Don't document anything that is defined in object or by protobuf.
       defining_class = _get_defining_class(py_class, short_name)
-      if (defining_class is object or
-          defining_class is type or defining_class is tuple or
-          defining_class is BaseException or defining_class is Exception or
-          # The following condition excludes most protobuf-defined symbols.
-          defining_class and defining_class.__name__ in ['CMessage', 'Message',
-                                                         'MessageMeta']):
+      if defining_class in [object, type, tuple, BaseException, Exception]:
+        continue
+
+      # The following condition excludes most protobuf-defined symbols.
+      if (defining_class and
+          defining_class.__name__ in ['CMessage', 'Message', 'MessageMeta']):
         continue
       # TODO(markdaoust): Add a note in child docs showing the defining class.
+
+      if doc_controls.should_skip_class_attr(py_class, short_name):
+        continue
 
       child_doc = _parse_md_docstring(child, relative_path,
                                       parser_config.reference_resolver)
@@ -1204,8 +1263,8 @@ class _ClassPageInfo(object):
 
         # Omit methods defined by namedtuple.
         original_method = defining_class.__dict__[short_name]
-        if (hasattr(original_method, '__module__') and
-            (original_method.__module__ or '').startswith('namedtuple')):
+        if (hasattr(original_method, '__module__') and six.ensure_str(
+            (original_method.__module__ or '')).startswith('namedtuple')):
           continue
 
         # Some methods are often overridden without documentation. Because it's
@@ -1243,7 +1302,7 @@ class _ClassPageInfo(object):
       else:
         # Exclude members defined by protobuf that are useless
         if issubclass(py_class, ProtoMessage):
-          if (short_name.endswith('_FIELD_NUMBER') or
+          if (six.ensure_str(short_name).endswith('_FIELD_NUMBER') or
               short_name in ['__slots__', 'DESCRIPTOR']):
             continue
 
@@ -1281,7 +1340,7 @@ class _ModulePageInfo(object):
 
   @property
   def short_name(self):
-    return self._full_name.split('.')[-1]
+    return six.ensure_str(self._full_name).split('.')[-1]
 
   @property
   def defined_in(self):
@@ -1374,7 +1433,8 @@ class _ModulePageInfo(object):
                   '__cached__', '__loader__', '__spec__']:
         continue
 
-      member_full_name = self.full_name + '.' + name if self.full_name else name
+      member_full_name = six.ensure_str(self.full_name) + '.' + six.ensure_str(
+          name) if self.full_name else name
       member = parser_config.py_name_to_object(member_full_name)
 
       member_doc = _parse_md_docstring(member, relative_path,
@@ -1431,7 +1491,7 @@ class ParserConfig(object):
     self.base_dir = base_dir
     self.defined_in_prefix = 'tensorflow/'
     self.code_url_prefix = (
-        'https://www.tensorflow.org/code/tensorflow/')  # pylint: disable=line-too-long
+        '/code/stable/tensorflow/')  # pylint: disable=line-too-long
 
   def py_name_to_object(self, full_name):
     """Return the Python object for a Python symbol name."""
@@ -1629,20 +1689,21 @@ def _get_defined_in(py_object, parser_config):
   # TODO(wicke): And make their source file predictable from the file name.
 
   # In case this is compiled, point to the original
-  if path.endswith('.pyc'):
+  if six.ensure_str(path).endswith('.pyc'):
     path = path[:-1]
 
   # Never include links outside this code base.
-  if path.startswith('..'):
+  if six.ensure_str(path).startswith('..') or re.search(r'\b_api\b',
+                                                        six.ensure_str(path)):
     return None
 
-  if re.match(r'.*/gen_[^/]*\.py$', path):
+  if re.match(r'.*/gen_[^/]*\.py$', six.ensure_str(path)):
     return _GeneratedFile(path, parser_config)
   if 'genfiles' in path or 'tools/api/generator' in path:
     return _GeneratedFile(path, parser_config)
-  elif re.match(r'.*_pb2\.py$', path):
+  elif re.match(r'.*_pb2\.py$', six.ensure_str(path)):
     # The _pb2.py files all appear right next to their defining .proto file.
-    return _ProtoFile(path[:-7] + '.proto', parser_config)
+    return _ProtoFile(six.ensure_str(path[:-7]) + '.proto', parser_config)
   else:
     return _PythonFile(path, parser_config)
 
@@ -1691,15 +1752,18 @@ class _Metadata(object):
 
   Attributes:
     name: The name of the page being described by the Metadata block.
+    version: The source version.
   """
 
-  def __init__(self, name):
+  def __init__(self, name, version='Stable'):
     """Creates a Metadata builder.
 
     Args:
       name: The name of the page being described by the Metadata block.
+      version: The source version.
     """
     self.name = name
+    self.version = version
     self._content = []
 
   def append(self, item):
@@ -1716,6 +1780,7 @@ class _Metadata(object):
     parts = ['<div itemscope itemtype="%s">' % schema]
 
     parts.append('<meta itemprop="name" content="%s" />' % self.name)
+    parts.append('<meta itemprop="path" content="%s" />' % self.version)
     for item in self._content:
       parts.append('<meta itemprop="property" content="%s"/>' % item)
 

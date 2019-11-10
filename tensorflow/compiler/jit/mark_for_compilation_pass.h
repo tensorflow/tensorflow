@@ -20,6 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_
 #define TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_
 
+#include "tensorflow/compiler/jit/compilability_check_util.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 
 namespace tensorflow {
@@ -40,20 +41,27 @@ class MarkForCompilationPass : public GraphOptimizationPass {
 
   Status Run(const GraphOptimizationPassOptions& options) override;
 
-  // Run() just calls RunImpl() if --tf_xla_auto_jit is enabled. To run the pass
-  // unconditionally, call RunImpl() directly.
-  // is_compilable_fn, if set, is a predicate that must be true for a node to
-  // be compiled.
-  Status RunImpl(const GraphOptimizationPassOptions& options,
-                 const std::function<bool(const Node*, const DeviceType&)>&
-                     is_compilable_fn = {});
+ private:
+  Status RunForTest(const GraphOptimizationPassOptions& options,
+                    bool disable_deadness_analysis);
+
+  friend class MarkForCompilationPassTestHelper;
 };
 
 // Returns true iff 'ndef' is a call to a function that is compilable.  A
 // function is compilable iff every operator in the function body is
-// compilable.
-bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef);
+// compilable. If 'ndef' is not compilable and 'uncompilable_node_info' is not
+// null, we will populate 'uncompilable_node_info' with uncompilable node info.
+bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                  RecursiveCompilabilityChecker::UncompilableNodesMap*
+                      uncompilable_node_info = nullptr);
 
+namespace testing {
+// DO NOT USE IN PRODUCTION.
+//
+// Resets some internal state to let us write reliable unit tests.
+void ResetClusterSequenceNumber();
+}  // namespace testing
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_MARK_FOR_COMPILATION_PASS_H_

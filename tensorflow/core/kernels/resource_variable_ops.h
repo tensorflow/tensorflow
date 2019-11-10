@@ -16,8 +16,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_RESOURCE_VARIABLE_OPS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace tensorflow {
+
+class VarHandleOp : public OpKernel {
+ public:
+  explicit VarHandleOp(OpKernelConstruction* c);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  // Same fields as in ResourceHandleOp.
+  string container_;
+  string name_;
+  mutex mutex_;
+  Tensor resource_;
+  std::atomic<bool> initialized_{false};
+
+  DtypeAndPartialTensorShape dtype_and_shape_;
+};
 
 class ReadVariableOp : public OpKernel {
  public:
@@ -26,6 +43,25 @@ class ReadVariableOp : public OpKernel {
 
  private:
   DataType dtype_;
+};
+
+class ReadVariablesOp : public OpKernel {
+ public:
+  explicit ReadVariablesOp(OpKernelConstruction* c);
+  void Compute(OpKernelContext* ctx) override;
+  bool IsExpensive() override { return false; }
+
+ private:
+  DataTypeVector dtypes_;
+};
+
+class DestroyResourceOp : public OpKernel {
+ public:
+  explicit DestroyResourceOp(OpKernelConstruction* ctx);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  bool ignore_lookup_error_;
 };
 
 }  // namespace tensorflow

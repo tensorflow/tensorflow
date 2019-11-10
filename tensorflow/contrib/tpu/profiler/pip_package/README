@@ -1,2 +1,0 @@
-This package contains a Python wrapper around an pre-built C++ binary that is
-used to profile Cloud TPU.

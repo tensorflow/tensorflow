@@ -407,7 +407,7 @@ def _conv_2d_backprop_input_flops(graph, node):
   return ops.OpStats("flops",
                      (2 * out_shape.num_elements()
                       * kernel_shape.num_elements()
-                      / (out_shape[-1].value * strides_product)))
+                      / (out_shape.dims[-1].value * strides_product)))
 
 
 @ops.RegisterStatistics("Conv2DBackpropFilter", "flops")
@@ -430,7 +430,7 @@ def _conv_2d_backprop_filter_flops(graph, node):
   return ops.OpStats("flops",
                      (2 * image_shape.num_elements()
                       * kernel_shape.num_elements()
-                      / (image_shape[-1].value * strides_product)))
+                      / (image_shape.dims[-1].value * strides_product)))
 
 ################################################################################
 # Other ops

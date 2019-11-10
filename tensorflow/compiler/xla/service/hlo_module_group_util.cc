@@ -22,14 +22,17 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -37,31 +40,49 @@ namespace xla {
 
 std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
     HloInstruction* instruction) {
-  std::vector<HloInstruction*> predecessors;
+  std::vector<HloInstruction*>
+      predecessors;  // Use a vector to avoid non-determinism.
+  absl::flat_hash_set<HloInstruction*> unique;
 
-  // Adds to the unique predecessors list and also add companion instructions
-  // if the given predecessor has those.
+  // Adds to the unique predecessors list; if the predecessors is a companion
+  // instruction, also add companion instructions; if the predecessors is a
+  // cross-module all-reduce, also add the all-reduce instructions in the same
+  // group.
   auto add_unique_predecessor = [&](HloInstruction* predecessor) {
-    if (std::find(predecessors.begin(), predecessors.end(), predecessor) !=
-        predecessors.end()) {
+    if (unique.find(predecessor) != unique.end()) {
       return;
     }
-    if (!metadata_.IsCompanionInstruction(predecessor)) {
-      predecessors.push_back(predecessor);
+    if (metadata_.IsCompanionInstruction(predecessor)) {
+      for (HloInstruction* instr : metadata_.Companions(predecessor)) {
+        if (unique.insert(instr).second) {
+          predecessors.push_back(instr);
+        }
+      }
       return;
     }
-    for (HloInstruction* companion : metadata_.Companions(predecessor)) {
-      predecessors.push_back(companion);
+    if (predecessor->IsCrossModuleAllReduce()) {
+      for (HloInstruction* instr :
+           metadata_.GetAllReduceGroup(*predecessor->channel_id())) {
+        if (unique.insert(instr).second) {
+          predecessors.push_back(instr);
+        }
+      }
+      return;
     }
+    unique.insert(predecessor);
+    predecessors.push_back(predecessor);
   };
-
   // If the given instruction is a companion instruction, we need to find the
-  // predecessors of all of its companion instructions.
+  // predecessors of all of its companion instructions. If the instruction is an
+  // all-reduce, we need to find the predecessors of all the peer all-reduce
+  // instructions.
   std::vector<HloInstruction*> instruction_group;
   if (metadata_.IsCompanionInstruction(instruction)) {
     for (HloInstruction* companion : metadata_.Companions(instruction)) {
       instruction_group.push_back(companion);
     }
+  } else if (instruction->IsCrossModuleAllReduce()) {
+    instruction_group = metadata_.GetAllReduceGroup(*instruction->channel_id());
   } else {
     instruction_group.push_back(instruction);
   }
@@ -74,15 +95,18 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
       add_unique_predecessor(control_predecessor);
     }
   }
-  if (instruction->opcode() == HloOpcode::kRecvDone) {
+  if (instruction->opcode() == HloOpcode::kRecvDone &&
+      !DynCast<HloRecvDoneInstruction>(instruction)->is_host_transfer()) {
     // Send is a remote predecessor of RecvDone.
-    HloInstruction* send = metadata_.GetChannel(instruction->channel_id()).send;
+    HloInstruction* send =
+        metadata_.GetChannel(*instruction->channel_id()).send;
     add_unique_predecessor(send);
   }
-  if (instruction->opcode() == HloOpcode::kSend) {
+  if (instruction->opcode() == HloOpcode::kSend &&
+      !DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
     // Recv is a remote predecessor of Send.
     HloInstruction* recv_done =
-        metadata_.GetChannel(instruction->channel_id()).recv_done;
+        metadata_.GetChannel(*instruction->channel_id()).recv_done;
     CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
     CHECK_EQ(recv_done->operand_count(), 1);
     HloInstruction* recv = recv_done->mutable_operand(0);
@@ -93,31 +117,50 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
 
 std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
     HloInstruction* instruction) {
-  std::vector<HloInstruction*> successors;
+  std::vector<HloInstruction*>
+      successors;  // Use a vector to avoid non-determinism.
+  absl::flat_hash_set<HloInstruction*> unique;
 
-  // Adds to the unique successors list and also add companion instructions
-  // if the given successor has those.
+  // Adds to the unique successors list; if the successor is a companion
+  // instruction, also add companion instructions; if the successor is a
+  // cross-module all-reduce, also add the all-reduce instructions in the same
+  // group.
   auto add_unique_successor = [&](HloInstruction* successor) {
-    if (std::find(successors.begin(), successors.end(), successor) !=
-        successors.end()) {
+    if (unique.find(successor) != unique.end()) {
       return;
     }
-    if (!metadata_.IsCompanionInstruction(successor)) {
-      successors.push_back(successor);
+    if (metadata_.IsCompanionInstruction(successor)) {
+      for (HloInstruction* instr : metadata_.Companions(successor)) {
+        if (unique.insert(instr).second) {
+          successors.push_back(instr);
+        }
+      }
       return;
     }
-    for (HloInstruction* companion : metadata_.Companions(successor)) {
-      successors.push_back(companion);
+    if (successor->IsCrossModuleAllReduce()) {
+      for (HloInstruction* instr :
+           metadata_.GetAllReduceGroup(*successor->channel_id())) {
+        if (unique.insert(instr).second) {
+          successors.push_back(instr);
+        }
+      }
+      return;
     }
+    unique.insert(successor);
+    successors.push_back(successor);
   };
 
   // If the given instruction is a companion instruction, we need to find the
-  // successors of all of its companion instructions.
+  // successors of all of its companion instructions. If the instruction is an
+  // all-reduce, we need to find the successors of all its peer all-reduce
+  // instructions.
   std::vector<HloInstruction*> instruction_group;
   if (metadata_.IsCompanionInstruction(instruction)) {
     for (HloInstruction* companion : metadata_.Companions(instruction)) {
       instruction_group.push_back(companion);
     }
+  } else if (instruction->IsCrossModuleAllReduce()) {
+    instruction_group = metadata_.GetAllReduceGroup(*instruction->channel_id());
   } else {
     instruction_group.push_back(instruction);
   }
@@ -130,33 +173,66 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
       add_unique_successor(control_successor);
     }
   }
-  if (instruction->opcode() == HloOpcode::kRecv) {
+  if (instruction->opcode() == HloOpcode::kRecv &&
+      !DynCast<HloRecvInstruction>(instruction)->is_host_transfer()) {
     // Send is a remote successor of Recv.
     const HloInstruction* recv_done = instruction->users().front();
     CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
-    HloInstruction* send = metadata_.GetChannel(instruction->channel_id()).send;
+    HloInstruction* send =
+        metadata_.GetChannel(*instruction->channel_id()).send;
     add_unique_successor(send);
   }
-  if (instruction->opcode() == HloOpcode::kSend) {
+  if (instruction->opcode() == HloOpcode::kSend &&
+      !DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
     // RecvDone is a remote successor of Send.
     HloInstruction* recv_done =
-        metadata_.GetChannel(instruction->channel_id()).recv_done;
+        metadata_.GetChannel(*instruction->channel_id()).recv_done;
     add_unique_successor(recv_done);
   }
   return successors;
 }
 
 std::vector<HloInstruction*> HloModuleGroupUtil::RootInstructions(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> roots;
   for (HloComputation* computation : computations) {
     for (HloInstruction* instruction : computation->instructions()) {
       if (GlobalSuccessors(instruction).empty()) {
+        // An instruction that has no successors, e.g., an unused instruction,
+        // is in roots, even though it's not the ROOT of its computation.
         roots.push_back(instruction);
       }
     }
   }
   return roots;
+}
+
+string HloModuleGroupUtil::CycleToString(HloInstruction* init_instruction) {
+  std::vector<string> names;
+  absl::flat_hash_set<HloInstruction*> seen;
+
+  std::function<bool(HloInstruction*)> helper =
+      [&](HloInstruction* instruction) {
+        if (seen.find(instruction) != seen.end()) {
+          if (instruction == init_instruction) {
+            names.push_back(instruction->name());
+            return true;
+          }
+          return false;
+        }
+        seen.insert(instruction);
+        for (HloInstruction* predecessor : GlobalPredecessors(instruction)) {
+          bool init_found = helper(predecessor);
+          if (init_found) {
+            names.push_back(instruction->name());
+            return true;
+          }
+        }
+        return false;
+      };
+
+  helper(init_instruction);
+  return absl::StrJoin(names, " --> ");
 }
 
 Status HloModuleGroupUtil::VisitTopologicalOrder(
@@ -170,15 +246,17 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
     HloInstruction* hlo = stack.top();
 
     // Find the instruction group of the currently visited instruction. The
-    // instruction group represents all companion instructions of the
-    // current instruction, and are considered to be a single entity for the
-    // purpose of the traversal (i.e., they must always be in the same visit
-    // state).
+    // instruction group represents all companion instructions of the current
+    // instruction, or all the all-reduce instructions that belong to the same
+    // group, or are considered to be a single entity for the purpose of the
+    // traversal (i.e., they must always be in the same visit state).
     std::vector<HloInstruction*> instruction_group;
     if (metadata_.IsCompanionInstruction(hlo)) {
       for (HloInstruction* companion : metadata_.Companions(hlo)) {
         instruction_group.push_back(companion);
       }
+    } else if (hlo->IsCrossModuleAllReduce()) {
+      instruction_group = metadata_.GetAllReduceGroup(*hlo->channel_id());
     } else {
       instruction_group.push_back(hlo);
     }
@@ -219,22 +297,9 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
         // a cycle. Generate an error with the list of instructions in the
         // cycle.
         if ((*visit_state)[predecessor] == VisitState::kVisiting) {
-          string cyclic_instructions;
-          for (const auto& state : *visit_state) {
-            if (state.second == VisitState::kVisiting) {
-              tensorflow::strings::StrAppend(&cyclic_instructions,
-                                             state.first->ToString(), "\n");
-            }
-          }
-          // TODO(b/64305524): Improve the error message to print out the
-          // instructions in a deterministic order that forms the cycle.
           return FailedPrecondition(
-              "Cross-computation cycle detected via communicating nodes. The "
-              "cycle contains the node %s. The cycle is found among the "
-              "following nodes. Note that the order of the nodes is arbitrary "
-              "and that the list may include nodes that are not part of the "
-              "cycle.\n%s",
-              predecessor->ToString().c_str(), cyclic_instructions.c_str());
+              "Cross-computation cycle detected via communicating nodes.\n%s",
+              CycleToString(predecessor));
         }
         stack.push(predecessor);
       }
@@ -245,7 +310,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
 }
 
 Status HloModuleGroupUtil::VerifyComputations(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   auto visit_function =
       [&](HloInstruction* instruction,
           const std::vector<HloInstruction*>& instruction_group) {
@@ -276,7 +341,7 @@ Status HloModuleGroupUtil::VerifyComputations(
 
 StatusOr<std::unique_ptr<HloReachabilityMap>>
 HloModuleGroupUtil::ComputeReachability(
-    tensorflow::gtl::ArraySlice<HloComputation*> computations) {
+    absl::Span<HloComputation* const> computations) {
   std::vector<HloInstruction*> post_order;
   auto visit_function =
       [&](HloInstruction* instruction,
@@ -290,9 +355,9 @@ HloModuleGroupUtil::ComputeReachability(
     TF_RETURN_IF_ERROR(
         VisitTopologicalOrder(&visit_states, visit_function, root));
   }
-  auto reachability = MakeUnique<HloReachabilityMap>(post_order);
+  auto reachability = absl::make_unique<HloReachabilityMap>(post_order);
   for (HloInstruction* hlo : post_order) {
-    reachability->SetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
+    reachability->FastSetReachabilityToUnion(GlobalPredecessors(hlo), hlo);
   }
   return std::move(reachability);
 }

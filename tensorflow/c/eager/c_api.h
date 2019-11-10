@@ -48,7 +48,7 @@ extern "C" {
 typedef struct TFE_ContextOptions TFE_ContextOptions;
 
 // Return a new options object.
-TF_CAPI_EXPORT extern TFE_ContextOptions* TFE_NewContextOptions();
+TF_CAPI_EXPORT extern TFE_ContextOptions* TFE_NewContextOptions(void);
 
 // Set the config in TF_ContextOptions.options.
 // config should be a serialized tensorflow.ConfigProto proto.
@@ -60,6 +60,8 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetConfig(
 
 // Controls how to act when we try to run an operation on a given device but
 // some input tensors are not on that device.
+// LINT.IfChange
+// Note: Keep in sync with internal copy of enum in eager/context.h.
 typedef enum TFE_ContextDevicePlacementPolicy {
   // Running operations with input tensors on the wrong device will fail.
   TFE_DEVICE_PLACEMENT_EXPLICIT = 0,
@@ -72,38 +74,31 @@ typedef enum TFE_ContextDevicePlacementPolicy {
   // Placement policy which silently copies int32 tensors but not other dtypes.
   TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 } TFE_ContextDevicePlacementPolicy;
+// LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
 
 // Sets the default execution mode (sync/async). Note that this can be
-// overridden per thread using TFE_ContextSetAsyncForThread.
+// overridden per thread using TFE_ContextSetExecutorForThread.
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetAsync(TFE_ContextOptions*,
-                                                      unsigned char async);
+                                                      unsigned char enable);
 
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetDevicePlacementPolicy(
     TFE_ContextOptions*, TFE_ContextDevicePlacementPolicy);
-
-// A tensorflow.ServerDef specifies remote workers (in addition to the current
-// workers name). Operations created on this context can then be executed on
-// any of these remote workers by setting an appropriate device.
-//
-// If the following is set, all servers identified by the
-// ServerDef must be up when the context is created.
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetServerDef(
-    TFE_ContextOptions* options, const void* proto, size_t proto_len,
-    TF_Status* status);
 
 // Destroy an options object.
 TF_CAPI_EXPORT extern void TFE_DeleteContextOptions(TFE_ContextOptions*);
 
 // "Context" under which operations/functions are executed. It encapsulates
 // things like the available devices, resource manager etc.
+// TFE_Context must outlive all tensor handles created using it. In other
+// words, TFE_DeleteContext() must be called after all tensor handles have
+// been deleted (with TFE_DeleteTensorHandle).
 //
 // TODO(ashankar): Merge with TF_Session?
 typedef struct TFE_Context TFE_Context;
 
 TF_CAPI_EXPORT extern TFE_Context* TFE_NewContext(
     const TFE_ContextOptions* opts, TF_Status* status);
-TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx,
-                                             TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_DeleteContext(TFE_Context* ctx);
 TF_CAPI_EXPORT extern TF_DeviceList* TFE_ContextListDevices(TFE_Context* ctx,
                                                             TF_Status* status);
 
@@ -116,36 +111,24 @@ TF_CAPI_EXPORT extern void TFE_ContextClearCaches(TFE_Context* ctx);
 // instead of the device policy used to construct the context. This has no
 // effect on the device policy used by other program threads.
 TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalDevicePlacementPolicy(
-    TFE_Context*, TFE_ContextDevicePlacementPolicy);
+    TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy);
 
 // Returns the device placement policy to be used by this context in the current
 // thread.
 TF_CAPI_EXPORT extern TFE_ContextDevicePlacementPolicy
-TFE_ContextGetDevicePlacementPolicy(TFE_Context*);
+TFE_ContextGetDevicePlacementPolicy(TFE_Context* ctx);
 
-// Overrides the execution mode (sync/async) for the current thread.
-TF_CAPI_EXPORT extern void TFE_ContextSetAsyncForThread(TFE_Context*,
-                                                        unsigned char async,
-                                                        TF_Status* status);
-
-// Causes the calling thread to block till all ops dispatched in async mode
-// have been executed. Note that "execution" here refers to kernel execution /
-// scheduling of copies, etc. Similar to sync execution, it doesn't guarantee
-// that lower level device queues (like GPU streams) have been flushed.
+// A tensorflow.ServerDef specifies remote workers (in addition to the current
+// workers name). Operations created on this context can then be executed on
+// any of these remote workers by setting an appropriate device.
 //
-// This call may not block for execution of ops enqueued concurrently with this
-// call.
-TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context*,
-                                                TF_Status* status);
-
-// When an error happens, any pending operations are discarded and newly issued
-// ops return an error. This call clears the error state and re-enables
-// execution of newly issued ops.
-//
-// Note that outputs of discarded ops remain in a corrupt state and should not
-// be used for future calls.
-// TODO(agarwal): mark the affected handles and raise errors if they are used.
-TF_CAPI_EXPORT extern void TFE_ContextAsyncClearError(TFE_Context*);
+// If the following is set, all servers identified by the
+// ServerDef must be up when the context is created.
+TF_CAPI_EXPORT extern void TFE_ContextSetServerDef(TFE_Context* ctx,
+                                                   int keep_alive_secs,
+                                                   const void* proto,
+                                                   size_t proto_len,
+                                                   TF_Status* status);
 
 // A handle to a tensor on a device.
 //
@@ -162,12 +145,31 @@ TF_CAPI_EXPORT extern TF_DataType TFE_TensorHandleDataType(TFE_TensorHandle* h);
 // This function will block till the operation that produces `h` has completed.
 TF_CAPI_EXPORT extern int TFE_TensorHandleNumDims(TFE_TensorHandle* h,
                                                   TF_Status* status);
+TF_CAPI_EXPORT extern int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h,
+                                                          TF_Status* status);
 // This function will block till the operation that produces `h` has completed.
 TF_CAPI_EXPORT extern int64_t TFE_TensorHandleDim(TFE_TensorHandle* h,
                                                   int dim_index,
                                                   TF_Status* status);
-// This function will block till the operation that produces `h` has completed.
+
+// Returns the device of the operation that produced `h`. If `h` was produced by
+// a copy, returns the destination device of the copy. Note that the returned
+// device name is not always the device holding the tensor handle's memory. If
+// you want the latter, use TFE_TensorHandleBackingDeviceName. This function
+// will block till the operation that produces `h` has completed.
 TF_CAPI_EXPORT extern const char* TFE_TensorHandleDeviceName(
+    TFE_TensorHandle* h, TF_Status* status);
+
+// Returns the name of the device in whose memory `h` resides.
+//
+// This function will block till the operation that produces `h` has completed.
+TF_CAPI_EXPORT extern const char* TFE_TensorHandleBackingDeviceName(
+    TFE_TensorHandle* h, TF_Status* status);
+
+// Return a pointer to a new TFE_TensorHandle that shares the underlying tensor
+// with `h`. On success, `status` is set to OK. On failure, `status` reflects
+// the error and a nullptr is returned.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_TensorHandleCopySharingTensor(
     TFE_TensorHandle* h, TF_Status* status);
 
 // This function will block till the operation that produces `h` has
@@ -262,8 +264,13 @@ TF_CAPI_EXPORT extern const char* TFE_OpGetDevice(TFE_Op* op,
 TF_CAPI_EXPORT extern void TFE_OpSetXLACompilation(TFE_Op* op,
                                                    unsigned char enable);
 
-TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h,
+TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input,
                                           TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_OpAddInputList(TFE_Op* op,
+                                              TFE_TensorHandle** inputs,
+                                              int num_inputs,
+                                              TF_Status* status);
 
 TF_CAPI_EXPORT extern TF_AttrType TFE_OpGetAttrType(TFE_Op* op,
                                                     const char* attr_name,
@@ -304,6 +311,14 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunction(TFE_Op* op,
                                                  const char* attr_name,
                                                  const TFE_Op* value);
 
+TF_CAPI_EXPORT void TFE_OpSetAttrFunctionName(TFE_Op* op, const char* attr_name,
+                                              const char* data, size_t length);
+
+TF_CAPI_EXPORT extern void TFE_OpSetAttrTensor(TFE_Op* op,
+                                               const char* attr_name,
+                                               TF_Tensor* tensor,
+                                               TF_Status* status);
+
 TF_CAPI_EXPORT extern void TFE_OpSetAttrStringList(TFE_Op* op,
                                                    const char* attr_name,
                                                    const void* const* values,
@@ -332,6 +347,18 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrFunctionList(TFE_Op* op,
                                                      const char* attr_name,
                                                      const TFE_Op** value,
                                                      int num_values);
+
+// Returns the length (number of tensors) of the input argument `input_name`
+// found in the provided `op`.
+TF_CAPI_EXPORT extern int TFE_OpGetInputLength(TFE_Op* op,
+                                               const char* input_name,
+                                               TF_Status* status);
+
+// Returns the length (number of tensors) of the output argument `output_name`
+// found in the provided `op`.
+TF_CAPI_EXPORT extern int TFE_OpGetOutputLength(TFE_Op* op,
+                                                const char* output_name,
+                                                TF_Status* status);
 
 // Execute the operation defined by 'op' and return handles to computed
 // tensors in `retvals`.
@@ -365,6 +392,17 @@ TF_CAPI_EXPORT extern void TFE_ContextAddFunction(TFE_Context* ctx,
                                                   TF_Function* function,
                                                   TF_Status* status);
 
+// Removes a function from the context. Once removed, you can no longer
+// TFE_Execute it or TFE_Execute any TFE_Op which has it as an attribute or any
+// other function which calls it as an attribute.
+TF_CAPI_EXPORT extern void TFE_ContextRemoveFunction(TFE_Context* ctx,
+                                                     const char* name,
+                                                     TF_Status* status);
+
+// Checks whether a function is registered under `name`.
+TF_CAPI_EXPORT unsigned char TFE_ContextHasFunction(TFE_Context* ctx,
+                                                    const char* name);
+
 // Enables tracing of RunMetadata on the ops executed from this context.
 TF_CAPI_EXPORT extern void TFE_ContextEnableRunMetadata(TFE_Context* ctx);
 
@@ -380,6 +418,16 @@ TF_CAPI_EXPORT extern void TFE_ContextExportRunMetadata(TFE_Context* ctx,
                                                         TF_Buffer* buf,
                                                         TF_Status* status);
 
+// Some TF ops need a step container to be set to limit the lifetime of some
+// resources (mostly TensorArray and Stack, used in while loop gradients in
+// graph mode). Calling this on a context tells it to start a step.
+TF_CAPI_EXPORT extern void TFE_ContextStartStep(TFE_Context* ctx);
+
+// Ends a step. When there is no active step (that is, every started step has
+// been ended) step containers will be cleared. Note: it is not safe to call
+// TFE_ContextEndStep while ops which rely on the step container may be running.
+TF_CAPI_EXPORT extern void TFE_ContextEndStep(TFE_Context* ctx);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
@@ -394,9 +442,8 @@ namespace tensorflow {
 class Tensor;
 }  // namespace tensorflow
 
-const tensorflow::Tensor* TFE_TensorHandleUnderlyingTensorInHostMemory(
-    TFE_TensorHandle* h, TF_Status* status);
-TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t);
+TFE_TensorHandle* TFE_NewTensorHandle(const tensorflow::Tensor& t,
+                                      TF_Status* status);
 #endif
 
 #endif  // TENSORFLOW_C_EAGER_C_API_H_

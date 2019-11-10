@@ -16,16 +16,26 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 #include <stdarg.h>
+
+#include <cmath>
+#include <limits>
 #include <numeric>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/numbers.h"
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
@@ -33,171 +43,127 @@ namespace xla {
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
-  VLOG(1) << tensorflow::CurrentStackTrace();
+  VLOG(2) << tensorflow::CurrentStackTrace();
   return status;
 }
 
-ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
-    : enabled(enabled), label(label) {
-  if (enabled) {
-    start_micros = tensorflow::Env::Default()->NowMicros();
+ScopedLoggingTimer::ScopedLoggingTimer(const std::string& label, bool enabled,
+                                       const char* file, int line,
+                                       TimerStats* timer_stats)
+    : enabled_(enabled),
+      file_(file),
+      line_(line),
+      label_(label),
+      timer_stats_(timer_stats) {
+  if (enabled_) {
+    start_micros_ = tensorflow::Env::Default()->NowMicros();
   }
 }
 
-ScopedLoggingTimer::~ScopedLoggingTimer() {
-  if (enabled) {
+void ScopedLoggingTimer::StopAndLog() {
+  if (enabled_) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
-    double secs = (end_micros - start_micros) / 1000000.0;
+    double secs = (end_micros - start_micros_) / 1000000.0;
 
-    LOG(INFO) << label << " time: "
-              << tensorflow::strings::HumanReadableElapsedTime(secs);
+    TimerStats& stats = *timer_stats_;
+    tensorflow::mutex_lock lock(stats.stats_mutex);
+    stats.cumulative_secs += secs;
+    if (secs > stats.max_secs) {
+      stats.max_secs = secs;
+    }
+    stats.times_called++;
+
+    LOG(INFO).AtLocation(file_, line_)
+        << label_
+        << " time: " << tensorflow::strings::HumanReadableElapsedTime(secs)
+        << " (cumulative: "
+        << tensorflow::strings::HumanReadableElapsedTime(stats.cumulative_secs)
+        << ", max: "
+        << tensorflow::strings::HumanReadableElapsedTime(stats.max_secs)
+        << ", #called: " << stats.times_called << ")";
+    enabled_ = false;
   }
 }
 
-Status AddStatus(Status prior, tensorflow::StringPiece context) {
+ScopedLoggingTimer::~ScopedLoggingTimer() { StopAndLog(); }
+
+Status AddStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), tensorflow::strings::StrCat(
-                                  context, ": ", prior.error_message())};
+  return Status{prior.code(),
+                absl::StrCat(context, ": ", prior.error_message())};
 }
 
-Status AppendStatus(Status prior, tensorflow::StringPiece context) {
+Status AppendStatus(Status prior, absl::string_view context) {
   CHECK(!prior.ok());
-  return Status{prior.code(), tensorflow::strings::StrCat(prior.error_message(),
-                                                          ": ", context)};
+  return Status{prior.code(),
+                absl::StrCat(prior.error_message(), ": ", context)};
 }
 
-// Implementation note: we can't common these out (without using macros) because
-// they all need to va_start/va_end their varargs in their frame.
-
-Status InvalidArgumentV(const char* format, va_list args) {
-  string message;
-  tensorflow::strings::Appendv(&message, format, args);
-  return WithLogBacktrace(tensorflow::errors::InvalidArgument(message));
+string Reindent(absl::string_view original,
+                const absl::string_view indentation) {
+  std::vector<string> pieces =
+      absl::StrSplit(absl::string_view(original.data(), original.size()), '\n');
+  return absl::StrJoin(pieces, "\n", [indentation](string* out, string s) {
+    absl::StrAppend(out, indentation, absl::StripAsciiWhitespace(s));
+  });
 }
 
-Status InvalidArgument(const char* format, ...) {
-  va_list args;
-  va_start(args, format);
-  Status result = InvalidArgumentV(format, args);
-  va_end(args);
-  return result;
-}
-
-Status Unimplemented(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Unimplemented(message));
-}
-
-Status InternalError(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Internal(message));
-}
-
-Status FailedPrecondition(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::FailedPrecondition(message));
-}
-
-Status Cancelled(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Cancelled(message));
-}
-
-Status ResourceExhausted(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::ResourceExhausted(message));
-}
-
-Status NotFound(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::NotFound(message));
-}
-
-Status Unavailable(const char* format, ...) {
-  string message;
-  va_list args;
-  va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
-  va_end(args);
-  return WithLogBacktrace(tensorflow::errors::Unavailable(message));
-}
-
-string Reindent(tensorflow::StringPiece original,
-                const tensorflow::StringPiece indentation) {
-  std::vector<string> pieces = tensorflow::str_util::Split(
-      tensorflow::StringPiece(original.data(), original.size()), '\n');
-  return tensorflow::str_util::Join(
-      pieces, "\n", [indentation](string* out, string s) {
-        tensorflow::StringPiece piece(s);
-        tensorflow::str_util::RemoveWhitespaceContext(&piece);
-        tensorflow::strings::StrAppend(out, indentation, piece);
-      });
-}
-
-bool IsPermutation(tensorflow::gtl::ArraySlice<int64> permutation, int64 rank) {
+bool IsPermutation(absl::Span<const int64> permutation, int64 rank) {
   if (rank != permutation.size()) {
     return false;
   }
-  std::vector<int64> output(permutation.size(), -1);
-  for (auto index : permutation) {
-    CHECK_GE(index, 0);
-    CHECK_LT(index, rank);
-    output[index] = 0;
-  }
-  return std::find(output.begin(), output.end(), -1) == output.end();
+  absl::InlinedVector<int64, 8> trivial_permutation(rank);
+  absl::c_iota(trivial_permutation, 0);
+  return absl::c_is_permutation(permutation, trivial_permutation);
 }
 
 std::vector<int64> InversePermutation(
-    tensorflow::gtl::ArraySlice<int64> input_permutation) {
+    absl::Span<const int64> input_permutation) {
   DCHECK(IsPermutation(input_permutation, input_permutation.size()));
   std::vector<int64> output_permutation(input_permutation.size(), -1);
   for (size_t i = 0; i < input_permutation.size(); ++i) {
-    output_permutation[input_permutation[i]] = i;
+    output_permutation.at(input_permutation.at(i)) = i;
   }
   return output_permutation;
 }
 
-std::vector<int64> ComposePermutations(tensorflow::gtl::ArraySlice<int64> p1,
-                                       tensorflow::gtl::ArraySlice<int64> p2) {
+std::vector<int64> ComposePermutations(absl::Span<const int64> p1,
+                                       absl::Span<const int64> p2) {
   CHECK_EQ(p1.size(), p2.size());
   std::vector<int64> output;
   for (size_t i = 0; i < p1.size(); ++i) {
-    output.push_back(p1[p2[i]]);
+    output.push_back(p1.at(p2.at(i)));
   }
   return output;
 }
 
-bool IsIdentityPermutation(tensorflow::gtl::ArraySlice<int64> permutation) {
+bool IsIdentityPermutation(absl::Span<const int64> permutation) {
   for (int64 i = 0; i < permutation.size(); ++i) {
     if (permutation[i] != i) {
       return false;
     }
   }
   return true;
+}
+
+string RoundTripFpToString(tensorflow::bfloat16 value) {
+  return absl::StrFormat("%.4g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(Eigen::half value) {
+  return absl::StrFormat("%.5g", static_cast<float>(value));
+}
+
+string RoundTripFpToString(float value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::FloatToBuffer(value, buffer);
+  return buffer;
+}
+
+string RoundTripFpToString(double value) {
+  char buffer[tensorflow::strings::kFastToBufferSize];
+  tensorflow::strings::DoubleToBuffer(value, buffer);
+  return buffer;
 }
 
 PaddingConfig MakeNoPaddingConfig(int64 rank) {
@@ -212,7 +178,7 @@ PaddingConfig MakeNoPaddingConfig(int64 rank) {
 }
 
 PaddingConfig MakeEdgePaddingConfig(
-    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+    absl::Span<const std::pair<int64, int64>> padding) {
   PaddingConfig padding_config;
   for (const std::pair<int64, int64>& dim : padding) {
     auto dimension = padding_config.add_dimensions();
@@ -234,20 +200,20 @@ bool HasInteriorPadding(const PaddingConfig& config) {
 
 namespace {
 string HumanReadableNumOps(double flops, double nanoseconds,
-                           tensorflow::StringPiece op_prefix) {
+                           absl::string_view op_prefix) {
   if (nanoseconds == 0) {
-    return tensorflow::strings::StrCat("NaN ", op_prefix, "OP/s");
+    return absl::StrCat("NaN ", op_prefix, "OP/s");
   }
   double nano_flops = flops / nanoseconds;
   string throughput = tensorflow::strings::HumanReadableNum(
       static_cast<int64>(nano_flops * 1e9));
-  tensorflow::StringPiece sp(throughput);
+  absl::string_view sp(throughput);
   // Use the more common "G(FLOPS)", rather than "B(FLOPS)"
-  if (tensorflow::str_util::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
-      tensorflow::str_util::EndsWith(sp, "b")) {
+  if (absl::EndsWith(sp, "B") ||  // Ends in 'B', ignoring case
+      absl::EndsWith(sp, "b")) {
     *throughput.rbegin() = 'G';
   }
-  throughput += tensorflow::strings::StrCat(op_prefix, "OP/s");
+  throughput += absl::StrCat(op_prefix, "OP/s");
   return throughput;
 }
 }  // namespace
@@ -260,8 +226,7 @@ string HumanReadableNumTranscendentalOps(double trops, double nanoseconds) {
   return HumanReadableNumOps(trops, nanoseconds, "TR");
 }
 
-void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
-              int lineno) {
+void LogLines(int sev, absl::string_view text, const char* fname, int lineno) {
   const int orig_sev = sev;
   if (sev == tensorflow::FATAL) {
     sev = tensorflow::ERROR;
@@ -275,7 +240,7 @@ void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
   size_t cur = 0;
   while (cur < text.size()) {
     size_t eol = text.find('\n', cur);
-    if (eol == tensorflow::StringPiece::npos) {
+    if (eol == absl::string_view::npos) {
       eol = text.size();
     }
     auto msg = text.substr(cur, eol - cur);
@@ -290,20 +255,19 @@ void LogLines(int sev, tensorflow::StringPiece text, const char* fname,
   }
 }
 
-int64 Product(tensorflow::gtl::ArraySlice<int64> xs) {
+int64 Product(absl::Span<const int64> xs) {
   return std::accumulate(xs.begin(), xs.end(), static_cast<int64>(1),
                          std::multiplies<int64>());
 }
 
-std::vector<std::pair<int64, int64>> CommonFactors(
-    tensorflow::gtl::ArraySlice<int64> a,
-    tensorflow::gtl::ArraySlice<int64> b) {
+absl::InlinedVector<std::pair<int64, int64>, 8> CommonFactors(
+    absl::Span<const int64> a, absl::Span<const int64> b) {
   CHECK_EQ(Product(a), Product(b));
   if (0 == Product(a)) {
     return {std::make_pair(0, 0), std::make_pair(a.size(), b.size())};
   }
 
-  std::vector<std::pair<int64, int64>> bounds;
+  absl::InlinedVector<std::pair<int64, int64>, 8> bounds;
   for (int64 i = 0, j = 0, prior_i = -1, prior_j = -1, partial_size_a = 1,
              partial_size_b = 1;
        ;) {
@@ -344,6 +308,56 @@ string SanitizeFileName(string file_name) {
     }
   }
   return file_name;
+}
+
+// Utility function to split a double-precision float (F64) into a pair of F32s.
+// For a p-bit number, and a splitting point (p/2) <= s <= (p - 1), the
+// algorithm produces a (p - s)-bit value 'hi' and a non-overlapping (s - 1)-bit
+// value 'lo'. See Theorem 4 in [1] (attributed to Dekker) or [2] for the
+// original theorem by Dekker.
+//
+// For double-precision F64s, which contain a 53 bit mantissa (52 of them
+// explicit), we can represent the most significant 49 digits as the unevaluated
+// sum of two single-precision floats 'hi' and 'lo'. The 'hi' float stores the
+// most significant 24 bits and the sign bit of 'lo' together with its mantissa
+// store the remaining 25 bits. The exponent of the resulting representation is
+// still restricted to 8 bits of F32.
+//
+// References:
+// [1] A. Thall, Extended-Precision Floating-Point Numbers for GPU Computation,
+//     SIGGRAPH Research Posters, 2006.
+//     (http://andrewthall.org/papers/df64_qf128.pdf)
+// [2] T. J. Dekker, A floating point technique for extending the available
+//     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
+std::pair<float, float> SplitF64ToF32(double x) {
+  // Early return if x is equal to infinity or -infinity.
+  if (std::isinf(x)) {
+    return std::make_pair(static_cast<float>(x), 0.0f);
+  }
+
+  // Following [1], the splitter is chosen as 2^{s} + 1, so that the most
+  // significant (p - s) bits comprise the mantissa of 'hi'.
+  static_assert(std::numeric_limits<double>::radix == 2,
+                "Double is not Binary FP");
+  constexpr double kSplitter = (1 << (std::numeric_limits<double>::digits -
+                                      std::numeric_limits<float>::digits)) +
+                               1;
+
+  // Only values within the range of F32 are supported, unless it is infinity.
+  // Small values with large negative exponents would be rounded to zero.
+  CHECK(std::isfinite(static_cast<float>(x))) << x;
+
+  // The value of '(shifted - x)' should algebraically be exactly 2^{29} * x
+  // but it can a bit smaller, because of rounding to 53 bits in computation of
+  // (2^29 + 1) * x'. This overestimates the value of 'hi' by a multiple of
+  // 2^{-29} (assuming exponent was 0), and makes 'lo' negative. An extra bit is
+  // squeezed into the 'sign' bit of 'lo' to represent 25 bits of significand.
+  const double shifted = kSplitter * x;
+  // TODO(anudhyan): Write a test to ensure that compiler is not optimizing away
+  // the following computation to 'hi = x;'.
+  const float hi = shifted - (shifted - x);
+  const float lo = x - hi;
+  return std::make_pair(hi, lo);
 }
 
 }  // namespace xla

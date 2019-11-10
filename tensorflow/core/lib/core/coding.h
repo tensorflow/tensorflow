@@ -18,8 +18,8 @@ limitations under the License.
 // * In addition we support variable length "varint" encoding
 // * Strings are encoded prefixed by their length in varint format
 
-#ifndef TENSORFLOW_LIB_CORE_CODING_H_
-#define TENSORFLOW_LIB_CORE_CODING_H_
+#ifndef TENSORFLOW_CORE_LIB_CORE_CODING_H_
+#define TENSORFLOW_CORE_LIB_CORE_CODING_H_
 
 #include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -55,18 +55,8 @@ extern const char* GetVarint64Ptr(const char* p, const char* limit, uint64* v);
 // Internal routine for use by fallback path of GetVarint32Ptr
 extern const char* GetVarint32PtrFallback(const char* p, const char* limit,
                                           uint32* value);
-inline const char* GetVarint32Ptr(const char* p, const char* limit,
-                                  uint32* value) {
-  if (p < limit) {
-    uint32 result = *(reinterpret_cast<const unsigned char*>(p));
-    if ((result & 128) == 0) {
-      *value = result;
-      return p + 1;
-    }
-  }
-  return GetVarint32PtrFallback(p, limit, value);
-}
-
+extern const char* GetVarint32Ptr(const char* p, const char* limit,
+                                  uint32* value);
 extern char* EncodeVarint32(char* dst, uint32 v);
 extern char* EncodeVarint64(char* dst, uint64 v);
 
@@ -76,4 +66,4 @@ extern int VarintLength(uint64_t v);
 }  // namespace core
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_CORE_CODING_H_
+#endif  // TENSORFLOW_CORE_LIB_CORE_CODING_H_

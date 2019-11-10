@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_tensor_coding.h"
+
 #include "grpcpp/support/byte_buffer.h"
 #include "grpcpp/support/slice.h"
+#include "absl/flags/flag.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -26,7 +28,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
-// (Omitted internal-only flag)
+ABSL_FLAG(bool, grpc_deepcopy_tensor_response, false, "Disables mem sharing");
 
 namespace tensorflow {
 namespace grpc {
@@ -135,13 +137,14 @@ static void EncodeSkeleton(const Tensor& val, io::ProtoEncodeHelper* e) {
 #endif
 }
 
-void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
+void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val, bool require_ack,
                               ::grpc::ByteBuffer* result) {
   const int kLargeTensorBytes = 1024;
   RecvTensorResponse response;
   if (is_dead) {
     response.set_is_dead(is_dead);
   }
+  response.set_require_ack(require_ack);
   response.set_send_start_micros(Env::Default()->NowMicros());
   if (!DataTypeCanUseMemcpy(val.dtype())) {
     // Straightforward but slow path for complicated kinds of tensor data
@@ -182,7 +185,9 @@ void EncodeTensorToByteBuffer(bool is_dead, const Tensor& val,
     // We enable this behavior if the tensor is large.
     bool share_tensor_slice_memory = (tdata.size() > kLargeTensorBytes);
 
-    // (Omitted internal-only conditional)
+    if (absl::GetFlag(FLAGS_grpc_deepcopy_tensor_response)) {
+      share_tensor_slice_memory = false;
+    }
 
     size_t encoder_size = expected_size - tdata.size();
 

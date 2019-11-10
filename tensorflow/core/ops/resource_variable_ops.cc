@@ -19,6 +19,7 @@
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/shape_inference.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 using ::tensorflow::shape_inference::InferenceContext;
 using ::tensorflow::shape_inference::ShapeAndType;
@@ -28,31 +29,47 @@ namespace tensorflow {
 
 namespace {
 
-Status ValidateVariableResourceHandle(InferenceContext* c,
-                                      ShapeAndType* shape_and_type) {
-  auto* handle_data = c->input_handle_shapes_and_types(0);
-  if (handle_data == nullptr || handle_data->empty()) {
-    shape_and_type->shape = c->UnknownShape();
-    shape_and_type->dtype = DT_INVALID;
-  } else {
-    *shape_and_type = (*handle_data)[0];
-    DataType value_dtype;
-    TF_RETURN_IF_ERROR(c->GetAttr("dtype", &value_dtype));
-    if (shape_and_type->dtype != value_dtype) {
-      return errors::InvalidArgument(
-          "Trying to read variable with wrong dtype. "
-          "Expected ",
-          DataTypeString(shape_and_type->dtype), " got ",
-          DataTypeString(value_dtype));
-    }
+Status ReadVariableShapeFn(InferenceContext* c) {
+  std::vector<ShapeAndType> shape_and_type;
+  TF_RETURN_IF_ERROR(
+      shape_inference::ValidateVariableResourceHandle(c, &shape_and_type));
+  c->set_output(0, shape_and_type[0].shape);
+  if (shape_and_type[0].dtype == DT_VARIANT && shape_and_type.size() > 1) {
+    std::vector<ShapeAndType> variant_shape_and_type;
+    std::copy(shape_and_type.begin() + 1, shape_and_type.end(),
+              std::back_inserter(variant_shape_and_type));
+    c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
   }
   return Status::OK();
 }
 
-Status ReadVariableShapeFn(InferenceContext* c) {
-  ShapeAndType shape_and_type;
-  TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &shape_and_type));
-  c->set_output(0, shape_and_type.shape);
+Status ReadVariablesShapeFn(InferenceContext* c) {
+  int n;
+  TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+  DataTypeVector value_dtypes;
+  TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &value_dtypes));
+  if (n != value_dtypes.size()) {
+    return errors::InvalidArgument(
+        "Mismatched number of arguments to ReadVariablesOp");
+  }
+  for (int i = 0; i < n; ++i) {
+    ShapeAndType shape_and_type;
+    auto* handle_data = c->input_handle_shapes_and_types(i);
+    if (handle_data == nullptr || handle_data->empty()) {
+      shape_and_type.shape = c->UnknownShape();
+      shape_and_type.dtype = DT_INVALID;
+    } else {
+      shape_and_type = (*handle_data)[0];
+      if (shape_and_type.dtype != value_dtypes[i]) {
+        return errors::InvalidArgument(
+            "Trying to read variable with wrong dtype. "
+            "Expected ",
+            DataTypeString(shape_and_type.dtype), " got ",
+            DataTypeString(value_dtypes[i]));
+      }
+    }
+    c->set_output(i, shape_and_type.shape);
+  }
   return Status::OK();
 }
 
@@ -79,11 +96,52 @@ REGISTER_OP("VarHandleOp")
       return Status::OK();
     });
 
+REGISTER_OP("_VarHandlesOp")
+    .Attr("containers: list(string)")
+    .Attr("shared_names: list(string)")
+    .Attr("N: int >= 0")
+    .Attr("dtypes: list(type)")
+    .Attr("shapes: list(shape)")
+    .Output("resources: N * resource")
+    .SetIsStateful()
+    .SetShapeFn([](InferenceContext* c) {
+      int n;
+      TF_RETURN_IF_ERROR(c->GetAttr("N", &n));
+      DataTypeVector dtypes;
+      TF_RETURN_IF_ERROR(c->GetAttr("dtypes", &dtypes));
+      std::vector<PartialTensorShape> shapes;
+      TF_RETURN_IF_ERROR(c->GetAttr("shapes", &shapes));
+      if (dtypes.size() != n) {
+        return errors::InvalidArgument("Mismatched number of dtypes (n=", n,
+                                       ", num dtypes=", dtypes.size(), ")");
+      }
+      if (shapes.size() != n) {
+        return errors::InvalidArgument("Mismatched number of shapes (n=", n,
+                                       ", num shapes=", shapes.size(), ")");
+      }
+      for (int i = 0; i < n; ++i) {
+        c->set_output(i, c->Scalar());
+        ShapeHandle s;
+        TF_RETURN_IF_ERROR(c->MakeShapeFromPartialTensorShape(shapes[i], &s));
+        c->set_output_handle_shapes_and_types(
+            i, std::vector<ShapeAndType>{{s, dtypes[i]}});
+      }
+
+      return Status::OK();
+    });
+
 REGISTER_OP("ReadVariableOp")
     .Input("resource: resource")
     .Output("value: dtype")
     .Attr("dtype: type")
     .SetShapeFn(ReadVariableShapeFn);
+
+REGISTER_OP("_ReadVariablesOp")
+    .Attr("N: int >= 0")
+    .Input("resources: N * resource")
+    .Output("values: dtypes")
+    .Attr("dtypes: list(type)")
+    .SetShapeFn(ReadVariablesShapeFn);
 
 Status ReadGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
@@ -108,13 +166,28 @@ REGISTER_OP("DestroyResourceOp")
     .SetShapeFn(shape_inference::NoOutputs);
 
 Status CreateAssignShapeFn(InferenceContext* c) {
-  ShapeAndType handle_shape_and_type;
-  TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &handle_shape_and_type));
+  std::vector<ShapeAndType> handle_shape_and_type;
+  TF_RETURN_IF_ERROR(shape_inference::ValidateVariableResourceHandle(
+      c, &handle_shape_and_type));
 
   ShapeHandle value_shape = c->input(1);
   ShapeHandle unused;
   TF_RETURN_IF_ERROR(
-      c->Merge(handle_shape_and_type.shape, value_shape, &unused));
+      c->Merge(handle_shape_and_type[0].shape, value_shape, &unused));
+
+  if (handle_shape_and_type[0].dtype == DT_VARIANT &&
+      handle_shape_and_type.size() > 1 &&
+      c->input_handle_shapes_and_types(1) != nullptr) {
+    auto* value_handle_shape_and_type = c->input_handle_shapes_and_types(1);
+    if (value_handle_shape_and_type->size() !=
+        handle_shape_and_type.size() - 1) {
+      return errors::InvalidArgument(
+          "Incompatible handle variant shape_and_type size and input "
+          "shape_and_type size: ",
+          handle_shape_and_type.size() - 1, " vs. ",
+          value_handle_shape_and_type->size());
+    }
+  }
   return Status::OK();
 }
 
@@ -144,7 +217,8 @@ REGISTER_OP("VarIsInitializedOp")
 Status VariableShapeShapeFn(InferenceContext* c) {
   auto* handle_data = c->input_handle_shapes_and_types(0);
   if (handle_data == nullptr || handle_data->empty()) {
-    return errors::InvalidArgument("Handle doesn't have shape information.");
+    c->set_output(0, c->Vector(c->UnknownDim()));
+    return Status::OK();
   }
   ShapeHandle var_shape = (*handle_data)[0].shape;
   int64 rank = c->RankKnown(var_shape) ? c->Rank(var_shape)
@@ -162,34 +236,77 @@ REGISTER_OP("VariableShape")
 REGISTER_OP("ResourceGather")
     .Input("resource: resource")
     .Input("indices: Tindices")
+    .Attr("batch_dims: int = 0")
     .Attr("validate_indices: bool = true")
     .Output("output: dtype")
     .Attr("dtype: type")
     .Attr("Tindices: {int32,int64}")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeAndType handle_shape_and_type;
-      TF_RETURN_IF_ERROR(
-          ValidateVariableResourceHandle(c, &handle_shape_and_type));
+      std::vector<ShapeAndType> handle_shape_and_type;
+      TF_RETURN_IF_ERROR(shape_inference::ValidateVariableResourceHandle(
+          c, &handle_shape_and_type));
+
+      ShapeHandle indices_shape = c->input(1);
 
       ShapeHandle unused;
+      int32 batch_dims;
+      TF_RETURN_IF_ERROR(c->GetAttr("batch_dims", &batch_dims));
+      if (batch_dims < 0)
+        return errors::InvalidArgument("batch_dims is negative (", batch_dims,
+                                       ")");
+
+      TF_RETURN_IF_ERROR(c->WithRankAtLeast(handle_shape_and_type[0].shape,
+                                            batch_dims + 1, &unused));
+
       TF_RETURN_IF_ERROR(
-          c->WithRankAtLeast(handle_shape_and_type.shape, 1, &unused));
-      ShapeHandle params_subshape;
+          c->WithRankAtLeast(indices_shape, batch_dims, &unused));
+
+      ShapeHandle params_subshape1;
+      TF_RETURN_IF_ERROR(c->Subshape(handle_shape_and_type[0].shape, 0,
+                                     batch_dims, &params_subshape1));
+
+      ShapeHandle params_subshape2;
+      TF_RETURN_IF_ERROR(c->Subshape(handle_shape_and_type[0].shape,
+                                     batch_dims + 1, &params_subshape2));
+
+      ShapeHandle indices_subshape;
       TF_RETURN_IF_ERROR(
-          c->Subshape(handle_shape_and_type.shape, 1, &params_subshape));
-      ShapeHandle indices_shape = c->input(1);
+          c->Subshape(indices_shape, batch_dims, &indices_subshape));
+
+      // The out shape is params_shape[:batch_dims] +
+      // indices_shape[batch_dims:] + params_shape[batch_dims+1:].
       ShapeHandle out;
-      TF_RETURN_IF_ERROR(c->Concatenate(indices_shape, params_subshape, &out));
+      TF_RETURN_IF_ERROR(
+          c->Concatenate(params_subshape1, indices_subshape, &out));
+      TF_RETURN_IF_ERROR(c->Concatenate(out, params_subshape2, &out));
+
       c->set_output(0, out);
+      if (handle_shape_and_type[0].dtype == DT_VARIANT &&
+          !handle_shape_and_type.empty()) {
+        std::vector<ShapeAndType> variant_shape_and_type;
+        std::copy(handle_shape_and_type.begin() + 1,
+                  handle_shape_and_type.end(),
+                  std::back_inserter(variant_shape_and_type));
+        c->set_output_handle_shapes_and_types(0, variant_shape_and_type);
+      }
       return Status::OK();
     });
+
+REGISTER_OP("ResourceGatherNd")
+    .Input("resource: resource")
+    .Input("indices: Tindices")
+    .Output("output: dtype")
+    .Attr("dtype: type")
+    .Attr("Tindices: {int32,int64}")
+    .SetShapeFn(shape_inference::GatherNdShape);
 
 namespace {
 
 Status ResourceScatterUpdateShape(InferenceContext* c) {
-  ShapeAndType handle_shape_and_type;
-  TF_RETURN_IF_ERROR(ValidateVariableResourceHandle(c, &handle_shape_and_type));
-  ShapeHandle var_shape = handle_shape_and_type.shape;
+  std::vector<ShapeAndType> handle_shape_and_type;
+  TF_RETURN_IF_ERROR(shape_inference::ValidateVariableResourceHandle(
+      c, &handle_shape_and_type));
+  ShapeHandle var_shape = handle_shape_and_type[0].shape;
   ShapeHandle indices_shape = c->input(1);
 
   ShapeHandle unused_updates_shape;
@@ -201,6 +318,19 @@ Status ResourceScatterUpdateShape(InferenceContext* c) {
       InferenceContext::Rank(c->input(2)) == 0
           ? Status::OK()
           : c->Merge(c->input(2), concat, &unused_updates_shape));
+  if (handle_shape_and_type[0].dtype == DT_VARIANT &&
+      handle_shape_and_type.size() > 1 &&
+      c->input_handle_shapes_and_types(2) != nullptr) {
+    auto* value_handle_shape_and_type = c->input_handle_shapes_and_types(2);
+    if (value_handle_shape_and_type->size() !=
+        handle_shape_and_type.size() - 1) {
+      return errors::InvalidArgument(
+          "Incompatible handle variant shape_and_type size and input "
+          "shape_and_type size: ",
+          handle_shape_and_type.size() - 1, " vs. ",
+          value_handle_shape_and_type->size());
+    }
+  }
   return Status::OK();
 }
 

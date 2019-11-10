@@ -35,7 +35,7 @@ class ReverseSequenceTest(xla_test.XLATestCase):
                            seq_lengths,
                            truth,
                            expected_err_re=None):
-    with self.test_session():
+    with self.session():
       p = array_ops.placeholder(dtypes.as_dtype(x.dtype))
       lengths = array_ops.placeholder(dtypes.as_dtype(seq_lengths.dtype))
       with self.test_scope():
@@ -85,7 +85,7 @@ class ReverseSequenceTest(xla_test.XLATestCase):
 
   def testSeqLength(self):
     for dtype in self.all_types:
-      for seq_dtype in self.int_types:
+      for seq_dtype in self.all_types & {np.int32, np.int64}:
         self._testBasic(dtype, seq_dtype)
 
 

@@ -1,0 +1,13 @@
+path: "tensorflow.train.Example"
+tf_proto {
+  descriptor {
+    name: "Example"
+    field {
+      name: "features"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.Features"
+    }
+  }
+}

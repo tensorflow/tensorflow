@@ -13,7 +13,6 @@
 # limitations under the License.
 # ==============================================================================
 
-# TODO(shivaniagrawal): Merge with core nest
 """## Functions for working with arbitrarily nested sequences of elements.
 
 NOTE(mrry): This fork of the `tensorflow.python.util.nest` module
@@ -36,18 +35,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as _collections
-
 import six as _six
 
-from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
+from tensorflow.python.util.compat import collections_abc as _collections_abc
 
 
 def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
-    return sorted(_six.iterkeys(dict_))
+    return sorted(list(dict_))
   except TypeError:
     raise TypeError("nest only supports dicts with sortable keys.")
 
@@ -69,10 +67,9 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
-  elif (isinstance(instance, tuple) and
-        hasattr(instance, "_fields") and
-        isinstance(instance._fields, _collections.Sequence) and
+    return type(instance)((key, result[key]) for key in instance)
+  elif (isinstance(instance, tuple) and hasattr(instance, "_fields") and
+        isinstance(instance._fields, _collections_abc.Sequence) and
         all(isinstance(f, _six.string_types) for f in instance._fields)):
     # This is a namedtuple
     return type(instance)(*args)
@@ -97,57 +94,11 @@ def _yield_value(iterable):
       yield value
 
 
-def is_sequence(seq):
-  """Returns a true if `seq` is a Sequence or dict (except strings/lists).
+# See the swig file (../../util/util.i) for documentation.
+is_sequence = _pywrap_utils.IsSequenceForData
 
-  NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
-  which *does* treat a Python list as a sequence. For ergonomic
-  reasons, `tf.data` users would prefer to treat lists as
-  implicit `tf.Tensor` objects, and dicts as (nested) sequences.
-
-  Args:
-    seq: an input sequence.
-
-  Returns:
-    True if the sequence is a not a string or list and is a
-    collections.Sequence.
-  """
-  return _pywrap_tensorflow.IsSequenceForData(seq)
-
-
-def flatten(nest):
-  """Returns a flat sequence from a given nested structure.
-
-  If `nest` is not a sequence, this returns a single-element list: `[nest]`.
-
-  Args:
-    nest: an arbitrarily nested structure or a scalar object.
-      Note, numpy arrays are considered scalars.
-
-  Returns:
-    A Python list, the flattened version of the input.
-  """
-  return _pywrap_tensorflow.FlattenForData(nest)
-
-
-def _recursive_assert_same_structure(nest1, nest2, check_types):
-  is_sequence_nest1 = is_sequence(nest1)
-  if is_sequence_nest1 != is_sequence(nest2):
-    raise ValueError(
-        "The two structures don't have the same nested structure. "
-        "First structure: %s, second structure: %s." % (nest1, nest2))
-
-  if is_sequence_nest1:
-    type_nest1 = type(nest1)
-    type_nest2 = type(nest2)
-    if check_types and type_nest1 != type_nest2:
-      raise TypeError(
-          "The two structures don't have the same sequence type. First "
-          "structure has type %s, while second structure has type %s."
-          % (type_nest1, type_nest2))
-
-    for n1, n2 in zip(_yield_value(nest1), _yield_value(nest2)):
-      _recursive_assert_same_structure(n1, n2, check_types)
+# See the swig file (../../util/util.i) for documentation.
+flatten = _pywrap_utils.FlattenForData
 
 
 def assert_same_structure(nest1, nest2, check_types=True):
@@ -156,9 +107,12 @@ def assert_same_structure(nest1, nest2, check_types=True):
   Args:
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
-    check_types: if `True` (default) types of sequences are checked as
-      well. If set to `False`, for example a list and a tuple of objects will
-      look same if they have the same size.
+    check_types: if `True` (default) types of sequences should be same as
+      well. For dictionary, "type" of dictionary is considered to include its
+      keys. In other words, two dictionaries with different keys are considered
+      to have a different "type". If set to `False`, two iterables are
+      considered same as long as they yield the elements that have same
+      structures.
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
@@ -166,13 +120,7 @@ def assert_same_structure(nest1, nest2, check_types=True):
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
-  len_nest1 = len(flatten(nest1)) if is_sequence(nest1) else 1
-  len_nest2 = len(flatten(nest2)) if is_sequence(nest2) else 1
-  if len_nest1 != len_nest2:
-    raise ValueError("The two structures don't have the same number of "
-                     "elements. First structure: %s, second structure: %s."
-                     % (nest1, nest2))
-  _recursive_assert_same_structure(nest1, nest2, check_types)
+  _pywrap_utils.AssertSameStructureForData(nest1, nest2, check_types)
 
 
 def _packed_nest_with_indices(structure, flat, index):
@@ -367,8 +315,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
         raise ValueError(
             "The two structures don't have the same keys. Input "
             "structure has keys %s, while shallow structure has keys %s." %
-            (list(_six.iterkeys(input_tree)),
-             list(_six.iterkeys(shallow_tree))))
+            (list(input_tree), list(shallow_tree)))
       input_tree = list(sorted(_six.iteritems(input_tree)))
       shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 

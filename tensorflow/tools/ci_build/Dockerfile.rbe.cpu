@@ -1,3 +1,8 @@
+# To push a new version, run:
+# $ docker build -f Dockerfile.rbe.cpu \
+#       --tag "gcr.io/tensorflow-testing/nosla-ubuntu16.04" .
+# $ docker push gcr.io/tensorflow-testing/nosla-ubuntu16.04
+
 FROM launcher.gcr.io/google/rbe-ubuntu16-04:r327695
 LABEL maintainer="Yu Yi <yiyu@google.com>"
 

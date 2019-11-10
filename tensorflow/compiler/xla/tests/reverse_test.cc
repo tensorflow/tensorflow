@@ -15,10 +15,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -37,16 +39,14 @@ static std::array<bool, 1> use_bfloat16_params{false};
 #endif
 
 struct ReverseSpec {
-  tensorflow::gtl::ArraySlice<int64> input_dims;
-  tensorflow::gtl::ArraySlice<int64> reversal;
+  absl::Span<const int64> input_dims;
+  absl::Span<const int64> reversal;
   bool use_bfloat16;
 
   string ToTestCaseName() const {
-    return tensorflow::strings::Printf(
-        "reverse_%s_in_dims_%s_%s",
-        tensorflow::str_util::Join(input_dims, "x").c_str(),
-        tensorflow::str_util::Join(reversal, "x").c_str(),
-        use_bfloat16 ? "bf16" : "f32");
+    return absl::StrFormat(
+        "reverse_%s_in_dims_%s_%s", absl::StrJoin(input_dims, "x"),
+        absl::StrJoin(reversal, "x"), use_bfloat16 ? "bf16" : "f32");
   }
 };
 
@@ -82,27 +82,26 @@ TEST_P(FloatReverseTest, Reverses) {
   std::vector<float> input_vector(
       ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
   std::iota(input_vector.begin(), input_vector.end(), 0.0);
-  auto r1_literal = Literal::CreateR1<float>(input_vector);
-  auto input_literal = r1_literal->Reshape(spec.input_dims).ConsumeValueOrDie();
+  auto r1_literal = LiteralUtil::CreateR1<float>(input_vector);
+  auto input_literal = r1_literal.Reshape(spec.input_dims).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto a = AddParam(*input_literal, &builder);
+  auto a = AddParam(input_literal, &builder);
   Rev(a, spec.reversal);
 
-  std::unique_ptr<Literal> expected = input_literal->CloneToUnique();
+  Literal expected = input_literal.Clone();
   std::vector<int64> output_indices(spec.input_dims.size());
-  expected->EachCell<float>(
-      [&](tensorflow::gtl::ArraySlice<int64> indices, float) {
-        for (int64 i = 0; i < indices.size(); ++i) {
-          output_indices[i] = indices[i];
-        }
-        float value = input_literal->Get<float>(indices);
-        for (int64 dim : spec.reversal) {
-          output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
-        }
-        expected->Set<float>(output_indices, value);
-      });
-  ComputeAndCompareLiteral(&builder, *expected, {});
+  expected.EachCell<float>([&](absl::Span<const int64> indices, float) {
+    for (int64 i = 0; i < indices.size(); ++i) {
+      output_indices[i] = indices[i];
+    }
+    float value = input_literal.Get<float>(indices);
+    for (int64 dim : spec.reversal) {
+      output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
+    }
+    expected.Set<float>(output_indices, value);
+  });
+  ComputeAndCompareLiteral(&builder, expected, {});
 }
 
 INSTANTIATE_TEST_CASE_P(FloatReverseInstance, FloatReverseTest,

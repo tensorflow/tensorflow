@@ -18,49 +18,51 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import sys
-
+from tensorflow.core.framework import function_pb2
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.framework import versions_pb2
-from tensorflow.python.framework import function
+from tensorflow.python.eager import context
 from tensorflow.python.framework import importer
-from tensorflow.python.framework import op_def_registry
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import versions
-from tensorflow.python.ops import cond_v2_impl
-
-# This is to avoid a circular dependency with cond_v2_impl.
-cond_v2_impl._function_def_to_graph = sys.modules[__name__]  # pylint: disable=protected-access
+from tensorflow.python.framework.func_graph import FuncGraph
 
 
 def function_def_to_graph(fdef, input_shapes=None):
-  """Converts a FunctionDef to a function._FuncGraph (sub-class Graph).
+  """Converts a FunctionDef to a FuncGraph (sub-class Graph).
 
-  The returned _FuncGraph's `name`, `inputs` and `outputs` fields will be set.
+  The returned FuncGraph's `name`, `inputs` and `outputs` fields will be set.
   The input tensors are represented as placeholders.
 
-  Note: `_FuncGraph.inputs` and `_FuncGraph._captured` are not set and may be
-  set by the caller.
+  Note: `FuncGraph.inputs` and `FuncGraph.captures` are not set and may be set
+  by the caller.
 
   Args:
     fdef: FunctionDef.
     input_shapes: Optional. A list of TensorShape objects of the shapes of
-      function inputs. If specified, its length must match length of
-      `fdef.signature.input_arg`. If a shape is None, the corresponding input
-      placeholder will have unknown shape.
+      function inputs. Defaults to the function's "_input_shapes" attribute. If
+      specified, its length must match length of `fdef.signature.input_arg`. If
+      a shape is None, the corresponding input placeholder will have unknown
+      shape.
 
   Returns:
-    A _FuncGraph.
+    A FuncGraph.
   """
-  func_graph = function._FuncGraph(fdef.signature.name, capture_by_value=False)  # pylint: disable=protected-access
+  func_graph = FuncGraph(fdef.signature.name)
+  if input_shapes is None:
+    input_shapes_attr = fdef.attr.get("_input_shapes", None)
+    if input_shapes_attr is not None:
+      input_shapes = input_shapes_attr.list.shape
   graph_def, nested_to_flat_tensor_name = function_def_to_graph_def(
       fdef, input_shapes)
 
   with func_graph.as_default():
     # Add all function nodes to the graph.
-    importer.import_graph_def(graph_def, name="")
+    importer.import_graph_def_for_function(graph_def, name="")
 
-    # Initialize fields specific to _FuncGraph.
+    # Initialize fields specific to FuncGraph.
 
     # inputs
     input_tensor_names = [
@@ -78,8 +80,43 @@ def function_def_to_graph(fdef, input_shapes=None):
     func_graph.outputs = [
         func_graph.get_tensor_by_name(name) for name in output_tensor_names
     ]
-
+    func_graph.control_outputs = [
+        func_graph.get_operation_by_name(fdef.control_ret[ret_name])
+        for ret_name in fdef.signature.control_output
+    ]
+    for node in graph_def.node:
+      output_shapes = node.attr.get("_output_shapes", None)
+      if output_shapes is not None:
+        op = func_graph.get_operation_by_name(node.name)
+        # _output_shapes for functions can sometimes be too long because the
+        # output-intermediates-for-gradients version of the function was
+        # substituted before saving. We'll accept that here. (See b/133666530).
+        for output_index, shape in enumerate(
+            output_shapes.list.shape[:len(op.outputs)]):
+          op.outputs[output_index].set_shape(shape)
+    output_names = {}
+    for ret_arg_def, tensor_name in zip(
+        fdef.signature.output_arg, output_tensor_names):
+      output_names[ops.tensor_id(
+          func_graph.get_tensor_by_name(tensor_name))] = (
+              ret_arg_def.name)
+    func_graph._output_names = output_names  # pylint: disable=protected-access
   return func_graph
+
+
+def is_function(fname):
+  """Checks for a function definition with `fname` in the current context."""
+  if context.executing_eagerly():
+    return context.context().has_function(fname)
+  else:
+    graph = ops.get_default_graph()
+    while graph is not None:
+      if graph._is_function(fname):  # pylint: disable=protected-access
+        return True
+      if hasattr(graph, "outer_graph"):
+        graph = graph.outer_graph
+      else:
+        return False
 
 
 def function_def_to_graph_def(fdef, input_shapes=None):
@@ -114,6 +151,10 @@ def function_def_to_graph_def(fdef, input_shapes=None):
           producer=versions.GRAPH_DEF_VERSION,
           min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER))
 
+  default_graph = ops.get_default_graph()
+
+  copied_functions = set()
+
   if input_shapes and len(input_shapes) != len(fdef.signature.input_arg):
     raise ValueError("Length of input_shapes must match the number of " +
                      "input_args. len(input_shapes): {} len(input_arg): {}".
@@ -126,7 +167,16 @@ def function_def_to_graph_def(fdef, input_shapes=None):
     node_def.op = "Placeholder"
     node_def.attr["dtype"].type = arg_def.type
     if input_shapes and input_shapes[i] is not None:
-      node_def.attr["shape"].shape.CopyFrom(input_shapes[i].as_proto())
+      input_shape = input_shapes[i]
+      if not isinstance(input_shape, tensor_shape_pb2.TensorShapeProto):
+        input_shape = input_shape.as_proto()
+      node_def.attr["shape"].shape.CopyFrom(input_shape)
+    arg_attrs = fdef.arg_attr[i].attr
+    for k in arg_attrs:
+      # Only copy internal attributes. Normal attributes for nodes cannot be
+      # applied to these Placeholder nodes.
+      if k.startswith("_"):
+        node_def.attr[k].CopyFrom(arg_attrs[k])
 
   # 2. Copy all body NodeDefs to the GraphDef.
   graph_def.node.extend(fdef.node_def)
@@ -140,26 +190,43 @@ def function_def_to_graph_def(fdef, input_shapes=None):
 
   for arg_def in fdef.signature.input_arg:
     nested_to_flat_tensor_name[arg_def.name] = "{}:0".format(arg_def.name)
+    control_name = "^" + arg_def.name
+    nested_to_flat_tensor_name[control_name] = control_name
 
   for node_def in fdef.node_def:
-    op_def = op_def_registry.get_registered_ops().get(node_def.op)
-    if not op_def:
-      # TODO(b/80470245): Support functions which refer other functions.
-      raise NotImplementedError(
-          "No op registered for {},".format(node_def.op) +
-          " it may be a function. function_def_to_graph_def " +
-          "currently does not support converting functions with " +
-          "references to other graph functions.")
+    graph = default_graph
+    while True:
+      f = graph._functions.get(node_def.op, None)  # pylint: disable=protected-access
+      if f is not None or not hasattr(graph, "outer_graph"):
+        break
+      graph = graph.outer_graph
+
+    if f is not None:
+      op_def = f.definition.signature
+      if node_def.op not in copied_functions:
+        # Since this function is referenced as an op type, we have no choice but
+        # to copy it into the GraphDef if we want downstream tools to process
+        # it.
+        graph_def.library.function.add().CopyFrom(f.definition)
+        copied_functions.add(node_def.op)
+        if f.grad_func_name:
+          grad_def = function_pb2.GradientDef()
+          grad_def.function_name = f.name
+          grad_def.gradient_func = f.grad_func_name
+          graph_def.library.gradient.extend([grad_def])
+    else:
+      op_def = default_graph._get_op_def(node_def.op)  # pylint: disable=protected-access
 
     for attr in op_def.attr:
-      if attr.type in ("func", "list(func)"):
-        # TODO(b/80470245): Support functions which refer other functions.
-        raise NotImplementedError("Unsupported attr {} ".format(attr.name) +
-                                  " with type {}".format(attr.type) +
-                                  " in op {}. ".format(op_def.name) +
-                                  "function_def_to_graph_def currently does " +
-                                  "not support converting functions with " +
-                                  "references to other graph functions.")
+      if attr.type == "func":
+        fname = node_def.attr[attr.name].func.name
+        if not is_function(fname):
+          raise ValueError("%s function not found." % fname)
+      elif attr.type == "list(func)":
+        for fn in node_def.attr[attr.name].list.func:
+          fname = fn.name
+          if not is_function(fname):
+            raise ValueError("%s function not found." % fname)
 
     # Iterate over output_args in op_def to build the map.
     # Index of the output tensor in the flattened list of *all* output
@@ -174,6 +241,8 @@ def function_def_to_graph_def(fdef, input_shapes=None):
         flat_name = "{}:{}".format(node_def.name, flattened_index)
         nested_to_flat_tensor_name[nested_name] = flat_name
         flattened_index += 1
+    control_name = "^" + node_def.name
+    nested_to_flat_tensor_name[control_name] = control_name
 
   # Update inputs of all nodes in graph.
   for node_def in graph_def.node:

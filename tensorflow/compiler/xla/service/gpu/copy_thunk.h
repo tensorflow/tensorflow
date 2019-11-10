@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -39,8 +40,7 @@ class HostToDeviceCopyThunk : public Thunk {
   HostToDeviceCopyThunk(const HostToDeviceCopyThunk&) = delete;
   HostToDeviceCopyThunk& operator=(const HostToDeviceCopyThunk&) = delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const void* source_address_;
@@ -62,8 +62,7 @@ class DeviceToDeviceCopyThunk : public Thunk {
   DeviceToDeviceCopyThunk(const DeviceToDeviceCopyThunk&) = delete;
   DeviceToDeviceCopyThunk& operator=(const DeviceToDeviceCopyThunk&) = delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   const BufferAllocation::Slice source_buffer_;

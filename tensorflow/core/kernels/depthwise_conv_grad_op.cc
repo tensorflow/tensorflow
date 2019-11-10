@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -25,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -37,10 +37,14 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif
+
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -517,7 +521,7 @@ extern template struct LaunchConv2DBackpropInputOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropInputOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Extern template instantiated in conv_grad_input_ops.cc.
 extern template struct LaunchConv2DBackpropInputOp<GPUDevice, Eigen::half>;
@@ -530,7 +534,7 @@ extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice,
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropInputOp<GPUDevice, double>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Kernel to compute the input backprop for depthwise convolution.
 template <typename Device, class T>
@@ -633,7 +637,8 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
       // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop,
                 reshaped_filter, /*row_dilation=*/1, /*col_dilation=*/1,
-                stride_, stride_, padding_, in_backprop, data_format_);
+                stride_, stride_, padding_, /*explicit_paddings=*/{},
+                in_backprop, data_format_);
       return;
     }
 
@@ -676,7 +681,7 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNEL(T)                                       \
   REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropInput") \
@@ -714,7 +719,7 @@ TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);
 #undef REGISTER_GROUPED_CONV_KERNEL
 #endif  // CUDNN_VERSION
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Kernels to compute the gradients of the filters for depthwise convolution.
 
@@ -990,7 +995,7 @@ extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, float>;
 extern template struct LaunchConv2DBackpropFilterOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Extern template instantiated in conv_grad_filter_ops.cc.
 extern template struct LaunchConv2DBackpropFilterOp<GPUDevice, Eigen::half>;
@@ -1003,7 +1008,7 @@ extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice,
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, float>;
 extern template struct LaunchDepthwiseConvBackpropFilterOp<GPUDevice, double>;
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Kernel to compute the filter backprop for depthwise convolution.
 template <typename Device, class T>
@@ -1115,7 +1120,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
       // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, out_backprop, input,
                 /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
-                padding_, &reshaped_filter, data_format_);
+                padding_, /*explicit_paddings=*/{}, &reshaped_filter,
+                data_format_);
       return;
     }
 
@@ -1158,7 +1164,7 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 #undef REGISTER_CPU_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GPU_KERNEL(T)                                        \
   REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNativeBackpropFilter") \
                               .Device(DEVICE_GPU)                     \
@@ -1195,6 +1201,6 @@ TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);
 #undef REGISTER_GROUPED_CONV_KERNEL
 #endif  // CUDNN_VERSION
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

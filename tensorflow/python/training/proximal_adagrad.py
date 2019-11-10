@@ -26,7 +26,7 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.ProximalAdagradOptimizer")
+@tf_export(v1=["train.ProximalAdagradOptimizer"])
 class ProximalAdagradOptimizer(optimizer.Optimizer):
   # pylint: disable=line-too-long
   """Optimizer that implements the Proximal Adagrad algorithm.

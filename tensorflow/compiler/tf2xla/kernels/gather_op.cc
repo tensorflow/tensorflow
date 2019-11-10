@@ -13,17 +13,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <algorithm>
+
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
-#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
 
@@ -95,11 +100,11 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   //  operand = s32[3,3] parameter(0)
   //  indices = s32[2] parameter(1)
   //  gather = s32[3,2] gather(operand, indices),
-  //       output_window_dims={0},
-  //       elided_window_dims={1},
-  //       gather_dims_to_operand_dims={1},
+  //       offset_dims={0},
+  //       collapsed_slice_dims={1},
+  //       start_index_map={1},
   //       index_vector_dim=1,
-  //       window_bounds={3, 1}
+  //       slice_sizes={3, 1}
   //
   //
   // Example of an N-D gather pulling out slices of shape [1,1,2] out of a
@@ -108,93 +113,156 @@ Status XlaGather(const xla::XlaOp& input, const TensorShape& input_shape,
   //  operand = s32[3,3,2] parameter(0)
   //  indices = s32[2,2] parameter(1)
   //  gather = s32[2,2] gather(operand, indices),
-  //       output_window_dims={1},
-  //       elided_window_dims={0,1},
-  //       gather_dims_to_operand_dims={0,1},
+  //       offset_dims={1},
+  //       collapsed_slice_dims={0,1},
+  //       start_index_map={0,1},
   //       index_vector_dim=0,
-  //       window_bounds={1,1,2}
+  //       slice_sizes={1,1,2}
 
   xla::GatherDimensionNumbers dim_numbers;
-  std::vector<int64> window_bounds;
-  window_bounds.reserve(input_shape.dims());
+  std::vector<int64> slice_sizes;
+  slice_sizes.reserve(input_shape.dims());
   for (int64 i = 0; i < input_shape.dims(); i++) {
     int64 window_bound;
     if (axis <= i && i < (axis + num_index_dims)) {
-      dim_numbers.add_elided_window_dims(i);
+      dim_numbers.add_collapsed_slice_dims(i);
       window_bound = 1;
     } else {
       window_bound = input_shape.dim_size(i);
     }
 
-    window_bounds.push_back(window_bound);
+    slice_sizes.push_back(window_bound);
 
     if (i < axis) {
-      dim_numbers.add_output_window_dims(i);
+      dim_numbers.add_offset_dims(i);
     } else if (i >= (axis + num_index_dims)) {
       int64 indices_rank =
           indices_are_nd ? (indices_shape.dims() - 1) : indices_shape.dims();
-      dim_numbers.add_output_window_dims(i + indices_rank - num_index_dims);
+      dim_numbers.add_offset_dims(i + indices_rank - num_index_dims);
     }
   }
 
   dim_numbers.set_index_vector_dim(indices_are_nd ? (indices_shape.dims() - 1)
                                                   : indices_shape.dims());
   for (int64 i = axis; i < axis + num_index_dims; i++) {
-    dim_numbers.add_gather_dims_to_operand_dims(i);
+    dim_numbers.add_start_index_map(i);
   }
 
-  *gather_output = xla::Gather(input, indices, dim_numbers, window_bounds);
+  *gather_output = xla::Gather(input, indices, dim_numbers, slice_sizes);
   return Status::OK();
 }
 
-class GatherOp : public XlaOpKernel {
- public:
-  explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
+Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
+                                    const xla::XlaOp input,
+                                    const TensorShape& input_shape,
+                                    int batch_dims, xla::XlaOp* gather_output) {
+  auto indices = context->Input(1);
+  auto indices_shape = context->InputShape(1);
 
-  void Compile(XlaOpKernelContext* context) override {
-    xla::XlaBuilder* builder = context->builder();
-    auto input = context->Input(0);
-    auto input_shape = context->InputShape(0);
-    auto indices = context->Input(1);
-    auto indices_shape = context->InputShape(1);
-    int64 axis = 0;
-    if (context->num_inputs() == 3) {
-      const TensorShape axis_shape = context->InputShape(2);
-      OP_REQUIRES(context, TensorShapeUtils::IsScalar(axis_shape),
-                  errors::InvalidArgument("axis must be scalar"));
-      DataType axis_type = input_type(2);
-      OP_REQUIRES(context, axis_type == DT_INT32 || axis_type == DT_INT64,
-                  errors::InvalidArgument("axis must be int32 or int64"));
-
-      OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &axis));
-      const auto params_dims = input_shape.dims();
-      if (axis < 0) {
-        axis += params_dims;
-      }
-      OP_REQUIRES(
-          context, 0 <= axis && axis < params_dims,
-          errors::InvalidArgument("Expected axis in the range [", -params_dims,
-                                  ", ", params_dims, "), but got ", axis));
+  absl::optional<int64> axis;
+  if (context->num_inputs() == 3) {
+    const TensorShape axis_shape = context->InputShape(2);
+    if (!TensorShapeUtils::IsScalar(axis_shape)) {
+      return errors::InvalidArgument("axis must be scalar");
+    }
+    DataType axis_type = context->input_type(2);
+    if (axis_type != DT_INT32 && axis_type != DT_INT64) {
+      return errors::InvalidArgument("axis must be int32 or int64");
     }
 
-    DataType index_type = input_type(1);
-    OP_REQUIRES(context, index_type == DT_INT32 || index_type == DT_INT64,
-                errors::InvalidArgument("indices must be int32 or int64"));
+    int64 axis_input;
+    TF_RETURN_IF_ERROR(context->ConstantInputAsIntScalar(2, &axis_input));
+
+    const auto params_dims = input_shape.dims();
+    if (-params_dims > axis_input || axis_input >= params_dims) {
+      return errors::InvalidArgument("Expected axis in the range [",
+                                     -params_dims, ", ", params_dims,
+                                     "), but got ", axis_input);
+    }
+    if (axis_input < 0) {
+      axis_input += params_dims;
+    }
+    axis = axis_input;
+  }
+
+  if (batch_dims != 0) {
+    if (batch_dims < 0) {
+      batch_dims = indices_shape.dims() + batch_dims;
+    }
+
+    axis = axis.value_or(batch_dims);
+
+    if (batch_dims < -indices_shape.dims() ||
+        batch_dims >= indices_shape.dims()) {
+      return errors::InvalidArgument(
+          "Expected batch_dims in the range [", -indices_shape.dims(), ", ",
+          indices_shape.dims(), "), but got ", batch_dims);
+    }
+
+    if (batch_dims >= input_shape.dims()) {
+      return errors::InvalidArgument("batch_dims (", batch_dims,
+                                     ") must be less than rank(input) (",
+                                     input_shape.dims(), ").");
+    }
+
+    if (*axis < batch_dims) {
+      return errors::InvalidArgument("batch_dims (", batch_dims,
+                                     ") must be less than or equal to ",
+                                     "axis (", *axis, ").");
+    }
+  }
+
+  axis = axis.value_or(0);
+  DataType index_type = context->input_type(1);
+  if (index_type != DT_INT32 && index_type != DT_INT64) {
+    return errors::InvalidArgument("indices must be int32 or int64");
+  }
+
+  xla::XlaOp gather;
+  if (batch_dims > 0) {
+    *gather_output = xla::TorchIndexSelect(input, indices, *axis, batch_dims);
+  } else {
+    // XlaGather() manages degenerate cases, like empty-indices, which are
+    // error conditions and caught above if batch_dims is not 0.
+    TF_RETURN_IF_ERROR(
+        XlaGather(input, input_shape, indices, indices_shape, *axis,
+                  /*indices_are_nd=*/false, context->expected_output_dtype(0),
+                  index_type, context->builder(), gather_output));
+  }
+  return Status::OK();
+}
+class GatherOp : public XlaOpKernel {
+ public:
+  explicit GatherOp(OpKernelConstruction* context) : XlaOpKernel(context) {
+    // Set batch_dims_ to 0 if the attribute does not exist.
+    if (context->HasAttr("batch_dims")) {
+      OP_REQUIRES_OK(context, context->GetAttr("batch_dims", &batch_dims_));
+    } else {
+      batch_dims_ = 0;
+    }
+  }
+
+  void Compile(XlaOpKernelContext* context) override {
+    auto input = context->Input(0);
+    auto input_shape = context->InputShape(0);
 
     xla::XlaOp gather;
-    OP_REQUIRES_OK(
-        context, XlaGather(input, input_shape, indices, indices_shape, axis,
-                           /*indices_are_nd=*/false, input_type(0), index_type,
-                           builder, &gather));
+    OP_REQUIRES_OK(context,
+                   XlaGatherWithBatchDimsOpImpl(context, input, input_shape,
+                                                batch_dims_, &gather));
     context->SetOutput(0, gather);
   }
 
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(GatherOp);
+
+  // The number of batch dimensions, as passed in the batch_dims attribute.
+  // It must be less than rank(indices).
+  int32 batch_dims_ = 0;
 };
 
 REGISTER_XLA_OP(Name("Gather"), GatherOp);
-REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstInput("axis"), GatherOp);
+REGISTER_XLA_OP(Name("GatherV2").CompileTimeConstantInput("axis"), GatherOp);
 
 class GatherNdOp : public XlaOpKernel {
  public:

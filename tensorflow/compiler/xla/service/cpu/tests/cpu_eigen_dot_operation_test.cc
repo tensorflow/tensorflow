@@ -16,13 +16,13 @@ limitations under the License.
 // Tests that we call into Eigen for dot operations as needed.
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -49,7 +49,7 @@ class CpuEigenDotOperationTest
         /*entry_point_name=*/"entry",
         /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
-    auto hlo_module = CreateNewModule();
+    auto hlo_module = CreateNewVerifiedModule();
     hlo_module->AddEntryComputation(std::move(entry_computation));
 
     CompileAheadOfTimeAndVerifyIr(std::move(hlo_module), options,
@@ -69,8 +69,7 @@ TEST_P(CpuEigenDotOperationTest, SimpleDotOp) {
   HloInstruction* rhs = builder.AddInstruction(
       HloInstruction::CreateParameter(1, param_shape, "input"));
 
-  builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(param_shape, lhs, rhs));
+  builder.AddInstruction(CreateCanonicalDot(param_shape, lhs, rhs));
   CompileAndCheck(builder.Build(), spec.filecheck_lines);
 }
 
@@ -87,8 +86,7 @@ TEST_P(CpuEigenDotOperationTest, DotTransposeOp) {
   HloInstruction* lhs_transposed = builder.AddInstruction(
       HloInstruction::CreateTranspose(param_shape, lhs, {1, 0}));
 
-  builder.AddInstruction(
-      HloInstruction::CreateCanonicalDot(param_shape, lhs_transposed, rhs));
+  builder.AddInstruction(CreateCanonicalDot(param_shape, lhs_transposed, rhs));
   CompileAndCheck(builder.Build(), spec.filecheck_lines);
 }
 
@@ -103,10 +101,10 @@ std::vector<DotTestSpec> GetDotTestCases() {
   return result;
 }
 
-INSTANTIATE_TEST_CASE_P(CpuEigenDotOperationTestInstantiation,
-                        CpuEigenDotOperationTest,
-                        ::testing::ValuesIn(GetDotTestCases()),
-                        DotTestSpecToString);
+INSTANTIATE_TEST_SUITE_P(CpuEigenDotOperationTestInstantiation,
+                         CpuEigenDotOperationTest,
+                         ::testing::ValuesIn(GetDotTestCases()),
+                         DotTestSpecToString);
 
 }  // namespace
 }  // namespace cpu

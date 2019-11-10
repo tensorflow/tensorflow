@@ -20,13 +20,14 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -46,7 +47,7 @@ class KernelThunk : public Thunk {
   // Constructs a thunk for the given kernel.
   //
   // `hlo_instruction` is as in Thunk. Other arguments are as the class members.
-  KernelThunk(tensorflow::gtl::ArraySlice<const BufferAllocation*> args,
+  KernelThunk(absl::Span<const BufferAllocation* const> args,
               const string& kernel_name, const HloInstruction* hlo_instruction,
               int unroll_factor);
   KernelThunk(const KernelThunk&) = delete;
@@ -59,10 +60,7 @@ class KernelThunk : public Thunk {
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
-
-  // Executes the kernel for the thunk on "stream", which must be non-null.
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // Buffers passed to the kernel as arguments.
@@ -82,12 +80,11 @@ class KernelThunk : public Thunk {
   // Describes how to load this kernel. ExecuteOnStream reuses this loader
   // specification for all executions.
   mutable tensorflow::mutex mutex_;
-  std::unique_ptr<se::MultiKernelLoaderSpec> loader_spec_ GUARDED_BY(mutex_);
 
   // Loaded kernels for each `StreamExecutor`.  Requires pointer stability of
   // values.
-  std::unordered_map<se::StreamExecutor*, se::KernelBase> kernel_cache_
-      GUARDED_BY(mutex_);
+  std::unordered_map<se::StreamExecutor*, std::unique_ptr<se::KernelBase>>
+      kernel_cache_ GUARDED_BY(mutex_);
 };
 
 }  // namespace gpu

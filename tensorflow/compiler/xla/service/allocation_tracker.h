@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -64,19 +65,19 @@ class AllocationTracker {
   // replica, or provide an error status to say whether any of those buffers
   // were not found (or found, but found deallocated).
   StatusOr<std::vector<const ShapedBuffer*>> Resolve(
-      const GlobalDataHandle& data);
+      const GlobalDataHandle& data) const;
 
   // Resolves a handle from an XLA client and replica id to a shaped buffer, or
   // provide an error status to say whether it was not found (or found, but
   // found deallocated).
   StatusOr<const ShapedBuffer*> ResolveForReplica(const GlobalDataHandle& data,
-                                                  int replica_id);
+                                                  int replica_id) const;
 
  private:
   // Data structure encapsulating single memory allocation on the device.
   struct Allocation {
     // The pointer to this allocation.
-    OwningDeviceMemory device_memory;
+    se::OwningDeviceMemory device_memory;
 
     // This is the number of times this memory allocation is referred to by
     // registered data handles.
@@ -86,7 +87,7 @@ class AllocationTracker {
   // Internal helper which resolves the given GlobalDataHandle to a
   // list of ScopedShapedBuffers.
   StatusOr<std::vector<const ShapedBuffer*>> ResolveInternal(
-      const GlobalDataHandle& data) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+      const GlobalDataHandle& data) const EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Internal helper which registers a vector of shaped buffers, one per
   // replica.  ShapedBufferTy is either ScopedShapedBuffer or ShapedBuffer.  If
@@ -110,9 +111,9 @@ class AllocationTracker {
 
   // A map from device memory opaque value to allocation. One such map is
   // maintained per device ordinal.
-  using AllocationMap = tensorflow::gtl::FlatMap<const void*, Allocation>;
+  using AllocationMap = absl::flat_hash_map<const void*, Allocation>;
 
-  tensorflow::mutex mutex_;
+  mutable tensorflow::mutex mutex_;
 
   // Backend to use with this tracker. The backend supplies the memory allocator
   // to use when deallocating memory.
@@ -123,10 +124,7 @@ class AllocationTracker {
   int64 next_handle_ GUARDED_BY(mutex_);
 
   // A map from device ordinal to AllocationMap.
-  //
-  // This is not a TF FlatMap because (currently) FlatMap (and therefore
-  // AllocationMap) is not movable.
-  std::unordered_map<int, AllocationMap> opaque_to_allocation_map_
+  absl::flat_hash_map<int, AllocationMap> opaque_to_allocation_map_
       GUARDED_BY(mutex_);
 
   // A map from data handle to a vector of shaped buffers that represent the
@@ -146,7 +144,7 @@ class AllocationTracker {
   // non-owning "view" into a tuple's sub-buffers.  The sub-buffers are then
   // free'd when both the view *and* the original tuple are Unregistered.  This
   // refcounting is managed in opaque_to_allocation_map_.
-  tensorflow::gtl::FlatMap<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
+  absl::flat_hash_map<int64, std::vector<std::unique_ptr<ShapedBuffer>>>
       handle_to_shaped_buffers_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationTracker);

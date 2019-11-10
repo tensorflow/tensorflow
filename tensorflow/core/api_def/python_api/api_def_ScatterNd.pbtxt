@@ -1,10 +1,10 @@
 op {
   graph_op_name: "ScatterNd"
   endpoint {
-    name: "manip.scatter_nd"
+    name: "scatter_nd"
   }
   endpoint {
-    name: "scatter_nd"
-    deprecation_message: "tf.scatter_nd is deprecated, please use tf.manip.scatter_nd instead."
+    name: "manip.scatter_nd"
+    deprecation_version: 2
   }
 }

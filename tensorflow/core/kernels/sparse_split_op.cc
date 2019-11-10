@@ -63,10 +63,16 @@ class SparseSplitOp : public OpKernel {
                                 input_shape.vec<int64>()(split_dim), "), got ",
                                 num_split_));
 
-    sparse::SparseTensor sparse_tensor(input_indices, input_values,
-                                       TensorShape(input_shape.vec<int64>()));
-    const std::vector<sparse::SparseTensor> outputs =
-        sparse::SparseTensor::Split<T>(sparse_tensor, split_dim, num_split_);
+    sparse::SparseTensor sparse_tensor;
+    OP_REQUIRES_OK(context,
+                   sparse::SparseTensor::Create(
+                       input_indices, input_values,
+                       TensorShape(input_shape.vec<int64>()), &sparse_tensor));
+
+    std::vector<sparse::SparseTensor> outputs;
+    OP_REQUIRES_OK(context,
+                   sparse::SparseTensor::Split<T>(sparse_tensor, split_dim,
+                                                  num_split_, &outputs));
 
     for (int slice_index = 0; slice_index < num_split_; ++slice_index) {
       context->set_output(slice_index, outputs[slice_index].indices());

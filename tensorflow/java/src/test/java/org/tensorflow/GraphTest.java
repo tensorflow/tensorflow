@@ -22,7 +22,6 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.HashSet;
 import java.util.Iterator;
-
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
@@ -180,8 +179,8 @@ public class GraphTest {
       Output<Float> x = TestUtil.placeholder(g, "x", Float.class);
       Output<Float> y0 = TestUtil.square(g, "y0", x);
       Output<Float> y1 = TestUtil.square(g, "y1", y0);
-      
-      Output<?>[] grad = g.addGradients(toArray(y0, y1), toArray(x), null);
+
+      Output<?>[] grad = g.addGradients(null, toArray(y0, y1), toArray(x), null);
       assertNotNull(grad);
       assertEquals(1, grad.length);
       assertEquals(DataType.FLOAT, grad[0].dataType());
@@ -212,7 +211,7 @@ public class GraphTest {
       assertEquals(1, grad0.length);
       assertEquals(DataType.FLOAT, grad0[0].dataType());
 
-      Output<?>[] grad1 = g.addGradients(toArray(y0), toArray(x), toArray(grad0[0]));
+      Output<?>[] grad1 = g.addGradients(null, toArray(y0), toArray(x), toArray(grad0[0]));
       assertNotNull(grad1);
       assertEquals(1, grad1.length);
       assertEquals(DataType.FLOAT, grad1[0].dataType());
@@ -228,7 +227,142 @@ public class GraphTest {
       }
     }
   }
-  
+
+  @Test
+  public void validateGradientsNames() {
+    try (Graph g = new Graph()) {
+
+      Output<Float> x = TestUtil.placeholder(g, "x", Float.class);
+      Output<Float> y0 = TestUtil.square(g, "y0", x);
+
+      Output<?>[] grad0 = g.addGradients(null, toArray(y0), toArray(x), null);
+      assertTrue(grad0[0].op().name().startsWith("gradients/"));
+
+      Output<?>[] grad1 = g.addGradients(null, toArray(y0), toArray(x), null);
+      assertTrue(grad1[0].op().name().startsWith("gradients_1/"));
+
+      Output<?>[] grad2 = g.addGradients("more_gradients", toArray(y0), toArray(x), null);
+      assertTrue(grad2[0].op().name().startsWith("more_gradients/"));
+
+      Output<?>[] grad3 = g.addGradients("even_more_gradients", toArray(y0), toArray(x), null);
+      assertTrue(grad3[0].op().name().startsWith("even_more_gradients/"));
+
+      try {
+        g.addGradients("even_more_gradients", toArray(y0), toArray(x), null);
+      } catch (IllegalArgumentException e) {
+        // expected exception
+      }
+    }
+  }
+
+  @Test
+  public void buildWhileLoopSingleInput() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+
+      Output<?> input = TestUtil.placeholder(g, "input1", Integer.class);
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder condGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph condGraph, Output<?>[] condInputs, Output<?>[] condOutputs) {
+              Output<Integer> sixteen = TestUtil.constant(condGraph, "sixteen", 16);
+              // condInputs[0] < 16
+              Output<?> condOutput =
+                  condGraph
+                      .opBuilder("Less", "cond")
+                      .addInput(condInputs[0])
+                      .addInput(sixteen)
+                      .build()
+                      .output(0);
+
+              condOutputs[0] = condOutput;
+            }
+          };
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder bodyGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph bodyGraph, Output<?>[] bodyInputs, Output<?>[] bodyOutputs) {
+              bodyOutputs[0] = TestUtil.square(bodyGraph, "square", bodyInputs[0]);
+            }
+          };
+
+      Output<?>[] loopOutputs =
+          g.whileLoop(toArray(input), condGraphBuilder, bodyGraphBuilder, "test_loop");
+
+      try (Tensor<Integer> c = Tensors.create(2);
+          Tensor<?> output = s.runner().feed(input, c).fetch(loopOutputs[0]).run().get(0)) {
+
+        assertEquals(16, output.intValue()); // ((2^2)^2)
+      }
+    }
+  }
+
+  @Test
+  public void buildWhileLoopMultipleInputs() {
+    try (Graph g = new Graph();
+        Session s = new Session(g)) {
+
+      Output<?> input1 = TestUtil.placeholder(g, "input1", Integer.class);
+      Output<?> input2 = TestUtil.placeholder(g, "input2", Integer.class);
+      Output<?>[] inputs = toArray(input1, input2);
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder condGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph condGraph, Output<?>[] condInputs, Output<?>[] condOutputs) {
+              Output<Integer> sixteen = TestUtil.constant(condGraph, "sixteen", 16);
+              Output<?> condOutput =
+                  condGraph
+                      .opBuilder("Less", "cond")
+                      .addInput(condInputs[0])
+                      .addInput(sixteen)
+                      .build()
+                      .output(0); // condInputs[0] < 16
+
+              condOutputs[0] = condOutput;
+            }
+          };
+
+      // could write this using lambda after Java 8
+      Graph.WhileSubgraphBuilder bodyGraphBuilder =
+          new Graph.WhileSubgraphBuilder() {
+            @Override
+            public void buildSubgraph(
+                Graph bodyGraph, Output<?>[] bodyInputs, Output<?>[] bodyOutputs) {
+              bodyOutputs[0] = TestUtil.square(bodyGraph, "square1", bodyInputs[0]);
+              bodyOutputs[1] = TestUtil.square(bodyGraph, "square2", bodyInputs[1]);
+            }
+          };
+
+      Output<?>[] loopOutputs =
+          g.whileLoop(inputs, condGraphBuilder, bodyGraphBuilder, "test_loop");
+
+      try (Tensor<Integer> c1 = Tensors.create(2);
+          Tensor<Integer> c2 = Tensors.create(5);
+          TestUtil.AutoCloseableList<Tensor<?>> outputs =
+              new TestUtil.AutoCloseableList<>(
+                  s.runner()
+                      .feed(input1, c1)
+                      .feed(input2, c2)
+                      .fetch(loopOutputs[0])
+                      .fetch(loopOutputs[1])
+                      .run())) {
+
+        assertEquals(2, outputs.size());
+        assertEquals(16, outputs.get(0).intValue()); // ((2^2)^2)
+        assertEquals(625, outputs.get(1).intValue()); // ((5^2)^2)
+      }
+    }
+  }
+
   private static Output<?>[] toArray(Output<?>... outputs) {
     return outputs;
   }

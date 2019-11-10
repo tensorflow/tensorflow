@@ -84,7 +84,7 @@ RecordReader::RecordReader(RandomAccessFile* file,
 //
 // offset corresponds to the user-provided value to ReadRecord()
 // and is used only in error messages.
-Status RecordReader::ReadChecksummed(uint64 offset, size_t n, string* result) {
+Status RecordReader::ReadChecksummed(uint64 offset, size_t n, tstring* result) {
   if (n >= SIZE_MAX - sizeof(uint32)) {
     return errors::DataLoss("record size too large");
   }
@@ -108,10 +108,60 @@ Status RecordReader::ReadChecksummed(uint64 offset, size_t n, string* result) {
   return Status::OK();
 }
 
-Status RecordReader::ReadRecord(uint64* offset, string* record) {
-  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
-  static const size_t kFooterSize = sizeof(uint32);
+Status RecordReader::GetMetadata(Metadata* md) {
+  if (!md) {
+    return errors::InvalidArgument(
+        "Metadata object call to GetMetadata() was null");
+  }
 
+  // Compute the metadata of the TFRecord file if not cached.
+  if (!cached_metadata_) {
+    TF_RETURN_IF_ERROR(input_stream_->Reset());
+
+    int64 data_size = 0;
+    int64 entries = 0;
+
+    // Within the loop, we always increment offset positively, so this
+    // loop should be guaranteed to either return after reaching EOF
+    // or encountering an error.
+    uint64 offset = 0;
+    tstring record;
+    while (true) {
+      // Read header, containing size of data.
+      Status s = ReadChecksummed(offset, sizeof(uint64), &record);
+      if (!s.ok()) {
+        if (errors::IsOutOfRange(s)) {
+          // We should reach out of range when the record file is complete.
+          break;
+        }
+        return s;
+      }
+
+      // Read the length of the data.
+      const uint64 length = core::DecodeFixed64(record.data());
+
+      // Skip reading the actual data since we just want the number
+      // of records and the size of the data.
+      TF_RETURN_IF_ERROR(input_stream_->SkipNBytes(length + kFooterSize));
+      offset += kHeaderSize + length + kFooterSize;
+
+      // Increment running stats.
+      data_size += length;
+      ++entries;
+    }
+
+    cached_metadata_.reset(new Metadata());
+    cached_metadata_->stats.entries = entries;
+    cached_metadata_->stats.data_size = data_size;
+    cached_metadata_->stats.file_size =
+        data_size + (kHeaderSize + kFooterSize) * entries;
+  }
+
+  md->stats = cached_metadata_->stats;
+  return Status::OK();
+}
+
+Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
   // Position the input stream.
   int64 curr_pos = input_stream_->Tell();
   int64 desired_pos = static_cast<int64>(*offset);

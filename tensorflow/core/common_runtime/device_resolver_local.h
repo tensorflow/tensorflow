@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMMON_RUNTIME_DEVICE_RESOLVER_LOCAL_H_
-#define TENSORFLOW_COMMON_RUNTIME_DEVICE_RESOLVER_LOCAL_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_RESOLVER_LOCAL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_RESOLVER_LOCAL_H_
 
 #include <string>
 
@@ -30,19 +30,22 @@ class DeviceResolverLocal : public DeviceResolverInterface {
 
   virtual ~DeviceResolverLocal() {}
 
-  void GetDeviceLocalitiesAsync(const CollInstanceParams& ci_params,
-                                std::vector<DeviceLocality>* localities,
+  void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
+                                   const std::vector<string>& tasks,
+                                   std::vector<DeviceAttributes>* attributes,
+                                   const StatusCallback& done) override;
+
+  void GetDeviceAttributesAsync(const string& device, const string& task,
+                                DeviceAttributes* attributes,
                                 const StatusCallback& done) override;
 
-  void GetLocalityAsync(const string& device, const string& task,
-                        DeviceLocality* locality,
-                        const StatusCallback& done) override;
-
   void ClearTask(const string& task) override {}
+
+  void ClearCache() override {}
 
  protected:
   const DeviceMgr* dev_mgr_;
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_DEVICE_RESOLVER_LOCAL_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_DEVICE_RESOLVER_LOCAL_H_

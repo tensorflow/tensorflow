@@ -18,13 +18,13 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/base/macros.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/dnn.h"
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/platform.h"
-#include "tensorflow/stream_executor/platform/mutex.h"
 #include "tensorflow/stream_executor/plugin.h"
 #include "tensorflow/stream_executor/rng.h"
 
@@ -97,6 +97,7 @@ class PluginRegistry {
   // TODO(b/22689637): Deprecated/temporary. Will be deleted once all users are
   // on MultiPlatformManager / PlatformId.
   template <typename FactoryT>
+  ABSL_DEPRECATED("Use MultiPlatformManager / PlatformId instead.")
   port::StatusOr<FactoryT> GetFactory(PlatformKind platform_kind,
                                       PluginId plugin_id);
 
@@ -158,6 +159,25 @@ class PluginRegistry {
 
   SE_DISALLOW_COPY_AND_ASSIGN(PluginRegistry);
 };
+
+// Explicit specializations are defined in plugin_registry.cc.
+#define DECLARE_PLUGIN_SPECIALIZATIONS(FACTORY_TYPE)                          \
+  template <>                                                                 \
+  port::Status PluginRegistry::RegisterFactory<PluginRegistry::FACTORY_TYPE>( \
+      Platform::Id platform_id, PluginId plugin_id, const string& name,       \
+      PluginRegistry::FACTORY_TYPE factory);                                  \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+      Platform::Id platform_id, PluginId plugin_id);                          \
+  template <>                                                                 \
+  port::StatusOr<PluginRegistry::FACTORY_TYPE> PluginRegistry::GetFactory(    \
+      PlatformKind platform_kind, PluginId plugin_id)
+
+DECLARE_PLUGIN_SPECIALIZATIONS(BlasFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(DnnFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(FftFactory);
+DECLARE_PLUGIN_SPECIALIZATIONS(RngFactory);
+#undef DECL_PLUGIN_SPECIALIZATIONS
 
 }  // namespace stream_executor
 

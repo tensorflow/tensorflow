@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
+import numpy as _np  # Avoids becoming a part of public Tensorflow API.
 
 from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python_api import types
@@ -35,7 +35,7 @@ def ConvertLiteralToNumpyArray(literal):
 
   type_record = types.MAP_XLA_TYPE_TO_RECORD[element_type]
   if not literal.shape.dimensions:
-    return np.array(
+    return _np.array(
         getattr(literal, type_record.literal_field_name)[0],
         type_record.numpy_dtype)
   else:
@@ -54,7 +54,7 @@ def ConvertLiteralToNumpyArray(literal):
       numpy_reshaper = lambda arr: arr.reshape(numpy_shape, order='C')
     else:
       raise NotImplementedError('Unsupported layout: {0}'.format(layout_order))
-    ndarray = np.array(
+    ndarray = _np.array(
         getattr(literal, type_record.literal_field_name),
         copy=False,
         dtype=type_record.numpy_dtype)
@@ -69,11 +69,11 @@ def _ConvertNumpyArrayToLiteral(ndarray):
 
   if ndarray.ndim == 0:
     getattr(literal, type_record.literal_field_name).append(
-        np.asscalar(ndarray.astype(type_record.literal_field_type)))
+        ndarray.astype(type_record.literal_field_type).item())
   else:
     # Ndarrays with boolean dtypes need special type conversion with protobufs
-    if ndarray.dtype in {np.bool_, np.dtype('bool')}:
-      for element in np.nditer(ndarray):
+    if ndarray.dtype in {_np.bool_, _np.dtype('bool')}:
+      for element in _np.nditer(ndarray):
         getattr(literal, type_record.literal_field_name).append(
             type_record.literal_field_type(element))
     else:

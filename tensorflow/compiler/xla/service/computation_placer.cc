@@ -19,8 +19,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -32,7 +34,33 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
+using absl::StrAppend;
+using absl::StrCat;
+
 namespace xla {
+
+StatusOr<int> DeviceAssignment::ReplicaIdForDeviceOrdinal(
+    int device_ordinal) const {
+  absl::optional<int> replica_id;
+  for (int64 r = 0; r < replica_count(); ++r) {
+    for (int64 c = 0; c < computation_count(); ++c) {
+      if ((*this)(r, c) == device_ordinal) {
+        if (replica_id.has_value()) {
+          return InternalError(
+              "Device ordinal %d appears twice in DeviceAssignment? %s",
+              device_ordinal, ToString());
+        }
+        replica_id = r;
+      }
+    }
+  }
+  if (!replica_id.has_value()) {
+    return InternalError(
+        "Device ordinal %d doesn't appear in DeviceAssignment %s",
+        device_ordinal, ToString());
+  }
+  return *replica_id;
+}
 
 Status DeviceAssignment::Serialize(DeviceAssignmentProto* proto) const {
   proto->set_replica_count(replica_count());
@@ -56,8 +84,8 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
         "computation_count=%d",
         proto.replica_count(), proto.computation_count());
   }
-  auto assignment = MakeUnique<DeviceAssignment>(proto.replica_count(),
-                                                 proto.computation_count());
+  auto assignment = absl::make_unique<DeviceAssignment>(
+      proto.replica_count(), proto.computation_count());
   for (int computation = 0; computation < proto.computation_count();
        ++computation) {
     const auto& computation_device = proto.computation_devices(computation);
@@ -69,6 +97,19 @@ DeviceAssignment::Deserialize(const DeviceAssignmentProto& proto) {
     }
   }
   return std::move(assignment);
+}
+
+string DeviceAssignment::ToString() const {
+  string output = StrCat("Computations: ", computation_count(),
+                         " Replicas: ", replica_count(), "\n");
+  for (int computation = 0; computation < computation_count(); ++computation) {
+    StrAppend(&output, "Computation ", computation, ": ");
+    for (int replica = 0; replica < replica_count(); ++replica) {
+      StrAppend(&output, operator()(replica, computation), " ");
+    }
+    StrAppend(&output, "\n");
+  }
+  return output;
 }
 
 StatusOr<int> ComputationPlacer::DeviceId(int replica, int computation,
@@ -115,7 +156,7 @@ StatusOr<DeviceAssignment> ComputationPlacer::AssignDevices(
     return NotFound(
         "could not find registered computation placer for platform %s -- check "
         "target linkage",
-        platform->Name().c_str());
+        platform->Name());
   }
 
   if (it->second.placer == nullptr) {
@@ -139,7 +180,7 @@ ComputationPlacer::GetPlatformComputationPlacers() {
 }  // namespace xla
 
 static std::unique_ptr<xla::ComputationPlacer> CreateComputationPlacer() {
-  return xla::MakeUnique<xla::ComputationPlacer>();
+  return absl::make_unique<xla::ComputationPlacer>();
 }
 
 static bool InitModule() {
@@ -147,6 +188,8 @@ static bool InitModule() {
       stream_executor::host::kHostPlatformId, &CreateComputationPlacer);
   xla::ComputationPlacer::RegisterComputationPlacer(
       stream_executor::cuda::kCudaPlatformId, &CreateComputationPlacer);
+  xla::ComputationPlacer::RegisterComputationPlacer(
+      stream_executor::rocm::kROCmPlatformId, &CreateComputationPlacer);
   return true;
 }
 static bool module_initialized = InitModule();

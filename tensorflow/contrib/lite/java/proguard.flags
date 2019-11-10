@@ -1,3 +1,0 @@
--keepclassmembers class org.tensorflow.lite.NativeInterpreterWrapper {
-    private long inferenceDurationNanoseconds;
-}

@@ -28,7 +28,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
 
@@ -90,7 +89,8 @@ void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
         errors::InvalidArgument(
             "Input to reshape is a SparseTensor with ", dense_size,
             " dense values, but the requested shape requires a multiple of ",
-            product));
+            product, ". input_shape=", input_shape.DebugString(),
+            " output_shape=", output_shape.DebugString()));
     output_shape.set_dim(unknown_index, missing);
   }
 
@@ -98,7 +98,9 @@ void Reshape(OpKernelContext *context, const Tensor &input_indices_in,
       context, output_shape.num_elements() == dense_size,
       errors::InvalidArgument("Input to reshape is a tensor with ", dense_size,
                               " dense values, but the requested shape has ",
-                              output_shape.num_elements()));
+                              output_shape.num_elements(),
+                              ". input_shape=", input_shape.DebugString(),
+                              " output_shape=", output_shape.DebugString()));
 
   // Optimize for reshaping to the same shape.
   if (input_shape == output_shape) {

@@ -21,9 +21,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Minimum alignment of cudaMalloc.  We require that buffers created by our
-// DeviceMemoryAllocator, and all input/output buffers, have this alignment.
-extern const int64 kCudaMallocAlignBytes;
+// Minimum alignment for buffers passed as incoming arguments by TensorFlow.
+extern const int64 kEntryParameterAlignBytes;
+
+// Minimum alignment for buffers allocated by XLA: the temp buffers and the live
+// out (result) buffers.
+extern const int64 kXlaAllocatedBufferAlignBytes;
+
+// Minimum alignment for constant buffers.
+extern const int64 kConstantBufferAlignBytes;
 
 }  // namespace gpu
 }  // namespace xla

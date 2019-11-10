@@ -13,34 +13,50 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_FUNCTION_H_
-#define TENSORFLOW_FRAMEWORK_FUNCTION_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
+#define TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_
 
 #include <vector>
+
+// clang-format off
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"
+// clang-format on
+
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/selective_registration.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#if !defined(IS_MOBILE_PLATFORM)
+#include "tensorflow/core/protobuf/remote_tensor_handle.pb.h"
+#endif  // IS_MOBILE_PLATFORM
 
 namespace tensorflow {
 
 class CancellationManager;
 class CollectiveExecutor;
+class DeviceSet;
+class Graph;
 class GraphDef;
 class OpKernel;
 class ProcessFunctionLibraryRuntime;
 class ResourceMgr;
 class Rendezvous;
 class ScopedStepContainer;
-class StepStatsCollector;
+class StepStatsCollectorInterface;
 class Node;
 
 // FunctionDefHelper::Create is a convenient helper to construct a
@@ -113,13 +129,28 @@ class FunctionDefHelper {
     std::vector<string> arg;
     std::vector<std::pair<string, AttrValueWrapper>> attr;
     std::vector<string> dep;
+    string device;
 
     NodeDef ToNodeDef() const;
   };
 
-  // The Create() function uses the new NodeDef field.  `ret_def`
-  // holds a mapping from the function output names from `out_def` to
-  // the node outputs from `node_def`.
+  // Creates a FunctionDef from the given parameters. Node inputs must use
+  // function encoding (node_name:output_name[:output_index]).
+  // - `ret_def` holds a mapping from the function output names from `out_def`
+  //   to the node outputs from `node_def`.
+  // - `control_ret_def` holds a mapping from the function control
+  //   output names to the nodes from `node_def`.
+  static FunctionDef Create(
+      const string& function_name, gtl::ArraySlice<string> in_def,
+      gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
+      gtl::ArraySlice<Node> node_def,
+      gtl::ArraySlice<std::pair<string, string>> ret_def,
+      gtl::ArraySlice<std::pair<string, string>> control_ret_def);
+
+  // Creates a FunctionDef from the given parameters. Node inputs must use
+  // function encoding (node_name:output_name[:output_index]).
+  // - `ret_def` holds a mapping from the function output names from `out_def`
+  //   to the node outputs from `node_def`.
   static FunctionDef Create(const string& function_name,
                             gtl::ArraySlice<string> in_def,
                             gtl::ArraySlice<string> out_def,
@@ -127,7 +158,6 @@ class FunctionDefHelper {
                             gtl::ArraySlice<Node> node_def,
                             gtl::ArraySlice<std::pair<string, string>> ret_def);
 
-  // The two Define() functions use the old FunctionDef::Node field.
   // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const string& function_name,
                             gtl::ArraySlice<string> arg_def,
@@ -256,12 +286,15 @@ class CallFrameInterface {
 class FunctionCallFrame : public CallFrameInterface {
  public:
   FunctionCallFrame(DataTypeSlice arg_types, DataTypeSlice ret_types);
-  ~FunctionCallFrame();
+  ~FunctionCallFrame() override;
 
   // Caller methods.
   Status SetArgs(gtl::ArraySlice<Tensor> args);
   Status GetRetvals(std::vector<Tensor>* rets) const;
-  Status ConsumeRetvals(std::vector<Tensor>* rets);
+
+  // Moves the return values from the frame to rets. If allow_dead_tensors is
+  // false it will fail if any of the retvals do not have a value.
+  Status ConsumeRetvals(std::vector<Tensor>* rets, bool allow_dead_tensors);
 
   size_t num_args() const override { return arg_types_.size(); }
   size_t num_retvals() const override { return ret_types_.size(); }
@@ -285,9 +318,24 @@ class FunctionCallFrame : public CallFrameInterface {
 
 // Helper to maintain a map between function names in a given
 // FunctionDefLibrary and function definitions.
+//
+// This class is thread-safe.
 class FunctionLibraryDefinition : public OpRegistryInterface {
  public:
-  explicit FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
+  // Ops created for function arguments bear the name given by `kArgOp`; those
+  // created for return values bear the name given by `kRetOp`.
+  static constexpr const char* const kArgOp = "_Arg";
+  static constexpr const char* const kDeviceArgOp = "_DeviceArg";
+  static constexpr const char* const kRetOp = "_Retval";
+  static constexpr const char* const kDeviceRetOp = "_DeviceRetval";
+  static constexpr const char* const kIntsOnDeviceAttr =
+      "experimental_ints_on_device";
+
+  static constexpr const char* const kGradientOp = "SymbolicGradient";
+  static constexpr const char* const kFuncAttr = "f";
+
+  // Note: This constructor grabs `lib_def`'s lock in shared mode.
+  FunctionLibraryDefinition(const FunctionLibraryDefinition& lib_def);
   FunctionLibraryDefinition(const OpRegistryInterface* default_registry,
                             const FunctionDefLibrary& lib_def);
   ~FunctionLibraryDefinition() override;
@@ -295,9 +343,15 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   FunctionLibraryDefinition& operator=(const FunctionLibraryDefinition&) =
       delete;
 
+  // Returns True if the library contains `func`, False otherwise.
+  bool Contains(const string& func) const;
+
   // Returns nullptr if "func" is not defined in "lib_def". Otherwise,
   // returns its definition proto.
-  const FunctionDef* Find(const string& func) const;
+  //
+  // NB: This function returns a borrowed pointer, which can be invalidated by a
+  // subsequent call to `ReplaceFunction()` with the given name.
+  const FunctionDef* Find(const string& func) const LOCKS_EXCLUDED(mu_);
 
   // Adds function definition 'fdef' to this function library.
   // Returns status 'ok' on success, or error otherwise. This is a no-op if
@@ -305,53 +359,64 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // If 'fdef' is successfully added to the library, it will be accessible
   // from 'LookUp' and included in the proto returned by 'ToProto'.
   // This operation is atomic.
-  Status AddFunctionDef(const FunctionDef& fdef);
+  Status AddFunctionDef(const FunctionDef& fdef) LOCKS_EXCLUDED(mu_);
 
   // Adds gradient definition 'grad' to this function library.
   // This is a no-op if 'grad' already exists in this function library.
   // If 'grad' is successfully added, it will be accessible via 'FindGradient'
   // and included in the proto returned by 'ToProto'.
   // This operation is atomic.
-  Status AddGradientDef(const GradientDef& grad);
+  Status AddGradientDef(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
 
-  // Remove function `func` from the library. Returns non-OK Status unless
-  // `func` is in the library.
-  Status RemoveFunction(const string& func);
+  // Replaces the function corresponding to `func` with `fdef`. Returns
+  // a non-OK status if "func" was not found in the library, OK otherwise.
+  // Please be careful when replacing function: make sure all previous pointers
+  // returned by `Find()` are no longer in use.
+  Status ReplaceFunction(const string& func, const FunctionDef& fdef)
+      LOCKS_EXCLUDED(mu_);
 
-  // Remove gradient of function `func` from the library. Returns non-OK Status
-  // unless `func` has a gradient.
-  Status RemoveGradient(const string& func);
+  // Replaces the gradient corresponding to `grad.function_name()`. Returns
+  // a non-OK status if "grad.function_name()" was not found in the library, OK
+  // otherwise.
+  Status ReplaceGradient(const GradientDef& grad) LOCKS_EXCLUDED(mu_);
+
+  // Removes the function corresponding to 'func'. Returns a non-OK status if
+  // 'func' was not found in the library, OK otherwise.
+  // Please be careful when removing function: make sure there are no other
+  // nodes using the function, and all previous pointers returned by `Find()`
+  // are no longer in use.
+  Status RemoveFunction(const string& func) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionLibraryDefinition& other);
+  Status AddLibrary(const FunctionLibraryDefinition& other) LOCKS_EXCLUDED(mu_);
 
   // Adds the functions and gradients in 'lib_def' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
-  Status AddLibrary(const FunctionDefLibrary& lib_def);
+  Status AddLibrary(const FunctionDefLibrary& lib_def) LOCKS_EXCLUDED(mu_);
 
   // If the gradient function for 'func' is specified explicitly in
   // the library, returns the gradient function name.  Otherwise,
   // returns an empty string.
-  string FindGradient(const string& func) const;
+  string FindGradient(const string& func) const LOCKS_EXCLUDED(mu_);
 
   // OpRegistryInterface method. Useful for constructing a Graph.
   //
   // If "op" is defined in the library, returns its signature.
   // Otherwise, assume "op" is a primitive op and returns its op
   // signature and shape inference function.
+  //
+  // NB: This function outputs a borrowed pointer, which can be invalidated by a
+  // subsequent call to `ReplaceFunction()` with the given name.
   Status LookUp(const string& op_type_name,
-                const OpRegistrationData** op_reg_data) const override;
+                const OpRegistrationData** op_reg_data) const override
+      LOCKS_EXCLUDED(mu_);
 
-  // Ops created for function arguments bear the name given by `kArgOp`; those
-  // created for return values bear the name given by `kRetOp`.
-  static constexpr const char* const kArgOp = "_Arg";
-  static constexpr const char* const kRetOp = "_Retval";
-
-  static constexpr const char* const kGradientOp = "SymbolicGradient";
-  static constexpr const char* const kFuncAttr = "f";
+  // Generates new function name with the specified prefix that is unique
+  // across this library.
+  string UniqueFunctionName(StringPiece prefix) const LOCKS_EXCLUDED(mu_);
 
   // Given a node def 'ndef', inspects attributes of the callee
   // function to derive the attribute 'value' for 'attr'. Returns OK
@@ -367,42 +432,85 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   Status GetAttr(const Node& node, const string& attr, T* value) const;
 
   // Returns a proto representation of the state of this function library.
-  FunctionDefLibrary ToProto() const;
+  FunctionDefLibrary ToProto() const LOCKS_EXCLUDED(mu_);
 
-  size_t num_functions() const { return function_defs_.size(); }
+  size_t num_functions() const {
+    tf_shared_lock l(mu_);
+    return function_defs_.size();
+  }
+
+  // Returns all the function names in the FunctionLibraryDefinition.
+  std::vector<string> ListFunctionNames() const LOCKS_EXCLUDED(mu_);
 
   const OpRegistryInterface* default_registry() const {
     return default_registry_;
   }
 
+  // Returns a copy of `*this` with only the subset of functions that are
+  // reachable from the nodes of `graph` or `func`.
+  FunctionLibraryDefinition ReachableDefinitions(const GraphDef& graph) const;
+  FunctionLibraryDefinition ReachableDefinitions(const FunctionDef& func) const;
+
+  // Copies the function named `func` from `other` to this
+  // FunctionLibraryDefinition.
+  // REQUIRES: `this->default_registry() == other.default_registry()`.
+  // Returns OK on success, or error otherwise. This is a no-op if a function
+  // name `func` already exists in this function library, and has the same
+  // implementation as in `other`. If the implementations conflict, an invalid
+  // argument error is returned.
+  Status CopyFunctionDefFrom(const string& func,
+                             const FunctionLibraryDefinition& other)
+      LOCKS_EXCLUDED(mu_);
+
  private:
   // Shape inference for functions is handled separately by ShapeRefiner.
 
   struct FunctionDefAndOpRegistration {
-    FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
+    explicit FunctionDefAndOpRegistration(const FunctionDef& fdef_in);
 
-    FunctionDef fdef;
-    OpRegistrationData op_registration_data;
+    const FunctionDef fdef;
+    const OpRegistrationData op_registration_data;
   };
+
+  std::shared_ptr<FunctionDefAndOpRegistration> FindHelper(
+      const string& func) const SHARED_LOCKS_REQUIRED(mu_);
+  string FindGradientHelper(const string& func) const
+      SHARED_LOCKS_REQUIRED(mu_);
+
+  Status AddHelper(std::shared_ptr<FunctionDefAndOpRegistration> registration,
+                   bool* added) EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Same as AddFunctionDef/AddGradientDef except these methods set
   // `added` to true if the `fdef`/`grad` were actually added to this.
-  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added);
-  Status AddGradientDefHelper(const GradientDef& grad, bool* added);
-
-  const OpRegistryInterface* const default_registry_;
-  gtl::FlatMap<string, std::unique_ptr<FunctionDefAndOpRegistration>>
-      function_defs_;
-  gtl::FlatMap<string, string> func_grad_;
+  Status AddFunctionDefHelper(const FunctionDef& fdef, bool* added)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status AddGradientDefHelper(const GradientDef& grad, bool* added)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
-  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
+  const FunctionDef* GetAttrImpl(const NodeDef& ndef) const LOCKS_EXCLUDED(mu_);
 
-  // Remove all functions in `funcs` and all gradients of
-  // functions in `funcs_with_grads` from this library.
+  // Remove all functions in `funcs` and all gradients of functions in
+  // `funcs_with_grads` from this library.
   void Remove(const std::vector<string>& funcs,
-              const std::vector<string>& funcs_with_grads);
+              const std::vector<string>& funcs_with_grads)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Remove `func` from the library. Returns non-OK Status unless `func` is in
+  // the library. This should only be called when there is a guarantee that the
+  // function being removed hasn't been retrieved with `Find`.
+  Status RemoveFunctionHelper(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Remove gradient of function `func` from the library. Returns non-OK Status
+  // unless `func` has a gradient.
+  Status RemoveGradient(const string& func) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  mutable mutex mu_;
+  const OpRegistryInterface* const default_registry_;
+  gtl::FlatMap<string, std::shared_ptr<FunctionDefAndOpRegistration>>
+      function_defs_ GUARDED_BY(mu_);
+  gtl::FlatMap<string, string> func_grad_ GUARDED_BY(mu_);
 };
 
 // Forward declare. Defined in common_runtime/function.h
@@ -427,19 +535,61 @@ class FunctionLibraryRuntime {
     // instantiated on the local device.
     string target;
 
+    // Should the function be instantiated as a multi-device function?
+    bool is_multi_device_function = false;
+
+    // For multi-device functions, a vector of canonical device names for
+    // function's inputs. The device of resource inputs must be the device
+    // backing the resource, not the CPU device backing the resource handle.
+    // Must have the same length as number of inputs to the function.
+    std::vector<string> input_devices;
+
+    // For multi-device functions, a vector of canonical device names for
+    // function's outputs.
+    //
+    // (a) If specified (must have the same length as number of outputs):
+    //
+    // Specified devices will be assigned to Retval nodes inserted into the
+    // function body graph in place of function outputs. It is allowed to
+    // specify output device as empty string, in this case Retval device
+    // assignment will be inferred later when function graph will be placed
+    // before partitioning (this is required for resource outputs). Placer will
+    // respect colocation constraints.
+    //
+    // (b) If not specified:
+    //
+    // Function runtime will infer Retval device by following input edges, until
+    // it will reach a node with a device specification. This device
+    // specification must identify a unique device, i.e. a general specification
+    // like "job:foo" matching multiple devices will result in an error.
+    //
+    // IMPORTANT: Resource outputs
+    //
+    // Multi device functions might return resources on a devices different from
+    // the function call device. If output device is not specified for the
+    // resource output, and node producing that resource is a function call,
+    // runtime will leave device specification empty and will rely on Placer to
+    // infer correct device.
+    std::vector<string> output_devices;
+
     // This interface is EXPERIMENTAL and subject to change.
     //
-    // If non-null, the runtime will use `overlay_lib` to resolve
-    // function(s) named in `function_name` and `attrs`. Otherwise,
-    // the runtime will use its internal library.
-    // NOTE(mrry): If provided, all functions defined in `overlay_lib`
-    // must be self-contained, and cannot refer to functions defined
-    // in other libraries.
-    // TODO(mrry): Provide a mechanism for sharing core functions
-    // between a set of libraries (e.g. by allowing a
-    // `FunctionLibraryDefinition` to store an `outer_scope` pointer
-    // and implementing name resolution across libraries).
-    const FunctionLibraryDefinition* overlay_lib = nullptr;
+    // For multi-device functions, a mapping from _Arg node index to type and
+    // shape for input resources.
+    // REQUIRES: if input_resource_dtypes_and_shapes.count(i) > 0 then i-th
+    // argument type must be DT_RESOURCE.
+    std::unordered_map<int, DtypeAndPartialTensorShape>
+        input_resource_dtypes_and_shapes;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // If non-null, the runtime will use `lib_def` to resolve function(s) named
+    // in `function_name` and `attrs`. Otherwise, the runtime will use its
+    // internal library.
+    //
+    // NOTE(mrry): If provided, all functions defined in `lib_def` must be
+    // self-contained, and cannot refer to functions defined in other libraries.
+    const FunctionLibraryDefinition* lib_def = nullptr;
 
     // This interface is EXPERIMENTAL and subject to change.
     //
@@ -453,9 +603,40 @@ class FunctionLibraryRuntime {
 
     // This interface is EXPERIMENTAL and subject to change.
     //
-    // Instatiates the function using an executor of the given type. If empty,
+    // Instantiates the function using an executor of the given type. If empty,
     // the default TensorFlow executor will be used.
     string executor_type;
+
+    // If true, the runtime will attempt to create kernels for the function at
+    // instantiation time, rather than on the first run. This can be used to
+    // surface errors earlier.
+    bool create_kernels_eagerly = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function with the provided config_proto.
+    ConfigProto config_proto;
+
+    // If provided, this optimization function will be invoked before
+    // the placer for multi-device functions.
+    std::function<Status(std::vector<string> /*ret_node_names*/,
+                         std::vector<string> /*keep_node_names*/,
+                         FunctionLibraryDefinition*, const DeviceSet&,
+                         Device* /*cpu_device*/, std::unique_ptr<Graph>*)>
+        optimize_graph_fn;
+
+    // If set, partitioned functions will be added to `graph_collector`.
+    // `graph_collector` must be alive during the call to Instantiate.
+    GraphCollector* graph_collector = nullptr;
+
+    // Indicates whether the multi-device function backend should default the
+    // placement of ops without request device to `target`.
+    bool default_device_to_target = true;
+
+    // If true, the optimized Graph will be stored so that
+    // `FunctionLibraryRuntime::DebugString(handle)` contains the optimized
+    // Graph. Otherwise, the unoptimized function Graph will be returned.
+    bool include_optimized_graph_in_debug_string = false;
   };
   typedef uint64 Handle;
   virtual Status Instantiate(const string& function_name, AttrSlice attrs,
@@ -463,7 +644,8 @@ class FunctionLibraryRuntime {
                              Handle* handle) = 0;
   Status Instantiate(const string& function_name, AttrSlice attrs,
                      Handle* handle) {
-    return Instantiate(function_name, attrs, {}, handle);
+    auto opts = absl::make_unique<InstantiateOptions>();
+    return Instantiate(function_name, attrs, *opts, handle);
   }
 
   // Releases state associated with the handle.
@@ -476,6 +658,9 @@ class FunctionLibraryRuntime {
   // as long as *this.
   virtual const FunctionBody* GetFunctionBody(Handle h) = 0;
 
+  // Returns the return types for the function identified by handle `h`.
+  virtual Status GetRetTypes(Handle h, DataTypeVector* ret_types) = 0;
+
   // Asynchronously invokes the instantiated function identified by
   // "handle".
   //
@@ -487,13 +672,26 @@ class FunctionLibraryRuntime {
   // In the cross-process scenario, runner isn't used for making the Async
   // RPC calls.
   struct Options {
-    // The id of the step that is calling this function.
-    int64 step_id = 0;
+    Options() {}
+    explicit Options(const int64 step_id) : step_id(step_id) {}
+    // Choose a step ID that is guaranteed not to clash with any
+    // Session-generated step ID. DirectSession only generates
+    // non-negative step IDs (contiguous, starting from 0), and
+    // MasterSession generates 56-bit random step IDs whose MSB is
+    // always 0, so a negative random step ID should suffice.
+    const int64 step_id = -std::abs(static_cast<int64>(random::New64()));
+
+    // op_id of the function running in eager mode. Set when we want to copy
+    // remote outputs lazily. All components of a remote multi-device function
+    // should use the same op_id, in order to correctly map remote output
+    // tensors to the remote TensorHandles in the default device.
+    absl::optional<int64> op_id = absl::nullopt;
+
     Rendezvous* rendezvous = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
     ScopedStepContainer* step_container = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
 
     std::function<void(std::function<void()>)>* runner = nullptr;
 
@@ -510,6 +708,12 @@ class FunctionLibraryRuntime {
     // If true, we create a new IntraProcessRendezvous, else use the existing
     // one.
     bool create_rendezvous = false;
+
+    // If True, allow returning dead tensors.
+    bool allow_dead_tensors = false;
+
+    // Returns a human readable representation of this.
+    string DebugString() const;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void Run(const Options& opts, Handle handle,
@@ -525,39 +729,73 @@ class FunctionLibraryRuntime {
   virtual Status CreateKernel(const NodeDef& ndef, OpKernel** kernel) = 0;
 
   // Returns true iff the function named `function_name` is stateful.
+  //
   // NOTE(mrry): This method assumes that the runtime is associated with a
   // default function library, and looks up `function_name` in that library.
-  // It does not support overlay libraries.
-  virtual bool IsStateful(const string& function_name) = 0;
+  // It does not support overriding the function library.
+  virtual bool IsStateful(const string& function_name) const = 0;
 
   // Returns the device on which the function executes.
   virtual Device* device() = 0;
+  virtual const Device* device() const = 0;
+
+  // Returns the default runner in which the ops should be launched. If the
+  // device on which the function executes has a private thread pool, return
+  // runner on the device local thread pool.
+  virtual std::function<void(std::function<void()>)>* runner() = 0;
 
   // Get the DeviceMgr from which the device was obtained.
   virtual const DeviceMgr* device_mgr() const = 0;
 
   // Returns the function library definition that backs this runtime.
+  //
   // NOTE(mrry): The returned library definition is the default function library
-  // for this runtime. The runtime may instantiate functions from separate
-  // overlay libraries, which are not returned by this function.
+  // for this runtime. The caller may override the function library used by the
+  // runtime to instantiate functions, which will not be reflected in the return
+  // value of this function.
   virtual const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const = 0;
 
   // Returns the environment on which the function executes.
   virtual Env* env() = 0;
 
+  // Returns the ConfigProto passed to the session used to create the function.
+  virtual const ConfigProto* const config_proto() = 0;
+
   // Returns a debug string showing the definition of the function of
   // 'handle'.
   virtual string DebugString(Handle handle) = 0;
 
   // Returns the graph version number.
-  virtual int graph_def_version() = 0;
+  virtual int graph_def_version() const = 0;
 
   typedef uint64 LocalHandle;
 
+  // Creates a copy of ProcessFunctionLibraryRuntime (transferring ownership to
+  // the caller), FunctionLibraryRuntime (owned by the returned
+  // ProcessFunctionLibraryRuntime), FunctionLibraryDefinition (transferring
+  // ownership to the caller). Note that both the ProcessFunctionLibraryRuntime
+  // and FunctionLibraryRuntime borrow a pointer to the
+  // FunctionLibraryDefinition and so the FunctionLibraryDefinition should
+  // outlive both.
+  //
+  // The `skip_flib_def` argument controls whether the method should clone the
+  // FunctionLibraryDefinition (default behavior) or return an empty function
+  // library. The latter is used by tf.data, which manages
+  // FunctionLibraryDefinitions for its functions independently (and passes
+  // these into the FunctionLibraryRuntime through an overlay), to avoid linear
+  // runtime w.r.t. to number of functions in the current function library.
   virtual Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
                        std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
-                       FunctionLibraryRuntime** out_flr) = 0;
+                       FunctionLibraryRuntime** out_flr,
+                       bool skip_flib_def = false) = 0;
+
+  // Returns the name of the executor class (in the sense of
+  // `ExecutorFactory::GetFactory()`) that will be used based on the given
+  // dynamic `options` and static `attrs`. If none is specified, this method
+  // will return an empty string, which leaves the decision up to the runtime.
+  static string ExecutorType(const InstantiateOptions& options,
+                             AttrSlice attrs);
 };
 
 // Returns a canonicalized string for the instantiation of the
@@ -569,15 +807,24 @@ class FunctionLibraryRuntime {
 // address spaces.
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options);
-inline string Canonicalize(const string& funcname, AttrSlice attrs) {
-  return Canonicalize(funcname, attrs, {});
-}
+string Canonicalize(const string& funcname, AttrSlice attrs);
 
 const FunctionLibraryRuntime::Handle kInvalidHandle = -1;
 const FunctionLibraryRuntime::LocalHandle kInvalidLocalHandle = -1;
-typedef std::function<Status(FunctionLibraryRuntime*, const NodeDef&,
-                             std::unique_ptr<OpKernel>*)>
-    CustomKernelCreator;
+
+class CustomKernelCreator {
+ public:
+  virtual ~CustomKernelCreator() {}
+
+  // Given a NodeDef 'node_def' and the function library runtime 'flr',
+  // validate if the class supports creating such a kernel.
+  virtual bool CanCreateKernel(const FunctionLibraryRuntime& flr,
+                               const NodeDef& node_def) const = 0;
+
+  // Given a supported NodeDef, returns a kernel that computes the node.
+  virtual Status CreateKernel(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                              std::unique_ptr<OpKernel>* kernel) const = 0;
+};
 
 // Used to instantiate and run functions in a distributed system.
 class DistributedFunctionLibraryRuntime {
@@ -585,17 +832,35 @@ class DistributedFunctionLibraryRuntime {
   virtual ~DistributedFunctionLibraryRuntime() {}
 
   // The _target attr in attrs determines where the function is instantiated.
-  virtual Status Instantiate(
+  virtual void Instantiate(
       const string& function_name, const FunctionLibraryDefinition& lib_def,
       AttrSlice attrs,
       const FunctionLibraryRuntime::InstantiateOptions& options,
-      FunctionLibraryRuntime::LocalHandle* handle) = 0;
+      FunctionLibraryRuntime::LocalHandle* handle,
+      FunctionLibraryRuntime::DoneCallback done) = 0;
 
   // opts.runner isn't used for execution.
   virtual void Run(const FunctionLibraryRuntime::Options& opts,
                    FunctionLibraryRuntime::LocalHandle handle,
                    gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
                    FunctionLibraryRuntime::DoneCallback done) = 0;
+
+#if !defined(IS_MOBILE_PLATFORM)
+  // TODO(yujingzhang): Support outputting tensors on remote devices.
+  virtual void Run(const FunctionLibraryRuntime::Options& opts,
+                   FunctionLibraryRuntime::LocalHandle handle,
+                   std::vector<eager::RemoteTensorHandle>* args,
+                   FunctionLibraryRuntime::DoneCallback done) {
+    done(errors::Unimplemented("Unimplemented."));
+  }
+#endif  // IS_MOBILE_PLATFORM
+
+  virtual void CleanUp(uint64 step_id,
+                       FunctionLibraryRuntime::LocalHandle handle,
+                       FunctionLibraryRuntime::DoneCallback done) = 0;
+
+  // DeviceMgr with *all* available devices.
+  virtual DeviceMgr* remote_device_mgr() const = 0;
 };
 
 // Extracts the actual type from "attr_values" based on its definition
@@ -668,9 +933,10 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
 #define REGISTER_OP_GRADIENT_UNIQ_HELPER(ctr, name, fn) \
   REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)
 
-#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)                 \
-  static bool unused_grad_##ctr = SHOULD_REGISTER_OP_GRADIENT && \
-                                  ::tensorflow::gradient::RegisterOp(name, fn)
+#define REGISTER_OP_GRADIENT_UNIQ(ctr, name, fn)      \
+  static bool unused_grad_##ctr TF_ATTRIBUTE_UNUSED = \
+      SHOULD_REGISTER_OP_GRADIENT &&                  \
+      ::tensorflow::gradient::RegisterOp(name, fn)
 
 namespace gradient {
 // Register a gradient creator for the "op".
@@ -694,4 +960,4 @@ GET_ATTR(bool)
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_FUNCTION_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_FUNCTION_H_

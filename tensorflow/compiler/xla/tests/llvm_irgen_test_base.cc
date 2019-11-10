@@ -25,57 +25,92 @@ limitations under the License.
 
 namespace xla {
 
-void LLVMIRGenTestBase::SetIrHook(bool match_optimized_ir) {
+void LlvmIrGenTestBase::SetIrHook(bool match_optimized_ir) {
   auto llvm_compiler = GetLLVMCompiler();
   using std::placeholders::_1;
 
   // Add the IR inspection hook to the LLVM compiler.
   if (match_optimized_ir) {
     llvm_compiler->SetPostOptimizationHook(
-        std::bind(&LLVMIRGenTestBase::IrHook, this, _1));
+        std::bind(&LlvmIrGenTestBase::IrHook, this, _1));
   } else {
     llvm_compiler->SetPreOptimizationHook(
-        std::bind(&LLVMIRGenTestBase::IrHook, this, _1));
+        std::bind(&LlvmIrGenTestBase::IrHook, this, _1));
   }
 }
 
-void LLVMIRGenTestBase::ResetIrHook() {
+void LlvmIrGenTestBase::ResetIrHook() {
   auto llvm_compiler = GetLLVMCompiler();
 
   llvm_compiler->RemovePreOptimizationHook();
   llvm_compiler->RemovePostOptimizationHook();
 }
 
-void LLVMIRGenTestBase::CompileAndVerifyIr(
+void LlvmIrGenTestBase::CompileAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const string& pattern,
     bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  TF_ASSERT_OK(CompileToExecutable(std::move(hlo_module)).status());
+  Status status = CompileToExecutable(std::move(hlo_module)).status();
   ResetIrHook();
+  TF_ASSERT_OK(status);
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   TF_ASSERT_OK(filecheck_result.status());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-void LLVMIRGenTestBase::CompileAheadOfTimeAndVerifyIr(
+void LlvmIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
+                                           const string& expected_llvm_ir,
+                                           bool match_optimized_ir) {
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  CompileAndVerifyIr(std::move(module), expected_llvm_ir, match_optimized_ir);
+}
+
+void LlvmIrGenTestBase::CompileAheadOfTimeAndVerifyIr(
     std::unique_ptr<HloModule> hlo_module, const AotCompilationOptions& options,
     const string& pattern, bool match_optimized_ir) {
   SetIrHook(match_optimized_ir);
-  TF_ASSERT_OK(
-      CompileToAotCompilationResult(std::move(hlo_module), options).status());
+  Status status =
+      CompileToAotCompilationResult(std::move(hlo_module), options).status();
   ResetIrHook();
+  TF_ASSERT_OK(status);
 
   StatusOr<bool> filecheck_result = RunFileCheck(ir_, pattern);
   ASSERT_TRUE(filecheck_result.ok());
   EXPECT_TRUE(filecheck_result.ValueOrDie());
 }
 
-LLVMCompiler* LLVMIRGenTestBase::GetLLVMCompiler() {
+void LlvmIrGenTestBase::MatchOptimizedHlo(absl::string_view hlo,
+                                          absl::string_view pattern,
+                                          bool print_operand_shape) {
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> optimized_module,
+                          GetOptimizedModule(hlo));
+  HloPrintOptions print_opts;
+  print_opts.set_print_operand_shape(print_operand_shape);
+  StatusOr<bool> filecheck_result =
+      RunFileCheck(optimized_module->ToString(print_opts), pattern);
+  TF_ASSERT_OK(filecheck_result.status());
+  EXPECT_TRUE(filecheck_result.ValueOrDie());
+}
+
+StatusOr<std::unique_ptr<HloModule>> LlvmIrGenTestBase::GetOptimizedModule(
+    absl::string_view hlo) {
+  HloModuleConfig config;
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> module,
+                      ParseAndReturnVerifiedModule(hlo, config));
+  return backend().compiler()->RunHloPasses(
+      std::move(module), backend().default_stream_executor(),
+      backend().default_stream_executor()->GetAllocator());
+}
+
+LLVMCompiler* LlvmIrGenTestBase::GetLLVMCompiler() {
   return static_cast<LLVMCompiler*>(backend().compiler());
 }
 
-Status LLVMIRGenTestBase::IrHook(const llvm::Module& module) {
+Status LlvmIrGenTestBase::IrHook(const llvm::Module& module) {
   ir_ = llvm_ir::DumpModuleToString(module);
   return Status::OK();
 }

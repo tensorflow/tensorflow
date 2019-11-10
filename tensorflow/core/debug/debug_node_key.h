@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DEBUG_NODE_KEY_H_
-#define TENSORFLOW_DEBUG_NODE_KEY_H_
+#ifndef TENSORFLOW_CORE_DEBUG_DEBUG_NODE_KEY_H_
+#define TENSORFLOW_CORE_DEBUG_DEBUG_NODE_KEY_H_
 
 #include <string>
 
@@ -48,4 +48,4 @@ struct DebugNodeKey {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DEBUG_NODE_KEY_H_
+#endif  // TENSORFLOW_CORE_DEBUG_DEBUG_NODE_KEY_H_

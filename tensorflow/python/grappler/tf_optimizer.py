@@ -19,24 +19,44 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_opt
-from tensorflow.python.framework import errors
 from tensorflow.python.grappler import cluster as gcluster
 
 
-def OptimizeGraph(rewriter_config,
+def OptimizeGraph(config_proto,
                   metagraph,
                   verbose=True,
                   graph_id=b'graph_to_optimize',
-                  cluster=None):
-  """Optimize the provided metagraph."""
-  with errors.raise_exception_on_not_ok_status() as status:
-    if cluster is None:
-      cluster = gcluster.Cluster()
-    ret_from_swig = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
-                                            rewriter_config.SerializeToString(),
-                                            metagraph.SerializeToString(),
-                                            verbose, graph_id, status)
+                  cluster=None,
+                  strip_default_attributes=False):
+  """Optimize the provided metagraph.
+
+  For best results, the signature_def field in `metagraph` should be populated
+  with information about input (feed) and output (fetch) tensors.
+
+  Args:
+    config_proto: a ConfigProto protobuf.
+    metagraph: a MetagraphDef protobuf.
+    verbose: whether to log optimization results.
+    graph_id: a string identifying this graph.
+    cluster: a grappler cluster object representing hardware resources
+        available to run this graph.
+    strip_default_attributes: whether graph node attributes having default
+        values should be removed after all the optimization passes. This
+        option is useful if the resulting graph will be executed by an older
+        process that might not know some of the recently added attributes.
+  """
+  if not isinstance(config_proto, config_pb2.ConfigProto):
+    raise TypeError('Expected config_proto to be a ConfigProto, saw type %s' %
+                    type(config_proto))
+  if cluster is None:
+    cluster = gcluster.Cluster()
+  ret_from_swig = tf_opt.TF_OptimizeGraph(cluster.tf_cluster,
+                                          config_proto.SerializeToString(),
+                                          metagraph.SerializeToString(),
+                                          verbose, graph_id,
+                                          strip_default_attributes)
   if ret_from_swig is None:
     return None
   out_graph = graph_pb2.GraphDef().FromString(ret_from_swig)

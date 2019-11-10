@@ -425,5 +425,63 @@ TEST_F(FreezeTest, GraphDefWithAndWithoutDependentResourceVariables) {
   TestFreezeGraphWithAndWithoutDependentVariables(true);
 }
 
+TEST_F(FreezeTest, InputsAndOutputsCompositeTensorSignatureDef) {
+  // Test that inputs and outputs get correctly populated for a
+  // SignatureDef containing composite tensor inputs and outputs.
+  SavedModelBundle saved_model_bundle;
+  SignatureDef signature_def;
+
+  TensorInfo& in = (*signature_def.mutable_inputs())["input_arg"];
+  in.mutable_composite_tensor()->add_components()->set_name("input1:0");
+  in.mutable_composite_tensor()->add_components()->set_name("input2:0");
+
+  TensorInfo& out = (*signature_def.mutable_outputs())["output_arg"];
+  out.mutable_composite_tensor()->add_components()->set_name("output2:0");
+  out.mutable_composite_tensor()->add_components()->set_name("output1:0");
+
+  AddSignatureDefToSavedModelBundle(signature_def, "signature_def",
+                                    &saved_model_bundle);
+  GraphDef frozen_graph_def;
+  std::unordered_set<string> inputs;
+  std::unordered_set<string> outputs;
+  TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
+                                &outputs));
+  std::unordered_set<string> expected_inputs = {"input1:0", "input2:0"};
+  std::unordered_set<string> expected_outputs = {"output1:0", "output2:0"};
+  EXPECT_EQ(expected_inputs, inputs);
+  EXPECT_EQ(expected_outputs, outputs);
+}
+
+TEST_F(FreezeTest, InputsAndOutputsSparseCooSignatureDef) {
+  // Test that inputs and outputs get correctly populated for a
+  // SignatureDef containing composite tensor inputs and outputs.
+  SavedModelBundle saved_model_bundle;
+  SignatureDef signature_def;
+
+  TensorInfo& in = (*signature_def.mutable_inputs())["input_arg"];
+  in.mutable_coo_sparse()->set_values_tensor_name("input1:0");
+  in.mutable_coo_sparse()->set_indices_tensor_name("input2:0");
+  in.mutable_coo_sparse()->set_dense_shape_tensor_name("input3:0");
+
+  TensorInfo& out = (*signature_def.mutable_outputs())["output_arg"];
+  out.mutable_coo_sparse()->set_values_tensor_name("output1:0");
+  out.mutable_coo_sparse()->set_indices_tensor_name("output2:0");
+  out.mutable_coo_sparse()->set_dense_shape_tensor_name("output3:0");
+
+  AddSignatureDefToSavedModelBundle(signature_def, "signature_def",
+                                    &saved_model_bundle);
+  GraphDef frozen_graph_def;
+  std::unordered_set<string> inputs;
+  std::unordered_set<string> outputs;
+  TF_ASSERT_OK(FreezeSavedModel(saved_model_bundle, &frozen_graph_def, &inputs,
+                                &outputs));
+  std::unordered_set<string> expected_inputs = {"input1:0", "input2:0",
+                                                "input3:0"};
+  std::unordered_set<string> expected_outputs = {"output1:0", "output2:0",
+                                                 "output3:0"};
+  EXPECT_EQ(expected_inputs, inputs);
+  EXPECT_EQ(expected_outputs, outputs);
+}
+
 }  // namespace
 }  // namespace tensorflow

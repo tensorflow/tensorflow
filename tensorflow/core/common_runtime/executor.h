@@ -13,16 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMMON_RUNTIME_EXECUTOR_H_
-#define TENSORFLOW_COMMON_RUNTIME_EXECUTOR_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/session_state.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -80,16 +83,22 @@ class Executor {
   //
   // RunAsync() dispatches closures to "runner". Typically, "runner"
   // is backed up by a bounded threadpool.
+  typedef std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>
+      RendezvousFactory;
+
   struct Args {
     int64 step_id = 0;
     Rendezvous* rendezvous = nullptr;
-    StepStatsCollector* stats_collector = nullptr;
+    StepStatsCollectorInterface* stats_collector = nullptr;
     CallFrameInterface* call_frame = nullptr;
     CancellationManager* cancellation_manager = nullptr;
     SessionState* session_state = nullptr;
+    // Unique session identifier. Can be empty.
+    string session_handle;
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
+    thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -97,13 +106,6 @@ class Executor {
     typedef std::function<void()> Closure;
     typedef std::function<void(Closure)> Runner;
     Runner runner = nullptr;
-
-    // A callback that is invoked each time a node has finished executing.
-    typedef std::function<Status(const string& node_name, const int output_slot,
-                                 const Tensor* tensor, const bool is_ref,
-                                 OpKernelContext* ctx)>
-        NodeOutputsCallback;
-    NodeOutputsCallback node_outputs_cb = nullptr;
   };
   typedef std::function<void(const Status&)> DoneCallback;
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
@@ -131,6 +133,8 @@ class Executor {
 struct LocalExecutorParams {
   Device* device;
 
+  const SessionMetadata* session_metadata = nullptr;
+
   // The library runtime support.
   FunctionLibraryRuntime* function_library = nullptr;
 
@@ -140,11 +144,10 @@ struct LocalExecutorParams {
   std::function<Status(const NodeDef&, OpKernel**)> create_kernel;
   std::function<void(OpKernel*)> delete_kernel;
 
-  Executor::Args::NodeOutputsCallback node_outputs_cb;
+  Executor::RendezvousFactory rendezvous_factory;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
-                                      std::unique_ptr<const Graph> graph,
-                                      Executor** executor);
+                                      const Graph& graph, Executor** executor);
 
 // A class to help run multiple executors in parallel and wait until
 // all of them are complete.
@@ -180,43 +183,50 @@ class ExecutorBarrier {
 
   mutable mutex mu_;
   int pending_ GUARDED_BY(mu_) = 0;
-  Status status_ GUARDED_BY(mu_);
+  StatusGroup status_group_ GUARDED_BY(mu_);
 
   void WhenDone(const Status& s) {
-    bool error = false;
     Rendezvous* error_rendez = nullptr;
     StatusCallback done = nullptr;
     Status status;
+
     {
       mutex_lock l(mu_);
-      // If we are the first error encountered, mark the status
-      // appropriately and later trigger an abort of the Rendezvous
-      // object by this thread only.
-      if (status_.ok() && !s.ok()) {
-        error = true;
+
+      // If we are the first error encountered, trigger an abort of the
+      // Rendezvous object by this thread only.
+      if (status_group_.ok() && !s.ok()) {
         error_rendez = rendez_;
         error_rendez->Ref();
-        status_ = s;
       }
+
+      if (!s.ok() && !StatusGroup::IsDerived(s) &&
+          !status_group_.HasLogMessages()) {
+        status_group_.AttachLogMessages();
+      }
+
+      status_group_.Update(s);
 
       // If this is the last call to WhenDone, call the final callback
       // below.
       if (--pending_ == 0) {
         CHECK(done_cb_ != nullptr);
         std::swap(done, done_cb_);
-      }
-
-      if (!status_.ok()) {
-        status = status_;
+        status = status_group_.as_summary_status();
       }
     }
 
-    if (error) {
-      error_rendez->StartAbort(status);
+    if (error_rendez != nullptr) {
+      error_rendez->StartAbort(
+          errors::Aborted("Stopping remaining executors."));
       error_rendez->Unref();
     }
+
     if (done != nullptr) {
       delete this;
+      if (!status.ok()) {
+        VLOG(1) << "ExecutorBarrier finished with bad status: " << status;
+      }
       done(status);
     }
   }
@@ -238,4 +248,4 @@ void DeleteNonCachedKernel(OpKernel* kernel);
 
 }  // end namespace tensorflow
 
-#endif  // TENSORFLOW_COMMON_RUNTIME_EXECUTOR_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EXECUTOR_H_

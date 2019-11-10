@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "BoostedTreesQuantileStreamResourceHandleOp"
+  visibility: HIDDEN
+  summary: "Creates a handle to a BoostedTreesQuantileStreamResource."
+}

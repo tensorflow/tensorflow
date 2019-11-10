@@ -12,12 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_ACCESS_H_
-#define TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_ACCESS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_H_
+
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/rendezvous.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
 
@@ -26,15 +28,17 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
  public:
   CollectiveRemoteAccessLocal(const DeviceMgr* dev_mgr,
                               DeviceResolverInterface* dev_resolver,
+                              std::shared_ptr<UnboundedWorkQueue> work_queue,
                               int64 step_id)
       : dev_mgr_(dev_mgr),
         dev_resolver_(dev_resolver),
-        buf_rendezvous_(step_id),
+        work_queue_(std::move(work_queue)),
+        buf_rendezvous_(step_id, dev_mgr),
         step_id_(step_id) {}
 
-  virtual ~CollectiveRemoteAccessLocal() {}
+  ~CollectiveRemoteAccessLocal() override = default;
 
-  void StartAbort(const Status& s);
+  void StartAbort(const Status& s) override;
 
   void RecvFromPeer(const string& peer_device, const string& peer_task,
                     bool peer_is_local, const string& key, Device* to_device,
@@ -52,21 +56,29 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                   const DeviceLocality& client_locality,
                   const StatusCallback& done) override;
 
-  void GetDeviceLocalitiesAsync(const CollInstanceParams& ci_params,
-                                std::vector<DeviceLocality>* localities,
-                                const StatusCallback& done) override {
-    dev_resolver_->GetDeviceLocalitiesAsync(ci_params, localities, done);
+  void RunClosure(std::function<void()> closure) override {
+    work_queue_->Schedule(std::move(closure));
   }
 
-  void GetLocalityAsync(const string& device, const string& task,
-                        DeviceLocality* locality,
-                        const StatusCallback& done) override {
-    dev_resolver_->GetLocalityAsync(device, task, locality, done);
+  void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
+                                   const std::vector<string>& tasks,
+                                   std::vector<DeviceAttributes>* attributes,
+                                   const StatusCallback& done) override {
+    dev_resolver_->GetAllDeviceAttributesAsync(devices, tasks, attributes,
+                                               done);
+  }
+
+  void GetDeviceAttributesAsync(const string& device, const string& task,
+                                DeviceAttributes* attributes,
+                                const StatusCallback& done) override {
+    dev_resolver_->GetDeviceAttributesAsync(device, task, attributes, done);
   }
 
   void ClearTask(const string& task) override {
     dev_resolver_->ClearTask(task);
   }
+
+  void ClearCache() override { dev_resolver_->ClearCache(); }
 
   BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }
 
@@ -84,9 +96,12 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
  protected:
   const DeviceMgr* dev_mgr_;               // not owned
   DeviceResolverInterface* dev_resolver_;  // not owned
+  // Ownership of `work_queue_` is shared between `this` and
+  // `CollectiveExecutorMgr`.
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   BufRendezvous buf_rendezvous_;
   int64 step_id_;
 };
 
 }  // namespace tensorflow
-#endif  // TENSORFLOW_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_ACCESS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_COLLECTIVE_RMA_LOCAL_H_

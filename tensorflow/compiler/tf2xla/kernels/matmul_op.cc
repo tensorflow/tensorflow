@@ -18,14 +18,14 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 namespace {
 
-constexpr std::array<DataType, 5> kMatmulTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64}};
+constexpr std::array<DataType, 6> kMatmulTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_DOUBLE, DT_COMPLEX64, DT_COMPLEX128}};
 
 class MatMulOp : public XlaOpKernel {
  public:
@@ -54,18 +54,22 @@ class MatMulOp : public XlaOpKernel {
     const TensorShape b_shape = ctx->InputShape(1);
 
     // Check that the dimensions of the two matrices are valid.
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(a_shape),
-                errors::InvalidArgument("In[0] is not a matrix"));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsMatrix(b_shape),
-                errors::InvalidArgument("In[1] is not a matrix"));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(a_shape),
+        errors::InvalidArgument("In[0] is not a matrix. Instead it has shape ",
+                                a_shape.DebugString()));
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsMatrix(b_shape),
+        errors::InvalidArgument("In[1] is not a matrix. Instead it has shape ",
+                                b_shape.DebugString()));
     int first_index = transpose_a_ ? 0 : 1;
     int second_index = transpose_b_ ? 1 : 0;
 
     OP_REQUIRES(ctx,
                 a_shape.dim_size(first_index) == b_shape.dim_size(second_index),
-                errors::InvalidArgument("Matrix size-compatible: In[0]: ",
-                                        a_shape.DebugString(), ", In[1]: ",
-                                        b_shape.DebugString()));
+                errors::InvalidArgument(
+                    "Matrix size-incompatible: In[0]: ", a_shape.DebugString(),
+                    ", In[1]: ", b_shape.DebugString()));
 
     xla::XlaOp a = ctx->Input(0);
     xla::XlaOp b = ctx->Input(1);

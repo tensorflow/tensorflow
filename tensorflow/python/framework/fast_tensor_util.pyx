@@ -6,6 +6,13 @@ cimport numpy as np
 
 from tensorflow.python.util import compat
 
+def AppendBFloat16ArrayToTensorProto(
+    tensor_proto, np.ndarray[np.uint16_t, ndim=1] nparray):
+  cdef long i, n
+  n = nparray.size
+  for i in range(n):
+    tensor_proto.half_val.append(nparray[i])
+
 
 def AppendFloat16ArrayToTensorProto(
     # For numpy, npy_half is a typedef for npy_uint16,
@@ -124,4 +131,4 @@ def AppendBoolArrayToTensorProto(tensor_proto, nparray):
   cdef long i, n
   n = nparray.size
   for i in range(n):
-    tensor_proto.bool_val.append(np.asscalar(nparray[i]))
+    tensor_proto.bool_val.append(nparray.item(i))

@@ -73,6 +73,7 @@ TEST_F(SqliteTest, InsertAndSelectDouble) {
   EXPECT_EQ(1, stmt.ColumnInt(1));
 }
 
+#ifdef DSQLITE_ENABLE_JSON1
 TEST_F(SqliteTest, Json1Extension) {
   string s1 = "{\"key\": 42}";
   string s2 = "{\"key\": \"value\"}";
@@ -85,6 +86,7 @@ TEST_F(SqliteTest, Json1Extension) {
   EXPECT_EQ(42, stmt.ColumnInt(0));
   EXPECT_EQ("value", stmt.ColumnString(1));
 }
+#endif //DSQLITE_ENABLE_JSON1
 
 TEST_F(SqliteTest, NulCharsInString) {
   string s;  // XXX: Want to write {2, '\0'} but not sure why not.

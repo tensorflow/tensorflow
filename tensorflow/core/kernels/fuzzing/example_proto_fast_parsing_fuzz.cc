@@ -30,7 +30,7 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
   void BuildGraph(const Scope& scope) final {
     using namespace ::tensorflow::ops;  // NOLINT(build/namespaces)
     // The serialized proto.
-    auto input = Placeholder(scope.WithOpName("input1"), DT_STRING);
+    auto input = Placeholder(scope.WithOpName("input"), DT_STRING);
 
     auto in_expanded = ExpandDims(scope, input, Const<int>(scope, 0));
 
@@ -43,18 +43,17 @@ class FuzzExampleProtoFastParsing : public FuzzSession {
     std::vector<PartialTensorShape> dense_shapes;
     dense_shapes.push_back(PartialTensorShape());
 
-    std::ignore = ParseExample(scope.WithOpName("output"), in_expanded, names,
-                               sparse_keys, dense_keys, dense_defaults,
-                               sparse_types, dense_shapes);
+    (void)ParseExample(scope.WithOpName("output"), in_expanded, names,
+                       sparse_keys, dense_keys, dense_defaults, sparse_types,
+                       dense_shapes);
   }
 
   void FuzzImpl(const uint8_t* data, size_t size) final {
     // TODO(dga):  Test the batch case also.
     Tensor input_tensor(tensorflow::DT_STRING, TensorShape({}));
-    input_tensor.scalar<string>()() =
+    input_tensor.scalar<tstring>()() =
         string(reinterpret_cast<const char*>(data), size);
-    // TODO(b/32704451): Don't just ignore the ::tensorflow::Status object!
-    RunOneInput(input_tensor).IgnoreError();
+    RunInputs({{"input", input_tensor}});
   }
 };
 

@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
-#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -43,36 +42,30 @@ class GenericTransferManager : public TransferManager {
 
   void TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
-      std::function<void(StatusOr<std::unique_ptr<Literal>>)> done) override;
+      MutableBorrowingLiteral literal, std::function<void(Status)> done,
+      const TransferMetadata* transfer_metadata) override;
 
   Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
-      const ShapedBuffer& device_buffer) override;
+      const ShapedBuffer& device_buffer,
+      const TransferMetadata* transfer_metadata) override;
 
   Status TransferLiteralToInfeed(se::StreamExecutor* executor,
                                  const LiteralSlice& literal) override;
   Status TransferLiteralFromOutfeed(se::StreamExecutor* executor,
                                     const Shape& literal_shape,
-                                    Literal* literal) override;
+                                    MutableBorrowingLiteral literal) override;
 
-  Status ResetDevices(
-      tensorflow::gtl::ArraySlice<se::StreamExecutor*> executors) override;
+  Status ResetDevices(absl::Span<se::StreamExecutor* const> executors) override;
 
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
  protected:
-  Status TransferBufferToInfeed(se::StreamExecutor* executor, int64 size,
-                                const void* source) override;
-
   Status WriteSingleTupleIndexTable(
-      se::Stream* stream,
-      tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> elements,
+      se::Stream* stream, absl::Span<const se::DeviceMemoryBase> elements,
       const Shape& shape, se::DeviceMemoryBase* region) override;
 
  private:
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDeviceInternal(
-      se::StreamExecutor* executor, const ShapedBuffer& device_buffer);
-
   // The platform this transfer manager targets.
   const se::Platform::Id platform_id_;
 

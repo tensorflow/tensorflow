@@ -1,5 +1,4 @@
 # Copyright 2016 The TensorFlow Authors. All Rights Reserved.
-#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -18,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -34,7 +34,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import distribute as distribute_lib
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
@@ -43,24 +42,24 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
   """Create variable in `GraphKeys.(LOCAL|METRIC_VARIABLES)` collections.
 
   If running in a `DistributionStrategy` context, the variable will be
-  "tower local". This means:
+  "sync on read". This means:
 
   *   The returned object will be a container with separate variables
-      per replica/tower of the model.
+      per replica of the model.
 
   *   When writing to the variable, e.g. using `assign_add` in a metric
       update, the update will be applied to the variable local to the
-      replica/tower.
+      replica.
 
   *   To get a metric's result value, we need to sum the variable values
-      across the replicas/towers before computing the final answer.
-      Furthermore, the final answer should be computed once instead of
-      in every replica/tower. Both of these are accomplished by
-      running the computation of the final result value inside
-      `tf.contrib.distribute.get_tower_context().merge_call(fn)`.
+      across the replicas before computing the final answer. Furthermore,
+      the final answer should be computed once instead of in every
+      replica. Both of these are accomplished by running the computation
+      of the final result value inside
+      `distribution_strategy_context.get_replica_context().merge_call(fn)`.
       Inside the `merge_call()`, ops are only added to the graph once
-      and access to a tower-local variable in a computation returns
-      the sum across all replicas/towers.
+      and access to a sync on read variable in a computation returns
+      the sum across all replicas.
 
   Args:
     shape: Shape of the created variable.
@@ -71,17 +70,19 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
 
   Returns:
     A (non-trainable) variable initialized to zero, or if inside a
-    `DistributionStrategy` scope a tower-local variable container.
+    `DistributionStrategy` scope a sync on read variable container.
   """
-  with distribute_lib.get_tower_context().tower_local_var_scope('sum'):
-    # Note that "tower local" implies trainable=False.
-    return variable_scope.variable(
-        lambda: array_ops.zeros(shape, dtype),
-        collections=[
-            ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
-        ],
-        validate_shape=validate_shape,
-        name=name)
+  # Note that synchronization "ON_READ" implies trainable=False.
+  return variable_scope.variable(
+      lambda: array_ops.zeros(shape, dtype),
+      trainable=False,
+      collections=[
+          ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
+      ],
+      validate_shape=validate_shape,
+      synchronization=variable_scope.VariableSynchronization.ON_READ,
+      aggregation=variable_scope.VariableAggregation.SUM,
+      name=name)
 
 
 def _remove_squeezable_dimensions(predictions, labels, weights):
@@ -211,24 +212,6 @@ def _maybe_expand_labels(labels, predictions):
         lambda: array_ops.expand_dims(labels, -1, name=scope), lambda: labels)
 
 
-def _safe_div(numerator, denominator, name):
-  """Divides two tensors element-wise, returning 0 if the denominator is <= 0.
-
-  Args:
-    numerator: A real `Tensor`.
-    denominator: A real `Tensor`, with dtype matching `numerator`.
-    name: Name for the returned op.
-
-  Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
-  """
-  t = math_ops.truediv(numerator, denominator)
-  zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-  condition = math_ops.greater(denominator, zero)
-  zero = math_ops.cast(zero, t.dtype)
-  return array_ops.where(condition, t, zero, name=name)
-
-
 def _safe_scalar_div(numerator, denominator, name):
   """Divides two values, returning 0 if the denominator is 0.
 
@@ -242,12 +225,7 @@ def _safe_scalar_div(numerator, denominator, name):
   """
   numerator.get_shape().with_rank_at_most(1)
   denominator.get_shape().with_rank_at_most(1)
-  return control_flow_ops.cond(
-      math_ops.equal(
-          array_ops.constant(0.0, dtype=dtypes.float64), denominator),
-      lambda: array_ops.constant(0.0, dtype=dtypes.float64),
-      lambda: math_ops.div(numerator, denominator),
-      name=name)
+  return math_ops.div_no_nan(numerator, denominator, name=name)
 
 
 def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
@@ -278,9 +256,9 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
       [num_classes, num_classes], dtypes.float64, name='total_confusion_matrix')
 
   # Cast the type to int64 required by confusion_matrix_ops.
-  predictions = math_ops.to_int64(predictions)
-  labels = math_ops.to_int64(labels)
-  num_classes = math_ops.to_int64(num_classes)
+  predictions = math_ops.cast(predictions, dtypes.int64)
+  labels = math_ops.cast(labels, dtypes.int64)
+  num_classes = math_ops.cast(num_classes, dtypes.int64)
 
   # Flatten the input if its rank > 1.
   if predictions.get_shape().ndims > 1:
@@ -299,7 +277,42 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
   return total_cm, update_op
 
 
-@tf_export('metrics.mean')
+def _aggregate_across_replicas(metrics_collections, metric_value_fn, *args):
+  """Aggregate metric value across replicas."""
+  def fn(distribution, *a):
+    """Call `metric_value_fn` in the correct control flow context."""
+    if hasattr(distribution.extended, '_outer_control_flow_context'):
+      # If there was an outer context captured before this method was called,
+      # then we enter that context to create the metric value op. If the
+      # caputred context is `None`, ops.control_dependencies(None) gives the
+      # desired behavior. Else we use `Enter` and `Exit` to enter and exit the
+      # captured context.
+      # This special handling is needed because sometimes the metric is created
+      # inside a while_loop (and perhaps a TPU rewrite context). But we don't
+      # want the value op to be evaluated every step or on the TPU. So we
+      # create it outside so that it can be evaluated at the end on the host,
+      # once the update ops have been evaluted.
+
+      # pylint: disable=protected-access
+      if distribution.extended._outer_control_flow_context is None:
+        with ops.control_dependencies(None):
+          metric_value = metric_value_fn(distribution, *a)
+      else:
+        distribution.extended._outer_control_flow_context.Enter()
+        metric_value = metric_value_fn(distribution, *a)
+        distribution.extended._outer_control_flow_context.Exit()
+        # pylint: enable=protected-access
+    else:
+      metric_value = metric_value_fn(distribution, *a)
+    if metrics_collections:
+      ops.add_to_collections(metrics_collections, metric_value)
+    return metric_value
+
+  return distribution_strategy_context.get_replica_context().merge_call(
+      fn, args=args)
+
+
+@tf_export(v1=['metrics.mean'])
 def mean(values,
          weights=None,
          metrics_collections=None,
@@ -347,18 +360,18 @@ def mean(values,
                        'is enabled.')
 
   with variable_scope.variable_scope(name, 'mean', (values, weights)):
-    values = math_ops.to_float(values)
+    values = math_ops.cast(values, dtypes.float32)
 
     total = metric_variable([], dtypes.float32, name='total')
     count = metric_variable([], dtypes.float32, name='count')
 
     if weights is None:
-      num_values = math_ops.to_float(array_ops.size(values))
+      num_values = math_ops.cast(array_ops.size(values), dtypes.float32)
     else:
       values, _, weights = _remove_squeezable_dimensions(
           predictions=values, labels=None, weights=weights)
       weights = weights_broadcast_ops.broadcast_weights(
-          math_ops.to_float(weights), values)
+          math_ops.cast(weights, dtypes.float32), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.reduce_sum(weights)
 
@@ -366,15 +379,13 @@ def mean(values,
     with ops.control_dependencies([values]):
       update_count_op = state_ops.assign_add(count, num_values)
 
-    def aggregate_across_towers(_, t, c):
-      mean_t = _safe_div(t, c, 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, mean_t)
-      return mean_t
+    def compute_mean(_, t, c):
+      return math_ops.div_no_nan(t, math_ops.maximum(c, 0), name='value')
 
-    mean_t = distribute_lib.get_tower_context().merge_call(
-        aggregate_across_towers, total, count)
-    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
+    mean_t = _aggregate_across_replicas(
+        metrics_collections, compute_mean, total, count)
+    update_op = math_ops.div_no_nan(
+        update_total_op, math_ops.maximum(update_count_op, 0), name='update_op')
 
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
@@ -382,7 +393,7 @@ def mean(values,
     return mean_t, update_op
 
 
-@tf_export('metrics.accuracy')
+@tf_export(v1=['metrics.accuracy'])
 def accuracy(labels,
              predictions,
              weights=None,
@@ -441,7 +452,8 @@ def accuracy(labels,
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   if labels.dtype != predictions.dtype:
     predictions = math_ops.cast(predictions, labels.dtype)
-  is_correct = math_ops.to_float(math_ops.equal(predictions, labels))
+  is_correct = math_ops.cast(
+      math_ops.equal(predictions, labels), dtypes.float32)
   return mean(is_correct, weights, metrics_collections, updates_collections,
               name or 'accuracy')
 
@@ -512,7 +524,7 @@ def _confusion_matrix_at_thresholds(labels,
           message='predictions must be in [0, 1]')
   ]):
     predictions, labels, weights = _remove_squeezable_dimensions(
-        predictions=math_ops.to_float(predictions),
+        predictions=math_ops.cast(predictions, dtypes.float32),
         labels=math_ops.cast(labels, dtype=dtypes.bool),
         weights=weights)
 
@@ -547,7 +559,7 @@ def _confusion_matrix_at_thresholds(labels,
 
   if weights is not None:
     weights = weights_broadcast_ops.broadcast_weights(
-        math_ops.to_float(weights), predictions)
+        math_ops.cast(weights, dtypes.float32), predictions)
     weights_tiled = array_ops.tile(
         array_ops.reshape(weights, [1, -1]), [num_thresholds, 1])
     thresh_tiled.get_shape().assert_is_compatible_with(
@@ -561,8 +573,8 @@ def _confusion_matrix_at_thresholds(labels,
   if 'tp' in includes:
     true_p = metric_variable(
         [num_thresholds], dtypes.float32, name='true_positives')
-    is_true_positive = math_ops.to_float(
-        math_ops.logical_and(label_is_pos, pred_is_pos))
+    is_true_positive = math_ops.cast(
+        math_ops.logical_and(label_is_pos, pred_is_pos), dtypes.float32)
     if weights_tiled is not None:
       is_true_positive *= weights_tiled
     update_ops['tp'] = state_ops.assign_add(true_p,
@@ -573,8 +585,8 @@ def _confusion_matrix_at_thresholds(labels,
   if 'fn' in includes:
     false_n = metric_variable(
         [num_thresholds], dtypes.float32, name='false_negatives')
-    is_false_negative = math_ops.to_float(
-        math_ops.logical_and(label_is_pos, pred_is_neg))
+    is_false_negative = math_ops.cast(
+        math_ops.logical_and(label_is_pos, pred_is_neg), dtypes.float32)
     if weights_tiled is not None:
       is_false_negative *= weights_tiled
     update_ops['fn'] = state_ops.assign_add(false_n,
@@ -585,8 +597,8 @@ def _confusion_matrix_at_thresholds(labels,
   if 'tn' in includes:
     true_n = metric_variable(
         [num_thresholds], dtypes.float32, name='true_negatives')
-    is_true_negative = math_ops.to_float(
-        math_ops.logical_and(label_is_neg, pred_is_neg))
+    is_true_negative = math_ops.cast(
+        math_ops.logical_and(label_is_neg, pred_is_neg), dtypes.float32)
     if weights_tiled is not None:
       is_true_negative *= weights_tiled
     update_ops['tn'] = state_ops.assign_add(true_n,
@@ -597,8 +609,8 @@ def _confusion_matrix_at_thresholds(labels,
   if 'fp' in includes:
     false_p = metric_variable(
         [num_thresholds], dtypes.float32, name='false_positives')
-    is_false_positive = math_ops.to_float(
-        math_ops.logical_and(label_is_neg, pred_is_pos))
+    is_false_positive = math_ops.cast(
+        math_ops.logical_and(label_is_neg, pred_is_pos), dtypes.float32)
     if weights_tiled is not None:
       is_false_positive *= weights_tiled
     update_ops['fp'] = state_ops.assign_add(false_p,
@@ -610,17 +622,14 @@ def _confusion_matrix_at_thresholds(labels,
 
 
 def _aggregate_variable(v, collections):
-
-  def f(distribution, value):
-    value = distribution.read_var(value)
-    if collections:
-      ops.add_to_collections(collections, value)
-    return value
-
-  return distribute_lib.get_tower_context().merge_call(f, v)
+  f = lambda distribution, value: distribution.extended.read_var(value)
+  return _aggregate_across_replicas(collections, f, v)
 
 
-@tf_export('metrics.auc')
+@tf_export(v1=['metrics.auc'])
+@deprecated(None,
+            'The value of AUC returned by this may race with the update so '
+            'this is deprected. Please use tf.keras.metrics.AUC instead.')
 def auc(labels,
         predictions,
         weights=None,
@@ -629,7 +638,8 @@ def auc(labels,
         updates_collections=None,
         curve='ROC',
         name=None,
-        summation_method='trapezoidal'):
+        summation_method='trapezoidal',
+        thresholds=None):
   """Computes the approximate AUC via a Riemann sum.
 
   The `auc` function creates four local variables, `true_positives`,
@@ -651,7 +661,9 @@ def auc(labels,
   in the range [0, 1] and not peaked around 0 or 1. The quality of the AUC
   approximation may be poor if this is not the case. Setting `summation_method`
   to 'minoring' or 'majoring' can help quantify the error in the approximation
-  by providing lower or upper bound estimate of the AUC.
+  by providing lower or upper bound estimate of the AUC. The `thresholds`
+  parameter can be used to manually specify thresholds which split the
+  predictions more evenly.
 
   For estimation of the metric over a stream of data, the function creates an
   `update_op` operation that updates these variables and returns the `auc`.
@@ -685,6 +697,12 @@ def auc(labels,
       Note that 'careful_interpolation' is strictly preferred to 'trapezoidal'
       (to be deprecated soon) as it applies the same method for ROC, and a
       better one (see Davis & Goadrich 2006 for details) for the PR curve.
+    thresholds: An optional list of floating point values to use as the
+      thresholds for discretizing the curve. If set, the `num_thresholds`
+      parameter is ignored. Values should be in [0, 1]. Endpoint thresholds
+      equal to {-epsilon, 1+epsilon} for a small positive epsilon value will be
+      automatically included with these to correctly handle predictions equal to
+       exactly 0 or 1.
 
   Returns:
     auc: A scalar `Tensor` representing the current area-under-curve.
@@ -707,10 +725,20 @@ def auc(labels,
                                      (labels, predictions, weights)):
     if curve != 'ROC' and curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
-    kepsilon = 1e-7  # to account for floating point imprecisions
-    thresholds = [
-        (i + 1) * 1.0 / (num_thresholds - 1) for i in range(num_thresholds - 2)
-    ]
+
+    kepsilon = 1e-7  # To account for floating point imprecisions.
+    if thresholds is not None:
+      # If specified, use the supplied thresholds.
+      thresholds = sorted(thresholds)
+      num_thresholds = len(thresholds) + 2
+    else:
+      # Otherwise, linearly interpolate (num_thresholds - 2) thresholds in
+      # (0, 1).
+      thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
+                    for i in range(num_thresholds - 2)]
+
+    # Add an endpoint "threshold" below zero and above one for either threshold
+    # method.
     thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
 
     values, update_ops = _confusion_matrix_at_thresholds(
@@ -752,16 +780,21 @@ def auc(labels,
       """
       dtp = tp[:num_thresholds - 1] - tp[1:]
       p = tp + fp
-      prec_slope = _safe_div(dtp, p[:num_thresholds - 1] - p[1:], 'prec_slope')
+      prec_slope = math_ops.div_no_nan(
+          dtp,
+          math_ops.maximum(p[:num_thresholds - 1] - p[1:], 0),
+          name='prec_slope')
       intercept = tp[1:] - math_ops.multiply(prec_slope, p[1:])
       safe_p_ratio = array_ops.where(
           math_ops.logical_and(p[:num_thresholds - 1] > 0, p[1:] > 0),
-          _safe_div(p[:num_thresholds - 1], p[1:], 'recall_relative_ratio'),
-          array_ops.ones_like(p[1:]))
+          math_ops.div_no_nan(
+              p[:num_thresholds - 1],
+              math_ops.maximum(p[1:], 0),
+              name='recall_relative_ratio'), array_ops.ones_like(p[1:]))
       return math_ops.reduce_sum(
-          _safe_div(
+          math_ops.div_no_nan(
               prec_slope * (dtp + intercept * math_ops.log(safe_p_ratio)),
-              tp[1:] + fn[1:],
+              math_ops.maximum(tp[1:] + fn[1:], 0),
               name='pr_auc_increment'),
           name='interpolate_pr_auc')
 
@@ -805,15 +838,12 @@ def auc(labels,
         raise ValueError('Invalid summation_method: %s' % summation_method)
 
     # sum up the areas of all the trapeziums
-    def aggregate_auc(_, values):
-      auc_value = compute_auc(values['tp'], values['fn'], values['tn'],
-                              values['fp'], 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, auc_value)
-      return auc_value
+    def compute_auc_value(_, values):
+      return compute_auc(values['tp'], values['fn'], values['tn'], values['fp'],
+                         'value')
 
-    auc_value = distribute_lib.get_tower_context().merge_call(
-        aggregate_auc, values)
+    auc_value = _aggregate_across_replicas(
+        metrics_collections, compute_auc_value, values)
     update_op = compute_auc(update_ops['tp'], update_ops['fn'],
                             update_ops['tn'], update_ops['fp'], 'update_op')
 
@@ -823,7 +853,7 @@ def auc(labels,
     return auc_value, update_op
 
 
-@tf_export('metrics.mean_absolute_error')
+@tf_export(v1=['metrics.mean_absolute_error'])
 def mean_absolute_error(labels,
                         predictions,
                         weights=None,
@@ -884,7 +914,7 @@ def mean_absolute_error(labels,
               updates_collections, name or 'mean_absolute_error')
 
 
-@tf_export('metrics.mean_cosine_distance')
+@tf_export(v1=['metrics.mean_cosine_distance'])
 def mean_cosine_distance(labels,
                          predictions,
                          dim,
@@ -941,7 +971,7 @@ def mean_cosine_distance(labels,
       predictions=predictions, labels=labels, weights=weights)
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(
-      radial_diffs, reduction_indices=[
+      radial_diffs, axis=[
           dim,
       ], keepdims=True)
   mean_distance, update_op = mean(radial_diffs, weights, None, None, name or
@@ -958,7 +988,7 @@ def mean_cosine_distance(labels,
   return mean_distance, update_op
 
 
-@tf_export('metrics.mean_per_class_accuracy')
+@tf_export(v1=['metrics.mean_per_class_accuracy'])
 def mean_per_class_accuracy(labels,
                             predictions,
                             num_classes,
@@ -1012,7 +1042,7 @@ def mean_per_class_accuracy(labels,
 
   with variable_scope.variable_scope(name, 'mean_accuracy',
                                      (predictions, labels, weights)):
-    labels = math_ops.to_int64(labels)
+    labels = math_ops.cast(labels, dtypes.int64)
 
     # Flatten the input if its rank > 1.
     if labels.get_shape().ndims > 1:
@@ -1031,12 +1061,13 @@ def mean_per_class_accuracy(labels,
 
     if labels.dtype != predictions.dtype:
       predictions = math_ops.cast(predictions, labels.dtype)
-    is_correct = math_ops.to_float(math_ops.equal(predictions, labels))
+    is_correct = math_ops.cast(
+        math_ops.equal(predictions, labels), dtypes.float32)
 
     if weights is not None:
       if weights.get_shape().ndims > 1:
         weights = array_ops.reshape(weights, [-1])
-      weights = math_ops.to_float(weights)
+      weights = math_ops.cast(weights, dtypes.float32)
 
       is_correct *= weights
       ones *= weights
@@ -1044,25 +1075,25 @@ def mean_per_class_accuracy(labels,
     update_total_op = state_ops.scatter_add(total, labels, ones)
     update_count_op = state_ops.scatter_add(count, labels, is_correct)
 
-    def aggregate_mean_accuracy(_, count, total):
-      per_class_accuracy = _safe_div(count, total, None)
+    def compute_mean_accuracy(_, count, total):
+      per_class_accuracy = math_ops.div_no_nan(
+          count, math_ops.maximum(total, 0), name=None)
       mean_accuracy_v = math_ops.reduce_mean(
           per_class_accuracy, name='mean_accuracy')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, mean_accuracy_v)
       return mean_accuracy_v
 
-    mean_accuracy_v = distribute_lib.get_tower_context().merge_call(
-        aggregate_mean_accuracy, count, total)
+    mean_accuracy_v = _aggregate_across_replicas(
+        metrics_collections, compute_mean_accuracy, count, total)
 
-    update_op = _safe_div(update_count_op, update_total_op, name='update_op')
+    update_op = math_ops.div_no_nan(
+        update_count_op, math_ops.maximum(update_total_op, 0), name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
 
     return mean_accuracy_v, update_op
 
 
-@tf_export('metrics.mean_iou')
+@tf_export(v1=['metrics.mean_iou'])
 def mean_iou(labels,
              predictions,
              num_classes,
@@ -1126,11 +1157,13 @@ def mean_iou(labels,
     total_cm, update_op = _streaming_confusion_matrix(labels, predictions,
                                                       num_classes, weights)
 
-    def compute_mean_iou(total_cm, name):
+    def compute_mean_iou(_, total_cm):
       """Compute the mean intersection-over-union via the confusion matrix."""
-      sum_over_row = math_ops.to_float(math_ops.reduce_sum(total_cm, 0))
-      sum_over_col = math_ops.to_float(math_ops.reduce_sum(total_cm, 1))
-      cm_diag = math_ops.to_float(array_ops.diag_part(total_cm))
+      sum_over_row = math_ops.cast(
+          math_ops.reduce_sum(total_cm, 0), dtypes.float32)
+      sum_over_col = math_ops.cast(
+          math_ops.reduce_sum(total_cm, 1), dtypes.float32)
+      cm_diag = math_ops.cast(array_ops.diag_part(total_cm), dtypes.float32)
       denominator = sum_over_row + sum_over_col - cm_diag
 
       # The mean is only computed over classes that appear in the
@@ -1150,17 +1183,12 @@ def mean_iou(labels,
       # If the number of valid entries is 0 (no classes) we return 0.
       result = array_ops.where(
           math_ops.greater(num_valid_entries, 0),
-          math_ops.reduce_sum(iou, name=name) / num_valid_entries, 0)
+          math_ops.reduce_sum(iou, name='mean_iou') / num_valid_entries, 0)
       return result
 
-    def mean_iou_across_towers(_, v):
-      mean_iou_v = compute_mean_iou(v, 'mean_iou')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, mean_iou_v)
-      return mean_iou_v
-
-    mean_iou_v = distribute_lib.get_tower_context().merge_call(
-        mean_iou_across_towers, total_cm)
+    # TODO(priyag): Use outside_compilation if in TPU context.
+    mean_iou_v = _aggregate_across_replicas(
+        metrics_collections, compute_mean_iou, total_cm)
 
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
@@ -1168,7 +1196,7 @@ def mean_iou(labels,
     return mean_iou_v, update_op
 
 
-@tf_export('metrics.mean_relative_error')
+@tf_export(v1=['metrics.mean_relative_error'])
 def mean_relative_error(labels,
                         predictions,
                         normalizer,
@@ -1237,7 +1265,7 @@ def mean_relative_error(labels,
               updates_collections, name or 'mean_relative_error')
 
 
-@tf_export('metrics.mean_squared_error')
+@tf_export(v1=['metrics.mean_squared_error'])
 def mean_squared_error(labels,
                        predictions,
                        weights=None,
@@ -1293,12 +1321,12 @@ def mean_squared_error(labels,
 
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
-  squared_error = math_ops.square(labels - predictions)
+  squared_error = math_ops.squared_difference(labels, predictions)
   return mean(squared_error, weights, metrics_collections, updates_collections,
               name or 'mean_squared_error')
 
 
-@tf_export('metrics.mean_tensor')
+@tf_export(v1=['metrics.mean_tensor'])
 def mean_tensor(values,
                 weights=None,
                 metrics_collections=None,
@@ -1350,7 +1378,7 @@ def mean_tensor(values,
                        'eager execution is enabled.')
 
   with variable_scope.variable_scope(name, 'mean', (values, weights)):
-    values = math_ops.to_float(values)
+    values = math_ops.cast(values, dtypes.float32)
     total = metric_variable(
         values.get_shape(), dtypes.float32, name='total_tensor')
     count = metric_variable(
@@ -1361,7 +1389,7 @@ def mean_tensor(values,
       values, _, weights = _remove_squeezable_dimensions(
           predictions=values, labels=None, weights=weights)
       weights = weights_broadcast_ops.broadcast_weights(
-          math_ops.to_float(weights), values)
+          math_ops.cast(weights, dtypes.float32), values)
       values = math_ops.multiply(values, weights)
       num_values = math_ops.multiply(num_values, weights)
 
@@ -1369,23 +1397,21 @@ def mean_tensor(values,
     with ops.control_dependencies([values]):
       update_count_op = state_ops.assign_add(count, num_values)
 
-    def aggregate_across_towers(_, t, c):
-      mean_t = _safe_div(t, c, 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, mean_t)
-      return mean_t
+    compute_mean = lambda _, t, c: math_ops.div_no_nan(  # pylint: disable=g-long-lambda
+        t, math_ops.maximum(c, 0), name='value')
 
-    mean_t = distribute_lib.get_tower_context().merge_call(
-        aggregate_across_towers, total, count)
+    mean_t = _aggregate_across_replicas(
+        metrics_collections, compute_mean, total, count)
 
-    update_op = _safe_div(update_total_op, update_count_op, 'update_op')
+    update_op = math_ops.div_no_nan(
+        update_total_op, math_ops.maximum(update_count_op, 0), name='update_op')
     if updates_collections:
       ops.add_to_collections(updates_collections, update_op)
 
     return mean_t, update_op
 
 
-@tf_export('metrics.percentage_below')
+@tf_export(v1=['metrics.percentage_below'])
 def percentage_below(values,
                      threshold,
                      weights=None,
@@ -1434,7 +1460,8 @@ def percentage_below(values,
     raise RuntimeError('tf.metrics.percentage_below is not supported when '
                        'eager execution is enabled.')
 
-  is_below_threshold = math_ops.to_float(math_ops.less(values, threshold))
+  is_below_threshold = math_ops.cast(
+      math_ops.less(values, threshold), dtypes.float32)
   return mean(is_below_threshold, weights, metrics_collections,
               updates_collections, name or 'percentage_below_threshold')
 
@@ -1469,11 +1496,11 @@ def _count_condition(values,
   check_ops.assert_type(values, dtypes.bool)
   count = metric_variable([], dtypes.float32, name='count')
 
-  values = math_ops.to_float(values)
+  values = math_ops.cast(values, dtypes.float32)
   if weights is not None:
     with ops.control_dependencies((check_ops.assert_rank_in(
         weights, (0, array_ops.rank(values))),)):
-      weights = math_ops.to_float(weights)
+      weights = math_ops.cast(weights, dtypes.float32)
       values = math_ops.multiply(values, weights)
 
   value_tensor = _aggregate_variable(count, metrics_collections)
@@ -1485,7 +1512,7 @@ def _count_condition(values,
   return value_tensor, update_op
 
 
-@tf_export('metrics.false_negatives')
+@tf_export(v1=['metrics.false_negatives'])
 def false_negatives(labels,
                     predictions,
                     weights=None,
@@ -1537,7 +1564,7 @@ def false_negatives(labels,
                             updates_collections)
 
 
-@tf_export('metrics.false_negatives_at_thresholds')
+@tf_export(v1=['metrics.false_negatives_at_thresholds'])
 def false_negatives_at_thresholds(labels,
                                   predictions,
                                   thresholds,
@@ -1593,7 +1620,7 @@ def false_negatives_at_thresholds(labels,
     return fn_value, update_ops['fn']
 
 
-@tf_export('metrics.false_positives')
+@tf_export(v1=['metrics.false_positives'])
 def false_positives(labels,
                     predictions,
                     weights=None,
@@ -1646,7 +1673,7 @@ def false_positives(labels,
                             updates_collections)
 
 
-@tf_export('metrics.false_positives_at_thresholds')
+@tf_export(v1=['metrics.false_positives_at_thresholds'])
 def false_positives_at_thresholds(labels,
                                   predictions,
                                   thresholds,
@@ -1702,7 +1729,7 @@ def false_positives_at_thresholds(labels,
     return fp_value, update_ops['fp']
 
 
-@tf_export('metrics.true_negatives')
+@tf_export(v1=['metrics.true_negatives'])
 def true_negatives(labels,
                    predictions,
                    weights=None,
@@ -1755,7 +1782,7 @@ def true_negatives(labels,
                             updates_collections)
 
 
-@tf_export('metrics.true_negatives_at_thresholds')
+@tf_export(v1=['metrics.true_negatives_at_thresholds'])
 def true_negatives_at_thresholds(labels,
                                  predictions,
                                  thresholds,
@@ -1811,7 +1838,7 @@ def true_negatives_at_thresholds(labels,
     return tn_value, update_ops['tn']
 
 
-@tf_export('metrics.true_positives')
+@tf_export(v1=['metrics.true_positives'])
 def true_positives(labels,
                    predictions,
                    weights=None,
@@ -1864,7 +1891,7 @@ def true_positives(labels,
                             updates_collections)
 
 
-@tf_export('metrics.true_positives_at_thresholds')
+@tf_export(v1=['metrics.true_positives_at_thresholds'])
 def true_positives_at_thresholds(labels,
                                  predictions,
                                  thresholds,
@@ -1920,7 +1947,7 @@ def true_positives_at_thresholds(labels,
     return tp_value, update_ops['tp']
 
 
-@tf_export('metrics.precision')
+@tf_export(v1=['metrics.precision'])
 def precision(labels,
               predictions,
               weights=None,
@@ -2001,14 +2028,11 @@ def precision(labels,
       return array_ops.where(
           math_ops.greater(tp + fp, 0), math_ops.div(tp, tp + fp), 0, name)
 
-    def once_across_towers(_, true_p, false_p):
-      p = compute_precision(true_p, false_p, 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, p)
-      return p
+    def once_across_replicas(_, true_p, false_p):
+      return compute_precision(true_p, false_p, 'value')
 
-    p = distribute_lib.get_tower_context().merge_call(
-        once_across_towers, true_p, false_p)
+    p = _aggregate_across_replicas(metrics_collections, once_across_replicas,
+                                   true_p, false_p)
 
     update_op = compute_precision(true_positives_update_op,
                                   false_positives_update_op, 'update_op')
@@ -2018,7 +2042,7 @@ def precision(labels,
     return p, update_op
 
 
-@tf_export('metrics.precision_at_thresholds')
+@tf_export(v1=['metrics.precision_at_thresholds'])
 def precision_at_thresholds(labels,
                             predictions,
                             thresholds,
@@ -2085,14 +2109,11 @@ def precision_at_thresholds(labels,
     def compute_precision(tp, fp, name):
       return math_ops.div(tp, epsilon + tp + fp, name='precision_' + name)
 
-    def precision_across_towers(_, values):
-      prec = compute_precision(values['tp'], values['fp'], 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, prec)
-      return prec
+    def precision_across_replicas(_, values):
+      return compute_precision(values['tp'], values['fp'], 'value')
 
-    prec = distribute_lib.get_tower_context().merge_call(
-        precision_across_towers, values)
+    prec = _aggregate_across_replicas(
+        metrics_collections, precision_across_replicas, values)
 
     update_op = compute_precision(update_ops['tp'], update_ops['fp'],
                                   'update_op')
@@ -2102,7 +2123,7 @@ def precision_at_thresholds(labels,
     return prec, update_op
 
 
-@tf_export('metrics.recall')
+@tf_export(v1=['metrics.recall'])
 def recall(labels,
            predictions,
            weights=None,
@@ -2181,14 +2202,11 @@ def recall(labels,
           math_ops.greater(true_p + false_n, 0),
           math_ops.div(true_p, true_p + false_n), 0, name)
 
-    def once_across_towers(_, true_p, false_n):
-      rec = compute_recall(true_p, false_n, 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, rec)
-      return rec
+    def once_across_replicas(_, true_p, false_n):
+      return compute_recall(true_p, false_n, 'value')
 
-    rec = distribute_lib.get_tower_context().merge_call(
-        once_across_towers, true_p, false_n)
+    rec = _aggregate_across_replicas(
+        metrics_collections, once_across_replicas, true_p, false_n)
 
     update_op = compute_recall(true_positives_update_op,
                                false_negatives_update_op, 'update_op')
@@ -2236,7 +2254,7 @@ def _select_class_id(ids, selected_id):
 
   # Intersect `ids` with the selected ID.
   filled_selected_id = array_ops.fill(filled_selected_id_shape,
-                                      math_ops.to_int64(selected_id))
+                                      math_ops.cast(selected_id, dtypes.int64))
   result = sets.set_intersection(filled_selected_id, ids)
   return sparse_tensor.SparseTensor(
       indices=result.indices, values=result.values, dense_shape=ids_shape)
@@ -2301,11 +2319,11 @@ def _sparse_true_positive_at_k(labels,
     labels, predictions_idx = _maybe_select_class_id(labels, predictions_idx,
                                                      class_id)
     tp = sets.set_size(sets.set_intersection(predictions_idx, labels))
-    tp = math_ops.to_double(tp)
+    tp = math_ops.cast(tp, dtypes.float64)
     if weights is not None:
       with ops.control_dependencies((weights_broadcast_ops.assert_broadcastable(
           weights, tp),)):
-        weights = math_ops.to_double(weights)
+        weights = math_ops.cast(weights, dtypes.float64)
         tp = math_ops.multiply(tp, weights)
     return tp
 
@@ -2355,7 +2373,7 @@ def _streaming_sparse_true_positive_at_k(labels,
         labels=labels,
         class_id=class_id,
         weights=weights)
-    batch_total_tp = math_ops.to_double(math_ops.reduce_sum(tp))
+    batch_total_tp = math_ops.cast(math_ops.reduce_sum(tp), dtypes.float64)
 
     var = metric_variable([], dtypes.float64, name=scope)
     return var, state_ops.assign_add(var, batch_total_tp, name='update')
@@ -2396,11 +2414,11 @@ def _sparse_false_negative_at_k(labels,
                                                      class_id)
     fn = sets.set_size(
         sets.set_difference(predictions_idx, labels, aminusb=False))
-    fn = math_ops.to_double(fn)
+    fn = math_ops.cast(fn, dtypes.float64)
     if weights is not None:
       with ops.control_dependencies((weights_broadcast_ops.assert_broadcastable(
           weights, fn),)):
-        weights = math_ops.to_double(weights)
+        weights = math_ops.cast(weights, dtypes.float64)
         fn = math_ops.multiply(fn, weights)
     return fn
 
@@ -2450,13 +2468,13 @@ def _streaming_sparse_false_negative_at_k(labels,
         labels=labels,
         class_id=class_id,
         weights=weights)
-    batch_total_fn = math_ops.to_double(math_ops.reduce_sum(fn))
+    batch_total_fn = math_ops.cast(math_ops.reduce_sum(fn), dtypes.float64)
 
     var = metric_variable([], dtypes.float64, name=scope)
     return var, state_ops.assign_add(var, batch_total_fn, name='update')
 
 
-@tf_export('metrics.recall_at_k')
+@tf_export(v1=['metrics.recall_at_k'])
 def recall_at_k(labels,
                 predictions,
                 k,
@@ -2549,7 +2567,7 @@ def recall_at_k(labels,
         name=scope)
 
 
-@tf_export('metrics.recall_at_top_k')
+@tf_export(v1=['metrics.recall_at_top_k'])
 def recall_at_top_k(labels,
                     predictions_idx,
                     k=None,
@@ -2606,7 +2624,7 @@ def recall_at_top_k(labels,
   with ops.name_scope(name, _at_k_name('recall', k, class_id=class_id),
                       (predictions_idx, labels, weights)) as scope:
     labels = _maybe_expand_labels(labels, predictions_idx)
-    top_k_idx = math_ops.to_int64(predictions_idx)
+    top_k_idx = math_ops.cast(predictions_idx, dtypes.int64)
     tp, tp_update = _streaming_sparse_true_positive_at_k(
         predictions_idx=top_k_idx,
         labels=labels,
@@ -2620,14 +2638,11 @@ def recall_at_top_k(labels,
         class_id=class_id,
         weights=weights)
 
-    def aggregate_across_towers(_, tp, fn):
-      metric = math_ops.div(tp, math_ops.add(tp, fn), name=scope)
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, metric)
-      return metric
+    def compute_recall(_, tp, fn):
+      return math_ops.div(tp, math_ops.add(tp, fn), name=scope)
 
-    metric = distribute_lib.get_tower_context().merge_call(
-        aggregate_across_towers, tp, fn)
+    metric = _aggregate_across_replicas(
+        metrics_collections, compute_recall, tp, fn)
 
     update = math_ops.div(
         tp_update, math_ops.add(tp_update, fn_update), name='update')
@@ -2636,7 +2651,7 @@ def recall_at_top_k(labels,
     return metric, update
 
 
-@tf_export('metrics.recall_at_thresholds')
+@tf_export(v1=['metrics.recall_at_thresholds'])
 def recall_at_thresholds(labels,
                          predictions,
                          thresholds,
@@ -2701,14 +2716,11 @@ def recall_at_thresholds(labels,
     def compute_recall(tp, fn, name):
       return math_ops.div(tp, epsilon + tp + fn, name='recall_' + name)
 
-    def recall_across_towers(_, values):
-      rec = compute_recall(values['tp'], values['fn'], 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, rec)
-      return rec
+    def recall_across_replicas(_, values):
+      return compute_recall(values['tp'], values['fn'], 'value')
 
-    rec = distribute_lib.get_tower_context().merge_call(
-        recall_across_towers, values)
+    rec = _aggregate_across_replicas(
+        metrics_collections, recall_across_replicas, values)
 
     update_op = compute_recall(update_ops['tp'], update_ops['fn'], 'update_op')
     if updates_collections:
@@ -2717,7 +2729,7 @@ def recall_at_thresholds(labels,
     return rec, update_op
 
 
-@tf_export('metrics.root_mean_squared_error')
+@tf_export(v1=['metrics.root_mean_squared_error'])
 def root_mean_squared_error(labels,
                             predictions,
                             weights=None,
@@ -2776,14 +2788,10 @@ def root_mean_squared_error(labels,
   mse, update_mse_op = mean_squared_error(labels, predictions, weights, None,
                                           None, name or
                                           'root_mean_squared_error')
-  def once_across_towers(_, mse):
-    rmse = math_ops.sqrt(mse)
-    if metrics_collections:
-      ops.add_to_collections(metrics_collections, rmse)
-    return rmse
 
-  rmse = distribute_lib.get_tower_context().merge_call(
-      once_across_towers, mse)
+  once_across_replicas = lambda _, mse: math_ops.sqrt(mse)
+  rmse = _aggregate_across_replicas(
+      metrics_collections, once_across_replicas, mse)
 
   update_rmse_op = math_ops.sqrt(update_mse_op)
   if updates_collections:
@@ -2792,7 +2800,7 @@ def root_mean_squared_error(labels,
   return rmse, update_rmse_op
 
 
-@tf_export('metrics.sensitivity_at_specificity')
+@tf_export(v1=['metrics.sensitivity_at_specificity'])
 def sensitivity_at_specificity(labels,
                                predictions,
                                specificity,
@@ -2878,15 +2886,12 @@ def sensitivity_at_specificity(labels,
       return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + kepsilon,
                           name)
 
-    def aggregate_across_towers(_, values):
-      sensitivity = compute_sensitivity_at_specificity(
+    def sensitivity_across_replicas(_, values):
+      return compute_sensitivity_at_specificity(
           values['tp'], values['tn'], values['fp'], values['fn'], 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, sensitivity)
-      return sensitivity
 
-    sensitivity = distribute_lib.get_tower_context().merge_call(
-        aggregate_across_towers, values)
+    sensitivity = _aggregate_across_replicas(
+        metrics_collections, sensitivity_across_replicas, values)
 
     update_op = compute_sensitivity_at_specificity(
         update_ops['tp'], update_ops['tn'], update_ops['fp'], update_ops['fn'],
@@ -2979,12 +2984,14 @@ def _num_relevant(labels, k):
     if isinstance(labels, sparse_tensor.SparseTensor):
       return math_ops.minimum(sets.set_size(labels), k, name=scope)
 
-    # For dense Tensor, calculate scalar count based on last dimension, and
-    # tile across labels shape.
-    labels_shape = array_ops.shape(labels)
-    labels_size = labels_shape[-1]
-    num_relevant_scalar = math_ops.minimum(labels_size, k)
-    return array_ops.fill(labels_shape[0:-1], num_relevant_scalar, name=scope)
+    # The relevant values for each (d1, ... dN) is the minimum of k and the
+    # number of labels along the last dimension that are non-negative.
+    num_labels = math_ops.reduce_sum(
+        array_ops.where_v2(math_ops.greater_equal(labels, 0),
+                           array_ops.ones_like(labels),
+                           array_ops.zeros_like(labels)),
+        axis=-1)
+    return math_ops.minimum(num_labels, k, name=scope)
 
 
 def _sparse_average_precision_at_top_k(labels, predictions_idx):
@@ -3005,7 +3012,7 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
       num_labels=1. N >= 1 and num_labels is the number of target classes for
       the associated prediction. Commonly, N=1 and `labels` has shape
       [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
-      Values should be in range [0, num_classes).
+      Values should be non-negative. Negative values are ignored.
     predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
       Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
       dimension must be set and contains the top `k` predicted class indices.
@@ -3021,7 +3028,8 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
   """
   with ops.name_scope(None, 'average_precision',
                       (predictions_idx, labels)) as scope:
-    predictions_idx = math_ops.to_int64(predictions_idx, name='predictions_idx')
+    predictions_idx = math_ops.cast(
+        predictions_idx, dtypes.int64, name='predictions_idx')
     if predictions_idx.get_shape().ndims == 0:
       raise ValueError('The rank of predictions_idx must be at least 1.')
     k = predictions_idx.get_shape().as_list()[-1]
@@ -3057,21 +3065,21 @@ def _sparse_average_precision_at_top_k(labels, predictions_idx):
     retrieved_per_k = math_ops.cumsum(
         array_ops.ones_like(relevant_per_k), axis=-1, name='retrieved_per_k')
     precision_per_k = math_ops.div(
-        math_ops.to_double(tp_per_k),
-        math_ops.to_double(retrieved_per_k),
+        math_ops.cast(tp_per_k, dtypes.float64),
+        math_ops.cast(retrieved_per_k, dtypes.float64),
         name='precision_per_k')
     relevant_precision_per_k = math_ops.multiply(
         precision_per_k,
-        math_ops.to_double(relevant_per_k),
+        math_ops.cast(relevant_per_k, dtypes.float64),
         name='relevant_precision_per_k')
 
     # Reduce along k dimension to get the sum, yielding a [D1, ... DN] tensor.
     precision_sum = math_ops.reduce_sum(
-        relevant_precision_per_k, reduction_indices=(-1,), name='precision_sum')
+        relevant_precision_per_k, axis=(-1,), name='precision_sum')
 
     # Divide by number of relevant items to get average precision. These are
     # the "num_relevant_items" and "AveP" terms from the formula above.
-    num_relevant_items = math_ops.to_double(_num_relevant(labels, k))
+    num_relevant_items = math_ops.cast(_num_relevant(labels, k), dtypes.float64)
     return math_ops.div(precision_sum, num_relevant_items, name=scope)
 
 
@@ -3104,7 +3112,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       num_labels=1. N >= 1 and num_labels is the number of target classes for
       the associated prediction. Commonly, N=1 and `labels` has shape
       [batch_size, num_labels]. [D1, ... DN] must match `predictions_idx`.
-      Values should be in range [0, num_classes).
+      Values should be non-negative. Negative values are ignored.
     predictions_idx: Integer `Tensor` with shape [D1, ... DN, k] where N >= 1.
       Commonly, N=1 and `predictions_idx` has shape [batch size, k]. The final
       dimension contains the top `k` predicted class indices. [D1, ... DN] must
@@ -3132,7 +3140,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
         predictions_idx=predictions_idx, labels=labels)
     if weights is not None:
       weights = weights_broadcast_ops.broadcast_weights(
-          math_ops.to_double(weights), average_precision)
+          math_ops.cast(weights, dtypes.float64), average_precision)
       average_precision = math_ops.multiply(average_precision, weights)
 
     # Create accumulation variables and update ops for max average precision and
@@ -3144,8 +3152,8 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       #   `average_precision` rows.
       max_var = metric_variable([], dtypes.float64, name=max_scope)
       if weights is None:
-        batch_max = math_ops.to_double(
-            array_ops.size(average_precision, name='batch_max'))
+        batch_max = math_ops.cast(
+            array_ops.size(average_precision, name='batch_max'), dtypes.float64)
       else:
         batch_max = math_ops.reduce_sum(weights, name='batch_max')
       max_update = state_ops.assign_add(max_var, batch_max, name='update')
@@ -3155,14 +3163,11 @@ def _streaming_sparse_average_precision_at_top_k(labels,
       total_update = state_ops.assign_add(total_var, batch_total, name='update')
 
     # Divide total by max to get mean, for both vars and the update ops.
-    def aggregate_across_towers(_, total_var, max_var):
-      mean_average_precision = _safe_scalar_div(total_var, max_var, name='mean')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, mean_average_precision)
-      return mean_average_precision
+    def precision_across_replicas(_, total_var, max_var):
+      return _safe_scalar_div(total_var, max_var, name='mean')
 
-    mean_average_precision = distribute_lib.get_tower_context().merge_call(
-        aggregate_across_towers, total_var, max_var)
+    mean_average_precision = _aggregate_across_replicas(
+        metrics_collections, precision_across_replicas, total_var, max_var)
 
     update = _safe_scalar_div(total_update, max_update, name=scope)
     if updates_collections:
@@ -3171,7 +3176,48 @@ def _streaming_sparse_average_precision_at_top_k(labels,
     return mean_average_precision, update
 
 
-@tf_export('metrics.sparse_average_precision_at_k')
+def _clean_out_of_range_indices(labels, num_classes):
+  """Replaces large out-of-range labels by small out-of-range labels.
+
+  Replaces any value in `labels` that is greater or equal to `num_classes` by
+  -1. Do this conditionally for efficiency in case there are no such values.
+
+  Args:
+    labels: `int64` `Tensor` or `SparseTensor`.
+    num_classes: `int64` scalar `Tensor`.
+  Returns:
+    An `int64` `Tensor` or `SparseTensor` as `labels` with indices greater
+    or equal to num_classes replaced by -1.
+  """
+
+  def _labels_is_sparse():
+    """Returns true is `labels` is a sparse tensor."""
+    return isinstance(labels, (sparse_tensor.SparseTensor,
+                               sparse_tensor.SparseTensorValue))
+
+  def _clean_out_of_range(values):
+    """Replaces by -1 any large out-of-range `values`."""
+    return array_ops.where_v2(math_ops.greater_equal(values, num_classes),
+                              -1 * array_ops.ones_like(values), values)
+
+  def _clean_labels_out_of_range():
+    """Replaces by -1 ane large out-of-range values in `labels`."""
+    if _labels_is_sparse():
+      return type(labels)(indices=labels.indices,
+                          values=_clean_out_of_range(labels.values),
+                          dense_shape=labels.dense_shape)
+    else:
+      return _clean_out_of_range(labels)
+
+  max_labels = math_ops.reduce_max(
+      labels.values if _labels_is_sparse() else labels)
+  return control_flow_ops.cond(
+      math_ops.greater_equal(max_labels, num_classes),
+      _clean_labels_out_of_range,
+      lambda: labels)
+
+
+@tf_export(v1=['metrics.sparse_average_precision_at_k'])
 @deprecated(None, 'Use average_precision_at_k instead')
 def sparse_average_precision_at_k(labels,
                                   predictions,
@@ -3191,7 +3237,7 @@ def sparse_average_precision_at_k(labels,
       name=name)
 
 
-@tf_export('metrics.average_precision_at_k')
+@tf_export(v1=['metrics.average_precision_at_k'])
 def average_precision_at_k(labels,
                            predictions,
                            k,
@@ -3261,6 +3307,12 @@ def average_precision_at_k(labels,
                       (predictions, labels, weights)) as scope:
     # Calculate top k indices to produce [D1, ... DN, k] tensor.
     _, predictions_idx = nn.top_k(predictions, k)
+    # The documentation states that labels should be in [0, ..., num_classes),
+    # but num_classes is lost when predictions_idx replaces predictions.
+    # For conformity with the documentation, any label >= num_classes, which is
+    # ignored, is replaced by -1.
+    labels = _clean_out_of_range_indices(
+        labels, math_ops.cast(array_ops.shape(predictions)[-1], dtypes.int64))
     return _streaming_sparse_average_precision_at_top_k(
         labels=labels,
         predictions_idx=predictions_idx,
@@ -3305,11 +3357,11 @@ def _sparse_false_positive_at_k(labels,
                                                      class_id)
     fp = sets.set_size(
         sets.set_difference(predictions_idx, labels, aminusb=True))
-    fp = math_ops.to_double(fp)
+    fp = math_ops.cast(fp, dtypes.float64)
     if weights is not None:
       with ops.control_dependencies((weights_broadcast_ops.assert_broadcastable(
           weights, fp),)):
-        weights = math_ops.to_double(weights)
+        weights = math_ops.cast(weights, dtypes.float64)
         fp = math_ops.multiply(fp, weights)
     return fp
 
@@ -3359,13 +3411,13 @@ def _streaming_sparse_false_positive_at_k(labels,
         labels=labels,
         class_id=class_id,
         weights=weights)
-    batch_total_fp = math_ops.to_double(math_ops.reduce_sum(fp))
+    batch_total_fp = math_ops.cast(math_ops.reduce_sum(fp), dtypes.float64)
 
     var = metric_variable([], dtypes.float64, name=scope)
     return var, state_ops.assign_add(var, batch_total_fp, name='update')
 
 
-@tf_export('metrics.precision_at_top_k')
+@tf_export(v1=['metrics.precision_at_top_k'])
 def precision_at_top_k(labels,
                        predictions_idx,
                        k=None,
@@ -3427,7 +3479,7 @@ def precision_at_top_k(labels,
   with ops.name_scope(name, _at_k_name('precision', k, class_id=class_id),
                       (predictions_idx, labels, weights)) as scope:
     labels = _maybe_expand_labels(labels, predictions_idx)
-    top_k_idx = math_ops.to_int64(predictions_idx)
+    top_k_idx = math_ops.cast(predictions_idx, dtypes.int64)
     tp, tp_update = _streaming_sparse_true_positive_at_k(
         predictions_idx=top_k_idx,
         labels=labels,
@@ -3441,14 +3493,11 @@ def precision_at_top_k(labels,
         class_id=class_id,
         weights=weights)
 
-    def aggregate_across_towers(_, tp, fp):
-      metric = math_ops.div(tp, math_ops.add(tp, fp), name=scope)
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, metric)
-      return metric
+    def precision_across_replicas(_, tp, fp):
+      return math_ops.div(tp, math_ops.add(tp, fp), name=scope)
 
-    metric = distribute_lib.get_tower_context().merge_call(
-        aggregate_across_towers, tp, fp)
+    metric = _aggregate_across_replicas(
+        metrics_collections, precision_across_replicas, tp, fp)
 
     update = math_ops.div(
         tp_update, math_ops.add(tp_update, fp_update), name='update')
@@ -3457,7 +3506,7 @@ def precision_at_top_k(labels,
     return metric, update
 
 
-@tf_export('metrics.sparse_precision_at_k')
+@tf_export(v1=['metrics.sparse_precision_at_k'])
 @deprecated(None, 'Use precision_at_k instead')
 def sparse_precision_at_k(labels,
                           predictions,
@@ -3479,7 +3528,7 @@ def sparse_precision_at_k(labels,
       name=name)
 
 
-@tf_export('metrics.precision_at_k')
+@tf_export(v1=['metrics.precision_at_k'])
 def precision_at_k(labels,
                    predictions,
                    k,
@@ -3573,7 +3622,7 @@ def precision_at_k(labels,
         name=scope)
 
 
-@tf_export('metrics.specificity_at_sensitivity')
+@tf_export(v1=['metrics.specificity_at_sensitivity'])
 def specificity_at_sensitivity(labels,
                                predictions,
                                sensitivity,
@@ -3620,7 +3669,7 @@ def specificity_at_sensitivity(labels,
 
   Returns:
     specificity: A scalar `Tensor` representing the specificity at the given
-      `specificity` value.
+      `sensitivity` value.
     update_op: An operation that increments the `true_positives`,
       `true_negatives`, `false_positives` and `false_negatives` variables
       appropriately and whose value matches `specificity`.
@@ -3670,7 +3719,7 @@ def specificity_at_sensitivity(labels,
       min_val = math_ops.reduce_min(math_ops.abs(sensitivities - sensitivity))
       indices_at_minval = math_ops.equal(
           math_ops.abs(sensitivities - sensitivity), min_val)
-      indices_at_minval = math_ops.to_int64(indices_at_minval)
+      indices_at_minval = math_ops.cast(indices_at_minval, dtypes.int64)
       indices_at_minval = math_ops.cumsum(indices_at_minval)
       tf_index = math_ops.argmax(indices_at_minval, 0)
       tf_index = math_ops.cast(tf_index, dtypes.int32)
@@ -3679,15 +3728,12 @@ def specificity_at_sensitivity(labels,
       return math_ops.div(tn[tf_index], tn[tf_index] + fp[tf_index] + kepsilon,
                           name)
 
-    def aggregate_across_towers(_, values):
-      specificity = compute_specificity_at_sensitivity(
+    def specificity_across_replicas(_, values):
+      return compute_specificity_at_sensitivity(
           values['tp'], values['tn'], values['fp'], values['fn'], 'value')
-      if metrics_collections:
-        ops.add_to_collections(metrics_collections, specificity)
-      return specificity
 
-    specificity = distribute_lib.get_tower_context().merge_call(
-        aggregate_across_towers, values)
+    specificity = _aggregate_across_replicas(
+        metrics_collections, specificity_across_replicas, values)
 
     update_op = compute_specificity_at_sensitivity(
         update_ops['tp'], update_ops['tn'], update_ops['fp'], update_ops['fn'],

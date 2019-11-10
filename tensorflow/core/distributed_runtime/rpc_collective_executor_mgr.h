@@ -42,6 +42,12 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
 
   virtual ~RpcCollectiveExecutorMgr();
 
+  // This function should only be called at the group_leader, by an RPC.
+  // Other needs for StepIds should be satisfied by NextStepId.
+  void GetStepSequenceAsync(const GetStepSequenceRequest* request,
+                            GetStepSequenceResponse* response,
+                            const StatusCallback& done) override;
+
   void RefreshStepIdSequenceAsync(int64 graph_key,
                                   const StatusCallback& done) override;
 
@@ -50,7 +56,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
   void RetireStepId(int64 graph_key, int64 step_id) override;
 
  protected:
-  CollectiveExecutor* Create(int64 step_id) override;
+  virtual CollectiveExecutor* Create(int64 step_id) override;
 
   WorkerCacheInterface* const worker_cache_;  // Not owned.
   const string task_name_;

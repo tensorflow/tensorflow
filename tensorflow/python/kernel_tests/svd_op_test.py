@@ -20,12 +20,20 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python import tf2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
+from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
@@ -38,6 +46,7 @@ def _AddTest(test_class, op_name, testcase_name, fn):
 
 class SvdOpTest(test.TestCase):
 
+  @test_util.run_v1_only("b/120545219")
   def testWrongDimensions(self):
     # The input to svd should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
@@ -49,8 +58,9 @@ class SvdOpTest(test.TestCase):
                                  "Shape must be at least rank 2 but is rank 1"):
       linalg_ops.svd(vector)
 
+  @test_util.run_v1_only("b/120545219")
   def testConcurrentExecutesWithoutError(self):
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       all_ops = []
       for compute_uv_ in True, False:
         for full_matrices_ in True, False:
@@ -68,7 +78,7 @@ class SvdOpTest(test.TestCase):
             s2 = linalg_ops.svd(
                 matrix2, compute_uv=compute_uv_, full_matrices=full_matrices_)
             all_ops += [s1, s2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       for i in range(2):
         s = 6 * i
         self.assertAllEqual(val[s], val[s + 3])  # s1 == s2
@@ -117,14 +127,15 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         diag_s = array_ops.concat([diag_s, zeros], a.ndim - 1)
     a_recon = math_ops.matmul(u, diag_s)
     a_recon = math_ops.matmul(a_recon, v, adjoint_b=True)
-    self.assertAllClose(a_recon.eval(), a, rtol=tol, atol=tol)
+    self.assertAllClose(a_recon, a, rtol=tol, atol=tol)
 
   def CheckUnitary(self, x, tol):
     # Tests that x[...,:,:]^H * x[...,:,:] is close to the identity.
     xx = math_ops.matmul(x, x, adjoint_a=True)
     identity = array_ops.matrix_band_part(array_ops.ones_like(xx), 0, 0)
-    self.assertAllClose(identity.eval(), xx.eval(), atol=tol)
+    self.assertAllClose(identity, xx, atol=tol)
 
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     is_complex = dtype_ in (np.complex64, np.complex128)
     is_single = dtype_ in (np.float32, np.complex64)
@@ -140,7 +151,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
           low=-1.0, high=1.0,
           size=np.prod(shape_)).reshape(shape_).astype(dtype_)
 
-    with self.test_session(use_gpu=True) as sess:
+    with self.session(use_gpu=True) as sess:
       if use_static_shape_:
         x_tf = constant_op.constant(x_np)
       else:
@@ -150,7 +161,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf, u_tf, v_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val, u_tf_val, v_tf_val = sess.run([s_tf, u_tf, v_tf])
+          s_tf_val, u_tf_val, v_tf_val = self.evaluate([s_tf, u_tf, v_tf])
         else:
           s_tf_val, u_tf_val, v_tf_val = sess.run(
               [s_tf, u_tf, v_tf], feed_dict={x_tf: x_np})
@@ -158,7 +169,7 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
         s_tf = linalg_ops.svd(
             x_tf, compute_uv=compute_uv_, full_matrices=full_matrices_)
         if use_static_shape_:
-          s_tf_val = sess.run(s_tf)
+          s_tf_val = self.evaluate(s_tf)
         else:
           s_tf_val = sess.run(s_tf, feed_dict={x_tf: x_np})
 
@@ -190,29 +201,31 @@ class SvdGradOpTest(test.TestCase):
   pass  # Filled in below
 
 
+def _NormalizingSvd(tf_a, full_matrices_):
+  tf_s, tf_u, tf_v = linalg_ops.svd(
+      tf_a, compute_uv=True, full_matrices=full_matrices_)
+  # Singular vectors are only unique up to an arbitrary phase. We normalize
+  # the vectors such that the first component of u (if m >=n) or v (if n > m)
+  # have phase 0.
+  m = tf_a.shape[-2]
+  n = tf_a.shape[-1]
+  if m >= n:
+    top_rows = tf_u[..., 0:1, :]
+  else:
+    top_rows = tf_v[..., 0:1, :]
+  if tf_u.dtype.is_complex:
+    angle = -math_ops.angle(top_rows)
+    phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
+  else:
+    phase = math_ops.sign(top_rows)
+  tf_u *= phase[..., :m]
+  tf_v *= phase[..., :n]
+  return tf_s, tf_u, tf_v
+
+
 def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
 
-  def _NormalizingSvd(tf_a):
-    tf_s, tf_u, tf_v = linalg_ops.svd(
-        tf_a, compute_uv=True, full_matrices=full_matrices_)
-    # Singular vectors are only unique up to an arbitrary phase. We normalize
-    # the vectors such that the first component of u (if m >=n) or v (if n > m)
-    # have phase 0.
-    m = tf_a.shape[-2]
-    n = tf_a.shape[-1]
-    if m >= n:
-      top_rows = tf_u[..., 0:1, :]
-    else:
-      top_rows = tf_v[..., 0:1, :]
-    if tf_u.dtype.is_complex:
-      angle = -math_ops.angle(top_rows)
-      phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
-    else:
-      phase = math_ops.sign(top_rows)
-    tf_u *= phase[..., :m]
-    tf_v *= phase[..., :n]
-    return tf_s, tf_u, tf_v
-
+  @test_util.run_v1_only("b/120545219")
   def Test(self):
     np.random.seed(42)
     a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
@@ -229,10 +242,10 @@ def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
       tol = 3e-2
     else:
       tol = 1e-6
-    with self.test_session(use_gpu=True):
+    with self.session(use_gpu=True):
       tf_a = constant_op.constant(a)
       if compute_uv_:
-        tf_s, tf_u, tf_v = _NormalizingSvd(tf_a)
+        tf_s, tf_u, tf_v = _NormalizingSvd(tf_a, full_matrices_)
         outputs = [tf_s, tf_u, tf_v]
       else:
         tf_s = linalg_ops.svd(tf_a, compute_uv=False)
@@ -251,19 +264,125 @@ def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
             x_init_value=x_init,
             delta=delta)
         self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
-
   return Test
 
 
+class SvdGradGradOpTest(test.TestCase):
+  pass  # Filled in below
+
+
+def _GetSvdGradGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
+
+  @test_util.run_v1_only("b/120545219")
+  def Test(self):
+    np.random.seed(42)
+    a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    if dtype_ in [np.complex64, np.complex128]:
+      a += 1j * np.random.uniform(
+          low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    # Optimal stepsize for central difference is O(epsilon^{1/3}).
+    # See Equation (21) in:
+    # http://www.karenkopecky.net/Teaching/eco613614/Notes_NumericalDifferentiation.pdf
+    # TODO(rmlarsen): Move step size control to gradient checker.
+    epsilon = np.finfo(dtype_).eps
+    delta = 0.1 * epsilon**(1.0 / 3.0)
+    tol = 1e-5
+    with self.session(use_gpu=True):
+      tf_a = constant_op.constant(a)
+      if compute_uv_:
+        tf_s, tf_u, tf_v = _NormalizingSvd(tf_a, full_matrices_)
+        outputs = [tf_s, tf_u, tf_v]
+      else:
+        tf_s = linalg_ops.svd(tf_a, compute_uv=False)
+        outputs = [tf_s]
+      outputs_sums = [math_ops.reduce_sum(o) for o in outputs]
+      tf_func_outputs = math_ops.add_n(outputs_sums)
+      grad = gradients_impl.gradients(tf_func_outputs, tf_a)[0]
+      x_init = np.random.uniform(
+          low=-1.0, high=1.0, size=shape_).astype(dtype_)
+      if dtype_ in [np.complex64, np.complex128]:
+        x_init += 1j * np.random.uniform(
+            low=-1.0, high=1.0, size=shape_).astype(dtype_)
+      theoretical, numerical = gradient_checker.compute_gradient(
+          tf_a,
+          tf_a.get_shape().as_list(),
+          grad,
+          grad.get_shape().as_list(),
+          x_init_value=x_init,
+          delta=delta)
+      self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+  return Test
+
+
+class SVDBenchmark(test.Benchmark):
+
+  shapes = [
+      (4, 4),
+      (8, 8),
+      (16, 16),
+      (101, 101),
+      (256, 256),
+      (1024, 1024),
+      (2048, 2048),
+      (1, 8, 8),
+      (10, 8, 8),
+      (100, 8, 8),
+      (1000, 8, 8),
+      (1, 32, 32),
+      (10, 32, 32),
+      (100, 32, 32),
+      (1000, 32, 32),
+      (1, 256, 256),
+      (10, 256, 256),
+      (100, 256, 256),
+  ]
+
+  def benchmarkSVDOp(self):
+    for shape_ in self.shapes:
+      with ops.Graph().as_default(), \
+          session.Session(config=benchmark.benchmark_config()) as sess, \
+          ops.device("/cpu:0"):
+        matrix_value = np.random.uniform(
+            low=-1.0, high=1.0, size=shape_).astype(np.float32)
+        matrix = variables.Variable(matrix_value)
+        u, s, v = linalg_ops.svd(matrix)
+        variables.global_variables_initializer().run()
+        self.run_op_benchmark(
+            sess,
+            control_flow_ops.group(u, s, v),
+            min_iters=25,
+            name="SVD_cpu_{shape}".format(shape=shape_))
+
+      if test.is_gpu_available(True):
+        with ops.Graph().as_default(), \
+            session.Session(config=benchmark.benchmark_config()) as sess, \
+            ops.device("/device:GPU:0"):
+          matrix_value = np.random.uniform(
+              low=-1.0, high=1.0, size=shape_).astype(np.float32)
+          matrix = variables.Variable(matrix_value)
+          u, s, v = linalg_ops.svd(matrix)
+          variables.global_variables_initializer().run()
+          self.run_op_benchmark(
+              sess,
+              control_flow_ops.group(u, s, v),
+              min_iters=25,
+              name="SVD_gpu_{shape}".format(shape=shape_))
+
+
 if __name__ == "__main__":
+  dtypes_to_test = [np.float32, np.float64]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
   for compute_uv in False, True:
     for full_matrices in False, True:
-      for dtype in np.float32, np.float64, np.complex64, np.complex128:
+      for dtype in dtypes_to_test:
         for rows in 1, 2, 5, 10, 32, 100:
           for cols in 1, 2, 5, 10, 32, 100:
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
               shape = batch_dims + (rows, cols)
-              for use_static_shape in True, False:
+              # TF2 does not support placeholders under eager so we skip it
+              for use_static_shape in set([True, tf2.enabled()]):
                 name = "%s_%s_static_shape_%s__compute_uv_%s_full_%s" % (
                     dtype.__name__, "_".join(map(str, shape)), use_static_shape,
                     compute_uv, full_matrices)
@@ -272,10 +391,10 @@ if __name__ == "__main__":
                                        compute_uv, full_matrices))
   for compute_uv in False, True:
     for full_matrices in False, True:
-      dtypes = ([np.float32, np.float64]
-                + [np.complex64, np.complex128] * (not compute_uv))
+      dtypes = ([np.float32, np.float64] + [np.complex64, np.complex128] *
+                (not compute_uv) * (not test.is_built_with_rocm()))
       for dtype in dtypes:
-        mat_shapes = [(10, 11), (11, 10), (11, 11)]
+        mat_shapes = [(10, 11), (11, 10), (11, 11), (2, 2, 2, 3)]
         if not full_matrices or not compute_uv:
           mat_shapes += [(5, 11), (11, 5)]
         for mat_shape in mat_shapes:
@@ -286,5 +405,10 @@ if __name__ == "__main__":
                 full_matrices)
             _AddTest(SvdGradOpTest, "SvdGrad", name,
                      _GetSvdGradOpTest(dtype, shape, compute_uv, full_matrices))
-
+            # The results are too inacurate for float32.
+            if dtype in (np.float64, np.complex128):
+              _AddTest(
+                  SvdGradGradOpTest, "SvdGradGrad", name,
+                  _GetSvdGradGradOpTest(dtype, shape, compute_uv,
+                                        full_matrices))
   test.main()

@@ -8,27 +8,28 @@
 # Note that proto3 well-known types (e.g. Any) are not handled in a special way
 # by the generated code.
 
-package(default_visibility = ["//visibility:private"])
+load(
+    "//tensorflow:tensorflow.bzl",
+    "if_ios",
+    "tf_cc_test",
+    "tf_generate_proto_text_sources",
+)
 
-licenses(["notice"])  # Apache 2.0
+# For platform specific build config
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
+)
+
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files([
     "LICENSE",
     "placeholder.txt",
 ])
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "if_ios",
-    "tf_generate_proto_text_sources",
-    "tf_cc_test",
-)
-
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_cc",
-)
 
 cc_binary(
     name = "gen_proto_text_functions",
@@ -37,8 +38,9 @@ cc_binary(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":gen_proto_text_functions_lib",
-        "@protobuf_archive//:protobuf",
+        "@com_google_protobuf//:protobuf",
         "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core/platform:protobuf_compiler",
     ] + if_ios(["//tensorflow/core/platform/default/build_config:logging"]),
 )
 
@@ -49,8 +51,7 @@ cc_library(
     copts = if_ios(["-DGOOGLE_LOGGING"]),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:windows_msvc": [],
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-lm",
             "-lpthread",
         ],
@@ -79,7 +80,7 @@ tf_generate_proto_text_sources(
     srcs = ["test.proto"],
     srcs_relative_dir = "tensorflow/tools/proto_text/",
     deps = [
-        ":test_proto_cc",
+        ":test_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
     ],
@@ -94,7 +95,7 @@ tf_cc_test(
     ],
     deps = [
         ":gen_proto_text_functions_lib",
-        ":test_proto_cc",
+        ":test_proto",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",

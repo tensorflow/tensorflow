@@ -33,12 +33,9 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
-
 DATA_FORMATS = (
     ("_data_format_NHWC", "NHWC"),
     ("_data_format_NCHW", "NCHW"),
-    ("_data_format_HWNC", "HWNC"),
-    ("_data_format_HWCN", "HWCN"),
 )
 
 
@@ -90,7 +87,7 @@ class Conv2DTest(xla_test.XLATestCase, parameterized.TestCase):
     dilations = test_utils.PermuteDimsBetweenDataFormats(
         dilations, data_format_src, data_format_dst)
 
-    with self.test_session() as sess:
+    with self.session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=input_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=filter_sizes)
       with self.test_scope():
@@ -291,7 +288,7 @@ class Conv2DBackpropInputTest(xla_test.XLATestCase, parameterized.TestCase):
       dilations = test_utils.PermuteDimsBetweenDataFormats(
           dilations, data_format_src, data_format_dst)
 
-    with self.test_session() as sess:
+    with self.session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=filter_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=out_backprop_sizes)
       with self.test_scope():
@@ -589,7 +586,7 @@ class Conv2DBackpropFilterTest(xla_test.XLATestCase, parameterized.TestCase):
       dilations = test_utils.PermuteDimsBetweenDataFormats(
           dilations, data_format_src, data_format_dst)
 
-    with self.test_session() as sess:
+    with self.session() as sess:
       t1 = array_ops.placeholder(dtypes.float32, shape=input_sizes)
       t2 = array_ops.placeholder(dtypes.float32, shape=out_backprop_sizes)
       with self.test_scope():

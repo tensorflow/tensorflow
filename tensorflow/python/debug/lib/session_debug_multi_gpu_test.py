@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 from tensorflow.core.protobuf import config_pb2
@@ -29,6 +28,7 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
@@ -44,7 +44,7 @@ class SessionDebugMultiGPUTest(test_util.TensorFlowTestCase):
 
     # Tear down temporary dump directory.
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
   def testMultiGPUSessionRun(self):
     local_devices = device_lib.list_local_devices()
@@ -67,7 +67,7 @@ class SessionDebugMultiGPUTest(test_util.TensorFlowTestCase):
         u1 = math_ops.multiply(v, v, name="u1")
       w = math_ops.subtract(u1, u0, name="w")
 
-      sess.run(v.initializer)
+      self.evaluate(v.initializer)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
       debug_utils.watch_graph(run_options, sess.graph,

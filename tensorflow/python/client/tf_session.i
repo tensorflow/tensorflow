@@ -138,6 +138,35 @@ tensorflow::ImportNumpy();
   $result = PyLong_FromLongLong($1);
 }
 
+// Convert TF_DeviceListIncarnation uint64_t output to Python integer
+%typemap(out) uint64_t {
+  $result = PyLong_FromUnsignedLongLong($1);
+}
+
+// Convert TF_OperationGetAttrType TF_DataType* out-argument to Python integer.
+%typemap(in, numinputs=0) TF_DataType *value (TF_DataType temp) {
+  $1 = &temp;
+}
+%typemap(argout) TF_DataType *value {
+  $result = PyInt_FromLong(*$1);
+}
+
+// Convert TF_OperationGetAttrBool unsigned char* out-argument to Python bool.
+%typemap(in, numinputs=0) unsigned char *value (unsigned char temp) {
+  $1 = &temp;
+}
+%typemap(argout) unsigned char *value {
+  $result = PyBool_FromLong(*$1);
+}
+
+// Convert TF_OperationGetAttrInt int64_t* out-argument to Python bool.
+%typemap(in, numinputs=0) int64_t *value (int64_t temp) {
+  $1 = &temp;
+}
+%typemap(argout) int64_t *value {
+  $result = PyLong_FromLongLong(*$1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;
@@ -458,7 +487,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 }
 
 // Override default py3 behavior of attempting to encode into Unicode.
-%typemap(out) std::string tensorflow::GetResourceHandleShapeAndType {
+%typemap(out) std::string tensorflow::GetHandleShapeAndType {
   $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
 
@@ -511,6 +540,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 
 %include "tensorflow/c/c_api.h"
+%include "tensorflow/c/tf_attrtype.h"
 %include "tensorflow/c/python_api.h"
 
 
@@ -566,8 +596,7 @@ def TF_Reset(target, containers=None, config=None):
   from tensorflow.python.framework import errors
   opts = TF_NewSessionOptions(target=target, config=config)
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      TF_Reset_wrapper(opts, containers, status)
+    TF_Reset_wrapper(opts, containers)
   finally:
     TF_DeleteSessionOptions(opts)
 %}
@@ -594,6 +623,27 @@ def TF_Reset(target, containers=None, config=None):
       opers.push_back(oper_ptr);
     }
     $1 = &opers;
+  } else {
+    $1 = nullptr;
+  }
+}
+
+// $input is a Python list of wrapped TF_Operations
+%typemap(in) (const std::vector<TF_Operation*>* control_outputs)
+    (std::vector<TF_Operation*> control_outputs) {
+  if ($input != Py_None) {
+    if (!PyList_Check($input)) {
+      SWIG_exception_fail(SWIG_TypeError, "$symname: expected list");
+    }
+    size_t size = PyList_Size($input);
+    for (int i = 0; i < size; ++i) {
+      PyObject* item = PyList_GetItem($input, i);
+      TF_Operation* oper_ptr;
+      SWIG_ConvertPtr(item, reinterpret_cast<void**>(&oper_ptr),
+                      $descriptor(TF_Operation*), 0);
+      control_outputs.push_back(oper_ptr);
+    }
+    $1 = &control_outputs;
   } else {
     $1 = nullptr;
   }
@@ -772,11 +822,30 @@ def TF_Reset(target, containers=None, config=None):
   $1 = &types_local;
 }
 
+%unignore TF_CreatePlaceholders;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_CreatePlaceholders;
+
+// Build a Python list of TF_Output and return it.
+%typemap(out) std::vector<TF_Output> tensorflow::TF_CreatePlaceholders {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>>
+  const std::vector<TF_Output>& tf_outputs = $1;
+  for (size_t i = 0; i < tf_outputs.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(tf_outputs[i]));
+  }
+}
+
+%unignore TF_NewSessionRef;
 %unignore SetRequireShapeInferenceFns;
 %unignore TF_TryEvaluateConstant_wrapper;
 %noexception TF_TryEvaluateConstant_wrapper;
 %unignore ExtendSession;
-%unignore ResourceHandleShapeAndType;
+%unignore HandleShapeAndType;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

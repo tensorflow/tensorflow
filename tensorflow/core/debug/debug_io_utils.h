@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DEBUG_IO_UTILS_H_
-#define TENSORFLOW_DEBUG_IO_UTILS_H_
+#ifndef TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_
+#define TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_
 
 #include <cstddef>
 #include <functional>
@@ -78,14 +78,14 @@ class DebugIO {
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string>& debug_urls,
+                                   const gtl::ArraySlice<string> debug_urls,
                                    const bool gated_grpc);
 
   // Convenience overload of the method above for no gated_grpc by default.
   static Status PublishDebugTensor(const DebugNodeKey& debug_node_key,
                                    const Tensor& tensor,
                                    const uint64 wall_time_us,
-                                   const gtl::ArraySlice<string>& debug_urls);
+                                   const gtl::ArraySlice<string> debug_urls);
 
   // Publishes a graph to a set of debug URLs.
   //
@@ -193,6 +193,26 @@ class DebugFileIO {
                                      const string& dir_name,
                                      const string& file_name);
 
+  // Request additional bytes to be dumped to the file system.
+  //
+  // Does not actually dump the bytes, but instead just performs the
+  // bookkeeping necessary to prevent the total dumped amount of data from
+  // exceeding the limit (default 100 GBytes or set customly through the
+  // environment variable TFDBG_DISK_BYTES_LIMIT).
+  //
+  // Args:
+  //   bytes: Number of bytes to request.
+  //
+  // Returns:
+  //   Whether the request is approved given the total dumping
+  //   limit.
+  static bool requestDiskByteUsage(uint64 bytes);
+
+  // Reset the disk byte usage to zero.
+  static void resetDiskByteUsage();
+
+  static uint64 global_disk_bytes_limit_;
+
  private:
   // Encapsulates the Tensor in an Event protobuf and write it to file.
   static Status DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
@@ -204,6 +224,15 @@ class DebugFileIO {
   // TODO(cais): Replace with shared implementation once http://b/30497715 is
   // fixed.
   static Status RecursiveCreateDir(Env* env, const string& dir);
+
+  // Tracks how much disk has been used so far.
+  static uint64 disk_bytes_used_;
+  // Mutex for thread-safe access to disk_bytes_used_.
+  static mutex bytes_mu_;
+  // Default limit for the disk space.
+  static const uint64 kDefaultGlobalDiskBytesLimit;
+
+  friend class DiskUsageLimitTest;
 };
 
 }  // namespace tensorflow
@@ -224,6 +253,7 @@ struct hash<::tensorflow::DebugNodeKey> {
 // TODO(cais): Support grpc:// debug URLs in open source once Python grpc
 //   genrule becomes available. See b/23796275.
 #ifndef PLATFORM_WINDOWS
+#include "grpcpp/channel.h"
 #include "tensorflow/core/debug/debug_service.grpc.pb.h"
 
 namespace tensorflow {
@@ -236,7 +266,7 @@ class DebugGrpcChannel {
   //   server_stream_addr: Address (host name and port) of the debug stream
   //     server implementing the EventListener service (see
   //     debug_service.proto). E.g., "127.0.0.1:12345".
-  DebugGrpcChannel(const string& server_stream_addr);
+  explicit DebugGrpcChannel(const string& server_stream_addr);
 
   virtual ~DebugGrpcChannel() {}
 
@@ -388,8 +418,8 @@ class DebugGrpcIO {
   // Clear enabled debug op state from all debug URLs (if any).
   static void ClearEnabledWatchKeys();
 
-  static mutex streams_mu;
-  static int64 channel_connection_timeout_micros;
+  static mutex streams_mu_;
+  static int64 channel_connection_timeout_micros_;
 
   friend class GrpcDebugTest;
   friend class DebugNumericSummaryOpTest;
@@ -398,4 +428,4 @@ class DebugGrpcIO {
 }  // namespace tensorflow
 #endif  // #ifndef(PLATFORM_WINDOWS)
 
-#endif  // TENSORFLOW_DEBUG_IO_UTILS_H_
+#endif  // TENSORFLOW_CORE_DEBUG_DEBUG_IO_UTILS_H_

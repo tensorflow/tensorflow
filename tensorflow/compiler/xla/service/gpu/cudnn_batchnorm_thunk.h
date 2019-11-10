@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -59,8 +60,7 @@ class CudnnBatchNormForwardInferenceThunk : public Thunk {
   CudnnBatchNormForwardInferenceThunk& operator=(
       const CudnnBatchNormForwardInferenceThunk&) = delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   BufferAllocation::Slice operand_;
@@ -89,8 +89,7 @@ class CudnnBatchNormForwardTrainingThunk : public Thunk {
   CudnnBatchNormForwardTrainingThunk& operator=(
       const CudnnBatchNormForwardTrainingThunk&) = delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   BufferAllocation::Slice operand_;
@@ -122,8 +121,7 @@ class CudnnBatchNormBackwardThunk : public Thunk {
   CudnnBatchNormBackwardThunk& operator=(const CudnnBatchNormBackwardThunk&) =
       delete;
 
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   BufferAllocation::Slice operand_;

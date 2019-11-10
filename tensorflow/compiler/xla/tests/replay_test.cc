@@ -17,9 +17,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -55,16 +55,17 @@ TEST_F(ReplayTest, TwoPlusTwoReplay) {
       client_->GetComputationShape(computation).ConsumeValueOrDie();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).ConsumeValueOrDie();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(*original_shape, *replayed_shape));
+  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
+                                            replayed_shape->ToProto()));
 
   // Run it.
-  std::unique_ptr<Literal> literal =
+  Literal literal =
       client_
           ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect 4.
-  LiteralTestUtil::ExpectR0Equal<int32>(4, *literal);
+  LiteralTestUtil::ExpectR0Equal<int32>(4, literal);
 }
 
 XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
@@ -87,16 +88,17 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
       client_->GetComputationShape(computation).ConsumeValueOrDie();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).ConsumeValueOrDie();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(*original_shape, *replayed_shape));
+  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
+                                            replayed_shape->ToProto()));
 
   // Run it.
   std::unique_ptr<GlobalData> x_data =
-      client_->TransferToServer(*Literal::CreateR0<int32>(2))
+      client_->TransferToServer(LiteralUtil::CreateR0<int32>(2))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> y_data =
-      client_->TransferToServer(*Literal::CreateR0<int32>(3))
+      client_->TransferToServer(LiteralUtil::CreateR0<int32>(3))
           .ConsumeValueOrDie();
-  std::unique_ptr<Literal> literal =
+  Literal literal =
       client_
           ->ExecuteAndTransfer(replayed,
                                /*arguments=*/{x_data.get(), y_data.get()},
@@ -104,7 +106,7 @@ XLA_TEST_F(ReplayTest, XPlusYReplayWithParameters) {
           .ConsumeValueOrDie();
 
   // Expect 5.
-  LiteralTestUtil::ExpectR0Equal<int32>(5, *literal);
+  LiteralTestUtil::ExpectR0Equal<int32>(5, literal);
 }
 
 TEST_F(ReplayTest, MapPlusTwoOverR1) {
@@ -133,16 +135,17 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
       client_->GetComputationShape(computation).ConsumeValueOrDie();
   std::unique_ptr<ProgramShape> replayed_shape =
       client_->GetComputationShape(replayed).ConsumeValueOrDie();
-  ASSERT_TRUE(protobuf_util::ProtobufEquals(*original_shape, *replayed_shape));
+  ASSERT_TRUE(protobuf_util::ProtobufEquals(original_shape->ToProto(),
+                                            replayed_shape->ToProto()));
 
   // Run it.
-  std::unique_ptr<Literal> literal =
+  Literal literal =
       client_
           ->ExecuteAndTransfer(replayed, /*arguments=*/{}, &execution_options_)
           .ConsumeValueOrDie();
 
   // Expect result.
-  LiteralTestUtil::ExpectR1Equal<int32>({3, 4, 5}, *literal);
+  LiteralTestUtil::ExpectR1Equal<int32>({3, 4, 5}, literal);
 }
 
 }  // namespace

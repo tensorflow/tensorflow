@@ -16,16 +16,18 @@ limitations under the License.
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "DistributedRuntimeProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/tensor.proto";
-import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +140,11 @@ message RunStepRequest {
   // response body. This is a workaround since the RPC subsystem may
   // truncate long metadata messages.
   bool store_errors_in_response_body = 7;
+
+  // Unique identifier for this request. Every RunStepRequest must
+  // have a unique request_id, and retried RunStepRequest must have
+  // the same request_id. If request_id is zero, retry detection is disabled.
+  int64 request_id = 8;
 }
 
 message RunStepResponse {
@@ -183,6 +190,11 @@ message PartialRunSetupRequest {
   // Target Nodes. A list of node names. The named nodes will be run in future
   // steps, but their outputs will not be fetched.
   repeated string target = 4;
+
+  // Unique identifier for this request. Every PartialRunSetupRequest must
+  // have a unique request_id, and retried PartialRunSetupRequest must have
+  // the same request_id. If request_id is zero, retry detection is disabled.
+  int64 request_id = 5;
 }
 
 message PartialRunSetupResponse {
@@ -204,8 +216,7 @@ message CloseSessionRequest {
   string session_handle = 1;
 }
 
-message CloseSessionResponse {
-}
+message CloseSessionResponse {}
 
 // Reset() allows misbehaving or slow sessions to be aborted and closed, and
 // causes their resources eventually to be released.  Reset() does not wait
@@ -224,7 +235,7 @@ message CloseSessionResponse {
 message ResetRequest {
   // A list of container names, which may be empty.
   //
-  // If 'container' is not empty, releases resoures in the given
+  // If 'container' is not empty, releases resources in the given
   // containers in all devices.
   //
   // If 'container' is empty, releases resources in the default
@@ -237,8 +248,7 @@ message ResetRequest {
   repeated string device_filters = 2;
 }
 
-message ResetResponse {
-}
+message ResetResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -279,6 +289,11 @@ message MakeCallableRequest {
 
   // Options that define the behavior of the created callable.
   CallableOptions options = 2;
+
+  // Unique identifier for this request. Every MakeCallableRequest must
+  // have a unique request_id, and retried MakeCallableRequest must have
+  // the same request_id. If request_id is zero, retry detection is disabled.
+  int64 request_id = 3;
 }
 
 message MakeCallableResponse {
@@ -303,6 +318,11 @@ message RunCallableRequest {
   // Values of the tensors passed as arguments to the callable, in the order
   // defined in the CallableOptions.feed field passed to MakeCallable.
   repeated TensorProto feed = 3;
+
+  // Unique identifier for this request. Every RunCallableRequest must
+  // have a unique request_id, and retried RunCallableRequest must have
+  // the same request_id. If request_id is zero, retry detection is disabled.
+  int64 request_id = 4;
 }
 
 message RunCallableResponse {
@@ -330,5 +350,4 @@ message ReleaseCallableRequest {
   int64 handle = 2;
 }
 
-message ReleaseCallableResponse {
-}
+message ReleaseCallableResponse {}

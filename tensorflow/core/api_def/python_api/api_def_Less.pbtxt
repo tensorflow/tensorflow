@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "less"
-    deprecation_message: "tf.less is deprecated, please use tf.math.less instead."
   }
 }

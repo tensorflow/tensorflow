@@ -97,10 +97,12 @@ class UnravelIndexOp : public OpKernel {
 
       auto output = output_tensor->matrix<Tidx>();
 
-      Eigen::array<int64, 2> reshape{{dims_tensor.NumElements(), 1}};
-      Eigen::array<int64, 2> bcast({1, indices_tensor.NumElements()});
-      Eigen::array<int64, 2> indices_reshape{{1, indices_tensor.NumElements()}};
-      Eigen::array<int64, 2> indices_bcast({dims_tensor.NumElements(), 1});
+      Eigen::array<Eigen::Index, 2> reshape{{dims_tensor.NumElements(), 1}};
+      Eigen::array<Eigen::Index, 2> bcast({1, indices_tensor.NumElements()});
+      Eigen::array<Eigen::Index, 2> indices_reshape{
+          {1, indices_tensor.NumElements()}};
+      Eigen::array<Eigen::Index, 2> indices_bcast(
+          {dims_tensor.NumElements(), 1});
 
       output = indices_tensor.vec<Tidx>()
                    .reshape(indices_reshape)

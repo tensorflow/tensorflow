@@ -45,6 +45,12 @@ func (op *Operation) NumOutputs() int {
 	return int(C.TF_OperationNumOutputs(op.c))
 }
 
+// Device returns a specification of the device on which this operation
+// will be executed, or the empty string if there is no such specification.
+func (op *Operation) Device() string {
+	return C.GoString(C.TF_OperationDevice(op.c))
+}
+
 // OutputListSize returns the size of the list of Outputs that is produced by a
 // named output of op.
 //

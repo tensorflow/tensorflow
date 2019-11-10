@@ -80,7 +80,7 @@ class DecodeJpegBenchmark(test.Benchmark):
           initializer=image_ops.encode_jpeg(tiled_image))
 
     with session.Session() as sess:
-      sess.run(variables.global_variables_initializer())
+      self.evaluate(variables.global_variables_initializer())
       images = []
       for _ in xrange(parallelism):
         if crop_window is None:
@@ -105,12 +105,13 @@ class DecodeJpegBenchmark(test.Benchmark):
 
       for _ in xrange(3):
         # Skip warm up time.
-        sess.run(r)
+        self.evaluate(r)
 
       start_time = time.time()
       for _ in xrange(num_iters):
-        sess.run(r)
-    return time.time() - start_time
+        self.evaluate(r)
+      end_time = time.time()
+    return end_time - start_time
 
   def benchmarkDecodeJpegSmall(self):
     """Evaluate single DecodeImageOp for small size image."""

@@ -16,6 +16,8 @@ limitations under the License.
 #include <setjmp.h>
 #include <stdio.h>
 #include <string.h>
+
+#include <cmath>
 #include <fstream>
 #include <vector>
 
@@ -30,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -58,9 +61,11 @@ Status ReadLocationsFile(const string& file_name, std::vector<float>* result,
   result->clear();
   string line;
   while (std::getline(file, line)) {
-    std::vector<float> tokens;
-    CHECK(tensorflow::str_util::SplitAndParseAsFloats(line, ',', &tokens));
-    for (auto number : tokens) {
+    std::vector<string> string_tokens = tensorflow::str_util::Split(line, ',');
+    result->reserve(string_tokens.size());
+    for (const string& string_token : string_tokens) {
+      float number;
+      CHECK(tensorflow::strings::safe_strtof(string_token, &number));
       result->push_back(number);
     }
   }
@@ -228,7 +233,9 @@ void DecodeLocation(const float* encoded_location, const float* box_priors,
   }
 }
 
-float DecodeScore(float encoded_score) { return 1 / (1 + exp(-encoded_score)); }
+float DecodeScore(float encoded_score) {
+  return 1 / (1 + std::exp(-encoded_score));
+}
 
 void DrawBox(const int image_width, const int image_height, int left, int top,
              int right, int bottom, tensorflow::TTypes<uint8>::Flat* image) {

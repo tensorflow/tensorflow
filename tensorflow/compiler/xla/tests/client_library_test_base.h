@@ -21,22 +21,23 @@ limitations under the License.
 #include <type_traits>
 #include <vector>
 
+#include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/bitmap.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -48,8 +49,8 @@ namespace xla {
 // use_bfloat16_params with that value. Returns the result.
 template <typename TestCase>
 std::vector<TestCase> ExpandUseBfloat16(
-    tensorflow::gtl::ArraySlice<bool> use_bfloat16_params,
-    tensorflow::gtl::ArraySlice<TestCase> specs) {
+    absl::Span<const bool> use_bfloat16_params,
+    absl::Span<const TestCase> specs) {
   std::vector<TestCase> expanded;
   for (bool use_bfloat16 : use_bfloat16_params) {
     for (const auto& spec : specs) {
@@ -73,8 +74,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   string TestName() const;
 
   void SetFastMathDisabled(bool disabled) {
-    execution_options_.mutable_debug_options()->set_xla_enable_fast_math(
-        !disabled);
+    auto* opts = execution_options_.mutable_debug_options();
+    opts->set_xla_cpu_enable_fast_math(!disabled);
+    opts->set_xla_gpu_enable_fast_min_max(!disabled);
   }
 
   void SetSeed(uint64 seed) { execution_options_.set_seed(seed); }
@@ -91,29 +93,29 @@ class ClientLibraryTestBase : public ::testing::Test {
   // execution options. Modify execution_options_ in your test if you want to
   // customize the options.
   StatusOr<std::unique_ptr<GlobalData>> Execute(
-      XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+      XlaBuilder* builder, absl::Span<GlobalData* const> arguments);
 
-  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
-      XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+  StatusOr<Literal> ExecuteAndTransfer(
+      XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_output_layout = nullptr);
 
-  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransfer(
+  StatusOr<Literal> ExecuteAndTransfer(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_output_layout = nullptr);
 
   // This executes the computation via the reference client (which connects a
-  // interpreter backend). The result is used as the expected values of the
+  // interpreter backend). The result is used as the expected value of the
   // computation.
-  StatusOr<std::unique_ptr<Literal>> ExecuteAndTransferReference(
+  StatusOr<Literal> ExecuteAndTransferReference(
       const XlaComputation& computation,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_output_layout = nullptr);
 
   // Run a computation and return its value as a string. If an error
   // occurs, then instead return the error as a string.
   string ExecuteToString(XlaBuilder* builder,
-                         tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+                         absl::Span<GlobalData* const> arguments);
 
   // Convenience methods for building and running a computation, transferring
   // the result, and comparing it to the expected value(s). Methods are
@@ -123,102 +125,105 @@ class ClientLibraryTestBase : public ::testing::Test {
   // for integral types without the ErrorSpec parameter.
   template <typename NativeT>
   void ComputeAndCompareR0(XlaBuilder* builder, NativeT expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+                           absl::Span<GlobalData* const> arguments);
   template <typename NativeT>
   void ComputeAndCompareR0(XlaBuilder* builder, NativeT expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+                           absl::Span<GlobalData* const> arguments,
                            ErrorSpec error);
 
   template <typename NativeT>
   void ComputeAndCompareR1(XlaBuilder* builder,
-                           tensorflow::gtl::ArraySlice<NativeT> expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+                           absl::Span<const NativeT> expected,
+                           absl::Span<GlobalData* const> arguments);
   template <typename NativeT>
   void ComputeAndCompareR1(XlaBuilder* builder,
-                           tensorflow::gtl::ArraySlice<NativeT> expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+                           absl::Span<const NativeT> expected,
+                           absl::Span<GlobalData* const> arguments,
                            ErrorSpec error);
 
   // As above, but uses a bitmap to hold the predicate vector to avoid
   // deficiencies of vector<bool>.
   void ComputeAndCompareR1(XlaBuilder* builder,
                            const tensorflow::core::Bitmap& expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+                           absl::Span<GlobalData* const> arguments);
 
   template <typename NativeT>
   void ComputeAndCompareR2(XlaBuilder* builder,
                            const Array2D<NativeT>& expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+                           absl::Span<GlobalData* const> arguments);
   template <typename NativeT>
   void ComputeAndCompareR2(XlaBuilder* builder,
                            const Array2D<NativeT>& expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+                           absl::Span<GlobalData* const> arguments,
                            ErrorSpec error);
 
   template <typename NativeT>
   void ComputeAndCompareR3(XlaBuilder* builder,
                            const Array3D<NativeT>& expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+                           absl::Span<GlobalData* const> arguments);
   template <typename NativeT>
   void ComputeAndCompareR3(XlaBuilder* builder,
                            const Array3D<NativeT>& expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+                           absl::Span<GlobalData* const> arguments,
                            ErrorSpec error);
 
   template <typename NativeT>
   void ComputeAndCompareR4(XlaBuilder* builder,
                            const Array4D<NativeT>& expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+                           absl::Span<GlobalData* const> arguments);
   template <typename NativeT>
   void ComputeAndCompareR4(XlaBuilder* builder,
                            const Array4D<NativeT>& expected,
-                           tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+                           absl::Span<GlobalData* const> arguments,
                            ErrorSpec error);
 
   // Build and run the computation and compare the result with the given
   // literal. shape_with_layout indicates the result layout to request when
   // calling Execute.
-  void ComputeAndCompareLiteral(
-      XlaBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-      const Shape* shape_with_layout = nullptr);
-  void ComputeAndCompareLiteral(
-      XlaBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
+  void ComputeAndCompareLiteral(XlaBuilder* builder, const Literal& expected,
+                                absl::Span<GlobalData* const> arguments,
+                                const Shape* shape_with_layout = nullptr);
+  void ComputeAndCompareLiteral(XlaBuilder* builder, const Literal& expected,
+                                absl::Span<GlobalData* const> arguments,
+                                ErrorSpec error,
+                                const Shape* shape_with_layout = nullptr);
+
+  // Build and run the computation and return the result as a literal.
+  // shape_with_layout indicates the result layout to request when calling
+  // Execute.
+  StatusOr<Literal> ComputeAndTransfer(
+      XlaBuilder* builder, absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_layout = nullptr);
 
   // ComputeAndCompare variant which returns an error status.
   Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const Shape* shape_with_layout = nullptr);
   Status ComputeAndCompareLiteralWithStatus(
       XlaBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error,
+      absl::Span<GlobalData* const> arguments, ErrorSpec error,
       const Shape* shape_with_layout = nullptr);
 
   // Compare the result of the computation to a strings. In XLA strings are
   // represented using rank-1 U8 shapes.
-  void ComputeAndCompareR1U8(
-      XlaBuilder* builder, tensorflow::StringPiece expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
+  void ComputeAndCompareR1U8(XlaBuilder* builder, absl::string_view expected,
+                             absl::Span<GlobalData* const> arguments);
 
   // Convenience method for running a built computation, transferring the
   // result, and comparing it to the expected tuple literal.
-  void ComputeAndCompareTuple(
-      XlaBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments);
-  void ComputeAndCompareTuple(
-      XlaBuilder* builder, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error);
+  void ComputeAndCompareTuple(XlaBuilder* builder, const Literal& expected,
+                              absl::Span<GlobalData* const> arguments);
+  void ComputeAndCompareTuple(XlaBuilder* builder, const Literal& expected,
+                              absl::Span<GlobalData* const> arguments,
+                              ErrorSpec error);
 
   // Convenience method for running a built computation and comparing the result
   // with the reference result.
   void ComputeAndCompare(XlaBuilder* builder,
-                         tensorflow::gtl::ArraySlice<Literal> arguments);
+                         absl::Span<const Literal> arguments);
   void ComputeAndCompare(XlaBuilder* builder,
-                         tensorflow::gtl::ArraySlice<Literal> arguments,
-                         ErrorSpec error);
+                         absl::Span<const Literal> arguments, ErrorSpec error);
 
   // Create scalar operations for use in reductions.
   XlaComputation CreateScalarRelu();
@@ -284,7 +289,7 @@ class ClientLibraryTestBase : public ::testing::Test {
 
   template <class T>
   XlaOp AddParam(const Array<T>& argument, XlaBuilder* builder) {
-    return AddParam(*Literal::CreateFromArray(argument), builder);
+    return AddParam(LiteralUtil::CreateFromArray(argument), builder);
   }
 
   // Creates a constant instruction with the given literal. When the
@@ -299,13 +304,14 @@ class ClientLibraryTestBase : public ::testing::Test {
   template <typename NativeT>
   XlaOp CreateConstantFromArray(const Array<NativeT>& array,
                                 XlaBuilder* builder) {
-    return CreateConstantFromLiteral(*Literal::CreateFromArray(array), builder);
+    return CreateConstantFromLiteral(LiteralUtil::CreateFromArray(array),
+                                     builder);
   }
 
   // Same as CreateConstantFromArray, but for scalars.
   template <typename NativeT>
   XlaOp CreateConstantFromScalar(NativeT value, XlaBuilder* builder) {
-    return CreateConstantFromLiteral(*Literal::CreateR0<NativeT>(value),
+    return CreateConstantFromLiteral(LiteralUtil::CreateR0<NativeT>(value),
                                      builder);
   }
 
@@ -334,12 +340,12 @@ class ClientLibraryTestBase : public ::testing::Test {
   // converted to bfloat16.
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR1Parameter(
-      tensorflow::gtl::ArraySlice<NativeT> values, int64 parameter_number,
+      absl::Span<const NativeT> values, int64 parameter_number,
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Creates a parameter instruction that wraps the given constant array
-  // "array_2d" and then stores to "data_handle" the global handle for that
-  // parameter.
+  // "array_2d" and then stores it to the global handle for that parameter
+  // "data_handle".
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
@@ -352,8 +358,8 @@ class ClientLibraryTestBase : public ::testing::Test {
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Creates a parameter instruction that wraps the given constant array
-  // "array_3d" and then stores to "data_handle" the global handle for that
-  // parameter.
+  // "array_3d" and then stores it to the global handle for that parameter
+  // "data_handle".
   //
   // "parameter_number" is the parameter number.
   // "name" is the name of the parameter instruction.
@@ -363,6 +369,20 @@ class ClientLibraryTestBase : public ::testing::Test {
   template <typename NativeT>
   std::unique_ptr<GlobalData> CreateR3Parameter(
       const Array3D<NativeT>& array_3d, int64 parameter_number,
+      const string& name, XlaBuilder* builder, XlaOp* data_handle);
+
+  // Creates a parameter instruction that wraps the given constant array
+  // "array_4d" and then stores it to the global handle for that parameter
+  // "data_handle".
+  //
+  // "parameter_number" is the parameter number.
+  // "name" is the name of the parameter instruction.
+  //
+  // When the use_bfloat16 flag is set but NativeT is float, the data will be
+  // converted to bfloat16.
+  template <typename NativeT>
+  std::unique_ptr<GlobalData> CreateR4Parameter(
+      const Array4D<NativeT>& array_4d, int64 parameter_number,
       const string& name, XlaBuilder* builder, XlaOp* data_handle);
 
   // Getter and setter for the use_bfloat16 flag, which indicates whether to run
@@ -376,162 +396,168 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Executes the computation and calculates the expected reference value using
   // the reference client. Returns two literals in the order of (expected,
   // actual).
-  StatusOr<std::pair<std::unique_ptr<Literal>, std::unique_ptr<Literal>>>
-  ComputeValueAndReference(XlaBuilder* builder,
-                           tensorflow::gtl::ArraySlice<Literal> arguments);
+  StatusOr<std::pair<Literal, Literal>> ComputeValueAndReference(
+      XlaBuilder* builder, absl::Span<const Literal> arguments);
 
-  Client* client_;
-  Client* ref_client_;  // To compute reference result.
+  // Converts an f32 literal to bf16 if use_bfloat16_ is true.
+  Literal MaybeConvertLiteralToBfloat16(const Literal& literal);
+
+  LocalClient* client_;
+  LocalClient* ref_client_;  // To compute reference result.
   ExecutionOptions execution_options_;
 
  private:
   Status ComputeAndCompareLiteralWithAllOutputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output);
   Status ComputeAndCompareLiteralWithAllInputLayouts(
       const xla::XlaComputation& computation, const Literal& expected,
-      tensorflow::gtl::ArraySlice<GlobalData*> arguments,
+      absl::Span<GlobalData* const> arguments,
       const std::function<void(const Literal& actual,
                                const string& error_message)>& verify_output,
       const Shape* output_with_layout = nullptr);
+
+  // Converts an f32 shape to bf16 if use_bfloat16_ is true.
+  Shape MaybeConvertShapeToBfloat16(const Shape& shape);
 
   // Whether to run tests with all float-type input/output converted to
   // bfloat16.
   bool use_bfloat16_ = false;
 
   // Arguments to be passed to the computation when it runs.
-  std::vector<std::unique_ptr<GlobalData>> arguments_;
+  std::vector<Literal> arguments_;
 };
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR0(
     XlaBuilder* builder, NativeT expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR0<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+    absl::Span<GlobalData* const> arguments) {
+  Literal expected_literal = LiteralUtil::CreateR0<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR0(
     XlaBuilder* builder, NativeT expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
+    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, complex64>::value,
+                    std::is_same<NativeT, complex64>::value ||
+                    std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR0<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+  Literal expected_literal = LiteralUtil::CreateR0<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR1(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<NativeT> expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR1<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+    XlaBuilder* builder, absl::Span<const NativeT> expected,
+    absl::Span<GlobalData* const> arguments) {
+  Literal expected_literal = LiteralUtil::CreateR1<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR1(
-    XlaBuilder* builder, tensorflow::gtl::ArraySlice<NativeT> expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
+    XlaBuilder* builder, absl::Span<const NativeT> expected,
+    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, complex64>::value,
+                    std::is_same<NativeT, complex64>::value ||
+                    std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR1<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+  Literal expected_literal = LiteralUtil::CreateR1<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR2(
     XlaBuilder* builder, const Array2D<NativeT>& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR2FromArray2D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+    absl::Span<GlobalData* const> arguments) {
+  Literal expected_literal =
+      LiteralUtil::CreateR2FromArray2D<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR2(
     XlaBuilder* builder, const Array2D<NativeT>& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
+    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, complex64>::value,
+                    std::is_same<NativeT, complex64>::value ||
+                    std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR2FromArray2D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+  Literal expected_literal =
+      LiteralUtil::CreateR2FromArray2D<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR3(
     XlaBuilder* builder, const Array3D<NativeT>& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR3FromArray3D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+    absl::Span<GlobalData* const> arguments) {
+  Literal expected_literal =
+      LiteralUtil::CreateR3FromArray3D<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR3(
     XlaBuilder* builder, const Array3D<NativeT>& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
+    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, complex64>::value,
+                    std::is_same<NativeT, complex64>::value ||
+                    std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR3FromArray3D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+  Literal expected_literal =
+      LiteralUtil::CreateR3FromArray3D<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR4(
     XlaBuilder* builder, const Array4D<NativeT>& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR4FromArray4D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+    absl::Span<GlobalData* const> arguments) {
+  Literal expected_literal =
+      LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments);
 }
 
 template <typename NativeT>
 void ClientLibraryTestBase::ComputeAndCompareR4(
     XlaBuilder* builder, const Array4D<NativeT>& expected,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments, ErrorSpec error) {
+    absl::Span<GlobalData* const> arguments, ErrorSpec error) {
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
                     std::is_same<NativeT, half>::value ||
-                    std::is_same<NativeT, complex64>::value,
+                    std::is_same<NativeT, complex64>::value ||
+                    std::is_same<NativeT, complex128>::value,
                 "Float or complex type required when specifying an ErrorSpec");
-  std::unique_ptr<Literal> expected_literal =
-      Literal::CreateR4FromArray4D<NativeT>(expected);
-  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, *expected_literal,
+  Literal expected_literal =
+      LiteralUtil::CreateR4FromArray4D<NativeT>(expected);
+  ClientLibraryTestBase::ComputeAndCompareLiteral(builder, expected_literal,
                                                   arguments, error);
 }
 
@@ -539,27 +565,27 @@ template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR0Parameter(
     NativeT value, int64 parameter_number, const string& name,
     XlaBuilder* builder, XlaOp* data_handle) {
-  std::unique_ptr<Literal> literal = Literal::CreateR0(value);
-  if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = Literal::ConvertF32ToBF16(*literal);
+  Literal literal = LiteralUtil::CreateR0(value);
+  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+    literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
   std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
+      client_->TransferToServer(literal).ConsumeValueOrDie();
+  *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
 
 template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR1Parameter(
-    tensorflow::gtl::ArraySlice<NativeT> values, int64 parameter_number,
+    absl::Span<const NativeT> values, int64 parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
-  std::unique_ptr<Literal> literal = Literal::CreateR1(values);
-  if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = Literal::ConvertF32ToBF16(*literal);
+  Literal literal = LiteralUtil::CreateR1(values);
+  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+    literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
   std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
+      client_->TransferToServer(literal).ConsumeValueOrDie();
+  *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
 
@@ -567,13 +593,13 @@ template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR2Parameter(
     const Array2D<NativeT>& array_2d, int64 parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
-  std::unique_ptr<Literal> literal = Literal::CreateR2FromArray2D(array_2d);
-  if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = Literal::ConvertF32ToBF16(*literal);
+  Literal literal = LiteralUtil::CreateR2FromArray2D(array_2d);
+  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+    literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
   std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
+      client_->TransferToServer(literal).ConsumeValueOrDie();
+  *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
 
@@ -581,13 +607,27 @@ template <typename NativeT>
 std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR3Parameter(
     const Array3D<NativeT>& array_3d, int64 parameter_number,
     const string& name, XlaBuilder* builder, XlaOp* data_handle) {
-  std::unique_ptr<Literal> literal = Literal::CreateR3FromArray3D(array_3d);
-  if (use_bfloat16_ && literal->shape().element_type() == F32) {
-    literal = Literal::ConvertF32ToBF16(*literal);
+  Literal literal = LiteralUtil::CreateR3FromArray3D(array_3d);
+  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+    literal = LiteralUtil::ConvertF32ToBF16(literal);
   }
   std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(*literal).ConsumeValueOrDie();
-  *data_handle = Parameter(builder, parameter_number, literal->shape(), name);
+      client_->TransferToServer(literal).ConsumeValueOrDie();
+  *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
+  return data;
+}
+
+template <typename NativeT>
+std::unique_ptr<GlobalData> ClientLibraryTestBase::CreateR4Parameter(
+    const Array4D<NativeT>& array_4d, int64 parameter_number,
+    const string& name, XlaBuilder* builder, XlaOp* data_handle) {
+  Literal literal = LiteralUtil::CreateR4FromArray4D(array_4d);
+  if (use_bfloat16_ && literal.shape().element_type() == F32) {
+    literal = LiteralUtil::ConvertF32ToBF16(literal);
+  }
+  std::unique_ptr<GlobalData> data =
+      client_->TransferToServer(literal).ConsumeValueOrDie();
+  *data_handle = Parameter(builder, parameter_number, literal.shape(), name);
   return data;
 }
 
@@ -606,7 +646,7 @@ template <typename NativeT>
 std::unique_ptr<Array2D<NativeT>> ClientLibraryTestBase::CreatePseudorandomR2(
     const int rows, const int cols, NativeT min_value, NativeT max_value,
     uint32 seed) {
-  auto result = MakeUnique<Array2D<NativeT>>(rows, cols);
+  auto result = absl::make_unique<Array2D<NativeT>>(rows, cols);
   PseudorandomGenerator<NativeT> generator(min_value, max_value, seed);
   for (int y = 0; y < rows; ++y) {
     for (int x = 0; x < cols; ++x) {

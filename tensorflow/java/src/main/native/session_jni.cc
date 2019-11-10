@@ -86,19 +86,21 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Session_allocate2(
   TF_Graph* graph = reinterpret_cast<TF_Graph*>(graph_handle);
   TF_Status* status = TF_NewStatus();
   TF_SessionOptions* opts = TF_NewSessionOptions();
-  const char* ctarget = nullptr;
   jbyte* cconfig = nullptr;
-  if (target != nullptr) {
-    ctarget = env->GetStringUTFChars(target, nullptr);
-  }
   if (config != nullptr) {
     cconfig = env->GetByteArrayElements(config, nullptr);
     TF_SetConfig(opts, cconfig,
                  static_cast<size_t>(env->GetArrayLength(config)), status);
     if (!throwExceptionIfNotOK(env, status)) {
       env->ReleaseByteArrayElements(config, cconfig, JNI_ABORT);
+      TF_DeleteSessionOptions(opts);
+      TF_DeleteStatus(status);
       return 0;
     }
+  }
+  const char* ctarget = nullptr;
+  if (target != nullptr) {
+    ctarget = env->GetStringUTFChars(target, nullptr);
   }
   TF_Session* session = TF_NewSession(graph, opts, status);
   if (config != nullptr) {

@@ -168,6 +168,7 @@ class LocalRendezvousImpl : public Rendezvous {
       // There is no waiter for this message. Append the message
       // into the queue. The waiter will pick it up when arrives.
       // Only send-related fields need to be filled.
+      VLOG(2) << "Enqueue Send Item (key:" << key.FullKey() << "). ";
       Item* item = new Item;
       item->value = val;
       item->is_dead = is_dead;
@@ -180,9 +181,17 @@ class LocalRendezvousImpl : public Rendezvous {
       return Status::OK();
     }
 
+    VLOG(2) << "Consume Recv Item (key:" << key.FullKey() << "). ";
     // There is an earliest waiter to consume this message.
     Item* item = queue->front();
-    queue->pop_front();
+
+    // Delete the queue when the last element has been consumed.
+    if (queue->size() == 1) {
+      VLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
+      table_.erase(key_hash);
+    } else {
+      queue->pop_front();
+    }
     mu_.unlock();
 
     // Notify the waiter by invoking its done closure, outside the
@@ -211,9 +220,67 @@ class LocalRendezvousImpl : public Rendezvous {
     if (queue->empty() || !queue->front()->IsSendValue()) {
       // There is no message to pick up.
       // Only recv-related fields need to be filled.
+      CancellationManager* cm = recv_args.cancellation_manager;
+      CancellationToken token = CancellationManager::kInvalidToken;
+      bool already_cancelled = false;
+      if (cm != nullptr) {
+        token = cm->get_cancellation_token();
+        already_cancelled = !cm->RegisterCallback(token, [this, token,
+                                                          key_hash] {
+          Item* item = nullptr;
+          {
+            mutex_lock l(mu_);
+            ItemQueue* queue = &table_[key_hash];
+            if (!queue->empty() && !queue->front()->IsSendValue()) {
+              for (auto it = queue->begin(); it != queue->end(); it++) {
+                if ((*it)->cancellation_token == token) {
+                  item = *it;
+                  if (queue->size() == 1) {
+                    table_.erase(key_hash);
+                  } else {
+                    queue->erase(it);
+                  }
+                  break;
+                }
+              }
+            }
+          }
+
+          if (item != nullptr) {
+            item->waiter(StatusGroup::MakeDerived(
+                             errors::Cancelled("RecvAsync is cancelled.")),
+                         Args(), item->recv_args, Tensor(), /*is_dead=*/false);
+            delete item;
+          }
+        });
+      }
+      if (already_cancelled) {
+        mu_.unlock();
+        done(StatusGroup::MakeDerived(
+                 errors::Cancelled("RecvAsync is cancelled.")),
+             Args(), recv_args, Tensor(), /*is_dead=*/false);
+        return;
+      }
+
+      VLOG(2) << "Enqueue Recv Item (key:" << key.FullKey() << "). ";
       Item* item = new Item;
-      item->waiter = std::move(done);
+
+      if (cm != nullptr) {
+        // NOTE(mrry): We must wrap `done` with code that deregisters the
+        // cancellation callback before calling the `done` callback, because the
+        // cancellation manager may no longer be live after `done` is called.
+        item->waiter = [cm, token, done = std::move(done)](
+                           const Status& s, const Args& send_args,
+                           const Args& recv_args, const Tensor& v, bool dead) {
+          cm->TryDeregisterCallback(token);
+          done(s, send_args, recv_args, v, dead);
+        };
+      } else {
+        item->waiter = std::move(done);
+      }
+
       item->recv_args = recv_args;
+      item->cancellation_token = token;
       if (item->recv_args.device_context) {
         item->recv_args.device_context->Ref();
       }
@@ -222,10 +289,18 @@ class LocalRendezvousImpl : public Rendezvous {
       return;
     }
 
+    VLOG(2) << "Consume Send Item (key:" << key.FullKey() << "). ";
     // A message has already arrived and is queued in the table under
     // this key.  Consumes the message and invokes the done closure.
     Item* item = queue->front();
-    queue->pop_front();
+
+    // Delete the queue when the last element has been consumed.
+    if (queue->size() == 1) {
+      VLOG(2) << "Clean up Send/Recv queue (key:" << key.FullKey() << "). ";
+      table_.erase(key_hash);
+    } else {
+      queue->pop_front();
+    }
     mu_.unlock();
 
     // Invokes the done() by invoking its done closure, outside scope
@@ -262,6 +337,7 @@ class LocalRendezvousImpl : public Rendezvous {
     bool is_dead = false;
     Args send_args;
     Args recv_args;
+    CancellationToken cancellation_token;
 
     ~Item() {
       if (send_args.device_context) {

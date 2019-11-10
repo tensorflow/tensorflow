@@ -20,6 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "absl/types/span.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -32,8 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -41,15 +42,12 @@ namespace xla {
 
 namespace {
 
+using absl::optional;
+
 // BatchNormExpanderVisitor traverses the HLO computation and rewrites BatchNorm
 // operations into smaller operations.
-class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
+class BatchNormExpanderVisitor : public DfsHloRewriteVisitor {
  public:
-  // Default visitor action is to do nothing and return OK.
-  Status DefaultAction(HloInstruction* /*hlo_instruction*/) override {
-    return Status::OK();
-  }
-
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
 
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
@@ -59,9 +57,6 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   // Runs the visitor on a computation.
   static bool Run(HloComputation* computation, bool rewrite_training_op,
                   bool rewrite_inference_op, bool rewrite_grad_op);
-
-  // Returns whether any batch norm ops were rewritten.
-  const bool changed() const { return changed_; }
 
   ~BatchNormExpanderVisitor() override = default;
 
@@ -92,55 +87,44 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    HloInstruction* exponent = add_instruction(HloInstruction::CreateBroadcast(
-        operand->shape(),
-        add_instruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-            add_instruction(HloInstruction::CreateConstant(
-                Literal::CreateR0<float>(-0.5f))))),
-        {}));
-    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kPower,
-                                        operand, exponent);
+    return HloInstruction::CreateUnary(operand->shape(), HloOpcode::kRsqrt,
+                                       operand);
   }
 
   std::unique_ptr<HloInstruction> Mean(
-      int64 element_count, HloInstruction* operand,
+      HloInstruction* element_count, HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    HloInstruction* elem_count_recip =
-        add_instruction(HloInstruction::CreateBroadcast(
-            operand->shape(),
-            add_instruction(HloInstruction::CreateConvert(
-                ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-                add_instruction(HloInstruction::CreateConstant(
-                    Literal::CreateR0<float>(1.0 / element_count))))),
-            {}));
-    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kMultiply,
-                                        operand, elem_count_recip);
+    auto broadcast = add_instruction(
+        HloInstruction::CreateBroadcast(operand->shape(), element_count, {}));
+    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kDivide,
+                                        operand, broadcast);
   }
 
-  // Replaces the existing HLO instruction old_instruction, with
-  // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
-  Status ReplaceWithNewInstruction(
-      HloInstruction* old_instruction,
-      std::unique_ptr<HloInstruction> new_instruction) {
-    TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-        old_instruction, std::move(new_instruction)));
-    changed_ = true;
-    return Status::OK();
+  std::unique_ptr<HloInstruction> DynamicElementCountPerFeature(
+      HloInstruction* operand, int64 feature_index,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          add_instruction) {
+    auto elements_per_feature_s32 = add_instruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
+
+    for (int64 i = 0; i < operand->shape().rank(); ++i) {
+      if (i == feature_index) {
+        continue;
+      }
+      auto dynamic_dimension_size =
+          add_instruction(HloInstruction::CreateGetDimensionSize(
+              ShapeUtil::MakeShape(S32, {}), operand, i));
+      elements_per_feature_s32 = add_instruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(S32, {}), HloOpcode::kMultiply,
+          dynamic_dimension_size, elements_per_feature_s32));
+    }
+
+    return HloInstruction::CreateConvert(
+        ShapeUtil::MakeShape(operand->shape().element_type(), {}),
+        elements_per_feature_s32);
   }
 
-  // Replaces the existing HLO instruction old_instruction, with
-  // new_instruction, and marks the optimizer status as changed.
-  // Returns the Status representing the result of the replace operation.
-  Status ReplaceInstruction(HloInstruction* old_instruction,
-                            HloInstruction* new_instruction) {
-    TF_RETURN_IF_ERROR(
-        computation_->ReplaceInstruction(old_instruction, new_instruction));
-    changed_ = true;
-    return Status::OK();
-  }
   // Current HloComputation instance the BatchNormExpander is
   // traversing.
   HloComputation* computation_;
@@ -148,9 +132,6 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   bool rewrite_training_op_;
   bool rewrite_inference_op_;
   bool rewrite_grad_op_;
-
-  // Whether rewrite has occurred.
-  bool changed_ = false;
 };
 
 }  // namespace
@@ -165,7 +146,7 @@ bool BatchNormExpanderVisitor::Run(HloComputation* computation,
       /*rewrite_inference_op=*/rewrite_inference_op,
       /*rewrite_grad_op=*/rewrite_grad_op);
   TF_CHECK_OK(computation->Accept(&visitor));
-  return visitor.changed_;
+  return visitor.changed();
 }
 
 Status BatchNormExpanderVisitor::HandleBatchNormTraining(
@@ -192,30 +173,30 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   const Shape operand_shape = operand->shape();
   PrimitiveType ptype = operand_shape.element_type();
   int64 feature_index = batch_norm->feature_index();
-  const int64 feature_count = operand_shape.dimensions(feature_index);
-  const int64 size_in_elements = ShapeUtil::ElementsIn(operand_shape);
-  int64 elements_per_feature_int64 = size_in_elements / feature_count;
 
   HloInstruction* scale = batch_norm->mutable_operand(1);
   HloInstruction* offset = batch_norm->mutable_operand(2);
   const Shape feature_shape = scale->shape();
 
-  auto zero_literal = Literal::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
+  auto zero_literal = LiteralUtil::CreateR0(0.0f);
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
-  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = add(HloInstruction::CreateBroadcast(
       operand_shape,
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
   }
+
+  auto elements_per_feature =
+      add(DynamicElementCountPerFeature(operand, feature_index, add));
 
   auto scale_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
@@ -240,13 +221,13 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add_reduce_computation));
 
   // E[X].
-  auto mean = add(Mean(elements_per_feature_int64, sum, add));
+  auto mean = add(Mean(elements_per_feature, sum, add));
 
   auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
 
   // E[X^2].
-  auto square_mean = add(Mean(elements_per_feature_int64, squared_sum, add));
+  auto square_mean = add(Mean(elements_per_feature, squared_sum, add));
 
   // E^2[X].
   auto mean_square =
@@ -288,16 +269,22 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
+    const HloSharding& sharding = batch_norm->sharding();
     HloSharding operand_sharding =
-        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
+        sharding.GetAsShapeTree(batch_norm->shape()).element({0});
+    optional<int64> unique_device = batch_norm->sharding_unique_device();
+    HloSharding default_sharding =
+        unique_device.has_value()
+            ? HloSharding::AssignDevice(unique_device.value())
+            : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
         inst->set_sharding(operand_sharding);
       } else {
-        inst->set_sharding(HloSharding::Replicate());
+        inst->set_sharding(default_sharding);
       }
     }
-    tuple->set_sharding(batch_norm->sharding());
+    tuple->set_sharding(sharding);
   }
   TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));
   return Status::OK();
@@ -320,17 +307,17 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   HloInstruction* var = batch_norm->mutable_operand(4);
   const Shape feature_shape = scale->shape();
 
-  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = computation_->AddInstruction(HloInstruction::CreateBroadcast(
-      operand_shape,
+      feature_shape,
       computation_->AddInstruction(
           HloInstruction::CreateConstant(std::move(epsilon_literal))),
       {}));
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -347,58 +334,46 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
                         HloInstruction* a, HloInstruction* b) {
     return add(HloInstruction::CreateBinary(shape, opcode, a, b));
   };
+  auto feature_broadcast = [&](HloInstruction* a) {
+    return add(
+        HloInstruction::CreateBroadcast(operand_shape, a, {feature_index}));
+  };
+
   int64 instruction_count_before = computation_->instruction_count();
+  auto true_scale = add_binary(
+      feature_shape, HloOpcode::kMultiply, scale,
+      add(Rsqrt(add_binary(feature_shape, HloOpcode::kAdd, var, epsilon),
+                add)));
+  auto true_shift = add_binary(
+      feature_shape, HloOpcode::kSubtract, offset,
+      add_binary(feature_shape, HloOpcode::kMultiply, mean, true_scale));
 
-  auto scale_broadcasted = add(
-      HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
-
-  auto offset_broadcasted = add(
-      HloInstruction::CreateBroadcast(operand_shape, offset, {feature_index}));
-
-  auto mean_broadcasted = add(
-      HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
-
-  auto var_broadcasted =
-      add(HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
-
-  // Var[X] + epsilon.
-  auto var_add_epsilon =
-      add_binary(operand_shape, HloOpcode::kAdd, var_broadcasted, epsilon);
-
-  // 1 / Sqrt[Var[X] + epsilon].
-  auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon, add));
-
-  // X - E[X].
-  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
-                                       operand, mean_broadcasted);
-
-  // (X - E[X]) / Sqrt[Var[X] + epsilon].
-  auto normalized = add_binary(operand_shape, HloOpcode::kMultiply,
-                               operand_minus_mean, rsqrt_var_add_epsilon);
-
-  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale.
-  auto scaled_normalized = add_binary(operand_shape, HloOpcode::kMultiply,
-                                      normalized, scale_broadcasted);
-
-  // (X - E[X]) / Sqrt[Var[X] + epsilon] * scale + offset.
-  auto shifted_normalized = HloInstruction::CreateBinary(
-      operand_shape, HloOpcode::kAdd, scaled_normalized, offset_broadcasted);
+  auto shifted_normalized =
+      add_binary(operand_shape, HloOpcode::kAdd,
+                 add_binary(operand_shape, HloOpcode::kMultiply, operand,
+                            feature_broadcast(true_scale)),
+                 feature_broadcast(true_shift));
 
   int64 instruction_count_after = computation_->instruction_count();
   CHECK_EQ(instruction_count_after,
            instruction_count_before + added_instructions.size());
   if (batch_norm->has_sharding()) {
+    const HloSharding& sharding = batch_norm->sharding();
+    optional<int64> unique_device = batch_norm->sharding_unique_device();
+    HloSharding default_sharding =
+        unique_device.has_value()
+            ? HloSharding::AssignDevice(unique_device.value())
+            : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
-        inst->set_sharding(batch_norm->sharding());
+        inst->set_sharding(sharding);
       } else {
-        inst->set_sharding(HloSharding::Replicate());
+        inst->set_sharding(default_sharding);
       }
     }
-    shifted_normalized->set_sharding(batch_norm->sharding());
+    shifted_normalized->set_sharding(sharding);
   }
-  TF_CHECK_OK(
-      ReplaceWithNewInstruction(batch_norm, std::move(shifted_normalized)));
+  TF_CHECK_OK(ReplaceInstruction(batch_norm, shifted_normalized));
   return Status::OK();
 }
 
@@ -443,16 +418,15 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   int64 feature_index = batch_norm->feature_index();
 
-  const int64 size_in_elements = ShapeUtil::ElementsIn(activation_shape);
-  const int64 feature_count = activation_shape.dimensions(feature_index);
-  const int64 elements_per_feature_int64 = size_in_elements / feature_count;
+  auto elements_per_feature =
+      add(DynamicElementCountPerFeature(activation, feature_index, add));
 
-  auto zero_literal = Literal::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
+  auto zero_literal = LiteralUtil::CreateR0(0.0f);
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
-  auto epsilon_literal = Literal::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon_scalar =
       add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
   auto epsilon_activation = add(
@@ -462,7 +436,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(activation_shape); ++i) {
+  for (int64 i = 0; i < activation_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -492,7 +466,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       activation_shape, HloOpcode::kSubtract, activation, mean_broadcasted);
 
   // Grad[Y] * (X - E[X]).
-  auto grad_output_times_activiation_minus_mean =
+  auto grad_output_times_activation_minus_mean =
       add_binary(activation_shape, HloOpcode::kMultiply, grad_output,
                  activation_minus_mean);
 
@@ -500,9 +474,9 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       GetOrCreateScalarAddComputation(ptype);
 
   // sum(Grad[Y] * (X - E[X])).
-  auto sum_grad_output_times_activiation_minus_mean =
+  auto sum_grad_output_times_activation_minus_mean =
       add(HloInstruction::CreateReduce(
-          feature_shape, grad_output_times_activiation_minus_mean, zero,
+          feature_shape, grad_output_times_activation_minus_mean, zero,
           dimensions_without_feature, add_reduce_computation));
 
   // Grad[beta] = Sum(Grad[Y]).
@@ -512,7 +486,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * rsqrt[Var[X] + epsilon]).
   auto grad_scale = add_binary(feature_shape, HloOpcode::kMultiply,
-                               sum_grad_output_times_activiation_minus_mean,
+                               sum_grad_output_times_activation_minus_mean,
                                rsqrt_var_add_epsilon);
 
   // I2 = Sum(Grad[Y])
@@ -521,7 +495,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   // I3 = Sum(Grad[Y] * (X - E[X]))
   auto i3 = add(HloInstruction::CreateBroadcast(
-      activation_shape, sum_grad_output_times_activiation_minus_mean,
+      activation_shape, sum_grad_output_times_activation_minus_mean,
       {feature_index}));
 
   // I4 = (X - E[X]) * I3
@@ -538,15 +512,9 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add_binary(activation_shape, HloOpcode::kMultiply, scale_broadcasted,
                  rsqrt_var_add_epsilon_broadcasted);
 
-  scale_times_rsqrt_var_add_epsilon = add(
-      Mean(elements_per_feature_int64, scale_times_rsqrt_var_add_epsilon, add));
+  scale_times_rsqrt_var_add_epsilon =
+      add(Mean(elements_per_feature, scale_times_rsqrt_var_add_epsilon, add));
 
-  auto elements_per_feature_literal =
-      Literal::CreateR0<float>(elements_per_feature_int64);
-  TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
-                      elements_per_feature_literal->Convert(ptype));
-  auto elements_per_feature = add(
-      HloInstruction::CreateConstant(std::move(elements_per_feature_literal)));
   auto i1 = add_binary(activation_shape, HloOpcode::kMultiply, grad_output,
                        add(HloInstruction::CreateBroadcast(
                            activation_shape, elements_per_feature, {})));
@@ -562,19 +530,25 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
   auto tuple =
       HloInstruction::CreateTuple({grad_activation, grad_scale, grad_beta});
   if (batch_norm->has_sharding()) {
+    const HloSharding& sharding = batch_norm->sharding();
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
     HloSharding activation_sharding =
-        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
+        sharding.GetAsShapeTree(batch_norm->shape()).element({0});
+    auto unique_device = batch_norm->sharding_unique_device();
+    HloSharding default_sharding =
+        unique_device.has_value()
+            ? HloSharding::AssignDevice(unique_device.value())
+            : HloSharding::Replicate();
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), activation_shape)) {
         inst->set_sharding(activation_sharding);
       } else {
-        inst->set_sharding(HloSharding::Replicate());
+        inst->set_sharding(default_sharding);
       }
     }
-    tuple->set_sharding(batch_norm->sharding());
+    tuple->set_sharding(sharding);
   }
 
   TF_CHECK_OK(ReplaceWithNewInstruction(batch_norm, std::move(tuple)));

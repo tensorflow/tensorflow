@@ -23,14 +23,12 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
-  CHECK(cluster);
-
-  // Default job name for canonical device name. Needs to be set before the
-  // first call to to_lfqn_or_empty()
-  default_job_name_lowercase_ = "localhost";
-
-  devices_ = cluster->GetDevices();
+VirtualPlacer::VirtualPlacer(
+    const std::unordered_map<string, DeviceProperties>& devices)
+    : devices_(devices),
+      // Default job name for canonical device name. Needs to be set before the
+      // first call to to_lfqn_or_empty()
+      default_job_name_lowercase_("localhost") {
   lfqn_map_.reserve(devices_.size());
   for (const auto& kv : devices_) {
     const auto lfqn = to_lfqn_or_empty(kv.first);
@@ -68,7 +66,7 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
       if (parsed) {
         // Parsed devices are stored to cpu_devices or gpu_devices map,
         // addressed (and ordered) by device id.
-        const auto type = str_util::Lowercase(parsed_name.type);
+        const auto type = absl::AsciiStrToLower(parsed_name.type);
         if (type == "gpu") {
           gpu_devices[parsed_name.id] = cluster_device_name;
         } else if (type == "cpu") {
@@ -87,6 +85,7 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
       default_device_name_ = devices_.begin()->first;  // Any device.
     }
   }
+  VLOG(3) << "default device name: " << default_device_name_;
 
   // Scan the device names from the cluster, and if there is one job name used,
   // use it for canonical device name.
@@ -102,14 +101,15 @@ VirtualPlacer::VirtualPlacer(const Cluster* cluster) {
       }
     }
   }
-  // If there is only  type of job name in all the devices in the cluster, use
-  // that one as default job name; otherwise, use localhost.
+  // If there is only one type of job name in all the devices in the cluster,
+  // use that one as default job name; otherwise, use localhost.
   // TODO(dyoon): this should be improved, especially when the cluster is
   // composed of multiple worker, PS, and other types of jobs.
   if (job_names_from_cluster.size() == 1) {
     auto it = job_names_from_cluster.begin();
     default_job_name_lowercase_ = *it;
   }
+  VLOG(3) << "default job name: " << default_job_name_lowercase_;
 }
 
 const DeviceProperties& VirtualPlacer::get_device(const NodeDef& node) const {
@@ -141,7 +141,7 @@ string VirtualPlacer::get_canonical_device_name(const NodeDef& node) const {
 
 string VirtualPlacer::to_lfqn_or_empty(const string& device_name) const {
   DeviceNameUtils::ParsedName parsed_name;
-  const auto lowercase_name = str_util::Lowercase(device_name);
+  const auto lowercase_name = absl::AsciiStrToLower(device_name);
   bool parsed = DeviceNameUtils::ParseFullName(lowercase_name, &parsed_name);
   if (!parsed) {
     parsed = DeviceNameUtils::ParseLocalName(lowercase_name, &parsed_name);
@@ -163,7 +163,7 @@ string VirtualPlacer::to_lfqn_or_empty(const string& device_name) const {
   }
 
   // Have to do this, because parser returns uppercase types for CPU and GPU.
-  parsed_name.type = str_util::Lowercase(parsed_name.type);
+  parsed_name.type = absl::AsciiStrToLower(parsed_name.type);
 
   string lfqn = strings::StrCat(
       "/job:", parsed_name.job, "/replica:", parsed_name.replica,

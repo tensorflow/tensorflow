@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -41,8 +42,9 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
     WorkerCacheInterface* worker_cache = nullptr;
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices_));
-    device_mgr_.reset(new DeviceMgr(devices_));
+    std::vector<std::unique_ptr<Device>> devices;
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     std::unique_ptr<DeviceResolverDistributed> dr(new DeviceResolverDistributed(
         device_mgr_.get(), worker_cache, task_name));
     std::unique_ptr<CollectiveParamResolverDistributed> cpr(
@@ -56,7 +58,6 @@ class RpcCollectiveExecutorMgrTest : public ::testing::Test {
   }
 
   std::unique_ptr<RpcCollectiveExecutorMgr> cme_;
-  std::vector<Device*> devices_;
   std::unique_ptr<DeviceMgr> device_mgr_;
 };
 
@@ -119,6 +120,52 @@ TEST_F(RpcCollectiveExecutorMgrTest, NextStepId) {
   // z should not be equal to or a successor of y.
   EXPECT_NE(y, z);
   EXPECT_GT(llabs(y - z), 3);
+}
+
+TEST_F(RpcCollectiveExecutorMgrTest, GetStepSequence) {
+  int64 x = cme_->NextStepId(3);
+  EXPECT_EQ(x, CollectiveExecutor::kInvalidId);
+  int64 y = cme_->NextStepId(4);
+  EXPECT_EQ(y, CollectiveExecutor::kInvalidId);
+  GetStepSequenceRequest request;
+  GetStepSequenceResponse response;
+  request.add_graph_key(3);
+  request.add_graph_key(4);
+  {
+    Notification note;
+    Status status;
+    cme_->GetStepSequenceAsync(&request, &response,
+                               [this, &status, &note](const Status& s) {
+                                 status = s;
+                                 note.Notify();
+                               });
+    note.WaitForNotification();
+    EXPECT_TRUE(status.ok());
+  }
+  ASSERT_EQ(2, response.step_sequence_size());
+  std::unordered_map<int64, int64> values;
+  for (const auto& ss : response.step_sequence()) {
+    values[ss.graph_key()] = ss.next_step_id();
+  }
+  EXPECT_NE(values[3], CollectiveExecutor::kInvalidId);
+  EXPECT_NE(values[4], CollectiveExecutor::kInvalidId);
+  // Re-get, should be same values.
+  response.Clear();
+  {
+    Notification note;
+    Status status;
+    cme_->GetStepSequenceAsync(&request, &response,
+                               [this, &status, &note](const Status& s) {
+                                 status = s;
+                                 note.Notify();
+                               });
+    note.WaitForNotification();
+    EXPECT_TRUE(status.ok());
+  }
+  ASSERT_EQ(2, response.step_sequence_size());
+  for (const auto& ss : response.step_sequence()) {
+    EXPECT_EQ(values[ss.graph_key()], ss.next_step_id());
+  }
 }
 
 }  // namespace tensorflow

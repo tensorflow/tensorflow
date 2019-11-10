@@ -18,7 +18,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/util/tensor_format.h"
@@ -48,8 +48,11 @@ class BiasOp : public XlaOpKernel {
     OP_REQUIRES(ctx, TensorShapeUtils::IsVector(bias_shape),
                 errors::InvalidArgument("Biases must be 1D: ",
                                         bias_shape.DebugString()));
-    int feature_dim = (data_format_ == FORMAT_NHWC) ? input_shape.dims() - 1
-                                                    : input_shape.dims() - 3;
+
+    // feature_dim is the channel (C) dimension of the data.
+    int feature_dim = (data_format_ == FORMAT_NHWC)
+                          ? input_shape.dims() - 1
+                          : /*data_format == FORMAT_NCHW*/ 1;
     OP_REQUIRES(
         ctx, feature_dim >= 0,
         errors::InvalidArgument("Input tensor does not have enough dimensions "
@@ -91,9 +94,10 @@ class BiasAddGradOp : public XlaOpKernel {
                 errors::InvalidArgument("Input tensor must be at least 2D: ",
                                         out_backprop_shape.DebugString()));
 
+    // feature_dim is the channel (C) dimension of the data.
     int feature_dim = (data_format_ == FORMAT_NHWC)
                           ? out_backprop_shape.dims() - 1
-                          : out_backprop_shape.dims() - 3;
+                          : /*data_format == FORMAT_NCHW*/ 1;
     OP_REQUIRES(
         ctx, feature_dim >= 0,
         errors::InvalidArgument("Input tensor does not have enough dimensions "
@@ -107,11 +111,11 @@ class BiasAddGradOp : public XlaOpKernel {
     const DataType accumulation_type =
         XlaHelpers::SumAccumulationType(input_type(0));
     auto converted =
-        XlaHelpers::ConvertElementType(b, ctx->Input(0), accumulation_type);
+        XlaHelpers::ConvertElementType(ctx->Input(0), accumulation_type);
     auto reduce =
         xla::Reduce(converted, XlaHelpers::Zero(b, accumulation_type),
                     *ctx->GetOrCreateAdd(accumulation_type), reduce_dims);
-    ctx->SetOutput(0, XlaHelpers::ConvertElementType(b, reduce, input_type(0)));
+    ctx->SetOutput(0, XlaHelpers::ConvertElementType(reduce, input_type(0)));
   }
 
  private:

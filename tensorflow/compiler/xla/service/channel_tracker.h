@@ -18,12 +18,13 @@ limitations under the License.
 
 #include <map>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -48,11 +49,12 @@ class ChannelTracker {
   struct Channel {
     bool has_sender;
     int64 receiver_count;
+    ChannelHandle::ChannelType type;
   };
 
   // Creates a new Channel object and returns the corresponding
   // ChannelHandle for it.
-  ChannelHandle NewChannel();
+  StatusOr<ChannelHandle> NewChannel(ChannelHandle::ChannelType type);
 
   // Informs that the given channel handle is used for a Send operation.
   // Returns an error status if the handle is already used by another Send.
@@ -65,7 +67,8 @@ class ChannelTracker {
  private:
   // Bumps the next_channel_ number and returns the allocated number
   // wrapped in a ChannelHandle.
-  ChannelHandle AllocateHandle() EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
+  ChannelHandle AllocateHandle(ChannelHandle::ChannelType type)
+      EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
 
   Status RegisterSendInternal(const ChannelHandle& handle)
       EXCLUSIVE_LOCKS_REQUIRED(channel_mutex_);
@@ -81,7 +84,8 @@ class ChannelTracker {
 
   // Mapping from ChannelHandle value to the corresponding registered
   // Channel object.
-  std::map<int64, Channel> opaque_to_channel_ GUARDED_BY(channel_mutex_);
+  absl::flat_hash_map<int64, Channel> opaque_to_channel_
+      GUARDED_BY(channel_mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ChannelTracker);
 };

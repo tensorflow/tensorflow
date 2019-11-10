@@ -1,0 +1,179 @@
+path: "tensorflow.keras.losses"
+tf_module {
+  member {
+    name: "BinaryCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CategoricalHinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CosineSimilarity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Hinge"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Huber"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "KLDivergence"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LogCosh"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Loss"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanAbsoluteError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanAbsolutePercentageError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanSquaredError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "MeanSquaredLogarithmicError"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Poisson"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Reduction"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseCategoricalCrossentropy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SquaredHinge"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "KLD"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "MAE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "MAPE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "MSE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "MSLE"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "binary_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
+  }
+  member_method {
+    name: "categorical_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'label_smoothing\'], varargs=None, keywords=None, defaults=[\'False\', \'0\'], "
+  }
+  member_method {
+    name: "categorical_hinge"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cosine_similarity"
+    argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "deserialize"
+    argspec: "args=[\'name\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "get"
+    argspec: "args=[\'identifier\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "hinge"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "kld"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "kullback_leibler_divergence"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "logcosh"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mae"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mape"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mean_absolute_error"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mean_absolute_percentage_error"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mean_squared_error"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mean_squared_logarithmic_error"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "mse"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "msle"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "poisson"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "serialize"
+    argspec: "args=[\'loss\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sparse_categorical_crossentropy"
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
+  }
+  member_method {
+    name: "squared_hinge"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+}

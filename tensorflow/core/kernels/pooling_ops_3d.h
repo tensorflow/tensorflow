@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_POOLING_OPS_3D_H_
-#define TENSORFLOW_KERNELS_POOLING_OPS_3D_H_
+#ifndef TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_H_
+#define TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/util/padding.h"
@@ -77,4 +77,4 @@ struct Pool3dParameters {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_POOLING_OPS_3D_H_
+#endif  // TENSORFLOW_CORE_KERNELS_POOLING_OPS_3D_H_

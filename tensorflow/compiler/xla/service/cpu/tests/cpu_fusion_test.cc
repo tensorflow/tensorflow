@@ -17,8 +17,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "absl/memory/memory.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -39,13 +39,20 @@ class CpuFusionTest : public HloTestBase {
   CpuFusionTest() {}
 
   ErrorSpec error_spec_{0.0001, 1e-5};
+
+ private:
+  DebugOptions GetDebugOptionsForTest() override {
+    DebugOptions debug_options = HloTestBase::GetDebugOptionsForTest();
+    debug_options.add_xla_disable_hlo_passes("layout-assignment");
+    return debug_options;
+  }
 };
 
 TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   auto builder = HloComputation::Builder(TestName());
-  auto input_literal1 = Literal::CreateR1<float>({1.0, 2.0, 3.0});
-  auto input_literal2 = Literal::CreateR1<float>({-2.0, -42.0, 2.0});
-  Shape vshape = input_literal1->shape();
+  auto input_literal1 = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0});
+  auto input_literal2 = LiteralUtil::CreateR1<float>({-2.0, -42.0, 2.0});
+  Shape vshape = input_literal1.shape();
 
   auto input1 = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal1)));
@@ -57,7 +64,7 @@ TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   builder.AddInstruction(
       HloInstruction::CreateUnary(vshape, HloOpcode::kNegate, add1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
@@ -75,16 +82,16 @@ TEST_F(CpuFusionTest, FuseTwoElementwiseOps) {
   EXPECT_EQ(4, fusion_instruction->fused_instruction_count());
 
   // Compile and execute the computation.
-  auto result = ExecuteAndTransfer(std::move(module), {});
+  auto result = ExecuteAndTransfer(module->Clone(), {});
 
   // Check the output correctness.
-  LiteralTestUtil::ExpectR1Near<float>({1.0, 40.0, -5.0}, *result, error_spec_);
+  LiteralTestUtil::ExpectR1Near<float>({1.0, 40.0, -5.0}, result, error_spec_);
 }
 
 TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   auto builder = HloComputation::Builder(TestName());
-  auto input_literal = Literal::CreateR1<float>({-1.5, -2.5, -3.0});
-  Shape vshape = input_literal->shape();
+  auto input_literal = LiteralUtil::CreateR1<float>({-1.5, -2.5, -3.0});
+  Shape vshape = input_literal.shape();
 
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
@@ -99,12 +106,12 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   auto two = builder.AddInstruction(HloInstruction::CreateBroadcast(
       vshape,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0))),
       {}));
   builder.AddInstruction(
       HloInstruction::CreateBinary(vshape, HloOpcode::kMultiply, two, floor));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
@@ -122,20 +129,19 @@ TEST_F(CpuFusionTest, FuseElementwiseOpChain) {
   EXPECT_EQ(8, fusion_instruction->fused_instruction_count());
 
   // Compile and execute the computation.
-  auto result = ExecuteAndTransfer(std::move(module), {});
+  auto result = ExecuteAndTransfer(module->Clone(), {});
 
   // Check the output correctness.
-  LiteralTestUtil::ExpectR1Near<float>({14.0, 40.0, 40.0}, *result,
-                                       error_spec_);
+  LiteralTestUtil::ExpectR1Near<float>({14.0, 40.0, 40.0}, result, error_spec_);
 }
 
-TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
-  // Test a chain of fusable ops with a non-fusable op (a reduce) thrown in the
+TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusibleInstruction) {
+  // Test a chain of fusible ops with a non-fusible op (a reduce) thrown in the
   // middle.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
-  auto input_literal = Literal::CreateR1<float>({-1.5, -2.5, -3.0});
-  Shape vshape = input_literal->shape();
+  auto input_literal = LiteralUtil::CreateR1<float>({-1.5, -2.5, -3.0});
+  Shape vshape = input_literal.shape();
 
   auto input = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
@@ -163,11 +169,11 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
   auto reduce = builder.AddInstruction(HloInstruction::CreateReduce(
       cshape,
       builder.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(F32, {6, 1}), concatenate)),
+          ShapeUtil::MakeShape(F32, {1, 6}), concatenate)),
       /*init_value=*/
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(0))),
-      /*dimensions_to_reduce=*/{1}, add_f32));
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(0))),
+      /*dimensions_to_reduce=*/{0}, add_f32));
 
   auto exp = builder.AddInstruction(
       HloInstruction::CreateUnary(cshape, HloOpcode::kExp, reduce));
@@ -176,7 +182,7 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
   auto two = builder.AddInstruction(HloInstruction::CreateBroadcast(
       cshape,
       builder.AddInstruction(
-          HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0))),
+          HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0))),
       {}));
   builder.AddInstruction(
       HloInstruction::CreateBinary(cshape, HloOpcode::kMultiply, two, floor));
@@ -209,11 +215,11 @@ TEST_F(CpuFusionTest, ElementwiseOpChainWithNonfusableInstruction) {
       << fusion_instruction2->fused_instructions_computation()->ToString();
 
   // Compile and execute the computation.
-  auto result = ExecuteAndTransfer(std::move(module), {});
+  auto result = ExecuteAndTransfer(module->Clone(), {});
 
   // Check the output correctness.
   LiteralTestUtil::ExpectR1Near<float>({14.0, 40.0, 40.0, 14.0, 40.0, 40.0},
-                                       *result, error_spec_);
+                                       result, error_spec_);
 }
 
 TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
@@ -231,8 +237,8 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
   // operand vectors. Test for this problem by counting the number of nodes in
   // each fusion instruction to ensure that negate is not duplicated.
   auto builder = HloComputation::Builder(TestName());
-  auto input_literal = Literal::CreateR1<float>({1.0, 2.0, 3.0});
-  Shape vshape = input_literal->shape();
+  auto input_literal = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0});
+  Shape vshape = input_literal.shape();
 
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(input_literal)));
@@ -251,7 +257,7 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
       builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
 
   // Create computation and module.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   // Run fusion.
@@ -268,12 +274,9 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
   EXPECT_EQ(4, fusion1->fused_instruction_count());
   EXPECT_EQ(4, fusion2->fused_instruction_count());
 
-  // Each fusion instruction should have one parameter and the parameter should
-  // be the constant.
-  EXPECT_EQ(1, fusion1->operand_count());
-  EXPECT_EQ(constant, fusion1->operand(0));
-  EXPECT_EQ(1, fusion2->operand_count());
-  EXPECT_EQ(constant, fusion2->operand(0));
+  // The fusion has no parameters, everything is fused including constants.
+  EXPECT_EQ(0, fusion1->operand_count());
+  EXPECT_EQ(0, fusion2->operand_count());
 }
 
 TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
@@ -292,10 +295,10 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   // computation. The duplication is caused by the other use of exp2 in the
   // tuple.
   auto builder = HloComputation::Builder(TestName());
-  auto input_literal1 = Literal::CreateR1<float>({1.0, 2.0, 3.0});
-  auto input_literal2 = Literal::CreateR1<float>({-2.0, -42.0, 2.0});
+  auto input_literal1 = LiteralUtil::CreateR1<float>({1.0, 2.0, 3.0});
+  auto input_literal2 = LiteralUtil::CreateR1<float>({-2.0, -42.0, 2.0});
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0)));
   Shape shape = constant->shape();
 
   auto exp1 = builder.AddInstruction(
@@ -311,7 +314,7 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({negate1, negate2, exp2}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   CpuInstructionFusion fusion;
@@ -325,10 +328,9 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
 
   auto fusion_inst = tuple->operand(0);
   // There should be three fused instructions: negate2, exp2, and the fused
-  // parameter.
+  // constant.
   EXPECT_EQ(3, fusion_inst->fused_instruction_count());
-  EXPECT_EQ(1, fusion_inst->operand_count());
-  EXPECT_EQ(constant, fusion_inst->operand(0));
+  EXPECT_EQ(0, fusion_inst->operand_count());
 }
 
 }  // namespace

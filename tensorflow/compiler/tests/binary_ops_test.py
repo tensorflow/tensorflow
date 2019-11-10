@@ -18,9 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
+
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import array_ops
@@ -35,8 +38,15 @@ from tensorflow.python.platform import googletest
 class BinaryOpsTest(xla_test.XLATestCase):
   """Test cases for binary operators."""
 
-  def _testBinary(self, op, a, b, expected, equality_test=None):
-    with self.test_session() as session:
+  def _testBinary(self,
+                  op,
+                  a,
+                  b,
+                  expected,
+                  equality_test=None,
+                  rtol=None,
+                  atol=None):
+    with self.session() as session:
       with self.test_scope():
         pa = array_ops.placeholder(dtypes.as_dtype(a.dtype), a.shape, name="a")
         pb = array_ops.placeholder(dtypes.as_dtype(b.dtype), b.shape, name="b")
@@ -44,17 +54,22 @@ class BinaryOpsTest(xla_test.XLATestCase):
       result = session.run(output, {pa: a, pb: b})
       if equality_test is None:
         equality_test = self.assertAllCloseAccordingToType
-      equality_test(result, expected, rtol=1e-3)
+      if rtol is None:
+        rtol = 1e-15 if a.dtype == np.float64 else 1e-3
+      if atol is None:
+        atol = 1e-15 if a.dtype == np.float64 else 1e-6
+      equality_test(result, expected, rtol=rtol, atol=atol)
 
   def _testSymmetricBinary(self, op, a, b, expected, equality_test=None):
     self._testBinary(op, a, b, expected, equality_test)
     self._testBinary(op, b, a, expected, equality_test)
 
-  def ListsAreClose(self, result, expected, rtol):
+  def ListsAreClose(self, result, expected, rtol, atol):
     """Tests closeness of two lists of floats."""
     self.assertEqual(len(result), len(expected))
     for i in range(len(result)):
-      self.assertAllCloseAccordingToType(result[i], expected[i], rtol)
+      self.assertAllCloseAccordingToType(
+          result[i], expected[i], rtol=rtol, atol=atol)
 
   def testFloatOps(self):
     for dtype in self.float_types:
@@ -64,6 +79,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
       else:
         a = -1.001
         b = 4.01
+
       self._testBinary(
           lambda x, y: math_ops.approximate_equal(x, y, tolerance=0.0001),
           np.array([[[[-1, 2.00009999], [-3, b]]]], dtype=dtype),
@@ -75,7 +91,9 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([3, 3, -1.5, -8, 44], dtype=dtype),
           np.array([2, -2, 7, -4, 0], dtype=dtype),
           expected=np.array(
-              [1.5, -1.5, -0.2142857, 2, float("inf")], dtype=dtype))
+              [1.5, -1.5, -0.2142857, 2, float("inf")], dtype=dtype),
+          rtol=1e-6,
+          atol=1e-8)
 
       self._testBinary(math_ops.pow, dtype(3), dtype(4), expected=dtype(81))
 
@@ -135,15 +153,19 @@ class BinaryOpsTest(xla_test.XLATestCase):
           gen_nn_ops.softplus_grad,
           np.array([4, 3, 2, 1], dtype=dtype),
           np.array([5, 6, 7, 8], dtype=dtype),
-          expected=np.array(
-              [3.97322869, 2.99258232, 1.99817801, 0.99966466], dtype=dtype))
+          expected=np.array([3.97322869, 2.99258232, 1.99817801, 0.99966466],
+                            dtype=dtype),
+          rtol=1e-4,
+          atol=1e-8)
 
       self._testBinary(
           gen_nn_ops.softsign_grad,
           np.array([4, 3, 2, 1], dtype=dtype),
           np.array([5, 6, 7, 8], dtype=dtype),
-          expected=np.array(
-              [0.11111111, 0.06122449, 0.03125, 0.01234568], dtype=dtype))
+          expected=np.array([0.11111111, 0.06122449, 0.03125, 0.01234568],
+                            dtype=dtype),
+          rtol=1e-6,
+          atol=1e-8)
 
       self._testBinary(
           gen_math_ops.tanh_grad,
@@ -161,9 +183,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
           gen_nn_ops.selu_grad,
           np.array([1, 2, 3, 4, 5, 6], dtype=dtype),
           np.array([-.6, -.4, -.2, .2, .4, .6], dtype=dtype),
-          expected=np.array(
-              [1.158099340847, 2.7161986816948, 4.67429802254,
-               4.202803949422, 5.2535049367774, 6.30420592413], dtype=dtype))
+          expected=np.array([
+              1.158099340847, 2.7161986816948, 4.67429802254, 4.202803949422,
+              5.2535049367774, 6.30420592413
+          ],
+                            dtype=dtype),
+          rtol=1e-10,
+          atol=1e-10)
 
       self._testBinary(
           gen_nn_ops.relu_grad,
@@ -179,6 +205,15 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([0, 0, 0, 0, 0, 6, 7, 8, 9, 10, 0, 0], dtype=dtype))
 
       self._testBinary(
+          gen_nn_ops.leaky_relu_grad,
+          np.array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], dtype=dtype),
+          np.array([0, 0, 0, 0, 0, 0.1, 0.3, 0.5, 0.7, 0.9], dtype=dtype),
+          expected=np.array([0.2, 0.4, 0.6, 0.8, 1, 6, 7, 8, 9, 10],
+                            dtype=dtype),
+          rtol=1e-8,
+          atol=1e-8)
+
+      self._testBinary(
           gen_nn_ops.softmax_cross_entropy_with_logits,
           np.array([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=dtype),
           np.array([[0.1, 0.2, 0.3, 0.4], [0.4, 0.3, 0.2, 0.1]], dtype=dtype),
@@ -188,29 +223,50 @@ class BinaryOpsTest(xla_test.XLATestCase):
                         [-0.367941, -0.212856, 0.036883, 0.543914]],
                        dtype=dtype),
           ],
-          equality_test=self.ListsAreClose)
+          equality_test=self.ListsAreClose,
+          rtol=1e-4,
+          atol=1e-8)
 
       # TODO(b/68813416): Fails with bfloat16.
       if dtype != dtypes.bfloat16.as_numpy_dtype:
         self._testBinary(
             gen_nn_ops.sparse_softmax_cross_entropy_with_logits,
-            np.array(
-                [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
-                 [0.9, 1.0, 1.1, 1.2]],
-                dtype=dtype),
+            np.array([[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8],
+                      [0.9, 1.0, 1.1, 1.2]],
+                     dtype=dtype),
             np.array([2, 1, 7], dtype=np.int32),
             expected=[
                 np.array([1.342536, 1.442536, np.nan], dtype=dtype),
-                np.array(
-                    [[0.213838, 0.236328, -0.738817, 0.288651], [
-                        0.213838, -0.763672, 0.261183, 0.288651
-                    ], [np.nan, np.nan, np.nan, np.nan]],
-                    dtype=dtype),
+                np.array([[0.213838, 0.236328, -0.738817, 0.288651],
+                          [0.213838, -0.763672, 0.261183, 0.288651],
+                          [np.nan, np.nan, np.nan, np.nan]],
+                         dtype=dtype),
             ],
-            equality_test=self.ListsAreClose)
+            equality_test=self.ListsAreClose,
+            rtol=1e-5,
+            atol=1e-8)
+
+      # TF doesn't define these for bf16.
+      if dtype != dtypes.bfloat16.as_numpy_dtype:
+        self._testBinary(
+            gen_math_ops.xdivy,
+            np.array([0, 4, 3, 2, 1, 0], dtype=dtype),
+            np.array([0, 5, 6, 7, 8, float("NaN")], dtype=dtype),
+            expected=np.array([0, 0.8, 0.5, 0.285714, 0.125, 0], dtype=dtype),
+            rtol=1e-6,
+            atol=1e-6)
+
+        self._testBinary(
+            gen_math_ops.xlogy,
+            np.array([0, 4, 3, 2, 1, 0], dtype=dtype),
+            np.array([0, 5, 6, 7, 8, float("NaN")], dtype=dtype),
+            expected=np.array([0, 6.437752, 5.375278, 3.89182, 2.079442, 0],
+                              dtype=dtype),
+            rtol=1e-4,
+            atol=1e-6)
 
   def testIntOps(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types:
       self._testBinary(
           gen_math_ops.truncate_div,
           np.array([3, 3, -1, -9, -8], dtype=dtype),
@@ -253,13 +309,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
         ]
         self._testBinary(bitwise_ops.right_shift, lhs, rhs, expected=expected)
 
-  def testNumericOps(self):
-    for dtype in self.numeric_types:
+  def testAdd(self):
+    for dtype in self.numeric_types | {np.float64}:
       self._testBinary(
           math_ops.add,
-          np.array([1, 2], dtype=dtype),
-          np.array([10, 20], dtype=dtype),
-          expected=np.array([11, 22], dtype=dtype))
+          np.array([1, 2, 0], dtype=dtype),
+          np.array([10, 20, 0], dtype=dtype),
+          expected=np.array([11, 22, 0], dtype=dtype))
       self._testBinary(
           math_ops.add,
           dtype(5),
@@ -271,6 +327,43 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(7),
           expected=np.array([[8], [9]], dtype=dtype))
 
+      if dtype not in self.int_types:
+        self._testBinary(
+            math_ops.add,
+            np.array([1.9131952969218875, 1.596299504298079], dtype=dtype),
+            np.array([1.1137667913355869, 1.7186636469261405], dtype=dtype),
+            expected=np.array([3.0269620882574744, 3.3149631512242195],
+                              dtype=dtype))
+
+  def testMultiply(self):
+    for dtype in self.numeric_types | {np.float64}:
+      self._testBinary(
+          math_ops.multiply,
+          np.array([1, 20], dtype=dtype),
+          np.array([10, 2], dtype=dtype),
+          expected=np.array([10, 40], dtype=dtype))
+      self._testBinary(
+          math_ops.multiply,
+          dtype(5),
+          np.array([1, 20], dtype=dtype),
+          expected=np.array([5, 100], dtype=dtype))
+      self._testBinary(
+          math_ops.multiply,
+          np.array([[10], [2]], dtype=dtype),
+          dtype(7),
+          expected=np.array([[70], [14]], dtype=dtype))
+
+      if dtype not in self.int_types:
+        self._testBinary(
+            math_ops.multiply,
+            np.array([1.9131952969218875, 1.596299504298079], dtype=dtype),
+            np.array([1.1137667913355869, 1.7186636469261405], dtype=dtype),
+            expected=np.array([2.130853387051026, 2.743501927643327],
+                              dtype=dtype),
+            rtol=1e-14)
+
+  def testNumericOps(self):
+    for dtype in self.numeric_types:
       self._testBinary(
           math_ops.subtract,
           np.array([1, 2, 100], dtype=dtype),
@@ -287,7 +380,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
           dtype(7),
           expected=np.array([[-6], [-5]], dtype=dtype))
 
-      if dtype not in self.complex_types:  # min/max not supported for complex
+      # min/max not supported for complex
+      if dtype not in self.complex_types | {np.uint8, np.int8}:
         self._testBinary(
             math_ops.maximum,
             np.array([1, 2], dtype=dtype),
@@ -320,24 +414,8 @@ class BinaryOpsTest(xla_test.XLATestCase):
             dtype(7),
             expected=np.array([[7], [2]], dtype=dtype))
 
-      self._testBinary(
-          math_ops.multiply,
-          np.array([1, 20], dtype=dtype),
-          np.array([10, 2], dtype=dtype),
-          expected=np.array([10, 40], dtype=dtype))
-      self._testBinary(
-          math_ops.multiply,
-          dtype(5),
-          np.array([1, 20], dtype=dtype),
-          expected=np.array([5, 100], dtype=dtype))
-      self._testBinary(
-          math_ops.multiply,
-          np.array([[10], [2]], dtype=dtype),
-          dtype(7),
-          expected=np.array([[70], [14]], dtype=dtype))
-
       # Complex support for squared_difference is incidental, see b/68205550
-      if dtype not in self.complex_types:
+      if dtype not in self.complex_types | {np.uint8, np.int8}:
         self._testBinary(
             math_ops.squared_difference,
             np.array([1, 2], dtype=dtype),
@@ -373,9 +451,36 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1 << 32, 1 << 36, 1 << 32, 1 << 36],
                             dtype=np.int64))
 
+  def testNextAfter(self):
+    for dtype in self.numeric_types:
+      if dtype in [np.float32, np.float64]:
+        x = np.array([
+            -0.0, 0.0, -0.0, +0.0, np.inf, np.inf, -np.inf, -np.inf, 2.0, 2.0,
+            1.0
+        ],
+                     dtype=dtype)
+        y = np.array(
+            [-0.0, 0.0, +0.0, -0.0, 1.0, -1.0, 1.0, -1.0, 2.0, 1.0, 2.0],
+            dtype=dtype)
+        expected = np.nextafter(x, y)
+
+        # We use assertAllEqual to expose any bugs hidden by relative or
+        # absolute error tolerances.
+        def NextAfterEqualityTest(result, expected, rtol, atol):
+          del rtol
+          del atol
+          return self.assertAllEqual(result, expected)
+
+        self._testBinary(
+            math_ops.nextafter,
+            x,
+            y,
+            expected=expected,
+            equality_test=NextAfterEqualityTest)
+
   def testComplexOps(self):
     for dtype in self.complex_types:
-      ctypes = {np.complex64: np.float32}
+      ctypes = {np.complex64: np.float32, np.complex128: np.float64}
       self._testBinary(
           math_ops.complex,
           np.array([[[[-1, 2], [2, 0]]]], dtype=ctypes[dtype]),
@@ -397,22 +502,6 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([2, -2, 7j, -4j, 4 - 6j, 1 + 2j], dtype=dtype),
           expected=np.array(
               [1.5, -1.5j, -0.2142857, -2j, (2 + 3j) / (4 - 6j), 2],
-              dtype=dtype))
-
-      # Test inf/nan scenarios.
-      self._testBinary(
-          gen_math_ops.real_div,
-          np.array([4 + 3j, 4, 3j, -4, -4j, 2 - 3j], dtype=dtype),
-          np.array([0, 0, 0, 0, 0, 0], dtype=dtype),
-          expected=np.array(
-              [
-                  dtype(1 + 1j) / 0,
-                  dtype(1) / 0,
-                  dtype(1j) / 0,
-                  dtype(-1) / 0,
-                  dtype(-1j) / 0,
-                  dtype(1 - 1j) / 0
-              ],
               dtype=dtype))
 
       self._testBinary(
@@ -559,6 +648,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
         dtype(2),
         expected=np.array([[5], [2]], dtype=dtype))
 
+    if dtype in [np.float32, np.float64]:
+      nums = np.arange(-10, 10, .25, dtype=dtype).reshape(80, 1)
+      divs = np.arange(-3, 3, .25, dtype=dtype).reshape(1, 24)
+      np_result = np.true_divide(nums, divs)
+      np_result[:, divs[0] == 0] = 0
+      self._testBinary(gen_math_ops.div_no_nan, nums, divs, expected=np_result)
+
     if dtype not in self.complex_types:  # floordiv unsupported for complex.
       self._testBinary(
           gen_math_ops.floor_div,
@@ -567,7 +663,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           expected=np.array([1, -2, -1, -5, 2], dtype=dtype))
 
   def testIntDivision(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types:
       self._testDivision(dtype)
 
   def testFloatDivision(self):
@@ -588,7 +684,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
         expected=np.array([1, 1, -1, 0], dtype=dtype))
 
   def testIntRemainder(self):
-    for dtype in self.int_types:
+    for dtype in self.signed_int_types - {np.int8}:
       self._testRemainder(dtype)
 
   def testFloatRemainder(self):
@@ -691,11 +787,13 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[10], [7], [2]], dtype=np.float32),
           np.float32(7),
           expected=np.array([[False], [False], [True]], dtype=np.bool))
-      self._testBinary(
-          less_op,
-          np.array([[10], [7], [2], [-1]], dtype=np.int64),
-          np.int64(7),
-          expected=np.array([[False], [False], [True], [True]], dtype=np.bool))
+      if np.int64 in self.numeric_types:
+        self._testBinary(
+            less_op,
+            np.array([[10], [7], [2], [-1]], dtype=np.int64),
+            np.int64(7),
+            expected=np.array(
+                [[False], [False], [True], [True]], dtype=np.bool))
 
     for less_equal_op in [math_ops.less_equal, (lambda x, y: x <= y)]:
       self._testBinary(
@@ -950,7 +1048,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
       self._testBinary(
           array_ops.expand_dims,
           np.array([42], dtype=dtype),
-          np.int32(0),
+          np.array([0], dtype=np.int64),
           expected=np.array([[42]], dtype=dtype))
       self._testBinary(
           array_ops.expand_dims,
@@ -977,15 +1075,77 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array([[[1, 2], [3, 4]]], dtype=dtype),
           np.int32(3),
           expected=np.array([[[[1], [2]], [[3], [4]]]], dtype=dtype))
+      self._testBinary(
+          array_ops.expand_dims,
+          np.array([[[1, 2], [3, 4]]], dtype=dtype),
+          np.array([2], dtype=np.int64),
+          expected=np.array([[[[1, 2]], [[3, 4]]]], dtype=dtype))
+
+  def testBatchMatMulBroadcast(self):
+    """Tests broadcasting behavior of BatchMatMul."""
+    with compat.forward_compatibility_horizon(2019, 4, 26):
+      # [2, 3] @ [1, 3, 4] -> [1, 2, 4]
+      self._testBinary(
+          math_ops.matmul,
+          np.array([[10, 20, 30], [11, 21, 31]], dtype=np.float32),
+          np.array([[[1, 2, 3, 4], [2, 4, 6, 8], [3, 6, 9, 12]]],
+                   dtype=np.float32),
+          expected=np.array([[[140, 280, 420, 560], [146, 292, 438, 584]]],
+                            dtype=np.float32))
+      # [1, 2, 3] @ [3, 4] -> [1, 2, 4]
+      self._testBinary(
+          math_ops.matmul,
+          np.array([[[10, 20, 30], [11, 21, 31]]], dtype=np.float32),
+          np.array([[1, 2, 3, 4], [2, 4, 6, 8], [3, 6, 9, 12]],
+                   dtype=np.float32),
+          expected=np.array([[[140, 280, 420, 560], [146, 292, 438, 584]]],
+                            dtype=np.float32))
+      # [2, 1, 3] @ [3, 1] -> [2, 1, 1]
+      self._testBinary(
+          math_ops.matmul,
+          np.array([[[10, 20, 30]], [[11, 21, 31]]], dtype=np.float32),
+          np.array([[1], [2], [3]], dtype=np.float32),
+          expected=np.array([[[140]], [[146]]], dtype=np.float32))
+      # [2, 1, 3] @ [1, 3] -> [2, 1, 1] (adjoint_b)
+      self._testBinary(
+          lambda x, y: math_ops.matmul(x, y, adjoint_b=True),
+          np.array([[[10, 20, 30]], [[11, 21, 31]]], dtype=np.float32),
+          np.array([[1, 2, 3]], dtype=np.float32),
+          expected=np.array([[[140]], [[146]]], dtype=np.float32))
+      # [2, 3, 1] @ [3, 1] -> [2, 1, 1] (adjoint_a)
+      self._testBinary(
+          lambda x, y: math_ops.matmul(x, y, adjoint_a=True),
+          np.array([[[10], [20], [30]], [[11], [21], [31]]], dtype=np.float32),
+          np.array([[1], [2], [3]], dtype=np.float32),
+          expected=np.array([[[140]], [[146]]], dtype=np.float32))
+      # [2, 3, 1] @ [1, 3] -> [2, 1, 1] (adjoint_a and adjoint_b)
+      self._testBinary(
+          lambda x, y: math_ops.matmul(x, y, adjoint_a=True, adjoint_b=True),
+          np.array([[[10], [20], [30]], [[11], [21], [31]]], dtype=np.float32),
+          np.array([[1, 2, 3]], dtype=np.float32),
+          expected=np.array([[[140]], [[146]]], dtype=np.float32))
+      # [5, 1, 2, 3] @ [1, 7, 3, 4] -> [5, 7, 2, 4]
+      self._testBinary(
+          math_ops.matmul,
+          np.ones([5, 1, 2, 3], dtype=np.float32),
+          np.ones([1, 7, 3, 4], dtype=np.float32),
+          expected=np.full([5, 7, 2, 4], 3, dtype=np.float32))
+      # [4, 5, 1, 2, 3] @ [1, 1, 3, 5] -> [4, 5, 1, 2, 5]
+      self._testBinary(
+          math_ops.matmul,
+          np.full([4, 5, 1, 2, 3], 2., dtype=np.float32),
+          np.full([1, 1, 3, 5], 3., dtype=np.float32),
+          expected=np.full([4, 5, 1, 2, 5], 18., dtype=np.float32))
 
   def testPad(self):
-    for dtype in self.numeric_types:
+    for dtype, pad_type in itertools.product(
+        self.numeric_types, [np.int32, np.int64]):
       self._testBinary(
           array_ops.pad,
           np.array(
               [[1, 2, 3], [4, 5, 6]], dtype=dtype),
           np.array(
-              [[1, 2], [2, 1]], dtype=np.int32),
+              [[1, 2], [2, 1]], dtype=pad_type),
           expected=np.array(
               [[0, 0, 0, 0, 0, 0],
                [0, 0, 1, 2, 3, 0],
@@ -999,7 +1159,7 @@ class BinaryOpsTest(xla_test.XLATestCase):
           np.array(
               [[1, 2, 3], [4, 5, 6]], dtype=dtype),
           np.array(
-              [[0, 3], [2, 1]], dtype=np.int32),
+              [[0, 3], [2, 1]], dtype=pad_type),
           expected=np.array(
               [[7, 7, 1, 2, 3, 7],
                [7, 7, 4, 5, 6, 7],
@@ -1008,7 +1168,38 @@ class BinaryOpsTest(xla_test.XLATestCase):
                [7, 7, 7, 7, 7, 7]],
               dtype=dtype))
 
-  def testMirrorPad(self):
+  def testSymmetricMirrorPad(self):
+    mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "SYMMETRIC")
+    for dtype in self.numeric_types:
+      self._testBinary(
+          mirror_pad,
+          np.array(
+              [
+                  [1, 2, 3],  #
+                  [4, 5, 6],  #
+              ],
+              dtype=dtype),
+          np.array([[
+              2,
+              2,
+          ], [3, 3]], dtype=np.int32),
+          expected=np.array(
+              [
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [6, 5, 4, 4, 5, 6, 6, 5, 4],  #
+                  [3, 2, 1, 1, 2, 3, 3, 2, 1],  #
+              ],
+              dtype=dtype))
+      self._testBinary(
+          mirror_pad,
+          np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype),
+          np.array([[0, 0], [0, 0]], dtype=np.int32),
+          expected=np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype))
+
+  def testReflectMirrorPad(self):
     mirror_pad = lambda t, paddings: array_ops.pad(t, paddings, "REFLECT")
     for dtype in self.numeric_types:
       self._testBinary(
@@ -1165,6 +1356,16 @@ class BinaryOpsTest(xla_test.XLATestCase):
     for dtype in self.numeric_types:
       self._testBinary(
           array_ops.tile,
+          np.array([[6], [3], [4]], dtype=dtype),
+          np.array([2, 0], dtype=np.int32),
+          expected=np.empty([6, 0], dtype=dtype))
+      self._testBinary(
+          array_ops.tile,
+          np.array([[6, 3, 4]], dtype=dtype),
+          np.array([2, 0], dtype=np.int32),
+          expected=np.empty([2, 0], dtype=dtype))
+      self._testBinary(
+          array_ops.tile,
           np.array([[6]], dtype=dtype),
           np.array([1, 2], dtype=np.int32),
           expected=np.array([[6, 6]], dtype=dtype))
@@ -1315,50 +1516,47 @@ class BinaryOpsTest(xla_test.XLATestCase):
                        np.array([4, 5, 6], dtype=np.int32),
                        expected=None)
 
-  def testMatrixSetDiag(self):
-    for dtype in self.numeric_types:
-      # Square
+  def testBroadcastTo(self):
+    for dtype in self.all_types:
+      x = np.random.randint(0, high=100, size=[2, 3])
       self._testBinary(
-          array_ops.matrix_set_diag,
-          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]],
-                   dtype=dtype),
-          np.array([1.0, 2.0, 3.0], dtype=dtype),
-          expected=np.array([[1.0, 1.0, 0.0], [1.0, 2.0, 1.0], [1.0, 1.0, 3.0]],
-                            dtype=dtype))
+          array_ops.broadcast_to,
+          x,
+          np.array([2, 3], dtype=np.int32),
+          expected=x)
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([6, 6], dtype=np.int32),
+          expected=np.tile(x, [3, 2]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 4, 3], dtype=np.int32),
+          expected=np.tile(x, [7, 2, 1]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 0, 3], dtype=np.int32),
+          expected=np.zeros([7, 0, 3], dtype=dtype))
+      self._testBinary(
+          array_ops.broadcast_to,
+          x,
+          np.array([7, 1, 2, 9], dtype=np.int32),
+          expected=np.tile(x, [7, 1, 1, 3]))
+      self._testBinary(
+          array_ops.broadcast_to,
+          np.zeros([2, 0], dtype=dtype),
+          np.array([4, 0], dtype=np.int32),
+          expected=np.zeros([4, 0], dtype=dtype))
 
+      x = np.arange(3).reshape((3, 1, 1, 1)).astype(dtype)
       self._testBinary(
-          array_ops.matrix_set_diag,
-          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0], [1.0, 0.0, 3.0]],
-                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0], [2.0, 0.0, 6.0]]],
-                   dtype=dtype),
-          np.array([[-1.0, 0.0, -3.0], [-4.0, -5.0, -6.0]], dtype=dtype),
-          expected=np.array(
-              [[[-1.0, 0.0, 3.0], [0.0, 0.0, 0.0], [1.0, 0.0, -3.0]],
-               [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0], [2.0, 0.0, -6.0]]],
-              dtype=dtype))
+          array_ops.broadcast_to,
+          x,
+          np.array((3, 7, 8, 9), dtype=np.int32),
+          expected=np.tile(x, (1, 7, 8, 9)))
 
-      # Rectangular
-      self._testBinary(
-          array_ops.matrix_set_diag,
-          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]], dtype=dtype),
-          np.array([3.0, 4.0], dtype=dtype),
-          expected=np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]], dtype=dtype))
-
-      self._testBinary(
-          array_ops.matrix_set_diag,
-          np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]], dtype=dtype),
-          np.array([3.0, 4.0], dtype=dtype),
-          expected=np.array([[3.0, 1.0], [1.0, 4.0], [1.0, 1.0]], dtype=dtype))
-
-      self._testBinary(
-          array_ops.matrix_set_diag,
-          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0]],
-                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0]]], dtype=dtype),
-          np.array([[-1.0, -2.0], [-4.0, -5.0]],
-                   dtype=dtype),
-          expected=np.array([[[-1.0, 0.0, 3.0], [0.0, -2.0, 0.0]],
-                             [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0]]],
-                            dtype=dtype))
 
 if __name__ == "__main__":
   googletest.main()

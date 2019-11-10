@@ -18,7 +18,8 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -30,7 +31,8 @@ namespace tensorflow {
 
 xla::XlaOp Zeros(xla::XlaBuilder* builder, const xla::Shape& shape) {
   return xla::Broadcast(
-      xla::ConstantLiteral(builder, xla::Literal::Zero(shape.element_type())),
+      xla::ConstantLiteral(builder,
+                           xla::LiteralUtil::Zero(shape.element_type())),
       xla::AsInt64Slice(shape.dimensions()));
 }
 
@@ -52,6 +54,9 @@ xla::XlaOp FloatLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
     case xla::C64:
       return xla::ConstantR0<xla::complex64>(builder, value);
       break;
+    case xla::C128:
+      return xla::ConstantR0<xla::complex128>(builder, value);
+      break;
     default:
       LOG(FATAL) << "unhandled element type " << type;
   }
@@ -62,48 +67,54 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
   xla::Literal literal;
   switch (type) {
     case xla::U8:
-      literal = std::move(*xla::Literal::CreateR0<uint8>(value));
+      literal = xla::LiteralUtil::CreateR0<uint8>(value);
+      break;
+    case xla::U16:
+      literal = xla::LiteralUtil::CreateR0<uint16>(value);
       break;
     case xla::U32:
-      literal = std::move(*xla::Literal::CreateR0<uint32>(value));
+      literal = xla::LiteralUtil::CreateR0<uint32>(value);
       break;
     case xla::U64:
-      literal = std::move(*xla::Literal::CreateR0<uint64>(value));
+      literal = xla::LiteralUtil::CreateR0<uint64>(value);
       break;
     case xla::S8:
-      literal = std::move(*xla::Literal::CreateR0<int8>(value));
+      literal = xla::LiteralUtil::CreateR0<int8>(value);
+      break;
+    case xla::S16:
+      literal = xla::LiteralUtil::CreateR0<int16>(value);
       break;
     case xla::S32:
-      literal = std::move(*xla::Literal::CreateR0<int32>(value));
+      literal = xla::LiteralUtil::CreateR0<int32>(value);
       break;
     case xla::S64:
-      literal = std::move(*xla::Literal::CreateR0<int64>(value));
+      literal = xla::LiteralUtil::CreateR0<int64>(value);
       break;
     case xla::F32:
-      literal = std::move(*xla::Literal::CreateR0<float>(value));
+      literal = xla::LiteralUtil::CreateR0<float>(value);
       break;
     case xla::F64:
-      literal = std::move(*xla::Literal::CreateR0<double>(value));
+      literal = xla::LiteralUtil::CreateR0<double>(value);
       break;
     case xla::C64:
-      literal = std::move(*xla::Literal::CreateR0<complex64>(value));
+      literal = xla::LiteralUtil::CreateR0<complex64>(value);
+      break;
+    case xla::C128:
+      literal = xla::LiteralUtil::CreateR0<complex128>(value);
       break;
     case xla::PRED:
       LOG(FATAL) << "pred element type is not integral";
-    case xla::S16:
-    case xla::U16:
-      LOG(FATAL) << "u16/s16 literals not yet implemented";
     case xla::BF16:
-      literal = std::move(
-          *xla::Literal::CreateR0<bfloat16>(static_cast<bfloat16>(value)));
+      literal =
+          xla::LiteralUtil::CreateR0<bfloat16>(static_cast<bfloat16>(value));
       break;
     case xla::F16:
-      literal = std::move(
-          *xla::Literal::CreateR0<xla::half>(static_cast<xla::half>(value)));
+      literal =
+          xla::LiteralUtil::CreateR0<xla::half>(static_cast<xla::half>(value));
       break;
     case xla::TUPLE:
       LOG(FATAL) << "tuple element type is not integral";
-    case xla::OPAQUE:
+    case xla::OPAQUE_TYPE:
       LOG(FATAL) << "opaque element type is not integral";
     default:
       LOG(FATAL) << "unhandled element type " << type;
@@ -111,137 +122,13 @@ xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
   return xla::ConstantLiteral(builder, literal);
 }
 
-xla::XlaOp SliceInMinorDims(xla::XlaOp x, gtl::ArraySlice<int64> start,
-                            gtl::ArraySlice<int64> end) {
-  xla::XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_RET_CHECK(start.size() == end.size());
-    int64 n_minor_dims = start.size();
 
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
-
-    const int64 n_dims = xla::ShapeUtil::Rank(shape);
-    TF_RET_CHECK(n_minor_dims <= n_dims);
-    gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(shape.dimensions()),
-                                      /*pos=*/0,
-                                      /*len=*/n_dims - n_minor_dims);
-
-    // Prepends 0s in the major dim
-    std::vector<int64> padded_start(n_dims, 0);
-    std::copy(start.begin(), start.end(),
-              padded_start.begin() + major_dims.size());
-
-    // Prepends the shape of the major dims.
-    std::vector<int64> padded_end(n_dims);
-    std::copy(major_dims.begin(), major_dims.end(), padded_end.begin());
-    std::copy(end.begin(), end.end(), padded_end.begin() + major_dims.size());
-
-    std::vector<int64> strides(n_dims, 1);
-    return xla::Slice(x, padded_start, padded_end, strides);
-  });
-}
-
-std::vector<int64> ConcatVectors(gtl::ArraySlice<int64> xs,
-                                 gtl::ArraySlice<int64> ys) {
+std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
+                                 absl::Span<const int64> ys) {
   std::vector<int64> output(xs.size() + ys.size());
   std::copy(xs.begin(), xs.end(), output.begin());
   std::copy(ys.begin(), ys.end(), output.begin() + xs.size());
   return output;
-}
-
-xla::XlaOp DynamicSliceInMinorDims(xla::XlaOp x,
-                                   gtl::ArraySlice<xla::XlaOp> starts,
-                                   gtl::ArraySlice<int64> sizes) {
-  xla::XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
-    const int64 n_dims = xla::ShapeUtil::Rank(shape);
-    int64 n_minor_dims = starts.size();
-    TF_RET_CHECK(n_minor_dims == sizes.size());
-    TF_RET_CHECK(n_minor_dims <= n_dims);
-    gtl::ArraySlice<int64> major_dims(xla::AsInt64Slice(shape.dimensions()),
-                                      /*pos=*/0,
-                                      /*len=*/n_dims - sizes.size());
-    auto padded_starts = PrependZerosInMajorDims(x, starts);
-    auto padded_sizes = ConcatVectors(major_dims, sizes);
-    return xla::DynamicSlice(x, padded_starts, padded_sizes);
-  });
-}
-
-xla::XlaOp UpdateSlice(xla::XlaOp x, xla::XlaOp update,
-                       gtl::ArraySlice<int64> start) {
-  xla::XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    // TODO(phawkins): make int64 work on all backends, remove the int32 cast.
-    std::vector<int32> start_as_int32(start.begin(), start.end());
-    auto start_constant = xla::ConstantR1<int32>(builder, start_as_int32);
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
-    const int64 n_dims = xla::ShapeUtil::Rank(shape);
-    TF_ASSIGN_OR_RETURN(xla::Shape start_constant_shape,
-                        builder->GetShape(start_constant));
-    const int64 start_length =
-        xla::ShapeUtil::GetDimension(start_constant_shape, -1);
-    TF_RET_CHECK(start_length == n_dims);
-    return xla::DynamicUpdateSlice(x, update, start_constant);
-  });
-}
-
-xla::XlaOp UpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
-                                  gtl::ArraySlice<int64> start) {
-  xla::XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
-    const int64 n_dims = xla::ShapeUtil::Rank(shape);
-    const int64 n_minor_dims = start.size();
-    TF_RET_CHECK(n_minor_dims <= n_dims);
-    std::vector<int64> padded_start(n_dims, 0);
-    std::copy(start.begin(), start.end(),
-              padded_start.begin() + (n_dims - n_minor_dims));
-    return UpdateSlice(x, update, padded_start);
-  });
-}
-
-xla::XlaOp DynamicUpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
-                                         gtl::ArraySlice<xla::XlaOp> starts) {
-  auto padded_starts = PrependZerosInMajorDims(x, starts);
-  return xla::DynamicUpdateSlice(x, update, padded_starts);
-}
-
-xla::XlaOp PrependZerosInMajorDims(xla::XlaOp x,
-                                   gtl::ArraySlice<xla::XlaOp> starts) {
-  xla::XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
-    const int64 n_dims = xla::ShapeUtil::Rank(shape);
-    auto zero = xla::Reshape(xla::ConstantR0<int32>(builder, 0), {1});
-    std::vector<xla::XlaOp> padded_starts(n_dims, zero);
-    for (int i = 0; i < starts.size(); ++i) {
-      padded_starts[n_dims - starts.size() + i] = xla::Reshape(starts[i], {1});
-    }
-    return xla::ConcatInDim(builder, padded_starts, 0);
-  });
-}
-
-xla::XlaOp TransposeInMinorDims(xla::XlaOp x) {
-  xla::XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
-    const int64 n_dims = xla::ShapeUtil::Rank(shape);
-    TF_RET_CHECK(n_dims >= 2);
-    std::vector<int64> permutation(n_dims);
-    std::iota(permutation.begin(), permutation.end(), 0);
-    std::swap(permutation[n_dims - 1], permutation[n_dims - 2]);
-    return xla::Transpose(x, permutation);
-  });
-}
-
-xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate) {
-  xla::XlaBuilder* builder = x.builder();
-  return builder->ReportErrorOrReturn([&]() -> xla::StatusOr<xla::XlaOp> {
-    TF_ASSIGN_OR_RETURN(xla::Shape shape, builder->GetShape(x));
-    auto perform_conj = shape.element_type() == xla::C64 && conjugate;
-    return perform_conj ? xla::Conj(x) : x;
-  });
 }
 
 }  // namespace tensorflow

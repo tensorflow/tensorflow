@@ -25,7 +25,6 @@ import traceback
 
 import numpy as np
 import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow_internal
 from tensorflow.python.platform import gfile
@@ -412,8 +411,7 @@ def regex_find(orig_screen_output, regex, font_attr):
     raise ValueError("Invalid regular expression: \"%s\"" % regex)
 
   regex_match_lines = []
-  for i in xrange(len(new_screen_output.lines)):
-    line = new_screen_output.lines[i]
+  for i, line in enumerate(new_screen_output.lines):
     find_it = re_prog.finditer(line)
 
     match_segs = []
@@ -466,10 +464,8 @@ def wrap_rich_text_lines(inp, cols):
   out = RichTextLines([])
 
   row_counter = 0  # Counter for new row index
-  for i in xrange(len(inp.lines)):
+  for i, line in enumerate(inp.lines):
     new_line_indices.append(out.num_lines())
-
-    line = inp.lines[i]
 
     if i in inp.annotations:
       out.annotations[row_counter] = inp.annotations[i]

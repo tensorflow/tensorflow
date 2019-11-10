@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/virtual_scheduler.h"
 
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/analytical_cost_estimator.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -95,14 +94,18 @@ class AnalyticalCostEstimatorTest : public ::testing::Test {
 TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   GrapplerItem item = CreateMiniGraph();
 
-  AnalyticalCostEstimator estimator(cluster_.get(), true);
+  AnalyticalCostEstimator estimator(cluster_.get(), /*use_static_shapes=*/true,
+                                    /*use_aggressive_shape_inference=*/true);
   TF_ASSERT_OK(estimator.Initialize(item));
 
-  CostGraphDef cost_graph;
+  RunMetadata run_metadata;
   Costs summary;
-  TF_ASSERT_OK(estimator.PredictCosts(item.graph, &cost_graph, &summary));
+  TF_ASSERT_OK(estimator.PredictCosts(item.graph, &run_metadata, &summary));
 
-  EXPECT_EQ(Costs::NanoSeconds(9151), summary.execution_time);
+  EXPECT_EQ(Costs::NanoSeconds(9157), summary.execution_time);
+  // Note there are totally 17 nodes (RandomUniform creates 2 nodes), but
+  // grappler will not process "label", therefore we have 15 here instead
+  EXPECT_EQ(15, summary.num_ops_total);
 
   // Make this estimate accurate:
   // TODO(http://b/70031255): Accurate estimator for RandomUniform op needed
@@ -110,6 +113,7 @@ TEST_F(AnalyticalCostEstimatorTest, SimpleTest) {
   //
   // Change to EXPECT_FALSE when the above TODOs are done:
   EXPECT_TRUE(summary.inaccurate);
+  EXPECT_EQ(0, summary.num_ops_with_unknown_shapes);
 }
 
 }  // end namespace grappler

@@ -7,16 +7,18 @@ option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 
-// EXPERIMENTAL. Option for watching a node.
+// Option for watching a node in TensorFlow Debugger (tfdbg).
 message DebugTensorWatch {
   // Name of the node to watch.
+  // Use "*" for wildcard. But note: currently, regex is not supported in
+  // general.
   string node_name = 1;
 
   // Output slot to watch.
-  // The semantics of output_slot == -1 is that the node is only watched for
-  // completion, but not for any output tensors. See NodeCompletionCallback
-  // in debug_gateway.h.
-  // TODO(cais): Implement this semantics.
+  // The semantics of output_slot == -1 is that all outputs of the node
+  // will be watched (i.e., a wildcard).
+  // Other negative values of output_slot are invalid and will lead to
+  // errors currently.
   int32 output_slot = 2;
 
   // Name(s) of the debugging op(s).
@@ -51,7 +53,7 @@ message DebugTensorWatch {
   bool tolerate_debug_op_creation_failures = 5;
 }
 
-// EXPERIMENTAL. Options for initializing DebuggerState.
+// Options for initializing DebuggerState in TensorFlow Debugger (tfdbg).
 message DebugOptions {
   // Debugging options
   repeated DebugTensorWatch debug_tensor_watch_opts = 4;
@@ -60,6 +62,12 @@ message DebugOptions {
   // Note that this is distinct from the session run count and the executor
   // step count.
   int64 global_step = 10;
+
+  // Whether the total disk usage of tfdbg is to be reset to zero
+  // in this Session.run call. This is used by wrappers and hooks
+  // such as the local CLI ones to indicate that the dumped tensors
+  // are cleaned up from the disk after each Session.run.
+  bool reset_disk_byte_usage = 11;
 }
 
 message DebuggedSourceFile {

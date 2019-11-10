@@ -32,9 +32,9 @@ void SetZeroFunctor<Eigen::ThreadPoolDevice, T>::operator()(
   out.device(d) = out.constant(T(0));
 }
 
-void SetZeroFunctor<Eigen::ThreadPoolDevice, string>::operator()(
-    const Eigen::ThreadPoolDevice& d, typename TTypes<string>::Flat out) {
-  out.device(d) = out.constant(string());
+void SetZeroFunctor<Eigen::ThreadPoolDevice, tstring>::operator()(
+    const Eigen::ThreadPoolDevice& d, typename TTypes<tstring>::Flat out) {
+  out.device(d) = out.constant(tstring());
 }
 
 // Explicit instantiations.
@@ -51,6 +51,11 @@ DEFINE_SETZERO_CPU(uint16);
 DEFINE_SETZERO_CPU(int16);
 DEFINE_SETZERO_CPU(int32);
 DEFINE_SETZERO_CPU(int64);
+DEFINE_SETZERO_CPU(quint8);
+DEFINE_SETZERO_CPU(qint8);
+DEFINE_SETZERO_CPU(quint16);
+DEFINE_SETZERO_CPU(qint16);
+DEFINE_SETZERO_CPU(qint32);
 DEFINE_SETZERO_CPU(complex64);
 DEFINE_SETZERO_CPU(complex128);
 DEFINE_SETZERO_CPU(Variant);
@@ -132,6 +137,7 @@ struct FillFunctor<Eigen::ThreadPoolDevice, T> {
 TF_CALL_ALL_TYPES(DEFINE_FILL_CPU);
 DEFINE_FILL_CPU(quint8);
 DEFINE_FILL_CPU(quint16);
+DEFINE_FILL_CPU(uint32);
 #undef DEFINE_FILL_CPU
 
 #ifdef TENSORFLOW_USE_SYCL

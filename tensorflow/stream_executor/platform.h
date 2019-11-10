@@ -21,6 +21,7 @@ limitations under the License.
 
 #include <map>
 
+#include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_options.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
@@ -32,6 +33,7 @@ limitations under the License.
 namespace stream_executor {
 
 class StreamExecutor;
+class DeviceDescription;
 
 // Describes the platform for a StreamExecutor instantiation to act upon.
 //
@@ -40,6 +42,7 @@ class StreamExecutor;
 enum class PlatformKind {
   kInvalid,
   kCuda,
+  kROCm,
   kOpenCL,
   kHost,
   kMock,
@@ -131,6 +134,15 @@ class Platform {
   // InitializePlatformWithId/InitializePlatformWithName.
   virtual port::Status Initialize(
       const std::map<string, string>& platform_options);
+
+  // Returns a populated DeviceDescription for the device at the given ordinal.
+  // This should not require device initialization. Note that not all platforms
+  // may support acquiring the DeviceDescription indirectly.
+  //
+  // Alternatively callers may call GetDeviceDescription() on the StreamExecutor
+  // which returns a cached instance specific to the initialized StreamExecutor.
+  virtual port::StatusOr<std::unique_ptr<DeviceDescription>>
+  DescriptionForDevice(int ordinal) const = 0;
 
   // Returns a device with the given ordinal on this platform with a default
   // plugin configuration or, if none can be found with the given ordinal or

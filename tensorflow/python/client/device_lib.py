@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import device_attributes_pb2
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_device_lib
 
 
 def list_local_devices(session_config=None):
@@ -36,7 +36,9 @@ def list_local_devices(session_config=None):
     m.ParseFromString(pb_str)
     return m
 
+  serialized_config = None
+  if session_config is not None:
+    serialized_config = session_config.SerializeToString()
   return [
-      _convert(s)
-      for s in pywrap_tensorflow.list_devices(session_config=session_config)
+      _convert(s) for s in _pywrap_device_lib.list_devices(serialized_config)
   ]

@@ -22,13 +22,15 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/framework/tensor.pb_text.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/util.h"
 
 #ifdef INTEL_MKL
 #ifdef _OPENMP
@@ -49,6 +51,8 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
       allocator_(allocator),
       scoped_allocator_mgr_(new ScopedAllocatorMgr(name)) {
 #ifdef INTEL_MKL
+  // Early return when MKL is disabled
+  if (DisableMKL()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
   if (user_omp_threads == nullptr) {
@@ -70,17 +74,6 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
 
 ThreadPoolDevice::~ThreadPoolDevice() {}
 
-void ThreadPoolDevice::Compute(OpKernel* op_kernel, OpKernelContext* context) {
-  // When Xprof/ThreadScape profiling is off (which is the default), the
-  // following code is simple enough that its overhead is negligible.
-  tracing::ScopedActivity activity(op_kernel->name(), op_kernel->type_string(),
-                                   op_kernel->IsExpensive());
-  tracing::ScopedRegion region(tracing::EventCategory::kCompute,
-                               op_kernel->name());
-
-  op_kernel->Compute(context);
-}
-
 Allocator* ThreadPoolDevice::GetAllocator(AllocatorAttributes attr) {
   return allocator_;
 }
@@ -101,17 +94,48 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     Tensor* tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
     Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+    if (parsed.FromProto(allocator_, tensor_proto)) {
       *tensor = std::move(parsed);
       return Status::OK();
     }
   }
   return errors::InvalidArgument("Cannot parse tensor from proto: ",
-                                 ProtoDebugString(tensor_proto));
+                                 tensor_proto.DebugString());
+}
+
+void ThreadPoolDevice::CopyTensorInSameDevice(
+    const Tensor* input_tensor, Tensor* output_tensor,
+    const DeviceContext* device_context, StatusCallback done) {
+  if (input_tensor->NumElements() != output_tensor->NumElements()) {
+    done(errors::Internal(
+        "CPU->CPU copy shape mismatch: input=", input_tensor->shape(),
+        ", output=", output_tensor->shape()));
+    return;
+  }
+  tensor::DeepCopy(*input_tensor, output_tensor);
+  done(Status::OK());
 }
 
 #ifdef INTEL_MKL
-REGISTER_MEM_ALLOCATOR("MklCPUAllocator", 200, MklCPUAllocator);
-#endif
+namespace {
+class MklCPUAllocatorFactory : public AllocatorFactory {
+ public:
+  bool NumaEnabled() override { return false; }
+
+  Allocator* CreateAllocator() override { return new MklCPUAllocator; }
+
+  // Note: Ignores numa_node, for now.
+  virtual SubAllocator* CreateSubAllocator(int numa_node) {
+    return new MklSubAllocator;
+  }
+};
+
+#ifdef ENABLE_MKL
+REGISTER_MEM_ALLOCATOR("MklCPUAllocator", (DisableMKL() ? 50 : 200),
+                       MklCPUAllocatorFactory);
+#endif  // ENABLE_MKL
+
+}  // namespace
+#endif  // INTEL_MKL
 
 }  // namespace tensorflow

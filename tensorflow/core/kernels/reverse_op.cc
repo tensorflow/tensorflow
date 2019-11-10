@@ -19,13 +19,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/reverse_op.h"
 #include <memory>
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/work_sharder.h"
@@ -314,10 +314,10 @@ class ReverseV2Op : public OpKernel {
                               .HostMemory("axis"),           \
                           ReverseV2Op<CPUDevice, T, int64>)
 TF_CALL_POD_TYPES(REGISTER_KERNELS);
-TF_CALL_string(REGISTER_KERNELS);
+TF_CALL_tstring(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
@@ -373,8 +373,7 @@ TF_CALL_complex128(DECLARE_GPU_SPEC);
                           ReverseV2Op<GPUDevice, T, int64>)
 TF_CALL_uint8(REGISTER_GPU_KERNELS);
 TF_CALL_int8(REGISTER_GPU_KERNELS);
-// TODO decide whether we want to enable the bool kernel.
-// TF_CALL_bool(REGISTER_GPU_KERNELS);
+TF_CALL_bool(REGISTER_GPU_KERNELS);
 TF_CALL_half(REGISTER_GPU_KERNELS);
 TF_CALL_float(REGISTER_GPU_KERNELS);
 TF_CALL_double(REGISTER_GPU_KERNELS);
@@ -408,7 +407,7 @@ REGISTER_KERNEL_BUILDER(Name("ReverseV2")
                             .HostMemory("axis")
                             .HostMemory("output"),
                         ReverseV2Op<CPUDevice, int32, int64>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T)                             \

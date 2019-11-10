@@ -28,11 +28,11 @@ namespace tensorflow {
 Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
                           bool* value) {
   *value = default_val;
-  const char* tf_env_var_val = getenv(std::string(env_var_name).c_str());
+  const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
     return Status::OK();
   }
-  string str_value = str_util::Lowercase(tf_env_var_val);
+  string str_value = absl::AsciiStrToLower(tf_env_var_val);
   if (str_value == "0" || str_value == "false") {
     *value = false;
     return Status::OK();
@@ -48,7 +48,7 @@ Status ReadBoolFromEnvVar(StringPiece env_var_name, bool default_val,
 Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
                            int64* value) {
   *value = default_val;
-  const char* tf_env_var_val = getenv(std::string(env_var_name).c_str());
+  const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val == nullptr) {
     return Status::OK();
   }
@@ -62,11 +62,11 @@ Status ReadInt64FromEnvVar(StringPiece env_var_name, int64 default_val,
 
 Status ReadStringFromEnvVar(StringPiece env_var_name, StringPiece default_val,
                             string* value) {
-  const char* tf_env_var_val = getenv(std::string(env_var_name).c_str());
+  const char* tf_env_var_val = getenv(string(env_var_name).c_str());
   if (tf_env_var_val != nullptr) {
     *value = tf_env_var_val;
   } else {
-    *value = std::string(default_val);
+    *value = string(default_val);
   }
   return Status::OK();
 }

@@ -17,12 +17,13 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -69,9 +69,9 @@ class ComputeConstantTest : public ::testing::Test {
     LOG(FATAL) << "invalid client_type value";
   }
 
-  StatusOr<std::unique_ptr<Literal>> ComputeConstantLiteral(
-      Client* client, const XlaOp& operand, XlaBuilder* builder,
-      Layout* output_layout = nullptr) {
+  StatusOr<Literal> ComputeConstantLiteral(Client* client, const XlaOp& operand,
+                                           XlaBuilder* builder,
+                                           Layout* output_layout = nullptr) {
     TF_ASSIGN_OR_RETURN(auto subgraph, builder->BuildConstantSubGraph(operand));
     TF_ASSIGN_OR_RETURN(auto computed,
                         client->ComputeConstant(subgraph, output_layout));
@@ -83,7 +83,7 @@ class ComputeConstantTest : public ::testing::Test {
                                          XlaBuilder* builder) {
     TF_ASSIGN_OR_RETURN(auto literal, ComputeConstantLiteral(client, operand,
                                                              builder, nullptr));
-    return literal->Get<Scalar>({});
+    return literal.Get<Scalar>({});
   }
 
   bool IsConstant(const XlaOp& operand, XlaBuilder* builder) {
@@ -145,25 +145,41 @@ TEST_F(ComputeConstantTest, DirectParamMissing) {
     EXPECT_FALSE(IsConstant(computation, &b));
 
     auto value = ComputeConstantScalar<float>(client, computation, &b);
-    EXPECT_TRUE(tensorflow::str_util::StrContains(value.status().ToString(),
-                                                  "depends on a parameter"))
+    EXPECT_TRUE(
+        absl::StrContains(value.status().ToString(), "depends on a parameter"))
         << value.status();
   }
 }
 
-TEST_F(ComputeConstantTest, IndirectParamMissing) {
+TEST_F(ComputeConstantTest, GetDimensionSize) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
-    auto computation =
-        Add(ConstantR0<float>(&b, 1.0f),
-            Parameter(&b, 0, ShapeUtil::MakeShape(F32, {}), "param"));
-    EXPECT_FALSE(IsConstant(computation, &b));
+    auto add =
+        Add(ConstantR1<float>(&b, {1.0f}), ConstantR1<float>(&b, {1.0f}));
+    auto get_dimension_size = GetDimensionSize(add, 0);
+    EXPECT_TRUE(IsConstant(get_dimension_size, &b));
 
-    auto value = ComputeConstantScalar<float>(client, computation, &b);
-    EXPECT_TRUE(tensorflow::str_util::StrContains(value.status().ToString(),
-                                                  "depends on a parameter"))
-        << value.status();
+    TF_ASSERT_OK_AND_ASSIGN(auto value, ComputeConstantScalar<int32>(
+                                            client, get_dimension_size, &b));
+    EXPECT_EQ(value, 1);
+  }
+}
+
+TEST_F(ComputeConstantTest, MultipleGetDimensionSize) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto add =
+        Add(ConstantR2<float>(&b, {{1.0f}}), ConstantR2<float>(&b, {{1.0f}}));
+    auto get_dimension_size = GetDimensionSize(add, 0);
+    auto get_dimension_size_2 = GetDimensionSize(add, 0);
+    auto add_2 = Add(get_dimension_size, get_dimension_size_2);
+    EXPECT_TRUE(IsConstant(add_2, &b));
+
+    TF_ASSERT_OK_AND_ASSIGN(auto value,
+                            ComputeConstantScalar<int32>(client, add_2, &b));
+    EXPECT_EQ(value, 2);
   }
 }
 
@@ -206,9 +222,8 @@ TEST_F(ComputeConstantTest, NonScalarAdd) {
 
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
-    std::unique_ptr<Literal> expected_literal =
-        Literal::CreateR1<int32>({4, 6});
-    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
+    Literal expected_literal = LiteralUtil::CreateR1<int32>({4, 6});
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
   }
 }
 
@@ -221,8 +236,8 @@ TEST_F(ComputeConstantTest, IntegerDivide) {
 
     TF_ASSERT_OK_AND_ASSIGN(auto computed,
                             ComputeConstantLiteral(client, computation, &b));
-    std::unique_ptr<Literal> expected_literal = Literal::CreateR0<int32>(5);
-    EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
+    Literal expected_literal = LiteralUtil::CreateR0<int32>(5);
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
   }
 }
 
@@ -241,12 +256,11 @@ XLA_TEST_F(ComputeConstantTest, Layout) {
                                  ConstantR2<int32>(&b, {{10, 20}, {30, 40}})),
                              &b, &layout_proto));
 
-      std::unique_ptr<Literal> expected_literal =
-          Literal::CreateR2WithLayout<int32>({{11, 22}, {33, 44}},
-                                             LayoutUtil::MakeLayout(layout));
+      Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32>(
+          {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(layout));
       ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
-          expected_literal->shape(), computed->shape()));
-      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
+          expected_literal.shape(), computed.shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
     }
   }
 }

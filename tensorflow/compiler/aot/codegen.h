@@ -19,9 +19,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/tf2xla/tf2xla.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace tensorflow {
 namespace tfcompile {
@@ -57,7 +57,7 @@ struct MetadataResult {
   std::vector<string> header_variable_decls;
 
   // program_shape_access_shim is a C++ expression that constructs the
-  // xla::ProgramShape instance for the CompileResult passed to
+  // xla::ProgramShapeProto instance for the CompileResult passed to
   // GenerateMetadata.
   string program_shape_access_shim;
 
@@ -96,7 +96,7 @@ Status ParseCppClass(const string& cpp_class, string* class_name,
 
 // ValidateCppIdent returns OK iff ident is a valid C++ identifier.  The msg is
 // appended to error messages.
-Status ValidateCppIdent(StringPiece ident, StringPiece msg);
+Status ValidateCppIdent(absl::string_view ident, absl::string_view msg);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

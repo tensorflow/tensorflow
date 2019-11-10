@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 import threading
 
@@ -34,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -141,6 +141,7 @@ class TestDebugWrapperSessionBadAction(framework.BaseDebugWrapperSession):
     return framework.OnRunEndResponse()
 
 
+@test_util.run_deprecated_v1
 class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def _no_rewrite_session_config(self):
@@ -196,7 +197,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     # Tear down temporary dump directory.
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
     ops.reset_default_graph()
 
@@ -339,7 +340,7 @@ class DebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     with wrapper.as_default():
       foo = constant_op.constant(42, name="foo")
-      self.assertEqual(42, foo.eval())
+      self.assertEqual(42, self.evaluate(foo))
       self.assertEqual(foo, self._observer["run_fetches"])
 
   def testWrapperShouldSupportSessionClose(self):

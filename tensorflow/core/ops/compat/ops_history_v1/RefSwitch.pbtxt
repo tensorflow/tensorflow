@@ -1,0 +1,27 @@
+op {
+  name: "RefSwitch"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+    is_ref: true
+  }
+  input_arg {
+    name: "pred"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "output_false"
+    type_attr: "T"
+    is_ref: true
+  }
+  output_arg {
+    name: "output_true"
+    type_attr: "T"
+    is_ref: true
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  allows_uninitialized_input: true
+}

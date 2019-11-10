@@ -47,9 +47,10 @@ RpcCollectiveExecutorMgr::~RpcCollectiveExecutorMgr() {
 
 CollectiveExecutor* RpcCollectiveExecutorMgr::Create(int64 step_id) {
   CollectiveRemoteAccessDistributed* rma =
-      new CollectiveRemoteAccessDistributed(dev_mgr_, dev_resolver_.get(),
-                                            worker_cache_, step_id);
-  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_);
+      new CollectiveRemoteAccessDistributed(
+          dev_mgr_, dev_resolver_.get(), work_queue_, worker_cache_, step_id);
+  return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_,
+                                    &gpu_ring_order_);
 }
 
 namespace {
@@ -79,7 +80,7 @@ void RpcCollectiveExecutorMgr::RefreshStepIdSequenceAsync(
     gks->next_step_id_ = NewRandomStepId();
     done(Status::OK());
   } else {
-    WorkerInterface* wi = worker_cache_->CreateWorker(group_leader_);
+    WorkerInterface* wi = worker_cache_->GetOrCreateWorker(group_leader_);
     GetStepSequenceRequest* req = new GetStepSequenceRequest;
     GetStepSequenceResponse* resp = new GetStepSequenceResponse;
     req->add_graph_key(graph_key);
@@ -96,6 +97,32 @@ void RpcCollectiveExecutorMgr::RefreshStepIdSequenceAsync(
           delete req;
           delete resp;
         });
+  }
+}
+
+void RpcCollectiveExecutorMgr::GetStepSequenceAsync(
+    const GetStepSequenceRequest* request, GetStepSequenceResponse* response,
+    const StatusCallback& done) {
+  if (!group_leader_.empty()) {
+    LOG(ERROR) << "GetStepSequence called at non-group-leader";
+    done(errors::Internal("GetStepSequenceAsync called at non-group-leader"));
+  } else {
+    mutex_lock l(sequence_mu_);
+    for (int64 graph_key : request->graph_key()) {
+      auto it = sequence_table_.find(graph_key);
+      GraphKeySequence* gks = nullptr;
+      if (it == sequence_table_.end()) {
+        gks = new GraphKeySequence(graph_key);
+        gks->next_step_id_ = NewRandomStepId();
+        sequence_table_[graph_key] = gks;
+      } else {
+        gks = it->second;
+      }
+      StepSequence* ss = response->add_step_sequence();
+      ss->set_graph_key(graph_key);
+      ss->set_next_step_id(gks->next_step_id_);
+    }
+    done(Status::OK());
   }
 }
 

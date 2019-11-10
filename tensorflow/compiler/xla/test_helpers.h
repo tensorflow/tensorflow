@@ -19,18 +19,15 @@ limitations under the License.
 #include <list>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 
 // This module contains a minimal subset of gmock functionality just
 // sufficient to execute the currently existing tests.
-namespace util {
-class Status;
-}  // namespace util
 
 namespace xla {
 template <typename T>

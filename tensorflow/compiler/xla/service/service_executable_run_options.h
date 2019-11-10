@@ -17,28 +17,25 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_SERVICE_EXECUTABLE_RUN_OPTIONS_H_
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
-#include "tensorflow/compiler/xla/service/pool.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/stream_executor/stream_executor.h"
 
 namespace xla {
 
 // Class containing options for running a LocalExecutable and other auxiliary
-// data, now only a stream cache for GPU backend.
+// data.
 class ServiceExecutableRunOptions {
  public:
-  using StreamBorrower =
-      std::function<StatusOr<Pool<se::Stream>::SmartPtr>(int)>;
+  using StreamBorrower = std::function<StatusOr<StreamPool::Ptr>(int)>;
 
   ServiceExecutableRunOptions()
       : ServiceExecutableRunOptions(ExecutableRunOptions()) {}
 
-  explicit ServiceExecutableRunOptions(
-      ExecutableRunOptions run_options, StreamBorrower borrow_stream = nullptr,
-      tensorflow::thread::ThreadPool* xla_intra_op_thread_pool = nullptr)
+  explicit ServiceExecutableRunOptions(ExecutableRunOptions run_options,
+                                       StreamBorrower borrow_stream = nullptr)
       : run_options_(std::move(run_options)),
-        borrow_stream_(std::move(borrow_stream)),
-        xla_intra_op_thread_pool_(xla_intra_op_thread_pool) {}
+        borrow_stream_(std::move(borrow_stream)) {}
 
   // Returns reference or pointer to `ExecutableRunOptions` member.
   const ExecutableRunOptions& run_options() const { return run_options_; }
@@ -46,26 +43,22 @@ class ServiceExecutableRunOptions {
 
   // Delegate to `ExecutableRunOptions` member.
   se::Stream* stream() const { return run_options_.stream(); }
-  DeviceMemoryAllocator* allocator() const { return run_options_.allocator(); }
+  se::DeviceMemoryAllocator* allocator() const {
+    return run_options_.allocator();
+  }
   int device_ordinal() const { return run_options_.device_ordinal(); }
 
   // Borrows a stream and returns a smart pointer which returns the stream on
   // destruction.
-  StatusOr<Pool<se::Stream>::SmartPtr> BorrowStream(int device_ordinal) const {
+  StatusOr<StreamPool::Ptr> BorrowStream(int device_ordinal) const {
     return borrow_stream_
                ? borrow_stream_(device_ordinal)
                : Status(tensorflow::error::UNIMPLEMENTED, "No stream cache");
   }
 
-  // Returns reference to thread pool for execution of XLA ops on CPU backend.
-  tensorflow::thread::ThreadPool* xla_intra_op_thread_pool() const {
-    return xla_intra_op_thread_pool_;
-  }
-
  private:
   ExecutableRunOptions run_options_;
   StreamBorrower borrow_stream_;
-  tensorflow::thread::ThreadPool* xla_intra_op_thread_pool_;
 };
 
 }  // namespace xla

@@ -22,14 +22,15 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -37,7 +38,7 @@ namespace xla {
 // Class for bookkeeping the information on the given modules, in particular on
 // the interaction between computations.
 //
-// Companion instructions are one of the information collected as we build the
+// Companion instructions are one piece of information collected as we build the
 // metadata. For example, for each While instruction, companion instructions
 // refer to a set of While instructions in other computations that communicate
 // with each other.
@@ -50,6 +51,13 @@ namespace xla {
 // }                          While_4() { Recv(0) }
 //                          }
 //
+// Each instruction can belong to at most one companion set: While_0 and While_5
+// are in the same set even though they don't communicate with each other,
+// because they both communicate with While_2.
+//
+// A send and the matching recv must both have the same level of nesting of
+// companion instructions.
+//
 // Companion instructions are used to detect cycles in the graph and also for
 // global scheduling.
 class HloModuleGroupMetadata {
@@ -59,8 +67,7 @@ class HloModuleGroupMetadata {
     kInvalid,
     kWhileCondition,
     kWhileBody,
-    kConditionalTrue,
-    kConditionalFalse,
+    kConditionalBranch,
     kCallFunction,
   };
 
@@ -72,12 +79,13 @@ class HloModuleGroupMetadata {
   class TrackedInstruction {
    public:
     TrackedInstruction() = default;
-    TrackedInstruction(HloInstruction* instruction, ComputationKind kind)
-        : instruction_(instruction), kind_(kind) {}
+    TrackedInstruction(HloInstruction* instruction, ComputationKind kind,
+                       int index = -1)
+        : instruction_(instruction), kind_(kind), index_(index) {}
 
     bool operator==(const TrackedInstruction& rhs) const {
       return instruction_->opcode() == rhs.instruction_->opcode() &&
-             kind_ == rhs.kind_;
+             kind_ == rhs.kind_ && index_ == rhs.index_;
     }
     bool operator!=(const TrackedInstruction& rhs) const {
       return !operator==(rhs);
@@ -90,9 +98,10 @@ class HloModuleGroupMetadata {
    private:
     HloInstruction* instruction_ = nullptr;
     ComputationKind kind_ = ComputationKind::kInvalid;
+    int index_ = -1;
   };
 
-  // Represents a channel and the 4 instructions that form the channel.
+  // Represents a channel and the instructions that form the channel.
   struct Channel {
     int64 id = -1;
     HloInstruction* send = nullptr;
@@ -101,14 +110,14 @@ class HloModuleGroupMetadata {
     HloInstruction* recv_done = nullptr;
   };
 
-  explicit HloModuleGroupMetadata(const std::vector<HloModule*>& modules)
-      : modules_(modules) {}
+  explicit HloModuleGroupMetadata(absl::Span<HloModule* const> modules)
+      : modules_(modules.begin(), modules.end()) {}
 
   ~HloModuleGroupMetadata() = default;
 
   // Build and return the metadata for the given modules.
   static StatusOr<std::unique_ptr<HloModuleGroupMetadata>> Build(
-      const std::vector<HloModule*>& modules);
+      absl::Span<HloModule* const> modules);
 
   // Returns true if the instruction is one of the 4 channel instructions (Send,
   // Recv, SendDone, RecvDone).
@@ -118,12 +127,18 @@ class HloModuleGroupMetadata {
   // comment above on companion instructions.
   bool IsCompanionInstruction(HloInstruction* hlo) const;
 
-  // Returns true if the instruction is either a channel instruction or a
-  // companion instruction.
+  // Returns true if the instruction is either a channel instruction, a
+  // cross-module all-reduce instruction, or a companion instruction.
   bool InstructionCommunicates(HloInstruction* hlo) const;
 
   // Returns the Channel instance for the given channel id.
   const Channel& GetChannel(int64 channel_id) const;
+
+  // Returns if the given channel id exists in metadata.
+  bool HasChannel(int64 channel_id) const;
+
+  // Returns the all-reduce instructions with the same channel_id.
+  const std::vector<HloInstruction*>& GetAllReduceGroup(int64 channel_id) const;
 
   // Returns the computation that contains the peer channel instructions for
   // the given instruction.
@@ -152,23 +167,24 @@ class HloModuleGroupMetadata {
   // Retrieves the device an instruction is assigned to. Either from the
   // sharding information, or from the ordinal of the module the instruction
   // is in.
-  tensorflow::gtl::optional<int64> GetInstructionDevice(
+  absl::optional<int64> GetInstructionDevice(
       const HloInstruction& instruction) const;
 
   // Returns the number of modules for devices (excluding the host module).
   int64 GetDeviceModulesCount() const;
 
-  // Returns the companion instructions for the given instruction.
+  // Returns the companion set for the given instruction, including the
+  // instruction itself.
   //
   // Precondition: IsCompanionWhile(instruction) is true.
-  const std::unordered_set<HloInstruction*>& Companions(
-      HloInstruction* instruction) const {
-    CHECK_EQ(companion_set_index_.count(instruction), 1);
+  const std::vector<HloInstruction*>& Companions(
+      const HloInstruction* instruction) const {
+    CHECK(companion_set_index_.contains(instruction));
     return companion_set(companion_set_index_.at(instruction));
   }
 
   // Returns the companion set at the given index.
-  const std::unordered_set<HloInstruction*>& companion_set(int64 index) const {
+  const std::vector<HloInstruction*>& companion_set(int64 index) const {
     CHECK_LT(index, companion_sets_.size());
     return *companion_sets_[index];
   }
@@ -178,8 +194,9 @@ class HloModuleGroupMetadata {
     return companion_set_index_.at(instruction);
   }
 
-  // Returns the list of all companion sets in the HLO module group.
-  const std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>&
+  // Returns the list of all companion sets in the HLO module group. Each
+  // returned set contains at least one HloInstruction.
+  const std::vector<std::unique_ptr<std::vector<HloInstruction*>>>&
   companion_sets() const {
     return companion_sets_;
   }
@@ -190,10 +207,15 @@ class HloModuleGroupMetadata {
   // Returns the maximum channel id used in the module group.
   int64 max_channel_id() const { return max_channel_id_; }
 
+  HloAliasAnalysis* alias_analysis(HloModule* module) const {
+    return alias_analyses_.at(module).get();
+  }
+
  private:
   Status Build();
 
-  // Record all channel instructions and While instructions.
+  // Record all channel instructions, cross-module AllReduce instructions, and
+  // While/Conditional/Call instructions.
   Status RecordInstructions();
 
   // Verifies the given HloModules are well-formed and follow the specification,
@@ -202,11 +224,8 @@ class HloModuleGroupMetadata {
   // * Each channel has all 4 instructions (Send, Recv, SendDone, RecvDone).
   // * The shape of channel instructions match.
   // * The nest level of channel instructions match.
-  // * Channel instructions are used in allowed computations; i.e., in the
+  // * Channel instructions are used in allowed computations, i.e., in the
   //   entry computation of the module or condition/body of While computations.
-  //
-  // TODO(b/62064342): Currently, HloModuleGroupScheduler checks if there is a
-  // cycle in the graph, but it would be good to verify here.
   Status VerifyChannelInstructions();
 
   // Adds metadata that the given two instructions are companions.
@@ -218,8 +237,8 @@ class HloModuleGroupMetadata {
   Status CheckCommunicatingInstruction(HloInstruction* instruction) const;
 
   // Performs a consistency check on the companion sets built for the input
-  // modules. Check that a companion set does not include instructions from the
-  // same module/device.
+  // modules. Checks that each instruction in a companion set is in a different
+  // module/device.
   Status VerifyCompanionSets() const;
 
   // Retrieves a pointer to the stored TrackedInstruction associated with a
@@ -234,32 +253,37 @@ class HloModuleGroupMetadata {
   void DumpCollectedStats() const;
 
   // List of all companion instructions sets in the module.
-  std::vector<std::unique_ptr<std::unordered_set<HloInstruction*>>>
-      companion_sets_;
+  std::vector<std::unique_ptr<std::vector<HloInstruction*>>> companion_sets_;
 
   // Map from each companion while instruction to the index into companion_set_.
-  tensorflow::gtl::FlatMap<HloInstruction*, int64> companion_set_index_;
+  absl::flat_hash_map<const HloInstruction*, int64> companion_set_index_;
 
   // Map from computation to the instruction using it (a kWhile, kConditional).
-  tensorflow::gtl::FlatMap<const HloComputation*, TrackedInstruction>
+  absl::flat_hash_map<const HloComputation*, TrackedInstruction>
       tracked_instructions_;
 
   // Maps tracked instructions (kWhile, kConditional, kCall, ...) to the set of
   // communicating instructions within the proper called computation(s).
-  tensorflow::gtl::FlatMap<HloInstruction*, std::vector<HloInstruction*>>
+  absl::flat_hash_map<HloInstruction*, std::vector<HloInstruction*>>
       tracked_instructions_comms_;
 
   // All channels in the module.
   std::vector<Channel> channels_;
 
   // Map from channel ids to the index in channels_.
-  tensorflow::gtl::FlatMap<int64, int64> channel_id_map_;
+  absl::flat_hash_map<int64, int64> channel_id_map_;
+
+  // Map from all-reduce ids to the all reduce instructions.
+  absl::flat_hash_map<int64, std::vector<HloInstruction*>> all_reduce_map_;
 
   // The maximum channel id used in the module group.
   int64 max_channel_id_ = -1;
 
   // The modules that this metadata was built from.
-  const std::vector<HloModule*>& modules_;
+  const std::vector<HloModule*> modules_;
+
+  absl::flat_hash_map<HloModule*, std::unique_ptr<HloAliasAnalysis>>
+      alias_analyses_;
 };
 
 }  // namespace xla

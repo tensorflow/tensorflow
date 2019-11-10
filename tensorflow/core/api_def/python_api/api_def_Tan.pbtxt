@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "tan"
-    deprecation_message: "tf.tan is deprecated, please use tf.math.tan instead."
   }
 }

@@ -23,10 +23,44 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/protobuf/eager_service.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace eager {
 namespace {
+
+/*
+ * Setting environment variable "TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE" to
+ * true will turn on asynchronous execution of remote op. It means that when
+ * executing an op on a remote worker, client will not block on waiting
+ * for the response anymore. Using follow code as example:
+ *
+ * with tf.device('worker:0'):
+ *   a = tf.matmul(...)
+ *   b = tf.matmul(...)
+ * logging.into('Requests sent')    # Probably not executed yet
+ * logging.info('b: %s', b.numpy()) # Block until 'b' finished.
+ *
+ * Streaming RPC will preserve order as well. So 'a' must be executed before
+ * 'b' on 'worker:0'.
+ *
+ * When turning on this feature, you should explicitly wait for some result
+ * from remote workers at the end of you python program. Otherwise, client may
+ * shutdown remote workers without waiting all pending ops.
+ *
+ * TODO(fishx): When exiting client, make sure all pending ops on remote workers
+ * are finished.
+ *
+ * TODO(b/139210648): Move this comment to eager/execute.py when this feature is
+ * on by default.
+ */
+bool EnableStreaming() {
+  bool result;
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE",
+                                 true, &result));
+  return result;
+}
+
 class GrpcEagerClient : public EagerClient {
  public:
   GrpcEagerClient(const tensorflow::SharedGrpcChannelPtr& channel,
@@ -40,21 +74,75 @@ class GrpcEagerClient : public EagerClient {
       override {                                                          \
     new RPCState<protobuf::Message>(                                      \
         &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request, \
-        response, std::move(done), nullptr);                              \
+        response, std::move(done), nullptr, nullptr, /*max_retries=*/0);  \
   }
 
   CLIENT_METHOD(CreateContext);
+  CLIENT_METHOD(UpdateContext);
   CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
-  CLIENT_METHOD(CloseContext);
-  CLIENT_METHOD(RegisterFunction);
 
 #undef CLIENT_METHOD
+
+  void CloseContextAsync(const CloseContextRequest* request,
+                         CloseContextResponse* response,
+                         StatusCallback done) override {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, "/tensorflow.eager.EagerService/CloseContext", *request,
+        response, std::move(done), nullptr, nullptr);
+
+    VLOG(1) << "Sending RPC to close remote eager context "
+            << request->DebugString();
+
+    mutex_lock l(mu_);
+    const auto& it = enqueue_dispatchers_.find(request->context_id());
+    if (it != enqueue_dispatchers_.end()) {
+      it->second.CancelCall();
+      enqueue_dispatchers_.erase(request->context_id());
+    } else if (EnableStreaming()) {
+      LOG(ERROR) << "Remote EagerContext with id " << request->context_id()
+                 << " does not seem to exist.";
+    }
+  }
+
+  void StreamingEnqueueAsync(const EnqueueRequest* request,
+                             EnqueueResponse* response,
+                             StatusCallback done) override {
+    if (EnableStreaming()) {
+      tf_shared_lock l(mu_);
+      auto it = enqueue_dispatchers_.find(request->context_id());
+      if (enqueue_dispatchers_.find(request->context_id()) ==
+          enqueue_dispatchers_.end()) {
+        auto it_and_bool = enqueue_dispatchers_.emplace(
+            std::piecewise_construct,
+            std::forward_as_tuple(request->context_id()),
+            std::forward_as_tuple(
+                &stub_, cq_,
+                "/tensorflow.eager.EagerService/StreamingEnqueue"));
+        it = it_and_bool.first;
+      }
+      it->second.SendNextRequest(*request, response, std::move(done));
+    } else {
+      Notification n;
+      Status status;
+      EnqueueAsync(request, response, [&n, &status](const Status& s) {
+        status.Update(s);
+        n.Notify();
+      });
+      n.WaitForNotification();
+      done(status);
+    }
+  }
 
  private:
   ::grpc::GenericStub stub_;
   ::grpc::CompletionQueue* cq_;
+
+  mutable mutex mu_;
+
+  std::unordered_map<uint64, StreamingRPCDispatcher<EnqueueResponse>>
+      enqueue_dispatchers_ GUARDED_BY(mu_);
 };
 
 class GrpcEagerClientCache : public EagerClientCache {
@@ -65,18 +153,23 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   ~GrpcEagerClientCache() override { threads_.clear(); }
 
-  EagerClient* GetClient(const string& target) override {
+  Status GetClient(const string& target, EagerClient** client) override {
     auto it = clients_.find(target);
     if (it == clients_.end()) {
       tensorflow::SharedGrpcChannelPtr shared =
           cache_->FindWorkerChannel(target);
+      if (shared == nullptr) {
+        return errors::InvalidArgument("Client for target ", target,
+                                       " not found.");
+      }
       auto worker = std::unique_ptr<EagerClient>(new GrpcEagerClient(
           shared, threads_[AssignClientToThread(target)].completion_queue()));
 
       it = clients_.emplace(target, std::move(worker)).first;
     }
 
-    return it->second.get();
+    *client = it->second.get();
+    return Status::OK();
   }
 
  private:
@@ -87,7 +180,7 @@ class GrpcEagerClientCache : public EagerClientCache {
 
   size_t AssignClientToThread(const string& target) {
     // Round-robin target assignment, but keeps the same target on the same
-    // polling thread always, as this is important for gRPC performace
+    // polling thread always, as this is important for gRPC performance
     mutex_lock lock(assignment_mu_);
     auto it = target_assignments_.find(target);
     if (it == target_assignments_.end()) {
@@ -107,10 +200,13 @@ class GrpcEagerClientCache : public EagerClientCache {
             void* tag;
             bool ok;
             while (completion_queue_.Next(&tag, &ok)) {
+              VLOG(4) << "GrpcEagerClientThread got next tag";
               GrpcClientCQTag* callback_tag =
                   static_cast<GrpcClientCQTag*>(tag);
               callback_tag->OnCompleted(ok);
+              VLOG(4) << "GrpcEagerClientThread blocking for next tag";
             }
+            VLOG(4) << "GrpcEagerClientThread exiting";
           }));
     }
 

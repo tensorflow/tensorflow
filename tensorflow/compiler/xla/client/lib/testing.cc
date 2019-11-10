@@ -15,15 +15,15 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/testing.h"
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -34,7 +34,7 @@ namespace {
 // specified shape. In case of a (nested) tuple shape this is the total byte
 // size of all sub-shapes within the tuple.
 int64 DataSizeOfShape(const Shape& shape) {
-  if (ShapeUtil::IsArray(shape)) {
+  if (shape.IsArray()) {
     return ShapeUtil::ByteSizeOf(shape);
   }
 
@@ -47,9 +47,9 @@ int64 DataSizeOfShape(const Shape& shape) {
 
 // Creates a XlaOp for an op what generates fake data with the given shape.
 XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
-  if (ShapeUtil::IsArray(shape)) {
+  if (shape.IsArray()) {
     return Broadcast(
-        ConstantLiteral(builder, Literal::One(shape.element_type())),
+        ConstantLiteral(builder, LiteralUtil::One(shape.element_type())),
         AsInt64Slice(shape.dimensions()));
   }
   std::vector<XlaOp> parts;
@@ -59,53 +59,53 @@ XlaOp BuildFakeDataOpOnDevice(const Shape& shape, XlaBuilder* builder) {
   return Tuple(builder, parts);
 }
 
-std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(const Shape& shape,
-                                                       Client* client) {
-  XlaBuilder b(
-      tensorflow::strings::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
+std::unique_ptr<GlobalData> MakeFakeDataViaDeviceOrDie(
+    const Shape& shape, Client* client, DebugOptions* debug_opts) {
+  XlaBuilder b(absl::StrCat("make_fake_", ShapeUtil::HumanString(shape)));
   BuildFakeDataOpOnDevice(shape, &b);
   XlaComputation computation = b.Build().ConsumeValueOrDie();
 
   auto execution_options = CreateDefaultExecutionOptions();
-  *execution_options.mutable_shape_with_output_layout() = shape;
+  *execution_options.mutable_shape_with_output_layout() = shape.ToProto();
+  if (debug_opts) {
+    *execution_options.mutable_debug_options() = *debug_opts;
+  }
   return client->Execute(computation, /*arguments=*/{}, &execution_options)
       .ConsumeValueOrDie();
 }
 
 }  // namespace
 
-std::unique_ptr<GlobalData> MakeFakeDataOrDie(const Shape& shape,
-                                              Client* client) {
+std::unique_ptr<GlobalData> MakeFakeDataOrDie(
+    const Shape& shape, Client* client, DebugOptions* debug_opts /*=nullptr*/) {
   if (DataSizeOfShape(shape) < (1LL << 20)) {
-    StatusOr<std::unique_ptr<Literal>> literal_status = MakeFakeLiteral(shape);
+    StatusOr<Literal> literal_status = MakeFakeLiteral(shape);
     if (!literal_status.ok()) {
       // If we got an Unimplemented error, fall back to making the fake data via
       // an on-device computation.
       CHECK_EQ(literal_status.status().code(),
                tensorflow::error::UNIMPLEMENTED);
-      return MakeFakeDataViaDeviceOrDie(shape, client);
+      return MakeFakeDataViaDeviceOrDie(shape, client, debug_opts);
     }
-    return client->TransferToServer(*literal_status.ValueOrDie()).ValueOrDie();
+    return client->TransferToServer(literal_status.ValueOrDie()).ValueOrDie();
   }
 
   // If the data is large, generate it on-device.
-  return MakeFakeDataViaDeviceOrDie(shape, client);
+  return MakeFakeDataViaDeviceOrDie(shape, client, debug_opts);
 }
 
 std::vector<std::unique_ptr<GlobalData>> MakeFakeArgumentsOrDie(
-    const XlaComputation& computation, Client* client) {
-  CHECK(computation.proto().has_program_shape())
+    const XlaComputation& computation, Client* client,
+    DebugOptions* debug_opts /*=nullptr*/) {
+  CHECK(computation.proto().has_host_program_shape())
       << "Computation should have progran shape.";
-  auto program_shape = computation.proto().program_shape();
+  auto program_shape = computation.proto().host_program_shape();
 
-  // For every (unbound) parameter that the computation wants, we manufacture
-  // some arbitrary data so that we can invoke the computation.
-  std::vector<std::unique_ptr<GlobalData>> fake_arguments;
-  for (const Shape& parameter : program_shape.parameters()) {
-    fake_arguments.push_back(MakeFakeDataOrDie(parameter, client));
+  std::vector<std::unique_ptr<GlobalData>> results;
+  for (const ShapeProto& shape : program_shape.parameters()) {
+    results.push_back(MakeFakeDataOrDie(Shape(shape), client, debug_opts));
   }
-
-  return fake_arguments;
+  return results;
 }
 
 }  // namespace xla

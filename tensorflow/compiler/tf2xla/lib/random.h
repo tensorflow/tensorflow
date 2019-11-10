@@ -16,19 +16,26 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LIB_RANDOM_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LIB_RANDOM_H_
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/framework/types.pb.h"
 
 namespace tensorflow {
 
-// Builds an array filled with values sampled from a truncated normal
-// distribution such that no values are greater than two or less than negative
-// two.
+// Builds an array of values sampled from a truncated normal distribution:
 //
-// The "uniform" parameter must be an array of random numbers distributed in
-// (0,1).
-xla::XlaOp TruncatedNormal(DataType dtype, xla::XlaOp uniform);
+// uniform: an array of random numbers in uniform distribution (0, 1).
+// mu: the mean of the normal distribution.
+// sigma: the standard deviation of the normal distribution.
+// a: the lower bound of the generated values.
+// b: the upper bound of the generated values.
+xla::XlaOp ParameterizedTruncatedNormal(xla::XlaOp uniform, xla::XlaOp mu,
+                                        xla::XlaOp sigma, xla::XlaOp a,
+                                        xla::XlaOp b);
+
+// A specialized version of ParameterizedTruncatedNormal, with mu=0, sigma=1,
+// a=-2 and b=2.
+xla::XlaOp TruncatedNormal(xla::XlaOp uniform);
 
 }  // namespace tensorflow
 

@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
+
+#include "absl/strings/match.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
@@ -164,7 +166,6 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_RepeatedInput) {
   item.graph.Swap(&output);
   status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
 
   EXPECT_EQ(item.graph.node_size(), output.node_size());
   int found = 0;
@@ -356,6 +357,32 @@ TEST_F(DependencyOptimizerTest, RemoveIdentityOps_DeviceBoundaries) {
   VerifyGraphsEqual(item.graph, output, __FUNCTION__);
 }
 
+TEST_F(DependencyOptimizerTest, RemoveIdentityOps_IdenticalDevices) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::RandomUniform(s.WithOpName("x").WithDevice("/CPU:0"), {1, 2},
+                                DT_FLOAT);
+  auto id_a = ops::Identity(s.WithOpName("id_a").WithDevice("/CPU:1"), x);
+  Output id =
+      ops::Identity(s.WithControlDependencies(id_a).WithDevice("/CPU:0"), id_a);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch.push_back("Identity");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE(node.name(), "id_a");
+    if (node.name() == "Identity") {
+      EXPECT_EQ(node.input(0), "x");
+    }
+  }
+}
+
 TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
@@ -443,31 +470,31 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity) {
     EXPECT_NE("id_b", node.name());
     EXPECT_NE("id_c", node.name());
     if (node.name() == "a_a" || node.name() == "a_b") {
-      EXPECT_EQ(1, node.input_size());
+      ASSERT_EQ(1, node.input_size());
       EXPECT_EQ("x", node.input(0));
       ++found;
     }
     if (node.name() == "a_c" || node.name() == "a_d") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("z", node.input(0));
       EXPECT_EQ("^x", node.input(1));
       ++found;
     }
     if (node.name() == "b_a") {
-      EXPECT_EQ(3, node.input_size());
+      ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("^y", node.input(1));
       EXPECT_EQ("^z", node.input(2));
       ++found;
     }
     if (node.name() == "c_a") {
-      EXPECT_EQ(2, node.input_size());
+      ASSERT_EQ(2, node.input_size());
       EXPECT_EQ("x", node.input(0));
       EXPECT_EQ("^y", node.input(1));
       ++found;
     }
     if (node.name() == "c_b") {
-      EXPECT_EQ(3, node.input_size());
+      ASSERT_EQ(3, node.input_size());
       EXPECT_EQ("z", node.input(0));
       EXPECT_EQ("^x", node.input(1));
       EXPECT_EQ("^y", node.input(2));
@@ -634,7 +661,7 @@ TEST_F(DependencyOptimizerTest, IdentityInputs) {
   EXPECT_EQ("s:1", output.node(5).input(0));
 }
 
-TEST_F(DependencyOptimizerTest, IdentityN) {
+TEST_F(DependencyOptimizerTest, RemoveIdentityN_SwitchInput) {
   tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
   Output b = ops::Placeholder(scope.WithOpName("b"), DT_BOOL);
   Output x = ops::RandomUniform(scope.WithOpName("x"), {1, 2}, DT_FLOAT);
@@ -643,8 +670,6 @@ TEST_F(DependencyOptimizerTest, IdentityN) {
   // IdentityN nodes to be removed.
   auto id_f = ops::IdentityN(scope.WithOpName("id_f"), {s.output_false});
   auto id_t = ops::IdentityN(scope.WithOpName("id_t"), {s.output_true});
-
-  // IdentityN node that can't be removed.
   auto id_b =
       ops::IdentityN(scope.WithOpName("id_b"), {s.output_false, s.output_true});
 
@@ -663,22 +688,50 @@ TEST_F(DependencyOptimizerTest, IdentityN) {
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(9, output.node_size());
-  EXPECT_EQ("out1", output.node(5).name());
-  EXPECT_EQ(1, output.node(5).input_size());
-  EXPECT_EQ("s", output.node(5).input(0));
+  EXPECT_EQ(8, output.node_size());
 
-  EXPECT_EQ("out2", output.node(6).name());
-  EXPECT_EQ(1, output.node(6).input_size());
-  EXPECT_EQ("s:1", output.node(6).input(0));
+  auto out1_node = output.node(7);
+  EXPECT_EQ("out1", out1_node.name());
+  EXPECT_EQ(1, out1_node.input_size());
+  EXPECT_EQ("s", out1_node.input(0));
 
-  EXPECT_EQ("out3", output.node(7).name());
-  EXPECT_EQ(1, output.node(7).input_size());
-  EXPECT_EQ("id_b", output.node(7).input(0));
+  auto out2_node = output.node(4);
+  EXPECT_EQ("out2", out2_node.name());
+  EXPECT_EQ(1, out2_node.input_size());
+  EXPECT_EQ("s:1", out2_node.input(0));
 
-  EXPECT_EQ("out4", output.node(8).name());
-  EXPECT_EQ(1, output.node(8).input_size());
-  EXPECT_EQ("id_b:1", output.node(8).input(0));
+  auto out3_node = output.node(5);
+  EXPECT_EQ("out3", out3_node.name());
+  EXPECT_EQ(1, out3_node.input_size());
+  EXPECT_EQ("s", out3_node.input(0));
+
+  auto out4_node = output.node(6);
+  EXPECT_EQ("out4", out4_node.name());
+  EXPECT_EQ(1, out4_node.input_size());
+  EXPECT_EQ("s:1", out4_node.input(0));
+}
+
+TEST_F(DependencyOptimizerTest, DoNotRemoveIdentityNWithControlDependency) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output input1 = ops::Placeholder(scope.WithOpName("input1"), DT_BOOL);
+  Output input2 = ops::Const(scope.WithOpName("input2"), {1, 2});
+
+  auto id_n = ops::IdentityN(scope.WithOpName("id_n"), {input1, input2});
+  Output out1 = ops::Identity(scope.WithOpName("out1"), id_n[0]);
+  Output out2 = ops::Identity(scope.WithOpName("out2"), id_n[1]);
+  auto out3 =
+      ops::NoOp(scope.WithOpName("out3").WithControlDependencies(id_n[1]));
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch = {"out1", "out2", "out3"};
+
+  DependencyOptimizer optimizer;
+  GraphDef optimized_graph_def;
+  Status status = optimizer.Optimize(nullptr, item, &optimized_graph_def);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(6, optimized_graph_def.node_size());
 }
 
 TEST_F(DependencyOptimizerTest,
@@ -722,7 +775,6 @@ TEST_F(DependencyOptimizerTest, Identity_DeviceCrossing_ConsumerOnSameDevice) {
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
-  LOG(INFO) << output.DebugString();
   EXPECT_EQ(3, output.node_size());
   for (const auto& node : output.node()) {
     EXPECT_NE("x_on_2", node.name());
@@ -836,6 +888,61 @@ TEST_F(DependencyOptimizerTest, GroupCrossDeviceControlDeps) {
   output.Clear();
   TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
   CompareGraphs(expected, output);
+}
+
+TEST_F(DependencyOptimizerTest, GroupCrossHostControlDeps) {
+  GrapplerItem item;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    std::vector<Operation> ops;
+    Output a = ops::RandomUniform(s.WithOpName("a").WithDevice("/CPU:0"),
+                                  {1, 2}, DT_FLOAT);
+    for (int t = 0; t < 4; ++t) {
+      for (int c = 0; c < 8; ++c) {
+        string opname = absl::StrCat("t", t, "/c", c);
+        string device = absl::StrCat("/task:", t, "/device:TPU:", c);
+        Output output = ops::RandomUniform(
+            s.WithOpName(opname).WithDevice(device), {1, 2}, DT_FLOAT);
+        ops.push_back(output.op());
+      }
+    }
+    // Node with cross-device dependencies.
+    auto fetch = ops::Identity(
+        s.WithOpName("f").WithControlDependencies(ops).WithDevice("/CPU:0"),
+        {a});
+
+    TF_CHECK_OK(s.ToGraphDef(&item.graph));
+    item.fetch.push_back("f");
+  }
+
+  GraphDef expected;
+  {
+    tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+    TF_CHECK_OK(s.ToGraphDef(&expected));
+  }
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(output.node_size(), item.graph.node_size() + 4);
+  std::set<string> tasks;
+  for (const auto& n : output.node()) {
+    if (n.op() == "NoOp") {
+      EXPECT_TRUE(absl::StartsWith(n.name(), "GroupCrossDeviceControlEdges"));
+      EXPECT_EQ(n.input_size(), 8);
+      tasks.insert(n.device());
+    }
+
+    if (n.name() == "f") {
+      EXPECT_EQ(n.input_size(), 5);
+      for (const auto& i : n.input()) {
+        EXPECT_TRUE(i == "a" ||
+                    absl::StartsWith(i, "^GroupCrossDeviceControlEdges"));
+      }
+    }
+  }
+  EXPECT_EQ(tasks.size(), 4);
 }
 
 }  // namespace

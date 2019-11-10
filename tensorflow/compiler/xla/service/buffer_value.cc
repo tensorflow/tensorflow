@@ -17,11 +17,10 @@ limitations under the License.
 
 #include <iosfwd>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -30,8 +29,8 @@ BufferValue::BufferValue(HloInstruction* instruction, const ShapeIndex& index,
                          Id id)
     : id_(id) {
   const Shape& shape = ShapeUtil::GetSubshape(instruction->shape(), index);
-  is_array_ = ShapeUtil::IsArray(shape);
-  is_tuple_ = ShapeUtil::IsTuple(shape);
+  is_array_ = shape.IsArray();
+  is_tuple_ = shape.IsTuple();
 }
 
 BufferValue::~BufferValue() {}

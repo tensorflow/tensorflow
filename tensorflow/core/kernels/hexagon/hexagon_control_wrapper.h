@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
-#define TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_CONTROL_WRAPPER_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_CONTROL_WRAPPER_H_
 
 #include <unordered_map>
 #include <vector>
@@ -76,7 +76,7 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
   // TODO(satok): Use actual data passed by FillInputNode and remove
   // std::vector<float> dummy_input_float_{};
   std::unordered_map<int, std::vector<uint8>> input_tensor_data_{};
-  // Dummy byte array for cosnt node.
+  // Dummy byte array for const node.
   // TODO(satok): Remove
   std::unordered_map<int, std::vector<uint8>> dummy_const_data_{};
 
@@ -88,4 +88,4 @@ class HexagonControlWrapper final : public IRemoteFusedGraphExecutor {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_CONTROL_WRAPPER_H_
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_HEXAGON_CONTROL_WRAPPER_H_

@@ -15,10 +15,79 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 
+#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
+
+namespace {
+// The EventMgr has 1 thread for the polling loop and one to execute
+// event callback functions. Issues for reconsideration:
+//  - Is this the right number of threads?
+//  - Should EventMgrs be shared between GPUDevices on a multi-GPU machine?
+static const int kNumThreads = 2;
+}  // namespace
+
+namespace gpu_event_mgr {
+class ThreadLabel {
+ public:
+  static const char* GetValue() { return value_; }
+
+  // v must be a static const because value_ will capture and use its value
+  // until reset or thread terminates.
+  static void SetValue(const char* v) { value_ = v; }
+
+ private:
+  static thread_local const char* value_;
+};
+thread_local const char* ThreadLabel::value_ = "";
+
+void WarnIfInCallback(std::function<void()> f) {
+  const char* label = ThreadLabel::GetValue();
+  if (label && !strcmp(label, "gpu_event_mgr")) {
+    if (f) {
+      f();
+    } else {
+      LOG(WARNING) << "Executing inside EventMgr callback thread: "
+                   << CurrentStackTrace();
+    }
+  }
+}
+
+void InitThreadpoolLabels(thread::ThreadPool* threadpool) {
+  static const char* label = "gpu_event_mgr";
+  mutex mu;
+  int init_count = 0;
+  condition_variable all_initialized;
+  int exit_count = 0;
+  condition_variable ready_to_exit;
+  const int num_threads = threadpool->NumThreads();
+  for (int i = 0; i < num_threads; ++i) {
+    threadpool->Schedule([num_threads, &mu, &init_count, &all_initialized,
+                          &exit_count, &ready_to_exit]() {
+      gpu_event_mgr::ThreadLabel::SetValue(label);
+      mutex_lock l(mu);
+      ++init_count;
+      if (init_count == num_threads) {
+        all_initialized.notify_all();
+      }
+      while (init_count < num_threads) {
+        all_initialized.wait(l);
+      }
+      if (++exit_count == num_threads) {
+        ready_to_exit.notify_all();
+      }
+    });
+  }
+  {
+    mutex_lock l(mu);
+    while (exit_count < num_threads) {
+      ready_to_exit.wait(l);
+    }
+  }
+}
+}  // namespace gpu_event_mgr
 
 EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
     : exec_(se),
@@ -31,9 +100,8 @@ EventMgr::EventMgr(se::StreamExecutor* se, const GPUOptions& gpu_options)
       accumulated_stream_(nullptr),
       accumulated_tensors_(new TensorReferenceVector),
       accumulated_tensor_bytes_(0),
-      // threadpool_ has 1 thread for the polling loop, and one to execute
-      // event callback functions. Maybe we should have more?
-      threadpool_(Env::Default(), "GPU_Event_Manager", 2) {
+      threadpool_(Env::Default(), "GPU_Event_Manager", kNumThreads) {
+  gpu_event_mgr::InitThreadpoolLabels(&threadpool_);
   StartPollingLoop();
 }
 
@@ -173,7 +241,9 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
 // events have recorded, and then retire them.  Initial observations
 // suggest that typical behavior in a TensorFlow program is to have
 // 0-3 events pending most of the time, but there are occasionally
-// spikes of up to several hundred outstanding.
+// spikes of up to several hundred outstanding.  (If GPUKernelTracker
+// is used to cap pending kernels there should never be more than
+// that many.)
 //
 // NOTE: If all events are on the same stream, no later event will
 // complete before an earlier event, except possibly if the earlier
@@ -181,13 +251,10 @@ void EventMgr::QueueInUse(se::Stream* stream, InUse iu) {
 // looking past the first kPending event.  However, if we're using
 // multiple streams there may be some gain in looking deeper.
 // As a compromise, PollEvent() calls that are triggered by the queueing
-// of a single event never look past the first kPending event.  Calls
-// coming from the dedicated polling thread always sweep the full queue.
-//
-// Note that allowing the queue to grow very long could cause overall
-// GPU memory use to spike needlessly.  An alternative strategy would
-// be to throttle new Op execution until the pending event queue
-// clears.
+// of a single event never look past the first kPending event.  Consequently
+// those calls do an expected constant amount of work, unaffected by the
+// length of the pending queue.  Calls coming from the dedicated
+// polling thread always sweep the full queue.
 void EventMgr::PollEvents(bool is_dedicated_poller,
                           gtl::InlinedVector<InUse, 4>* to_free) {
   VLOG(2) << "PollEvents  free_events_ " << free_events_.size()
@@ -225,6 +292,28 @@ void EventMgr::PollEvents(bool is_dedicated_poller,
     } else {
       break;
     }
+  }
+}
+
+EventMgrFactory* EventMgrFactory::Singleton() {
+  static EventMgrFactory* instance = new EventMgrFactory;
+  return instance;
+}
+
+EventMgr* EventMgrFactory::GetEventMgr(se::StreamExecutor* se,
+                                       const GPUOptions& gpu_options) {
+  mutex_lock l(mu_);
+  // TODO(laigd): consider making gpu_options part of the key. It's not
+  // currently since EventMgr depends only rely on field deferred_deletion_bytes
+  // and polling_active_delay_usecs from gpu_options which are not used or
+  // rarely used.
+  auto itr = event_mgr_map_.find(se);
+  if (itr == event_mgr_map_.end()) {
+    auto event_mgr = new EventMgr(se, gpu_options);
+    event_mgr_map_[se] = event_mgr;
+    return event_mgr;
+  } else {
+    return itr->second;
   }
 }
 

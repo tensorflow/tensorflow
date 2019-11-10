@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/reference_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -492,6 +492,32 @@ XLA_TEST_F(ConcatTest, ConcatR3WeirdDims) {
   ComputeAndCompareR3<float>(&builder, expected, {p0.get(), p1.get()});
 }
 
+XLA_TEST_F(ConcatTest, ConcatDeeplyNested) {
+  XlaBuilder builder(TestName());
+  auto a_literal = LiteralUtil::CreateR1<float>({256.0});
+  auto a = Parameter(&builder, 0, a_literal.shape(), "x");
+  auto b = ConcatInDim(&builder, {a, a}, 0);
+  auto c = ConcatInDim(&builder, {b, b}, 0);
+  auto d = ConcatInDim(&builder, {c, c}, 0);
+  auto e = ConcatInDim(&builder, {d, d}, 0);
+  auto f = ConcatInDim(&builder, {e, e}, 0);
+  auto g = ConcatInDim(&builder, {f, f}, 0);
+  auto h = ConcatInDim(&builder, {g, g}, 0);
+  auto i = ConcatInDim(&builder, {h, h}, 0);
+  auto j = ConcatInDim(&builder, {i, i}, 0);
+  auto k = ConcatInDim(&builder, {j, j}, 0);
+  auto l = ConcatInDim(&builder, {k, k}, 0);
+  auto m = ConcatInDim(&builder, {l, l}, 0);
+  auto n = ConcatInDim(&builder, {m, m}, 0);
+  auto o = ConcatInDim(&builder, {n, n}, 0);
+  auto p = ConcatInDim(&builder, {o, o}, 0);
+  auto q = ConcatInDim(&builder, {p, p}, 0);
+  ConcatInDim(&builder, {q, q}, 0);
+  std::vector<float> expected(131072, 256.0);
+  auto a_data = client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  ComputeAndCompareR1<float>(&builder, expected, {a_data.get()});
+}
+
 // Describes a binary rank-2 concatenation test.
 struct R2BinarySpec {
   int64 lhs_dim0;
@@ -534,10 +560,10 @@ TEST_P(ConcatR2BinaryTest, DoIt) {
 //     concat
 XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
-  auto x_literal = Literal::CreateR0<float>(2.f);
-  auto y_literal = Literal::CreateR0<float>(3.f);
-  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
+  auto x_literal = LiteralUtil::CreateR0<float>(2.f);
+  auto y_literal = LiteralUtil::CreateR0<float>(3.f);
+  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
   auto x = Parameter(&builder, 0, f32_scalar, "x");
@@ -556,15 +582,15 @@ XLA_TEST_F(ConcatTest, ConcatOperandsOfSameOperand) {
 // produces the correct result in rank 1.
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
-  auto x_literal = Literal::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
-  auto y_literal = Literal::CreateR0<float>(1.5f);
-  auto z_literal = Literal::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
-  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+  auto x_literal = LiteralUtil::CreateR1<float>({2.0f, 3.0f, 5.0f, 6.0f});
+  auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
+  auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
+  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(z_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0, x_literal->shape(), "x");
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
   auto y = Parameter(&builder, 1, f32_scalar, "y");
   auto z = Parameter(&builder, 2, f32_scalar, "z");
   auto bcast = Broadcast(y, {5});
@@ -584,15 +610,15 @@ XLA_TEST_F(ConcatTest, ConcatBroadcastArgument) {
 XLA_TEST_F(ConcatTest, ConcatBroadcastArgumentR3) {
   auto f32_scalar = ShapeUtil::MakeShape(xla::F32, {});
   Array3D<float> x3d(3, 5, 7, 3.14f);
-  auto x_literal = Literal::CreateR3FromArray3D<float>(x3d);
-  auto y_literal = Literal::CreateR0<float>(1.5f);
-  auto z_literal = Literal::CreateR0<float>(5.5f);
-  auto x_data = client_->TransferToServer(*x_literal).ConsumeValueOrDie();
-  auto y_data = client_->TransferToServer(*y_literal).ConsumeValueOrDie();
-  auto z_data = client_->TransferToServer(*z_literal).ConsumeValueOrDie();
+  auto x_literal = LiteralUtil::CreateR3FromArray3D<float>(x3d);
+  auto y_literal = LiteralUtil::CreateR0<float>(1.5f);
+  auto z_literal = LiteralUtil::CreateR0<float>(5.5f);
+  auto x_data = client_->TransferToServer(x_literal).ConsumeValueOrDie();
+  auto y_data = client_->TransferToServer(y_literal).ConsumeValueOrDie();
+  auto z_data = client_->TransferToServer(z_literal).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
-  auto x = Parameter(&builder, 0, x_literal->shape(), "x");
+  auto x = Parameter(&builder, 0, x_literal.shape(), "x");
   auto y = Parameter(&builder, 1, f32_scalar, "y");
   auto z = Parameter(&builder, 2, f32_scalar, "y");
   auto y_bcast = Broadcast(y, {1, 5, 7});

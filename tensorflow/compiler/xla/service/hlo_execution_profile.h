@@ -17,9 +17,11 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EXECUTION_PROFILE_H_
 
 #include <unordered_map>
+#include <vector>
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/hlo_execution_profile_data.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -34,7 +36,10 @@ class HloInstruction;
 class HloProfileIndexMap {
  public:
   // Scans `module` to populate this instance of HloProfileIndexMap.
-  explicit HloProfileIndexMap(const HloModule& module);
+  explicit HloProfileIndexMap(const HloModule& module)
+      : HloProfileIndexMap(module, {}) {}
+  explicit HloProfileIndexMap(const HloModule& module,
+                              absl::Span<const string> extra_metrics);
 
   HloProfileIndexMap(const HloProfileIndexMap&) = default;
   HloProfileIndexMap(HloProfileIndexMap&&) = default;
@@ -50,6 +55,10 @@ class HloProfileIndexMap {
     return FindOrDie(computation_to_profile_idx(), &computation);
   }
 
+  size_t GetProfileIndexFor(const string& key) const {
+    return xla::FindOrDie(extra_metric_to_profile_idx(), key);
+  }
+
   size_t instruction_count() const {
     return instruction_to_profile_idx().size();
   }
@@ -58,8 +67,12 @@ class HloProfileIndexMap {
     return computation_to_profile_idx().size();
   }
 
+  size_t extra_metrics_count() const {
+    return extra_metric_to_profile_idx().size();
+  }
+
   size_t total_count() const {
-    return instruction_count() + computation_count();
+    return instruction_count() + computation_count() + extra_metrics_count();
   }
 
   const std::unordered_map<const HloInstruction*, int64>&
@@ -72,15 +85,20 @@ class HloProfileIndexMap {
     return computation_to_profile_idx_;
   }
 
+  const std::unordered_map<string, int64>& extra_metric_to_profile_idx() const {
+    return extra_metric_to_profile_idx_;
+  }
+
  private:
   std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx_;
   std::unordered_map<const HloComputation*, int64> computation_to_profile_idx_;
+  std::unordered_map<string, int64> extra_metric_to_profile_idx_;
 };
 
 // Create an instance of `HloProfilePrinterData`.
 std::unique_ptr<HloProfilePrinterData> CreateHloProfilePrinterData(
     const HloProfileIndexMap& hlo_profile_index_map,
-    const HloCostAnalysis& cost_analysis);
+    const HloCostAnalysis& cost_analysis, const string& entry_computation_name);
 
 // Describes how much time each HLO operation took.
 //
@@ -113,6 +131,12 @@ class HloExecutionProfile {
         total_cycles_executed;
   }
 
+  // Record extra metric.
+  void set_extra_metrics(const string& metric, uint64 value) {
+    profile_counters_[hlo_profile_index_map_.GetProfileIndexFor(metric)] =
+        value;
+  }
+
   // Returns a version of the execution profile suitable for performance
   // debugging; e.g. emits cycle counts, execution time at the nominal device
   // frequency, and the effective throughput given the provided cost_analysis
@@ -127,6 +151,8 @@ class HloExecutionProfile {
   const std::vector<int64>& profile_counters() const {
     return profile_counters_;
   }
+
+  HloExecutionProfileData ToProto() const;
 
  private:
   const HloProfilePrinterData& hlo_profile_printer_data_;

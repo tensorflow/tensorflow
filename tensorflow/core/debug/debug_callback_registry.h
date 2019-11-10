@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_DEBUG_CALLBACK_REGISTRY_H_
-#define TENSORFLOW_DEBUG_CALLBACK_REGISTRY_H_
+#ifndef TENSORFLOW_CORE_DEBUG_DEBUG_CALLBACK_REGISTRY_H_
+#define TENSORFLOW_CORE_DEBUG_DEBUG_CALLBACK_REGISTRY_H_
 
 #include <functional>
 #include <map>
@@ -68,4 +68,4 @@ class DebugCallbackRegistry {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_DEBUG_CALLBACK_REGISTRY_H_
+#endif  // TENSORFLOW_CORE_DEBUG_DEBUG_CALLBACK_REGISTRY_H_

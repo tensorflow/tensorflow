@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "llvm/ADT/Triple.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -69,12 +69,12 @@ int main(int argc, char** argv) {
   } else if (target_cpu == "arm") {
     triple_string = "aarch64-none-linux-gnu";
   } else if (target_cpu == "local") {
-    triple_string = xla::llvm_ir::AsString(llvm::sys::getDefaultTargetTriple());
+    triple_string = llvm::sys::getDefaultTargetTriple();
   } else {
     LOG(FATAL) << "unsupported TARGET_CPU: " << target_cpu;
   }
 
-  llvm::Triple triple(xla::llvm_ir::AsStringRef(triple_string));
+  llvm::Triple triple(triple_string);
 
   xla::XlaComputation computation = builder.Build().ConsumeValueOrDie();
   xla::CompileOnlyClient::AotXlaComputationInstance instance{
@@ -92,9 +92,10 @@ int main(int argc, char** argv) {
   // It's lame to hard-code the buffer assignments, but we need
   // local_client_aot_test.cc to be able to easily invoke the function.
   CHECK_EQ(result->result_buffer_index(), 1);
-  CHECK_EQ(result->buffer_sizes().size(), 2);
-  CHECK_EQ(result->buffer_sizes()[0], -1);             // param buffer
-  CHECK_EQ(result->buffer_sizes()[1], sizeof(float));  // result buffer
+  CHECK_EQ(result->buffer_infos().size(), 3);
+  CHECK(result->buffer_infos()[0].is_entry_parameter());      // param buffer
+  CHECK_EQ(result->buffer_infos()[1].size(), sizeof(float));  // result buffer
+  CHECK(result->buffer_infos()[2].is_constant());             // const buffer
   if (triple.isOSBinFormatELF()) {
     // Check the ELF magic.
     CHECK_EQ(result->object_file_data()[0], 0x7F);

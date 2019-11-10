@@ -172,8 +172,10 @@ class SparseReduceOp : public OpKernel {
     // making deep copies here.  Remove this if/when we change Reorder()'s
     // semantics.
     const auto shape_vec = shape_t->vec<int64>();
-    SparseTensor sp(tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
-                    TensorShape(shape_vec));
+    SparseTensor sp;
+    OP_REQUIRES_OK(ctx, SparseTensor::Create(
+        tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
+                    TensorShape(shape_vec), &sp));
     ReduceDetails reduction = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
 
@@ -219,7 +221,7 @@ class SparseReduceOp : public OpKernel {
       Op::template Run<T>(ctx, reduced_val, g.template values<T>());
       const int64 idx = CoordinatesToFlatIndex(g.group(), output_strides);
       out_flat(idx) = reduced_val();
-      VLOG(2) << "coords: " << str_util::Join(g.group(), ",")
+      VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
               << "; idx: " << idx << "; group " << Op::Name() << ": "
               << reduced_val();
     }
@@ -260,8 +262,10 @@ class SparseReduceSparseOp : public OpKernel {
 
     OP_REQUIRES_OK(ctx, ValidateInputs(shape_t, reduction_axes_t));
 
-    SparseTensor sp(tensor::DeepCopy(*indices_t), tensor::DeepCopy(*values_t),
-                    TensorShape(shape_t->vec<int64>()));
+    SparseTensor sp;
+    OP_REQUIRES_OK(ctx, SparseTensor::Create(tensor::DeepCopy(*indices_t),
+                                         tensor::DeepCopy(*values_t),
+                    TensorShape(shape_t->vec<int64>()), &sp));
     ReduceDetails reduction = SparseTensorReduceHelper(
         sp, reduction_axes_t->flat<int32>(), keep_dims_);
 
@@ -305,7 +309,7 @@ class SparseReduceSparseOp : public OpKernel {
       }
       out_flat(i) = reduced_val();
       i++;
-      VLOG(2) << "coords: " << str_util::Join(g.group(), ",")
+      VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
               << "; group " << Op::Name() << ": "
               << reduced_val();
     }

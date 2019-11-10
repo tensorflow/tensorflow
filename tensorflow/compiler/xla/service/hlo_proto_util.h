@@ -35,14 +35,21 @@ HloProto MakeHloProto(const HloModule& module,
 // will not be included in the output.
 HloProto MakeHloProto(const HloModule& module);
 
+// Create an HLO state from serialized representation. In addition to
+// creating the proto with HloModule::CreateFromProto(...) it also
+// uses HloVerifier to ensure basic invariants are held.
+StatusOr<std::unique_ptr<HloModule>> CreateModuleFromProto(
+    const HloModuleProto& proto, const HloModuleConfig& module_config);
+
 // Returns the shapes of the parameters of the entry computation. Shape pointers
 // refer to shapes inside of the given HloProto.
-StatusOr<std::vector<const Shape*>> EntryComputationParameterShapes(
+StatusOr<std::vector<const ShapeProto*>> EntryComputationParameterShapes(
     const HloProto& hlo_proto);
 
 // Returns the shape of the output of the entry computation. The shape pointer
 // refers to the output shape inside of the given HloProto.
-StatusOr<const Shape*> EntryComputationOutputShape(const HloProto& hlo_proto);
+StatusOr<const ShapeProto*> EntryComputationOutputShape(
+    const HloProto& hlo_proto);
 
 }  // namespace xla
 

@@ -23,10 +23,15 @@ from tensorflow.python.saved_model import builder
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('saved_model.simple_save')
+@tf_export(v1=['saved_model.simple_save'])
+@deprecation.deprecated(
+    None,
+    'This function will only be available through the v1 compatibility '
+    'library as tf.compat.v1.saved_model.simple_save.')
 def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
   """Convenience function to build a SavedModel suitable for serving.
 
@@ -40,7 +45,7 @@ def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
   Although in many cases it's not necessary to understand all of the many ways
       to configure a SavedModel, this method has a few practical implications:
     - It will be treated as a graph for inference / serving (i.e. uses the tag
-      `tag_constants.SERVING`)
+      `saved_model.SERVING`)
     - The SavedModel will load in TensorFlow Serving and supports the
       [Predict
       API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
@@ -81,6 +86,6 @@ def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
       tags=[tag_constants.SERVING],
       signature_def_map=signature_def_map,
       assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
-      legacy_init_op=legacy_init_op,
+      main_op=legacy_init_op,
       clear_devices=True)
   b.save()

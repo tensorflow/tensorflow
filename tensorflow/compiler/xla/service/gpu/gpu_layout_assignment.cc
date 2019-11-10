@@ -18,11 +18,13 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/service/gpu/gpu_options.h"
+#include "tensorflow/compiler/xla/service/gpu/backend_configs.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -31,52 +33,79 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-using stream_executor::dnn::DataLayout;
-using stream_executor::dnn::FilterLayout;
-
-static bool IsVoltaOrLater(const se::StreamExecutor& stream_executor) {
-  int major, minor;
-  CHECK(stream_executor.GetDeviceDescription().cuda_compute_capability(&major,
-                                                                       &minor));
-  return major >= 7;
-}
+using se::dnn::DataLayout;
+using se::dnn::FilterLayout;
 
 // Returns (input, filter, output) layouts.
 static std::tuple<DataLayout, FilterLayout, DataLayout>
 HeuristicLayoutAssignment(const HloInstruction* instr,
-                          stream_executor::StreamExecutor* stream_executor) {
+                          se::StreamExecutor* stream_executor) {
   // DataLayout and FilterLayout uses weird enum names. Translations:
   //   N <=> Batch or Output
   //   C <=> Depth or Input
   //   H <=> Y
   //   W <=> X
   //
-  // Therefore kOutputInputYX means NHWC; kBatchDepthYX means NCHW.
-
-  // As of today, our empirical evidence is that cudnn 7.0 is faster on V100 x
-  // fp16 with the mostly-NHWC layout. The heuristic may change as cudnn version
-  // changes, as well as the hardware updates.
-  if (!(instr->operand(0)->shape().element_type() == xla::PrimitiveType::F16 &&
-        IsVoltaOrLater(*stream_executor))) {
-    return std::make_tuple(DataLayout::kBatchDepthYX,
-                           FilterLayout::kOutputInputYX,
-                           DataLayout::kBatchDepthYX);
-  }
-  VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
-  // For BackwardInput that has stride, full NHWC layouts run significantly
-  // slower than (NHWC, NCHW, NCHW) or (NHWC, NCHW, NHWC).
+  // Therefore kOutputInputYX and kBatchDepthYX mean NCHW.
   //
-  // TODO(timshen): more closely compare (NHWC, NCHW, NCHW) and (NHWC, NCHW,
-  // NHWC).
-  if (instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
-      window_util::HasStride(instr->window())) {
-    return std::make_tuple(DataLayout::kBatchYXDepth,
-                           FilterLayout::kOutputInputYX,
-                           DataLayout::kBatchDepthYX);
+  // If you have trouble keeping these straight, consider that all that matters
+  // is the location of the channel dim: Is it major (NCHW), or minor (NHWC)?
+
+  constexpr auto kAllNCHW =
+      std::make_tuple(DataLayout::kBatchDepthYX, FilterLayout::kOutputInputYX,
+                      DataLayout::kBatchDepthYX);
+  constexpr auto kAllNHWC =
+      std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
+                      DataLayout::kBatchYXDepth);
+
+  // Integer convolution must use NHWC.
+  if (primitive_util::IsIntegralType(
+          instr->operand(0)->shape().element_type())) {
+    return kAllNHWC;
   }
-  return std::make_tuple(DataLayout::kBatchYXDepth,
-                         FilterLayout::kOutputYXInput,
-                         DataLayout::kBatchYXDepth);
+
+  const DebugOptions& debug_options =
+      instr->GetModule()->config().debug_options();
+
+  if (debug_options.xla_gpu_force_conv_nchw()) {
+    return kAllNCHW;
+  }
+
+  // If we're not Volta or not fp16, or not conv2D, the decision is easy: Use
+  // NCHW.
+  if (instr->operand(0)->shape().element_type() != xla::PrimitiveType::F16 ||
+      !IsVoltaOrLater(*stream_executor) ||
+      instr->shape().tuple_shapes(0).dimensions_size() != 4) {
+    return kAllNCHW;
+  }
+
+  VLOG(2) << "Using heuristic to figure out layouts for " << instr->ToString();
+
+  // Empirically we've found with Volta and cudnn <= 7.3 that backward-input
+  // convs with stride are significantly faster with NCHW layouts.
+  //
+  // We could have used a mixed layout combination, e.g. (NHWC, NCHW, NCHW),
+  // which on paper gives good performance. However, there are two observations:
+  // * a mixed layout combination is more cuDNN-bug prone, based on empirical
+  //   envidence.
+  // * we've also observed that for mixed layouts, cuDNN transposes data back
+  //   and forth from a different layout combination. If we end up with
+  //   transposes anyway, we prefer to have them in XLA, as they can be fused.
+  if (auto* dnn = stream_executor->AsDnn()) {
+    auto version_status = dnn->GetVersion();
+    if (version_status.ok()) {
+      auto version = version_status.ConsumeValueOrDie();
+      if (std::make_tuple(version.major_version(), version.minor_version()) <=
+              std::make_tuple(7, 3) &&
+          instr->custom_call_target() == kCudnnConvBackwardInputCallTarget &&
+          window_util::HasStride(instr->window())) {
+        return kAllNCHW;
+      }
+    }
+  }
+
+  // For other Volta f16 convolutions, use NHWC.
+  return kAllNHWC;
 }
 
 // Adds layout constraints on the cudnn custom-call instruction. The layout
@@ -84,45 +113,46 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
 // operands and the output shape. Depending on the underlying algorithm, one of
 // { NCHW, NHWC } ^ 3 = 8 different layout combinations may be chosen.
 Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
-    HloInstruction* instr, LayoutConstraints* constraints) {
-  CHECK(IsCustomCallToDnnConvolution(*instr)) << instr->ToString();
-  Shape input_shape;
-  Shape filter_shape;
-  Shape output_shape;
-  const auto& target = instr->custom_call_target();
-  if (target == kCudnnConvForwardCallTarget) {
-    input_shape = instr->operand(0)->shape();
-    filter_shape = instr->operand(1)->shape();
-    output_shape = instr->shape().tuple_shapes(0);
-  } else if (target == kCudnnConvBackwardInputCallTarget) {
-    input_shape = instr->shape().tuple_shapes(0);
-    filter_shape = instr->operand(1)->shape();
-    output_shape = instr->operand(0)->shape();
-  } else if (target == kCudnnConvBackwardFilterCallTarget) {
-    input_shape = instr->operand(0)->shape();
-    filter_shape = instr->shape().tuple_shapes(0);
-    output_shape = instr->operand(1)->shape();
-  } else {
-    LOG(FATAL) << "Unexpected custom call target: "
-               << instr->custom_call_target();
+    HloCustomCallInstruction* instr, LayoutConstraints* constraints) {
+  Shape lhs_shape = instr->operand(0)->shape();
+  Shape rhs_shape = instr->operand(1)->shape();
+  Shape result_shape = instr->shape().tuple_shapes(0);
+
+  Shape* input_shape;
+  Shape* filter_shape;
+  Shape* output_shape;
+
+  TF_ASSIGN_OR_RETURN(auto kind, GetCudnnConvKind(instr));
+  switch (kind) {
+    case CudnnConvKind::kForward:
+    case CudnnConvKind::kForwardActivation:
+      input_shape = &lhs_shape;
+      filter_shape = &rhs_shape;
+      output_shape = &result_shape;
+      break;
+    case CudnnConvKind::kBackwardInput:
+      input_shape = &result_shape;
+      filter_shape = &rhs_shape;
+      output_shape = &lhs_shape;
+      break;
+    case CudnnConvKind::kBackwardFilter:
+      input_shape = &lhs_shape;
+      filter_shape = &result_shape;
+      output_shape = &rhs_shape;
+      break;
   }
 
   {
     DataLayout input;
     FilterLayout filter;
     DataLayout output;
-    if (ConvUseLayoutHeuristic(instr->GetModule()->config())) {
-      std::tie(input, filter, output) =
-          HeuristicLayoutAssignment(instr, stream_executor_);
-    } else {
-      input = DataLayout::kBatchDepthYX;
-      filter = FilterLayout::kOutputInputYX;
-      output = DataLayout::kBatchDepthYX;
-    }
+    std::tie(input, filter, output) =
+        HeuristicLayoutAssignment(instr, stream_executor_);
 
     TF_ASSIGN_OR_RETURN(
-        std::tie(*input_shape.mutable_layout(), *filter_shape.mutable_layout(),
-                 *output_shape.mutable_layout()),
+        std::tie(*input_shape->mutable_layout(),
+                 *filter_shape->mutable_layout(),
+                 *output_shape->mutable_layout()),
         StreamExecutorConvLayoutsToXlaLayouts(
             instr->convolution_dimension_numbers(), input, filter, output));
   }
@@ -135,24 +165,23 @@ Status GpuLayoutAssignment::AddBackendConstraintsToDnnConvCustomCall(
                           instr, /*index=*/{0}));
 
   // Set layouts of the instructions' shapes.
-  if (target == kCudnnConvForwardCallTarget) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(input_shape, instr, 0));
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(filter_shape, instr, 1));
-    TF_RETURN_IF_ERROR(
-        constraints->SetBufferLayout(output_shape.layout(), *call_result_buf));
-  } else if (target == kCudnnConvBackwardInputCallTarget) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(output_shape, instr, 0));
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(filter_shape, instr, 1));
-    TF_RETURN_IF_ERROR(
-        constraints->SetBufferLayout(input_shape.layout(), *call_result_buf));
-  } else if (target == kCudnnConvBackwardFilterCallTarget) {
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(input_shape, instr, 0));
-    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(output_shape, instr, 1));
-    TF_RETURN_IF_ERROR(
-        constraints->SetBufferLayout(filter_shape.layout(), *call_result_buf));
-  } else {
-    LOG(FATAL) << "Unexpected custom call target: "
-               << instr->custom_call_target();
+  TF_RETURN_IF_ERROR(constraints->SetOperandLayout(lhs_shape, instr, 0));
+  TF_RETURN_IF_ERROR(constraints->SetOperandLayout(rhs_shape, instr, 1));
+  TF_RETURN_IF_ERROR(
+      constraints->SetBufferLayout(result_shape.layout(), *call_result_buf));
+  // instr->operand(2), if exists, is the bias buffer. There is no need to
+  // assign layout to it, as it has only one dimension.
+
+  // instr->operand(3), if exists, is the side input buffer.
+  if (instr->operand_count() == 4) {
+    if (kind != CudnnConvKind::kForwardActivation) {
+      return InternalError(
+          "Invalid convolution. Conv has a side input, but kind is not fused "
+          "conv forward: %s",
+          instr->ToString());
+    }
+    // The side input layout must match the output layout.
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(*output_shape, instr, 3));
   }
   return Status::OK();
 }
@@ -167,21 +196,106 @@ Status GpuLayoutAssignment::AddBackendConstraints(
        ++iterator) {
     HloInstruction* instruction = *iterator;
     if (IsCustomCallToDnnConvolution(*instruction)) {
+      TF_RETURN_IF_ERROR(AddBackendConstraintsToDnnConvCustomCall(
+          Cast<HloCustomCallInstruction>(instruction), constraints));
+    }
+
+    CHECK(!IsCublasGemm(*instruction))
+        << "Gemm rewriting should run after layout assignment";
+
+    // For batched dot we require the default layout.
+    // TODO(b/112111608): This is overly conservative, the only real restriction
+    // is that batch dimensions must be major.
+    if (IsMatrixMultiplication(*instruction) &&
+        instruction->dot_dimension_numbers().lhs_batch_dimensions_size() > 0) {
+      // Verify that the batch dims come before the row and col dims.
+      DotDimensionNumbers dim_nums = instruction->dot_dimension_numbers();
+      CHECK_EQ(dim_nums.lhs_batch_dimensions_size(),
+               dim_nums.rhs_batch_dimensions_size());
+      CHECK_EQ(dim_nums.lhs_batch_dimensions_size() + 2,
+               instruction->shape().rank());
+      for (int64 batch_dim : dim_nums.lhs_batch_dimensions()) {
+        CHECK_LT(batch_dim, instruction->shape().rank() - 2);
+      }
+
+      // Set both inputs and the output to default layout.
+      Shape op0_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      Shape op1_shape = instruction->operand(1)->shape();
+      LayoutUtil::SetToDefaultLayout(&op1_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
       TF_RETURN_IF_ERROR(
-          AddBackendConstraintsToDnnConvCustomCall(instruction, constraints));
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kFft) {
+      // cuFFT requires a dim0 major layout.
+      Shape op0_shape = instruction->operand(0)->shape();
+      LayoutUtil::SetToDefaultLayout(&op0_shape);
+      Shape output_shape = instruction->shape();
+      LayoutUtil::SetToDefaultLayout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
+    } else if (instruction->opcode() == HloOpcode::kSort &&
+               instruction->operand(0)->shape().rank() > 1) {
+      // Make sure that all the operands and the output(s) have the same layout.
+      Shape keys_shape = instruction->operand(0)->shape();
+      Layout keys_layout =
+          LayoutUtil::GetDefaultLayoutForRank(keys_shape.rank());
+      for (int64 i = 0; i < instruction->operand_count(); ++i) {
+        Shape shape = instruction->operand(i)->shape();
+        *shape.mutable_layout() = keys_layout;
+        TF_RETURN_IF_ERROR(
+            constraints->SetOperandLayout(shape, instruction, i));
+        const LogicalBuffer* output_buffer;
+        if (instruction->shape().IsArray()) {
+          TF_ASSIGN_OR_RETURN(
+              output_buffer,
+              constraints->points_to_analysis().GetBufferDefinedAt(instruction,
+                                                                   {}));
+        } else {
+          TF_ASSIGN_OR_RETURN(
+              output_buffer,
+              constraints->points_to_analysis().GetBufferDefinedAt(instruction,
+                                                                   {i}));
+        }
+        TF_RETURN_IF_ERROR(
+            constraints->SetBufferLayout(keys_layout, *output_buffer));
+      }
+    } else if (instruction->opcode() == HloOpcode::kTriangularSolve) {
+      // TODO(phawkins): Ideally we would relax this constraint. What we
+      // actually want is that:
+      // a) the batch dimensions are major, in no particular order.
+      // b) the two minor dimensions are in fortran (column-major) order,
+      // although for the 'a' argument we could potentially accept row-major
+      // order and fold the transpose into the operator.
+      auto set_fortran_layout = [](Shape* shape) {
+        LayoutUtil::SetToDefaultLayout(shape);
+        int n = shape->mutable_layout()->minor_to_major_size();
+        CHECK_GE(n, 2);
+        std::swap(shape->mutable_layout()->mutable_minor_to_major()->at(0),
+                  shape->mutable_layout()->mutable_minor_to_major()->at(1));
+      };
+      Shape op0_shape = instruction->operand(0)->shape();
+      Shape op1_shape = instruction->operand(1)->shape();
+      Shape output_shape = instruction->shape();
+      set_fortran_layout(&op0_shape);
+      set_fortran_layout(&op1_shape);
+      set_fortran_layout(&output_shape);
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op0_shape, instruction, 0));
+      TF_RETURN_IF_ERROR(
+          constraints->SetOperandLayout(op1_shape, instruction, 1));
+      TF_RETURN_IF_ERROR(
+          constraints->SetInstructionLayout(output_shape, instruction));
     }
   }
   return Status::OK();
-}
-
-bool GpuLayoutAssignment::CustomCallRequiresMajorFirstLayout(
-    const HloInstruction* instruction) {
-  // - Inputs to cudnn batchnorm custom calls don't need the major-first layout
-  //   (i.e. {n, n-1, ...0}) -- we can handle any layout.
-  // - Inputs to cudnn convolution require custom layouts handled in
-  //   AddBackendConstraints.
-  return !IsCustomCallToDnnBatchNorm(*instruction) &&
-         !IsCustomCallToDnnConvolution(*instruction);
 }
 
 Status GpuLayoutAssignment::PropagateOperandConstraint(

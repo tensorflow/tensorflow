@@ -21,12 +21,12 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -55,7 +55,7 @@ class ShapeInference {
   // given input shapes.
   static StatusOr<Shape> InferBinaryOpShape(
       HloOpcode opcode, const Shape& lhs, const Shape& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+      absl::Span<const int64> broadcast_dimensions);
   static StatusOr<Shape> InferBinaryOpShape(HloOpcode opcode,
                                             const HloInstruction* lhs,
                                             const HloInstruction* rhs);
@@ -73,18 +73,15 @@ class ShapeInference {
   // Infers the shape produced by applying the given variadic operation to the
   // given input operand shapes.
   static StatusOr<Shape> InferVariadicOpShape(
-      HloOpcode opcode,
-      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
+      HloOpcode opcode, absl::Span<const Shape* const> operand_shapes);
   static StatusOr<Shape> InferVariadicOpShape(
-      HloOpcode opcode,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> operands);
+      HloOpcode opcode, absl::Span<const HloInstruction* const> operands);
 
   // Infers the shape produced by applying the given mapping computation shape
   // to the given operand shapes.
   static StatusOr<Shape> InferMapShape(
-      tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
-      const ProgramShape& to_apply,
-      tensorflow::gtl::ArraySlice<int64> dimensions);
+      absl::Span<const Shape* const> arg_shapes, const ProgramShape& to_apply,
+      absl::Span<const int64> dimensions);
 
   // Infers the shape produced by InferBatchNormTraining with the given
   // operands.
@@ -111,18 +108,39 @@ class ShapeInference {
   // Infers the shape produced by applying the given convolutional
   // filter (rhs) to lhs in the way specified by the fields on window.
   static StatusOr<Shape> InferConvolveShape(
-      const Shape& lhs, const Shape& rhs, const Window& window,
+      const Shape& lhs, const Shape& rhs, int64 feature_group_count,
+      int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
   // Infers the shape produced by the given FFT type on the given operand.
-  static StatusOr<Shape> InferFftShape(
-      const Shape& in, FftType fft_type,
-      tensorflow::gtl::ArraySlice<int64> fft_length);
+  static StatusOr<Shape> InferFftShape(const Shape& in, FftType fft_type,
+                                       absl::Span<const int64> fft_length);
 
-  // Infers the shape produced a cross replica sum with the given operand
+  // Infers the shape produced by the given triangular solve operation.
+  static StatusOr<Shape> InferTriangularSolveShape(
+      const Shape& a, const Shape& b, const TriangularSolveOptions& options);
+
+  // Infers the shape produced by the given triangular solve operation.
+  static StatusOr<Shape> InferCholeskyShape(const Shape& a);
+
+  // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
-  static StatusOr<Shape> InferCrossReplicaSumShape(
-      tensorflow::gtl::ArraySlice<const Shape*> operand_shapes);
+  static StatusOr<Shape> InferAllReduceShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers final shape of an Alltoall operation that is created by the xla
+  // builder.
+  static StatusOr<Shape> InferAllToAllShape(const Shape& shape,
+                                            int64 split_dimension,
+                                            int64 concat_dimension,
+                                            int64 split_count);
+
+  // Infers the shape of an HLO all-to-all instruction.
+  static StatusOr<Shape> InferAllToAllTupleShape(
+      absl::Span<const Shape* const> operand_shapes);
+
+  // Infers the shape of a collective permute operation.
+  static StatusOr<Shape> InferCollectivePermuteShape(const Shape& shape);
 
   // Infers the shape produced by applying the given reduction computation
   // shape to the given input operand shape.
@@ -131,8 +149,8 @@ class ShapeInference {
   // index as the leading parameter, and the program shape should match
   // accordingly (or an error will result).
   static StatusOr<Shape> InferReduceShape(
-      const Shape& arg, const Shape& init_value,
-      tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce,
+      absl::Span<const Shape* const> arg_shapes,
+      absl::Span<const int64> dimensions_to_reduce,
       const ProgramShape& to_apply);
 
   // Infers the shape produced by applying the given computation to the operand
@@ -140,6 +158,10 @@ class ShapeInference {
   static StatusOr<Shape> InferReduceWindowShape(
       const Shape& operand_shape, const Shape& init_value, const Window& window,
       const ProgramShape& to_apply_shape);
+
+  static StatusOr<Shape> InferReduceWindowShape(const Shape& operand_shape,
+                                                const Shape& init_value,
+                                                const Window& window);
 
   // Infers the shape produced by scattering the given source shape to the
   // selected indices of each window on the operand shape.
@@ -150,30 +172,30 @@ class ShapeInference {
 
   // Infers the shape produced by a reverse operation that reverses the order
   // of the elements in the given dimensions.
-  static StatusOr<Shape> InferReverseShape(
-      const Shape& operand_shape,
-      tensorflow::gtl::ArraySlice<int64> dimensions);
+  static StatusOr<Shape> InferReverseShape(const Shape& operand_shape,
+                                           absl::Span<const int64> dimensions);
 
   // Infers the shape produced by a slice operation spanning from the starts to
   // the limits in the original shape's dimensions.
   //
   // e.g. slice f32[32x32] 0:16 0:16 -> f32[16x16]
-  static StatusOr<Shape> InferSliceShape(
-      const Shape& arg, tensorflow::gtl::ArraySlice<int64> starts,
-      tensorflow::gtl::ArraySlice<int64> limits,
-      tensorflow::gtl::ArraySlice<int64> strides);
+  static StatusOr<Shape> InferSliceShape(const Shape& arg,
+                                         absl::Span<const int64> starts,
+                                         absl::Span<const int64> limits,
+                                         absl::Span<const int64> strides);
 
   // Infers the shape produced by a dynamic slice operation of size specified
   // in 'slice_sizes', with dynamic start indices shape 'start_indices_shape'.
   static StatusOr<Shape> InferDynamicSliceShape(
-      const Shape& operand_shape, const Shape& start_indices_shape,
-      tensorflow::gtl::ArraySlice<int64> slice_sizes);
+      const Shape& operand_shape, absl::Span<const Shape> start_index_shapes,
+      absl::Span<const int64> slice_sizes, bool allow_scalar_indices = true);
 
   // Infers the shape produced by a dynamic update slice operation based
   // on the shape of operand and update.
   static StatusOr<Shape> InferDynamicUpdateSliceShape(
       const Shape& operand_shape, const Shape& update_shape,
-      const Shape& start_indices_shape);
+      absl::Span<const Shape> start_index_shapes,
+      bool allow_scalar_indices = true);
 
   // Infers the shape produced by doing a compile-time-constant indexing into
   // the given input shape. This is essential for operations on tuples, because
@@ -190,38 +212,38 @@ class ShapeInference {
                                          const ProgramShape& body,
                                          const Shape& init);
 
-  // Infers the shape produced by a conditional operation.
+  // Infers the shape produced by a predicated or indexed conditional operation.
   static StatusOr<Shape> InferConditionalShape(
-      const Shape& predicate, const Shape& true_operand,
-      const Shape& false_operand, const ProgramShape& true_computation,
-      const ProgramShape& false_computation);
+      const Shape& branch_index,
+      absl::Span<const ProgramShape> branch_computations,
+      absl::Span<const Shape> branch_operands);
 
   // Infers the shape produced by a broadcast operation.
   static StatusOr<Shape> InferBroadcastShape(
-      const Shape& operand, tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+      const Shape& operand, absl::Span<const int64> broadcast_sizes);
+
+  // Checks whether the given parameters can form a broadcast. Returns the same
+  // output_shape if it's legal.
+  static StatusOr<Shape> InferBroadcastShape(
+      const Shape& operand_shape, const Shape& output_shape,
+      absl::Span<const int64> broadcast_dimensions);
 
   // Infers the shape produced by a reshape operation from the element type of
   // its operand and the new dimension sizes specified.
-  static StatusOr<Shape> InferReshapeShape(
-      const Shape& operand, tensorflow::gtl::ArraySlice<int64> dimensions,
-      tensorflow::gtl::ArraySlice<int64> new_sizes);
+  static StatusOr<Shape> InferReshapeShape(const Shape& operand,
+                                           absl::Span<const int64> dimensions,
+                                           absl::Span<const int64> new_sizes,
+                                           int64 inferred_dimension);
 
   // Infers the shape produced by a transpose operation from the element type of
   // its operand and its dimensions field.
   static StatusOr<Shape> InferTransposeShape(
-      const Shape& operand, tensorflow::gtl::ArraySlice<int64> dimensions);
+      const Shape& operand, absl::Span<const int64> dimensions);
 
   // Helper that infers the shape produced by performing a concatenate operation
   // with the given operand shapes.
   static StatusOr<Shape> InferConcatOpShape(
-      tensorflow::gtl::ArraySlice<const Shape*> arg_shapes, int64 dimension);
-
-  // Infers the shape produced by a kAfterAll. Trivially this shape is always a
-  // TOKEN shape. However, ShapeInference serves two purposes: inferring shapes
-  // and checking operand shapes. This method verifies that the operand shapes
-  // are all TOKENs.
-  static StatusOr<Shape> InferAfterAllShape(
-      tensorflow::gtl::ArraySlice<const Shape*> arg_shapes);
+      absl::Span<const Shape* const> arg_shapes, int64 dimension);
 
   // Helper that validates the given operand shape can be converted to the
   // target output_shape via a convert instruction -- the requirement is that
@@ -251,8 +273,7 @@ class ShapeInference {
   // Helper that validates the given arg_shapes are compatible with the shape of
   // the to_apply parameters, and returns the to_apply result shape.
   static StatusOr<Shape> InferCallShape(
-      tensorflow::gtl::ArraySlice<const Shape*> arg_shapes,
-      const ProgramShape& to_apply);
+      absl::Span<const Shape* const> arg_shapes, const ProgramShape& to_apply);
 
   // Helper that infers the shape produced by performing a dot operation with
   // the given LHS and RHS shapes.
@@ -264,9 +285,32 @@ class ShapeInference {
   // with the given input shape, gather indices shape and gather dimension
   // numbers.
   static StatusOr<Shape> InferGatherShape(
-      const Shape& input_shape, const Shape& gather_indices_shape,
+      const Shape& input_shape, const Shape& start_indices_shape,
       const GatherDimensionNumbers& gather_dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds);
+      absl::Span<const int64> slice_sizes);
+
+  // Helper that validates the given input shape, scatter indices shape, updates
+  // shape, and scatter dimension numbers that constitute a scatter operation,
+  // and returns the result shape of the scatter operation.
+  static StatusOr<Shape> InferScatterShape(
+      const Shape& operand_shape, const Shape& scatter_indices_shape,
+      const Shape& updates_shape, const ProgramShape& to_apply_shape,
+      const ScatterDimensionNumbers& scatter_dim_numbers);
+
+  static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
+                                                    int64 dimension);
+
+  static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& shape,
+                                                    int64 dimension);
+
+  // Helper function for creating a Window proto from user-supplied data.
+  // Returns error if the user-supplied data was invalid.
+  static StatusOr<Window> InferWindowFromDimensions(
+      absl::Span<const int64> window_dimensions,
+      absl::Span<const int64> window_strides,
+      absl::Span<const std::pair<int64, int64>> padding,
+      absl::Span<const int64> lhs_dilation,
+      absl::Span<const int64> rhs_dilation);
 
  private:
   // Helper that infers the shape produced by performing an element-wise binary
@@ -276,7 +320,7 @@ class ShapeInference {
   // even in the presence of broadcasting of one of the operands over the other.
   static StatusOr<Shape> InferElementwiseBinaryOpShape(
       HloOpcode operation, const Shape& lhs, const Shape& rhs,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+      absl::Span<const int64> broadcast_dimensions);
 
   // Helper for inferring the shape of Clamp ops.
   static StatusOr<Shape> InferClampShape(const Shape& min, const Shape& operand,
@@ -286,6 +330,10 @@ class ShapeInference {
   static StatusOr<Shape> InferSelectShape(const Shape& pred,
                                           const Shape& on_true,
                                           const Shape& on_false);
+  // Helper for inferring the shape of TupleSelect ops.
+  static StatusOr<Shape> InferTupleSelectShape(const Shape& pred,
+                                               const Shape& on_true,
+                                               const Shape& on_false);
 
   // Helper for inferring shapes of binary operations which use degenerate
   // dimension broadcasting (a dimension of size 1 in one operand is broadcast
@@ -300,7 +348,7 @@ class ShapeInference {
   // smaller_shape is broadcast to.
   static StatusOr<Shape> InferInDimBroadcastShape(
       const Shape& smaller_shape, const Shape& larger_shape,
-      tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
+      absl::Span<const int64> broadcast_dimensions);
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeInference);
 };

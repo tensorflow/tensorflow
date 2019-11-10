@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
 #include "tensorflow/core/util/example_proto_fast_parsing.h"
 
 #include "tensorflow/core/example/example.pb.h"
@@ -40,7 +42,7 @@ string SerializedToReadable(string serialized) {
   string result;
   result += '"';
   for (char c : serialized)
-    result += strings::StrCat("\\x", strings::Hex(c, strings::ZERO_PAD_2));
+    result += strings::StrCat("\\x", strings::Hex(c, strings::kZeroPad2));
   result += '"';
   return result;
 }
@@ -211,7 +213,7 @@ TEST(FastParse, SingleInt64) {
   TestCorrectness(Serialize(example));
 }
 
-TEST(FastParse, SomeFeatures) {
+static string ExampleWithSomeFeatures() {
   Example example;
 
   (*example.mutable_features()->mutable_feature())[""];
@@ -242,7 +244,81 @@ TEST(FastParse, SomeFeatures) {
   int64_list->add_value(270);
   int64_list->add_value(86942);
 
-  TestCorrectness(Serialize(example));
+  return Serialize(example);
+}
+
+TEST(FastParse, SomeFeatures) { TestCorrectness(ExampleWithSomeFeatures()); }
+
+static void AddDenseFeature(const char* feature_name, DataType dtype,
+                            PartialTensorShape shape, bool variable_length,
+                            size_t elements_per_stride,
+                            FastParseExampleConfig* out_config) {
+  out_config->dense.emplace_back();
+  auto& new_feature = out_config->dense.back();
+  new_feature.feature_name = feature_name;
+  new_feature.dtype = dtype;
+  new_feature.shape = std::move(shape);
+  new_feature.default_value = Tensor(dtype, {});
+  new_feature.variable_length = variable_length;
+  new_feature.elements_per_stride = elements_per_stride;
+}
+
+static void AddSparseFeature(const char* feature_name, DataType dtype,
+                             FastParseExampleConfig* out_config) {
+  out_config->sparse.emplace_back();
+  auto& new_feature = out_config->sparse.back();
+  new_feature.feature_name = feature_name;
+  new_feature.dtype = dtype;
+}
+
+TEST(FastParse, StatsCollection) {
+  const size_t kNumExamples = 13;
+  std::vector<tstring> serialized(kNumExamples, ExampleWithSomeFeatures());
+
+  FastParseExampleConfig config_dense;
+  AddDenseFeature("bytes_list", DT_STRING, {2}, false, 2, &config_dense);
+  AddDenseFeature("float_list", DT_FLOAT, {2}, false, 2, &config_dense);
+  AddDenseFeature("int64_list", DT_INT64, {3}, false, 3, &config_dense);
+  config_dense.collect_feature_stats = true;
+
+  FastParseExampleConfig config_varlen;
+  AddDenseFeature("bytes_list", DT_STRING, {-1}, true, 1, &config_varlen);
+  AddDenseFeature("float_list", DT_FLOAT, {-1}, true, 1, &config_varlen);
+  AddDenseFeature("int64_list", DT_INT64, {-1}, true, 1, &config_varlen);
+  config_varlen.collect_feature_stats = true;
+
+  FastParseExampleConfig config_sparse;
+  AddSparseFeature("bytes_list", DT_STRING, &config_sparse);
+  AddSparseFeature("float_list", DT_FLOAT, &config_sparse);
+  AddSparseFeature("int64_list", DT_INT64, &config_sparse);
+  config_sparse.collect_feature_stats = true;
+
+  FastParseExampleConfig config_mixed;
+  AddDenseFeature("bytes_list", DT_STRING, {2}, false, 2, &config_mixed);
+  AddDenseFeature("float_list", DT_FLOAT, {-1}, true, 1, &config_mixed);
+  AddSparseFeature("int64_list", DT_INT64, &config_mixed);
+  config_mixed.collect_feature_stats = true;
+
+  for (const FastParseExampleConfig& config :
+       {config_dense, config_varlen, config_sparse, config_mixed}) {
+    {
+      Result result;
+      TF_CHECK_OK(FastParseExample(config, serialized, {}, nullptr, &result));
+      EXPECT_EQ(kNumExamples, result.feature_stats.size());
+      for (const PerExampleFeatureStats& stats : result.feature_stats) {
+        EXPECT_EQ(7, stats.features_count);
+        EXPECT_EQ(7, stats.feature_values_count);
+      }
+    }
+
+    {
+      Result result;
+      TF_CHECK_OK(FastParseSingleExample(config, serialized[0], &result));
+      EXPECT_EQ(1, result.feature_stats.size());
+      EXPECT_EQ(7, result.feature_stats[0].features_count);
+      EXPECT_EQ(7, result.feature_stats[0].feature_values_count);
+    }
+  }
 }
 
 string RandStr(random::SimplePhilox* rng) {
@@ -341,8 +417,9 @@ TEST(TestFastParseExample, Empty) {
   Result result;
   FastParseExampleConfig config;
   config.sparse.push_back({"test", DT_STRING});
-  Status status = FastParseExample(config, gtl::ArraySlice<string>(),
-                                   gtl::ArraySlice<string>(), nullptr, &result);
+  Status status =
+      FastParseExample(config, gtl::ArraySlice<tstring>(),
+                       gtl::ArraySlice<tstring>(), nullptr, &result);
   EXPECT_TRUE(status.ok()) << status;
 }
 

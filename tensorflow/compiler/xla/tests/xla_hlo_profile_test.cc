@@ -16,27 +16,29 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
+#include "tensorflow/compiler/xla/service/stream_pool.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
-
-namespace gtl = ::tensorflow::gtl;
 
 class HloProfileTest : public ClientLibraryTestBase {};
 
@@ -79,24 +81,25 @@ struct ParsedProfileOutputLine {
 
 Status ParseOneProfileOutputLine(
     const string& line, bool expect_hlo,
-    gtl::FlatMap<string, ParsedProfileOutputLine>* parsed_results) {
+    absl::flat_hash_map<string, ParsedProfileOutputLine>* parsed_results,
+    absl::Span<const absl::string_view> opcodes_to_ignore = {}) {
   string separator = "[^:]*:: +";
-  string match_percentage = "\\d+\\.\\d\\d%";
-  string match_cycles = "(\\d+) cycles +\\( *(" + match_percentage + ")\\)";
+  string match_percentage = R"(\d+\.\d*% +\d+Σ)";
+  string match_cycles = R"((\d+) cycles +\( *()" + match_percentage + R"()\))";
   string match_usecs = "([0-9.]+) usec";
   string match_flops = "([^ ]*)";
   string match_trops = "([^ ]*)";
-  string match_bytes_per_sec = "([0-9.TGMKi]+)B/s";
-  string match_bytes_per_cycle = "([0-9.TGMKi]+)B/cycle";
+  string match_bytes_per_sec = "([0-9.TGMKi]*)(?:B/s)?";
+  string match_bytes_per_cycle = "([0-9.TGMKi]*)(?:B/cycle)?";
 
   // The underlined part is what we're trying to match with match_opcode:
   //
   //   %dot33 = f32[256,256]{1,0} dot(...)
   //                              ^^^
 
-  string match_opcode =
-      expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*" : "(\\[total\\])";
-  string regexp_pattern = tensorflow::strings::StrCat(
+  string match_opcode = expect_hlo ? "%[^=]+= [^ ]+ ([^(]+)\\(.*"
+                                   : "(\\[total\\])( \\[entry\\])?";
+  string regexp_pattern = absl::StrCat(
       " +", match_cycles, separator, match_usecs, separator, match_flops,
       separator, match_trops, separator, match_bytes_per_sec, separator,
       match_bytes_per_cycle, separator, match_opcode);
@@ -113,9 +116,15 @@ Status ParseOneProfileOutputLine(
         ", Regexp: ", regexp_pattern);
   }
 
-  InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
+  if (!absl::c_linear_search(opcodes_to_ignore, parsed_line.opcode)) {
+    InsertOrDie(parsed_results, parsed_line.opcode, parsed_line);
+  }
 
   return Status::OK();
+}
+
+bool IsExtraMetricProfileOutputLine(const string& line) {
+  return RE2::FullMatch(line, "Extra metric \\S+: \\d+");
 }
 
 // Returns void so that we can ASSERT.
@@ -126,10 +135,10 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   LocalService* service = ClientLibrary::GetXlaService(client->platform());
   Backend* backend = service->mutable_backend();
   se::StreamExecutor* executor = backend->default_stream_executor();
-  DeviceMemoryAllocator* allocator = backend->memory_allocator();
+  se::DeviceMemoryAllocator* allocator = backend->memory_allocator();
   auto* transfer_manager = backend->transfer_manager();
   TF_ASSERT_OK_AND_ASSIGN(
-      Backend::StreamPtr stream_ptr,
+      StreamPool::Ptr stream_ptr,
       backend->BorrowStream(backend->default_device_ordinal()));
 
   TF_ASSERT_OK_AND_ASSIGN(
@@ -137,19 +146,21 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
       transfer_manager->AllocateScopedShapedBuffer(
           lhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(lhs_arg_shape), lhs_arg));
 
   TF_ASSERT_OK_AND_ASSIGN(
       ScopedShapedBuffer rhs_arg,
       transfer_manager->AllocateScopedShapedBuffer(
           rhs_arg_shape, allocator, backend->default_device_ordinal()));
   TF_ASSERT_OK(transfer_manager->TransferLiteralToDevice(
-      stream_ptr.get(), *Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
+      stream_ptr.get(), Literal::CreateFromShape(rhs_arg_shape), rhs_arg));
 
+  ExecutableBuildOptions build_options;
+  build_options.mutable_debug_options()->set_xla_hlo_profile(true);
   TF_ASSERT_OK_AND_ASSIGN(
       std::unique_ptr<LocalExecutable> local_executable,
       client->Compile(computation, {&lhs_arg_shape, &rhs_arg_shape},
-                      ExecutableBuildOptions().set_hlo_profile(true)));
+                      build_options));
 
   Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
@@ -161,13 +172,12 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
   exec_run_options.set_allocator(backend->memory_allocator());
   exec_run_options.set_intra_op_thread_pool(
       backend->eigen_intra_op_thread_pool_device());
-  ServiceExecutableRunOptions run_options(
-      exec_run_options, /*borrow_stream=*/nullptr,
-      backend->eigen_intra_op_thread_pool());
+  ServiceExecutableRunOptions run_options(exec_run_options,
+                                          /*borrow_stream=*/nullptr);
+  std::vector<const ShapedBuffer*> args = {&lhs_arg, &rhs_arg};
   TF_ASSERT_OK_AND_ASSIGN(
       auto execution_result,
-      executable->ExecuteOnStream(&run_options, {&lhs_arg, &rhs_arg},
-                                  &hlo_execution_profile));
+      executable->ExecuteOnStream(&run_options, args, &hlo_execution_profile));
   TF_ASSERT_OK(stream_ptr->BlockHostUntilDone());
   (void)execution_result;
 
@@ -197,20 +207,35 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, lhs_shape,
                          rhs_shape);
-
+  VLOG(4) << "Profile Output:\n" << profile_output;
   std::vector<string> profile_output_lines =
-      tensorflow::str_util::Split(profile_output, '\n');
+      absl::StrSplit(profile_output, '\n');
 
-  gtl::FlatMap<string, ParsedProfileOutputLine> parsed_profile_lines;
+  absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[1], /*expect_hlo=*/false, &parsed_profile_lines));
+  int line_no = 0;
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[2], /*expect_hlo=*/true, &parsed_profile_lines));
+  // Skip extra metrics.
+  while (IsExtraMetricProfileOutputLine(profile_output_lines[line_no])) {
+    line_no++;
+  }
 
-  TF_ASSERT_OK(ParseOneProfileOutputLine(
-      profile_output_lines[3], /*expect_hlo=*/true, &parsed_profile_lines));
+  line_no++;  // Skip 'Execution profile for ....'
+
+  ASSERT_LT(line_no, profile_output_lines.size());
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/false,
+                                         &parsed_profile_lines));
+
+  ASSERT_LT(line_no, profile_output_lines.size());
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/true,
+                                         &parsed_profile_lines));
+
+  ASSERT_LT(line_no, profile_output_lines.size());
+  TF_ASSERT_OK(ParseOneProfileOutputLine(profile_output_lines[line_no++],
+                                         /*expect_hlo=*/true,
+                                         &parsed_profile_lines));
 
   TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine total_profile,
                           MaybeFind(parsed_profile_lines, "[total]"));
@@ -220,7 +245,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
                           MaybeFind(parsed_profile_lines, "tanh"));
 
   EXPECT_GT(total_profile.cycles, 0);
-  EXPECT_EQ(total_profile.cycles_percentage, "100.00%");
+  EXPECT_EQ(total_profile.cycles_percentage, "100.% 100Σ");
 
   EXPECT_TRUE(HasFlops(total_profile));
   EXPECT_TRUE(HasTrops(total_profile));
@@ -240,9 +265,7 @@ XLA_TEST_F(HloProfileTest, ProfileSingleComputation) {
   EXPECT_TRUE(HasTrops(tanh_profile));
 }
 
-// TODO(b/71544591): The GPU backend does not record cycles spent in on Hlo
-// instructions "interior" to while nodes.
-XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
+XLA_TEST_F(HloProfileTest, ProfileWhileComputation) {
   const int64 size = 256;
   Shape matrix_shape = ShapeUtil::MakeShape(F32, {size, size});
   Shape while_result_shape =
@@ -269,7 +292,7 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
     auto matrix = GetTupleElement(state, 1);
     auto next_iteration =
         Add(GetTupleElement(state, 0), ConstantR0<int32>(&builder, 1));
-    Tuple(&builder, {next_iteration, Add(matrix, matrix)});
+    Tuple(&builder, {next_iteration, Mul(matrix, matrix)});
     TF_ASSERT_OK_AND_ASSIGN(body, builder.Build());
   }
 
@@ -286,41 +309,53 @@ XLA_TEST_F(HloProfileTest, DISABLED_ON_GPU(ProfileWhileComputation)) {
   string profile_output;
   ExecuteAndFetchProfile(&profile_output, client, computation, matrix_shape,
                          matrix_shape);
+  SCOPED_TRACE(profile_output);
 
   std::vector<string> profile_output_lines =
-      tensorflow::str_util::Split(profile_output, '\n');
+      absl::StrSplit(profile_output, '\n');
 
   auto while_body_profile_start =
-      std::find_if(profile_output_lines.begin(), profile_output_lines.end(),
-                   [](tensorflow::StringPiece s) {
-                     return tensorflow::str_util::StartsWith(
-                         s, "Execution profile for body");
+      absl::c_find_if(profile_output_lines, [](absl::string_view s) {
+        return absl::StartsWith(s, "Execution profile for body");
+      });
+
+  ASSERT_NE(while_body_profile_start, profile_output_lines.cend());
+
+  auto while_body_profile_end =
+      std::find_if(while_body_profile_start, profile_output_lines.end(),
+                   [](absl::string_view s) {
+                     return absl::StartsWith(s, "********** microseconds ");
                    });
 
-  ASSERT_NE(while_body_profile_start, profile_output_lines.end());
+  // We emit a blank line before the "microseconds report" line.
+  while_body_profile_end--;
 
-  gtl::FlatMap<string, ParsedProfileOutputLine> parsed_profile_lines;
+  ASSERT_NE(while_body_profile_end, profile_output_lines.end());
 
-  TF_ASSERT_OK(
-      ParseOneProfileOutputLine(*std::next(while_body_profile_start, 1),
-                                /*expect_hlo=*/false, &parsed_profile_lines));
+  absl::flat_hash_map<string, ParsedProfileOutputLine> parsed_profile_lines;
 
-  TF_ASSERT_OK(
-      ParseOneProfileOutputLine(*std::next(while_body_profile_start, 2),
-                                /*expect_hlo=*/true, &parsed_profile_lines));
+  for (auto while_body_profile_i = while_body_profile_start + 1;
+       while_body_profile_i != while_body_profile_end; while_body_profile_i++) {
+    // There are multiple "get-tuple-element" instructions in the while body so
+    // we ignore them -- we don't want parsed_profile_lines to be a multi-map.
+    TF_ASSERT_OK(ParseOneProfileOutputLine(
+        *while_body_profile_i,
+        /*expect_hlo=*/while_body_profile_i != (while_body_profile_start + 1),
+        &parsed_profile_lines, {"get-tuple-element"}));
+  }
 
   TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine total_while_body_profile,
                           MaybeFind(parsed_profile_lines, "[total]"));
-  TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine dot_profile,
-                          MaybeFind(parsed_profile_lines, "add"));
+  TF_ASSERT_OK_AND_ASSIGN(ParsedProfileOutputLine multiply_profile,
+                          MaybeFind(parsed_profile_lines, "multiply"));
 
   EXPECT_GT(total_while_body_profile.cycles, 0);
   EXPECT_EQ(total_while_body_profile.opcode, "[total]");
-  EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.00%");
+  EXPECT_EQ(total_while_body_profile.cycles_percentage, "100.% 100Σ");
 
-  EXPECT_GT(total_while_body_profile.cycles, dot_profile.cycles);
-  EXPECT_NE(dot_profile.cycles_percentage, "0.00%");
-  EXPECT_NE(dot_profile.cycles_percentage, "100.00%");
+  EXPECT_GT(total_while_body_profile.cycles, multiply_profile.cycles);
+  EXPECT_NE(multiply_profile.cycles_percentage, "0.00%");
+  EXPECT_NE(multiply_profile.cycles_percentage, "100.00%");
 }
 }  // namespace
 }  // namespace xla
@@ -337,14 +372,18 @@ static std::pair<int, char**> AddXlaHloProfileFlag(int argc, char** argv) {
   new_argv[argc] = strdup("--xla_hlo_profile");
 
   // Fusion can change the Hlo instructions that show up in the final Hlo
-  // executable, so block it here.
-  new_argv[argc + 1] = strdup("--xla_disable_hlo_passes=fusion");
+  // executable, so block it here. Also block the WhileLoopInvariantCodeMotion
+  // pass, otherwise a while loop is transformed and we could not match the
+  // original name in the ProfileWhileComputation test.
+  new_argv[argc + 1] = strdup(
+      "--xla_disable_hlo_passes=fusion,fusion_merger,multi_output_fusion,"
+      "while-loop-invariant-code-motion");
   return {argc + 2, new_argv};
 }
 
 GTEST_API_ int main(int argc, char** argv) {
   std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
+  xla::AppendDebugOptionsFlags(&flag_list);
   std::tie(argc, argv) = AddXlaHloProfileFlag(argc, argv);
 
   auto usage = tensorflow::Flags::Usage(argv[0], flag_list);

@@ -74,13 +74,11 @@ class InitializeTableOp : public OpKernel {
                     "Keys and values must have the same size ",
                     keys.NumElements(), " vs ", values.NumElements()));
 
-    lookup::KeyValueTensorIterator iter(&keys, &values);
-
     int memory_used_before = 0;
     if (ctx->track_allocations()) {
       memory_used_before = table->MemoryUsed();
     }
-    OP_REQUIRES_OK(ctx, table->Initialize(iter));
+    OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
     if (ctx->track_allocations()) {
       ctx->record_persistent_memory_allocation(table->MemoryUsed() -
                                                memory_used_before);
@@ -132,7 +130,7 @@ class InitializeTableFromTextFileOp : public OpKernel {
         errors::InvalidArgument("filename should be a single string, but got ",
                                 vocab_filename_tensor.shape().DebugString()));
 
-    string vocab_filename = vocab_filename_tensor.scalar<string>()();
+    const string& vocab_filename = vocab_filename_tensor.scalar<tstring>()();
     OP_REQUIRES(ctx, !vocab_filename.empty(),
                 errors::InvalidArgument("filename cannot be empty."));
 

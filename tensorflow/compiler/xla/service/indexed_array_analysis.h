@@ -18,10 +18,10 @@ limitations under the License.
 
 #include <type_traits>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace xla {
@@ -188,9 +188,7 @@ class IndexedArrayAnalysis {
     // `output_dims` are the dimensions in the output array that are being used
     // to compute an index into the `indices` array.  See the class
     // documentation and the overview for more details.
-    tensorflow::gtl::ArraySlice<int64> output_dims() const {
-      return output_dims_;
-    }
+    absl::Span<const int64> output_dims() const { return output_dims_; }
 
    private:
     explicit ScalarIndexedArray(Array* source, Array* indices, int64 source_dim,
@@ -265,8 +263,22 @@ class IndexedArrayAnalysis {
 
   StatusOr<Array*> ComputeArrayForGather(
       const Shape& shape, const GatherDimensionNumbers& dim_numbers,
-      tensorflow::gtl::ArraySlice<int64> window_bounds, Array* source,
-      Array* indices);
+      absl::Span<const int64> slice_sizes, Array* source, Array* indices);
+
+  StatusOr<Array*> ComputeArrayForDotWithIndexedLhs(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      const PrecisionConfig& precision_config, ScalarIndexedConstantArray* lhs,
+      ConstantArray* rhs);
+
+  StatusOr<Array*> ComputeArrayForDotWithIndexedRhs(
+      const Shape& shape, const DotDimensionNumbers& dim_numbers,
+      const PrecisionConfig& precision_config, ConstantArray* lhs,
+      ScalarIndexedConstantArray* rhs);
+
+  StatusOr<Array*> ComputeArrayForDot(const Shape& shape,
+                                      const DotDimensionNumbers& dim_numbers,
+                                      const PrecisionConfig& precision_config,
+                                      Array* lhs, Array* rhs);
 
   // This tries to fold a ScalarIndexedArray which has another
   // ScalarIndexedArray as a source into a ScalarIndexedArray that instead has a
@@ -291,7 +303,7 @@ class IndexedArrayAnalysis {
   //    G1 = [Arr[i] for i in I2]
   StatusOr<ScalarIndexedArray*> FoldGatherOfGather(
       ScalarIndexedArray* source, Array* indices, int64 source_dim,
-      tensorflow::gtl::ArraySlice<int64> output_dims, Shape shape);
+      absl::Span<const int64> output_dims, Shape shape);
 
   // Reshapes a scalar-indexed node to remove the degenerate dimensions in its
   // output.  The result is always a scalar-indexed node.
@@ -301,8 +313,7 @@ class IndexedArrayAnalysis {
   // Reshapes a scalar-indexed node such that the result has the degenerate
   // dimensions `degenerate_dims`.  The result is always a scalar-indexed node.
   StatusOr<ScalarIndexedArray*> ReshapeToAddDegenerateDims(
-      ScalarIndexedArray* operand,
-      tensorflow::gtl::ArraySlice<int64> degenerate_dims);
+      ScalarIndexedArray* operand, absl::Span<const int64> degenerate_dims);
 
   StatusOr<ScalarIndexedArray*> FoldReshapeOfGather(
       const Shape& shape, ScalarIndexedConstantArray* operand);
@@ -336,30 +347,28 @@ class IndexedArrayAnalysis {
     }
   }
 
-  Literal* TakeOwnership(std::unique_ptr<Literal> literal) {
+  Literal* TakeOwnership(Literal literal) {
     owned_literals_.push_back(std::move(literal));
-    return owned_literals_.back().get();
+    return &owned_literals_.back();
   }
 
-  StatusOr<Literal*> TakeOwnership(
-      StatusOr<std::unique_ptr<Literal>> literal_or_error) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                        std::move(literal_or_error));
+  StatusOr<Literal*> TakeOwnership(StatusOr<Literal> literal_or_error) {
+    TF_ASSIGN_OR_RETURN(Literal literal, std::move(literal_or_error));
     owned_literals_.push_back(std::move(literal));
-    return owned_literals_.back().get();
+    return &owned_literals_.back();
   }
 
   std::vector<std::unique_ptr<Array>> owned_tensors_;
-  std::vector<std::unique_ptr<Literal>> owned_literals_;
-  tensorflow::gtl::FlatMap<const HloInstruction*, Array*> cache_;
+  std::vector<Literal> owned_literals_;
+  absl::flat_hash_map<const HloInstruction*, Array*> cache_;
 };
 
 // A pass that prints all non-trivial results returned by IndexedArrayAnalysis.
 // This pass is a no-op if !VLOG_IS_ON(2) so it should be fine to
 // unconditionally add to the regular HLO pass pipeline.
-class IndexedArrayAnalysisPrinterPass : public HloPassInterface {
+class IndexedArrayAnalysisPrinterPass : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override;
+  absl::string_view name() const override;
   StatusOr<bool> Run(HloModule* module) override;
 };
 

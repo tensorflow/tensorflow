@@ -16,20 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_SIMPLIFIER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_CONDITIONAL_SIMPLIFIER_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 
 namespace xla {
 
 // HLO pass that removes kConditional with a constant predicate, replacing them
 // with their true or false computation as appropriate.
-class ConditionalSimplifier : public HloPassInterface {
+class ConditionalSimplifier : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override {
-    return "simplify-conditional";
-  }
+  absl::string_view name() const override { return "simplify-conditional"; }
   StatusOr<bool> Run(HloModule* module) override;
 };
 

@@ -32,13 +32,11 @@ namespace gpu {
 // 2) The result of merging the fusion instruction into its users would not
 //    increase bytes transferred.
 //
-class FusionMerger : public HloPassInterface {
+class FusionMerger : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override { return "fusion merger"; }
+  absl::string_view name() const override { return "fusion_merger"; }
 
   StatusOr<bool> Run(HloModule* module) override;
-
-  static double GetThresholdFlopsToBytesRatio() { return 1.0; }
 };
 
 }  // namespace gpu

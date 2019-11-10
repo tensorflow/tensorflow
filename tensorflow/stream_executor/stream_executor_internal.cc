@@ -18,23 +18,16 @@ limitations under the License.
 namespace stream_executor {
 namespace internal {
 
-// -- CUDA
-
-StreamExecutorFactory* MakeCUDAExecutorImplementation() {
-  static StreamExecutorFactory instance;
-  return &instance;
+// The default implementation just calls the other HostCallback method.
+// It should make all existing code that uses a void() callback still work.
+bool StreamExecutorInterface::HostCallback(Stream* stream,
+                                           std::function<void()> callback) {
+  return HostCallback(
+      stream, std::function<port::Status()>([callback]() -> port::Status {
+        callback();
+        return port::Status::OK();
+      }));
 }
-
-// -- OpenCL
-
-StreamExecutorFactory* MakeOpenCLExecutorImplementation() {
-  static StreamExecutorFactory instance;
-  return &instance;
-}
-
-// -- Host
-
-StreamExecutorFactory MakeHostExecutorImplementation;
 
 }  // namespace internal
 }  // namespace stream_executor

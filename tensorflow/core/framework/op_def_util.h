@@ -16,10 +16,11 @@ limitations under the License.
 // TODO(josh11b): Probably not needed for OpKernel authors, so doesn't
 // need to be as publicly accessible as other files in framework/.
 
-#ifndef TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_
-#define TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_
+#define TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_
 
 #include <string>
+#include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -47,6 +48,10 @@ OpDef::AttrDef* FindAttrMutable(StringPiece name, OpDef* op_def);
 // Returns nullptr if no such attr is found.
 const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def);
 
+// Searches api_def for input argument with the indicated name.
+// Returns nullptr if no such attr is found.
+const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def);
+
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.
 string SummarizeOpDef(const OpDef& op_def);
@@ -63,8 +68,9 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
                                    const OpDef& penultimate_op,
                                    const OpDef& new_op);
 
-// Returns an error if the default value for any attr is added/removed/modified
-// in new_op compared to old_op.
+// Returns an error if the default value for any attr is removed or modified
+// in new_op compared to old_op.  Adding new default values is safe, and does
+// not raise an error.
 Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op);
 
 // Remove all docs from *op_def / *op_list.
@@ -98,4 +104,4 @@ uint64 OpDefHash(const OpDef& o);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_OP_DEF_UTIL_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_OP_DEF_UTIL_H_

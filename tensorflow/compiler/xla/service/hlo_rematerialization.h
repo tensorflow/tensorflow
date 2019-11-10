@@ -15,19 +15,32 @@
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_REMATERIALIZATION_H_
 
-#include "tensorflow/compiler/xla/service/buffer_liveness.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_scheduling.h"
+#include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/service/tuple_points_to_analysis.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 
-class HloRematerialization {
+// HLO pass which rematerializes instructions to reduce peak memory use, where
+// memory use is defined as the total size of all live HLO instruction
+// values. Parameters and constants are included in memory use estimates.
+//
+// CSE will undo the effects of this optimization and should not be run after
+// this pass. In general, this pass should be run very late, immediately before
+// code generation.
+class HloRematerialization : public HloModulePass {
  public:
   using ShapeSizeFunction = std::function<int64(const Shape&)>;
+
+  using CompactShapeFunction = std::function<StatusOr<Shape>(const Shape&)>;
 
   // Helper struct that communicates the before / after sizes for the
   // rematerialization process.
@@ -36,78 +49,60 @@ class HloRematerialization {
     int64 after_bytes;
   };
 
-  // Rematerialize HLO instructions in the given module to reduce peak memory
-  // use below memory_limit_bytes where memory use is defined as the total size
-  // of all live HLO instruction values. Parameters and constants are included
-  // in memory use estimates. Method parameters:
+  static Shape DefaultCompactShapeFunction(const Shape& shape) { return shape; }
+
+  // Constructor parameters:
   //
   //   size_function: Function which returns the size in bytes of the top-level
   //     buffer of the given shape.
   //
   //   memory_limit_bytes: The threshold number of bytes to reduce memory use to
-  //     via rematerialization.
+  //     via rematerialization. Size of aliased outputs should be subtracted
+  //     from this.
   //
-  //   hlo_module: HLO module to rematerialize instructions in.
+  //   sizes: Pointer to data structure which records the peak memory usage of
+  //     the HLO module before/after rematerialization. Value are set during
+  //     Run(). Can be nullptr.
   //
-  //   sequence: Should point to an empty HloModuleSequence. Upon return
-  //     contains the HLO instruction order which was used for
-  //     rematerialization. This is the order in which HLO instructions should
-  //     be emitted to minimize memory use.
-  //
-  //   sizes: Optional outparam that indicates the peak memory usage of the HLO
-  //     module before/after rematerialization.
-  //
-  //   run_copy_elision: Enable copy elision. This pass is used to eliminate
-  //     copies that were inserted before HLO scheduling.
-  //
-  // TODO(b/80249101): Remove the 'run_copy_elision' parameter when copy
-  // insertion is integrated with HLO scheduling.
-  //
-  // Returns whether any instructions were rematerialized. If memory use is
-  // already below the given limit then no instructions are rematerialized and
-  // false is returned.
-  //
-  // CSE will undo the effects of this optimization and should not be run after
-  // this pass. In general, this pass should be run very late immediately before
-  // code generation.
-  static StatusOr<bool> RematerializeAndSchedule(
+  //   compact_shape_function: Function which returns the compact form of a
+  //   shape. If nullptr is provided, an default identity function is used.
+  explicit HloRematerialization(
       const ShapeSizeFunction& size_function, int64 memory_limit_bytes,
-      HloModule* hlo_module, MemorySchedulerAlgorithm scheduler_algorithm,
-      SequentialHloOrdering::HloModuleSequence* sequence,
-      RematerializationSizes* sizes, bool run_copy_elision = true);
+      RematerializationSizes* sizes,
+      CompactShapeFunction compact_shape_function = nullptr)
+      : size_function_(size_function),
+        memory_limit_bytes_(memory_limit_bytes),
+        sizes_(sizes),
+        compact_shape_function_(compact_shape_function == nullptr
+                                    ? DefaultCompactShapeFunction
+                                    : std::move(compact_shape_function)) {}
+  ~HloRematerialization() override = default;
 
- protected:
-  HloRematerialization(MemorySchedulerAlgorithm scheduler_algorithm,
-                       const ShapeSizeFunction& size_function)
-      : scheduler_algorithm_(scheduler_algorithm),
-        size_function_(size_function) {}
-  ~HloRematerialization() {}
+  absl::string_view name() const override { return "rematerialization"; }
 
   // Runs rematerialization on the given module. Returns whether the module was
-  // changed. memory_limit is the target maximum peak memory usage by the
-  // module. sequence should be an empty HloModuleSequence. Upon return sequence
-  // contains the memory-minimizing order in which to emit the HLO instructions.
-  StatusOr<bool> Run(HloModule* module,
-                     SequentialHloOrdering::HloModuleSequence* sequence,
-                     int64 memory_limit, RematerializationSizes* sizes,
-                     bool run_copy_elision);
+  // changed. Requires that the module has a schedule set
+  // (HloModule::has_schedule() is true) before running. Returns whether any
+  // instructions were rematerialized. If memory use is already below the limit
+  // specified in the constructor then no instructions are rematerialized and
+  // false is returned.
+  StatusOr<bool> Run(HloModule* module) override;
 
+ protected:
   // Rematerializes instructions within the given computation. 'order' is the
   // order in which the computation's instructions will be emitted in the
   // backend. Rematerialized instructions will be added to the HLO computation
   // and inserted into 'order'.
-  StatusOr<bool> RematerializeComputation(
-      HloComputation* computation,
-      SequentialHloOrdering::HloModuleSequence* sequence,
-      int64 computation_memory_limit);
+  virtual StatusOr<bool> RematerializeComputation(HloComputation* computation,
+                                                  HloSchedule* schedule,
+                                                  int64 memory_limit_bytes);
 
   // Computes and returns the peak memory used by the given computation. The
   // peak memory is the maximum total size of all live HLO instruction values at
   // any program point. 'order' is the order in which the HLO instructions will
   // be emitted which is used to determine lifespans of HLO values.
-  StatusOr<int64> ComputePeakMemory(
-      const HloComputation* computation,
-      const std::vector<const HloInstruction*>& order) const;
+  StatusOr<int64> ComputePeakMemory(const HloComputation* computation,
+                                    const HloInstructionSequence& order) const;
 
   // Returns the peak memory usage of the called computations for the given
   // instruction. Zero is returned if the instruction calls no computations.
@@ -120,6 +115,18 @@ class HloRematerialization {
   // Function which computes the size of the top-level buffer of a shape.
   const ShapeSizeFunction size_function_;
 
+  // The threshold number of bytes to reduce memory use to via
+  // rematerialization.
+  const int64 memory_limit_bytes_;
+
+  // Pointer to data structure which records the peak memory usage of the HLO
+  // module before/after rematerialization
+  RematerializationSizes* sizes_;
+
+  // Converts a shape into compact form, returns the same shape if a shape is
+  // already considered compact.
+  const CompactShapeFunction compact_shape_function_;
+
   // Call graph of the hlo_module.
   std::unique_ptr<CallGraph> call_graph_;
 
@@ -127,14 +134,13 @@ class HloRematerialization {
   // computations called from sequential context
   // (CallContext::kSequential). These values are updated as rematerialization
   // occurs.
-  tensorflow::gtl::FlatMap<const HloComputation*, int64>
-      computation_peak_memory_;
+  absl::flat_hash_map<const HloComputation*, int64> computation_peak_memory_;
 
   std::unique_ptr<TuplePointsToAnalysis> points_to_analysis_;
 
   // Set of computations which have had rematerialization
   // applied. Rematerialization is only applied once per computation.
-  tensorflow::gtl::FlatSet<const HloComputation*> rematerialized_computations_;
+  absl::flat_hash_set<const HloComputation*> rematerialized_computations_;
 
   // Count of the total instructions rematerialized.
   int64 instructions_rematerialized_ = 0;

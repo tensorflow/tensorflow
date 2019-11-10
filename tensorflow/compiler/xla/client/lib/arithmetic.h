@@ -18,11 +18,18 @@ limitations under the License.
 
 #include <memory>
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+using XlaOpGenerator = std::function<XlaOp(XlaOp, XlaOp)>;
+
+// Creates a scalar computation based on a lambda and returns it.
+XlaComputation CreateScalarComputation(const string& name, PrimitiveType type,
+                                       XlaBuilder* builder,
+                                       XlaOpGenerator generator);
 
 // Creates a scalar add computation and returns it.
 XlaComputation CreateScalarAddComputation(PrimitiveType type,
@@ -45,30 +52,39 @@ XlaComputation CreateScalarMinComputation(PrimitiveType type,
                                           XlaBuilder* builder);
 
 // Creates a scalar logical AND computation and returns it.
-XlaComputation CreateScalarAndComputation(XlaBuilder* builder);
+XlaComputation CreateScalarAndComputation(PrimitiveType type,
+                                          XlaBuilder* builder);
 
 // Creates a scalar logical OR computation and returns it.
-XlaComputation CreateScalarOrComputation(XlaBuilder* builder);
+XlaComputation CreateScalarOrComputation(PrimitiveType type,
+                                         XlaBuilder* builder);
+
+// This is to be used for general purpose "identity" like reductions with zero
+// for any type (ie. boolean operations for PRED and Add for real numbers).
+// As an example, this operation can be used for a situation of:
+// x_type = type(x)
+// op = CreateScalarIdentityWithZeroComputation(x_type)
+// ASSERT_TRUE(op(x, 0) == x)
+//
+// This functionality is used for operations that are similar to a slice,
+// gather, or broadcast, but are created through a reduction.
+XlaComputation CreateScalarIdentityWithZeroComputation(PrimitiveType type,
+                                                       XlaBuilder* builder);
 
 // Returns whether any predicate in "predicates" is set.
 //
 // Note: if predicates is zero-sized, Any() vacuously returns false.
 XlaOp Any(XlaOp predicates);
 
-// Evaluate the polynomial given coefficients and `x`.
-// N.B. Coefficients should be supplied in decreasing order.
-XlaOp EvaluatePolynomial(XlaOp x,
-                         tensorflow::gtl::ArraySlice<float> coefficients,
-                         PrimitiveType data_type);
+// Returns the argmax of `input` along `axis`. `output_type` is the type to
+// use for the output.
+XlaOp ArgMax(XlaOp input, PrimitiveType output_type, int axis);
+XlaOp ArgMaxTwoPass(XlaOp input, PrimitiveType output_type, int axis);
 
-// Compute an approximation of the error function complement (1 - erf(x)).
-XlaOp Erfc(XlaOp x, PrimitiveType data_type);
-
-// Compute an approximation of the error function.
-XlaOp Erf(XlaOp x, PrimitiveType data_type);
-
-// Compute an approximation of the inverse of the error function.
-XlaOp ErfInv(XlaOp x);
+// Returns the argmin of `input` along `axis`. `output_type` is the type to
+// use for the output.
+XlaOp ArgMin(XlaOp input, PrimitiveType output_type, int axis);
+XlaOp ArgMinTwoPass(XlaOp input, PrimitiveType output_type, int axis);
 
 }  // namespace xla
 

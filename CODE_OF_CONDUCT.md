@@ -7,19 +7,22 @@ In the interest of fostering an open and welcoming environment, we as contributo
 
 Examples of behavior that contributes to creating a positive environment include:
 
-* Using welcoming and inclusive language
-* Being respectful of differing viewpoints and experiences
-* Gracefully accepting constructive criticism
-* Focusing on what is best for the community
-* Showing empathy towards other community members
+*   Using welcoming and inclusive language.
+*   Being respectful of differing viewpoints and experiences.
+*   Gracefully accepting constructive criticism.
+*   Focusing on what is best for the community.
+*   Showing empathy towards other community members.
 
 Examples of unacceptable behavior by participants include:
 
-* The use of sexualized language or imagery and unwelcome sexual attention or advances
-* Trolling, insulting/derogatory comments, and personal or political attacks
-* Public or private harassment
-* Publishing others' private information, such as a physical or electronic address, without explicit permission
-* Conduct which could reasonably be considered inappropriate for the forum in which it occurs. 
+*   The use of sexualized language or imagery and unwelcome sexual attention or
+    advances.
+*   Trolling, insulting/derogatory comments, and personal or political attacks.
+*   Public or private harassment.
+*   Publishing others' private information, such as a physical or electronic
+    address, without explicit permission.
+*   Conduct which could reasonably be considered inappropriate for the forum in
+    which it occurs.
 
 All TensorFlow forums and spaces are meant for professional interactions, and any behavior which could reasonably be considered inappropriate in a professional setting is unacceptable.
 
@@ -48,14 +51,22 @@ However, for the vast majority of issues, we aim to empower individuals to first
 
 If you are experiencing or witnessing conflict, we ask you to use the following escalation strategy to address the conflict:
 
-1. Address the perceived conflict directly with those involved, preferably in a real-time medium. 
-2. If this fails, get a third party (e.g. a mutual friend, and/or someone with background on the issue, but not involved in conflict) to intercede.
-3. If you are still unable to resolve the conflict, and you believe it rises to harassment or another code of conduct violation, report it.
-
+1.  Address the perceived conflict directly with those involved, preferably in a
+    real-time medium.
+2.  If this fails, get a third party (e.g. a mutual friend, and/or someone with
+    background on the issue, but not involved in the conflict) to intercede.
+3.  If you are still unable to resolve the conflict, and you believe it rises to
+    harassment or another code of conduct violation, report it.
 
 ## Reporting Violations
 
-Violations of the Code of Conduct can be reported to TensorFlow’s Project Stewards, Edd Wilder-James (ewj@google.com) and Sarah Novotny (sarahnovotny@google.com). The Project Steward will determine whether the Code of Conduct was violated, and will issue an appropriate sanction, possibly including a written warning or expulsion from the project, project sponsored spaces, or project forums. We ask that you make a good-faith effort to resolve your conflict via the conflict resolution policy before submitting a report.
+Violations of the Code of Conduct can be reported to TensorFlow’s Project
+Stewards, Edd Wilder-James (ewj@google.com) and Thea Lamkin
+(thealamkin@google.com). The Project Steward will determine whether the Code of
+Conduct was violated, and will issue an appropriate sanction, possibly including
+a written warning or expulsion from the project, project sponsored spaces, or
+project forums. We ask that you make a good-faith effort to resolve your
+conflict via the conflict resolution policy before submitting a report.
 
 Violations of the Code of Conduct can occur in any setting, even those unrelated to the project. We will only consider complaints about conduct that has occurred within one year of the report.
 

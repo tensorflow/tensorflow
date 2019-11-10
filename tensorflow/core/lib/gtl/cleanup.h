@@ -19,7 +19,7 @@ limitations under the License.
 // need more sophisticated syntax than that.
 //
 // Example:
-//   void func() {}
+//   void func() {
 //     FILE* fp = fopen("data.txt", "r");
 //     if (fp == nullptr) return;
 //     auto fp_cleaner = gtl::MakeCleanup([fp] { fclose(fp); });
@@ -39,8 +39,8 @@ limitations under the License.
 //
 // You can call 'release()' on a Cleanup object to cancel the cleanup.
 
-#ifndef TENSORFLOW_LIB_GTL_CLEANUP_H_
-#define TENSORFLOW_LIB_GTL_CLEANUP_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_CLEANUP_H_
+#define TENSORFLOW_CORE_LIB_GTL_CLEANUP_H_
 
 #include <type_traits>
 #include <utility>
@@ -110,4 +110,4 @@ TF_MUST_USE_RESULT Cleanup<DecayF> MakeCleanup(F&& f) {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_GTL_CLEANUP_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_CLEANUP_H_

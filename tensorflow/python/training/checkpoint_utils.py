@@ -18,23 +18,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training import saver
+from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training import py_checkpoint_reader
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
-    "load_checkpoint", "load_variable", "list_variables", "init_from_checkpoint"
+    "load_checkpoint", "load_variable", "list_variables",
+    "checkpoints_iterator", "init_from_checkpoint"
 ]
 
 
@@ -60,7 +63,7 @@ def load_checkpoint(ckpt_dir_or_file):
   if filename is None:
     raise ValueError("Couldn't find 'checkpoint' file or checkpoints in "
                      "given directory %s" % ckpt_dir_or_file)
-  return pywrap_tensorflow.NewCheckpointReader(filename)
+  return py_checkpoint_reader.NewCheckpointReader(filename)
 
 
 @tf_export("train.load_variable")
@@ -100,9 +103,109 @@ def list_variables(ckpt_dir_or_file):
   return result
 
 
-@tf_export("train.init_from_checkpoint")
+def wait_for_new_checkpoint(checkpoint_dir,
+                            last_checkpoint=None,
+                            seconds_to_sleep=1,
+                            timeout=None):
+  """Waits until a new checkpoint file is found.
+
+  Args:
+    checkpoint_dir: The directory in which checkpoints are saved.
+    last_checkpoint: The last checkpoint path used or `None` if we're expecting
+      a checkpoint for the first time.
+    seconds_to_sleep: The number of seconds to sleep for before looking for a
+      new checkpoint.
+    timeout: The maximum number of seconds to wait. If left as `None`, then the
+      process will wait indefinitely.
+
+  Returns:
+    a new checkpoint path, or None if the timeout was reached.
+  """
+  logging.info("Waiting for new checkpoint at %s", checkpoint_dir)
+  stop_time = time.time() + timeout if timeout is not None else None
+  while True:
+    checkpoint_path = checkpoint_management.latest_checkpoint(checkpoint_dir)
+    if checkpoint_path is None or checkpoint_path == last_checkpoint:
+      if stop_time is not None and time.time() + seconds_to_sleep > stop_time:
+        return None
+      time.sleep(seconds_to_sleep)
+    else:
+      logging.info("Found new checkpoint at %s", checkpoint_path)
+      return checkpoint_path
+
+
+@tf_export("train.checkpoints_iterator")
+def checkpoints_iterator(checkpoint_dir,
+                         min_interval_secs=0,
+                         timeout=None,
+                         timeout_fn=None):
+  """Continuously yield new checkpoint files as they appear.
+
+  The iterator only checks for new checkpoints when control flow has been
+  reverted to it. This means it can miss checkpoints if your code takes longer
+  to run between iterations than `min_interval_secs` or the interval at which
+  new checkpoints are written.
+
+  The `timeout` argument is the maximum number of seconds to block waiting for
+  a new checkpoint.  It is used in combination with the `timeout_fn` as
+  follows:
+
+  * If the timeout expires and no `timeout_fn` was specified, the iterator
+    stops yielding.
+  * If a `timeout_fn` was specified, that function is called and if it returns
+    a true boolean value the iterator stops yielding.
+  * If the function returns a false boolean value then the iterator resumes the
+    wait for new checkpoints.  At this point the timeout logic applies again.
+
+  This behavior gives control to callers on what to do if checkpoints do not
+  come fast enough or stop being generated.  For example, if callers have a way
+  to detect that the training has stopped and know that no new checkpoints
+  will be generated, they can provide a `timeout_fn` that returns `True` when
+  the training has stopped.  If they know that the training is still going on
+  they return `False` instead.
+
+  Args:
+    checkpoint_dir: The directory in which checkpoints are saved.
+    min_interval_secs: The minimum number of seconds between yielding
+      checkpoints.
+    timeout: The maximum number of seconds to wait between checkpoints. If left
+      as `None`, then the process will wait indefinitely.
+    timeout_fn: Optional function to call after a timeout.  If the function
+      returns True, then it means that no new checkpoints will be generated and
+      the iterator will exit.  The function is called with no arguments.
+
+  Yields:
+    String paths to latest checkpoint files as they arrive.
+  """
+  checkpoint_path = None
+  while True:
+    new_checkpoint_path = wait_for_new_checkpoint(
+        checkpoint_dir, checkpoint_path, timeout=timeout)
+    if new_checkpoint_path is None:
+      if not timeout_fn:
+        # timed out
+        logging.info("Timed-out waiting for a checkpoint.")
+        return
+      if timeout_fn():
+        # The timeout_fn indicated that we are truly done.
+        return
+      else:
+        # The timeout_fn indicated that more checkpoints may come.
+        continue
+    start = time.time()
+    checkpoint_path = new_checkpoint_path
+    yield checkpoint_path
+    time_to_next_eval = start + min_interval_secs - time.time()
+    if time_to_next_eval > 0:
+      time.sleep(time_to_next_eval)
+
+
+@tf_export(v1=["train.init_from_checkpoint"])
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
-  """Initializes current variables with tensors loaded from given checkpoint.
+  """Replaces `tf.Variable` initializers so they load from a checkpoint file.
+
+  Values are not loaded immediately, but when the initializer is run
+  (typically by running a `tf.compat.v1.global_variables_initializer` op).
 
   Note: This overrides default initialization ops of specified variables and
   redefines dtype.
@@ -135,15 +238,15 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   #  -- name='old_scope_2/var3', shape=[100, 100]
 
   # Create new model's variables
-  with tf.variable_scope('new_scope_1'):
-    var1 = tf.get_variable('var1', shape=[20, 2],
-                           initializer=tf.zeros_initializer())
-  with tf.variable_scope('new_scope_2'):
-    var2 = tf.get_variable('var2', shape=[50, 4],
-                           initializer=tf.zeros_initializer())
+  with tf.compat.v1.variable_scope('new_scope_1'):
+    var1 = tf.compat.v1.get_variable('var1', shape=[20, 2],
+                           initializer=tf.compat.v1.zeros_initializer())
+  with tf.compat.v1.variable_scope('new_scope_2'):
+    var2 = tf.compat.v1.get_variable('var2', shape=[50, 4],
+                           initializer=tf.compat.v1.zeros_initializer())
     # Partition into 5 variables along the first axis.
-    var3 = tf.get_variable(name='var3', shape=[100, 100],
-                           initializer=tf.zeros_initializer(),
+    var3 = tf.compat.v1.get_variable(name='var3', shape=[100, 100],
+                           initializer=tf.compat.v1.zeros_initializer(),
                            partitioner=lambda shape, dtype: [5, 1])
 
   # Initialize all variables in `new_scope_1` from `old_scope_1`.
@@ -176,9 +279,20 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
       (in default graph).
 
   Raises:
-    tf.errors.OpError: If missing checkpoints or tensors in checkpoints.
-    ValueError: If missing variables in current graph.
+    ValueError: If missing variables in current graph, or if missing
+      checkpoints or tensors in checkpoints.
   """
+  init_from_checkpoint_fn = lambda _: _init_from_checkpoint(
+      ckpt_dir_or_file, assignment_map)
+  if distribution_strategy_context.get_cross_replica_context():
+    init_from_checkpoint_fn(None)
+  else:
+    distribution_strategy_context.get_replica_context().merge_call(
+        init_from_checkpoint_fn)
+
+
+def _init_from_checkpoint(ckpt_dir_or_file, assignment_map):
+  """See `init_from_checkpoint` for documentation."""
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
@@ -187,10 +301,9 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
     var = None
     # Check if this is Variable object or list of Variable objects (in case of
     # partitioned variables).
-    is_var = lambda x: isinstance(x, variables.Variable)
-    if is_var(current_var_or_name) or (
+    if _is_variable(current_var_or_name) or (
         isinstance(current_var_or_name, list)
-        and all(is_var(v) for v in current_var_or_name)):
+        and all(_is_variable(v) for v in current_var_or_name)):
       var = current_var_or_name
     else:
       store_vars = vs._get_default_variable_store()._vars  # pylint:disable=protected-access
@@ -205,7 +318,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
         raise ValueError("Tensor %s is not found in %s checkpoint %s" % (
             tensor_name_in_ckpt, ckpt_dir_or_file, variable_map
         ))
-      if is_var(var):
+      if _is_variable(var):
         # Additional at-call-time checks.
         if not var.get_shape().is_compatible_with(
             variable_map[tensor_name_in_ckpt]):
@@ -268,7 +381,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
 def _get_checkpoint_filename(ckpt_dir_or_file):
   """Returns checkpoint filename given directory or specific checkpoint file."""
   if gfile.IsDirectory(ckpt_dir_or_file):
-    return saver.latest_checkpoint(ckpt_dir_or_file)
+    return checkpoint_management.latest_checkpoint(ckpt_dir_or_file)
   return ckpt_dir_or_file
 
 
@@ -297,13 +410,21 @@ def _set_checkpoint_initializer(variable,
   with ops.device(variable.device), ops.device("/cpu:0"):
     restore_op = io_ops.restore_v2(
         ckpt_file, [tensor_name], [slice_spec], [base_type], name=name)[0]
-    if isinstance(variable, resource_variable_ops.ResourceVariable):
-      init_op = variable.assign(restore_op, read_value=False)
-    else:
-      init_op = state_ops.assign(variable, restore_op)
-    variable._initializer_op = init_op  # pylint:disable=protected-access
-    restore_op.set_shape(variable.shape)
-    variable._initial_value = restore_op  # pylint:disable=protected-access
+
+    names_to_saveables = saveable_object_util.op_list_to_dict([variable])
+    saveable_objects = []
+    for name, op in names_to_saveables.items():
+      for s in saveable_object_util.saveable_objects_for_op(op, name):
+        saveable_objects.append(s)
+
+    assert len(saveable_objects) == 1  # Should be only one variable.
+  init_op = saveable_objects[0].restore([restore_op], restored_shapes=None)
+
+  # pylint:disable=protected-access
+  variable._initializer_op = init_op
+  restore_op.set_shape(variable.shape)
+  variable._initial_value = restore_op
+  # pylint:enable=protected-access
 
 
 def _set_variable_or_list_initializer(variable_or_list, ckpt_file,
@@ -335,6 +456,11 @@ def _set_variable_or_list_initializer(variable_or_list, ckpt_file,
       _set_checkpoint_initializer(v, ckpt_file, tensor_name, slice_info.spec)
   else:
     _set_checkpoint_initializer(variable_or_list, ckpt_file, tensor_name, "")
+
+
+def _is_variable(x):
+  return (isinstance(x, variables.Variable) or
+          resource_variable_ops.is_resource_variable(x))
 
 
 def _collect_partitioned_variable(name, all_vars):

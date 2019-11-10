@@ -15,11 +15,10 @@ limitations under the License.
 
 #include <array>
 
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -29,16 +28,13 @@ limitations under the License.
 namespace xla {
 namespace {
 
-namespace str_util = tensorflow::str_util;
-namespace strings = tensorflow::strings;
-
 struct ReduceLayout {
   std::array<int64, 4> input_minor_to_major;
   std::array<int64, 3> output_minor_to_major;
 
   string ToString() const {
-    return strings::StrCat(str_util::Join(input_minor_to_major, "x"), "_",
-                           str_util::Join(output_minor_to_major, "x"));
+    return absl::StrCat(absl::StrJoin(input_minor_to_major, "x"), "_",
+                        absl::StrJoin(output_minor_to_major, "x"));
   }
 };
 
@@ -53,10 +49,10 @@ void PrintTo(const ReduceLayout& reduce_layout, ::std::ostream* os) {
 
 class ReduceWithLayoutTest
     : public HloTestBase,
-      public ::testing::WithParamInterface<ReduceLayout> {};
-
-StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
-  const char* const hlo_string = R"(
+      public ::testing::WithParamInterface<ReduceLayout> {
+ public:
+  StatusOr<std::unique_ptr<HloModule>> GetParsedModule() {
+    const char* const hlo_string = R"(
 HloModule BadReduce
 
 Sum {
@@ -73,12 +69,11 @@ ENTRY reduce.1 {
 }
 )";
 
-  return ParseHloString(hlo_string);
-}
+    return ParseAndReturnVerifiedModule(hlo_string);
+  }
+};
 
-// TODO(b/72454718): XLA:GPU does not support executing code compiled without
-// optimizations.
-XLA_TEST_P(ReduceWithLayoutTest, DISABLED_ON_GPU(Reduce)) {
+XLA_TEST_P(ReduceWithLayoutTest, Reduce) {
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module, GetParsedModule());
   HloInstruction* reduce_instruction =
       module->entry_computation()->root_instruction()->mutable_operand(0);
@@ -95,21 +90,21 @@ XLA_TEST_P(ReduceWithLayoutTest, DISABLED_ON_GPU(Reduce)) {
   *reduce_input_shape->mutable_layout() =
       LayoutUtil::MakeLayout(reduce_layout.input_minor_to_major);
 
-  std::unique_ptr<Literal> reduce_input =
-      Literal::CreateR4<float>({{ /*i0=0*/
-                                 {/*i1=0*/
-                                  {-0.246092796, -0.179497838, -0.161181688},
-                                  {-0.151643038, -0.240213156, -0.198156}},
-                                 {/*i1=1*/
-                                  {-0.14222312, -0.162200093, -0.193907976},
-                                  {-0.239411, -0.198166847, -0.172471642}}},
-                                { /*i0=1*/
-                                 {/*i1=0*/
-                                  {-0.22965157, -0.218723893, -0.129257083},
-                                  {-0.188762426, -0.16123569, -0.181166649}},
-                                 {/*i1=1*/
-                                  {-0.241772294, -0.245131493, -0.160247207},
-                                  {-0.179881215, -0.23383224, -0.121976733}}}});
+  Literal reduce_input = LiteralUtil::CreateR4<float>(
+      {{ /*i0=0*/
+        {/*i1=0*/
+         {-0.246092796, -0.179497838, -0.161181688},
+         {-0.151643038, -0.240213156, -0.198156}},
+        {/*i1=1*/
+         {-0.14222312, -0.162200093, -0.193907976},
+         {-0.239411, -0.198166847, -0.172471642}}},
+       { /*i0=1*/
+        {/*i1=0*/
+         {-0.22965157, -0.218723893, -0.129257083},
+         {-0.188762426, -0.16123569, -0.181166649}},
+        {/*i1=1*/
+         {-0.241772294, -0.245131493, -0.160247207},
+         {-0.179881215, -0.23383224, -0.121976733}}}});
 
   EXPECT_TRUE(RunAndCompareNoHloPasses(std::move(module), ErrorSpec(1e-5)));
 }

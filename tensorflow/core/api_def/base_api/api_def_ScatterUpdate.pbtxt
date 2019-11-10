@@ -59,5 +59,7 @@ Requires `updates.shape = indices.shape + ref.shape[1:]` or `updates.shape = []`
 <div style="width:70%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="https://www.tensorflow.org/images/ScatterUpdate.png" alt>
 </div>
+
+See also `tf.batch_scatter_update` and `tf.scatter_nd_update`.
 END
 }

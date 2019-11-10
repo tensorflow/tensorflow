@@ -201,12 +201,12 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
   }
   if (opts.select.find(kShown[5]) != opts.select.end()) {
     if (node->proto().devices_size() > 0) {
-      info.push_back(str_util::Join(node->proto().devices(), "|"));
+      info.push_back(absl::StrJoin(node->proto().devices(), "|"));
     }
   }
   if (opts.select.find(kShown[6]) != opts.select.end()) {
     const std::set<string>& op_types = node->node->op_types();
-    info.push_back(str_util::Join(op_types, "|"));
+    info.push_back(absl::StrJoin(op_types, "|"));
   }
   if (opts.select.find(kShown[7]) != opts.select.end()) {
     string run = FormatNumber(node->proto().total_run_count());
@@ -230,14 +230,14 @@ string TFShow::FormatNode(ShowNode* node, const Options& opts) const {
         shape_vec.push_back(strings::Printf("%d:unknown", s.first));
       } else {
         shape_vec.push_back(strings::Printf(
-            "%d:%s", s.first, str_util::Join(s.second, "x").c_str()));
+            "%d:%s", s.first, absl::StrJoin(s.second, "x").c_str()));
       }
     }
-    info.push_back(str_util::Join(shape_vec, "|"));
+    info.push_back(absl::StrJoin(shape_vec, "|"));
   }
 
   return strings::Printf("%s (%s)", node->name().c_str(),
-                         str_util::Join(info, ", ").c_str());
+                         absl::StrJoin(info, ", ").c_str());
 }
 
 string TFShow::FormatLegend(const Options& opts) const {
@@ -286,7 +286,7 @@ string TFShow::FormatLegend(const Options& opts) const {
     legends.push_back("input shapes");
   }
   return strings::Printf("node name | %s\n",
-                         str_util::Join(legends, " | ").c_str());
+                         absl::StrJoin(legends, " | ").c_str());
 }
 
 }  // namespace tfprof

@@ -26,10 +26,9 @@ namespace options {
 
 bool OptimizeForSizeRequested(const HloModuleConfig& config);
 bool VectorizedReduceDisabled(const HloModuleConfig& config);
-bool EnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
-tensorflow::gtl::optional<int64> LlvmIrGemvTilingFactor(
-    const HloModuleConfig& config);
-tensorflow::gtl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
+bool ForceEnableExperimentalLlvmIrGemm(const HloModuleConfig& config);
+absl::optional<int64> LlvmIrGemvTilingFactor(const HloModuleConfig& config);
+absl::optional<std::tuple<int64, int64, int64>> LlvmIrGemmTileSize(
     const HloModuleConfig& config);
 
 }  // namespace options

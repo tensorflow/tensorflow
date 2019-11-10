@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace cpu {
@@ -46,11 +46,11 @@ class VectorSupportLibrary {
   // instance (i.e. LoadVector will load a vector of type <`vector_size` x
   // `primitive_type`>).
   VectorSupportLibrary(PrimitiveType primitive_type, int64 vector_size,
-                       llvm::IRBuilder<>* ir_builder, std::string name);
+                       llvm::IRBuilder<>* b, std::string name);
 
   llvm::Value* Mul(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Mul(int64 lhs, llvm::Value* rhs) {
-    return Mul(ir_builder()->getInt64(lhs), rhs);
+    return Mul(b()->getInt64(lhs), rhs);
   }
   llvm::Value* Mul(const llvm::APFloat& lhs, llvm::Value* rhs) {
     return Mul(GetConstantFloat(rhs->getType(), lhs), rhs);
@@ -63,7 +63,7 @@ class VectorSupportLibrary {
 
   llvm::Value* Add(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Add(int64 lhs, llvm::Value* rhs) {
-    return Add(ir_builder()->getInt64(lhs), rhs);
+    return Add(b()->getInt64(lhs), rhs);
   }
   llvm::Value* Add(const llvm::APFloat& lhs, llvm::Value* rhs) {
     return Add(GetConstantFloat(rhs->getType(), lhs), rhs);
@@ -100,8 +100,10 @@ class VectorSupportLibrary {
 
   llvm::Value* Floor(llvm::Value* a);
 
+  // Precondition: Neither `low` nor `high` is nan.
   llvm::Value* Clamp(llvm::Value* a, const llvm::APFloat& low,
                      const llvm::APFloat& high);
+
   llvm::Value* SplatFloat(const llvm::APFloat& d) {
     return GetConstantFloat(vector_type(), d);
   }
@@ -114,6 +116,9 @@ class VectorSupportLibrary {
   // raison d'etre) less cluttered.
 
   llvm::Value* FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FCmpEQMask(llvm::Value* lhs, const llvm::APFloat& rhs) {
+    return FCmpEQMask(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
   llvm::Value* FCmpULEMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, const llvm::APFloat& rhs) {
@@ -147,13 +152,11 @@ class VectorSupportLibrary {
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
                                     llvm::Value* offset_elements, int64 scale) {
     return ComputeOffsetPointer(
-        base_pointer,
-        ir_builder_->CreateMul(ir_builder_->getInt64(scale), offset_elements));
+        base_pointer, b_->CreateMul(b_->getInt64(scale), offset_elements));
   }
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
                                     int64 offset_elements) {
-    return ComputeOffsetPointer(base_pointer,
-                                ir_builder()->getInt64(offset_elements));
+    return ComputeOffsetPointer(base_pointer, b()->getInt64(offset_elements));
   }
 
   llvm::Value* LoadVector(llvm::Value* pointer);
@@ -164,7 +167,7 @@ class VectorSupportLibrary {
   }
 
   llvm::Value* LoadVector(llvm::Value* base_pointer, int64 offset_elements) {
-    return LoadVector(base_pointer, ir_builder()->getInt64(offset_elements));
+    return LoadVector(base_pointer, b()->getInt64(offset_elements));
   }
 
   llvm::Value* LoadScalar(llvm::Value* pointer);
@@ -175,7 +178,7 @@ class VectorSupportLibrary {
   }
 
   llvm::Value* LoadScalar(llvm::Value* base_pointer, int64 offset_elements) {
-    return LoadScalar(base_pointer, ir_builder()->getInt64(offset_elements));
+    return LoadScalar(base_pointer, b()->getInt64(offset_elements));
   }
 
   void StoreVector(llvm::Value* value, llvm::Value* pointer);
@@ -187,7 +190,7 @@ class VectorSupportLibrary {
 
   void StoreVector(llvm::Value* value, llvm::Value* base_pointer,
                    int64 offset_elements) {
-    StoreVector(value, base_pointer, ir_builder()->getInt64(offset_elements));
+    StoreVector(value, base_pointer, b()->getInt64(offset_elements));
   }
 
   void StoreScalar(llvm::Value* value, llvm::Value* pointer);
@@ -198,7 +201,7 @@ class VectorSupportLibrary {
 
   void StoreScalar(llvm::Value* value, llvm::Value* base_pointer,
                    int64 offset_elements) {
-    StoreScalar(base_pointer, ir_builder()->getInt64(offset_elements));
+    StoreScalar(base_pointer, b()->getInt64(offset_elements));
   }
 
   llvm::Value* LoadBroadcast(llvm::Value* pointer);
@@ -207,7 +210,7 @@ class VectorSupportLibrary {
     return LoadBroadcast(ComputeOffsetPointer(base_pointer, offset_elements));
   }
   llvm::Value* LoadBroadcast(llvm::Value* base_pointer, int64 offset_elements) {
-    return LoadBroadcast(base_pointer, ir_builder()->getInt64(offset_elements));
+    return LoadBroadcast(base_pointer, b()->getInt64(offset_elements));
   }
 
   // Compute the horizontal sum of each vector in `vectors`.  The i'th element
@@ -220,7 +223,7 @@ class VectorSupportLibrary {
   llvm::Value* GetZeroVector();
   llvm::Value* GetZeroScalar();
 
-  llvm::IRBuilder<>* ir_builder() const { return ir_builder_; }
+  llvm::IRBuilder<>* b() const { return b_; }
   int64 vector_size() const { return vector_size_; }
   llvm::Type* vector_type() const { return vector_type_; }
   llvm::Type* vector_pointer_type() const { return vector_pointer_type_; }
@@ -277,7 +280,7 @@ class VectorSupportLibrary {
 
   int64 vector_size_;
   PrimitiveType primitive_type_;
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
   llvm::Type* vector_type_;
   llvm::Type* vector_pointer_type_;
   llvm::Type* scalar_type_;
@@ -289,22 +292,21 @@ class VectorSupportLibrary {
 // can later convert to a SSA value.
 class LlvmVariable {
  public:
-  LlvmVariable(llvm::Type*, llvm::IRBuilder<>* ir_builder);
+  LlvmVariable(llvm::Type*, llvm::IRBuilder<>* b);
 
   llvm::Value* Get() const;
   void Set(llvm::Value* new_value);
 
  private:
   llvm::AllocaInst* alloca_;
-  llvm::IRBuilder<>* ir_builder_;
+  llvm::IRBuilder<>* b_;
 };
 
 class VectorVariable : public LlvmVariable {
  public:
   VectorVariable(VectorSupportLibrary* vector_support,
                  llvm::Value* initial_value)
-      : LlvmVariable(vector_support->vector_type(),
-                     vector_support->ir_builder()) {
+      : LlvmVariable(vector_support->vector_type(), vector_support->b()) {
     Set(initial_value);
   }
 };
@@ -313,8 +315,7 @@ class ScalarVariable : public LlvmVariable {
  public:
   ScalarVariable(VectorSupportLibrary* vector_support,
                  llvm::Value* initial_value)
-      : LlvmVariable(vector_support->scalar_type(),
-                     vector_support->ir_builder()) {
+      : LlvmVariable(vector_support->scalar_type(), vector_support->b()) {
     Set(initial_value);
   }
 };
@@ -328,7 +329,7 @@ class TileVariable {
                std::vector<llvm::Value*> initial_value);
 
   std::vector<llvm::Value*> Get() const;
-  void Set(tensorflow::gtl::ArraySlice<llvm::Value*> value);
+  void Set(absl::Span<llvm::Value* const> value);
 
  private:
   std::vector<VectorVariable> storage_;

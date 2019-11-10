@@ -19,13 +19,14 @@ limitations under the License.
 #include <cassert>
 #include <string>
 
+#include "tensorflow/compiler/xla/cpu_function_runtime.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/core/platform/types.h"
 
 // Forward-declare, rather than include, to reduce code size for users that
 // never use this functionality.
 namespace xla {
-class ProgramShape;
+class ProgramShapeProto;
 class HloProfilePrinterData;
 }
 
@@ -56,51 +57,65 @@ class XlaCompiledCpuFunction {
   // StaticData represents the state necessary to run an XLA-compiled
   // function. For JIT this is backed by data in XlaJitCompiledCpuFunction; for
   // AOT this is backed by data compiled into the object file.
-  struct StaticData {
+  //
+  // The contents of StaticData are XLA-internal implementation details and
+  // should not be relied on by clients (and therefore are private).
+  class StaticData {
+   private:
     // The raw function to call.
-    RawFunction raw_function;
+    RawFunction raw_function_;
 
-    // Cardinality and sizes of arg and temp buffers.
-    const intptr_t* arg_sizes = nullptr;
-    size_t num_args = 0;
-    const intptr_t* temp_sizes = nullptr;
-    size_t num_temps = 0;
+    // Contains information about the buffers used by the XLA computation.
+    const xla::cpu_function_runtime::BufferInfo* buffer_infos_ = nullptr;
+    size_t num_buffers_ = 0;
+
+    // Entry parameter i is described by
+    // buffer_infos[arg_index_table[i]].
+    const int32* arg_index_table_ = nullptr;
+
+    // There are num_args entry parameters.
+    int64 num_args_ = 0;
 
     // The 0-based index of the result tuple, in the temp buffers.
-    size_t result_index = 0;
+    size_t result_index_ = 0;
 
     // [Optional] Arrays of arg and result names. These are arrays of C-style
     // strings, where the array is terminated by nullptr.
-    const char** arg_names = nullptr;
-    const char** result_names = nullptr;
+    const char** arg_names_ = nullptr;
+    const char** result_names_ = nullptr;
 
     // [Optional] Arg and result shapes.
-    const xla::ProgramShape* program_shape = nullptr;
+    const xla::ProgramShapeProto* program_shape_ = nullptr;
 
     // [Optional] Profile printer data.  Null if profiling is disabled.
-    const xla::HloProfilePrinterData* hlo_profile_printer_data = nullptr;
+    const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
 
     // [Optional] The number of profile counters expected in the profile counter
     // buffer by the generated code and hlo_profile_printer.  0 if profiling is
     // disabled.  This information is already present in
     // hlo_profile_printer_data but xla::HloProfilePrinterData is forward
     // declared so we don't have access to that information here.
-    int64 profile_counters_size = 0;
+    int64 profile_counters_size_ = 0;
+
+    // Only XlaCompiledCpuFunction is allowed to read and write the above
+    // fields.
+    friend class XlaCompiledCpuFunction;
   };
 
   // AllocMode controls the buffer allocation mode.
   enum class AllocMode {
     // Allocate all buffers - args, results, profile and temps.
-    ARGS_RESULTS_PROFILES_AND_TEMPS,
+    ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS,
 
     // Only allocate result, profile and temp buffers.
     // Use set_arg_data to set argument buffers before Run is called.
     RESULTS_PROFILES_AND_TEMPS_ONLY,
   };
 
-  XlaCompiledCpuFunction(
+  explicit XlaCompiledCpuFunction(
       const StaticData& static_data,
-      AllocMode alloc_mode = AllocMode::ARGS_RESULTS_PROFILES_AND_TEMPS);
+      AllocMode alloc_mode =
+          AllocMode::ARGS_VARIABLES_RESULTS_PROFILES_AND_TEMPS);
   virtual ~XlaCompiledCpuFunction();
 
   XlaCompiledCpuFunction(const XlaCompiledCpuFunction&) = delete;
@@ -113,11 +128,7 @@ class XlaCompiledCpuFunction {
 
   // Runs the computation, with inputs read from arg buffers, and outputs
   // written to result buffers. Returns true on success and false on failure.
-  bool Run() {
-    raw_function_(temps_[result_index_], &run_options_,
-                  const_cast<const void**>(args_), temps_, profile_counters_);
-    return true;
-  }
+  bool Run();
 
   // Returns the error message from the previous failed Run call.
   //
@@ -129,14 +140,25 @@ class XlaCompiledCpuFunction {
   // ------------------------------
   // Arg methods for managing input buffers. Buffers are in row-major order.
 
-  // Returns the underlying array of argument buffers, where args()[I] is the
-  // buffer for the positional argument at index I.
-  void** args() { return args_; }
-  const void* const* args() const { return args_; }
-
   // Returns the buffer for the positional argument at the given `index`.
-  void* arg_data(size_t index) { return args_[index]; }
-  const void* arg_data(size_t index) const { return args_[index]; }
+  void* arg_data(size_t index) {
+    return buffer_table_[arg_index_table_[index]];
+  }
+  const void* arg_data(size_t index) const {
+    return buffer_table_[arg_index_table_[index]];
+  }
+
+  int num_args() const { return num_args_; }
+
+  // Returns the size of entry parameter `idx`.
+  //
+  // There is a static version of this method on tfcompile generated subclasses
+  // of XlaCompiledCpuFunction, but try to prefer this when possible since it
+  // works both for XlaJitCompiledCpuFunction and AOT compiled subclasses.
+  int arg_size(int idx) const {
+    assert(idx < num_args());
+    return buffer_infos_[arg_index_table_[idx]].size();
+  }
 
   // Sets the buffer for the positional argument at the given `index` to `data`.
   // Must be called before Run to have an effect. May be called under any
@@ -145,11 +167,20 @@ class XlaCompiledCpuFunction {
   //
   // Allocated memory must be aligned to the size specified by
   // tensorflow::tfcompile::runtime::kAlign. If possible, use the functions in
-  // tensorflow/compiler/aot/runtime.h to ensure correct alignment.
+  // tensorflow/compiler/tf2xla/cpu_function_runtime.h to ensure correct
+  // alignment.
   //
   // Aliasing of argument and result buffers is not allowed, and results in
   // undefined behavior.
-  void set_arg_data(size_t index, void* data) { args_[index] = data; }
+  void set_arg_data(size_t index, const void* data) {
+    // The const_cast is safe because the generated code does not write to arg
+    // buffers.
+    //
+    // buffer_table_ contains pointers to buffers that _will_ be written to by
+    // generated code so it would be misleading to make buffer_table_ a `const
+    // void**`.
+    buffer_table_[arg_index_table_[index]] = const_cast<void*>(data);
+  }
 
   // ------------------------------
   // Result methods for managing output buffers. Buffers are in row-major order.
@@ -159,9 +190,9 @@ class XlaCompiledCpuFunction {
 
   // Returns the underlying array of result buffers, where results()[I] is the
   // buffer for the positional result at index I.
-  void** results() { return static_cast<void**>(temps_[result_index_]); }
+  void** results() { return static_cast<void**>(buffer_table_[result_index_]); }
   const void* const* results() const {
-    return static_cast<const void* const*>(temps_[result_index_]);
+    return static_cast<const void* const*>(buffer_table_[result_index_]);
   }
 
   // Profile counters for this XLA computation.
@@ -205,7 +236,7 @@ class XlaCompiledCpuFunction {
 
   // Returns the shape of the args and results. May return nullptr if the
   // program shape isn't available.
-  const xla::ProgramShape* ProgramShape() const { return program_shape_; }
+  const xla::ProgramShapeProto* ProgramShape() const { return program_shape_; }
 
   bool hlo_profiling_enabled() const {
     return hlo_profile_printer_data_ != nullptr;
@@ -215,18 +246,97 @@ class XlaCompiledCpuFunction {
     return *hlo_profile_printer_data_;
   }
 
+ protected:
+  // ---------------------------------------------------------------------------
+  // Accessors for reading from and writing to instances of `StaticData`.
+  //
+  // Classes generated by tfcompile can call these because the generated classes
+  // inherit from `XlaCompiledCpuFunction`.  `XlaJitCompiledCpuFunction` can
+  // call these because it is explicitly added as a friend.
+
+  static void set_static_data_raw_function(StaticData* static_data,
+                                           RawFunction raw_function) {
+    static_data->raw_function_ = raw_function;
+  }
+
+  static void set_static_data_buffer_infos(
+      StaticData* static_data,
+      const xla::cpu_function_runtime::BufferInfo* buffer_infos) {
+    static_data->buffer_infos_ = buffer_infos;
+  }
+
+  static void set_static_data_num_buffers(StaticData* static_data,
+                                          size_t num_buffers) {
+    static_data->num_buffers_ = num_buffers;
+  }
+
+  static void set_static_data_arg_index_table(StaticData* static_data,
+                                              const int32* arg_index_table) {
+    static_data->arg_index_table_ = arg_index_table;
+  }
+
+  static void set_static_data_num_args(StaticData* static_data,
+                                       int64 num_args) {
+    static_data->num_args_ = num_args;
+  }
+
+  static void set_static_data_result_index(StaticData* static_data,
+                                           size_t result_index) {
+    static_data->result_index_ = result_index;
+  }
+
+  static void set_static_data_arg_names(StaticData* static_data,
+                                        const char** arg_names) {
+    static_data->arg_names_ = arg_names;
+  }
+
+  static void set_static_data_result_names(StaticData* static_data,
+                                           const char** result_names) {
+    static_data->result_names_ = result_names;
+  }
+
+  static void set_static_data_program_shape(
+      StaticData* static_data, const xla::ProgramShapeProto* program_shape) {
+    static_data->program_shape_ = program_shape;
+  }
+
+  static void set_static_data_hlo_profile_printer_data(
+      StaticData* static_data,
+      const xla::HloProfilePrinterData* hlo_profile_printer_data) {
+    static_data->hlo_profile_printer_data_ = hlo_profile_printer_data;
+  }
+
+  static const xla::HloProfilePrinterData*
+  get_static_data_hlo_profile_printer_data(StaticData* static_data) {
+    return static_data->hlo_profile_printer_data_;
+  }
+
+  static void set_static_data_profile_counters_size(
+      StaticData* static_data, int64 profile_counters_size) {
+    static_data->profile_counters_size_ = profile_counters_size;
+  }
+
  private:
   const RawFunction raw_function_;
   const size_t result_index_;
 
-  // Arrays of argument and temp buffers; entries in args_ may be overwritten by
-  // the user.
-  void** args_ = nullptr;
-  void** temps_ = nullptr;
+  // Array containing pointers to argument and temp buffers (slots corresponding
+  // to constant and on-stack buffers are null).
+  void** const buffer_table_;
 
-  // Backing memory for individual arg and temp buffers.
-  void* alloc_args_ = nullptr;
-  void* alloc_temps_ = nullptr;
+  // Describes the buffers used by the XLA computation.
+  const xla::cpu_function_runtime::BufferInfo* const buffer_infos_;
+
+  // Argument i needs to be placed in buffer_table_[arg_index_to_temp_index_[i]]
+  // for XLA generated code to be able to find it.
+  const int32* const arg_index_table_;
+
+  // The number of incoming arguments.
+  const int32 num_args_;
+
+  // Backing memory for buffer_table_ and args_, the latter depending on
+  // AllocMode.
+  void* alloc_buffer_table_ = nullptr;
 
   // Backing memory for profiling counters.
   int64* profile_counters_ = nullptr;
@@ -237,8 +347,12 @@ class XlaCompiledCpuFunction {
   // Optional metadata.
   const char** arg_names_ = nullptr;
   const char** result_names_ = nullptr;
-  const xla::ProgramShape* program_shape_ = nullptr;
+  const xla::ProgramShapeProto* program_shape_ = nullptr;
   const xla::HloProfilePrinterData* hlo_profile_printer_data_ = nullptr;
+
+  // Add `XlaJitCompiledCpuFunction` as a friend so that it can access the
+  // `set_static_data_*` static methods above.
+  friend class XlaJitCompiledCpuFunction;
 };
 
 }  // namespace tensorflow

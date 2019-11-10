@@ -18,8 +18,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -50,21 +50,21 @@ XLA_TEST_F(ClientTest, ExecuteWithLayout) {
       ExecutionOptions execution_options = execution_options_;
       *execution_options.mutable_shape_with_output_layout() =
           ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                         execute_layout);
+                                         execute_layout)
+              .ToProto();
       TF_ASSERT_OK_AND_ASSIGN(
           std::unique_ptr<GlobalData> data,
           client_->Execute(computation, {}, &execution_options));
 
-      std::unique_ptr<Literal> expected_literal =
-          Literal::CreateR2WithLayout<int32>(
-              {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
+      Literal expected_literal = LiteralUtil::CreateR2WithLayout<int32>(
+          {{11, 22}, {33, 44}}, LayoutUtil::MakeLayout(transfer_layout));
 
       TF_ASSERT_OK_AND_ASSIGN(
-          auto computed, client_->Transfer(*data, &expected_literal->shape()));
+          auto computed, client_->Transfer(*data, &expected_literal.shape()));
 
       ASSERT_TRUE(LiteralTestUtil::EqualShapesAndLayouts(
-          expected_literal->shape(), computed->shape()));
-      EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *computed));
+          expected_literal.shape(), computed.shape()));
+      EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, computed));
     }
   }
 }
@@ -85,36 +85,40 @@ XLA_TEST_F(ClientTest, ExecuteWithTupleLayout) {
           {ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                           /*minor_to_major=*/{0, 1}),
            ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
-                                          /*minor_to_major=*/{1, 0})});
+                                          /*minor_to_major=*/{1, 0})})
+          .ToProto();
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result,
       client_->ExecuteAndTransfer(computation, {}, &execution_options));
   LiteralTestUtil::ExpectR2Equal<int32>({{1, 2}, {3, 4}},
-                                        LiteralSlice(*result, {0}));
+                                        LiteralSlice(result, {0}));
   LiteralTestUtil::ExpectR2Equal<int32>({{10, 20}, {30, 40}},
-                                        LiteralSlice(*result, {1}));
+                                        LiteralSlice(result, {1}));
 
-  EXPECT_TRUE(ShapeUtil::IsTuple(result->shape()));
-  EXPECT_EQ(2, ShapeUtil::TupleElementCount(result->shape()));
+  EXPECT_TRUE(result.shape().IsTuple());
+  EXPECT_EQ(2, ShapeUtil::TupleElementCount(result.shape()));
 
   EXPECT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::GetTupleElementShape(result->shape(), 0),
+      ShapeUtil::GetTupleElementShape(result.shape(), 0),
       ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                      /*minor_to_major=*/{0, 1})));
   EXPECT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::GetTupleElementShape(result->shape(), 1),
+      ShapeUtil::GetTupleElementShape(result.shape(), 1),
       ShapeUtil::MakeShapeWithLayout(S32, /*dimensions=*/{2, 2},
                                      /*minor_to_major=*/{1, 0})));
 }
 
-XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
+// Disabled for interpreter since ExecuteAsyncOnStream is not implemented on
+// interpreter backend.
+XLA_TEST_F(ClientTest,
+           DISABLED_ON_INTERPRETER(DISABLED_ON_GPU(ExecuteParallel))) {
   XlaComputation add_with_one_arg, mul_with_two_args, dot_with_one_arg;
   Shape shape = ShapeUtil::MakeShape(S32, {2, 2});
 
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<GlobalData> const_arg,
-      client_->TransferToServer(*Literal::CreateR2<int32>({{5, 6}, {7, 8}})));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> const_arg,
+                          client_->TransferToServer(
+                              LiteralUtil::CreateR2<int32>({{5, 6}, {7, 8}})));
 
   XlaBuilder b(TestName() + ".add");
   Add(Parameter(&b, 0, shape, "param_0"),
@@ -136,13 +140,13 @@ XLA_TEST_F(ClientTest, DISABLED_ON_GPU(ExecuteParallel)) {
 
   TF_ASSERT_OK_AND_ASSIGN(auto results,
                           client_->ExecuteParallel(computation_instances));
-  auto expected_result = Literal::CreateR2<int32>({{6, 8}, {10, 12}});
+  auto expected_result = LiteralUtil::CreateR2<int32>({{6, 8}, {10, 12}});
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto result_literal,
-      client_->Transfer(*results[0], &expected_result->shape()));
+      client_->Transfer(*results[0], &expected_result.shape()));
 
-  EXPECT_TRUE(LiteralTestUtil::Equal(*expected_result, *result_literal));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected_result, result_literal));
 }
 
 }  // namespace

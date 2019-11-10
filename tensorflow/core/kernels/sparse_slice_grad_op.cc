@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
 

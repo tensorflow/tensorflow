@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_MATRIX_SET_DIAG_OP_H_
-#define TENSORFLOW_KERNELS_MATRIX_SET_DIAG_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MATRIX_SET_DIAG_OP_H_
+#define TENSORFLOW_CORE_KERNELS_MATRIX_SET_DIAG_OP_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -25,13 +25,15 @@ namespace functor {
 
 template <typename Device, typename T>
 struct MatrixSetDiag {
-  static void Compute(OpKernelContext* context, const Device& d,
-                      typename TTypes<T, 3>::ConstTensor input,
-                      typename TTypes<T, 2>::ConstTensor diag,
-                      typename TTypes<T, 3>::Tensor output);
+  static void Compute(OpKernelContext* context, const Device& device,
+                      typename TTypes<T, 3>::ConstTensor& input,
+                      typename TTypes<T>::ConstTensor& diag,
+                      typename TTypes<T, 3>::Tensor& output,
+                      const Eigen::Index d_lower, const Eigen::Index d_upper,
+                      const Eigen::Index max_diag_len);
 };
 
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_MATRIX_SET_DIAG_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MATRIX_SET_DIAG_OP_H_

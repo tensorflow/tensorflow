@@ -1,0 +1,7 @@
+path: "tensorflow.tpu"
+tf_module {
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+}

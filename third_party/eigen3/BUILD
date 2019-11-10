@@ -11,18 +11,17 @@ licenses([
 
 exports_files(["LICENSE"])
 
-# INTEL_MKL start
-load("//tensorflow:tensorflow.bzl", "if_mkl")
-
-# INTEL_MKL end
-load("//tensorflow:tensorflow.bzl", "if_mkl")
+load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 EIGEN3_THIRD_PARTY_HEADERS = [
     "Eigen/Core",
     "Eigen/LU",
     "Eigen/Cholesky",
     "Eigen/Eigenvalues",
+    "Eigen/OrderingMethods",
     "Eigen/QR",
+    "Eigen/SparseCholesky",
+    "Eigen/SparseCore",
     "Eigen/SVD",
     "unsupported/Eigen/MatrixFunctions",
     "unsupported/Eigen/SpecialFunctions",
@@ -66,19 +65,13 @@ genrule(
     outs = ["include"],
     cmd = """
     mkdir $@
-    for f in $(locations @eigen_archive//:eigen_header_files) ; do
+    for f in $(SRCS); do
       d="$${f%/*}"
       d="$${d#*external/eigen_archive/}"
 
       mkdir -p "$@/$${d}"
       cp "$${f}" "$@/$${d}/"
     done
-
-    for f in $(locations :eigen_third_party_header_files) ; do
-      d="$${f%/*}"
-
-      mkdir -p "$@/$${d}"
-      cp "$${f}" "$@/$${d}/"
-    done
-    """
+    """,
+    tags = ["manual"],
 )

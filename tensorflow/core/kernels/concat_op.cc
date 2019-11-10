@@ -18,23 +18,23 @@ limitations under the License.
 #include <limits>
 #include <vector>
 
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 typedef Eigen::GpuDevice GPUDevice;
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
@@ -66,16 +66,17 @@ class ConcatBaseOp : public OpKernel {
     // In case of ConcatV2, "axis" could be int32 or int64
     if (AxisArgName == NAME_IS_AXIS) {
       OP_REQUIRES(
-          c, (concat_dim_tensor->dtype() == DT_INT32 ||
-              concat_dim_tensor->dtype() == DT_INT64),
+          c,
+          (concat_dim_tensor->dtype() == DT_INT32 ||
+           concat_dim_tensor->dtype() == DT_INT64),
           errors::InvalidArgument(axis_attribute_name,
                                   " tensor should be int32 or int64, but got ",
-                                  concat_dim_tensor->dtype()));
+                                  DataTypeString(concat_dim_tensor->dtype())));
     } else {
       OP_REQUIRES(c, (concat_dim_tensor->dtype() == DT_INT32),
-                  errors::InvalidArgument(axis_attribute_name,
-                                          " tensor should be int32, but got ",
-                                          concat_dim_tensor->dtype()));
+                  errors::InvalidArgument(
+                      axis_attribute_name, " tensor should be int32, but got ",
+                      DataTypeString(concat_dim_tensor->dtype())));
     }
     if (concat_dim_tensor->dtype() == DT_INT32) {
       concat_dim =
@@ -113,7 +114,7 @@ class ConcatBaseOp : public OpKernel {
     int64 output_concat_dim = 0;
     const bool input_is_scalar = IsLegacyScalar(input_shape);
     for (int i = 0; i < N; ++i) {
-      const auto in = values[i];
+      const auto& in = values[i];
       const bool in_is_scalar = IsLegacyScalar(in.shape());
       OP_REQUIRES(
           c, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
@@ -153,12 +154,12 @@ class ConcatBaseOp : public OpKernel {
     if (output->NumElements() > 0) {
       int64 output_dim1 = output->NumElements() / inputs_flat_dim0;
       auto output_flat = output->shaped<T, 2>({inputs_flat_dim0, output_dim1});
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       if (std::is_same<Device, GPUDevice>::value) {
         ConcatGPU<T>(c, inputs_flat, output, &output_flat);
         return;
       }
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifdef TENSORFLOW_USE_SYCL
       if (std::is_same<Device, SYCLDevice>::value) {
         ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
@@ -193,10 +194,12 @@ REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(quint16);
 REGISTER_CONCAT(qint16);
 REGISTER_CONCAT(qint32);
+REGISTER_CONCAT(uint32);
+REGISTER_CONCAT(uint64);
 
 #undef REGISTER_CONCAT
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(type)                               \
   REGISTER_KERNEL_BUILDER(Name("Concat")                 \
@@ -237,7 +240,7 @@ REGISTER_KERNEL_BUILDER(Name("ConcatV2")
                             .HostMemory("output"),
                         ConcatV2Op<CPUDevice, int32>);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL(type)                              \

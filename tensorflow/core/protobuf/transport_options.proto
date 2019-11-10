@@ -4,5 +4,5 @@ package tensorflow;
 
 // Extra data needed on a non-RDMA RecvBufResponse.
 message RecvBufRespExtra {
-  bytes tensor_content = 1;
+  repeated bytes tensor_content = 1;
 };

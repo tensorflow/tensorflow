@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "QuantizedMul"
+  endpoint {
+    name: "math.QuantizedMul"
+  }
+}

@@ -53,7 +53,7 @@ std::string StatsCalculator::HeaderString(const std::string& title) const {
          << " ==============================" << std::endl;
 
   InitField(stream, 24) << "[node type]";
-  InitField(stream, 9) << "[start]";
+  InitField(stream, 17) << "[start]";
   InitField(stream, 9) << "[first]";
   InitField(stream, 9) << "[avg ms]";
   InitField(stream, 8) << "[%]";
@@ -77,7 +77,7 @@ std::string StatsCalculator::ColumnString(const Detail& detail,
 
   std::stringstream stream;
   InitField(stream, 24) << detail.type;
-  InitField(stream, 9) << start_ms;
+  InitField(stream, 17) << start_ms;
   InitField(stream, 9) << first_time_ms;
   InitField(stream, 9) << avg_time_ms;
   InitField(stream, 7) << percentage << "%";
@@ -272,9 +272,24 @@ std::string StatsCalculator::GetOutputString() const {
   return stream.str();
 }
 
-void StatsCalculator::UpdateDetails(
-    const std::map<std::string, Detail>& details) {
-  details_.insert(details.begin(), details.end());
+void StatsCalculator::AddNodeStats(const std::string& name,
+                                   const std::string& type, int64_t run_order,
+                                   int64_t start_us, int64_t rel_end_us,
+                                   int64_t mem_used) {
+  Detail* detail = nullptr;
+  if (details_.find(name) == details_.end()) {
+    details_.insert({name, {}});
+    detail = &details_.at(name);
+    detail->type = type;
+    detail->name = name;
+    detail->run_order = run_order;
+  } else {
+    detail = &details_.at(name);
+  }
+  detail->start_us.UpdateStat(start_us);
+  detail->rel_end_us.UpdateStat(rel_end_us);
+  detail->mem_used.UpdateStat(mem_used);
+  detail->times_called++;
 }
 
 }  // namespace tensorflow

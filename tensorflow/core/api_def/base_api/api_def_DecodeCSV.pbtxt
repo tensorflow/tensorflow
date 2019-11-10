@@ -11,7 +11,8 @@ END
     name: "record_defaults"
     description: <<END
 One tensor per column of the input record, with either a
-scalar default value for that column or empty if the column is required.
+scalar default value for that column or an empty vector if the column is
+required.
 END
   }
   out_arg {

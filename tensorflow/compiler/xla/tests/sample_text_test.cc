@@ -19,18 +19,18 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
 namespace {
 
-using tensorflow::gtl::nullopt;
+using absl::nullopt;
 
 class SampleTextTest : public HloTestBase {};
 

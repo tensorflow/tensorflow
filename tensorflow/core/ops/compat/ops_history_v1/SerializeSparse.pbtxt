@@ -1,0 +1,59 @@
+op {
+  name: "SerializeSparse"
+  input_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "serialized_sparse"
+    type: DT_STRING
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "SerializeSparse"
+  input_arg {
+    name: "sparse_indices"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "sparse_values"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "sparse_shape"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "serialized_sparse"
+    type_attr: "out_type"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  attr {
+    name: "out_type"
+    type: "type"
+    default_value {
+      type: DT_STRING
+    }
+    allowed_values {
+      list {
+        type: DT_STRING
+        type: DT_VARIANT
+      }
+    }
+  }
+}

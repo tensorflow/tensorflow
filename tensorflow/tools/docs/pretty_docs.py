@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,6 +29,7 @@ from __future__ import division
 from __future__ import print_function
 
 import textwrap
+import six
 
 
 def build_md_page(page_info):
@@ -83,7 +85,8 @@ def _build_class_page(page_info):
   """Given a ClassPageInfo object Return the page as an md string."""
   parts = ['# {page_info.full_name}\n\n'.format(page_info=page_info)]
 
-  parts.append('## Class `%s`\n\n' % page_info.full_name.split('.')[-1])
+  parts.append('## Class `%s`\n\n' %
+               six.ensure_str(page_info.full_name).split('.')[-1])
   if page_info.bases:
     parts.append('Inherits From: ')
 
@@ -92,6 +95,15 @@ def _build_class_page(page_info):
         link_template.format(**base._asdict()) for base in page_info.bases))
 
   parts.append('\n\n')
+
+  # Sort the methods list, but make sure constructors come first.
+  constructor_names = ['__init__', '__new__']
+  constructors = sorted(
+      method for method in page_info.methods
+      if method.short_name in constructor_names)
+  other_methods = sorted(
+      method for method in page_info.methods
+      if method.short_name not in constructor_names)
 
   if len(page_info.aliases) > 1:
     parts.append('### Aliases:\n\n')
@@ -109,6 +121,11 @@ def _build_class_page(page_info):
 
   parts.append('\n\n')
 
+  if constructors:
+    for method_info in constructors:
+      parts.append(_build_method_section(method_info, heading_level=2))
+    parts.append('\n\n')
+
   if page_info.classes:
     parts.append('## Child Classes\n')
 
@@ -122,7 +139,7 @@ def _build_class_page(page_info):
 
   if page_info.properties:
     parts.append('## Properties\n\n')
-    for prop_info in sorted(page_info.properties):
+    for prop_info in page_info.properties:
       h3 = '<h3 id="{short_name}"><code>{short_name}</code></h3>\n\n'
       parts.append(h3.format(short_name=prop_info.short_name))
 
@@ -134,28 +151,11 @@ def _build_class_page(page_info):
 
     parts.append('\n\n')
 
-  if page_info.methods:
+  if other_methods:
     parts.append('## Methods\n\n')
-    # Sort the methods list, but make sure constructors come first.
-    constructors = ['__init__', '__new__']
-    inits = [method for method in page_info.methods
-             if method.short_name in constructors]
-    others = [method for method in page_info.methods
-              if method.short_name not in constructors]
 
-    for method_info in sorted(inits) + sorted(others):
-      h3 = ('<h3 id="{short_name}">'
-            '<code>{short_name}</code>'
-            '</h3>\n\n')
-      parts.append(h3.format(**method_info._asdict()))
-
-      if method_info.signature is not None:
-        parts.append(_build_signature(method_info, use_full_name=False))
-
-      parts.append(method_info.doc.docstring)
-      parts.append(_build_function_details(method_info.doc.function_details))
-      parts.append(_build_compatibility(method_info.doc.compatibility))
-      parts.append('\n\n')
+    for method_info in other_methods:
+      parts.append(_build_method_section(method_info))
     parts.append('\n\n')
 
   if page_info.other_members:
@@ -169,6 +169,33 @@ def _build_class_page(page_info):
                               for info in sorted(page_info.other_members))
     parts.extend(others_member_headings)
 
+  return ''.join(parts)
+
+
+def _build_method_section(method_info, heading_level=3):
+  """Generates a markdown section for a method.
+
+  Args:
+    method_info: A `MethodInfo` object.
+    heading_level: An Int, which HTML heading level to use.
+
+  Returns:
+    A markdown string.
+  """
+  parts = []
+  heading = ('<h{heading_level} id="{short_name}">'
+             '<code>{short_name}</code>'
+             '</h{heading_level}>\n\n')
+  parts.append(heading.format(heading_level=heading_level,
+                              **method_info._asdict()))
+
+  if method_info.signature is not None:
+    parts.append(_build_signature(method_info, use_full_name=False))
+
+  parts.append(method_info.doc.docstring)
+  parts.append(_build_function_details(method_info.doc.function_details))
+  parts.append(_build_compatibility(method_info.doc.compatibility))
+  parts.append('\n\n')
   return ''.join(parts)
 
 
@@ -198,7 +225,7 @@ def _build_module_page(page_info):
       parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
-        parts.append(': ' + item.doc.brief)
+        parts.append(': ' + six.ensure_str(item.doc.brief))
 
       parts.append('\n\n')
 
@@ -210,7 +237,7 @@ def _build_module_page(page_info):
       parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
-        parts.append(': ' + item.doc.brief)
+        parts.append(': ' + six.ensure_str(item.doc.brief))
 
       parts.append('\n\n')
 
@@ -222,7 +249,7 @@ def _build_module_page(page_info):
       parts.append(template.format(**item._asdict()))
 
       if item.doc.brief:
-        parts.append(': ' + item.doc.brief)
+        parts.append(': ' + six.ensure_str(item.doc.brief))
 
       parts.append('\n\n')
 
@@ -231,8 +258,9 @@ def _build_module_page(page_info):
     #                   at least for basic types.
     parts.append('## Other Members\n\n')
 
+    h3 = '<h3 id="{short_name}"><code>{short_name}</code></h3>\n\n'
     for item in page_info.other_members:
-      parts.append('`{short_name}`\n\n'.format(**item._asdict()))
+      parts.append(h3.format(**item._asdict()))
 
   return ''.join(parts)
 
@@ -248,7 +276,7 @@ def _build_signature(obj_info, use_full_name=True):
         '```\n\n')
 
   parts = ['``` python']
-  parts.extend(['@' + dec for dec in obj_info.decorators])
+  parts.extend(['@' + six.ensure_str(dec) for dec in obj_info.decorators])
   signature_template = '{name}({sig})'
 
   if not obj_info.signature:
@@ -288,7 +316,7 @@ def _build_function_details(function_details):
   parts = []
   for detail in function_details:
     sub = []
-    sub.append('#### ' + detail.keyword + ':\n\n')
+    sub.append('#### ' + six.ensure_str(detail.keyword) + ':\n\n')
     sub.append(textwrap.dedent(detail.header))
     for key, value in detail.items:
       sub.append('* <b>`%s`</b>: %s' % (key, value))

@@ -17,6 +17,8 @@ limitations under the License.
 #ifndef _WIN32
 #include <arpa/inet.h>
 #include <netdb.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
 #else
 #include <Windows.h>
 #include <winsock2.h>

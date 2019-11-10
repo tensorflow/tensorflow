@@ -52,7 +52,8 @@ typedef TTypes<float>::Tensor::Index Index;
   DEFINE_IDENTITY(T, R)
 
 DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::SumReducer<complex64>);
-DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::MeanReducer<complex64>);
+DEFINE_FOR_TYPE_AND_R(complex64, functor::MeanReducer<complex64>);
+DEFINE_FOR_TYPE_AND_R(complex64, functor::EuclideanNormReducer<complex64>);
 DEFINE_FOR_TYPE_AND_R(complex64, Eigen::internal::ProdReducer<complex64>);
 #undef DEFINE_FOR_TYPE_AND_R
 #undef DEFINE

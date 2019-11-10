@@ -45,7 +45,8 @@ class ShapeLayout {
   // Returns true if the Layouts in this ShapeLayout match the layouts in the
   // given shape. Returns false otherwise. If the given shape is not compatible
   // with the ShapeLayout's shape, then false is returned.
-  bool MatchesLayoutInShape(const Shape& shape) const;
+  bool MatchesLayoutInShape(const Shape& shape,
+                            bool minor_to_major_only = false) const;
 
   // Copies the layout from the given shape into this ShapeLayout. 'other_shape'
   // must be compatible with the ShapeLayout's shape.
@@ -71,6 +72,10 @@ class ShapeLayout {
   // Resets the layout on the shape to the provided layout. Shape must not be a
   // tuple.
   void ResetLayout(const Layout& layout);
+
+  // Resets the layout on the shape at the provided ShapeIndex to the provided
+  // layout. Shape must be a tuple.
+  void ResetLayout(const Layout& layout, ShapeIndexView shape_index);
 
   // Returns a string representation of this object.
   string ToString() const { return ShapeUtil::HumanStringWithLayout(shape_); }

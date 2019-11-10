@@ -133,7 +133,6 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
 
   int64 first_node_start_us =
       step_stats.dev_stats(0).node_stats(0).all_start_micros();
-  std::map<std::string, Detail> details;
 
   int node_num = 0;
   for (const auto& ds : step_stats.dev_stats()) {
@@ -145,6 +144,15 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       // /stream:$index to only count GPU executions once.
       if (ds.device().find("/stream") != std::string::npos &&
           ds.device().find("/stream:all") == std::string::npos) {
+        continue;
+      }
+      // NOTE(fishx): We will record ops execution time twice: one as CPU
+      // activity with device name "/host:CPU" and the other as TF runtime
+      // activity with device name started with "/job:*". It is safe to ignore
+      // CPU activties here.
+      // TODO(b/138729463): Read ops execution time from CPU activities instead
+      // of runtime acitivities.
+      if (ds.device().find("/host:CPU") != std::string::npos) {
         continue;
       }
 
@@ -177,22 +185,15 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
       ++node_num;
       const int64 curr_time = ns.all_end_rel_micros();
       curr_total_us += curr_time;
-      auto result = details.emplace(name, Detail());
       auto output_result =
           outputs_.emplace(name, std::vector<TensorDescription>());
       std::vector<TensorDescription>* outputs = &(output_result.first->second);
-      Detail* detail = &(result.first->second);
 
-      detail->start_us.UpdateStat(ns.all_start_micros() - first_node_start_us);
-      detail->rel_end_us.UpdateStat(curr_time);
+      int64_t start_us = (ns.all_start_micros() - first_node_start_us);
+      int64_t rel_end_us = curr_time;
 
       // If this is the first pass, initialize some values.
-      if (result.second) {
-        detail->name = name;
-        detail->type = op_type;
-
-        detail->run_order = node_num;
-
+      if (output_result.second) {
         outputs->resize(ns.output_size());
         for (const auto& output : ns.output()) {
           const int32 slot = output.slot();
@@ -202,7 +203,6 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
           }
           (*outputs)[slot] = output.tensor_description();
         }
-        detail->times_called = 0;
       }
 
       int64 curr_node_mem = 0;
@@ -210,11 +210,10 @@ void StatSummarizer::ProcessStepStats(const StepStats& step_stats) {
         const int64 mem_usage = mem.total_bytes();
         curr_node_mem += mem_usage;
       }
-      detail->mem_used.UpdateStat(curr_node_mem);
-      mem_total += curr_node_mem;
+      stats_calculator_->AddNodeStats(name, op_type, node_num, start_us,
+                                      rel_end_us, curr_node_mem);
 
-      ++detail->times_called;
-      stats_calculator_->UpdateDetails(details);
+      mem_total += curr_node_mem;
 
       Validate(outputs, ns);
     }

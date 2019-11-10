@@ -1,0 +1,9 @@
+The binary frontend_main shows sample usage of the frontend, printing out
+coefficients when it has processed enough data.
+
+The binary frontend_memmap_main shows a sample usage of how to avoid all the
+init code in your runtime, by first running "frontend_generate_memmap" to
+create a header/source file that uses a baked in frontend state. This command
+could be automated as part of your build process, or you can just use the output
+directly.
+

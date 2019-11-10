@@ -6,7 +6,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>org.tensorflow</groupId>
   <artifactId>parentpom</artifactId>
-  <version>1.9.0-rc1</version>
+  <version>1.15.0</version>
   <packaging>pom</packaging>
 
   <url>https://www.tensorflow.org</url>
@@ -32,8 +32,8 @@
     <module>libtensorflow_jni_gpu</module>
     <module>tensorflow</module>
     <module>proto</module>
-    <module>hadoop</module>
-    <module>spark-connector</module>
+    <module>tensorflow-hadoop</module>
+    <module>spark-tensorflow-connector</module>
   </modules>
 
   <!-- Two profiles are used:
@@ -89,6 +89,17 @@
             </goals>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jar-plugin</artifactId>
+        <configuration>
+          <archive>
+            <manifest>
+              <addDefaultImplementationEntries>true</addDefaultImplementationEntries>
+            </manifest>
+          </archive>
+        </configuration>
       </plugin>
     </plugins>
   </build>

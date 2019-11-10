@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for debugger functionalities in tf.Session with grpc:// URLs.
+"""Tests for debugger functionalities in tf.compat.v1.Session with grpc:// URLs.
 
 This test focus on grpc:// debugging of distributed (gRPC) sessions.
 """
@@ -44,6 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+@test_util.run_v1_only("b/120545219")
 class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   """Test the debugging of distributed sessions."""
 
@@ -60,7 +61,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     tf_logging.info("cluster_spec: %s", cluster_spec)
 
     server_bin = test.test_src_dir_path(
-        "tools/dist_test/server/grpc_tensorflow_server")
+        "python/debug/grpc_tensorflow_server.par")
 
     cls.server_target = "grpc://localhost:%d" % worker_port
 
@@ -68,6 +69,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     cls.server_procs["worker"] = subprocess.Popen(
         [
             server_bin,
+            "--logtostderr",
             "--cluster_spec=%s" % cluster_spec,
             "--job_name=worker",
             "--task_id=0",
@@ -91,7 +93,10 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   def tearDownClass(cls):
     for key in cls.server_procs:
       cls.server_procs[key].terminate()
-    cls.debug_server.stop_server().wait()
+    try:
+      cls.debug_server.stop_server().wait()
+    except ValueError:
+      pass
     cls.debug_server_thread.join()
 
   def setUp(self):
@@ -118,8 +123,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     """
     with ops.Graph().as_default() as graph:
       with ops.device("/job:worker/task:0/cpu:0"):
-        self.a = variables.Variable(10.0, name="a")
-        self.b = variables.Variable(100.0, name="b")
+        self.a = variables.VariableV1(10.0, name="a")
+        self.b = variables.VariableV1(100.0, name="b")
         self.inc_a = state_ops.assign_add(self.a, 2.0, name="inc_a")
         self.dec_b = state_ops.assign_add(self.b, -5.0, name="dec_b")
         self.p = math_ops.multiply(self.inc_a, self.dec_b, name="p")

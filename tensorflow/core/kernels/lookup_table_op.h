@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
-#define TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
+#ifndef TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
+#define TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/lookup_interface.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/lookup_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -57,19 +57,21 @@ class LookupTableOp : public OpKernel {
                                       use_node_name_sharing_));
     }
 
-    auto creator = [ctx, this](lookup::LookupInterface** ret) {
-      lookup::LookupInterface* container = new Container(ctx, this);
-      if (!ctx->status().ok()) {
-        container->Unref();
-        return ctx->status();
-      }
-      if (ctx->track_allocations()) {
-        ctx->record_persistent_memory_allocation(
-            container->MemoryUsed() + table_handle_.AllocatedBytes());
-      }
-      *ret = container;
-      return Status::OK();
-    };
+    auto creator =
+        [ctx, this](lookup::LookupInterface** ret)
+            EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+              lookup::LookupInterface* container = new Container(ctx, this);
+              if (!ctx->status().ok()) {
+                container->Unref();
+                return ctx->status();
+              }
+              if (ctx->track_allocations()) {
+                ctx->record_persistent_memory_allocation(
+                    container->MemoryUsed() + table_handle_.AllocatedBytes());
+              }
+              *ret = container;
+              return Status::OK();
+            };
 
     lookup::LookupInterface* table = nullptr;
     OP_REQUIRES_OK(ctx,
@@ -90,7 +92,7 @@ class LookupTableOp : public OpKernel {
                                                       cinfo_.name());
     } else {
       if (!table_handle_set_) {
-        auto h = table_handle_.AccessTensor(ctx)->template flat<string>();
+        auto h = table_handle_.AccessTensor(ctx)->template flat<tstring>();
         h(0) = cinfo_.container();
         h(1) = cinfo_.name();
       }
@@ -102,9 +104,12 @@ class LookupTableOp : public OpKernel {
   ~LookupTableOp() override {
     // If the table object was not shared, delete it.
     if (table_handle_set_ && cinfo_.resource_is_private_to_kernel()) {
-      TF_CHECK_OK(
-          cinfo_.resource_manager()->template Delete<lookup::LookupInterface>(
-              cinfo_.container(), cinfo_.name()));
+      if (!cinfo_.resource_manager()
+               ->template Delete<lookup::LookupInterface>(cinfo_.container(),
+                                                          cinfo_.name())
+               .ok()) {
+        // Do nothing; the resource can have been deleted by session resets.
+      }
     }
   }
 
@@ -129,7 +134,7 @@ T SubtleMustCopyIfIntegral(const T& value) {
   return internal::SubtleMustCopy(value);
 }
 
-inline const string& SubtleMustCopyIfIntegral(const string& value) {
+inline const tstring& SubtleMustCopyIfIntegral(const tstring& value) {
   return value;
 }
 
@@ -272,4 +277,4 @@ class HashTable : public InitializableLookupTable {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_KERNELS_LOOKUP_TABLE_OP_H_
+#endif  // TENSORFLOW_CORE_KERNELS_LOOKUP_TABLE_OP_H_

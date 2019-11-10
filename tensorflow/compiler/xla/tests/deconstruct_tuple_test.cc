@@ -16,11 +16,12 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/client/xla_client/xla_computation.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -28,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -42,7 +42,7 @@ class DeconstructTupleTest : public ClientLibraryTestBase {
   // Build and execute the given computation then verify the results can be
   // transferred from the device successfully.
   std::unique_ptr<GlobalData> ExecuteAndCheckTransfer(
-      XlaBuilder* builder, tensorflow::gtl::ArraySlice<GlobalData*> arguments) {
+      XlaBuilder* builder, absl::Span<GlobalData* const> arguments) {
     XlaComputation computation = builder->Build().ConsumeValueOrDie();
     auto global_data =
         client_->Execute(computation, arguments, &execution_options_)
@@ -64,11 +64,11 @@ TEST_F(DeconstructTupleTest, DeconstructTuple) {
 
   // Try copying the elements back and comparing it
   auto handles = result_status.ConsumeValueOrDie();
-  std::unique_ptr<Literal> literal;
+  Literal literal;
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
@@ -86,19 +86,19 @@ TEST_F(DeconstructTupleTest, DeconstructTupleTwice) {
   auto handles1 = result_status1.ConsumeValueOrDie();
   auto handles2 = result_status2.ConsumeValueOrDie();
 
-  std::unique_ptr<Literal> literal;
+  Literal literal;
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles1[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
 
   handles1[0].reset();
   handles1[1].reset();
 
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles2[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
 }
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
@@ -116,15 +116,15 @@ XLA_TEST_F(DeconstructTupleTest, DeconstructTupleRepeatedElement) {
   // the same as handle[3] and handle[1] should be the same as handle[2].
   auto handles = result_status.ConsumeValueOrDie();
 
-  std::unique_ptr<Literal> literal;
+  Literal literal;
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[3]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
@@ -142,19 +142,19 @@ TEST_F(DeconstructTupleTest, DeconstructTupleThenDeallocate) {
   // should not have been deallocated because of reference counting.
   global_data.reset();
 
-  std::unique_ptr<Literal> literal;
+  Literal literal;
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[0]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[1]));
-  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({2.0, 4.0, 6.0, 8.0}, literal);
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
 
   /// Try deallocating one of the repeated elements, then copy
   handles[0].reset();
 
   TF_ASSERT_OK_AND_ASSIGN(literal, client_->Transfer(*handles[2]));
-  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, *literal);
+  LiteralTestUtil::ExpectR1Equal<float>({1.0, 2.0, 3.0, 4.0}, literal);
 }
 
 TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
@@ -170,10 +170,9 @@ TEST_F(DeconstructTupleTest, DeconstructNonTuple) {
 
 XLA_TEST_F(DeconstructTupleTest, DeconstructTupleFromParam) {
   XlaBuilder builder(TestName());
-  std::unique_ptr<Literal> param0_literal =
-      Literal::CreateR1<float>({3.14f, -100.25f});
+  Literal param0_literal = LiteralUtil::CreateR1<float>({3.14f, -100.25f});
   std::unique_ptr<GlobalData> param0_data =
-      client_->TransferToServer(*param0_literal).ConsumeValueOrDie();
+      client_->TransferToServer(param0_literal).ConsumeValueOrDie();
   auto p = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "param0");
   Tuple(&builder, {p});
   auto global_data = ExecuteAndCheckTransfer(&builder, {param0_data.get()});

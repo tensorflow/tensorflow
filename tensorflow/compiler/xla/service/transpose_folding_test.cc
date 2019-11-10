@@ -19,15 +19,14 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
-#include "tensorflow/compiler/xla/client/xla_client/xla_builder.h"
-#include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -68,8 +67,8 @@ ENTRY entry_computation {
   ROOT dot = f32[2,2]{1,0} dot(x, transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   FoldTranspose(module.get());
 
@@ -90,8 +89,8 @@ ENTRY entry_computation {
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TransposeFolding transpose_folding(
       [](const HloInstruction& dot,
@@ -114,12 +113,12 @@ ENTRY entry_computation {
   x = f32[3] parameter(0)
   y = f32[3,2] parameter(1)
   transpose = f32[2,3] transpose(y), dimensions={1,0}
-  ROOT dot = f32[2] dot(x, transpose), lhs_batch_dims={}, rhs_batch_dims={0}, lhs_contracting_dims={0}, rhs_contracting_dims={1}
+  ROOT dot = f32[2] dot(x, transpose), lhs_batch_dims={}, rhs_batch_dims={}, lhs_contracting_dims={0}, rhs_contracting_dims={1}
 }
 )";
 
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   TransposeFolding transpose_folding(
       [](const HloInstruction& dot,
@@ -139,15 +138,15 @@ TEST_F(TransposeFoldingTest, FoldDotTransposeConstant) {
 HloModule FoldDotTransposeConstant
 
 ENTRY entry_computation {
-  constant = f32[2,1]{1,0} constant(f32[2,1] { { 1 }, { 2 } })
+  constant = f32[2,1]{1,0} constant({ { 1 }, { 2 } })
   transpose = f32[1,2]{1,0} transpose(constant), dimensions={1,0}
-  constant.1 = f32[3,2]{1,0} constant(f32[3,2] { { 1, 2 }, { 3, 4 }, { 5, 6 } })
+  constant.1 = f32[3,2]{1,0} constant({ { 1, 2 }, { 3, 4 }, { 5, 6 } })
   transpose.1 = f32[2,3]{1,0} transpose(constant.1), dimensions={1,0}
   ROOT dot = f32[1,3]{1,0} dot(transpose, transpose.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
 
   FoldTranspose(module.get());
 
@@ -160,11 +159,11 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
   auto builder = HloComputation::Builder("entry");
   // (1.0 + 2.0) * (2.0 - 3.0)
   HloInstruction* const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
   HloInstruction* const2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
   HloInstruction* const3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
   HloInstruction* add = builder.AddInstruction(HloInstruction::CreateBinary(
       const1->shape(), HloOpcode::kAdd, const1, const2));
   HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
@@ -172,7 +171,7 @@ TEST_F(TransposeFoldingTest, FuseDotWithConstantOperands) {
   HloInstruction* mul = builder.AddInstruction(HloInstruction::CreateBinary(
       add->shape(), HloOpcode::kMultiply, add, sub));
 
-  auto module = CreateNewModule("fuse_with_constant_operands");
+  auto module = CreateNewVerifiedModule("fuse_with_constant_operands");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(mul));
   HloInstruction* call = module->OutlineExpressionFromComputation(
@@ -204,8 +203,8 @@ ENTRY entry_computation {
   ROOT call = f32[2,2]{1,0} call(y, x), to_apply=callee
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   FoldTranspose(module.get());
 
   const HloComputation* callee = module->GetComputationWithName("callee");
@@ -240,12 +239,15 @@ TEST_F(TransposeFoldingTest, FoldConvDimSwapTransposeRhs) {
         transpose_y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      x->shape(), transpose_y->shape(), window, dnums);
+      x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), x, transpose_y, window, dnums));
+      conv_shape.ValueOrDie(), x, transpose_y,
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());
@@ -293,12 +295,15 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeRhs) {
         transpose_y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      x->shape(), transpose_y->shape(), window, dnums);
+      x->shape(), transpose_y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), x, transpose_y, window, dnums));
+      conv_shape.ValueOrDie(), x, transpose_y,
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());
@@ -351,12 +356,15 @@ TEST_F(TransposeFoldingTest, FoldConvTransposeLhs) {
     dim->set_size(y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      transpose_x->shape(), y->shape(), window, dnums);
+      transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), transpose_x, y, window, dnums));
+      conv_shape.ValueOrDie(), transpose_x, y,
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());
@@ -415,12 +423,15 @@ TEST_F(TransposeFoldingTest, FoldConvComplexTransposeLhs) {
     dim->set_size(y->shape().dimensions(dnums.kernel_spatial_dimensions(i)));
   }
   StatusOr<Shape> conv_shape = ShapeInference::InferConvolveShape(
-      transpose_x->shape(), y->shape(), window, dnums);
+      transpose_x->shape(), y->shape(), /*feature_group_count=*/1,
+      /*batch_group_count=*/1, window, dnums);
   EXPECT_IS_OK(conv_shape);
   HloInstruction* conv = builder.AddInstruction(HloInstruction::CreateConvolve(
-      conv_shape.ValueOrDie(), transpose_x, y, window, dnums));
+      conv_shape.ValueOrDie(), transpose_x, y,
+      /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums,
+      DefaultPrecisionConfig(2)));
 
-  auto module = CreateNewModule("test_module");
+  auto module = CreateNewVerifiedModule("test_module");
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build(conv));
   FoldTranspose(module.get());

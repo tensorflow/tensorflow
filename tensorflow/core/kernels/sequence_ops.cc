@@ -103,14 +103,14 @@ TF_CALL_double(REGISTER_CPU_KERNEL);
 TF_CALL_int32(REGISTER_CPU_KERNEL);
 TF_CALL_int64(REGISTER_CPU_KERNEL);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_float(REGISTER_GPU_KERNEL);
 TF_CALL_double(REGISTER_GPU_KERNEL);
 TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #undef REGISTER_KERNEL
 #undef REGISTER_CPU_KERNEL
@@ -143,11 +143,12 @@ class LinSpaceOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({num}), &out));
     auto flat = out->flat<T>();
-    if (num == 1) {
-      flat(0) = start;
-    } else {
+    flat(0) = start;
+    if (num > 1) {
       const T step = (stop - start) / (num - 1);
-      for (Tnum i = 0; i < num; ++i) flat(i) = start + step * i;
+      for (Tnum i = 1; i < num - 1; ++i) flat(i) = start + step * i;
+      // Ensure final value == stop; float arithmetic won't guarantee this.
+      flat(num - 1) = stop;
     }
   }
 };

@@ -18,7 +18,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/graph/subgraph.h"
@@ -26,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 // TODO(josh11b): Test setting the "device" field of a NodeDef.
 // TODO(josh11b): Test that feeding won't prune targets.
@@ -36,6 +39,11 @@ namespace {
 REGISTER_OP("TestParams").Output("o: float");
 REGISTER_OP("TestInput").Output("a: float").Output("b: float");
 REGISTER_OP("TestMul").Input("a: float").Input("b: float").Output("o: float");
+REGISTER_OP("TestUnary").Input("a: float").Output("o: float");
+REGISTER_OP("TestBinary")
+    .Input("a: float")
+    .Input("b: float")
+    .Output("o: float");
 
 // Compares that the order of nodes in 'inputs' respects the
 // pair orders described in 'ordered_pairs'.
@@ -148,5 +156,90 @@ TEST(AlgorithmTest, ReversePostOrderStable) {
     EXPECT_TRUE(ExpectBefore({{"t2", "t3"}}, order, &error));
   }
 }
+
+TEST(AlgorithmTest, PostOrderWithEdgeFilter) {
+  GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
+  Node* n0 = ops::SourceOp("TestParams", b.opts().WithName("n0"));
+  Node* n1 = ops::UnaryOp("TestUnary", n0, b.opts().WithName("n1"));
+  Node* n2 = ops::UnaryOp("TestUnary", n1, b.opts().WithName("n2"));
+  Node* n3 = ops::BinaryOp("TestBinary", n2, n0, b.opts().WithName("n3"));
+
+  Graph g(OpRegistry::Global());
+  TF_ASSERT_OK(GraphDefBuilderToGraph(b, &g));
+
+  g.AddEdge(g.FindNodeId(n3->id()), 0, g.FindNodeId(n1->id()), 1);
+
+  std::vector<Node*> post_order;
+  auto edge_filter = [&](const Edge& e) {
+    return !(e.src()->id() == n3->id() && e.dst()->id() == n1->id());
+  };
+
+  std::vector<Node*> expected_post_order = {
+      g.sink_node(),          g.FindNodeId(n3->id()), g.FindNodeId(n2->id()),
+      g.FindNodeId(n1->id()), g.FindNodeId(n0->id()), g.source_node()};
+
+  std::vector<Node*> expected_reverse_post_order = expected_post_order;
+  std::reverse(expected_reverse_post_order.begin(),
+               expected_reverse_post_order.end());
+
+  GetPostOrder(g, &post_order, /*stable_comparator=*/{},
+               /*edge_filter=*/edge_filter);
+
+  ASSERT_EQ(expected_post_order.size(), post_order.size());
+  for (int i = 0; i < post_order.size(); i++) {
+    CHECK_EQ(post_order[i], expected_post_order[i])
+        << post_order[i]->name() << " vs. " << expected_post_order[i]->name();
+  }
+
+  std::vector<Node*> reverse_post_order;
+  GetReversePostOrder(g, &reverse_post_order, /*stable_comparator=*/{},
+                      /*edge_filter=*/edge_filter);
+
+  ASSERT_EQ(expected_reverse_post_order.size(), reverse_post_order.size());
+  for (int i = 0; i < reverse_post_order.size(); i++) {
+    CHECK_EQ(reverse_post_order[i], expected_reverse_post_order[i])
+        << reverse_post_order[i]->name() << " vs. "
+        << expected_reverse_post_order[i]->name();
+  }
+}
+
+static void BM_PruneForReverseReachability(int iters, int num_nodes,
+                                           int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+  const auto registry = OpRegistry::Global();
+  GraphConstructorOptions opts;
+  for (int i = 0; i < iters; ++i) {
+    Graph graph(registry);
+    TF_CHECK_OK(ConvertGraphDefToGraph(opts, graph_def, &graph));
+    std::unordered_set<const Node*> visited;
+    visited.insert(graph.FindNodeId(graph.num_nodes() - 1));
+    testing::StartTiming();
+    PruneForReverseReachability(&graph, std::move(visited));
+    testing::StopTiming();
+  }
+}
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 2);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 4);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 8);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(10, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 6, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 9, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 12, 16);
+BENCHMARK(BM_PruneForReverseReachability)->ArgPair(1 << 15, 16);
+
 }  // namespace
 }  // namespace tensorflow

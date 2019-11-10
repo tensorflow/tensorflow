@@ -1,0 +1,129 @@
+[cpp_python_util] # util
+tensorflow::swig::IsSequence
+tensorflow::swig::IsSequenceOrComposite
+tensorflow::swig::IsCompositeTensor
+tensorflow::swig::IsTypeSpec
+tensorflow::swig::IsNamedtuple
+tensorflow::swig::IsMapping
+tensorflow::swig::IsMappingView
+tensorflow::swig::IsAttrs
+tensorflow::swig::IsTensor
+tensorflow::swig::IsResourceVariable
+tensorflow::swig::IsVariable
+tensorflow::swig::SameNamedtuples
+tensorflow::swig::AssertSameStructure
+tensorflow::swig::Flatten
+tensorflow::swig::IsSequenceForData
+tensorflow::swig::FlattenForData
+tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterType
+
+[util_port] # util_port
+tensorflow::IsGoogleCudaEnabled
+tensorflow::IsBuiltWithROCm
+tensorflow::IsBuiltWithNvcc
+tensorflow::GpuSupportsHalfMatMulAndConv
+tensorflow::IsMklEnabled
+
+[stream_executor_pimpl] # stat_summarizer
+stream_executor::StreamExecutor::EnablePeerAccessTo
+stream_executor::StreamExecutor::CanEnablePeerAccessTo
+
+[print_model_analysis] # tfprof
+tensorflow::tfprof::NewProfiler
+tensorflow::tfprof::DeleteProfiler
+tensorflow::tfprof::AddStep
+tensorflow::tfprof::WriteProfile
+tensorflow::tfprof::ProfilerFromFile
+tensorflow::tfprof::Profile
+tensorflow::tfprof::PrintModelAnalysis
+tensorflow::tfprof::SerializeToString
+
+[graph_analyzer_tool] # graph_analyzer
+tensorflow::grappler::graph_analyzer::GraphAnalyzerTool
+
+[bfloat16_lib] # bfloat16
+tensorflow::RegisterNumpyBfloat16
+tensorflow::Bfloat16PyType
+
+[events_writer] # events_writer
+tensorflow::EventsWriter::Init
+tensorflow::EventsWriter::InitWithSuffix
+tensorflow::EventsWriter::WriteSerializedEvent
+tensorflow::EventsWriter::Flush
+tensorflow::EventsWriter::Close
+
+[py_func_lib] # py_func
+tensorflow::InitializePyTrampoline
+
+[framework_internal_impl] # op_def_registry
+tensorflow::OpRegistry::Global
+tensorflow::OpRegistry::LookUpOpDef
+tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
+
+[lib_internal_impl]  # device_lib
+tensorflow::Status::code
+tensorflow::Status::error_message
+tensorflow::Status::ok()
+
+[core_cpu_impl]  # device_lib
+tensorflow::Device::attributes
+tensorflow::DeviceFactory::AddDevices
+tensorflow::SessionOptions::SessionOptions
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+
+[protos_all]  # device_lib
+tensorflow::ConfigProto::ConfigProto
+tensorflow::ConfigProto::ParseFromString
+tensorflow::DeviceAttributes::SerializeToString
+
+[py_exception_registry] # py_exception_registry
+tensorflow::PyExceptionRegistry::Init
+tensorflow::PyExceptionRegistry::Lookup
+
+[python_scoped_annotation] # scoped_annotation
+tensorflow::profiler::PythonScopedAnnotation::Init
+tensorflow::profiler::PythonScopedAnnotation::Enter
+tensorflow::profiler::PythonScopedAnnotation::Exit
+tensorflow::profiler::PythonScopedAnnotation::IsEnabled
+
+[kernel_registry] # kernel_registry
+tensorflow::swig::TryFindKernelClass
+
+[toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::TocoGetPotentiallySupportedOps
+
+[transform_graph_lib] # transform_graph
+tensorflow::graph_transforms::TransformGraph
+tensorflow::graph_transforms::ParseTransformParameters
+
+[python_traceme] # traceme
+tensorflow::profiler::PythonTraceMe::Init
+tensorflow::profiler::PythonTraceMe::Enter
+tensorflow::profiler::PythonTraceMe::Exit
+tensorflow::profiler::PythonTraceMe::IsEnabled
+
+[traceme_recorder] # traceme
+tensorflow::profiler::internal::g_trace_level
+
+[checkpoint_reader] # py_checkpoint_reader
+tensorflow::checkpoint::CheckpointReader
+tensorflow::checkpoint::CheckpointReader::Init
+tensorflow::checkpoint::CheckpointReader::DebugString
+tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap
+tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+tensorflow::checkpoint::CheckpointReader::GetTensor
+tensorflow::checkpoint::CheckpointReader::HasTensor
+
+[tensor_bundle] # py_checkpoint_reader
+tensorflow::BundleReader::BundleReader
+tensorflow::BundleReader::~BundleReader
+
+[ndarray_tensor] # py_checkpoint_reader
+tensorflow::TensorToNdarray
+
+[safe_ptr] # py_checkpoint_reader
+tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
+

@@ -124,8 +124,8 @@ class InterPlanetaryFileSystem : public NullFileSystem {
     io::ParseURI(name, &scheme, &host, &path);
     ASSERT_EQ(scheme, "ipfs");
     ASSERT_EQ(host, "solarsystem");
-    str_util::ConsumePrefix(&path, "/");
-    *parsed_path = std::string(path);
+    absl::ConsumePrefix(&path, "/");
+    *parsed_path = string(path);
   }
 
   std::map<string, std::set<string>> celestial_bodies_ = {
@@ -160,11 +160,11 @@ string Match(InterPlanetaryFileSystem* ipfs, const string& suffix_pattern) {
     std::sort(results.begin(), results.end());
     for (const string& result : results) {
       StringPiece trimmed_result(result);
-      EXPECT_TRUE(str_util::ConsumePrefix(&trimmed_result,
-                                          strings::StrCat(kPrefix, "/")));
+      EXPECT_TRUE(
+          absl::ConsumePrefix(&trimmed_result, strings::StrCat(kPrefix, "/")));
       trimmed_results.push_back(trimmed_result);
     }
-    return str_util::Join(trimmed_results, ",");
+    return absl::StrJoin(trimmed_results, ",");
   }
 }
 

@@ -14,13 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 
+#include "absl/strings/ascii.h"
+#include "absl/strings/str_cat.h"
+#include "llvm-c/Target.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_compiler.h"
 #include "tensorflow/compiler/xla/service/cpu/tests/cpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
@@ -32,9 +33,9 @@ const char* const kTriple_android_arm = "armv7-none-android";
 
 struct IntrinsicTestSpec {
   HloOpcode opcode;
-  tensorflow::StringPiece triple;
-  tensorflow::StringPiece features;
-  tensorflow::StringPiece check_lines;
+  absl::string_view triple;
+  absl::string_view features;
+  absl::string_view check_lines;
 };
 
 // Tests that unary functions get lowered using intrinsic calls.
@@ -59,15 +60,15 @@ class CpuUnaryIntrinsicTest
 
     string features{spec.features.data(), spec.features.size()};
     if (!features.empty()) {
-      std::replace_if(features.begin(), features.end(),
-                      [](char c) { return c != '_' && !isalnum(c); }, '_');
+      std::replace_if(
+          features.begin(), features.end(),
+          [](char c) { return c != '_' && !absl::ascii_isalnum(c); }, '_');
     } else {
       features = "";
     }
 
-    return tensorflow::strings::StrCat(opcode.c_str(), "_On_", triple.c_str(),
-                                       features.empty() ? "" : "_With",
-                                       features.c_str());
+    return absl::StrCat(opcode, "_On_", triple,
+                        (features.empty() ? "" : "_With"), features);
   }
 };
 
@@ -76,6 +77,13 @@ class CpuUnaryIntrinsicTest
 TEST_P(CpuUnaryIntrinsicTest, DoIt) {
   HloComputation::Builder builder(TestName());
   IntrinsicTestSpec spec = GetParam();
+
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
 
   auto param_shape = ShapeUtil::MakeShape(F32, {1024});
   HloInstruction* param = builder.AddInstruction(
@@ -92,7 +100,7 @@ TEST_P(CpuUnaryIntrinsicTest, DoIt) {
       /*entry_point_name=*/"entry",
       /*relocation_model=*/CpuAotCompilationOptions::RelocationModel::Static};
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
   string check_lines{spec.check_lines.data(), spec.check_lines.size()};
@@ -141,10 +149,10 @@ IntrinsicTestSpec CpuUnaryIntrinsicTestCases[] = {
         HloOpcode::kLog, kTriple_android_arm, "",
         R"(CHECK: fadd fast <4 x float> <float 0x3FBDE4A340000000, float 0x3FBDE4A340000000, float 0x3FBDE4A340000000, float 0x3FBDE4A340000000>)"}};
 
-INSTANTIATE_TEST_CASE_P(CpuUnaryIntrinsicTestInstantiation,
-                        CpuUnaryIntrinsicTest,
-                        ::testing::ValuesIn(CpuUnaryIntrinsicTestCases),
-                        CpuUnaryIntrinsicTest::Name);
+INSTANTIATE_TEST_SUITE_P(CpuUnaryIntrinsicTestInstantiation,
+                         CpuUnaryIntrinsicTest,
+                         ::testing::ValuesIn(CpuUnaryIntrinsicTestCases),
+                         CpuUnaryIntrinsicTest::Name);
 
 }  // namespace
 }  // namespace cpu

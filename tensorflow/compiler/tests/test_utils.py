@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from six.moves import range
 
 
 def ConvertBetweenDataFormats(x, data_format_src, data_format_dst):
@@ -61,3 +63,14 @@ def PermuteDimsBetweenDataFormats(dims, data_format_src, data_format_dst):
   dim_map = {d: i for i, d in enumerate(data_format_src)}
   permuted_dims = [dims[dim_map[d]] for d in data_format_dst]
   return permuted_dims
+
+
+_JIT_WARMUP_ITERATIONS = 10
+
+
+def RunWithWarmup(sess, op_to_run, feed_dict, options=None, run_metadata=None):
+  """Runs a graph a few times to ensure that its clusters are compiled."""
+  for _ in range(0, _JIT_WARMUP_ITERATIONS):
+    sess.run(op_to_run, feed_dict, options=options)
+  return sess.run(
+      op_to_run, feed_dict, options=options, run_metadata=run_metadata)

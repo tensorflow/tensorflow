@@ -57,8 +57,35 @@ struct FastParseExampleConfig {
     DataType dtype;
   };
 
+  struct Ragged {
+    string feature_name;
+    DataType dtype;
+    DataType splits_dtype;
+  };
+
   std::vector<Dense> dense;
   std::vector<Sparse> sparse;
+  std::vector<Ragged> ragged;
+
+  // If `true`, `Result::feature_stats` will contain one
+  // `PerExampleFeatureStats` for each serialized example in the input.
+  bool collect_feature_stats = false;
+};
+
+// Statistics about the features in each example passed to
+// `FastParse[Single]Example()`.
+//
+// TODO(b/111553342): The gathered statistics currently have two limitations:
+// * Feature names that appear more than once will be counted multiple times.
+// * The feature values count only represents the counts for features that were
+//   requested in the `FastParseExampleConfig`.
+// These could be addressed with additional work at runtime.
+struct PerExampleFeatureStats {
+  // The number of feature names in an example.
+  size_t features_count = 0;
+
+  // The sum of the number of values in each feature that is parsed.
+  size_t feature_values_count = 0;
 };
 
 // This is exactly the output of TF's ParseExample Op.
@@ -68,6 +95,13 @@ struct Result {
   std::vector<Tensor> sparse_values;
   std::vector<Tensor> sparse_shapes;
   std::vector<Tensor> dense_values;
+  std::vector<Tensor> ragged_values;
+  std::vector<Tensor> ragged_splits;
+  std::vector<Tensor> ragged_outer_splits;  // For SequenceExamples
+
+  // This vector will be populated with one element per example if
+  // `FastParseExampleConfig::collect_feature_stats` is set to `true`.
+  std::vector<PerExampleFeatureStats> feature_stats;
 };
 
 // Parses a batch of serialized Example protos and converts them into result
@@ -75,15 +109,28 @@ struct Result {
 // Given example names have to either be empty or the same size as serialized.
 // example_names are used only for error messages.
 Status FastParseExample(const FastParseExampleConfig& config,
-                        gtl::ArraySlice<string> serialized,
-                        gtl::ArraySlice<string> example_names,
+                        gtl::ArraySlice<tstring> serialized,
+                        gtl::ArraySlice<tstring> example_names,
                         thread::ThreadPool* thread_pool, Result* result);
 
 // TODO(mrry): Move the hash table construction into the config object.
 typedef FastParseExampleConfig FastParseSingleExampleConfig;
 
 Status FastParseSingleExample(const FastParseSingleExampleConfig& config,
-                              const string& serialized, Result* result);
+                              absl::string_view serialized, Result* result);
+
+// Parses a batch of serialized SequenceExample protos and converts them into
+// result according to given config.
+// Given example names have to either be empty or the same size as serialized.
+// example_names are used only for error messages.
+// (If batch=true, then this parses a single SequenceExample.)
+Status FastParseSequenceExample(
+    const example::FastParseExampleConfig& context_config,
+    const example::FastParseExampleConfig& feature_list_config,
+    gtl::ArraySlice<tstring> serialized, gtl::ArraySlice<tstring> example_names,
+    thread::ThreadPool* thread_pool, example::Result* context_result,
+    example::Result* feature_list_result,
+    std::vector<Tensor>* dense_feature_lengths, bool is_batch = true);
 
 // This function parses serialized Example and populates given example.
 // It uses the same specialized parser as FastParseExample which is efficient.

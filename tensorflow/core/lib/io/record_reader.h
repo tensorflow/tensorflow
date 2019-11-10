@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_LIB_IO_RECORD_READER_H_
-#define TENSORFLOW_LIB_IO_RECORD_READER_H_
+#ifndef TENSORFLOW_CORE_LIB_IO_RECORD_READER_H_
+#define TENSORFLOW_CORE_LIB_IO_RECORD_READER_H_
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -58,6 +58,26 @@ class RecordReaderOptions {
 // Note: this class is not thread safe; external synchronization required.
 class RecordReader {
  public:
+  // Format of a single record:
+  //  uint64    length
+  //  uint32    masked crc of length
+  //  byte      data[length]
+  //  uint32    masked crc of data
+  static const size_t kHeaderSize = sizeof(uint64) + sizeof(uint32);
+  static const size_t kFooterSize = sizeof(uint32);
+
+  // Statistics (sizes are in units of bytes)
+  struct Stats {
+    int64 file_size = -1;
+    int64 data_size = -1;
+    int64 entries = -1;  // Number of values
+  };
+
+  // Metadata for the TFRecord file.
+  struct Metadata {
+    Stats stats;
+  };
+
   // Create a reader that will return log records from "*file".
   // "*file" must remain live while this Reader is in use.
   explicit RecordReader(
@@ -69,14 +89,27 @@ class RecordReader {
   // Read the record at "*offset" into *record and update *offset to
   // point to the offset of the next record.  Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  Status ReadRecord(uint64* offset, string* record);
+  Status ReadRecord(uint64* offset, tstring* record);
+
+  // Return the metadata of the Record file.
+  //
+  // The current implementation scans the file to completion,
+  // skipping over the data regions, to extract the metadata once
+  // on the first call to GetStats().  An improved implementation
+  // would change RecordWriter to write the metadata into TFRecord
+  // so that GetMetadata() could be a const method.
+  //
+  // 'metadata' must not be nullptr.
+  Status GetMetadata(Metadata* md);
 
  private:
-  Status ReadChecksummed(uint64 offset, size_t n, string* result);
+  Status ReadChecksummed(uint64 offset, size_t n, tstring* result);
 
   RecordReaderOptions options_;
   std::unique_ptr<InputStreamInterface> input_stream_;
   bool last_read_failed_;
+
+  std::unique_ptr<Metadata> cached_metadata_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(RecordReader);
 };
@@ -96,7 +129,7 @@ class SequentialRecordReader {
 
   // Reads the next record in the file into *record. Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  Status ReadRecord(string* record) {
+  Status ReadRecord(tstring* record) {
     return underlying_.ReadRecord(&offset_, record);
   }
 
@@ -122,4 +155,4 @@ class SequentialRecordReader {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_IO_RECORD_READER_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_RECORD_READER_H_

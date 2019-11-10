@@ -14,14 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/while_util.h"
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/tuple_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
-using tensorflow::strings::StrCat;
+using absl::StrCat;
 
 static StatusOr<HloComputation*> WidenWhileCondition(
     HloComputation* narrow_condition, const Shape& wide_shape) {
@@ -38,7 +42,7 @@ static StatusOr<HloComputation*> WidenWhileCondition(
     // the root instruction later.  We later change the root instruction to
     // something more appropriate.
     builder.AddInstruction(
-        HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
     return narrow_condition->parent()->AddEmbeddedComputation(builder.Build());
   }();
 
@@ -92,8 +96,8 @@ WidenWhileBody(HloComputation* narrow_body, const Shape& wide_shape) {
 /*static*/ StatusOr<WhileUtil::MakeInstructionsLiveInResult>
 WhileUtil::MakeInstructionsLiveIn(
     HloInstruction* while_instr,
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
-  CHECK(ShapeUtil::IsTuple(while_instr->shape()));
+    absl::Span<HloInstruction* const> instructions) {
+  CHECK(while_instr->shape().IsTuple());
 
   int64 elements_in_old_while_shape = while_instr->shape().tuple_shapes_size();
   Shape new_while_shape = while_instr->shape();
@@ -154,7 +158,7 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
                           {&loop_state_shape}, scalar_pred, "while_cond"));
 
   HloInstruction* trip_count_constant = cond_computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(trip_count)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(trip_count)));
 
   HloInstruction* param = cond_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
@@ -162,7 +166,7 @@ MakeCountedLoopConditionComputation(const Shape& loop_state_shape,
 
   TF_ASSIGN_OR_RETURN(
       HloInstruction * compare,
-      MakeBinaryHlo(HloOpcode::kLt, indvar, trip_count_constant));
+      MakeCompareHlo(ComparisonDirection::kLt, indvar, trip_count_constant));
   cond_computation->set_root_instruction(compare);
   return std::move(cond_computation);
 }
@@ -175,7 +179,7 @@ static StatusOr<std::unique_ptr<HloComputation>> MakeCountedLoopBodyComputation(
                       CreateComputationWithSignature(
                           {&loop_state_shape}, loop_state_shape, "while_body"));
   HloInstruction* one = body_computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(1)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
   HloInstruction* param = body_computation->parameter_instruction(0);
   TF_ASSIGN_OR_RETURN(HloInstruction * indvar,
                       MakeGetTupleElementHlo(param, 0));
@@ -203,29 +207,44 @@ static StatusOr<HloInstruction*> MakeInitTupleFromInitValues(
   std::vector<HloInstruction*> init_values_with_indvar;
   init_values_with_indvar.reserve(init_values.size() + 1);
   HloInstruction* zero = computation->AddInstruction(
-      HloInstruction::CreateConstant(Literal::CreateR0<int32>(0)));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(0)));
   init_values_with_indvar.push_back(zero);
-  c_copy(init_values, std::back_inserter(init_values_with_indvar));
+  absl::c_copy(init_values, std::back_inserter(init_values_with_indvar));
   return computation->AddInstruction(
       HloInstruction::CreateTuple(init_values_with_indvar));
 }
 
-static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
+// Returns a tuple shape containing a S32, and a shape from each value in
+// `init_values`. If a shape from a value in `init_values` doesn't have a
+// layout, use a default layout for the shape.
+static Shape MakeLoopStateShapeWithLayout(
+    const WhileUtil::LoopStateTy& init_values) {
   std::vector<Shape> loop_state_shape_components;
   loop_state_shape_components.reserve(init_values.size() + 1);
   loop_state_shape_components.push_back(ShapeUtil::MakeShape(S32, {}));
-  c_transform(init_values, std::back_inserter(loop_state_shape_components),
-              [](HloInstruction* instr) { return instr->shape(); });
+  absl::c_transform(init_values,
+                    std::back_inserter(loop_state_shape_components),
+                    [](HloInstruction* instr) {
+                      Shape shape = instr->shape();
+                      if (!shape.has_layout()) {
+                        LayoutUtil::SetToDefaultLayout(&shape);
+                      }
+                      return shape;
+                    });
   return ShapeUtil::MakeTupleShape(loop_state_shape_components);
 }
 
 /*static*/ StatusOr<WhileUtil::LoopStateTy> WhileUtil::MakeCountedLoop(
     HloComputation* computation, int32 trip_count,
     const WhileUtil::LoopStateTy& init_values,
-    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator) {
+    const WhileUtil::LoopBodyGeneratorTy& loop_body_generator,
+    const OpMetadata& metadata) {
   CHECK_GE(trip_count, 0);
 
-  Shape loop_state_shape = MakeLoopStateShape(init_values);
+  // Both MakeCountedLoopConditionComputation and MakeCountedLoopBodyComputation
+  // use loop_state_shape to create a literal, which requires loop_state_shape
+  // to have a layout.
+  Shape loop_state_shape = MakeLoopStateShapeWithLayout(init_values);
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloComputation> cond,
       MakeCountedLoopConditionComputation(loop_state_shape, trip_count));
@@ -239,6 +258,7 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
       computation->AddInstruction(HloInstruction::CreateWhile(
           loop_state_shape, module->AddEmbeddedComputation(std::move(cond)),
           module->AddEmbeddedComputation(std::move(body)), init_tuple));
+  while_instr->set_metadata(metadata);
 
   std::vector<HloInstruction*> result;
   for (int64 i = 0, e = init_values.size(); i < e; i++) {
@@ -260,6 +280,19 @@ static Shape MakeLoopStateShape(const WhileUtil::LoopStateTy& init_values) {
         instr->tuple_index() == i &&
         instr->operand(0) == while_body.parameter_instruction(0)) {
       result.push_back(instr);
+    }
+  }
+  return result;
+}
+
+/*static*/ absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>
+WhileUtil::GetGTEsMapForWhileConditional(
+    const HloComputation& while_conditional) {
+  absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>> result;
+  for (HloInstruction* user :
+       while_conditional.parameter_instruction(0)->users()) {
+    if (user->opcode() == HloOpcode::kGetTupleElement) {
+      result[user->tuple_index()].push_back(user);
     }
   }
   return result;

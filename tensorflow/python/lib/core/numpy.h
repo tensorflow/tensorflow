@@ -30,8 +30,9 @@ limitations under the License.
 #endif
 
 // Place `<locale>` before <Python.h> to avoid build failure in macOS.
-#include <Python.h>
 #include <locale>
+
+#include <Python.h>
 
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"

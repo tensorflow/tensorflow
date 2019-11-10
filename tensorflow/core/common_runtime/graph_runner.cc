@@ -56,7 +56,7 @@ class SimpleRendezvous : public Rendezvous {
     }
 
     mutex_lock l(mu_);
-    string edge_name = std::string(parsed.edge_name);
+    string edge_name(parsed.edge_name);
     if (table_.count(edge_name) > 0) {
       return errors::Internal("Send of an already sent tensor");
     }
@@ -69,7 +69,7 @@ class SimpleRendezvous : public Rendezvous {
     Tensor tensor;
     Status status = Status::OK();
     {
-      string key = std::string(parsed.edge_name);
+      string key(parsed.edge_name);
       mutex_lock l(mu_);
       if (table_.count(key) <= 0) {
         status = errors::Internal("Did not find key ", key);
@@ -92,7 +92,7 @@ class SimpleRendezvous : public Rendezvous {
 }  // namespace
 
 GraphRunner::GraphRunner(Env* env)
-    : device_deleter_(new SingleThreadedCpuDevice(env)),
+    : device_deleter_(NewSingleThreadedCpuDevice(env)),
       device_(device_deleter_.get()) {}
 GraphRunner::GraphRunner(Device* device) : device_(device) {}
 
@@ -158,15 +158,20 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   params.device = device_;
   params.function_library = function_library;
   const int producer = graph_to_run->versions().producer();
-  params.create_kernel = [this, producer](const NodeDef& ndef,
-                                          OpKernel** kernel) {
-    return CreateNonCachedKernel(device_, nullptr, ndef, producer, kernel);
+  params.create_kernel = [this, function_library, producer](const NodeDef& ndef,
+                                                            OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, function_library, ndef, producer,
+                                 kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
+  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
+                                 Rendezvous** r) {
+    *r = new IntraProcessRendezvous(device_mgr);
+    return Status::OK();
+  };
 
   Executor* executor;
-  TF_RETURN_IF_ERROR(
-      NewLocalExecutor(params, std::move(graph_to_run), &executor));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, *graph_to_run, &executor));
   std::unique_ptr<Executor> executor_unref(executor);
 
   Executor::Args args;
@@ -179,6 +184,9 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   // NOTE: Use of graph runner is limited to single-device executions
   // so a CollectiveExecutor should never be required.
   args.collective_executor = nullptr;
+
+  CancellationManager cancellation_manager;
+  args.cancellation_manager = &cancellation_manager;
 
   // Run the graph.
   TF_RETURN_IF_ERROR(executor->Run(args));

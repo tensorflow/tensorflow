@@ -1,0 +1,30 @@
+op {
+  graph_op_name: "StringLength"
+  attr {
+    name: "unit"
+    description: <<END
+The unit that is counted to compute string length.  One of: `"BYTE"` (for
+the number of bytes in each string) or `"UTF8_CHAR"` (for the number of UTF-8
+encoded Unicode code points in each string).  Results are undefined
+if `unit=UTF8_CHAR` and the `input` strings do not contain structurally
+valid UTF-8.
+END
+  }
+  in_arg {
+    name: "input"
+    description: <<END
+The string for which to compute the length.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Integer tensor that has the same shape as `input`. The output contains the
+element-wise string lengths of `input`.
+END
+  }
+  summary: "String lengths of `input`."
+  description: <<END
+Computes the length of each string given in the input tensor.
+END
+}

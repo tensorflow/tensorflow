@@ -81,7 +81,7 @@ class ReduceBenchmarks(test.Benchmark):
       grad, = gradients_impl.gradients(reduction, tensor)
 
       def fn():
-        sess.run(grad.op)
+        self.evaluate(grad.op)
 
       self._run(fn, 10000)
 
@@ -98,7 +98,7 @@ class ReduceBenchmarks(test.Benchmark):
         grad, = gradients_impl.gradients(reduction, tensor)
 
       def fn():
-        sess.run(grad.op)
+        self.evaluate(grad.op)
 
       self._run(fn, 10000)
 

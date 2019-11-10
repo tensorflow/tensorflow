@@ -1,0 +1,24 @@
+path: "tensorflow.VariableAggregation"
+tf_class {
+  is_instance: "<enum \'VariableAggregation\'>"
+  member {
+    name: "MEAN"
+    mtype: "<enum \'VariableAggregation\'>"
+  }
+  member {
+    name: "NONE"
+    mtype: "<enum \'VariableAggregation\'>"
+  }
+  member {
+    name: "ONLY_FIRST_REPLICA"
+    mtype: "<enum \'VariableAggregation\'>"
+  }
+  member {
+    name: "ONLY_FIRST_TOWER"
+    mtype: "<enum \'VariableAggregation\'>"
+  }
+  member {
+    name: "SUM"
+    mtype: "<enum \'VariableAggregation\'>"
+  }
+}

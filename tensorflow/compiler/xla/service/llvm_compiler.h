@@ -37,7 +37,7 @@ class LLVMCompiler : public Compiler {
   // A callback of this type can be run before and/or after IR-level
   // optimization to e.g. dump out the generated IR to disk or gather some
   // statistics.
-  using ModuleHook = std::function<Status(const llvm::Module&)>;
+  using ModuleHook = std::function<void(const llvm::Module&)>;
 
   void SetPreOptimizationHook(ModuleHook hook) {
     CHECK(!user_pre_optimization_hook_)
@@ -61,18 +61,18 @@ class LLVMCompiler : public Compiler {
   //   StatusOr<std::unique_ptr<Executable>> RunBackend(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
-  //       DeviceMemoryAllocator* device_allocator)
+  //       se::DeviceMemoryAllocator* device_allocator)
   //   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
   //       std::unique_ptr<HloModule> module,
   //       se::StreamExecutor* stream_exec,
-  //       DeviceMemoryAllocator* device_allocator)
+  //       se::DeviceMemoryAllocator* device_allocator)
   using Compiler::RunBackend;
   using Compiler::RunHloPasses;
 
   StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules,
+      std::unique_ptr<HloModuleGroup> module_group,
       std::vector<std::vector<se::StreamExecutor*>> stream_execs,
-      DeviceMemoryAllocator* device_allocator) override;
+      se::DeviceMemoryAllocator* device_allocator) override;
 
  protected:
   ModuleHook user_pre_optimization_hook_;

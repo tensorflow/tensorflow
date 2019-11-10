@@ -16,7 +16,7 @@
 # pylint: disable=g-short-docstring-punctuation
 """Image processing and decoding ops.
 
-See the @{$python/image} guide.
+See the [Images](https://tensorflow.org/api_guides/python/image) guide.
 """
 from __future__ import absolute_import
 from __future__ import division

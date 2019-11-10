@@ -64,6 +64,8 @@ class GrpcSession : public Session {
   // number "initial_version".
   Status Create(const GraphDef& graph) override;
   Status Create(const RunOptions& run_options, const GraphDef& graph) override;
+  Status Create(GraphDef&& graph) override;
+  Status Create(const RunOptions& run_options, GraphDef&& graph) override;
 
   // Runs with and without RunOptions.
   Status Run(const std::vector<std::pair<string, Tensor> >& inputs,
@@ -78,6 +80,8 @@ class GrpcSession : public Session {
 
   Status Extend(const GraphDef& graph) override;
   Status Extend(const RunOptions& run_options, const GraphDef& graph) override;
+  Status Extend(GraphDef&& graph) override;
+  Status Extend(const RunOptions& run_options, GraphDef&& graph) override;
 
   Status Close() override;
 
@@ -106,9 +110,12 @@ class GrpcSession : public Session {
  protected:
   // Takes ownership of `*master`.
   void SetRemoteMaster(std::unique_ptr<MasterInterface> master);
+  // Allows subclasses to customize Session creation.
+  void SetHandleAndGraphVersion(string handle, int64 graph_version)
+      LOCKS_EXCLUDED(mu_);
 
  private:
-  SessionOptions options_;
+  const SessionOptions options_;
   std::unique_ptr<MasterInterface> master_;
   mutex mu_;
 
@@ -117,6 +124,8 @@ class GrpcSession : public Session {
 
   // The current version of the graph.
   int64 current_graph_version_ GUARDED_BY(mu_);
+
+  bool is_local_ = false;
 
   Status Handle(string* out_handle) LOCKS_EXCLUDED(mu_);
 
@@ -131,8 +140,8 @@ class GrpcSession : public Session {
                   MutableRunStepResponseWrapper* resp);
 
   // Implementations for all the public interfaces.
-  Status CreateImpl(CallOptions* call_options, const GraphDef& graph);
-  Status ExtendImpl(CallOptions* call_options, const GraphDef& graph);
+  Status CreateImpl(CallOptions* call_options, GraphDef graph);
+  Status ExtendImpl(CallOptions* call_options, GraphDef graph);
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcSession);
 };

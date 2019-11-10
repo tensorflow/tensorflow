@@ -45,6 +45,10 @@ limitations under the License.
 #include <random>
 #include <unordered_map>
 
+#include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -58,10 +62,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -77,10 +80,11 @@ int64 tf_xla_random_seed = 0;
 int32 tf_xla_test_repetitions = 20;
 int64 tf_xla_max_tensor_size = 10000LL;
 string* tf_xla_test_device_ptr;  // initial value set in main()
+string* tf_xla_reference_device_ptr;  // initial value set in main()
 bool tf_xla_test_use_jit = true;
 
 string LocalDeviceToFullDeviceName(const string& device) {
-  return strings::StrCat("/job:localhost/replica:0/task:0/device:", device);
+  return absl::StrCat("/job:localhost/replica:0/task:0/device:", device);
 }
 
 constexpr std::array<DataType, 5> kAllXlaTypes = {
@@ -101,13 +105,17 @@ class OpTestBuilder {
   OpTestBuilder& RandomInput(DataType type);
   OpTestBuilder& RandomInput(DataType type, std::vector<int64> dims);
 
+  // As RandomInput but the values are unique.
+  OpTestBuilder& RandomUniqueInput(DataType type, std::vector<int64> dims);
+
   // Sets an attribute.
   template <class T>
-  OpTestBuilder& Attr(StringPiece attr_name, T&& value);
+  OpTestBuilder& Attr(absl::string_view attr_name, T&& value);
 
   // Overload needed to allow {...} expressions for value.
   template <class T>
-  OpTestBuilder& Attr(StringPiece attr_name, std::initializer_list<T> value);
+  OpTestBuilder& Attr(absl::string_view attr_name,
+                      std::initializer_list<T> value);
 
   // Adds nodes that executes the operator under test on 'device' to 'graphdef'.
   // If 'use_jit' is true, marks the operator under test to be compiled by XLA.
@@ -126,6 +134,7 @@ class OpTestBuilder {
 
     DataType type = DT_INVALID;
     bool has_dims = false;
+    bool needs_unique_values = false;
     std::vector<int64> dims;
   };
 
@@ -167,14 +176,26 @@ OpTestBuilder& OpTestBuilder::RandomInput(DataType type,
   return *this;
 }
 
+OpTestBuilder& OpTestBuilder::RandomUniqueInput(DataType type,
+                                                std::vector<int64> dims) {
+  VLOG(1) << "Adding input: " << type << " " << TensorShape(dims).DebugString();
+  InputDescription input;
+  input.type = type;
+  input.has_dims = true;
+  input.needs_unique_values = true;
+  input.dims = std::move(dims);
+  inputs_.push_back(input);
+  return *this;
+}
+
 template <class T>
-OpTestBuilder& OpTestBuilder::Attr(StringPiece attr_name, T&& value) {
+OpTestBuilder& OpTestBuilder::Attr(absl::string_view attr_name, T&& value) {
   AddNodeAttr(attr_name, std::forward<T>(value), &node_def_);
   return *this;
 }
 
 template <class T>
-OpTestBuilder& OpTestBuilder::Attr(StringPiece attr_name,
+OpTestBuilder& OpTestBuilder::Attr(absl::string_view attr_name,
                                    std::initializer_list<T> value) {
   Attr<std::initializer_list<T>>(attr_name, std::move(value));
   return *this;
@@ -192,7 +213,7 @@ Status OpTestBuilder::BuildGraph(const string& name_prefix,
 
   NodeDef* test_def = graphdef->add_node();
   *test_def = node_def_;
-  test_def->set_name(strings::StrCat(name_prefix, "_op_under_test"));
+  test_def->set_name(absl::StrCat(name_prefix, "_op_under_test"));
   test_def->set_device(device);
   AddDefaultsToNodeDef(*op_def, test_def);
   if (use_jit) {
@@ -207,7 +228,7 @@ Status OpTestBuilder::BuildGraph(const string& name_prefix,
   // Build feed and fetch nodes.
   for (int i = 0; i < input_types.size(); ++i) {
     NodeDef* def = graphdef->add_node();
-    string name = strings::StrCat(name_prefix, "_input_", i);
+    string name = absl::StrCat(name_prefix, "_input_", i);
     TF_RETURN_IF_ERROR(NodeDefBuilder(name, "Placeholder")
                            .Device(device)
                            .Attr("dtype", input_types[i])
@@ -218,7 +239,7 @@ Status OpTestBuilder::BuildGraph(const string& name_prefix,
 
   for (int i = 0; i < output_types.size(); ++i) {
     NodeDef* def = graphdef->add_node();
-    string name = strings::StrCat(name_prefix, "_output_", i);
+    string name = absl::StrCat(name_prefix, "_output_", i);
     TF_RETURN_IF_ERROR(NodeDefBuilder(name, "Identity")
                            .Device(device)
                            .Attr("T", output_types[i])
@@ -258,13 +279,13 @@ class OpTest : public ::testing::Test {
 
   // Select a random element from 'candidates'.
   template <typename T>
-  T Choose(gtl::ArraySlice<T> candidates);
+  T Choose(absl::Span<const T> candidates);
 
   static constexpr int kDefaultMaxRank = 5;
   static constexpr int64 kDefaultMaxDimensionSize = 256LL;
 
   // Returns true if 'dims' have a size less than tf_xla_max_tensor_size.
-  bool TensorSizeIsOk(gtl::ArraySlice<int64> dims);
+  bool TensorSizeIsOk(absl::Span<const int64> dims);
 
   // Returns a random dimension size, in the range [min, max).
   int64 RandomDim(int64 min = 0, int64 max = kDefaultMaxDimensionSize);
@@ -289,16 +310,20 @@ class OpTest : public ::testing::Test {
   // Returns a tensor filled with random but "reasonable" values from the middle
   // of the type's range. If the shape is omitted, a random shape is used.
   // TODO(phawkins): generalize this code to a caller-supplied distribution.
-  Tensor RandomTensor(DataType dtype, gtl::ArraySlice<int64> shape);
+  Tensor RandomTensor(DataType dtype, bool needs_unique_values,
+                      absl::Span<const int64> shape);
   Tensor RandomTensor(DataType dtype);
 
   // Like RandomTensor, but uses values >= 0.
-  Tensor RandomNonNegativeTensor(DataType dtype, gtl::ArraySlice<int64> shape);
+  Tensor RandomNonNegativeTensor(DataType dtype, absl::Span<const int64> shape);
   Tensor RandomNonNegativeTensor(DataType dtype);
 
   // Returns a random subset of the integers in the range [0, rank), suitable
   // for use as reduction indices.
   Tensor RandomReductionIndices(int rank);
+
+  // Returns a random bit.
+  bool RandomBool();
 
   struct WindowedSpatialDims {
     Padding padding;
@@ -397,7 +422,7 @@ void OpTest::Repeatedly(const std::function<TestResult(void)>& fn) {
 }
 
 template <typename T>
-T OpTest::Choose(gtl::ArraySlice<T> candidates) {
+T OpTest::Choose(absl::Span<const T> candidates) {
   std::uniform_int_distribution<size_t> d(0, candidates.size() - 1);
   return candidates[d(generator())];
 }
@@ -407,7 +432,7 @@ int64 OpTest::RandomDim(int64 min, int64 max) {
   return size_distribution(generator());
 }
 
-bool OpTest::TensorSizeIsOk(gtl::ArraySlice<int64> dims) {
+bool OpTest::TensorSizeIsOk(absl::Span<const int64> dims) {
   int64 size = 1LL;
   for (int64 dim : dims) {
     size *= dim;
@@ -432,49 +457,95 @@ std::vector<int64> OpTest::RandomDims(int min_rank, int max_rank,
   return dims;
 }
 
-Tensor OpTest::RandomTensor(DataType dtype, gtl::ArraySlice<int64> shape) {
+bool OpTest::RandomBool() {
+  std::bernoulli_distribution d(0.5);
+  return d(generator());
+}
+
+Tensor OpTest::RandomTensor(DataType dtype, bool needs_unique_values,
+                            absl::Span<const int64> shape) {
   Tensor tensor(dtype, TensorShape(shape));
   switch (dtype) {
     case DT_FLOAT: {
+      absl::flat_hash_set<float> already_generated;
       std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
-      test::FillFn<float>(&tensor, [this, &distribution](int i) -> float {
-        return distribution(generator());
+      test::FillFn<float>(&tensor, [&](int i) -> float {
+        float generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_DOUBLE: {
+      absl::flat_hash_set<double> already_generated;
       std::uniform_real_distribution<double> distribution(-1.0, 1.0);
-      test::FillFn<double>(&tensor, [this, &distribution](int i) -> double {
-        return distribution(generator());
+      test::FillFn<double>(&tensor, [&](int i) -> double {
+        double generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_COMPLEX64: {
+      absl::flat_hash_set<std::pair<float, float>> already_generated;
       std::uniform_real_distribution<float> distribution(-1.0f, 1.0f);
-      test::FillFn<complex64>(&tensor, [this, &distribution](int i) {
-        return complex64(distribution(generator()), distribution(generator()));
+      test::FillFn<complex64>(&tensor, [&](int i) {
+        complex64 generated;
+        do {
+          generated =
+              complex64(distribution(generator()), distribution(generator()));
+        } while (
+            needs_unique_values &&
+            !already_generated
+                 .insert(std::make_pair(generated.real(), generated.imag()))
+                 .second);
+        return generated;
       });
       break;
     }
     case DT_INT32: {
+      absl::flat_hash_set<int32> already_generated;
       std::uniform_int_distribution<int32> distribution(-(1 << 20), 1 << 20);
-      test::FillFn<int32>(&tensor, [this, &distribution](int i) -> int32 {
-        return distribution(generator());
+      test::FillFn<int32>(&tensor, [&](int i) -> int32 {
+        int32 generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_INT64: {
+      absl::flat_hash_set<int64> already_generated;
       std::uniform_int_distribution<int64> distribution(-(1LL << 40),
                                                         1LL << 40);
-      test::FillFn<int64>(&tensor, [this, &distribution](int i) -> int64 {
-        return distribution(generator());
+      test::FillFn<int64>(&tensor, [&](int i) -> int64 {
+        int64 generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
     case DT_BOOL: {
+      absl::flat_hash_set<bool> already_generated;
       std::bernoulli_distribution distribution;
-      test::FillFn<bool>(&tensor, [this, &distribution](int i) -> bool {
-        return distribution(generator());
+      test::FillFn<bool>(&tensor, [&](int i) -> bool {
+        bool generated;
+        do {
+          generated = distribution(generator());
+        } while (needs_unique_values &&
+                 !already_generated.insert(generated).second);
+        return generated;
       });
       break;
     }
@@ -485,11 +556,11 @@ Tensor OpTest::RandomTensor(DataType dtype, gtl::ArraySlice<int64> shape) {
 }
 
 Tensor OpTest::RandomTensor(DataType dtype) {
-  return RandomTensor(dtype, RandomDims());
+  return RandomTensor(dtype, /*needs_unique_values=*/false, RandomDims());
 }
 
 Tensor OpTest::RandomNonNegativeTensor(DataType dtype,
-                                       gtl::ArraySlice<int64> shape) {
+                                       absl::Span<const int64> shape) {
   Tensor tensor(dtype, TensorShape(shape));
   switch (dtype) {
     case DT_FLOAT: {
@@ -667,11 +738,11 @@ bool IsClose<complex64>(const complex64& x, const complex64& y, double atol,
 
 template <typename T>
 string Str(T x) {
-  return strings::StrCat(x);
+  return absl::StrCat(x);
 }
 template <>
 string Str<complex64>(complex64 x) {
-  return strings::StrCat("(", x.real(), ", ", x.imag(), ")");
+  return absl::StrCat("(", x.real(), ", ", x.imag(), ")");
 }
 
 template <typename T>
@@ -681,11 +752,11 @@ Status TensorsAreCloseImpl(const Tensor& x, const Tensor& y, double atol,
   auto Ty = y.flat<T>();
   for (int i = 0; i < Tx.size(); ++i) {
     if (!IsClose(Tx(i), Ty(i), atol, rtol)) {
-      return errors::InvalidArgument(strings::StrCat(
-          i, "-th tensor element isn't close: ", Str(Tx(i)), " vs. ",
-          Str(Ty(i)), ". x = ", x.DebugString(), "y = ", y.DebugString(),
-          "atol = ", atol, " rtol = ", rtol,
-          " tol = ", atol + rtol * Abs(Tx(i))));
+      return errors::InvalidArgument(
+          absl::StrCat(i, "-th tensor element isn't close: ", Str(Tx(i)),
+                       " vs. ", Str(Ty(i)), ". x = ", x.DebugString(),
+                       "y = ", y.DebugString(), "atol = ", atol,
+                       " rtol = ", rtol, " tol = ", atol + rtol * Abs(Tx(i))));
     }
   }
   return Status::OK();
@@ -697,9 +768,23 @@ Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
   auto Ty = y.flat<T>();
   for (int i = 0; i < Tx.size(); ++i) {
     if (Tx(i) != Ty(i)) {
-      return errors::InvalidArgument(strings::StrCat(
-          i, "-th tensor element isn't equal: ", Tx(i), " vs. ", Ty(i),
-          ". x = ", x.DebugString(), "y = ", y.DebugString()));
+      return errors::InvalidArgument(absl::StrCat(
+          i, "-th tensor element isn't equal: ", Str(Tx(i)), " vs. ",
+          Str(Ty(i)), ". x = ", x.DebugString(), "y = ", y.DebugString()));
+    }
+  }
+  return Status::OK();
+}
+
+Status TensorsAreEqualImplBfloat16(const Tensor& x, const Tensor& y) {
+  auto Tx = x.flat<bfloat16>();
+  auto Ty = y.flat<bfloat16>();
+  for (int i = 0; i < Tx.size(); ++i) {
+    if (Tx(i) != Ty(i)) {
+      return errors::InvalidArgument(absl::StrCat(
+          i, "-th tensor element isn't equal: ", static_cast<float>(Tx(i)),
+          " vs. ", static_cast<float>(Ty(i)), ". x = ", x.DebugString(),
+          "y = ", y.DebugString()));
     }
   }
   return Status::OK();
@@ -712,14 +797,14 @@ Status TensorsAreEqualImpl(const Tensor& x, const Tensor& y) {
 Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
                        double rtol) {
   if (a.dtype() != b.dtype()) {
-    return errors::InvalidArgument(strings::StrCat(
+    return errors::InvalidArgument(absl::StrCat(
         "Tensors have different types: ", DataTypeString(a.dtype()), " and ",
         DataTypeString(b.dtype())));
   }
   if (!a.IsSameSize(b)) {
-    return errors::InvalidArgument(strings::StrCat(
-        "Tensors have different shapes: ", a.shape().DebugString(), " and ",
-        b.shape().DebugString()));
+    return errors::InvalidArgument(
+        absl::StrCat("Tensors have different shapes: ", a.shape().DebugString(),
+                     " and ", b.shape().DebugString()));
   }
 
   switch (a.dtype()) {
@@ -735,6 +820,8 @@ Status TensorsAreClose(const Tensor& a, const Tensor& b, double atol,
       return TensorsAreEqualImpl<int64>(a, b);
     case DT_BOOL:
       return TensorsAreEqualImpl<bool>(a, b);
+    case DT_BFLOAT16:
+      return TensorsAreEqualImplBfloat16(a, b);
     default:
       LOG(FATAL) << "Unexpected type : " << DataTypeString(a.dtype());
   }
@@ -761,13 +848,14 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
         VLOG(1) << "Ignoring oversize dims.";
         return kInvalid;
       }
-      input_tensors.push_back(RandomTensor(input.type, dims));
+      input_tensors.push_back(
+          RandomTensor(input.type, input.needs_unique_values, dims));
     }
     VLOG(1) << "Input: " << input_tensors.back().DebugString();
   }
 
-  string cpu_device =
-      LocalDeviceToFullDeviceName(strings::StrCat(DEVICE_CPU, ":0"));
+  string reference_device =
+      LocalDeviceToFullDeviceName(*tf_xla_reference_device_ptr);
   string test_device = LocalDeviceToFullDeviceName(*tf_xla_test_device_ptr);
 
   DeviceNameUtils::ParsedName parsed_name;
@@ -782,16 +870,16 @@ OpTest::TestResult OpTest::ExpectTfAndXlaOutputsAreClose(
   std::vector<string> expected_inputs, test_inputs;
   std::vector<string> expected_fetches, test_fetches;
   Status status = builder.BuildGraph(
-      strings::StrCat("test", num_tests_, "_expected"), cpu_device,
-      /* use_jit= */ false, &graph, /* test_node_def= */ nullptr,
-      &expected_inputs, &expected_fetches);
+      absl::StrCat("test", num_tests_, "_expected"), reference_device,
+      /*use_jit=*/false, &graph, /*test_node_def=*/nullptr, &expected_inputs,
+      &expected_fetches);
   if (!status.ok()) {
     LOG(ERROR) << "Expected graph construction failed: " << status;
     return kFatalError;
   }
 
   NodeDef* node_def;
-  status = builder.BuildGraph(strings::StrCat("test", num_tests_, "_test"),
+  status = builder.BuildGraph(absl::StrCat("test", num_tests_, "_test"),
                               test_device, tf_xla_test_use_jit, &graph,
                               &node_def, &test_inputs, &test_fetches);
   if (!status.ok()) {
@@ -960,7 +1048,7 @@ TEST_F(OpTest, ArgMax) {
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ArgMax")
-            .RandomInput(DT_FLOAT, dims)
+            .RandomUniqueInput(DT_FLOAT, dims)
             .Input(test::AsScalar<int32>(reduce_dim))
             .Attr("T", DT_FLOAT)
             .Attr("Tidx", DT_INT32)
@@ -976,7 +1064,7 @@ TEST_F(OpTest, ArgMin) {
         std::uniform_int_distribution<int32>(-num_dims, num_dims)(generator());
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("ArgMin")
-            .RandomInput(DT_FLOAT, dims)
+            .RandomUniqueInput(DT_FLOAT, dims)
             .Input(test::AsScalar<int32>(reduce_dim))
             .Attr("T", DT_FLOAT)
             .Attr("Tidx", DT_INT32)
@@ -1305,6 +1393,19 @@ TEST_F(OpTest, Cast) {
                                              .RandomInput(src_type)
                                              .Attr("SrcT", src_type)
                                              .Attr("DstT", dst_type));
+  });
+}
+
+TEST_F(OpTest, CastBF16) {
+  Repeatedly([this]() {
+    DataType src_type, dst_type;
+    src_type = Choose<DataType>({DT_FLOAT});
+    dst_type = Choose<DataType>({DT_BFLOAT16});
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("Cast")
+                                             .RandomInput(src_type)
+                                             .Attr("SrcT", src_type)
+                                             .Attr("DstT", dst_type)
+                                             .Attr("Truncate", true));
   });
 }
 
@@ -1758,7 +1859,7 @@ TEST_F(OpTest, Diag) {
     do {
       dims = RandomDims(1);
       size = TensorShape(dims).num_elements();
-    } while (size * size < tf_xla_max_tensor_size);
+    } while (size * size > tf_xla_max_tensor_size);
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Diag").RandomInput(type, dims).Attr("T", type));
   });
@@ -1824,7 +1925,8 @@ TEST_F(OpTest, DynamicStitch) {
     for (int i = 0; i < n; ++i) {
       TensorShape shape(index_dims[i]);
       Tensor t = test::AsTensor<int32>(
-          gtl::ArraySlice<int32>(indices, pos, shape.num_elements()), shape);
+          absl::Span<const int32>(indices).subspan(pos, shape.num_elements()),
+          shape);
       builder.Input(t);
       pos += t.NumElements();
     }
@@ -2402,20 +2504,21 @@ TEST_F(OpTest, Pack) {
   });
 }
 
-// TODO(b/31741898): crashes on GPU.
 TEST_F(OpTest, Pad) {
   Repeatedly([this]() {
     auto type = Choose<DataType>(kAllXlaTypes);
     std::vector<int64> t_dims = RandomDims();
 
-    // TODO(b/31741996): re-enable DT_INT64 when bug is fixed.
-    // DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
-    DataType tpaddings = DT_INT32;
+    DataType tpaddings = Choose<DataType>({DT_INT32, DT_INT64});
     std::vector<int64> paddings_vec;
-    std::uniform_int_distribution<int> distribution(0, 7);
     for (int i = 0; i < t_dims.size(); ++i) {
-      paddings_vec.push_back(distribution(generator()));
-      paddings_vec.push_back(distribution(generator()));
+      std::uniform_int_distribution<int> pad_distribution(0, t_dims[i]);
+      int pad_size = pad_distribution(generator());
+      std::uniform_int_distribution<int> lower_distribution(0, pad_size);
+      int low_pad_size = lower_distribution(generator());
+      paddings_vec.push_back(low_pad_size);
+      paddings_vec.push_back(pad_size - low_pad_size);
+      t_dims[i] -= pad_size;
     }
     Tensor paddings;
     CHECK(
@@ -2621,6 +2724,37 @@ TEST_F(OpTest, Reverse) {
                                              .RandomInput(type, dims)
                                              .RandomInput(DT_BOOL, {rank})
                                              .Attr("T", type));
+  });
+}
+
+TEST_F(OpTest, ReverseSequence) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(/*min_rank=*/2);
+    auto type = Choose<DataType>(kAllXlaTypes);
+    int64 rank = dims.size();
+
+    // Choose random batch and sequence dimensions.
+    std::vector<int> shuffled_dim_ids(rank);
+    absl::c_iota(shuffled_dim_ids, 0);
+    absl::c_shuffle(shuffled_dim_ids, generator());
+    shuffled_dim_ids.resize(2);
+    int batch_dim = shuffled_dim_ids[0];
+    int seq_dim = shuffled_dim_ids[1];
+
+    int batch_size = dims[batch_dim];
+    int max_seq_len = dims[seq_dim];
+    std::vector<int32> seq_lens(batch_size);
+    std::uniform_int_distribution<int32> d(0, max_seq_len);
+    absl::c_generate(seq_lens, [&]() { return d(generator()); });
+
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("ReverseSequence")
+            .RandomInput(type, dims)
+            .Input(test::AsTensor<int32>(seq_lens))
+            .Attr("seq_dim", seq_dim)
+            .Attr("batch_dim", batch_dim)
+            .Attr("T", type)
+            .Attr("Tlen", DT_INT32));
   });
 }
 
@@ -3250,11 +3384,41 @@ TEST_F(OpTest, ZerosLike) {
   });
 }
 
+// Example failing run:
+//   --tf_xla_reference_device=GPU:0
+//   --tf_xla_test_use_jit=true --tf_xla_test_device=GPU:0
+//   --tf_xla_test_repetitions=2
+//   --gunit_filter='OpTest.FusedBatchNormTraining'
+//   --tf_xla_random_seed=2838146746
+TEST_F(OpTest, FusedBatchNormTraining) {
+  bool is_nhwc = RandomBool();
+  std::vector<int64> x_dims = RandomDims(/*min_rank=*/4, /*max_rank=*/4,
+                                         /*min_size=*/5, /*max_size=*/20);
+  std::vector<int64> scale_dims = {x_dims[is_nhwc ? 3 : 1]};
+  std::vector<int64> offset_dims = {x_dims[is_nhwc ? 3 : 1]};
+  std::vector<int64> mean_dims = {0};
+  std::vector<int64> variance_dims = {0};
+  DataType type = DT_FLOAT;
+  Repeatedly([&] {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("FusedBatchNorm")
+            .RandomInput(type, x_dims)
+            .RandomInput(type, scale_dims)
+            .RandomInput(type, offset_dims)
+            .RandomInput(type, mean_dims)
+            .RandomInput(type, variance_dims)
+            .Attr("T", type)
+            .Attr("data_format", is_nhwc ? "NHWC" : "NCHW")
+            .Attr("epsilon", static_cast<float>(1.001e-05))
+            .Attr("is_training", true));
+  });
+}
 }  // anonymous namespace
 }  // namespace tensorflow
 
 int main(int argc, char** argv) {
   tensorflow::tf_xla_test_device_ptr = new tensorflow::string("GPU:0");
+  tensorflow::tf_xla_reference_device_ptr = new tensorflow::string("CPU:0");
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag(
           "tf_xla_random_seed", &tensorflow::tf_xla_random_seed,
@@ -3270,6 +3434,9 @@ int main(int argc, char** argv) {
                        "Maximum number of elements for random input tensors."),
       tensorflow::Flag("tf_xla_test_device", tensorflow::tf_xla_test_device_ptr,
                        "Tensorflow device type to use for test"),
+      tensorflow::Flag("tf_xla_reference_device",
+                       tensorflow::tf_xla_reference_device_ptr,
+                       "Tensorflow device type to use for reference"),
       tensorflow::Flag("tf_xla_test_use_jit", &tensorflow::tf_xla_test_use_jit,
                        "Use JIT compilation for the operator under test"),
   };
@@ -3286,10 +3453,10 @@ int main(int argc, char** argv) {
   }
   // XLA devices register kernels at construction time; create all known devices
   // to make sure the kernels are registered.
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
   TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
       tensorflow::SessionOptions(), "", &devices));
-  tensorflow::DeviceMgr device_mgr(devices);
+  tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
 
   tensorflow::Device* ignored;
   TF_QCHECK_OK(

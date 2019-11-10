@@ -19,6 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/hlo_execution_profiler.h"
 #include "tensorflow/compiler/xla/service/gpu/thunk.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -40,8 +41,7 @@ class SequentialThunk : public Thunk {
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // The list of sub-thunks.

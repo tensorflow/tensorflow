@@ -60,3 +60,37 @@ class ZeroOutOp : public OpKernel {
 };
 
 REGISTER_KERNEL_BUILDER(Name("ZeroOut").Device(DEVICE_CPU), ZeroOutOp);
+
+REGISTER_OP("Namespace>ZeroOut")
+    .Input("to_zero: int32")
+    .Output("zeroed: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Zeros out all but the first value of a Tensor.
+
+zeroed: A Tensor whose first value is identical to `to_zero`, and 0
+  otherwise.
+)doc");
+
+REGISTER_KERNEL_BUILDER(Name("Namespace>ZeroOut").Device(DEVICE_CPU),
+                        ZeroOutOp);
+
+REGISTER_OP("Namespace>Nested>ZeroOut")
+    .Input("to_zero: int32")
+    .Output("zeroed: int32")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Zeros out all but the first value of a Tensor.
+
+zeroed: A Tensor whose first value is identical to `to_zero`, and 0
+  otherwise.
+)doc");
+
+REGISTER_KERNEL_BUILDER(Name("Namespace>Nested>ZeroOut").Device(DEVICE_CPU),
+                        ZeroOutOp);

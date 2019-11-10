@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "cos"
-    deprecation_message: "tf.cos is deprecated, please use tf.math.cos instead."
   }
 }

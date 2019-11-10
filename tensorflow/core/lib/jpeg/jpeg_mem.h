@@ -18,8 +18,8 @@ limitations under the License.
 // (data array and size fields).
 // Direct manipulation of JPEG strings are supplied: Flip, Rotate, Crop..
 
-#ifndef TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
-#define TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#ifndef TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
+#define TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_
 
 #include <functional>
 #include <string>
@@ -149,14 +149,14 @@ struct CompressFlags {
 // The encoded data is returned as a string.
 // If not empty, XMP metadata can be embedded in the image header
 // On error, returns the empty string (which is never a valid jpeg).
-string Compress(const void* srcdata, int width, int height,
-                const CompressFlags& flags);
+tstring Compress(const void* srcdata, int width, int height,
+                 const CompressFlags& flags);
 
 // On error, returns false and sets output to empty.
 bool Compress(const void* srcdata, int width, int height,
-              const CompressFlags& flags, string* output);
+              const CompressFlags& flags, tstring* output);
 
 }  // namespace jpeg
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_LIB_JPEG_JPEG_MEM_H_
+#endif  // TENSORFLOW_CORE_LIB_JPEG_JPEG_MEM_H_

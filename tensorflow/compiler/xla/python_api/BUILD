@@ -1,15 +1,18 @@
 # Description:
 #   Python API for XLA.
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//tensorflow:internal"])
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "types",
     srcs = ["types.py"],
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto_py",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:platform",
         "//third_party/py/numpy",
     ],
 )

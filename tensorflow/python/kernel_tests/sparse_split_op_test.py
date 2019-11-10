@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
@@ -75,8 +76,9 @@ class SparseSplitOpTest(test.TestCase):
     return sparse_tensor.SparseTensor.from_value(self._SparseTensorValue_3x4x2(
     ))
 
+  @test_util.run_deprecated_v1
   def testSplitMatrixRows(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_tensors = sparse_ops.sparse_split(
           sp_input=self._SparseTensor_4x6(), num_split=2, axis=0)
       self.assertAllEqual(len(sp_tensors), 2)
@@ -92,8 +94,9 @@ class SparseSplitOpTest(test.TestCase):
                           [20, 23, 25, 30, 32, 33, 35])
       self.assertAllEqual(sp_tensors[1].dense_shape.eval(), [2, 6])
 
+  @test_util.run_deprecated_v1
   def testSplitMatrixUnevenCols(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_tensors_3 = sparse_ops.sparse_split(
           sp_input=self._SparseTensor_5x7(), num_split=3, axis=1)
       self.assertAllEqual(len(sp_tensors_3), 3)
@@ -131,8 +134,9 @@ class SparseSplitOpTest(test.TestCase):
       self.assertAllEqual(sp_tensors_4[3].values.eval(), [16, 46])
       self.assertAllEqual(sp_tensors_4[3].dense_shape.eval(), [5, 1])
 
+  @test_util.run_deprecated_v1
   def testSplitMatrixUnevenRows(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_tensors_2 = sparse_ops.sparse_split(
           sp_input=self._SparseTensor_5x7(), num_split=2, axis=0)
       self.assertAllEqual(sp_tensors_2[0].indices.eval(),
@@ -167,8 +171,9 @@ class SparseSplitOpTest(test.TestCase):
       self.assertAllEqual(sp_tensors_3[2].dense_shape.eval(), [1, 7])
     return
 
+  @test_util.run_deprecated_v1
   def testSplitAllRows(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sp_tensors = sparse_ops.sparse_split(
           sp_input=self._SparseTensor_4x6(), num_split=4, axis=0)
       self.assertAllEqual(len(sp_tensors), 4)
@@ -189,8 +194,9 @@ class SparseSplitOpTest(test.TestCase):
       self.assertAllEqual(sp_tensors[3].values.eval(), [30, 32, 33, 35])
       self.assertAllEqual(sp_tensors[3].dense_shape.eval(), [1, 6])
 
+  @test_util.run_deprecated_v1
   def testSplitColumns(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sparse_tensors = sparse_ops.sparse_split(
           sp_input=self._SparseTensor_4x6(), num_split=3, axis=1)
       self.assertAllEqual(len(sparse_tensors), 3)
@@ -207,8 +213,9 @@ class SparseSplitOpTest(test.TestCase):
       self.assertAllEqual(sparse_tensors[2].values.eval(), [4, 5, 14, 25, 35])
       self.assertAllEqual(sparse_tensors[2].dense_shape.eval(), [4, 2])
 
+  @test_util.run_deprecated_v1
   def testSplitAllColumns(self):
-    with self.test_session(use_gpu=False):
+    with self.session(use_gpu=False):
       sparse_tensors = sparse_ops.sparse_split(
           sp_input=self._SparseTensor_4x6(), num_split=6, axis=1)
       self.assertAllEqual(len(sparse_tensors), 6)
@@ -234,10 +241,11 @@ class SparseSplitOpTest(test.TestCase):
       self.assertAllEqual(sparse_tensors[5].values.eval(), [5, 25, 35])
       self.assertAllEqual(sparse_tensors[5].dense_shape.eval(), [4, 1])
 
+  @test_util.run_deprecated_v1
   def testSliceConcat(self):
     for sp_input in (self._SparseTensorValue_3x4x2(),
                      self._SparseTensor_3x4x2()):
-      with self.test_session(use_gpu=False):
+      with self.cached_session(use_gpu=False):
         sparse_tensors = sparse_ops.sparse_split(
             sp_input=sp_input, num_split=2, axis=1)
         concat_tensor = sparse_ops.sparse_concat(1, sparse_tensors)

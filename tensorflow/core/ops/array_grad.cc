@@ -244,6 +244,27 @@ Status SplitGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Split", SplitGrad);
 
+Status SplitVGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "size_splits: Tlen", "dim: int32", "dy: num_split*T"},
+      // Ret val defs
+      {"dx: T", "d_size_splits: Tlen", "d_dim: int32"},
+      // Attr defs
+      {"T: type", "Tlen: type", "num_split: int"},
+      // Nodes
+      {
+        {{"dx"}, "Concat", {"dim", "dy"}, {{"T", "$T"}, {"N", "$num_split"}}},
+        {{"d_size_splits"}, "ZerosLike", {"size_splits"}, {{"T", "$Tlen"}}},
+        {{"d_dim"}, "ZerosLike", {"dim"}, {{"T", DT_INT32}}},
+      });
+  // clang-format on
+  VLOG(1) << "SplitVGrad " << DebugString(*g);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("SplitV", SplitVGrad);
+
 Status ArrayToListGrad(const AttrSlice& attrs, FunctionDef* g) {
   int N;
   TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "N", &N));
@@ -332,6 +353,27 @@ Status TransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("Transpose", TransposeGrad);
+
+Status GatherNdGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  *g = FDH::Define(
+      // Arg defs
+      {"params: Tparams", "indices: Tindices", "doutput: Tparams"},
+      // Ret val defs
+      {"dparams: Tparams", "dindices: Tindices"},
+      // Attr defs
+      {"Tparams: type", "Tindices: type"},
+      // Nodes
+      {
+        {{"x_shape"}, "Shape", {"params"}, {{"T", "$Tparams"}}},
+        {{"dparams"}, "ScatterNd", {"indices", "doutput", "x_shape"},
+         {{"T", "$Tparams"}, {"Tindices", "$Tindices"}}},
+        {{"dindices"}, "ZerosLike", {"indices"}, {{"T", "$Tindices"}}},
+      });
+  // clang-format on
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("GatherNd", GatherNdGrad);
 
 Status ConjugateTransposeGrad(const AttrSlice& attrs, FunctionDef* g) {
   *g = FDH::Define(
@@ -507,5 +549,31 @@ Status StridedSliceGradGrad(const AttrSlice& attrs, FunctionDef* g) {
   return Status::OK();
 }
 REGISTER_OP_GRADIENT("StridedSliceGrad", StridedSliceGradGrad);
+
+Status BroadcastToGrad(const AttrSlice& attrs, FunctionDef* g) {
+  DataType itype;
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "Tidx", &itype));
+  if (itype != DT_INT32) {
+    return errors::Unimplemented(
+        "BroadcastToGrad for int64 index are not supported.");
+  }
+  std::vector<FDH::Node> nodes = {
+      {{"sx"}, "Shape", {"x"}, {{"T", "$T"}}},
+      {{"rx", "ry"}, "BroadcastGradientArgs", {"sx", "shape"}},
+      {{"sum_gx"}, "Sum", {"dy", "rx"}, {{"T", "$T"}}},
+      {{"dx"}, "Reshape", {"sum_gx", "sx"}, {{"T", "$T"}}},
+      {{"dshape"}, "ZerosLike", {"shape"}, {{"T", "$Tidx"}}}};
+  *g = FDH::Define(
+      // Arg defs
+      {"x: T", "shape: int32", "dy: T"},
+      // Ret val defs
+      {"dx: T", "dshape: Tidx"},
+      // Attr defs
+      {{"T: type"}, {"Tidx: {int32, int64}"}},
+      // Nodes
+      nodes);
+  return Status::OK();
+}
+REGISTER_OP_GRADIENT("BroadcastTo", BroadcastToGrad);
 
 }  // end namespace tensorflow

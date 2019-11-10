@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
-#define TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
+#ifndef TENSORFLOW_CORE_GRAPH_GRAPH_CONSTRUCTOR_H_
+#define TENSORFLOW_CORE_GRAPH_GRAPH_CONSTRUCTOR_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
@@ -42,9 +42,21 @@ struct GraphConstructorOptions {
   //
   // TODO(zhifengc): if possible, consider removing this option.
   bool expect_device_spec = false;
+
+  // If true, validates that nodes being converted have all expected attrs
+  // set and no unknonw attrs set by calling ValidateNodeDef().
+  // Setting validate_nodes without add_default_attributes, will fail if
+  // the GraphDef does not have all required attributes set.
+  bool validate_nodes = false;
+
+  // If true, GraphConstructor will add attributes with their default
+  // value to the Node when they are missing from the NodeDef.
+  bool add_default_attributes = true;
 };
 extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
                                      const GraphDef& gdef, Graph* g);
+extern Status ConvertGraphDefToGraph(const GraphConstructorOptions& opts,
+                                     GraphDef&& gdef, Graph* g);
 
 // Same as ConvertGraphDefToGraph, but takes just nodes.  Used by function
 // instantiation.
@@ -138,6 +150,9 @@ struct ImportGraphDefOptions {
   // with ops that are not defined in the binary calling ImportGraphDef.
   // Similar to the producer_op_list argument to import_graph_def in the
   // python API.
+
+  // Try to set default execution device for this grapth.
+  string default_device;
 };
 
 // Optional results that may be returned by ImportGraphDef.
@@ -186,4 +201,4 @@ extern void CopyGraph(const Graph& src, Graph* dest);
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_GRAPH_GRAPH_CONSTRUCTOR_H_
+#endif  // TENSORFLOW_CORE_GRAPH_GRAPH_CONSTRUCTOR_H_

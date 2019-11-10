@@ -13,17 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/file_system.h"
+
 #include <sys/stat.h>
+
 #include <algorithm>
 #include <deque>
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
@@ -33,7 +35,15 @@ string FileSystem::TranslateName(const string& name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and
   // we should return the empty path instead.
   if (name.empty()) return name;
-  return io::CleanPath(name);
+
+  // Otherwise, properly separate the URI components and clean the path one
+  StringPiece scheme, host, path;
+  io::ParseURI(name, &scheme, &host, &path);
+
+  // If `path` becomes empty, return `/` (`file://` should be `/`), not `.`.
+  if (path.empty()) return "/";
+
+  return io::CleanPath(path);
 }
 
 Status FileSystem::IsDirectory(const string& name) {
@@ -158,7 +168,7 @@ Status FileSystem::RecursivelyCreateDir(const string& dirname) {
   std::reverse(sub_dirs.begin(), sub_dirs.end());
 
   // Now create the directories.
-  string built_path = std::string(remaining_dir);
+  string built_path(remaining_dir);
   for (const StringPiece sub_dir : sub_dirs) {
     built_path = io::JoinPath(built_path, sub_dir);
     Status status = CreateDir(io::CreateURI(scheme, host, built_path));

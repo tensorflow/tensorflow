@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <unordered_set>
+#include "tensorflow/core/grappler/op_types.h"
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -28,7 +28,10 @@ namespace tensorflow {
 namespace grappler {
 
 bool IsAdd(const NodeDef& node) {
-  if (node.op() == "AddV2" || node.op() == "Add") {
+  if (node.op() == "AddV2") {
+    return true;
+  }
+  if (node.op() == "Add") {
     DataType type = node.attr().at("T").type();
     return type != DT_STRING;
   }
@@ -44,13 +47,46 @@ bool IsAngle(const NodeDef& node) { return node.op() == "Angle"; }
 bool IsAny(const NodeDef& node) { return node.op() == "Any"; }
 
 bool IsAnyDiv(const NodeDef& node) {
-  return node.op() == "RealDiv" || node.op() == "Div" ||
+  return node.op() == "RealDiv" || node.op() == "Div" || node.op() == "Xdivy" ||
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
+}
+
+bool IsAnyBatchMatMul(const NodeDef& node) {
+  return node.op() == "BatchMatMul" || node.op() == "BatchMatMulV2";
+}
+
+bool IsAnyMatMul(const NodeDef& node) {
+  return node.op() == "MatMul" || node.op() == "SparseMatMul" ||
+         IsAnyBatchMatMul(node) || IsQuantizedMatMul(node);
+}
+
+bool IsAnyMax(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
+}
+
+bool IsAnyMaxPool(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
+}
+
+bool IsAnyMin(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
 }
 
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
+
+bool IsArg(const NodeDef& node) {
+  return node.op() == "_Arg" || node.op() == "_DeviceArg";
+}
+
+bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
+
+bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
@@ -73,6 +109,17 @@ bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
+
+bool IsCastLike(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kCastLikeOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "Angle", "Bucketize", "Cast", "CompareAndBitpack", "Dequantize",
+          "HistogramFixedWidth", "Imag", "IsFinite", "IsInf", "IsNan",
+          "Quantize", "QuantizeDownAndShrinkRange", "QuantizeV2",
+          "QuantizedInstanceNorm", "QuantizedRelu", "QuantizedRelu6",
+          "QuantizedReluX", "Real", "Requantize"}));
+  return kCastLikeOps->count(node.op()) > 0;
+}
 
 bool IsCheckNumerics(const NodeDef& node) {
   return node.op() == "CheckNumerics";
@@ -100,6 +147,20 @@ bool IsConj(const NodeDef& node) { return node.op() == "Conj"; }
 
 bool IsConjugateTranspose(const NodeDef& node) {
   return node.op() == "ConjugateTranspose";
+}
+
+bool IsControlFlow(const NodeDef& node) {
+  // clang-format off
+  return node.op() == "ControlTrigger" ||
+         node.op() == "Enter" ||
+         node.op() == "Exit" ||
+         node.op() == "LoopCond" ||
+         node.op() == "Merge" ||
+         node.op() == "_XlaMerge" ||
+         node.op() == "NextIteration" ||
+         node.op() == "Switch" ||
+         node.op() == "_SwitchN";
+  // clang-format on
 }
 
 bool IsConv2D(const NodeDef& node) { return node.op() == "Conv2D"; }
@@ -135,17 +196,37 @@ bool IsDequeueOp(const NodeDef& node) {
 
 bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 
-bool IsElementWiseMonotonic(const NodeDef& node) {
-  static const std::unordered_set<string>* element_wise_monotonic_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
-          "Relu",
-          "Relu6",
-          "Sigmoid",
-          "Sqrt",
-          "Tanh",
+bool IsDivNoNan(const NodeDef& node) { return node.op() == "DivNoNan"; }
+
+// Returns true if node represents a unary elementwise function that is
+// monotonic. If *is_non_decreasing is true, the function is non-decreasing,
+// e.g. sqrt, exp. *is_non_decreasing is false, the function is non-increasing,
+// e.g. inv.
+bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
+  static const gtl::FlatSet<string>* const kMonotonicNonDecreasingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "Acosh", "Asin", "Asinh",    "Atan",     "Atanh", "Ceil",
+          "Elu",   "Erf",  "Exp",      "Expm1",    "Floor", "Log",
+          "Log1p", "Relu", "Relu6",    "Rint",     "Selu",  "Sigmoid",
+          "Sign",  "Sinh", "Softsign", "Softplus", "Sqrt",  "Tanh",
       }));
-  return element_wise_monotonic_ops->count(node.op()) > 0;
+  static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
+  if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
+    if (is_non_decreasing) {
+      *is_non_decreasing = true;
+    }
+    return true;
+  } else if (kMonotonicNonIncreasingOps->count(node.op()) > 0) {
+    if (is_non_decreasing) {
+      *is_non_decreasing = false;
+    }
+    return true;
+  }
+  return false;
 }
+
+bool IsElu(const NodeDef& node) { return node.op() == "Elu"; }
 
 bool IsEluGrad(const NodeDef& node) { return node.op() == "EluGrad"; }
 
@@ -163,20 +244,35 @@ bool IsExit(const NodeDef& node) {
 
 bool IsExp(const NodeDef& node) { return node.op() == "Exp"; }
 
+bool IsFakeParam(const NodeDef& node) { return node.op() == "FakeParam"; }
+
 bool IsFill(const NodeDef& node) { return node.op() == "Fill"; }
 
 bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }
 
 bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
 
+bool IsFusedBatchNorm(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2" ||
+         op == "FusedBatchNormV3";
+}
+
+bool IsFusedBatchNormEx(const NodeDef& node) {
+  return node.op() == "_FusedBatchNormEx";
+}
+
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2";
+  return op == "FusedBatchNormGrad" || op == "FusedBatchNormGradV2" ||
+         op == "FusedBatchNormGradV3";
 }
 
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
+
+bool IsHostConstant(const NodeDef& node) { return node.op() == "HostConst"; }
 
 bool IsHistogramSummary(const NodeDef& node) {
   return node.op() == "HistogramSummary";
@@ -184,9 +280,6 @@ bool IsHistogramSummary(const NodeDef& node) {
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
-  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
-    return true;
-  }
   return op == "Identity" || op == "RefIdentity";
 }
 
@@ -195,11 +288,25 @@ bool IsIdentityN(const NodeDef& node) {
   return op == "IdentityN";
 }
 
+bool IsIdentityNSingleInput(const NodeDef& node) {
+  return IsIdentityN(node) && node.attr().count("T") != 0 &&
+         node.attr().at("T").list().type_size() == 1;
+}
+
+bool IsIf(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "If" || op == "StatelessIf";
+}
+
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
 
 bool IsIgammac(const NodeDef& node) { return node.op() == "Igammac"; }
 
 bool IsImag(const NodeDef& node) { return node.op() == "Imag"; }
+
+bool IsImmutableConst(const NodeDef& node) {
+  return node.op() == "ImmutableConst";
+}
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
 
@@ -215,11 +322,9 @@ bool IsLogicalNot(const NodeDef& node) { return node.op() == "LogicalNot"; }
 
 bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
-bool IsMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
-         op == "SparseMatMul";
-}
+bool IsLoopCond(const NodeDef& node) { return node.op() == "LoopCond"; }
+
+bool IsMatMul(const NodeDef& node) { return node.op() == "MatMul"; }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
 
@@ -231,7 +336,7 @@ bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
 bool IsMerge(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Merge" || op == "RefMerge";
+  return op == "Merge" || op == "RefMerge" || op == "_XlaMerge";
 }
 
 bool IsMin(const NodeDef& node) { return node.op() == "Min"; }
@@ -247,6 +352,8 @@ bool IsMirrorPadGrad(const NodeDef& node) {
 bool IsMod(const NodeDef& node) { return node.op() == "Mod"; }
 
 bool IsMul(const NodeDef& node) { return node.op() == "Mul"; }
+bool IsMulNoNan(const NodeDef& node) { return node.op() == "MulNoNan"; }
+bool IsAnyMul(const NodeDef& node) { return IsMul(node) || IsMulNoNan(node); }
 
 bool IsNeg(const NodeDef& node) { return node.op() == "Neg"; }
 
@@ -259,11 +366,17 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
+bool IsOnesLike(const NodeDef& node) { return node.op() == "OnesLike"; }
+
 bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Pad" || op == "PadV2";
+}
+
+bool IsPartitionedCall(const NodeDef& node) {
+  return node.op() == "PartitionedCall";
 }
 
 bool IsPlaceholder(const NodeDef& node) {
@@ -276,9 +389,15 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
-bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+bool IsPrint(const NodeDef& node) {
+  return node.op() == "Print" || node.op() == "PrintV2";
+}
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
+bool IsQuantizedMatMul(const NodeDef& node) {
+  return node.op() == "QuantizedMatMul" || node.op() == "QuantizedMatMulV2";
+}
 
 bool IsQueue(const NodeDef& node) {
   return str_util::EndsWith(node.op(), "QueueV2");
@@ -289,6 +408,10 @@ bool IsRandomShuffle(const NodeDef& node) {
 }
 
 bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
+
+bool IsReadVariableOp(const NodeDef& node) {
+  return node.op() == "ReadVariableOp";
+}
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
@@ -308,6 +431,10 @@ bool IsReduction(const NodeDef& node) {
          op == "Mean" || op == "Any" || op == "All";
 }
 
+bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
+
+bool IsRelu6(const NodeDef& node) { return node.op() == "Relu6"; }
+
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 
 bool IsRelu6Grad(const NodeDef& node) { return node.op() == "Relu6Grad"; }
@@ -317,6 +444,10 @@ bool IsReshape(const NodeDef& node) { return (node.op() == "Reshape"); }
 bool IsRestore(const NodeDef& node) {
   return (node.op() == "Restore" || node.op() == "RestoreV2" ||
           node.op() == "RestoreSlice");
+}
+
+bool IsRetval(const NodeDef& node) {
+  return node.op() == "_Retval" || node.op() == "_DeviceRetval";
 }
 
 bool IsReverse(const NodeDef& node) {
@@ -329,7 +460,9 @@ bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
-bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
+bool IsSelect(const NodeDef& node) {
+  return node.op() == "Select" || node.op() == "SelectV2";
+}
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
@@ -350,6 +483,8 @@ bool IsSize(const NodeDef& node) { return node.op() == "Size"; }
 bool IsSlice(const NodeDef& node) { return node.op() == "Slice"; }
 
 bool IsSnapshot(const NodeDef& node) { return node.op() == "Snapshot"; }
+
+bool IsSoftmax(const NodeDef& node) { return node.op() == "Softmax"; }
 
 bool IsSoftplusGrad(const NodeDef& node) { return node.op() == "SoftplusGrad"; }
 
@@ -384,6 +519,10 @@ bool IsStackPopOp(const NodeDef& node) {
   return node.op() == "StackPop" || node.op() == "StackPopV2";
 }
 
+bool IsStatefulPartitionedCall(const NodeDef& node) {
+  return node.op() == "StatefulPartitionedCall";
+}
+
 bool IsStopGradient(const NodeDef& node) {
   const auto& op = node.op();
   return op == "StopGradient" || op == "PreventGradient";
@@ -401,10 +540,46 @@ bool IsSum(const NodeDef& node) { return node.op() == "Sum"; }
 
 bool IsSwitch(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Switch" || op == "RefSwitch";
+  return op == "_SwitchN" || op == "Switch" || op == "RefSwitch";
+}
+
+bool IsSymbolicGradient(const NodeDef& node) {
+  return node.op() == "SymbolicGradient";
 }
 
 bool IsTanhGrad(const NodeDef& node) { return node.op() == "TanhGrad"; }
+
+bool IsTensorArray(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kTensorArrayOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "TensorArray",
+          "TensorArrayV2",
+          "TensorArrayV3",
+          "TensorArrayGrad",
+          "TensorArrayGradV2",
+          "TensorArrayGradV3",
+          "TensorArrayGradWithShape",
+          "TensorArrayWrite",
+          "TensorArrayWriteV2",
+          "TensorArrayWriteV3",
+          "TensorArrayRead",
+          "TensorArrayReadV2",
+          "TensorArrayReadV3",
+          "TensorArrayConcat",
+          "TensorArrayConcatV2",
+          "TensorArrayConcatV3",
+          "TensorArraySplit",
+          "TensorArraySplitV2",
+          "TensorArraySplitV3",
+          "TensorArraySize",
+          "TensorArraySizeV2",
+          "TensorArraySizeV3",
+          "TensorArrayClose",
+          "TensorArrayCloseV2",
+          "TensorArrayCloseV3",
+      }));
+  return kTensorArrayOps->count(node.op()) > 0;
+}
 
 bool IsTile(const NodeDef& node) { return node.op() == "Tile"; }
 
@@ -419,8 +594,18 @@ bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
 bool IsVariable(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Variable" || op == "VariableV2" || op == "AutoReloadVariable" ||
-         op == "VarHandleOp" || op == "ReadVariableOp";
+         op == "VarHandleOp" || op == "ReadVariableOp" ||
+         op == "_VarHandlesOp" || op == "_ReadVariablesOp";
 }
+
+bool IsWhile(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "While" || op == "StatelessWhile";
+}
+
+bool IsXdivy(const NodeDef& node) { return node.op() == "Xdivy"; }
+
+bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
 
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 
@@ -431,14 +616,14 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }  // namespace
 
 bool IsPersistent(const NodeDef& node) {
-  return IsConstant(node) || IsVariable(node);
+  return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
-bool MaybeHasRefInput(const NodeDef& node) {
+bool HasRefInput(const NodeDef& node) {
   const OpDef* op_def;
   Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
   if (!status.ok()) {
-    return true;
+    return false;
   }
   // Nodes such as Assign or AssignAdd modify one of their inputs.
   for (const auto& input : op_def->input_arg()) {
@@ -449,14 +634,38 @@ bool MaybeHasRefInput(const NodeDef& node) {
   return false;
 }
 
-bool IsFreeOfSideEffect(const NodeDef& node) {
+bool IsDataset(const NodeDef& node) {
+  const string& op = node.op();
+  // See `GetNodeClassForOp` in core/graph/graph.cc.
+  return op == "IteratorGetNext" || op == "IteratorGetNextSync" ||
+         op == "DatasetToSingleElement" || op == "ReduceDataset";
+}
+
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+  const OpDef* op_def = nullptr;
+  const string& op_name = node.op();
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to lookup OpDef for " << op_name
+                 << ". Error: " << status.error_message();
+    return false;
+  }
+  return op_def->is_stateful();
+}
+
+bool IsStateful(const NodeDef node) {
+  return IsStateful(node, OpRegistry::Global());
+}
+
+bool IsFreeOfSideEffect(const NodeDef& node,
+                        const OpRegistryInterface* op_registry) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
     return false;
   }
   const OpDef* op_def = nullptr;
   const string& op_name = node.op();
-  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -470,10 +679,18 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
     }
   }
   // Queue ops modify the queue which is a side effect.
-  if (node.op().find("Queue") != std::string::npos) {
+  if (node.op().find("Queue") != string::npos) {
+    return false;
+  }
+  // Sending a tensor via a network is a side effect.
+  if (IsSend(node)) {
     return false;
   }
   return !ModifiesInputsInPlace(node);
+}
+
+bool IsFreeOfSideEffect(const NodeDef& node) {
+  return IsFreeOfSideEffect(node, OpRegistry::Global());
 }
 
 bool ModifiesInputsInPlace(const NodeDef& node) {
@@ -490,7 +707,7 @@ bool ModifiesInputsInPlace(const NodeDef& node) {
   }
 
   std::transform(op_name.begin(), op_name.end(), op_name.begin(), ::tolower);
-  if (str_util::StrContains(op_name, "inplace")) {
+  if (absl::StrContains(op_name, "inplace")) {
     return true;
   }
   return GetBoolAttr(node, "in_place") || GetBoolAttr(node, "inplace");
@@ -517,30 +734,29 @@ OPDEF_PROPERTY_HELPER(Aggregate, aggregate)
 OPDEF_PROPERTY_HELPER(Commutative, commutative)
 
 bool IsInvolution(const NodeDef& node) {
-  static const std::unordered_set<string>* involution_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
-          "Conj", "Reciprocal", "Invert", "Neg", "LogicalNot"}));
-  return involution_ops->count(node.op()) > 0;
+  static const gtl::FlatSet<string>* const kInvolutionOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Conj", "Reciprocal", "Invert",
+                                              "Neg", "LogicalNot"}));
+  return kInvolutionOps->count(node.op()) > 0;
 }
 
 bool IsValueAndOrderAndShapePreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  static const std::unordered_set<string>*
-      value_and_order_and_shape_preserving_ops =
-          CHECK_NOTNULL((new const std::unordered_set<string>{
-              "CheckNumerics",
-              "DebugGradientIdentity",
-              "DeepCopy"
-              "Enter",
-              "Exit",
-              "PreventGradient",
-              "Print",
-              "Snapshot",
-              "StopGradient",
-          }));
-  return value_and_order_and_shape_preserving_ops->count(node.op()) > 0 ||
+  static const gtl::FlatSet<string>* const kValueAndOrderAndShapePreservingOps =
+      CHECK_NOTNULL((new const gtl::FlatSet<string>{
+          "CheckNumerics",
+          "DebugGradientIdentity",
+          "DeepCopy"
+          "Enter",
+          "Exit",
+          "PreventGradient",
+          "Print",
+          "Snapshot",
+          "StopGradient",
+      }));
+  return kValueAndOrderAndShapePreservingOps->count(node.op()) > 0 ||
          IsIdentity(node);
 }
 
@@ -548,38 +764,44 @@ bool IsValueAndOrderPreserving(const NodeDef& node) {
   if (NumNonControlInputs(node) == 1 && IsAggregate(node)) {
     return true;
   }
-  static const std::unordered_set<string>* value_and_order_preserving_ops =
-      CHECK_NOTNULL((new const std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kValueAndOrderPreservingOps =
+      CHECK_NOTNULL((new const gtl::FlatSet<string>{
           "ExpandDims",
           "Reshape",
           "Squeeze",
       }));
-  return value_and_order_preserving_ops->count(node.op()) > 0 ||
+  return kValueAndOrderPreservingOps->count(node.op()) > 0 ||
          IsValueAndOrderAndShapePreserving(node);
 }
 
 bool IsValuePreserving(const NodeDef& node) {
-  static const std::unordered_set<string>* value_preserving_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kValuePreservingOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
           "InvertPermutation",
           "Reverse",
+          "ReverseV2",
           "Roll",
           "Transpose",
+          "DepthToSpace",
+          "SpaceToDepth",
+          "BatchToSpace",
+          "BatchToSpaceND",
+          "SpaceToBatch",
+          "SpaceToBatchND",
       }));
   return IsValueAndOrderPreserving(node) ||
-         value_preserving_ops->count(node.op()) > 0;
+         kValuePreservingOps->count(node.op()) > 0;
 }
 
 bool IsUnaryElementWise(const NodeDef& node) {
-  static const std::unordered_set<string>* element_wise_ops =
-      CHECK_NOTNULL((new std::unordered_set<string>{
+  static const gtl::FlatSet<string>* const kElementWiseOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
           "Abs",
           "Acos",
           "Acosh",
           "Asin",
           "Asinh",
           "Atan",
-          "Atan2",
           "Atanh",
           "Ceil",
           "ComplexAbs",
@@ -621,7 +843,7 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Tan"
           "Tanh",
       }));
-  return element_wise_ops->count(node.op()) > 0 ||
+  return kElementWiseOps->count(node.op()) > 0 ||
          IsValueAndOrderAndShapePreserving(node);
 }
 
@@ -634,6 +856,122 @@ bool IsIdempotent(const NodeDef& node) {
   return IsValueAndOrderAndShapePreserving(node) && IsFreeOfSideEffect(node) &&
          !ModifiesFrameInfo(node);
 }
+
+bool NeverForwardsInputs(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kNonForwardingOps = CHECK_NOTNULL(
+      (new gtl::FlatSet<string>{"ArgMax",
+                                "ArgMin",
+                                "AudioSpectrogram",
+                                "BatchMatMul",
+                                "BatchMatMulV2",
+                                "BatchToSpace",
+                                "BatchToSpaceND",
+                                "Bincount",
+                                "BroadcastArgs",
+                                "BroadcastGradientArgs",
+                                "CTCBeamSearchDecoder",
+                                "CTCGreedyDecoder",
+                                "CTCLoss",
+                                "ComplexAbs",
+                                "Concat",
+                                "ConcatOffset",
+                                "ConcatV2",
+                                "Copy",
+                                "CopyHost",
+                                "Cross",
+                                "CudnnRNN",
+                                "CudnnRNNBackprop",
+                                "CudnnRNNBackpropV2",
+                                "CudnnRNNBackpropV3",
+                                "CudnnRNNCanonicalToParams",
+                                "CudnnRNNCanonicalToParamsV2",
+                                "CudnnRNNParamsSize",
+                                "CudnnRNNParamsToCanonical",
+                                "CudnnRNNParamsToCanonicalV2",
+                                "CudnnRNNV2",
+                                "CudnnRNNV3",
+                                "CumSum",
+                                "CumProd",
+                                "DebugNanCount",
+                                "DebugNumericSummary",
+                                "DecodeProtoV2",
+                                "DecodeWav",
+                                "DeepCopy",
+                                "DepthToSpace",
+                                "Dequantize",
+                                "Diag",
+                                "DiagPart",
+                                "EditDistance",
+                                "Empty",
+                                "EncodeProtoV2",
+                                "EncodeWav",
+                                "ExtractImagePatches",
+                                "ExtractVolumePatches",
+                                "Fill",
+                                "Gather",
+                                "GatherNd",
+                                "GatherV2",
+                                "HistogramFixedWidth",
+                                "InvertPermutation",
+                                "IsInf",
+                                "IsNan",
+                                "Isfinite",
+                                "LinSpace",
+                                "LowerBound",
+                                "MatMul",
+                                "MatrixDiag",
+                                "MatrixDiagV2",
+                                "MatrixDiagPart",
+                                "MatrixDiagPartV2",
+                                "Mfcc",
+                                "OneHot",
+                                "Pack",
+                                "PopulationCount",
+                                "Range",
+                                "Rank",
+                                "ReverseSequence",
+                                "Shape",
+                                "ShapeN",
+                                "Size",
+                                "SpaceToBatch",
+                                "SpaceToBatchND",
+                                "SpaceToDepth",
+                                "SparseMatMul",
+                                "Split",
+                                "SplitV",
+                                "Unique",
+                                "UniqueV2",
+                                "UniqueWithCounts",
+                                "UniqueWithCountsV2",
+                                "Unpack",
+                                "UnravelIndex",
+                                "UpperBound",
+                                "Where",
+                                "CompareAndBitpack",
+                                "Requantize",
+                                "RequantizationRange",
+                                "Bucketize",
+                                "AvgPool",
+                                "BatchNormWithGlobalNormalization",
+                                "FusedBatchNorm",
+                                "FusedBatchNormV2",
+                                "Conv2D",
+                                "RandomUniform",
+                                "RandomUniformInt",
+                                "RandomStandardNormal",
+                                "ParameterizedTruncatedNormal",
+                                "TruncatedNormal",
+                                "Multinomial",
+                                "RandomGamma",
+                                "RandomPoisson",
+                                "RandomPoissonV2"}));
+  const string& op_name = node.op();
+  return kNonForwardingOps->count(op_name) > 0 ||
+         absl::StrContains(op_name, "Segment") ||
+         absl::StartsWith(op_name, "Quantize");
+}
+
+bool IsXlaLaunch(const NodeDef& node) { return node.op() == "XlaLaunch"; }
 
 }  // namespace grappler
 }  // end namespace tensorflow
