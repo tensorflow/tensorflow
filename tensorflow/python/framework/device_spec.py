@@ -74,7 +74,6 @@ class DeviceSpecV2(object):
     my_var = tf.Variable(..., name="my_variable")
     squared_var = tf.square(my_var)
    ```
-    
 
   If a `DeviceSpec` is partially specified, it will be merged with other
   `DeviceSpec`s according to the scope in which it is defined. `DeviceSpec`
