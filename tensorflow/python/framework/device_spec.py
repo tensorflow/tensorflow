@@ -64,9 +64,13 @@ class DeviceSpecV2(object):
   ```
   
   With eager execution disabled (by default in TensorFlow 1.x and by calling
-  tf.disable_eager_execution() in TensorFlow 2.x), the following syntax
+  disable_eager_execution() in TensorFlow 2.x), the following syntax
   can be used:
   ```python
+  # Location in TensorFlow 2.x
+  from tensorflow.python.framework.ops import disable_eager_execution
+  disable_eager_execution()
+  
   # Same as previous
   device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
   # No need of .to_string() method.
