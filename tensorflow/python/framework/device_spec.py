@@ -91,7 +91,7 @@ class DeviceSpecV2(object):
       # Nodes created here will be assigned to /job:train/device:GPU:1.
   ```
 
- A `DeviceSpec` consists of 5 components -- each of
+  A `DeviceSpec` consists of 5 components -- each of
   which is optionally specified:
 
   * Job: The job name.
