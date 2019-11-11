@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -81,9 +80,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  for (int i = 0; i < input->bytes; ++i) {
-    output->data.raw[i] = input->data.raw[i];
-  }
+  // NOTE: byte-level reinterpretation will occur here by tensorflow
+  arm_reshape_s8(GetTensorData<int8_t>(input), GetTensorData<int8_t>(output),
+                 input->bytes);
   return kTfLiteOk;
 }
 
