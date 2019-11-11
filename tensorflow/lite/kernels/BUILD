@@ -623,6 +623,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
     ],
+    alwayslink = 1,
 )
 
 # The builtin_ops target will resolve to optimized kernels when available. This
