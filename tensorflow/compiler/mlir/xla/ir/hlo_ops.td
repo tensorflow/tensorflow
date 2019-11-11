@@ -652,7 +652,7 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let hasCustomHLOConverter = 1;
 }
 
-
+// TODO(jpienaar): Add broadcastable trait.
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,

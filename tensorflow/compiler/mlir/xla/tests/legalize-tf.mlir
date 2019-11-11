@@ -802,6 +802,13 @@ func @select_multidimensional(%arg0: tensor<3x2xi1>, %arg1: tensor<3x2xi32>, %ar
   return %0: tensor<3x2xi32>
 }
 
+// CHECK-LABEL: func @selectv2
+func @selectv2(%arg0: tensor<i1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK-NEXT: "xla_hlo.select"(%arg0, %arg1, %arg2)
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
+}
+
 //===----------------------------------------------------------------------===//
 // Softmax op legalizations.
 //===----------------------------------------------------------------------===//

@@ -88,8 +88,7 @@ foreach fromToBinPair = [[TF_AddOp, HLO_AddOp],
                          [TF_SubOp, HLO_SubOp]] in
   def : DirectBinaryPat<fromToBinPair[0], fromToBinPair[1]>;
 
-def : Pat<(TF_ComplexOp $r, $i),
-          (HLO_ComplexOp $r, $i)>;
+def : Pat<(TF_ComplexOp $r, $i), (HLO_ComplexOp $r, $i)>;
 
 def IntegerTensor : TensorOf<[I1, I8, I16, I32, I64]>;
 
@@ -102,9 +101,9 @@ def IEEEFloatTensor : TensorOf<[F16, F32, F64]>;
 def : Pat<(TF_FloorDivOp IEEEFloatTensor:$l, IEEEFloatTensor:$r),
         (HLO_FloorOp (HLO_DivOp $l, $r, (BinBroadcastDimensions $l, $r)))>;
 
-// Performs a substituion of FloorDir for integer tensors, which required
+// Performs a substitution of FloorDir for integer tensors, which required
 // additional correction for a negative numerator / denominator. Equivalent
-// psuedocode is shown below:
+// pseudocode is shown below:
 //
 // if ((x < 0) != (y < 0)) {
 //   T abs_x = std::abs(x);
@@ -115,7 +114,7 @@ def : Pat<(TF_FloorDivOp IEEEFloatTensor:$l, IEEEFloatTensor:$r),
 // }
 //
 // BraodcastToDimensions is used to compute the broadcast attr to higher
-// dimensions. This computes the braodcast of 'l' to broadcast('l', 'r')
+// dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
 // without returning the broadcast of 'r' to broadcast('l', 'r').
 //
 // NOTE: This should be optimized for unsigned integers.
@@ -247,7 +246,7 @@ def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
             (CastElementsToI64Elements $group_assignment))>;
 
 //===----------------------------------------------------------------------===//
-// Fft op patterns.
+// FFT op patterns.
 //===----------------------------------------------------------------------===//
 
 def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
@@ -330,14 +329,6 @@ def : Pat<(TF_ReluGradOp AnyStaticShapeTensor:$gradients, AnyStaticShapeTensor:$
             $gradients, $zero)>;
 
 //===----------------------------------------------------------------------===//
-// Relu op patterns.
-//===----------------------------------------------------------------------===//
-
-def : Pat<(TF_SelectOp $condition, $lhs, $rhs),
-          (HLO_SelectOp $condition, $lhs, $rhs)>;
-
-
-//===----------------------------------------------------------------------===//
 // Slice op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -354,6 +345,19 @@ def : Pat<(TF_SliceOp HLO_Tensor:$input, HLO_Tensor:$starting_indices,
            (TFSliceSizes2HLOSliceSizes $input, $starting_indices, $slice_sizes)),
           [(CanBeTranslatedToDynamicSlice $input, $starting_indices,
             $slice_sizes)]>;
+
+//===----------------------------------------------------------------------===//
+// Ternary op patterns.
+//===----------------------------------------------------------------------===//
+
+def BothTypesMatch : Constraint<CPred<"$0->getType() == $1->getType()">,
+   "types must be equal">;
+
+foreach src = [TF_SelectOp, TF_SelectV2Op] in
+  def : Pat<(src $cond, $t, $e), (HLO_SelectOp $cond, $t, $e),
+    // TODO(jpienaar): This restriction is to avoid creating a currently
+    // unsupported HLO select.
+    [(BothTypesMatch $t, $e)]>;
 
 //===----------------------------------------------------------------------===//
 // Unary op patterns.

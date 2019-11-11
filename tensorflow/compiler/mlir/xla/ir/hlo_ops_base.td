@@ -704,13 +704,7 @@ class BASE_HLO_SelectOp {
     Constructs an output tensor from the elements of `on_true` and `on_false`
     based on the values of `pred`.
 
-    `on_true` and `on_false` must be the same shape. For each element of `pred`,
-    `res` has the corresponding element of `on_true` or `on_false` depending on
-    the value in `pred`. `pred` must be the same shape as `on_true` and
-    `on_false` or a scalar, in which case `res` is equal to either `on_true` or
-    `on_false`.
-
-    See https://www.tensorflow.org/xla/operation_semantics#select.
+    `pred`, `on_true` and `on_false` must be broadcast compatible.
   }];
 }
 
