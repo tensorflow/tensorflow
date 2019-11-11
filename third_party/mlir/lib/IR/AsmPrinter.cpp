@@ -24,6 +24,7 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
@@ -52,6 +53,8 @@ void Identifier::dump() const { print(llvm::errs()); }
 void OperationName::print(raw_ostream &os) const { os << getStringRef(); }
 
 void OperationName::dump() const { print(llvm::errs()); }
+
+DialectAsmPrinter::~DialectAsmPrinter() {}
 
 OpAsmPrinter::~OpAsmPrinter() {}
 
@@ -391,6 +394,9 @@ public:
       : os(printer.os), printerFlags(printer.printerFlags),
         state(printer.state) {}
 
+  /// Returns the output stream of the printer.
+  raw_ostream &getStream() { return os; }
+
   template <typename Container, typename UnaryFunctor>
   inline void interleaveComma(const Container &c, UnaryFunctor each_fn) const {
     mlir::interleaveComma(c, os, each_fn);
@@ -419,6 +425,9 @@ protected:
   void printTrailingLocation(Location loc);
   void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
+
+  void printDialectAttribute(Attribute attr);
+  void printDialectType(Type type);
 
   /// This enum is used to represent the binding strength of the enclosing
   /// context that an AffineExprStorage is being printed in, so we can
@@ -715,19 +724,9 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   }
 
   switch (attr.getKind()) {
-  default: {
-    auto &dialect = attr.getDialect();
+  default:
+    return printDialectAttribute(attr);
 
-    // Ask the dialect to serialize the attribute to a string.
-    std::string attrName;
-    {
-      llvm::raw_string_ostream attrNameStr(attrName);
-      dialect.printAttribute(attr, attrNameStr);
-    }
-
-    printDialectSymbol(os, "#", dialect.getNamespace(), attrName);
-    break;
-  }
   case StandardAttributes::Opaque: {
     auto opaqueAttr = attr.cast<OpaqueAttr>();
     printDialectSymbol(os, "#", opaqueAttr.getDialectNamespace(),
@@ -950,19 +949,9 @@ void ModulePrinter::printType(Type type) {
   }
 
   switch (type.getKind()) {
-  default: {
-    auto &dialect = type.getDialect();
+  default:
+    return printDialectType(type);
 
-    // Ask the dialect to serialize the type to a string.
-    std::string typeName;
-    {
-      llvm::raw_string_ostream typeNameStr(typeName);
-      dialect.printType(type, typeNameStr);
-    }
-
-    printDialectSymbol(os, "!", dialect.getNamespace(), typeName);
-    return;
-  }
   case Type::Kind::Opaque: {
     auto opaqueTy = type.cast<OpaqueType>();
     printDialectSymbol(os, "!", opaqueTy.getDialectNamespace(),
@@ -1070,6 +1059,65 @@ void ModulePrinter::printType(Type type) {
     os << "none";
     return;
   }
+}
+
+//===----------------------------------------------------------------------===//
+// CustomDialectAsmPrinter
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// This class provides the main specialication of the DialectAsmPrinter that is
+/// used to provide support for print attributes and types. This hooks allows
+/// for dialects to hook into the main ModulePrinter.
+struct CustomDialectAsmPrinter : public DialectAsmPrinter {
+public:
+  CustomDialectAsmPrinter(ModulePrinter &printer) : printer(printer) {}
+  ~CustomDialectAsmPrinter() override {}
+
+  raw_ostream &getStream() const override { return printer.getStream(); }
+
+  /// Print the given attribute to the stream.
+  void printAttribute(Attribute attr) override { printer.printAttribute(attr); }
+
+  /// Print the given floating point value in a stablized form.
+  void printFloat(const APFloat &value) override {
+    printFloatValue(value, getStream());
+  }
+
+  /// Print the given type to the stream.
+  void printType(Type type) override { printer.printType(type); }
+
+  /// The main module printer.
+  ModulePrinter &printer;
+};
+} // end anonymous namespace
+
+void ModulePrinter::printDialectAttribute(Attribute attr) {
+  auto &dialect = attr.getDialect();
+
+  // Ask the dialect to serialize the attribute to a string.
+  std::string attrName;
+  {
+    llvm::raw_string_ostream attrNameStr(attrName);
+    ModulePrinter subPrinter(attrNameStr, printerFlags, state);
+    CustomDialectAsmPrinter printer(subPrinter);
+    dialect.printAttribute(attr, printer);
+  }
+  printDialectSymbol(os, "#", dialect.getNamespace(), attrName);
+}
+
+void ModulePrinter::printDialectType(Type type) {
+  auto &dialect = type.getDialect();
+
+  // Ask the dialect to serialize the type to a string.
+  std::string typeName;
+  {
+    llvm::raw_string_ostream typeNameStr(typeName);
+    ModulePrinter subPrinter(typeNameStr, printerFlags, state);
+    CustomDialectAsmPrinter printer(subPrinter);
+    dialect.printType(type, printer);
+  }
+  printDialectSymbol(os, "!", dialect.getNamespace(), typeName);
 }
 
 //===----------------------------------------------------------------------===//

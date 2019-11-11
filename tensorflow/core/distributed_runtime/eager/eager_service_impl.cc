@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/execute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/process_util.h"
+#include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
@@ -149,13 +150,15 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
   std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
   TF_RETURN_IF_ERROR(worker_session->worker_cache()->GetEagerClientCache(
       &remote_eager_workers));
+  DistributedFunctionLibraryRuntime* cluster_flr =
+      eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
 
   auto remote_mgr =
       absl::make_unique<tensorflow::eager::RemoteMgr>(/*is_master=*/false, ctx);
   Status s = ctx->InitializeRemoteWorker(
       std::move(remote_eager_workers), worker_session->remote_device_mgr(),
       remote_workers, request->context_id(), request->context_view_id(),
-      std::move(rendezvous_creator), std::move(remote_mgr));
+      std::move(rendezvous_creator), cluster_flr, std::move(remote_mgr));
   if (!s.ok()) {
     VLOG(1) << "EagerContext::InitializeRemoteWorker failed with "
             << s.ToString();
@@ -261,10 +264,13 @@ Status EagerServiceImpl::UpdateContext(const UpdateContextRequest* request,
   TF_RETURN_IF_ERROR(worker_session->worker_cache()->GetEagerClientCache(
       &remote_eager_workers));
 
+  DistributedFunctionLibraryRuntime* cluster_flr =
+      eager::CreateClusterFLR(request->context_id(), ctx, worker_session.get());
+
   Status s = ctx->UpdateRemoteWorker(
       device_mgr, std::move(remote_eager_workers),
       worker_session->remote_device_mgr(), remote_workers,
-      request->context_id(), worker_session->cluster_flr());
+      request->context_id(), cluster_flr);
   if (!s.ok()) {
     VLOG(1) << "EagerContext::UpdateRemoteWorker failed with " << s.ToString();
     return s;

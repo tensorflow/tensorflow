@@ -73,6 +73,8 @@ class IteratorResource : public ResourceBase {
           function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
           iterator(std::move(iterator)) {}
 
+    ~State() { cancellation_manager.StartCancel(); }
+
     std::shared_ptr<FunctionLibraryDefinition> flib_def;
     FunctionLibraryRuntime* flr = nullptr;  // not owned.
     std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;

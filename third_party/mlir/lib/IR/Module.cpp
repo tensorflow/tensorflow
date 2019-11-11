@@ -87,7 +87,7 @@ LogicalResult ModuleOp::verify() {
   auto &bodyRegion = getOperation()->getRegion(0);
 
   // The body must contain a single basic block.
-  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
+  if (!has_single_element(bodyRegion))
     return emitOpError("expected body region to have a single block");
 
   // Check that the body has no block arguments.

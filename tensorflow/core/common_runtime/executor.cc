@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/manual_constructor.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"

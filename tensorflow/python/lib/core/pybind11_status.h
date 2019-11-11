@@ -82,7 +82,7 @@ struct type_caster<tensorflow::Status> {
   PYBIND11_TYPE_CASTER(tensorflow::Status, _("Status"));
   static handle cast(tensorflow::Status status, return_value_policy, handle) {
     tensorflow::MaybeRaiseFromStatus(status);
-    return none();
+    return none().inc_ref();
   }
 };
 

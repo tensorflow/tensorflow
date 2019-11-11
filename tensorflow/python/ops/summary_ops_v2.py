@@ -78,16 +78,21 @@ _summary_state = _SummaryState()
 def _should_record_summaries_internal(default_state):
   """Returns boolean Tensor if summaries should/shouldn't be recorded.
 
-  Now the summary condition is decided by logical "and" of two conditions:
-  ctx.summary_recording and ctx.summary_recording_distribution_strategy. The
-  former one is usually set by user, and the latter one is controlled by
-  DistributionStrategy (tf.distribute.ReplicaContext).
+  Now the summary condition is decided by logical "and" of below conditions:
+  First, summary writer must be set. Given this constraint is met,
+  ctx.summary_recording and ctx.summary_recording_distribution_strategy.
+  The former one is usually set by user, and the latter one is controlled
+  by DistributionStrategy (tf.distribute.ReplicaContext).
 
   Args:
-    default_state: can be True or False. The default summary behavior when user
-      does not specify ctx.summary_recording and
-      ctx.summary_recording_distribution_strategy is True.
+    default_state: can be True or False. The default summary behavior when
+    summary writer is set and the user does not specify
+    ctx.summary_recording and ctx.summary_recording_distribution_strategy
+    is True.
   """
+  if _summary_state.writer is None:
+    return constant_op.constant(False)
+
   resolve = lambda x: x() if callable(x) else x
   cond_distributed = resolve(_summary_state.is_recording_distribution_strategy)
   cond = resolve(_summary_state.is_recording)

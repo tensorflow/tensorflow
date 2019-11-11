@@ -169,7 +169,13 @@ def make_reduce_tests(reduce_op,
 @register_make_test_function()
 def make_mean_tests(options):
   """Make a set of tests to do mean."""
-  return make_reduce_tests(tf.reduce_mean)(options)
+  return make_reduce_tests(
+      tf.reduce_mean,
+      min_value=-1,
+      max_value=1,
+      boolean_tensor_only=False,
+      allow_fully_quantize=True)(
+          options)
 
 
 @register_make_test_function()

@@ -12,6 +12,30 @@ func @simple_pack(%arg0: tensor<3x5xf32>, %arg1: tensor<3x5xf32>) -> tensor<2x3x
   return %0 : tensor<2x3x5xf32>
 }
 
+// CHECK-LABEL: func @square
+func @square(%arg0: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: "tf.Mul"(%arg0, %arg0)
+  %1 = "tf.Square"(%arg0) : (tensor<3xf32>) -> tensor<3xf32>
+  return %1 : tensor<3xf32>
+}
+
+// CHECK-LABEL: func @squared_difference_real
+func @squared_difference_real(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> tensor<3xf32> {
+  // CHECK: [[R1:%.+]] = "tf.Sub"(%arg0, %arg1)
+  // CHECK: "tf.Mul"([[R1]], [[R1]])
+  %1 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> tensor<3xf32>
+  return %1 : tensor<3xf32>
+}
+
+// CHECK-LABEL: func @squared_difference_complex
+func @squared_difference_complex(%arg0: tensor<3xcomplex<f32>>, %arg1: tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>> {
+  // CHECK-DAG: [[R1:%.+]] = "tf.Sub"(%arg0, %arg1)
+  // CHECK-DAG: [[R2:%.+]] = "tf.Conj"([[R1]])
+  // CHECK-DAG: "tf.Mul"([[R1]], [[R2]])
+  %1 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<3xcomplex<f32>>, tensor<3xcomplex<f32>>) -> tensor<3xcomplex<f32>>
+  return %1 : tensor<3xcomplex<f32>>
+}
+
 // CHECK-LABEL: pack_with_unranked
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x5xf32>, %[[ARG1:.*]]: tensor<*xf32>
 func @pack_with_unranked(%arg0: tensor<?x5xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
@@ -64,4 +88,43 @@ func @BiasAddGrad_unranked(%arg0: tensor<*xf32>) -> tensor<?xf32> {
   // CHECK: tf.BiasAddGrad
   %0 = "tf.BiasAddGrad"(%arg0) {data_format = "NCHW"} : (tensor<*xf32>) -> tensor<?xf32>
   return %0 : tensor<?xf32>
+}
+
+// CHECK-LABEL: SoftmaxCrossEntropyWithLogits
+// CHECK-SAME: %[[FEATURES:.*]]: tensor<2x3xf32>, %[[LABELS:.*]]: tensor<2x3xf32>
+func @SoftmaxCrossEntropyWithLogits(%features: tensor<2x3xf32>, %labels: tensor<2x3xf32>) -> (tensor<2xf32>, tensor<2x3xf32>) {
+  // CHECK-DAG: %[[NEG_LABELS:.*]] = "tf.Neg"(%[[LABELS]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: %[[LOG_SOFTMAX:.*]] = "tf.LogSoftmax"(%[[FEATURES]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: %[[LOSS_INP:.*]] = "tf.Mul"(%[[NEG_LABELS]], %[[LOG_SOFTMAX]]) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi64>} : () -> tensor<1xi64>
+  // CHECK-DAG: %[[LOSS:.*]] = "tf.Sum"(%[[LOSS_INP]], %[[AXIS]]) {keep_dims = false} : (tensor<2x3xf32>, tensor<1xi64>) -> tensor<2xf32>
+  // CHECK-DAG: %[[SOFTMAX:.*]] = "tf.Softmax"(%[[FEATURES]]) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK-DAG: %[[BACKPROP:.*]] = "tf.Sub"(%[[SOFTMAX]], %[[LABELS]]) : (tensor<2x3xf32>, tensor<2x3xf32>) -> tensor<2x3xf32>
+  // CHECK: return %[[LOSS]], %[[BACKPROP]]
+
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<2xf32>, tensor<2x3xf32>)
+  return %0#0, %0#1 : tensor<2xf32>, tensor<2x3xf32>
+}
+
+// CHECK-LABEL: unranked_SoftmaxCrossEntropyWithLogits
+func @unranked_SoftmaxCrossEntropyWithLogits(%features: tensor<?x?xf32>, %labels: tensor<?x?xf32>) -> (tensor<?xf32>, tensor<?x?xf32>) {
+  // Check that unranked inputs are lowered successfully.
+  // CHECK-NOT: tf.SoftmaxCrossEntropyWithLogits
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<?x?xf32>, tensor<?x?xf32>) -> (tensor<?xf32>, tensor<?x?xf32>)
+  return %0#0, %0#1 : tensor<?xf32>, tensor<?x?xf32>
+}
+
+// CHECK-LABEL: broadcasted_SoftmaxCrossEntropyWithLogits
+func @broadcasted_SoftmaxCrossEntropyWithLogits(%features: tensor<?x?xf32>, %labels: tensor<3xf32>) -> (tensor<?xf32>, tensor<?x3xf32>) {
+  // Check that inputs of different ranks are broadcasted and are lowered successfully.
+  // CHECK-NOT: tf.SoftmaxCrossEntropyWithLogits
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<?x?xf32>, tensor<3xf32>) -> (tensor<?xf32>, tensor<?x3xf32>)
+  return %0#0, %0#1 : tensor<?xf32>, tensor<?x3xf32>
+}
+
+// CHECK-LABEL: scalar_SoftmaxCrossEntropyWithLogits
+func @scalar_SoftmaxCrossEntropyWithLogits(%features: tensor<f32>, %labels: tensor<?x?xf32>) -> (tensor<?xf32>, tensor<?x?xf32>) {
+  // CHECK: tf.SoftmaxCrossEntropyWithLogits
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%features, %labels) : (tensor<f32>, tensor<?x?xf32>) -> (tensor<?xf32>, tensor<?x?xf32>)
+  return %0#0, %0#1 : tensor<?xf32>, tensor<?x?xf32>
 }

@@ -930,7 +930,6 @@ def save(obj, export_dir, signatures=None, options=None):
   object_graph_proto = _serialize_object_graph(
       saveable_view, asset_info.asset_index)
   meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
-  file_io.atomic_write_string_to_file(path, saved_model.SerializeToString())
 
   # Save debug info, if requested.
   if options.save_debug_info:
@@ -940,6 +939,11 @@ def save(obj, export_dir, signatures=None, options=None):
             utils_impl.get_or_create_debug_dir(export_dir),
             constants.DEBUG_INFO_FILENAME_PB),
         graph_debug_info.SerializeToString())
+
+  # Note that this needs to be the last file operation when saving the
+  # SavedModel. Users rely on checking saved_model_dir/saved_model.pb as an
+  # indication that the SavedModel is completely written.
+  file_io.atomic_write_string_to_file(path, saved_model.SerializeToString())
 
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured

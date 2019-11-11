@@ -651,6 +651,7 @@ py_test(
         "no_windows",  # b/142475891
     ],
     deps = [
+        ":debug_events_reader",
         ":debug_events_writer",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",

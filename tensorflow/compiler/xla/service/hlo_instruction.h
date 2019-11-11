@@ -1410,7 +1410,8 @@ class HloInstruction {
   // Returns the indices that the given operand appear in the operand list of
   // this instruction. Note that an instruction can use the same operand
   // multiple times.
-  std::vector<int64> OperandIndices(const HloInstruction* operand) const;
+  absl::InlinedVector<int64, 4> OperandIndices(
+      const HloInstruction* operand) const;
 
   // Convenience helper for ShapeUtil::InsertedOrDeleted1SizedDimensions. If
   // this reshape merely inserts or deletes 1-sized dimensions, return the input

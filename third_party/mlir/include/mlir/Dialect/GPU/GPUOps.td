@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef GPU_OPS
-#else
+#ifndef GPU_OPS
 #define GPU_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

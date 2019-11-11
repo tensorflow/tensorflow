@@ -28,8 +28,7 @@ using namespace mlir;
 using namespace mlir::spirv;
 
 // Pull in all enum utility function definitions
-#include "mlir/Dialect/SPIRV/SPIRVBitEnums.cpp.inc"
-#include "mlir/Dialect/SPIRV/SPIRVIntEnums.cpp.inc"
+#include "mlir/Dialect/SPIRV/SPIRVEnums.cpp.inc"
 
 //===----------------------------------------------------------------------===//
 // ArrayType

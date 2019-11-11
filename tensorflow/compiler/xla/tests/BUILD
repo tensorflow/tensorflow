@@ -18,6 +18,7 @@ package_group(
     includes = [
         "//tensorflow/compiler/xla:friends",
     ],
+    packages = ["//platforms/testing/tests/..."],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -912,7 +913,6 @@ xla_test(
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
-        "//tensorflow/compiler/xla/service:reduce_precision_insertion",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
@@ -927,6 +927,7 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
+        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -960,6 +961,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 20,
     tags = [
+        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1023,6 +1025,7 @@ xla_test(
     },
     shard_count = 20,
     tags = [
+        "no_rocm",
 	"optonly",
     ],
     deps = [
@@ -1896,7 +1899,11 @@ xla_test(
 xla_test(
     name = "collective_ops_test",
     srcs = ["collective_ops_test.cc"],
-    backends = ["gpu"],
+    args = ["--xla_force_host_platform_device_count=4"],
+    backends = [
+        "gpu",
+        "cpu",
+    ],
     tags = [
         # This test is tagged "manual" because it requires multiple GPUs, and
         # Forge only supports single-GPU tests.  Guitar skips "manual" tests

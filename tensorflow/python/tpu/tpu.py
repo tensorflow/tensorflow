@@ -26,7 +26,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -649,7 +648,15 @@ def outside_compilation(computation, *args, **kwargs):
   # we need to attach _xla_outside_compilation attribute directly because we are
   # not in TPUReplicateContext.
   if isinstance(graph, func_graph.FuncGraph):
-    tpu_context, _ = _enclosing_tpu_context_and_graph()
+    try:
+      tpu_context, _ = _enclosing_tpu_context_and_graph()
+    except ValueError:
+      logging.warning(
+          "Outside compilation attempted outside TPUReplicateContext "
+          "scope. As no enclosing TPUReplicateContext can be found, "
+          "returning the result of `computation` as is.")
+      return computation(*args, **kwargs)
+
     # pylint: disable=protected-access
     outside_compilation_name = str(tpu_context._outside_compilation_counter)
     tpu_context._outside_compilation_counter = (
@@ -942,16 +949,8 @@ def split_compile_and_replicate(computation,
         "device_assignment":
             device_assignment.core_assignment.flatten().tolist()
     }
-    # TODO(phawkins): remove this case after the forward compatibility window
-    # expires on 2018-10-5.
-    if api_compat.forward_compatible(2018, 10, 5):
-      metadata_kwargs["num_cores_per_replica"] = (
-          device_assignment.num_cores_per_replica)
-    else:
-      metadata_kwargs["computation_shape"] = [
-          device_assignment.num_cores_per_replica
-      ]
-
+    metadata_kwargs["num_cores_per_replica"] = (
+        device_assignment.num_cores_per_replica)
   # This entry is used for enabling automatic outside compilation.
   metadata_kwargs["allow_soft_placement"] = config.get_soft_device_placement()
 
@@ -1039,14 +1038,9 @@ def split_compile_and_replicate(computation,
   flat_replicated_inputs = []
   for i in range(0, len(flat_inputs[0])):
     replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
-    if api_compat.forward_compatible(2019, 9, 19):
-      flat_replicated_inputs.append(
-          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i),
-                                       index=i))
-    else:
-      flat_replicated_inputs.append(
-          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
-
+    flat_replicated_inputs.append(
+        tpu_ops.tpu_replicated_input(
+            replicas, name="input{}".format(i), index=i))
   if isinstance(graph, func_graph.FuncGraph):
     # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph
     # object. If both outside graph and this function have a TPU cluster,

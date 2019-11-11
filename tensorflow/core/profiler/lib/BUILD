@@ -62,7 +62,7 @@ filegroup(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "traceme",
     srcs = ["traceme.cc"],
     hdrs = ["traceme.h"],

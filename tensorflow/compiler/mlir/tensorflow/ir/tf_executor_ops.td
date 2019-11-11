@@ -16,12 +16,10 @@ limitations under the License.
 // This is the definition file for the TensorFlow Executor Dialect.
 //
 
-#ifdef TF_EXECUTOR_DIALECT
-#else
+#ifndef TF_EXECUTOR_DIALECT
 #define TF_EXECUTOR_DIALECT
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

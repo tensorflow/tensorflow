@@ -818,7 +818,8 @@ TEST_F(ArithmeticOptimizerTest, FuseTransposeAndConj) {
 }
 
 TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
-  for (const string matmul_type : {"MatMul", "SparseMatMul", "BatchMatMul"}) {
+  for (const string matmul_type :
+       {"MatMul", "SparseMatMul", "BatchMatMul", "BatchMatMulV2"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     Output a = ops::Const(s.WithOpName("a"), {1.0f, 2.0f, 3.0f, 4.0f}, {2, 2});
@@ -835,6 +836,8 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
       matmul = ops::SparseMatMul(matmul_op, trans_a, trans_b);
     } else if (matmul_type == "BatchMatMul") {
       matmul = ops::BatchMatMul(matmul_op, trans_a, trans_b);
+    } else if (matmul_type == "BatchMatMulV2") {
+      matmul = ops::BatchMatMulV2(matmul_op, trans_a, trans_b);
     }
 
     auto identity = ops::Identity(s.WithOpName("identity"), matmul);
@@ -863,7 +866,7 @@ TEST_F(ArithmeticOptimizerTest, FoldTransposeIntoMatMul) {
     EXPECT_EQ(matmul_fused_node->input(0), "a");
     EXPECT_EQ(matmul_fused_node->input(1), "b");
 
-    if (matmul_type == "BatchMatMul") {
+    if (matmul_type == "BatchMatMul" || matmul_type == "BatchMatMulV2") {
       EXPECT_TRUE(matmul_fused_node->attr().at("adj_x").b());
       EXPECT_TRUE(matmul_fused_node->attr().at("adj_y").b());
     } else {

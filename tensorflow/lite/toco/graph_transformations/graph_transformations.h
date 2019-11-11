@@ -215,6 +215,7 @@ DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
 DECLARE_GRAPH_TRANSFORMATION(ShuffleFCWeights)
 DECLARE_GRAPH_TRANSFORMATION(ResolveFakeQuantArgsFromVars)
 DECLARE_GRAPH_TRANSFORMATION(ResolveGatherAttributes)
+DECLARE_GRAPH_TRANSFORMATION(IdentifyNearestUpsample)
 
 class PropagateDefaultMinMax : public GraphTransformation {
  public:

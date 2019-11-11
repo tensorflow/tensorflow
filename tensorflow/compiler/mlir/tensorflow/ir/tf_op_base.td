@@ -19,12 +19,10 @@ limitations under the License.
 // op, and various commonly used TensorFlow traits, types, attributes, and
 // builders.
 
-#ifdef TF_OP_BASE
-#else
+#ifndef TF_OP_BASE
 #define TF_OP_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

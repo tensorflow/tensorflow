@@ -653,8 +653,9 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
@@ -689,8 +690,9 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -725,8 +727,9 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -776,8 +779,10 @@ void InstantiatedCapturedFunction::RunAsync(
   auto cancellation_manager = absl::make_unique<CancellationManager>();
   f_opts.cancellation_manager = cancellation_manager.get();
   std::function<void()> deregister_fn;
-  Status s = ConnectCancellationManagers(
-      ctx->cancellation_manager(), cancellation_manager.get(), &deregister_fn);
+  Status s = RegisterCancellationCallback(
+      cancellation_manager_,
+      [cm = cancellation_manager.get()]() { cm->StartCancel(); },
+      &deregister_fn);
   if (!s.ok()) {
     done(s);
     return;

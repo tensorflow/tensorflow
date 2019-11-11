@@ -30,7 +30,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",
+    "tf_copts",  # @unused
 )
 load(
     "@local_config_rocm//rocm:build_defs.bzl",
@@ -441,6 +441,17 @@ cc_library(
     deps = [
         ":platform",
     ] + tf_platform_helper_deps("stacktrace_impl"),
+)
+
+filegroup(
+    name = "stacktrace_handler_hdrs",
+    srcs = [
+        "stacktrace_handler.h",
+    ],
+    visibility = [
+        "//tensorflow/core:__pkg__",
+        "//tensorflow/python:__pkg__",
+    ],
 )
 
 cc_library(

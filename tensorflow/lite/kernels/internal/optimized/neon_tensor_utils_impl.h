@@ -42,6 +42,13 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
 
+// Matrix multiplication for quantized values using asymmetric quantization.
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset);
+
 void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                         const int32_t* bias, int32_t layer_norm_scale_a,
                         int32_t layer_norm_scale_b, int32_t variance_limit,
@@ -161,6 +168,11 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float min, float max,
                                  float* scaling_factor);
+
+// Asymmetric quantizer.
+void NeonAsymmetricQuantizeFloats(const float* values, const int size,
+                                  int8_t* quantized_values,
+                                  float scaling_factor, int32_t offset);
 
 // Shift left a vector in place with v_size size.
 void NeonVectorShiftLeft(float* vector, int v_size, float shift_value);

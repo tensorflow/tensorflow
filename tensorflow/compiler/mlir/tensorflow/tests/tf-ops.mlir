@@ -853,6 +853,31 @@ func @testSoftmax(%arg0 : tensor<f32>) -> tensor<f32> {
 
 // -----
 
+// Test valid tf.SoftmaxCrossEntropyWithLogits
+// CHECK-LABEL: func @testSoftmaxCrossEntropyWithLogits
+func @testSoftmaxCrossEntropyWithLogits(%arg0: tensor<2x3xf32>, %arg1: tensor<3xf32>) -> (tensor<3xf32>, tensor<2x3xf32>) {
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3xf32>) -> (tensor<3xf32>, tensor<2x3xf32>)
+  return %0#0, %0#1 : tensor<3xf32>, tensor<2x3xf32>
+}
+
+// -----
+
+func @testSoftmaxCrossEntropyWithLogits(%arg0: tensor<2xf32>, %arg1: tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>) {
+  // expected-error @+1 {{requires features and labels to be broadcast compatible to rank two}}
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%arg0, %arg1) : (tensor<2xf32>, tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>)
+  return %0#0, %0#1 : tensor<3xf32>, tensor<3xf32>
+}
+
+// -----
+
+func @testSoftmaxCrossEntropyWithLogits(%arg0: tensor<3xf32>, %arg1: tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>) {
+  // expected-error @+1 {{requires features and labels to be broadcast compatible to rank two}}
+  %0:2 = "tf.SoftmaxCrossEntropyWithLogits"(%arg0, %arg1) : (tensor<3xf32>, tensor<3xf32>) -> (tensor<3xf32>, tensor<3xf32>)
+  return %0#0, %0#1 : tensor<3xf32>, tensor<3xf32>
+}
+
+// -----
+
 func @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
 func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
 
@@ -1100,6 +1125,55 @@ func @testShapeNWrongNumResults(tensor<*xf32>) {
   // expected-error @+1 {{requires 3 result(s), got 2 result(s)}}
   %0:2 = "tf.ShapeN"(%arg0, %arg0, %arg0) {N = 3 : i64} : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> (tensor<?xi32>, tensor<?xi32>)
   return
+}
+
+// -----
+
+// CHECK-LABEL: func @testValidVariableShape
+func @testValidVariableShape(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>, %arg1: tensor<*x!tf.resource>) -> (tensor<4xi32>, tensor<?xi32>) {
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  %1 = "tf.VariableShape"(%arg1) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource>) -> tensor<?xi32>
+  return %0, %1 : tensor<4xi32>, tensor<?xi32>
+}
+
+// -----
+
+func @testVariableShapeMultipleSubtypes(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>>>) {
+  // expected-error @+1 {{requires resource input type to have at most 1 subtype}}
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>, tensor<1x32x32x16xf32>>>) -> tensor<4xi32>
+  return
+}
+
+// -----
+
+func @testVariableShapeWrongResultElemType(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<?xf32> {
+  // expected-error @+1 {{result #0 must be tensor of 32/64-bit integer values}}
+  %0 = "tf.VariableShape"(%arg0) : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+
+func @testVariableShapeWrongResultDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<*xi32> {
+  // expected-error @+1 {{requires 1D type for result}}
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<*xi32>
+  return %0 : tensor<*xi32>
+}
+
+// -----
+
+func @testVariableShapeMismatchDim(%arg0: tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2xi32> {
+  // expected-error @+1 {{requires dimension size of result to match rank of operand}}
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<1x32x32x16xf32>>>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
+}
+
+// -----
+
+func @testVariableShapeWrongResultDimDynamic(%arg0: tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32> {
+  // expected-error @+1 {{requires dynamic shape result for unranked operand}}
+  %0 = "tf.VariableShape"(%arg0) {output = "tfdtype$DT_INT32"} : (tensor<*x!tf.resource<tensor<*xf32>>>) -> tensor<2xi32>
+  return %0 : tensor<2xi32>
 }
 
 // -----
