@@ -220,6 +220,48 @@ TEST_P(ModularFileSystemTest, TestCreateFilePathIsInvalid) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
+TEST_P(ModularFileSystemTest, TestCreateDir) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirNoParent) {
+  const std::string dirpath = GetURIForPath("dir_not_found/a_dir");
+  Status status = env_->CreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirWhichIsFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP();
+
+  status = env_->CreateDir(filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirTwice) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP();
+
+  status = env_->CreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirPathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP();
+
+  const std::string new_path = GetURIForPath("a_file/a_dir");
+  status = env_->CreateDir(new_path);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
 // The URI schemes that need to be tested are provided by the user via flags
 // (or, if none is supplied, all existing schemes are used). As a scheme can
 // become available after a shared object with a filesystem implementation is

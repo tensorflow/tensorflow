@@ -121,9 +121,15 @@ Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname) {
 }
 
 Status ModularFileSystem::CreateDir(const std::string& dirname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->create_dir == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", dirname, " does not support CreateDir()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  ops_->create_dir(filesystem_.get(), translated_name.c_str(),
+                   plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::Stat(const std::string& fname, FileStatistics* stat) {
