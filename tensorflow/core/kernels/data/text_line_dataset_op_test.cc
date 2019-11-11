@@ -63,7 +63,7 @@ class TextLineDatasetParams : public DatasetParams {
   int64 buffer_size_;
 };
 
-class TextLineDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class TextLineDatasetOpTest : public DatasetOpsTestBase {};
 
 Status CreateTestFiles(const std::vector<tstring>& filenames,
                        const std::vector<string>& contents,
