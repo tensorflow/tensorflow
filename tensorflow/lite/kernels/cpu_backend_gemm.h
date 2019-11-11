@@ -94,6 +94,7 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           CpuBackendContext* context) {
   gemmlowp::ScopedProfilingLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
+#ifndef TFLITE_WITH_RUY_GEMV
   if (dst_params.cols == 1) {
     // GEMV case: try a custom fast GEMV path.
     if (detail::CustomGemv(lhs_params, lhs_data, rhs_params, rhs_data,
@@ -101,6 +102,7 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
       return;
     }
   }
+#endif
   gemmlowp::ScopedProfilingLabel label2("cpu_backend_gemm::Gemm: general GEMM");
   GemmImpl<LhsScalar, RhsScalar, AccumScalar, DstScalar,
            quantization_flavor>::Run(lhs_params, lhs_data, rhs_params, rhs_data,
