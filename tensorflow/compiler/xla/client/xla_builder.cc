@@ -2022,11 +2022,22 @@ XlaOp XlaBuilder::CrossReplicaSum(
     XlaOp operand, absl::Span<const ReplicaGroup> replica_groups) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(operand));
-    const Shape& scalar_shape = ShapeUtil::MakeShape(shape.element_type(), {});
+    const Shape* element_shape;
+    if (shape.IsTuple()) {
+      if (shape.tuple_shapes_size() == 0) {
+        return Unimplemented(
+            "0 element tuple CrossReplicaSum is not supported");
+      }
+      element_shape = &shape.tuple_shapes(0);
+    } else {
+      element_shape = &shape;
+    }
+    const Shape scalar_shape =
+        ShapeUtil::MakeShape(element_shape->element_type(), {});
     auto b = CreateSubBuilder("sum");
     auto x = b->Parameter(/*parameter_number=*/0, scalar_shape, "x");
     auto y = b->Parameter(/*parameter_number=*/1, scalar_shape, "y");
-    if (shape.element_type() == PRED) {
+    if (scalar_shape.element_type() == PRED) {
       Or(x, y);
     } else {
       Add(x, y);
@@ -2043,8 +2054,27 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    std::vector<const Shape*> operand_shapes;
+    std::vector<XlaOp> operands;
+    if (operand_shape.IsTuple()) {
+      if (operand_shape.tuple_shapes_size() == 0) {
+        return Unimplemented("0 element tuple AllReduce is not supported");
+      }
+      for (int64 i = 0; i < operand_shape.tuple_shapes_size(); ++i) {
+        if (!ShapeUtil::Compatible(operand_shape.tuple_shapes(0),
+                                   operand_shape.tuple_shapes(i))) {
+          return Unimplemented(
+              "The element shapes of AllReduce must be compatible");
+        }
+        operand_shapes.push_back(&operand_shape.tuple_shapes(i));
+        operands.push_back(GetTupleElement(operand, i));
+      }
+    } else {
+      operand_shapes.push_back(&operand_shape);
+      operands.push_back(operand);
+    }
     TF_ASSIGN_OR_RETURN(Shape shape,
-                        ShapeInference::InferAllReduceShape({&operand_shape}));
+                        ShapeInference::InferAllReduceShape(operand_shapes));
     *instr.mutable_shape() = shape.ToProto();
 
     for (const ReplicaGroup& group : replica_groups) {
@@ -2057,7 +2087,7 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
 
     AddCalledComputation(computation, &instr);
 
-    return AddInstruction(std::move(instr), HloOpcode::kAllReduce, {operand});
+    return AddInstruction(std::move(instr), HloOpcode::kAllReduce, operands);
   });
 }
 
