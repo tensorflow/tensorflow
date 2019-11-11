@@ -1174,10 +1174,10 @@ def ViewOp : Std_Op<"view"> {
   let results = (outs AnyMemRef);
 
   let extraClassDeclaration = [{
-    /// The result of a memref_shape_cast is always a memref.
+    /// The result of a view is always a memref.
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
-    /// Returns the dynamic offset for this shape cast operation if specified.
+    /// Returns the dynamic offset for this view operation if specified.
     /// Returns nullptr if no dynamic offset was specified.
     Value *getDynamicOffset();
 
@@ -1186,13 +1186,92 @@ def ViewOp : Std_Op<"view"> {
       return getDynamicOffset() == nullptr ? 1 : 2;
     }
 
-    /// Returns the dynamic sizes for this shape cast operation.
+    /// Returns the dynamic sizes for this view operation.
     operand_range getDynamicSizes() {
       return {operand_begin() + getDynamicSizesOperandStart(), operand_end()};
     }
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
+  let summary = "memref subview operation";
+  let description = [{
+    The "subview" operation converts a memref type to another memref type
+    which represents a reduced-size view of the original memref as specified by
+    the operation's offsets, sizes and strides arguments.
+
+    The SubView operation supports the following arguments:
+    *) Memref: the "base" memref on which to create a "view" memref.
+    *) Offsets: memref-rank number of dynamic offsets into the "base" memref at
+                which to create the "view" memref.
+    *) Sizes: memref-rank dynamic size operands which specify the dynamic sizes
+              of the result "view" memref type.
+    *) Strides: memref-rank number of dynamic strides which are applied
+                multiplicatively to the base memref strides in each dimension.
+
+    Example 1:
+
+      %0 = alloc() : memref<64x4xf32, (d0, d1) -> (d0 * 4 + d1)>
+
+      // Create a sub-view of "base" memref '%0' with offset arguments '%c0',
+      // dynamic sizes for each dimension, and stride arguments '%c1'.
+      %1 = subview %0[%c0, %c0][%size0, %size1][%c1, %c1]
+        : memref<64x4xf32, (d0, d1) -> (d0 * 4 + d1) > to
+          memref<?x?xf32, (d0, d1)[s0, s1] -> (d0 * s1 + d1 + s0)>
+
+    Example 2:
+
+      %0 = alloc() : memref<8x16x4xf32, (d0, d1, d1) -> (d0 * 64 + d1 * 4 + d2)>
+
+      // Create a sub-view of "base" memref '%0' with dynamic offsets, sizes,
+      // and strides.
+      // Note that dynamic offsets are represented by the linearized dynamic
+      // offset symbol 's0' in the subview memref layout map, and that the
+      // dynamic strides operands, after being applied to the base memref
+      // strides in each dimension, are represented in the view memref layout
+      // map as symbols 's1', 's2' and 's3'.
+      %1 = subview %0[%i, %j, %k][%size0, %size1, %size2][%x, %y, %z]
+        : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+          memref<?x?x?xf32,
+            (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
+    }
+  }];
+
+  let arguments = (ins AnyMemRef:$source, Variadic<Index>:$offsets,
+                   Variadic<Index>:$sizes, Variadic<Index>:$strides);
+  let results = (outs AnyMemRef);
+
+  let extraClassDeclaration = [{
+    /// The result of a subview is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the dynamic offsets for this subview operation.
+    operand_range getDynamicOffsets() {
+      return {operand_begin() + 1, operand_begin() + 1 + getType().getRank()};
+    }
+
+    /// Returns the operand starting position of the size operands.
+    unsigned getSizeOperandsStart() { return 1 + getType().getRank(); }
+
+    /// Returns the dynamic sizes for this subview operation if specified.
+    operand_range getDynamicSizes() {
+      return {operand_begin() + getSizeOperandsStart(),
+              operand_begin() + getSizeOperandsStart() + getType().getRank()};
+    }
+
+    /// Returns the operand starting position of the size operands.
+    unsigned getStrideOperandsStart() { return 1 + 2 * getType().getRank(); }
+
+    /// Returns the dynamic strides for this subview operation if specified.
+    operand_range getDynamicStrides() {
+      return {operand_begin() + getStrideOperandsStart(),
+              operand_begin() + getStrideOperandsStart() + getType().getRank()};
+    }
+  }];
+
+  // TODO(andydavis) Add canonicalizer.
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {

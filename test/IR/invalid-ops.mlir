@@ -976,3 +976,70 @@ func @invalid_view(%arg0 : index, %arg1 : index, %arg2 : index) {
   return
 }
 
+// -----
+
+func @invalid_subview(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2), 2>
+  // expected-error@+1 {{different memory spaces}}
+  %1 = subview %0[][%arg2][]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2), 2> to
+      memref<8x?x4xf32, (d0, d1, d2)[s0] -> (d0 * s0 + d1 * 4 + d2)>
+  return
+}
+
+// -----
+
+func @invalid_subview(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+  // expected-error@+1 {{is not strided}}
+  %1 = subview %0[][%arg2][]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+      memref<8x?x4xf32, (d0, d1, d2)[s0] -> (d0 + s0, d1, d2)>
+  return
+}
+
+// -----
+
+func @invalid_subview(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<8x16x4xf32, (d0, d1, d2) -> (d0 + d1, d1 + d2, d2)>
+  // expected-error@+1 {{is not strided}}
+  %1 = subview %0[][%arg2][]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 + d1, d1 + d2, d2)> to
+      memref<8x?x4xf32, (d0, d1, d2)[s0] -> (d0 * s0 + d1 * 4 + d2)>
+  return
+}
+
+// -----
+
+func @invalid_subview(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+  // expected-error@+1 {{incorrect number of operands for type}}
+  %1 = subview %0[%arg0, %arg1][%arg2][]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+      memref<8x?x4xf32, (d0, d1, d2)[s0] -> (d0 * s0 + d1 * 4 + d2)>
+  return
+}
+
+// -----
+
+func @invalid_subview(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+  // expected-error@+1 {{incorrect dynamic strides in view memref type}}
+  %1 = subview %0[%arg0, %arg1, %arg2][%arg0, %arg1, %arg2][%arg0, %arg1, %arg2]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+      memref<?x?x4xf32, (d0, d1, d2)[s0] -> (d0 * 64 + d1 * 4 + d2 + s0)>
+  return
+}
+
+// -----
+
+func @invalid_subview(%arg0 : index, %arg1 : index, %arg2 : index) {
+  %0 = alloc() : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+  %c0 = constant 0 : index
+  %c1 = constant 1 : index
+  // expected-error@+1 {{subview memref layout map must specify a dynamic offset}}
+  %1 = subview %0[%c0, %c0, %c0][%arg0, %arg1, %arg2][%c1, %c1, %c1]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+      memref<?x?x?xf32, (d0, d1, d2)[s0, s1, s2] -> (d0 * s0 + d1 * s1 + d2 * s2)>
+  return
+}

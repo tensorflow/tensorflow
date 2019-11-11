@@ -56,8 +56,8 @@ mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
   enter(body, /*prev=*/1);
 }
 
-mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
-                                               SubViewOp::Range range) {
+mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(
+    ValueHandle *iv, mlir::linalg::SubViewOp::Range range) {
   auto forOp =
       OperationHandle::createOp<ForOp>(range.min, range.max, range.step);
   *iv = ValueHandle(forOp.getInductionVar());
@@ -74,7 +74,8 @@ mlir::edsc::LoopRangeBuilder::operator()(std::function<void(void)> fun) {
 }
 
 mlir::edsc::LoopNestRangeBuilder::LoopNestRangeBuilder(
-    ArrayRef<ValueHandle *> ivs, ArrayRef<SubViewOp::Range> ranges) {
+    ArrayRef<ValueHandle *> ivs,
+    ArrayRef<mlir::linalg::SubViewOp::Range> ranges) {
   loops.reserve(ranges.size());
   for (unsigned i = 0, e = ranges.size(); i < e; ++i) {
     loops.emplace_back(ivs[i], ranges[i]);
