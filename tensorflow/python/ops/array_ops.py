@@ -867,8 +867,10 @@ def _slice_helper(tensor, slice_spec, var=None):
     index += 1
 
   # stack possibly involves no tensors, so we must use op_scope correct graph.
-  with ops.name_scope(None, "strided_slice",
-                      [tensor] + begin + end + strides) as name:
+  with ops.name_scope(
+      None,
+      "strided_slice", [tensor] + begin + end + strides,
+      skip_on_eager=False) as name:
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
