@@ -47,7 +47,7 @@ def _as_device_str_or_none(device_type):
 @tf_export("DeviceSpec", v1=[])
 class DeviceSpecV2(object):
   """Represents a (possibly partial) specification for a TensorFlow device.
-  
+
   `DeviceSpec`s are used throughout TensorFlow to describe where state is stored
   and computations occur. Using `DeviceSpec` allows you to parse device spec
   strings to verify their validity, merge them or compose them programmatically.
