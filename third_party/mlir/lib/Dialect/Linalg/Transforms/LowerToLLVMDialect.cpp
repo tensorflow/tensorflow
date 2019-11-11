@@ -487,11 +487,11 @@ public:
 
 /// A non-conversion rewrite pattern kicks in to convert SubViewOp into RangeOps
 /// and SliceOps.
-class SubViewOpConversion : public OpRewritePattern<SubViewOp> {
+class SubViewOpConversion : public OpRewritePattern<mlir::linalg::SubViewOp> {
 public:
-  using OpRewritePattern<SubViewOp>::OpRewritePattern;
+  using OpRewritePattern<mlir::linalg::SubViewOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(SubViewOp op,
+  PatternMatchResult matchAndRewrite(mlir::linalg::SubViewOp op,
                                      PatternRewriter &rewriter) const override {
     auto *view = op.getView();
     SmallVector<Value *, 8> ranges;
