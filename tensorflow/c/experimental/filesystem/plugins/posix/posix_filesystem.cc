@@ -68,6 +68,18 @@ static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                              TF_WritableFile* file, TF_Status* status) {
+  FILE* f = fopen(path, "a");
+  if (f == nullptr) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return;
+  }
+
+  file->plugin_file = new tf_writable_file::PosixFile({strdup(path), f});
+  TF_SetStatus(status, TF_OK, "");
+}
+
 static void CreateDir(const TF_Filesystem* filesystem, const char* path,
                       TF_Status* status) {
   if (strlen(path) == 0)
@@ -87,10 +99,11 @@ void TF_InitPlugin(TF_Status* status) {
       tf_posix_filesystem::Cleanup,
       /*new_random_access_file=*/nullptr,
       tf_posix_filesystem::NewWritableFile,
-      /*new_appendable_file=*/nullptr,
+      tf_posix_filesystem::NewAppendableFile,
       /*new_read_only_memory_region_from_file=*/nullptr,
       tf_posix_filesystem::CreateDir,
-      nullptr};
+      nullptr,
+  };
 
   for (const char* scheme : {"", "file"})
     TF_REGISTER_FILESYSTEM_PLUGIN(

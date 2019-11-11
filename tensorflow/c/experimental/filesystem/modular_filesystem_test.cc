@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <random>
+#include <string>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
@@ -89,10 +91,8 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     // Windows.
     if (mkdir(root_dir_.c_str(), 0755) != 0) {
       int error_code = errno;
-      VLOG(0) << "Cannot create working directory: "
-              << tensorflow::IOError(root_dir_, error_code)
-              << ". Test will be skipped.";
-      GTEST_SKIP();
+      GTEST_SKIP() << "Cannot create working directory: "
+                   << tensorflow::IOError(root_dir_, error_code);
     }
   }
 
@@ -151,7 +151,7 @@ TEST_P(ModularFileSystemTest, TestTranslateName) {
   const std::string generic_path = GetURIForPath("some_path");
   FileSystem* fs = nullptr;
   Status s = env_->GetFileSystemForFile(generic_path, &fs);
-  if (fs == nullptr || !s.ok()) GTEST_SKIP();
+  if (fs == nullptr || !s.ok()) GTEST_SKIP() << "No filesystem registered";
 
   // First, test some interesting corner cases concerning empty URIs
   if (GetParam().empty()) {
@@ -201,7 +201,7 @@ TEST_P(ModularFileSystemTest, TestCreateFileNonExisting) {
 TEST_P(ModularFileSystemTest, TestCreateFileExistingDir) {
   const std::string filepath = GetURIForPath("a_file");
   Status status = env_->CreateDir(filepath);
-  if (!status.ok()) GTEST_SKIP();
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
 
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(filepath, &new_file);
@@ -212,11 +212,58 @@ TEST_P(ModularFileSystemTest, TestCreateFilePathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP();
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
 
   const std::string new_path = GetURIForPath("a_file/a_file");
   std::unique_ptr<WritableFile> new_file;
   status = env_->NewWritableFile(new_path, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewAppendableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFileNonExisting) {
+  const std::string filepath = GetURIForPath("dir_not_found/a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewAppendableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFileExistingDir) {
+  const std::string filepath = GetURIForPath("a_file");
+  Status status = env_->CreateDir(filepath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewAppendableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateThenAppendFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  std::unique_ptr<WritableFile> same_file;
+  status = env_->NewAppendableFile(filepath, &same_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFilePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_file");
+  std::unique_ptr<WritableFile> same_file;
+  status = env_->NewAppendableFile(new_path, &same_file);
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
@@ -236,7 +283,7 @@ TEST_P(ModularFileSystemTest, TestCreateDirWhichIsFile) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> new_file;
   Status status = env_->NewWritableFile(filepath, &new_file);
-  if (!status.ok()) GTEST_SKIP();
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
 
   status = env_->CreateDir(filepath);
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
@@ -245,7 +292,7 @@ TEST_P(ModularFileSystemTest, TestCreateDirWhichIsFile) {
 TEST_P(ModularFileSystemTest, TestCreateDirTwice) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
-  if (!status.ok()) GTEST_SKIP();
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
 
   status = env_->CreateDir(dirpath);
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
@@ -255,7 +302,7 @@ TEST_P(ModularFileSystemTest, TestCreateDirPathIsInvalid) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
   Status status = env_->NewWritableFile(filepath, &file);
-  if (!status.ok()) GTEST_SKIP();
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
 
   const std::string new_path = GetURIForPath("a_file/a_dir");
   status = env_->CreateDir(new_path);
