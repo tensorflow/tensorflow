@@ -303,9 +303,9 @@ class PyBuiltinsTest(test.TestCase):
     dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([False, True, False])
     dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([False, False, False])
     self.assertEqual(
-        py_builtins.any_(dataset_1), True)
+        self.evaluate(py_builtins.any_(dataset_1)), True)
     self.assertEqual(
-        py_builtins.any_(dataset_2), False)
+        self.evaluate(py_builtins.any_(dataset_2)), False)
 
     dataset_3 = dataset_ops.DatasetV2.from_tensor_slices([0, 1, 2])
     with self.assertRaises(ValueError):
