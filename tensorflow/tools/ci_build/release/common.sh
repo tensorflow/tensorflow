@@ -142,7 +142,8 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install portpicker
   ${SUDO_CMD} ${PIP_CMD} install scipy
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade "tb-nightly>=2.1.*"
+  # TODO(b/144163919): Remove the version pin once the bug is fixed.
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade "tb-nightly==2.1.0a20191106"
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
@@ -179,7 +180,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
-  "${PIP_CMD}" install --user --upgrade "tb-nightly>=2.1.*"
+  # TODO(b/144163919): Remove the version pin once the bug is fixed.
+  "${PIP_CMD}" install --user --upgrade "tb-nightly==2.1.0a20191106"
   # ===================================================================
 }
 
