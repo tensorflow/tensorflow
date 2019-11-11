@@ -181,7 +181,10 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
   // We are only here if the policy is warn or silent copies, so we should
   // trigger a copy.
   TensorHandle* result_handle = nullptr;
-  profiler::TraceMe activity("_Send", profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity(
+      absl::StrCat("_Send input ", i, " from ", handle_device->name(), " to ",
+                   expected_input_device->name()),
+      profiler::TraceMeLevel::kInfo);
   Status status =
       EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
                         ctx->MirrorTensors(), &result_handle);
