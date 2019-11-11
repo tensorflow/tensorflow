@@ -43,11 +43,14 @@ XStat* XEventBuilder::AddStat(const XStatMetadata& metadata) {
 
 void XEventBuilder::ParseAndAddStatValue(const XStatMetadata& metadata,
                                          absl::string_view value) {
-  if (int64 int_value; absl::SimpleAtoi(value, &int_value)) {
+  int64 int_value;
+  uint64 uint_value;
+  double double_value;
+  if (absl::SimpleAtoi(value, &int_value)) {
     AddStatValue(metadata, int_value);
-  } else if (uint64 uint_value; absl::SimpleAtoi(value, &uint_value)) {
+  } else if (absl::SimpleAtoi(value, &uint_value)) {
     AddStatValue(metadata, uint_value);
-  } else if (double double_value; absl::SimpleAtod(value, &double_value)) {
+  } else if (absl::SimpleAtod(value, &double_value)) {
     AddStatValue(metadata, double_value);
   } else {
     AddStatValue(metadata, value);
