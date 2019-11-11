@@ -21,6 +21,7 @@ from __future__ import print_function
 import functools
 import os
 
+from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import context
@@ -300,6 +301,19 @@ class Loader(object):
               ("Missing functionality to restore state of object "
                "%r from the checkpoint." % obj))
 
+  def adjust_debug_info_func_names(self, debug_info):
+    """Rewrite func names in the debug info by using the concrete func names."""
+    output_debug_info = graph_debug_info_pb2.GraphDebugInfo()
+    output_debug_info.files[:] = debug_info.files
+    for key in debug_info.traces:
+      node, func = key.split("@")
+      new_func = ""
+      if func in self._concrete_functions:
+        new_func = self._concrete_functions[func].function_def.signature.name
+      output_debug_info.traces[node + "@" + new_func].CopyFrom(
+          debug_info.traces[key])
+    return output_debug_info
+
   def get(self, node_id):
     return self._nodes[node_id]
 
@@ -519,8 +533,8 @@ def load(export_dir, tags=None):
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
     keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
-    it also points to trackable objects and functions which were attached
-    to the exported object.
+    it also points to trackable objects, functions, debug info which it has been
+    saved.
 
   Raises:
     ValueError: If `tags` don't match a MetaGraph in the SavedModel.
@@ -534,9 +548,11 @@ def load_internal(export_dir, tags=None, loader_cls=Loader):
     # Supports e.g. tags=SERVING and tags=[SERVING]. Sets aren't considered
     # sequences for nest.flatten, so we put those through as-is.
     tags = nest.flatten(tags)
-  saved_model_proto = loader_impl.parse_saved_model(export_dir)
-  if (len(saved_model_proto.meta_graphs) == 1
-      and saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
+  saved_model_proto, debug_info = (
+      loader_impl.parse_saved_model_with_debug_info(export_dir))
+
+  if (len(saved_model_proto.meta_graphs) == 1 and
+      saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     meta_graph_def = saved_model_proto.meta_graphs[0]
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
@@ -551,10 +567,13 @@ def load_internal(export_dir, tags=None, loader_cls=Loader):
                           saved_model_proto,
                           export_dir)
       root = loader.get(0)
+      if isinstance(loader, Loader):
+        root.graph_debug_info = loader.adjust_debug_info_func_names(debug_info)
     root.tensorflow_version = meta_graph_def.meta_info_def.tensorflow_version
     root.tensorflow_git_version = (
         meta_graph_def.meta_info_def.tensorflow_git_version)
   else:
     with ops.init_scope():
       root = load_v1_in_v2.load(export_dir, tags)
+      root.graph_debug_info = debug_info
   return root

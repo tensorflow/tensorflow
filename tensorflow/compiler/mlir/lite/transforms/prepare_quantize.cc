@@ -140,8 +140,8 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
         auto min_max = GetMinMaxValuesForArgument(func_name, i);
         TypeAttr params = GetQuantizedTypeAttr(
             builder, input_type, builder.getF64FloatAttr(min_max.first),
-            builder.getF64FloatAttr(min_max.second), num_bits, narrow_range,
-            is_signed);
+            builder.getF64FloatAttr(min_max.second), /*quant_dim=*/-1, num_bits,
+            narrow_range, is_signed);
         builder.setInsertionPoint(block, insertion_point);
         auto q_op = builder.create<TFL::QuantizeOp>(loc, params.getValue(), arg,
                                                     params);
