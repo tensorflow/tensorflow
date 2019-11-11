@@ -77,12 +77,18 @@ INPUT_ORDER = {
         "conv_op", "mean_op", "var_op", "beta_op", "gamma_op"
     ],
     # Order of inputs for FusedBatchNorm.
-    "FusedBatchNorm": ["conv_op", "gamma_op", "beta_op", "mean_op", "var_op"]
+    "FusedBatchNorm": ["conv_op", "gamma_op", "beta_op", "mean_op", "var_op"],
+    # Order of inputs for FusedBatchNormV2.
+    "FusedBatchNormV2": ["conv_op", "gamma_op", "beta_op", "mean_op", "var_op"],
+    # Order of inputs for FusedBatchNormV3.
+    "FusedBatchNormV3": ["conv_op", "gamma_op", "beta_op", "mean_op", "var_op"]
 }
 # Name of the attribute epsilon value is stored in.
 EPSILON_ATTR = {
     "BatchNormWithGlobalNormalization": "variance_epsilon",
-    "FusedBatchNorm": "epsilon"
+    "FusedBatchNorm": "epsilon",
+    "FusedBatchNormV2": "epsilon",
+    "FusedBatchNormV3": "epsilon"
 }
 
 
@@ -234,7 +240,7 @@ def fold_batch_norms(input_graph_def):
   nodes_to_skip = {}
   new_ops = []
   for node in input_graph_def.node:
-    if node.op not in ("BatchNormWithGlobalNormalization", "FusedBatchNorm"):
+    if node.op not in ("BatchNormWithGlobalNormalization", "FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3"):
       continue
 
     conv_op = node_from_map(input_node_map,
