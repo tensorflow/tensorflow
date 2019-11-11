@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import copy
 import random
 import threading
@@ -2005,6 +2006,42 @@ def export_run_metadata():
     A RunMetadata protocol buffer.
   """
   return context().export_run_metadata()
+
+
+@contextlib.contextmanager
+def collect_optimized_graphs():
+  """Collects a flat list of post-optimization graphs.
+
+  The collected graphs include device placements, which can be useful for
+  testing.
+
+  Usage:
+
+  ```
+  @def_function.function
+  def f(x):
+    return x + constant_op.constant(1.)
+
+  with context.collect_optimized_graphs() as graphs:
+    with ops.device("CPU:0"):
+      f(constant_op.constant(1.))
+
+  graph, = graphs  # `graph` contains a single GraphDef for inspection
+  ```
+
+  Yields:
+    A list of GraphDefs, populated when the context manager exits.
+  """
+  ctx = context()
+  ctx.enable_graph_collection()
+  try:
+    graphs = []
+    yield graphs
+    metadata = ctx.export_run_metadata()
+  finally:
+    ctx.disable_graph_collection()
+  for graph in metadata.function_graphs:
+    graphs.append(graph.post_optimization_graph)
 
 
 def get_server_def():
