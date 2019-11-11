@@ -182,8 +182,10 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
   // trigger a copy.
   TensorHandle* result_handle = nullptr;
   profiler::TraceMe activity(
-      absl::StrCat("_Send input ", i, " from ", handle_device->name(), " to ",
-                   expected_input_device->name()),
+      [&] {
+        return absl::StrCat("_Send input ", i, " from ", handle_device->name(),
+                            " to ", expected_input_device->name());
+      },
       profiler::TraceMeLevel::kInfo);
   Status status =
       EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
