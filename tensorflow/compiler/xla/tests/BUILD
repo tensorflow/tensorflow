@@ -927,6 +927,7 @@ xla_test(
     srcs = ["dot_operation_test.cc"],
     shard_count = 20,
     tags = [
+        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -960,6 +961,7 @@ xla_test(
     backends = ["gpu"],
     shard_count = 20,
     tags = [
+        "no_rocm",
         "optonly",
     ],
     deps = [
@@ -1023,6 +1025,7 @@ xla_test(
     },
     shard_count = 20,
     tags = [
+        "no_rocm",
 	"optonly",
     ],
     deps = [
