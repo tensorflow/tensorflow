@@ -115,6 +115,7 @@ cc_binary(
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
+            "-fvisibility=hidden",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
@@ -139,6 +140,7 @@ cc_binary(
         "//tensorflow:android": [
             "-lEGL",
             "-lGLESv3",
+            "-fvisibility=hidden",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
