@@ -90,7 +90,7 @@ cc_toolchain_config(
         "-lm",
     ],
     link_libs = [],
-    opt_link_flags = ["-Wl,--gc-sections"],
+    opt_link_flags = [],
     unfiltered_compile_flags = [
         "-fno-canonical-system-headers",
         "-Wno-builtin-macro-redefined",
