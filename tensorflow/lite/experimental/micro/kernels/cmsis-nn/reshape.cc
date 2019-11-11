@@ -80,9 +80,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
+#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   // NOTE: byte-level reinterpretation will occur here by tensorflow
   arm_reshape_s8(GetTensorData<int8_t>(input), GetTensorData<int8_t>(output),
                  input->bytes);
+#else
+
+  for (int i = 0; i < input->bytes; ++i) {
+    output->data.raw[i] = input->data.raw[i];
+  }
+
+#endif
   return kTfLiteOk;
 }
 
