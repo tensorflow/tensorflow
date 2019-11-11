@@ -56,6 +56,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::tensorflow::error::Code;
+
 // As we need to test multiple URI schemes we need a parameterized test.
 // Furthermore, since each test creates and deletes files, we will use the same
 // fixture to create new directories in `SetUp`. Each directory will reside in
@@ -138,6 +140,13 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
 
 int ModularFileSystemTest::rng_val_;
 
+// As some of the implementations might be missing, the tests should still pass
+// if the returned `Status` signals the unimplemented state.
+bool UninmplementedOrReturnsCode(Status actual_status, Code expected_code) {
+  Code actual_code = actual_status.code();
+  return (actual_code == Code::UNIMPLEMENTED) || (actual_code == expected_code);
+}
+
 TEST_P(ModularFileSystemTest, TestTranslateName) {
   const std::string generic_path = GetURIForPath("some_path");
   FileSystem* fs = nullptr;
@@ -173,6 +182,42 @@ TEST_P(ModularFileSystemTest, TestTranslateName) {
   EXPECT_EQ(GetRelativePath(fs->TranslateName(
                 GetURIForPath("a/convoluted/../path/./to/.//.///a/file"))),
             "/a/path/to/a/file");
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFileNonExisting) {
+  const std::string filepath = GetURIForPath("dir_not_found/a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFileExistingDir) {
+  const std::string filepath = GetURIForPath("a_file");
+  Status status = env_->CreateDir(filepath);
+  if (!status.ok()) GTEST_SKIP();
+
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewWritableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFilePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP();
+
+  const std::string new_path = GetURIForPath("a_file/a_file");
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewWritableFile(new_path, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
 // The URI schemes that need to be tested are provided by the user via flags

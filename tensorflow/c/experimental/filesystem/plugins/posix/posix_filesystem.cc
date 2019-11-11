@@ -12,6 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 #include <vector>
 
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
@@ -22,7 +27,27 @@ limitations under the License.
 
 // TODO(mihaimaruseac): More implementations to follow in subsequent changes.
 
-namespace posix_filesystem {
+// SECTION 1. Implementation for `TF_WritableFile`
+// ----------------------------------------------------------------------------
+namespace tf_writable_file {
+
+typedef struct PosixFile {
+  const char* filename;
+  FILE* handle;
+} PosixFile;
+
+static void Cleanup(TF_WritableFile* file) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+  if (posix_file->handle != nullptr) fclose(posix_file->handle);
+  free(const_cast<char*>(posix_file->filename));
+  delete posix_file;
+}
+
+}  // namespace tf_writable_file
+
+// SECTION 2. Implementation for `TF_Filesystem`, the actual filesystem
+// ----------------------------------------------------------------------------
+namespace tf_posix_filesystem {
 
 static void Init(TF_Filesystem* filesystem, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
@@ -30,16 +55,29 @@ static void Init(TF_Filesystem* filesystem, TF_Status* status) {
 
 static void Cleanup(TF_Filesystem* filesystem) {}
 
-}  // namespace posix_filesystem
+static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
+                            TF_WritableFile* file, TF_Status* status) {
+  FILE* f = fopen(path, "w");
+  if (f == nullptr) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return;
+  }
+
+  file->plugin_file = new tf_writable_file::PosixFile({strdup(path), f});
+  TF_SetStatus(status, TF_OK, "");
+}
+
+}  // namespace tf_posix_filesystem
 
 void TF_InitPlugin(TF_Status* status) {
-  TF_FilesystemOps filesystem_ops = {posix_filesystem::Init,
-                                     posix_filesystem::Cleanup, nullptr};
+  TF_WritableFileOps writable_file_ops = {tf_writable_file::Cleanup, nullptr};
+  TF_FilesystemOps filesystem_ops = {
+      tf_posix_filesystem::Init, tf_posix_filesystem::Cleanup,
+      /*new_random_access_file=*/nullptr, tf_posix_filesystem::NewWritableFile,
+      nullptr};
 
   for (const char* scheme : {"", "file"})
-    TF_REGISTER_FILESYSTEM_PLUGIN(scheme, &filesystem_ops,
-                                  /*pluginRandomAccessFileOps=*/nullptr,
-                                  /*pluginWritableFileOps=*/nullptr,
-                                  /*pluginReadOnlyMemoryRegionOps=*/nullptr,
-                                  status);
+    TF_REGISTER_FILESYSTEM_PLUGIN(
+        scheme, &filesystem_ops, /*pluginRandomAccessFileOps=*/nullptr,
+        &writable_file_ops, /*pluginReadOnlyMemoryRegionOps=*/nullptr, status);
 }
