@@ -74,6 +74,15 @@ func @addi_zero(%arg0: i32) -> i32 {
   return %y: i32
 }
 
+// CHECK-LABEL: func @addi_zero_index
+func @addi_zero_index(%arg0: index) -> index {
+  // CHECK-NEXT: return %arg0
+  %c0_index = constant 0 : index
+  %y = addi %c0_index, %arg0 : index
+  return %y: index
+}
+
+
 // CHECK-LABEL: func @addi_zero_vector
 func @addi_zero_vector(%arg0: vector<4 x i32>) -> vector<4 x i32> {
   // CHECK-NEXT: return %arg0
@@ -99,6 +108,17 @@ func @muli_zero(%arg0: i32) -> i32 {
 
   // CHECK-NEXT: return %c0_i32
   return %y: i32
+}
+
+// CHECK-LABEL: func @muli_zero_index
+func @muli_zero_index(%arg0: index) -> index {
+  // CHECK-NEXT: %[[CST:.*]] = constant 0 : index
+  %c0_index = constant 0 : index
+
+  %y = muli %c0_index, %arg0 : index
+
+  // CHECK-NEXT: return %[[CST]]
+  return %y: index
 }
 
 // CHECK-LABEL: func @muli_zero_vector
@@ -129,6 +149,14 @@ func @muli_one(%arg0: i32) -> i32 {
   %c0_i32 = constant 1 : i32
   %y = muli %c0_i32, %arg0 : i32
   return %y: i32
+}
+
+// CHECK-LABEL: func @muli_one_index
+func @muli_one_index(%arg0: index) -> index {
+  // CHECK-NEXT: return %arg0
+  %c0_index = constant 1 : index
+  %y = muli %c0_index, %arg0 : index
+  return %y: index
 }
 
 // CHECK-LABEL: func @muli_one_vector
@@ -177,6 +205,15 @@ func @and_zero(%arg0: i32) -> i32 {
   return %1 : i32
 }
 
+//CHECK-LABEL: func @and_zero_index
+func @and_zero_index(%arg0: index) -> index {
+  // CHECK-NEXT: %[[CST:.*]] = constant 0 : index
+  %c0_index = constant 0 : index
+  // CHECK-NEXT: return %[[CST]]
+  %1 = and %arg0, %c0_index : index
+  return %1 : index
+}
+
 //CHECK-LABEL: func @and_zero_vector
 func @and_zero_vector(%arg0: vector<4xi32>) -> vector<4xi32> {
   // CHECK-NEXT: %cst = constant dense<0> : vector<4xi32>
@@ -222,6 +259,14 @@ func @or_zero(%arg0: i32) -> i32 {
   // CHECK-NEXT: return %arg0
   %1 = or %arg0, %c0_i32 : i32
   return %1 : i32
+}
+
+//CHECK-LABEL: func @or_zero_index
+func @or_zero_index(%arg0: index) -> index {
+  %c0_index = constant 0 : index
+  // CHECK-NEXT: return %arg0
+  %1 = or %arg0, %c0_index : index
+  return %1 : index
 }
 
 //CHECK-LABEL: func @or_zero_vector
