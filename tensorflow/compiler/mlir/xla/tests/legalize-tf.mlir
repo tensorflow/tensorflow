@@ -582,6 +582,20 @@ func @identity(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   return %0: tensor<1xi32>
 }
 
+// CHECK-LABEL: func @stopgradient
+func @stopgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  // CHECK-NEXT:  return %arg0 : tensor<1xi32>
+  %0 = "tf.StopGradient"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// CHECK-LABEL: func @preventgradient
+func @preventgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  // CHECK-NEXT:  return %arg0 : tensor<1xi32>
+  %0 = "tf.PreventGradient"(%arg0) {message = "fin gradients"} : (tensor<1xi32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
 //===----------------------------------------------------------------------===//
 // Nullary op legalizations.
 //===----------------------------------------------------------------------===//

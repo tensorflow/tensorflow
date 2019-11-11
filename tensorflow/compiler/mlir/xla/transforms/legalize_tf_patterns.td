@@ -282,7 +282,9 @@ def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), $c),
 // Identity op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_IdentityOp $op), (replaceWithValue $op)>;
+foreach src = [TF_IdentityOp, TF_StopGradientOp] in
+  def : Pat<(src $op), (replaceWithValue $op)>;
+def : Pat<(TF_PreventGradientOp $op, $msg), (replaceWithValue $op)>;
 
 //===----------------------------------------------------------------------===//
 // MatMul op patterns.

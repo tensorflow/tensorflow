@@ -3184,6 +3184,34 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_PreventGradientOp : TF_Op<"PreventGradient", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+An identity op that triggers an error if a gradient is requested.
+  }];
+
+  let description = [{
+When executed in a graph, this op outputs its input tensor as-is.
+
+When building ops to compute gradients, the TensorFlow gradient system
+will return an error when trying to lookup the gradient of this op,
+because no gradient must ever be registered for this function.  This
+op exists to prevent subtle bugs from silently returning unimplemented
+gradients in some corner cases.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    StrAttr:$message
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ProdOp : TF_Op<"Prod", [NoSideEffect]> {
   let summary = [{
 Computes the product of elements across dimensions of a tensor.
