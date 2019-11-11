@@ -583,7 +583,16 @@ XlaOp XlaBuilder::TernaryOp(HloOpcode triop, XlaOp lhs, XlaOp rhs, XlaOp ehs) {
       absl::optional<Shape> non_scalar_shape;
       for (const Shape& shape : {lhs_shape, rhs_shape, ehs_shape}) {
         if (shape.IsArray() && shape.rank() != 0) {
-          non_scalar_shape = shape;
+          if (non_scalar_shape.has_value()) {
+            // TODO(jpienaar): The case where we need to compute the broadcasted
+            // shape by considering multiple of the shapes is not implemented.
+            // Consider reusing getBroadcastedType from mlir/Dialect/Traits.h.
+            TF_RET_CHECK(non_scalar_shape.value().dimensions() ==
+                         shape.dimensions())
+                << "Unimplemented implicit broadcast.";
+          } else {
+            non_scalar_shape = shape;
+          }
         }
       }
       if (non_scalar_shape.has_value()) {
