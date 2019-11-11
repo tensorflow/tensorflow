@@ -22,17 +22,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/optimize/calibration/builtin_logging_ops/lstm.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/logging_op.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
 #include "tensorflow/lite/tools/optimize/calibration/node_info_delegate.h"
 
@@ -159,6 +163,37 @@ GlobalCalibratorRegistry* GetCalibratorRegistry() {
   return registry;
 }
 
+// Get the logging kernel if there are any.
+// TODO(jianlijianli): extend this to support multiple recipe for the same
+// model.
+logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
+                                           TfLiteNode* node) {
+  const int lstm_number_input = 24;
+  if (node->inputs->size == lstm_number_input) {
+    // LSTM Op.
+    // Check the variants.
+    const int cell_to_output_weight_index = 11;
+    const int forget_layer_norm_coefficients_index = 21;
+    const int projection_weights_index = 16;
+    const TfLiteTensor* cell_to_output_weights =
+        GetOptionalInputTensor(context, node, cell_to_output_weight_index);
+    const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
+        context, node, forget_layer_norm_coefficients_index);
+    const TfLiteTensor* projection_weights =
+        GetOptionalInputTensor(context, node, projection_weights_index);
+
+    const bool use_peephole = (cell_to_output_weights != nullptr);
+    const bool use_layer_norm = (forget_layer_norm_coefficients != nullptr);
+    const bool use_projection = (projection_weights != nullptr);
+
+    // Support lstm with layer norm, with projection, without peephole.
+    if (use_layer_norm && use_projection && (!use_peephole)) {
+      return tflite::optimize::calibration::builtin::lstm_logging_kernel;
+    }
+  }
+  return nullptr;
+}
+
 // A wrapper implementation for |TfLiteRegistration.invoke| that logs inputs,
 // invokes the wrapped implementation and then logs the outputs.
 TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
@@ -178,12 +213,26 @@ TfLiteStatus LoggingEval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_STATUS(
         logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
   }
+  auto kernel_invoke_intermediate = GetLoggingEvalFunc(context, node);
+  TfLiteStatus status;
+  if (kernel_invoke_intermediate == nullptr) {
+    status = kernel_invoke(context, node);
+  } else {
+    status = kernel_invoke_intermediate(context, node, calibrator->GetLogger());
+  }
 
-  auto status = kernel_invoke(context, node);
   // TODO(shashishekhar): An intermediate tensor in graph will get logged twice
   // once as an input and second time as output. This doesn't change the min max
   // values but is inefficient.
   // Using moving average will also break this.
+
+  // Log input again to make sure the state tensors are captured after lstm
+  // cell.
+  for (int i : op_info.loggable_inputs) {
+    auto tensor = context->tensors[i];
+    TF_LITE_ENSURE_STATUS(
+        logger->LogTensorValue(i, tensor.data.f, tensor.bytes / sizeof(float)));
+  }
 
   for (int i : op_info.loggable_outputs) {
     auto tensor = context->tensors[i];

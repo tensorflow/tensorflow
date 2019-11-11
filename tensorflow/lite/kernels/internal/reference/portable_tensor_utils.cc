@@ -627,7 +627,7 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
 
 void PortableMeanStddevNormalization(const float* input_vector,
                                      float* output_vector, int v_size,
-                                     int n_batch, float normalization_epsilon) {
+                                     int n_batch) {
   for (int batch = 0; batch < n_batch; ++batch) {
     float sum = 0.0f;
     float sum_sq = 0.0f;
@@ -639,7 +639,8 @@ void PortableMeanStddevNormalization(const float* input_vector,
     float stddev_inv = 0.0f;
     const float variance = sum_sq / v_size - mean * mean;
     if (variance == 0) {
-      stddev_inv = 1.0f / std::sqrt(normalization_epsilon);
+      constexpr float kNormalizationConstant = 1e-8;
+      stddev_inv = 1.0f / std::sqrt(kNormalizationConstant);
     } else {
       stddev_inv = 1.0f / std::sqrt(variance);
     }

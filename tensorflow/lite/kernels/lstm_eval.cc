@@ -38,11 +38,6 @@ namespace builtin {
 namespace lstm_eval {
 
 namespace {
-
-// Small float to avoid divergence during calculation of deviation for layer
-// norm lstm.
-const float kLayerNormEpsilon = 1e-8;
-
 // Performs an LSTM batch inference step for input specified by input_ptr_batch.
 // The LSTM cell is specified by the pointers to its weights (*_weights_ptr) and
 // biases (*_bias_ptr), and buffers (*_scratch), along with additional
@@ -224,9 +219,8 @@ inline void LstmStepWithAuxInput(
           input_gate_scratch);
     }
     if (is_layer_norm_lstm) {
-      tensor_utils::MeanStddevNormalization(input_gate_scratch,
-                                            input_gate_scratch, n_cell, n_batch,
-                                            kLayerNormEpsilon);
+      tensor_utils::MeanStddevNormalization(
+          input_gate_scratch, input_gate_scratch, n_cell, n_batch);
       tensor_utils::VectorBatchVectorCwiseProduct(
           input_layer_norm_coefficients_ptr, n_cell, input_gate_scratch,
           n_batch, input_gate_scratch);
@@ -245,8 +239,7 @@ inline void LstmStepWithAuxInput(
   }
   if (is_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(forget_gate_scratch,
-                                          forget_gate_scratch, n_cell, n_batch,
-                                          kLayerNormEpsilon);
+                                          forget_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
         forget_layer_norm_coefficients_ptr, n_cell, forget_gate_scratch,
         n_batch, forget_gate_scratch);
@@ -261,7 +254,7 @@ inline void LstmStepWithAuxInput(
                                          n_batch * n_cell, cell_state_ptr);
   if (is_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
-                                          n_batch, kLayerNormEpsilon);
+                                          n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
         cell_layer_norm_coefficients_ptr, n_cell, cell_scratch, n_batch,
         cell_scratch);
@@ -292,8 +285,7 @@ inline void LstmStepWithAuxInput(
   }
   if (is_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(output_gate_scratch,
-                                          output_gate_scratch, n_cell, n_batch,
-                                          kLayerNormEpsilon);
+                                          output_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
         output_layer_norm_coefficients_ptr, n_cell, output_gate_scratch,
         n_batch, output_gate_scratch);
@@ -699,9 +691,8 @@ inline void LstmStepWithAuxInput(
           input_gate_scratch);
     }
     if (is_layer_norm_lstm) {
-      tensor_utils::MeanStddevNormalization(input_gate_scratch,
-                                            input_gate_scratch, n_cell, n_batch,
-                                            kLayerNormEpsilon);
+      tensor_utils::MeanStddevNormalization(
+          input_gate_scratch, input_gate_scratch, n_cell, n_batch);
       tensor_utils::VectorBatchVectorCwiseProduct(
           input_layer_norm_coefficients_ptr, n_cell, input_gate_scratch,
           n_batch, input_gate_scratch);
@@ -723,8 +714,7 @@ inline void LstmStepWithAuxInput(
   }
   if (is_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(forget_gate_scratch,
-                                          forget_gate_scratch, n_cell, n_batch,
-                                          kLayerNormEpsilon);
+                                          forget_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
         forget_layer_norm_coefficients_ptr, n_cell, forget_gate_scratch,
         n_batch, forget_gate_scratch);
@@ -739,7 +729,7 @@ inline void LstmStepWithAuxInput(
                                          n_batch * n_cell, cell_state_ptr);
   if (is_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(cell_scratch, cell_scratch, n_cell,
-                                          n_batch, kLayerNormEpsilon);
+                                          n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
         cell_layer_norm_coefficients_ptr, n_cell, cell_scratch, n_batch,
         cell_scratch);
@@ -775,8 +765,7 @@ inline void LstmStepWithAuxInput(
   }
   if (is_layer_norm_lstm) {
     tensor_utils::MeanStddevNormalization(output_gate_scratch,
-                                          output_gate_scratch, n_cell, n_batch,
-                                          kLayerNormEpsilon);
+                                          output_gate_scratch, n_cell, n_batch);
     tensor_utils::VectorBatchVectorCwiseProduct(
         output_layer_norm_coefficients_ptr, n_cell, output_gate_scratch,
         n_batch, output_gate_scratch);

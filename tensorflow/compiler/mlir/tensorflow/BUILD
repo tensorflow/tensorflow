@@ -207,6 +207,7 @@ cc_library(
         "transforms/graph_pruning.cc",
         "transforms/materialize_mlir_passthrough_op.cc",
         "transforms/optimize.cc",
+        "transforms/optimize_global_tensors.cc",
         "transforms/raise_control_flow.cc",
         "transforms/replicate_invariant_op_hoisting.cc",
         "transforms/replicate_to_island.cc",

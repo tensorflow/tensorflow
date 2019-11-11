@@ -449,6 +449,40 @@ static void printLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
   printer << " : " << logicalOp->getOperand(0)->getType();
 }
 
+static ParseResult parseShiftOp(OpAsmParser &parser, OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 2> operandInfo;
+  Type baseType;
+  Type shiftType;
+  auto loc = parser.getCurrentLocation();
+
+  if (parser.parseOperandList(operandInfo, 2) || parser.parseColon() ||
+      parser.parseType(baseType) || parser.parseComma() ||
+      parser.parseType(shiftType) ||
+      parser.resolveOperands(operandInfo, {baseType, shiftType}, loc,
+                             state.operands)) {
+    return failure();
+  }
+  state.addTypes(baseType);
+  return success();
+}
+
+static void printShiftOp(Operation *op, OpAsmPrinter &printer) {
+  Value *base = op->getOperand(0);
+  Value *shift = op->getOperand(1);
+  printer << op->getName() << ' ' << *base << ", " << *shift << " : "
+          << base->getType() << ", " << shift->getType();
+}
+
+static LogicalResult verifyShiftOp(Operation *op) {
+  if (op->getOperand(0)->getType() != op->getResult(0)->getType()) {
+    return op->emitError("expected the same type for the first operand and "
+                         "result, but provided ")
+           << op->getOperand(0)->getType() << " and "
+           << op->getResult(0)->getType();
+  }
+  return success();
+}
+
 //===----------------------------------------------------------------------===//
 // spv.AccessChainOp
 //===----------------------------------------------------------------------===//

@@ -1321,6 +1321,8 @@ py_library(
         ":multi_process_runner_util",
         ":multi_worker_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/compat:v2_compat",
         "@six_archive//:six",
     ],
 )

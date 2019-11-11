@@ -29,6 +29,7 @@ cc_library(
     srcs = ["op_or_arg_name_mapper.cc"],
     hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
+        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
     ],

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/strings/string_view.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/StringMap.h"
@@ -34,16 +35,19 @@ using OpOrArg = llvm::PointerUnion<mlir::Operation*, mlir::BlockArgument*>;
 class OpOrArgNameMapper {
  public:
   // Returns unique name for the given prefix.
-  std::string GetUniqueName(llvm::StringRef prefix);
+  llvm::StringRef GetUniqueName(llvm::StringRef prefix);
 
   // Returns unique name for the operation or argument.
-  const std::string& GetUniqueName(OpOrArg op_or_arg);
+  llvm::StringRef GetUniqueName(OpOrArg op_or_arg);
+
+  // Returns unique name as a string_view for the operation or argument.
+  absl::string_view GetUniqueNameView(OpOrArg op_or_arg);
 
   // Initializes operation or argument to map to name. Returns number of
   // operations or arguments already named 'name' which should be 0 else
   // GetUniqueName could return the same names for different operations or
   // arguments.
-  // Note: its up to the caller to decide the behavior when assigning two
+  // Note: Its up to the caller to decide the behavior when assigning two
   // operations or arguments to the same name.
   int InitOpName(OpOrArg op_or_arg, llvm::StringRef name);
 
@@ -55,7 +59,7 @@ class OpOrArgNameMapper {
   virtual bool IsUnique(llvm::StringRef name);
 
   // Returns a constant view of the underlying map.
-  const llvm::DenseMap<OpOrArg, std::string>& GetMap() const {
+  const llvm::DenseMap<OpOrArg, absl::string_view>& GetMap() const {
     return op_or_arg_to_name_;
   }
 
@@ -63,9 +67,12 @@ class OpOrArgNameMapper {
   // Returns name from the location of the operation or argument.
   virtual std::string GetName(OpOrArg op_or_arg) = 0;
 
-  // Maps from operation or argument to name.
+  // Maps string name to count. This map is used to help keep track of unique
+  // names for operations or arguments.
   llvm::StringMap<int64_t> name_to_count_;
-  llvm::DenseMap<OpOrArg, std::string> op_or_arg_to_name_;
+  // Maps operation or argument to name. Value in map is a view of the string
+  // name in `name_to_count_`. Names in `name_to_count_` are never removed.
+  llvm::DenseMap<OpOrArg, absl::string_view> op_or_arg_to_name_;
 };
 
 // OpOrArgNameMapper that returns, for operations or arguments not initialized

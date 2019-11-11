@@ -62,6 +62,7 @@ AllOpsResolver::AllOpsResolver() {
   AddBuiltin(BuiltinOperator_UNPACK, Register_UNPACK());
   AddBuiltin(BuiltinOperator_NEG, Register_NEG());
   AddBuiltin(BuiltinOperator_ADD, Register_ADD());
+  AddBuiltin(BuiltinOperator_MUL, Register_MUL());
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE(), 1, 4);
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(), 1, 4);
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());

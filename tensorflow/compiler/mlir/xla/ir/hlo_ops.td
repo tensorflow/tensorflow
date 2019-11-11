@@ -292,11 +292,9 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
 
-  let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$val,
-    SymbolRefAttr:$cond,
-    SymbolRefAttr:$body
-  );
+  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+
+  let regions = (region AnyRegion:$cond, AnyRegion:$body);
 
   let results = (outs Variadic<HLO_TensorOrTuple>);
 

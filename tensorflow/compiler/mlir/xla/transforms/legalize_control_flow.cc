@@ -22,6 +22,8 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
@@ -60,14 +62,20 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   // orig_block - operations before the while and the branch into looping check.
   // tail_block - operations after the while loop completes.
   // cond_block - check the looping condition, then conditionally branch into
-  // the
-  //             loop or, if condition is false, jump to the tail branch.
+  //              the loop or, if condition is false, jump to the tail branch.
   // body_block - call the loop body, then jump back to the condition block.
   auto* orig_block = opInst->getBlock();
   auto* tail_block = orig_block->splitBlock(opInst);
 
-  auto* cond_block = builder.createBlock(tail_block);
-  auto* body_block = builder.createBlock(tail_block);
+  BlockAndValueMapping mapper;
+  while_op.cond().cloneInto(orig_block->getParent(),
+                            Region::iterator(tail_block), mapper);
+  while_op.body().cloneInto(orig_block->getParent(),
+                            Region::iterator(tail_block), mapper);
+
+  // Lookup the entry blocks for both condition and body.
+  auto* cond_block = mapper.lookup(&while_op.cond().front());
+  auto* body_block = mapper.lookup(&while_op.body().front());
 
   // Setup the end of the original block:
   //     <prior operations>
@@ -75,51 +83,66 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   builder.setInsertionPointToEnd(orig_block);
   builder.create<mlir::BranchOp>(loc, cond_block, operands);
 
-  // Setup the condition block:
+  // Updates the condition blocks by replacing the return op with an
+  // extract_element and conditional branch. This changes the block below:
   //   ^cond(%0):
-  //     %1 = call @cond(%0) : (...) -> tensor<i1> // Evaluate condition.
+  //     %1 = <some operations> -> tensor<i1> // Helper condition function.
+  //    "xla_hlo".return(%1)
+  //
+  //  Into:
+  //   ^cond(%0):
+  //     %1 = <some operations> -> tensor<i1> // Helper condition function
   //     %2 = extract_element %1[] : tensor<i1> // Extract the condition value.
   //     cond_br %2, ^body(%0), ^tail(%0) // Branch.
   builder.setInsertionPointToStart(cond_block);
-  llvm::SmallVector<Value*, 4> cond_block_arguments;
-  cond_block_arguments.reserve(while_op.getNumOperands());
-  for (auto operand : while_op.getOperands()) {
-    cond_block->addArgument(operand->getType());
-    cond_block_arguments.push_back(cond_block->getArguments().back());
+
+  // Replace the xla_hlo::ReturnOp with a call back to the condition block.
+  // This is required as the xla_hlo::ReturnOp is used to mark the end of a
+  // block for regions nested inside of a operations (MLIR ReturnOp cannot be
+  // nested within an non-function region).
+  for (auto& block : while_op.cond()) {
+    auto new_block = mapper.lookup(&block);
+
+    auto return_op = dyn_cast<xla_hlo::ReturnOp>(new_block->getTerminator());
+    if (!return_op) continue;
+    builder.setInsertionPointToEnd(new_block);
+
+    auto return_value = return_op.getOperand(0);
+    auto cond_value = builder.create<mlir::ExtractElementOp>(loc, return_value);
+
+    // Get the body block arguments.
+    llvm::SmallVector<Value*, 4> body_block_arguments(cond_block->args_begin(),
+                                                      cond_block->args_end());
+
+    builder.create<mlir::CondBranchOp>(loc, cond_value, body_block,
+                                       body_block_arguments, tail_block,
+                                       body_block_arguments);
+
+    return_op.getOperation()->erase();
   }
 
-  auto cond_op = builder.create<mlir::CallOp>(
-      loc, while_op.cond(), RankedTensorType::get({}, builder.getI1Type()),
-      cond_block_arguments);
-  auto cond_value =
-      builder.create<mlir::ExtractElementOp>(loc, cond_op.getResult(0))
-          .getResult();
-  builder.create<mlir::CondBranchOp>(loc, cond_value, body_block,
-                                     cond_block_arguments, tail_block,
-                                     cond_block_arguments);
+  // Updates the body blocks by replace the return op with an branch to the
+  // conditional block. This changes the block below:
+  //   ^body(%0):
+  //     %1 = call @body(%0) : (...) -> tensor<i1> // Helper body function.
+  //    "xla_hlo".return(%1)
+  //
+  //  Into:
+  //   ^body(%0):
+  //     %1 = call @body(%0) : (...) -> tensor<i1> // Helper body function.
+  //     br ^cond(%0) // Branch.
+  for (auto& block : while_op.body()) {
+    auto new_block = mapper.lookup(&block);
+    builder.setInsertionPointToEnd(new_block);
+    auto return_op =
+        dyn_cast<mlir::xla_hlo::ReturnOp>(new_block->getTerminator());
+    if (!return_op) continue;
 
-  // Create the body block:
-  //   ^body(%3: tensor<i64>):
-  //     %4 = call @body(%3)        // Call the body function to evaluate.
-  //     br ^cond(%4 : tensor<i64>) // Continue to the loop condition.
-
-  builder.setInsertionPointToStart(body_block);
-  llvm::SmallVector<Value*, 4> body_block_arguments;
-  body_block_arguments.reserve(while_op.getNumOperands());
-  for (auto operand : while_op.getOperands()) {
-    body_block->addArgument(operand->getType());
-    body_block_arguments.push_back(body_block->getArguments().back());
+    llvm::SmallVector<Value*, 4> body_results(return_op.operand_begin(),
+                                              return_op.operand_end());
+    builder.create<mlir::BranchOp>(loc, cond_block, body_results);
+    return_op.getOperation()->erase();
   }
-
-  SmallVector<Type, 4> body_result_types(while_op.getResultTypes());
-  auto body_op = builder.create<mlir::CallOp>(
-      loc, while_op.body(), body_result_types, body_block_arguments);
-  llvm::SmallVector<Value*, 4> body_results;
-  body_results.reserve(body_op.getNumResults());
-  for (auto result : body_op.getResults()) {
-    body_results.push_back(result);
-  }
-  builder.create<mlir::BranchOp>(loc, cond_block, body_results);
 
   // Setup the tail block:
   //   ^tail(%5):

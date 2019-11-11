@@ -41,12 +41,9 @@ versions {
 
 # MLIR-LABEL: func @main(%arg0: tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, %arg1: tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
 # MLIR-NEXT:    attributes  {tf.entry_function = {inputs = "input0,input1", outputs = "Add"}} {
-# MLIR-NEXT:    %[[input0:.*]] = "tfl.pseudo_input"(%arg1) : (tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>
-# MLIR-NEXT:    %[[input1:.*]] = "tfl.pseudo_input"(%arg0) : (tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>
-# MLIR-NEXT:    %[[add:.*]] = "tfl.add"(%[[input1]], %[[input0]]) {fused_activation_function = "NONE"} : (tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
+# MLIR-NEXT:    %[[add:.*]] = "tfl.add"(%arg0, %arg1) {fused_activation_function = "NONE"} : (tensor<4x!quant.uniform<u8:f32, 0.015686274509803921:128>>, tensor<4x!quant.uniform<u8:f32, 0.023529411764705882:128>>) -> tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
 # MLIR-NEXT:    return %[[add]] : tensor<4x!quant.uniform<u8:f32, 0.0078431372549019607:128>>
 # MLIR-NEXT:  }
-
 
 # CHECK-LABEL: {
 # CHECK-NEXT:  version: 3,

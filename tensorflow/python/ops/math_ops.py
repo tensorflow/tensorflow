@@ -55,7 +55,7 @@ tf.math.segment_sum(c, tf.constant([0, 0, 1]))
 
 The standard `segment_*` functions assert that the segment indices are sorted.
 If you have unsorted indices use the equivalent `unsorted_segment_` function.
-Thses functions take an additional argument `num_segments` so that the output
+These functions take an additional argument `num_segments` so that the output
 tensor can be efficiently allocated.
 
 ``` python

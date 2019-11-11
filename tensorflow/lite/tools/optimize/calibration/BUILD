@@ -9,13 +9,34 @@ package(
 )
 
 cc_library(
+    name = "builtin_logging_op",
+    srcs = ["builtin_logging_ops/lstm.cc"],
+    hdrs = ["builtin_logging_ops/lstm.h"],
+    deps = [
+        ":calibration_logger",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels:activation_functor",
+        "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:op_macros",
+        "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/kernels/internal:optimized_base",
+        "//tensorflow/lite/kernels/internal:reference",
+        "//tensorflow/lite/kernels/internal:tensor_utils",
+    ],
+)
+
+cc_library(
     name = "calibrator_lib",
     srcs = ["calibrator.cc"],
     hdrs = ["calibrator.h"],
     deps = [
+        ":builtin_logging_op",
         ":calibration_common",
         ":calibration_logger",
         ":calibration_reader",
+        ":logging_op",
         ":logging_op_resolver",
         ":node_info_delegate",
         "//tensorflow/lite:framework",
@@ -23,6 +44,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
+        "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
@@ -36,6 +58,7 @@ tf_cc_test(
         "--test_model_file=$(location //tensorflow/lite:testdata/multi_add.bin)",
     ],
     data = [
+        "//tensorflow/lite:testdata/lstm.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
     tags = [
@@ -102,6 +125,15 @@ cc_library(
     hdrs = ["calibration_common.h"],
     deps = [
         "//tensorflow/lite:framework",
+    ],
+)
+
+cc_library(
+    name = "logging_op",
+    hdrs = ["logging_op.h"],
+    deps = [
+        ":calibration_logger",
+        "//tensorflow/lite/c:c_api_internal",
     ],
 )
 

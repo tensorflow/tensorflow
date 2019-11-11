@@ -42,7 +42,8 @@ package(
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
-    # The leakr files are used by //third_party/cloud_tpu.
+    # The leakr files are used by //third_party/cloud_tpu and
+    # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
     "leakr_badfiles.dic",
     "leakr_file_type_recipe.ftrcp",

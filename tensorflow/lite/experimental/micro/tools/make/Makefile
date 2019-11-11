@@ -133,7 +133,9 @@ tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
@@ -155,6 +157,7 @@ tensorflow/lite/kernels/padding.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/string_type.h \
 tensorflow/lite/string_util.h \
+tensorflow/lite/type_to_tflitetype.h \
 tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \

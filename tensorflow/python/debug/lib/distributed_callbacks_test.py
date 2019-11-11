@@ -165,20 +165,13 @@ class DistributedDumpingCallbackTest(
 
       updated_var_values = self.evaluate(mini_model.variables)
       num_devices = len(distribution.extended.worker_devices)
-      assert num_devices in [1, 2]
-      # TODO(cais): We currently refrain from asserting the
-      # element-by-element values of the variable updates. The values seem to
-      # vary among builds. On some builds, it's 0.75; on others, it's 1.0.
-      # This variation is seen in the MirroredCPUAndGPU and OneDeviceGPU
-      # strategies. Needs investigation.
-      # if num_devices == 1:
-      #   self.assertAllEqual(0.75 * np.ones([10, 1]), updated_var_values[0])
-      #   self.assertAllEqual([0.75], updated_var_values[1]).
-      # else:
-      #   self.assertAllEqual(0.5 * np.ones([10, 1]), updated_var_values[0])
-      #   self.assertAllEqual([0.5], updated_var_values[1])
-      self.assertEqual(updated_var_values[0].shape, (10, 1))
-      self.assertEqual(updated_var_values[1].shape, (1,))
+      assert num_devices in (1, 2)
+      if num_devices == 1:
+        self.assertAllEqual(0.75 * np.ones([10, 1]), updated_var_values[0])
+        self.assertAllEqual([0.75], updated_var_values[1])
+      else:
+        self.assertAllEqual(0.5 * np.ones([10, 1]), updated_var_values[0])
+        self.assertAllEqual([0.5], updated_var_values[1])
 
       writer.FlushNonExecutionFiles()
       writer.FlushExecutionFiles()

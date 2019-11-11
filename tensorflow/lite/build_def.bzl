@@ -141,7 +141,8 @@ def tflite_cc_shared_object(
         linkopts = [],
         linkstatic = 1,
         deps = [],
-        visibility = None):
+        visibility = None,
+        tags = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
         name = name,
@@ -151,6 +152,7 @@ def tflite_cc_shared_object(
         framework_so = [],
         deps = deps,
         visibility = visibility,
+        tags = tags,
     )
 
 def tf_to_tflite(name, src, options, out):

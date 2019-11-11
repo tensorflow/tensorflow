@@ -1407,6 +1407,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/143150907)
         "nomsan",  # TODO(b/143150907)
         "v1only",
     ],

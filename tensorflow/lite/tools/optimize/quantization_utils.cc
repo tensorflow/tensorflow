@@ -618,12 +618,43 @@ TfLiteStatus QuantizeWeight(ModelT* model, TensorT* tensor, bool per_channel,
   }
 }
 
+float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
+                        std::vector<int> input_index,
+                        std::vector<int> intermediate_index,
+                        std::vector<float> factors) {
+  float scale = 1.0f;
+  OperatorT* op = subgraph->operators[op_idx].get();
+  for (int i = 0; i < input_index.size(); ++i) {
+    TensorT* tensor = subgraph->tensors[op->inputs[i]].get();
+    scale *= tensor->quantization->scale[0];
+  }
+  for (int i = 0; i < intermediate_index.size(); ++i) {
+    TensorT* tensor = subgraph->tensors[op->intermediates[i]].get();
+    scale *= tensor->quantization->scale[0];
+  }
+  for (int i = 0; i < factors.size(); ++i) {
+    scale *= factors[i];
+  }
+  return scale;
+}
+
 void QuantizeActivation(TensorT* tensor) {
   GetAsymmetricQuantizationParams(
       tensor->quantization->min[0], tensor->quantization->max[0],
       std::numeric_limits<int8_t>::min(), std::numeric_limits<int8_t>::max(),
       tensor->quantization.get());
   tensor->type = TensorType_INT8;
+}
+
+int GetPowerOfTwoScale(float min, float max) {
+  const float range = std::max(std::abs(min), std::abs(max));
+  int pot = 0;
+  for (int i = 0; i < 10; i++) {
+    if (std::pow(2, pot) < range) {
+      pot++;
+    }
+  }
+  return pot;
 }
 
 }  // namespace utils

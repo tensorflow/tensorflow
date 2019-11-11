@@ -583,18 +583,17 @@ StatusOr<llvm::SmallVector<int32_t, 4>> GetOutputTensorIndices(
 // from the deserialized flatbuffer as we do not have the type information to
 // interpret them until this point. The base_loc parameter is the location of
 // the flatbuffer as a whole (usually a file). The is_entry_point flag
-// controls whether shapeless types are treated as scalars. The
-// add_pseudo_input_nodes flag controls whether the entry point function has
-// `.input` ops. If ordered_output_arrays is not empty, then the imported mlir
-// function will only return nodes in ordered_output_arrays in the same order.
+// controls whether shapeless types are treated as scalars. If
+// ordered_output_arrays is not empty, then the imported mlir function will only
+// return nodes in ordered_output_arrays in the same order.
 StatusOr<FuncOp> ConvertSubgraph(
     const tflite::SubGraphT& subgraph, llvm::StringRef name,
     const std::vector<std::string>& op_names,
     const std::vector<std::string>& func_names,
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
     Location base_loc, Builder builder,
-    const std::vector<std::string>& ordered_output_arrays, bool is_entry_point,
-    bool add_pseudo_input_nodes) {
+    const std::vector<std::string>& ordered_output_arrays,
+    bool is_entry_point) {
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
@@ -664,15 +663,8 @@ StatusOr<FuncOp> ConvertSubgraph(
       auto err = errors::FailedPrecondition("duplicate input arguments");
       return emitError(loc, err.ToString()), err;
     }
-    Value* input_value;
-    if (add_pseudo_input_nodes && is_entry_point) {
-      auto* input = func.getArgument(i);
-      auto op = op_builder.create<tfl::InputOp>(loc, input);
-      input_value = op.output();
-    } else {
-      if (is_entry_point) input_names.push_back(tensor.name);
-      input_value = func.getArgument(i);
-    }
+    Value* input_value = func.getArgument(i);
+    if (is_entry_point) input_names.push_back(tensor.name);
 
     // If the `tensor` has min/max and doesn't have scale/zero_point
     // information, a stats op is created to use the input_value, then the
@@ -686,7 +678,7 @@ StatusOr<FuncOp> ConvertSubgraph(
   }
 
   // TODO(lyandy): Check if output names should be also stored.
-  if (!add_pseudo_input_nodes && is_entry_point && !input_names.empty()) {
+  if (is_entry_point && !input_names.empty()) {
     std::string s;
     llvm::raw_string_ostream ss(s);
     mlir::interleave(input_names, ss, ",");
@@ -794,8 +786,7 @@ std::string SubgraphName(unsigned index, const tflite::SubGraphT& subgraph) {
 
 OwningModuleRef tflite::FlatBufferToMlir(
     absl::string_view buffer, MLIRContext* context, Location base_loc,
-    const std::vector<std::string>& ordered_output_arrays,
-    bool add_pseudo_input_nodes) {
+    const std::vector<std::string>& ordered_output_arrays) {
   auto model_ptr =
       FlatBufferModel::VerifyAndBuildFromBuffer(buffer.data(), buffer.length());
   if (nullptr == model_ptr) {
@@ -849,7 +840,7 @@ OwningModuleRef tflite::FlatBufferToMlir(
         // Only the entry point needs pseudo_input_ops
         // TODO(b/131175224,b/132239787) Support multiple entry points
         builder, ordered_output_arrays,
-        /*is_entry_point=*/e.index() == 0, add_pseudo_input_nodes);
+        /*is_entry_point=*/e.index() == 0);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name,
@@ -883,7 +874,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
 
   return tflite::FlatBufferToMlir(
       absl::string_view(input->getBufferStart(), input->getBufferSize()),
-      context, loc, output_arrays_order, /*add_pseudo_input_nodes=*/false);
+      context, loc, output_arrays_order);
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(

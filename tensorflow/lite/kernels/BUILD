@@ -542,6 +542,7 @@ cc_library(
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(

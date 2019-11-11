@@ -200,10 +200,9 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
 
 // Layer norm for each batch.
-// normalization_epsilon is added to avoid divergence.
 void PortableMeanStddevNormalization(const float* input_vector,
                                      float* output_vector, int v_size,
-                                     int n_batch, float normalization_epsilon);
+                                     int n_batch);
 
 }  // namespace tensor_utils
 }  // namespace tflite

@@ -78,7 +78,7 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
 
     # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
     with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.MultiProcessRunner().run(
+      multi_process_runner.run(
           worker_fn,
           cluster_spec=test_base.create_cluster_spec(num_workers=num_workers))
 
