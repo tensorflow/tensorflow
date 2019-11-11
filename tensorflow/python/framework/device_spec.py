@@ -47,10 +47,13 @@ def _as_device_str_or_none(device_type):
 @tf_export("DeviceSpec", v1=[])
 class DeviceSpecV2(object):
   """Represents a (possibly partial) specification for a TensorFlow device.
+  
   `DeviceSpec`s are used throughout TensorFlow to describe where state is stored
   and computations occur. Using `DeviceSpec` allows you to parse device spec
   strings to verify their validity, merge them or compose them programmatically.
+  
   Example:
+  
   ```python
   # Place the operations on device "GPU:0" in the "ps" job.
   device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
@@ -63,6 +66,7 @@ class DeviceSpecV2(object):
   With eager execution disabled (by default in TensorFlow 1.x and by calling
   disable_eager_execution() in TensorFlow 2.x), the following syntax
   can be used:
+  
   ```python
   # Location in TensorFlow 2.x
   from tensorflow.python.framework.ops import disable_eager_execution
@@ -75,10 +79,12 @@ class DeviceSpecV2(object):
     my_var = tf.Variable(..., name="my_variable")
     squared_var = tf.square(my_var)
    ```
+  
   If a `DeviceSpec` is partially specified, it will be merged with other
   `DeviceSpec`s according to the scope in which it is defined. `DeviceSpec`
   components defined in inner scopes take precedence over those defined in
   outer scopes.
+  
   ```python
   with tf.device(DeviceSpec(job="train", ).to_string()):
     with tf.device(DeviceSpec(job="ps", device_type="GPU", device_index=0).to_string()):
@@ -86,8 +92,10 @@ class DeviceSpecV2(object):
     with tf.device(DeviceSpec(device_type="GPU", device_index=1).to_string()):
       # Nodes created here will be assigned to /job:train/device:GPU:1.
   ```
-  A `DeviceSpec` consists of 5 components -- each of
+ 
+ A `DeviceSpec` consists of 5 components -- each of
   which is optionally specified:
+  
   * Job: The job name.
   * Replica: The replica index.
   * Task: The task index.
