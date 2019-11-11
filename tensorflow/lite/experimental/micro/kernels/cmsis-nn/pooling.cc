@@ -144,7 +144,10 @@ TfLiteStatus AverageEvalInt8(const TfLiteContext* context,
                      scratch_buffer, GetTensorData<int8_t>(output)),
       ARM_MATH_SUCCESS);
 #else
-#error ARM_MATH_DSP and ARM_MATH_LOOPUNROLL must be set
+  reference_integer_ops::AveragePool(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(output), GetTensorData<int8_t>(output));
+
 #endif
   return kTfLiteOk;
 }
