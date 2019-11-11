@@ -5572,7 +5572,7 @@ inline void Quantize(int32_t multiplier, int32_t shift, int32_t total_size,
     const uint16x8_t result_1 =
         vcombine_u16(vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[0])),
                      vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[1])));
-    const int16x8_t result_2 =
+    const uint16x8_t result_2 =
         vcombine_u16(vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[2])),
                      vqmovn_u32(vreinterpretq_u32_s32(temp_val.val[3])));
     const uint8x16_t result =
