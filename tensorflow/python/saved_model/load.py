@@ -528,7 +528,7 @@ def load(export_dir, tags=None):
     export_dir: The SavedModel directory to load from.
     tags: A tag or sequence of tags identifying the MetaGraph to load. Optional
       if the SavedModel contains a single MetaGraph, as for those exported from
-      `tf.saved_model.load`.
+      `tf.saved_model.save`.
 
   Returns:
     A trackable object with a `signatures` attribute mapping from signature
