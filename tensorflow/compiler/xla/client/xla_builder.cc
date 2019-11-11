@@ -2070,10 +2070,11 @@ XlaOp XlaBuilder::AllReduce(XlaOp operand, const XlaComputation& computation,
         return Unimplemented("0 element tuple AllReduce is not supported");
       }
       for (int64 i = 0; i < operand_shape.tuple_shapes_size(); ++i) {
-        if (!ShapeUtil::Compatible(operand_shape.tuple_shapes(0),
-                                   operand_shape.tuple_shapes(i))) {
+        if (operand_shape.tuple_shapes(i).element_type() !=
+            operand_shape.tuple_shapes(0).element_type()) {
           return Unimplemented(
-              "The element shapes of AllReduce must be compatible");
+              "All the shapes of a tuple input of AllReduce must have the same "
+              "element type");
         }
         operand_shapes.push_back(&operand_shape.tuple_shapes(i));
         operands.push_back(GetTupleElement(operand, i));
