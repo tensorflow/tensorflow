@@ -68,9 +68,7 @@ class DeviceSpecV2(object):
   can be used:
   
   ```python
-  # Location in TensorFlow 2.x
-  from tensorflow.python.framework.ops import disable_eager_execution
-  disable_eager_execution()
+  tf.compat.v1.disable_eager_execution()
   
   # Same as previous
   device_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
