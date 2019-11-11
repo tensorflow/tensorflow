@@ -15,7 +15,7 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:    tensors: [ {
 // CHECK-NEXT:      shape: [ 4 ],
 // CHECK-NEXT:      buffer: 1,
-// CHECK-NEXT:      name: "Input",
+// CHECK-NEXT:      name: "arg0",
 // CHECK-NEXT:      quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:      }
@@ -91,10 +91,9 @@ func @main(tensor<4xf32>) -> tensor<4xf32> {
 // CHECK-NEXT:  } ]
 // CHECK-NEXT:}
 
-  %0 = "tfl.pseudo_input" (%arg0)  : (tensor<4xf32>) -> tensor<4xf32> loc("Input")
-  %1 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")
-  %2 = "tfl.mul"(%0, %1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("mul0")
-  %3 = "tfl.mul"(%2, %1) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("mul1")
-  %4 = "tfl.exp"(%3)  : (tensor<4xf32>) -> tensor<4xf32> loc("exp")
-  return %4 : tensor<4xf32>
+  %0 = "tfl.pseudo_const" () {value = dense<1.0> : tensor<4xf32>} : () -> tensor<4xf32> loc("Const")
+  %1 = "tfl.mul"(%arg0, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("mul0")
+  %2 = "tfl.mul"(%1, %0) {fused_activation_function = "NONE"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32> loc("mul1")
+  %3 = "tfl.exp"(%2)  : (tensor<4xf32>) -> tensor<4xf32> loc("exp")
+  return %3 : tensor<4xf32>
 }

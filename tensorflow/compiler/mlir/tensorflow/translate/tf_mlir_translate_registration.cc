@@ -40,25 +40,23 @@ inline absl::string_view StringRefToView(llvm::StringRef ref) {
 }
 }  // namespace
 
-static OwningModuleRef GraphdefToMlirTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext* context) {
+static OwningModuleRef GraphdefToMlirTranslateFunction(llvm::StringRef input,
+                                                       MLIRContext* context) {
   return tensorflow::GraphdefToMlirTranslateFunction(
-      std::move(input), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      /*add_pseudo_input_nodes=*/false, context);
+      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
+      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
+      graph_as_function, upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToMlirTranslate(
     "graphdef-to-mlir", GraphdefToMlirTranslateFunction);
 
 static OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext* context) {
+    llvm::StringRef input, MLIRContext* context) {
   return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-      std::move(input), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      /*add_pseudo_input_nodes=*/false, context);
+      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
+      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
+      graph_as_function, upgrade_legacy, context);
 }
 
 static TranslateToMLIRRegistration GraphdefToSplattedMlirTranslate(

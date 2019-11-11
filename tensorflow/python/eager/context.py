@@ -65,6 +65,12 @@ ASYNC = 1
 MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
 MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 
+# TODO(b/143164764): Currently _KEEP_ALIVE_SECS is set to a very long time
+# (i.e. 30 days) because the server may deadlock when destroying the eager
+# context. This may cause memory leak in the headless TPU case, we should change
+# it back to 600 once the deadlock is fixed.
+_KEEP_ALIVE_SECS = 2592000
+
 _python_eager_context_create_counter = monitoring.Counter(
     "/tensorflow/api/python/eager_context_create_counter",
     "Counter for number of eager contexts created in Python.")
@@ -234,14 +240,15 @@ class _ContextSwitchStack(threading.local):
     self.stack.pop()
 
 
+@tf_export("config.LogicalDevice")
 class LogicalDevice(
     collections.namedtuple("LogicalDevice", ["name", "device_type"])):
-  """Abstraction for a device initialized by the runtime.
+  """Abstraction for a logical device initialized by the runtime.
 
-  A LogicalDevice corresponds to a initialized instance on a PhysicalDevice or a
-  remote device available in the cluster. Tensors and operations can be placed
-  on a specific LogicalDevice by calling `tf.device()` with the `name` of the
-  LogicalDevice.
+  A `tf.config.LogicalDevice` corresponds to an initialized logical device on a
+  `tf.config.PhysicalDevice` or a remote device visible to the cluster. Tensors
+  and operations can be placed on a specific logical device by calling
+  `tf.device` with a specified `tf.config.LogicalDevice`.
 
   Fields:
     name: The fully qualified name of the device. Can be used for Op or function
@@ -251,16 +258,18 @@ class LogicalDevice(
   pass
 
 
-@tf_export("config.experimental.VirtualDeviceConfiguration")
-class VirtualDeviceConfiguration(
-    collections.namedtuple("VirtualDeviceConfiguration", ["memory_limit"])):
-  """Configuration class for a `LogicalDevice`.
+@tf_export("config.LogicalDeviceConfiguration",
+           "config.experimental.VirtualDeviceConfiguration")
+class LogicalDeviceConfiguration(
+    collections.namedtuple("LogicalDeviceConfiguration", ["memory_limit"])):
+  """Configuration class for a logical devices.
 
-  The class specifies the parameters for a `LogicalDevice` used during runtime
+  The class specifies the parameters to configure a `tf.config.PhysicalDevice`
+  as it is initialized to a `tf.config.LogicalDevice` during runtime
   initialization. Not all fields are valid for all device types.
 
-  See `tf.config.experimental.get_virtual_device_configuration` and
-  `tf.config.experimental.set_virtual_device_configuration` for usage examples.
+  See `tf.config.get_logical_device_configuration` and
+  `tf.config.set_logical_device_configuration` for usage examples.
 
   Fields:
     memory_limit: (optional) Maximum memory (in MB) to allocate on the virtual
@@ -268,9 +277,10 @@ class VirtualDeviceConfiguration(
   """
 
   def __new__(cls, memory_limit=None):
-    return super(VirtualDeviceConfiguration, cls).__new__(cls, memory_limit)
+    return super(LogicalDeviceConfiguration, cls).__new__(cls, memory_limit)
 
 
+@tf_export("config.PhysicalDevice")
 class PhysicalDevice(
     collections.namedtuple("PhysicalDevice", ["name", "device_type"])):
   """Abstraction for a locally visible physical device.
@@ -280,10 +290,13 @@ class PhysicalDevice(
   customize certain properties of the device such as it's visibility or memory
   configuration.
 
-  Once a PhysicalDevice is initialized one or many LogicalDevice objects are
-  created. Use tf.config.set_virtual_device_configuration() to create multiple
-  LogicalDevice objects for a PhysicalDevice. This is useful when separation
-  between models is needed.
+  Once a visible `tf.config.PhysicalDevice` is initialized one or more
+  `tf.config.LogicalDevice` objects are created. Use
+  `tf.config.set_visible_devices` to configure the visibility of a physical
+  device and `tf.config.set_logical_device_configuration` to configure multiple
+  `tf.config.LogicalDevice` objects for a `tf.config.PhysicalDevice`. This is
+  useful when separation between models is needed or to simulate a multi-device
+  environment.
 
   Fields:
     name: Unique identifier for device.
@@ -395,6 +408,7 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
+    self._lazy_remote_inputs_copy = False
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -489,6 +503,9 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
+        if self._lazy_remote_inputs_copy:
+          pywrap_tensorflow.TFE_ContextOptionsSetLazyRemoteInputsCopy(
+              opts, True)
         context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
@@ -497,7 +514,8 @@ class Context(object):
           "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
-        pywrap_tensorflow.TFE_ContextSetServerDef(context_handle, 600,
+        pywrap_tensorflow.TFE_ContextSetServerDef(context_handle,
+                                                  _KEEP_ALIVE_SECS,
                                                   server_def_str)
       elif self._collective_ops_server_def is not None:
         server_def_str = self._collective_ops_server_def.SerializeToString()
@@ -516,7 +534,7 @@ class Context(object):
   def get_server_def(self):
     return self._server_def
 
-  def set_server_def(self, server_def, keep_alive_secs=600):
+  def set_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Allow setting a server_def on the context.
 
     When a server def is replaced, it effectively clears a bunch of caches
@@ -549,7 +567,7 @@ class Context(object):
     # Clear all the caches in case there are remote tensors in them.
     self._clear_caches()
 
-  def update_server_def(self, server_def, keep_alive_secs=600):
+  def update_server_def(self, server_def, keep_alive_secs=_KEEP_ALIVE_SECS):
     """Update a server_def on the context.
 
     Args:
@@ -1114,8 +1132,8 @@ class Context(object):
       if num_cpus == 0:
         self.set_visible_devices([], "CPU")
       elif num_cpus > 1:
-        self.set_virtual_device_configuration(
-            cpus[0], [VirtualDeviceConfiguration() for _ in range(num_cpus)])
+        self.set_logical_device_configuration(
+            cpus[0], [LogicalDeviceConfiguration() for _ in range(num_cpus)])
 
     # Parse GPU options
     gpus = [d for d in self._physical_devices if d.device_type == "GPU"]
@@ -1224,7 +1242,7 @@ class Context(object):
 
     self._memory_growth_map[dev] = enable
 
-  def get_virtual_device_configuration(self, dev):
+  def get_logical_device_configuration(self, dev):
     """Get the virtual device configuration for a PhysicalDevice."""
     self._initialize_physical_devices()
 
@@ -1233,7 +1251,7 @@ class Context(object):
 
     return self._virtual_device_map.get(dev)
 
-  def set_virtual_device_configuration(self, dev, virtual_devices):
+  def set_logical_device_configuration(self, dev, virtual_devices):
     """Set the virtual device configuration for a PhysicalDevice."""
     self._initialize_physical_devices()
 
@@ -1430,6 +1448,22 @@ class Context(object):
       if self._context_handle is not None:
         pywrap_tensorflow.TFE_ContextSetThreadLocalMirroringPolicy(
             self._handle, self._mirroring_policy)
+
+  @property
+  def lazy_remote_inputs_copy(self):
+    return self._lazy_remote_inputs_copy
+
+  @lazy_remote_inputs_copy.setter
+  def lazy_remote_inputs_copy(self, lazy_copy):
+    """Sets whether to copy remote inputs lazily for functions."""
+    if not isinstance(lazy_copy, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(lazy_copy))
+
+    if self._lazy_remote_inputs_copy != lazy_copy:
+      if self._initialized:
+        raise ValueError(
+            "lazy_remote_inputs_copy should be set before being initialized.")
+      self._lazy_remote_inputs_copy = lazy_copy
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
@@ -1799,17 +1833,6 @@ def device(name):
   """
   ensure_initialized()
   return context().device(name)
-
-
-@tf_export("config.experimental_list_devices")
-def list_devices():
-  """List the names of the available devices.
-
-  Returns:
-    Names of the available devices, as a `list`.
-  """
-  ensure_initialized()
-  return context().devices()
 
 
 @tf_export("debugging.get_log_device_placement")

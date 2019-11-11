@@ -36,7 +36,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/service:platform_util",
-        "//tensorflow/compiler/xrt:xrt_proto",
+        "//tensorflow/compiler/xrt:xrt_proto_cc",
         "//tensorflow/compiler/xrt:xrt_server",
         "//tensorflow/compiler/xrt/cc:xrt_ops",
         "//tensorflow/core:core_cpu_internal",

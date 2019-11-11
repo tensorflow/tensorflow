@@ -5,6 +5,7 @@ load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
     "tf_proto_library_py",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
@@ -46,15 +47,17 @@ tf_proto_library_py(
     deps = ["//tensorflow/compiler/xla:xla_data_proto_py"],
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "hlo_profile_printer_data",
     srcs = ["hlo_profile_printer_data.proto"],
+    cc_api_version = 2,
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "hlo_execution_profile_data",
     srcs = ["hlo_execution_profile_data.proto"],
-    deps = [":hlo_profile_printer_data"],
+    cc_api_version = 2,
+    protodeps = [":hlo_profile_printer_data"],
 )
 
 # Filegroup used to collect source files for dependency checking.
@@ -636,7 +639,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:window_util",
-        "//tensorflow/compiler/xla/service/gpu:backend_configs",
+        "//tensorflow/compiler/xla/service/gpu:backend_configs_cc",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
@@ -2297,6 +2300,7 @@ xla_test(
     deps = [
         ":dynamic_padder",
         ":hlo",
+        ":hlo_dce",
         ":hlo_get_dimension_size_rewriter",
         ":hlo_matchers",
         ":hlo_parser",
@@ -2306,6 +2310,7 @@ xla_test(
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
@@ -2463,7 +2468,7 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_cost_analysis",
-        ":hlo_execution_profile_data",
+        ":hlo_execution_profile_data_cc",
         ":hlo_profile_printer",
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
@@ -3797,7 +3802,7 @@ cc_library(
     srcs = ["hlo_profile_printer.cc"],
     hdrs = ["hlo_profile_printer.h"],
     deps = [
-        ":hlo_profile_printer_data",
+        ":hlo_profile_printer_data_cc",
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
         "@com_google_absl//absl/algorithm:container",

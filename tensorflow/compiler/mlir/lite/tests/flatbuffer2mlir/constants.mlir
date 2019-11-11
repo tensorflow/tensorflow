@@ -84,6 +84,5 @@ func @qu8() -> tensor<3x!quant.uniform<u8<1:255>:f32, 1.0>> {
 
 // Identity function to make the exporter happy
 func @main(%arg0: tensor<4xi8>) -> tensor<4xi8> {
-  %0 = "tfl.pseudo_input"(%arg0) : (tensor<4xi8>) -> tensor<4xi8>
-  return %0 : tensor<4xi8>
+  return %arg0 : tensor<4xi8>
 }

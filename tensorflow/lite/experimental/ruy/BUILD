@@ -683,6 +683,7 @@ cc_library(
         ":opt_set",
         ":pack",
         ":path",
+        ":prepacked_cache",
         ":side_pair",
         ":size_util",
         ":spec",

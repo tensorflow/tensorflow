@@ -909,27 +909,14 @@ def _combine_named_parameters(**kwargs):
     the keyword argument names.  Each key has one value - one of the
     corresponding keyword argument values.
   """
-  if not kwargs:
-    return [OrderedDict()]
+  sort_by_key = lambda k: k[0]
+  combinations = []
+  for key, values in sorted(kwargs.items(), key=sort_by_key):
+    if not isinstance(values, list):
+      values = [values]
+    combinations.append([(key, value) for value in values])
 
-  sort_by_key = lambda k: k[0][0]
-  kwargs = OrderedDict(sorted(kwargs.items(), key=sort_by_key))
-  first = list(kwargs.items())[0]
-
-  rest = dict(list(kwargs.items())[1:])
-  rest_combined = _combine_named_parameters(**rest)
-
-  key = first[0]
-  values = first[1]
-  if not isinstance(values, list):
-    values = [values]
-
-  combinations = [
-      OrderedDict(sorted(list(combined.items()) + [(key, v)], key=sort_by_key))
-      for v in values
-      for combined in rest_combined
-  ]
-  return combinations
+  return [OrderedDict(result) for result in itertools.product(*combinations)]
 
 
 def generate_combinations_with_testcase_name(**kwargs):
@@ -1028,6 +1015,21 @@ def build_as_function_and_v1_graph(func=None):
 
   if func is not None:
     return decorator(func)
+
+  return decorator
+
+
+def eager_lazy_remote_copy_on_and_off(f):
+  """Execute the test method w/o lazy tensor copy for function remote inputs."""
+
+  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
+  @functools.wraps(f)
+  def decorator(self, lazily_remote_copy, *args, **kwargs):
+    if lazily_remote_copy:
+      context.context().lazy_remote_inputs_copy = True
+    else:
+      context.context().lazy_remote_inputs_copy = False
+    f(self, *args, **kwargs)
 
   return decorator
 
@@ -1459,8 +1461,8 @@ def with_forward_compatibility_horizons(*horizons):
   return decorator
 
 
-@deprecation.deprecated(
-    None, "Use `tf.config.experimental.list_physical_devices('GPU')` instead.")
+@deprecation.deprecated(None,
+                        "Use `tf.config.list_physical_devices('GPU')` instead.")
 @tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.

@@ -80,6 +80,7 @@ tensorflow/third_party/git/git_configure.bzl
 tensorflow/third_party/googleapis.BUILD
 tensorflow/third_party/gpus/BUILD
 tensorflow/third_party/gpus/crosstool/BUILD
+tensorflow/third_party/gpus/crosstool/BUILD.rocm.tpl
 tensorflow/third_party/gpus/crosstool/BUILD.tpl
 tensorflow/third_party/gpus/crosstool/LICENSE
 tensorflow/third_party/gpus/crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc.tpl
@@ -241,10 +242,14 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang_manylinux2010-cuda
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/clang_manylinux2010-cuda10.0/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.0-cudnn7/cuda/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.0-cudnn7/cuda/build_defs.bzl
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7/cuda/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7/cuda/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc5-rocm/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc5-rocm/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0/cc_toolchain_config.bzl
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/cc_toolchain_config.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010/dummy_toolchain.bzl
@@ -256,6 +261,8 @@ tensorflow/third_party/toolchains/preconfig/ubuntu16.04/rocm/rocm/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5.1/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5.1/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt5/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0/BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_025/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_026/BUILD

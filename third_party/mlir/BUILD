@@ -1441,6 +1441,7 @@ cc_library(
 cc_library(
     name = "TargetLLVMIR",
     srcs = [
+        "lib/Target/LLVMIR/ConvertFromLLVMIR.cpp",
         "lib/Target/LLVMIR/ConvertToLLVMIR.cpp",
     ],
     hdrs = [
@@ -1448,9 +1449,12 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":IR",
+        ":LLVMDialect",
         ":LLVMIRModuleTranslation",
         ":Support",
         ":Translation",
+        "//third_party/llvm/llvm-project/llvm:ir_reader",
         "@llvm//:core",
         "@llvm//:support",
     ],

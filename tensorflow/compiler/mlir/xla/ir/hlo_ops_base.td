@@ -321,6 +321,50 @@ class BASE_HLO_SubOp {
   }];
 }
 
+class BASE_HLO_ShiftLeftOp {
+  string summary = "Shift Left operator";
+
+  string description = [{
+    Returns `lhs << rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ShiftRightArithmeticOp {
+  string summary = "Shift right arithmetic operator";
+
+  string description = [{
+    Returns arithmetic `lhs >> rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ShiftRightLogicalOp {
+  string summary = "Shift right logical operator";
+
+  string description = [{
+    Returns logical `lhs >> rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_Atan2Op {
+  string summary = "Atan2 operator";
+
+  string description = [{
+    Returns `atan2(lhs/rhs)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_AndOp {
   string summary = "Logical and";
 
@@ -337,6 +381,17 @@ class BASE_HLO_OrOp {
 
   string description = [{
     Returns `lhs \/ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_XorOp {
+  string summary = "Logical xor";
+
+  string description = [{
+    Returns `lhs xor rhs` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.

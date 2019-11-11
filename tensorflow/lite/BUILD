@@ -209,6 +209,7 @@ cc_library(
         ":minimal_logging",
         ":simple_memory_arena",
         ":string",
+        ":type_to_tflitetype",
         ":util",
         ":version",
         "//tensorflow/lite/c:c_api_internal",
@@ -218,6 +219,7 @@ cc_library(
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -422,6 +424,12 @@ cc_library(
     visibility = [
         "//tensorflow/lite:__subpackages__",
     ],
+)
+
+cc_library(
+    name = "type_to_tflitetype",
+    hdrs = ["type_to_tflitetype.h"],
+    deps = ["//tensorflow/lite/c:c_api_internal"],
 )
 
 cc_test(

@@ -35,7 +35,15 @@ string FileSystem::TranslateName(const string& name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and
   // we should return the empty path instead.
   if (name.empty()) return name;
-  return io::CleanPath(name);
+
+  // Otherwise, properly separate the URI components and clean the path one
+  StringPiece scheme, host, path;
+  io::ParseURI(name, &scheme, &host, &path);
+
+  // If `path` becomes empty, return `/` (`file://` should be `/`), not `.`.
+  if (path.empty()) return "/";
+
+  return io::CleanPath(path);
 }
 
 Status FileSystem::IsDirectory(const string& name) {

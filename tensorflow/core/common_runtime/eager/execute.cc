@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -211,7 +212,7 @@ Status ValidateInputTypeAndPlacement(
                                    " inputs, got ", n_inputs);
   }
   const bool skip_remote_copy =
-      ctx->LazilyCopyFunctionRemoteInputs() && kernel->IsFunction();
+      ctx->LazyCopyFunctionRemoteInputs() && kernel->IsFunction();
   for (int i = 0; i < n_inputs; ++i) {
     TensorHandle* handle = op->Inputs()[i];
     Device* expected_device = kernel->InputDevice(i);
@@ -413,6 +414,14 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
     return Status::OK();
   }
 
+  if (op->remote_func_params().has_value() &&
+      op->remote_func_params().value().step_id.has_value()) {
+    // If the op is a component of a multi-device function, don't compile it
+    // with XLA.
+    *compile_with_xla = false;
+    return Status::OK();
+  }
+
   // Does node have an explicit request to compile or not?
   Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
   if (status.ok()) {
@@ -490,14 +499,12 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
-    // When LazilyCopyFunctionRemoteInputs is disabled, all inputs need to be on
+    // When LazyCopyFunctionRemoteInputs is disabled, all inputs need to be on
     // local devices, since we execute a remote function through worker service,
     // which doesn't accept remote inputs.
-    // TODO(b/134094971): Make resource_dtypes_and_shapes avaliable without
-    // remote tensor copy.
     for (int i = 0; i < op->Inputs().size(); i++) {
       TensorHandle* input = op->Inputs()[i];
-      if (!ctx->LazilyCopyFunctionRemoteInputs() && input->IsRemote()) {
+      if (!ctx->LazyCopyFunctionRemoteInputs() && input->IsRemote()) {
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, ctx, &executor, device == nullptr ? ctx->HostCPU() : device,
@@ -594,7 +601,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                << ". Full node_def=" << ndef.DebugString();
       std::function<int64()> get_op_id = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
-      if (ctx->LazilyCopyFunctionRemoteInputs()) {
+      if (ctx->LazyCopyFunctionRemoteInputs()) {
         get_op_id = [ctx]() { return ctx->RemoteMgr()->NextOpId(); };
       }
 #endif  // IS_MOBILE_PLATFORM
@@ -616,7 +623,21 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
     TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
 
-    ctx->AddKernelToCache(cache_key, kernel.get());
+    if (op->is_function()) {
+      ctx->AddKernelToCache(cache_key, kernel.get());
+    } else {
+      // Exclude tf.data op kernels from being cached. The reason for this is
+      // that tf.data op kernels that accept a user-defined function will have a
+      // unique cache key every time they are executed (because the user-defined
+      // function is traced every time). Caching such kernels provides no
+      // benefit and in some cases results in linear memory growth of use
+      // programs that build input pipeline graphs in a loop.
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
+      if (!data::DatasetOpKernel::IsDatasetOp(op_def)) {
+        ctx->AddKernelToCache(cache_key, kernel.get());
+      }
+    }
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
   const size_t num_outputs = static_cast<int>(output_dtypes.size());
@@ -670,6 +691,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
 
   op->Attrs().FillAttrValueMapWithoutDefaults(remote_op->mutable_attrs());
   remote_op->set_device(op->Device()->name());
+  remote_op->set_is_function(op->is_function());
 }
 
 Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,
@@ -726,7 +748,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("CopyInputToExpectedDevice",
                                profiler::TraceMeLevel::kInfo);
     const bool eagerly_copy_function_remote_inputs =
-        !ctx->LazilyCopyFunctionRemoteInputs() || !op->is_function();
+        !ctx->LazyCopyFunctionRemoteInputs() || !op->is_function();
     for (int i = 0; i < op->Inputs().size(); i++) {
       tensorflow::TensorHandle* input = op->Inputs()[i];
       tensorflow::Device* input_device = input->device();
@@ -810,12 +832,12 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     }
   }
 
-  if (ctx->LazilyCopyFunctionRemoteInputs()) {
+  if (ctx->LazyCopyFunctionRemoteInputs()) {
     // Store the data type and shape of a remote resource variable on the
     // corresponding remote TensorHandle (output of 'VarHandleOp').
     // If the variable is an input of a remote function, the function may need
     // the type and shape during function instantiation. When
-    // LazilyCopyFunctionRemoteInputs is enabled, we no longer copy the resource
+    // LazyCopyFunctionRemoteInputs is enabled, we no longer copy the resource
     // handle (contains the type and shape) of the variable to the default
     // function device. Instead, we store the type and shape on eager master
     // and sent them to the default function device along with the

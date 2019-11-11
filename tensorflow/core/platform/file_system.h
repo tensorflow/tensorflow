@@ -373,16 +373,35 @@ class ReadOnlyMemoryRegion {
 /// [scheme://]<filename>.
 /// File system implementations are registered using the REGISTER_FILE_SYSTEM
 /// macro, providing the 'scheme' as the key.
+///
+/// There are two `Register` methods: one using `Factory` for legacy filesystems
+/// (deprecated mechanism of subclassing `FileSystem` and using
+/// `REGISTER_FILE_SYSTEM` macro), and one using `std::unique_ptr<FileSystem>`
+/// for the new modular approach.
+///
+/// Note that the new API expects a pointer to `ModularFileSystem` but this is
+/// not checked as there should be exactly one caller to the API and doing the
+/// check results in a circular dependency between `BUILD` targets.
+///
+/// Plan is to completely remove the filesystem registration from `Env` and
+/// incorporate it into `ModularFileSystem` class (which will be renamed to be
+/// the only `FileSystem` class and marked as `final`). But this will happen at
+/// a later time, after we convert all filesystems to the new API.
+///
+/// TODO(mihaimaruseac): After all filesystems are converted, remove old
+/// registration and update comment.
 class FileSystemRegistry {
  public:
   typedef std::function<FileSystem*()> Factory;
 
   virtual ~FileSystemRegistry();
-  virtual tensorflow::Status Register(const string& scheme,
+  virtual tensorflow::Status Register(const std::string& scheme,
                                       Factory factory) = 0;
-  virtual FileSystem* Lookup(const string& scheme) = 0;
+  virtual tensorflow::Status Register(
+      const std::string& scheme, std::unique_ptr<FileSystem> filesystem) = 0;
+  virtual FileSystem* Lookup(const std::string& scheme) = 0;
   virtual tensorflow::Status GetRegisteredFileSystemSchemes(
-      std::vector<string>* schemes) = 0;
+      std::vector<std::string>* schemes) = 0;
 };
 
 }  // namespace tensorflow

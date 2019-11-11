@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_SAVED_MODEL_H_
 
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
+#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 
 namespace mlir {
@@ -41,7 +42,14 @@ class TensorFlowSavedModelDialect : public Dialect {
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.h.inc"
 
 // Returns the list of exported names for `op`.
+// An empty list means `op` is not exported.
 SmallVector<StringRef, 2> GetExportedNames(Operation *op);
+
+// Returns true if `op` is exported.
+bool IsExported(Operation *op);
+
+// Returns true if `module` has tf_saved_model linkage semantics.
+bool HasTfSavedModelSemantics(ModuleOp module);
 
 }  // namespace tf_saved_model
 }  // namespace mlir

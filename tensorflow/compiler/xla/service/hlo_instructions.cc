@@ -588,16 +588,17 @@ HloAllReduceInstruction::CloneWithNewOperandsImpl(
 
 HloAllToAllInstruction::HloAllToAllInstruction(
     const Shape& shape, absl::Span<HloInstruction* const> operands,
-    const std::vector<ReplicaGroup>& replica_groups)
+    const std::vector<ReplicaGroup>& replica_groups,
+    const absl::optional<int64>& channel_id)
     : HloCollectiveInstruction(HloOpcode::kAllToAll, shape, operands,
-                               replica_groups, absl::nullopt) {}
+                               replica_groups, channel_id) {}
 
 std::unique_ptr<HloInstruction>
 HloAllToAllInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* /*context*/) const {
-  return absl::make_unique<HloAllToAllInstruction>(shape, new_operands,
-                                                   replica_groups());
+  return absl::make_unique<HloAllToAllInstruction>(
+      shape, new_operands, replica_groups(), channel_id());
 }
 
 HloCollectivePermuteInstruction::HloCollectivePermuteInstruction(

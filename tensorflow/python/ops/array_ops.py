@@ -867,8 +867,10 @@ def _slice_helper(tensor, slice_spec, var=None):
     index += 1
 
   # stack possibly involves no tensors, so we must use op_scope correct graph.
-  with ops.name_scope(None, "strided_slice",
-                      [tensor] + begin + end + strides) as name:
+  with ops.name_scope(
+      None,
+      "strided_slice", [tensor] + begin + end + strides,
+      skip_on_eager=False) as name:
     if begin:
       packed_begin, packed_end, packed_strides = (stack(begin), stack(end),
                                                   stack(strides))
@@ -4024,7 +4026,7 @@ def gather(params,
            name=None,
            axis=None,
            batch_dims=0):  # pylint: disable=g-doc-args
-  r"""Gather slices from params axis axis according to indices.
+  r"""Gather slices from params axis `axis` according to indices.
 
   Gather slices from params axis `axis` according to `indices`.  `indices` must
   be an integer tensor of any dimension (usually 0-D or 1-D).

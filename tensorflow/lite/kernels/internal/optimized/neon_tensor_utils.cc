@@ -24,7 +24,11 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/ruy/detect_arm.h"
+#include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -722,13 +726,9 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
   free(aligned_vec_free);
 }
 
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* bias,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
-                                    n_input, n_output, output_zp, scratch);
+inline void NeonMatrixBatchVectorAccumulateImpl(
+    int32_t multiplier, int32_t shift, int32_t n_batch, int32_t n_output,
+    int32_t output_zp, int32_t* scratch, int16_t* output) {
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -779,13 +779,9 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   }
 }
 
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* bias,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
-                                    n_input, n_output, output_zp, scratch);
+inline void NeonMatrixBatchVectorAccumulateImpl(
+    int32_t multiplier, int32_t shift, int32_t n_batch, int32_t n_output,
+    int32_t output_zp, int32_t* scratch, int8_t* output) {
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -855,6 +851,77 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     }
     output[i] = static_cast<int8_t>(temp);
   }
+}
+
+void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
+                        const int8_t* input_to_gate_weights, int32_t n_batch,
+                        int32_t n_input, int32_t n_output, int32_t output_zp,
+                        int32_t* scratch, CpuBackendContext* context) {
+  using ::tflite::cpu_backend_gemm::Gemm;
+  using ::tflite::cpu_backend_gemm::GemmParams;
+  using ::tflite::cpu_backend_gemm::MatrixParams;
+  using ::tflite::cpu_backend_gemm::QuantizationFlavor;
+
+  ruy::Matrix<int8_t> ruy_lhs;
+  ruy::Matrix<int8_t> ruy_rhs;
+  ruy::Matrix<int32_t> ruy_dst;
+
+  MatrixParams<int8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n_output;
+  lhs_params.cols = n_input;
+
+  MatrixParams<int8_t> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = n_input;
+  rhs_params.cols = n_batch;
+
+  MatrixParams<int32_t> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n_output;
+  dst_params.cols = n_batch;
+
+  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, input_to_gate_weights,
+                                          &ruy_lhs);
+  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, input, &ruy_rhs);
+  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, scratch, &ruy_dst);
+
+  ruy::BasicSpec<int32_t, int32_t> ruy_spec;
+  ruy_spec.bias = bias;
+  ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
+                           &ruy_dst);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
+#ifdef TFLITE_WITH_RUY_GEMV
+  NeonCpuBackendGemm(input, bias, input_to_gate_weights, n_batch, n_input,
+                     n_output, output_zp, scratch, context);
+#else
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
+#endif
+  NeonMatrixBatchVectorAccumulateImpl(multiplier, shift, n_batch, n_output,
+                                      output_zp, scratch, output);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
+#ifdef TFLITE_WITH_RUY_GEMV
+  NeonCpuBackendGemm(input, bias, input_to_gate_weights, n_batch, n_input,
+                     n_output, output_zp, scratch, context);
+#else
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
+#endif
+  NeonMatrixBatchVectorAccumulateImpl(multiplier, shift, n_batch, n_output,
+                                      output_zp, scratch, output);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -1966,6 +2033,41 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
 #endif
 }
 
+inline void NeonMinMax(const float* values, const int size, float* min,
+                       float* max) {
+  const int postamble_start = RoundDownVectors<kFloatValuesPerNeonVector>(size);
+  double rmin = 0.0, rmax = 0.0;
+  int i = 0;
+  if (postamble_start) {
+    float32x4_t min_f32x4 = vld1q_f32(values);
+    float32x4_t max_f32x4 = min_f32x4;
+    for (i = kFloatValuesPerNeonVector; i < postamble_start;
+         i += kFloatValuesPerNeonVector) {
+      const float32x4_t value0_f32x4 = vld1q_f32(&values[i]);
+      min_f32x4 = vminq_f32(min_f32x4, value0_f32x4);
+      max_f32x4 = vmaxq_f32(max_f32x4, value0_f32x4);
+    }
+    float32x2_t min_f32x2 =
+        vmin_f32(vget_low_f32(min_f32x4), vget_high_f32(min_f32x4));
+    float32x2_t max_f32x2 =
+        vmax_f32(vget_low_f32(max_f32x4), vget_high_f32(max_f32x4));
+    min_f32x2 = vpmin_f32(min_f32x2, min_f32x2);
+    const float fmin = vget_lane_f32(min_f32x2, 0);
+    rmin = rmin < fmin ? rmin : fmin;
+    max_f32x2 = vpmax_f32(max_f32x2, max_f32x2);
+    const float fmax = vget_lane_f32(max_f32x2, 0);
+    rmax = rmax > fmax ? rmax : fmax;
+    *min = rmin;
+    *max = rmax;
+  }
+  if (i < size) {
+    const auto minmax =
+        std::minmax_element(values + postamble_start, values + size);
+    *min = rmin < *minmax.first ? rmin : *minmax.first;
+    *max = rmax > *minmax.second ? rmax : *minmax.second;
+  }
+}
+
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float* min,
                                  float* max, float* scaling_factor) {
@@ -2036,16 +2138,48 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
 
 void NeonAsymmetricQuantizeFloats(const float* values, const int size,
                                   int8_t* quantized_values,
-                                  float scaling_factor, int32_t offset) {
+                                  float* scaling_factor, int32_t* offset) {
+  float rmin = 0.0, rmax = 0.0;
+  NeonMinMax(values, size, &rmin, &rmax);
+
   const int32_t kMinScale = -128;
   const int32_t kMaxScale = 127;
-  const float scaling_factor_inv =
-      scaling_factor == 0 ? 0 : 1.0 / scaling_factor;
+  const double qmin_double = kMinScale;
+  const double qmax_double = kMaxScale;
+  if (rmin == rmax) {
+    *scaling_factor = 0;
+    *offset = 0;
+  } else {
+    const double scale = (rmax - rmin) / (qmax_double - qmin_double);
+    const double zero_point_from_min = qmin_double - rmin / scale;
+    const double zero_point_from_max = qmax_double - rmax / scale;
+    const double zero_point_from_min_error =
+        std::abs(qmin_double) + std::abs(rmin / scale);
+    const double zero_point_from_max_error =
+        std::abs(qmax_double) + std::abs(rmax / scale);
+    const double zero_point_double =
+        zero_point_from_min_error < zero_point_from_max_error
+            ? zero_point_from_min
+            : zero_point_from_max;
+    int8 nudged_zero_point = 0;
+    if (zero_point_double < qmin_double) {
+      nudged_zero_point = kMinScale;
+    } else if (zero_point_double > qmax_double) {
+      nudged_zero_point = kMaxScale;
+    } else {
+      nudged_zero_point = static_cast<int8>(round(zero_point_double));
+    }
+    *scaling_factor = scale;
+    *offset = nudged_zero_point;
+  }
+
   const int postamble_start = size & ~(2 * kFloatValuesPerNeonVector - 1);
+  const float scaling_factor_inv =
+      *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
   const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
   const int32x4_t scale_i32x4 = vmovq_n_s32(kMaxScale);
   const int32x4_t neg_scale_i32x4 = vmovq_n_s32(kMinScale);
-  const int32x4_t offset_i32x4 = vmovq_n_s32(offset);
+  const int32x4_t offset_i32x4 = vmovq_n_s32(*offset);
 
   int i = 0;
   for (; i < postamble_start; i += 2 * kFloatValuesPerNeonVector) {
@@ -2077,7 +2211,7 @@ void NeonAsymmetricQuantizeFloats(const float* values, const int size,
 
   for (; i < size; ++i) {
     const int32 quantized_value = static_cast<int32>(
-        offset + TfLiteRound(scaling_factor_inv * values[i]));
+        *offset + TfLiteRound(scaling_factor_inv * values[i]));
     quantized_values[i] =
         std::min(kMaxScale, std::max(kMinScale, quantized_value));
   }

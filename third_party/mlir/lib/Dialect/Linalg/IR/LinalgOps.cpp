@@ -51,106 +51,11 @@ using namespace mlir::linalg;
 // parse`className` function.
 
 //===----------------------------------------------------------------------===//
-// BufferAllocOp
+// GenericOps
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter &p, BufferAllocOp op) {
-  p << op.getOperationName() << " ";
-  if (!llvm::empty(op.size()))
-    p << *op.getOperand(0);
-  if (op.alignment().hasValue() && op.alignment()->getSExtValue() != 0)
-    p.printOptionalAttrDict(op.getAttrs());
-  else
-    p.printOptionalAttrDict(op.getAttrs(),
-                            BufferAllocOp::getAlignmentAttrName());
-  p << " : " << op.getBufferType();
-}
-
-static ParseResult parseBufferAllocOp(OpAsmParser &parser,
-                                      OperationState &result) {
-  SmallVector<OpAsmParser::OperandType, 1> sizeInfo;
-  BufferType bufferType;
-  auto indexTy = parser.getBuilder().getIndexType();
-  if (parser.parseOperandList(sizeInfo) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColonType(bufferType))
-    return failure();
-  if (sizeInfo.empty())
-    return parser.addTypeToList(bufferType, result.types);
-  return failure(parser.resolveOperands(sizeInfo, indexTy, result.operands) ||
-                 parser.addTypeToList(bufferType, result.types));
-}
-
-static LogicalResult verify(BufferAllocOp op) {
-  if (!op.getBufferType().hasConstantSize()) {
-    if (llvm::size(op.size()) != 1)
-      return op.emitOpError("expected one index operand");
-  } else { // op.getBufferType().hasConstantSize()
-    if (!llvm::empty(op.size()))
-      return op.emitOpError("expected zero operand");
-    if (op.getBufferType().getBufferSize().getValue() <= 0)
-      return op.emitOpError("expected nonnegative static buffer size");
-  }
-  if (op.alignment().hasValue()) {
-    auto align = op.alignment().getValue();
-    if (align.getSExtValue() < 0)
-      return op.emitOpError("expected positive alignment");
-    if (!llvm::isPowerOf2_64(align.getZExtValue()))
-      return op.emitOpError("expected power of 2 alignment");
-  }
-  if (!TensorType::isValidElementType(op.getElementType()))
-    return op.emitOpError("expected valid buffer element type");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// BufferDeallocOp
-//===----------------------------------------------------------------------===//
-
-static void print(OpAsmPrinter &p, BufferDeallocOp op) {
-  p << op.getOperationName() << " " << *op.buffer();
-  p.printOptionalAttrDict(op.getAttrs());
-  p << " : " << op.getBufferType();
-}
-
-static ParseResult parseBufferDeallocOp(OpAsmParser &parser,
-                                        OperationState &result) {
-  OpAsmParser::OperandType bufferInfo;
-  BufferType bufferType;
-  if (parser.parseOperand(bufferInfo) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColonType(bufferType))
-    return failure();
-  return parser.resolveOperands(bufferInfo, bufferType, result.operands);
-}
-
-//===----------------------------------------------------------------------===//
-// BufferSizeOp
-//===----------------------------------------------------------------------===//
-
-static void print(OpAsmPrinter &p, BufferSizeOp op) {
-  p << op.getOperationName() << " " << *op.buffer();
-  p.printOptionalAttrDict(op.getAttrs());
-  p << " : " << op.buffer()->getType();
-}
-
-static ParseResult parseBufferSizeOp(OpAsmParser &parser,
-                                     OperationState &result) {
-  OpAsmParser::OperandType op;
-  Type type;
-  return failure(
-      parser.parseOperand(op) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColonType(type) ||
-      parser.resolveOperand(op, type, result.operands) ||
-      parser.addTypeToList(parser.getBuilder().getIndexType(), result.types));
-}
-
-//===----------------------------------------------------------------------===//
-// GenericOp
-//===----------------------------------------------------------------------===//
-
-static void print(OpAsmPrinter &p, GenericOp op) {
+template <typename GenericOpType>
+static void printGenericOp(OpAsmPrinter &p, GenericOpType op) {
   auto attrNames = op.linalgTraitAttrNames();
   llvm::StringSet<> linalgTraitAttrsSet;
   linalgTraitAttrsSet.insert(attrNames.begin(), attrNames.end());
@@ -167,6 +72,12 @@ static void print(OpAsmPrinter &p, GenericOp op) {
   p.printOptionalAttrDict(op.getAttrs(), attrNames);
   p << ": ";
   interleaveComma(op.getOperandTypes(), p);
+}
+
+static void print(OpAsmPrinter &p, GenericOp op) { printGenericOp(p, op); }
+
+static void print(OpAsmPrinter &p, IndexedGenericOp op) {
+  printGenericOp(p, op);
 }
 
 static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
@@ -189,15 +100,67 @@ static ParseResult parseGenericOp(OpAsmParser &parser, OperationState &result) {
   if (!dictAttr.get("fun") &&
       parser.parseOptionalRegion(region, regionOperandsInfo, regionTypes))
     return failure();
-  if (parser.parseOptionalAttributeDict(result.attributes) ||
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(operandTypes))
     return failure();
   return parser.resolveOperands(operandsInfo, operandTypes,
                                 parser.getCurrentLocation(), result.operands);
 }
 
-static LogicalResult verify(GenericOp op) {
+template <typename GenericOpType>
+LogicalResult verifyBlockArgs(GenericOpType op, Block &block, unsigned nViews,
+                              unsigned nLoops, unsigned nInputViews);
+
+template <>
+LogicalResult verifyBlockArgs(GenericOp op, Block &block, unsigned nViews,
+                              unsigned nLoops, unsigned nInputViews) {
+  if (block.getNumArguments() != nViews)
+    return op.emitError(
+        "op expected number of block arguments to match number of views");
+
+  for (unsigned i = 0; i < nViews; ++i) {
+    auto viewType = op.getViewType(i);
+    if (viewType.getElementType() != block.getArgument(i)->getType())
+      return op.emitError("op expected block argument ")
+             << i << " of the same type as elemental type of "
+             << ((i < nInputViews) ? "input " : "output ")
+             << "view: " << viewType;
+  }
+  return success();
+}
+
+template <>
+LogicalResult verifyBlockArgs(IndexedGenericOp op, Block &block,
+                              unsigned nViews, unsigned nLoops,
+                              unsigned nInputViews) {
+  if (block.getNumArguments() != nViews + nLoops)
+    return op.emitError(
+        "op expected number of block arguments to match number of views + "
+        "number of loops");
+
+  for (unsigned i = 0; i < nLoops; ++i) {
+    if (!block.getArgument(i)->getType().isIndex())
+      return op.emitError("op expected block argument ")
+             << i << " to be of IndexType";
+  }
+
+  for (unsigned i = 0; i < nViews; ++i) {
+    unsigned memrefArgIndex = i + nLoops;
+    auto viewType = op.getViewType(i);
+    if (viewType.getElementType() !=
+        block.getArgument(memrefArgIndex)->getType())
+      return op.emitError("op expected block argument ")
+             << memrefArgIndex << " of the same type as elemental type of "
+             << ((i < nInputViews) ? "input " : "output ")
+             << "view: " << viewType;
+  }
+  return success();
+}
+
+template <typename GenericOpType>
+LogicalResult verifyGenericOp(GenericOpType op) {
   auto nInputViews = op.getNumInputs();
+  auto nLoops = op.getNumLoops();
   auto nViews = op.getNumInputsAndOutputs();
   if (nViews != llvm::size(op.views()))
     return op.emitError("op expected exactly ") << nViews << " view operands";
@@ -210,17 +173,8 @@ static LogicalResult verify(GenericOp op) {
       return op.emitError("op expected region with 1 block");
 
     auto &block = region.getBlocks().front();
-    if (block.getNumArguments() != nViews)
-      return op.emitError(
-          "op expected number of block arguments to match number of views");
-
-    for (unsigned i = 0; i < nViews; ++i) {
-      auto viewType = op.getViewType(i);
-      if (viewType.getElementType() != block.getArgument(i)->getType())
-        return op.emitError("op expected block argument ")
-               << i << " of the same type as elemental type of "
-               << ((i < nInputViews) ? "input " : "output ")
-               << "view: " << viewType;
+    if (failed(verifyBlockArgs(op, block, nViews, nLoops, nInputViews))) {
+      return failure();
     }
   } else {
     if (!funOp || !funOp.getType())
@@ -233,12 +187,11 @@ static LogicalResult verify(GenericOp op) {
           "op expected fun results to match number of output views");
   }
 
-  auto nLoops = op.getNumLoops();
   SmallVector<AffineMap, 4> indexingMaps;
   indexingMaps.reserve(op.indexing_maps().size());
   for (auto en : llvm::enumerate(op.indexing_maps())) {
     auto idx = en.index();
-    auto m = en.value().cast<AffineMapAttr>().getValue();
+    auto m = en.value().template cast<AffineMapAttr>().getValue();
     indexingMaps.push_back(m); // Save reference to map for further checks.
     auto view = (idx < nInputViews) ? op.getInputViewType(idx)
                                     : op.getOutputViewType(idx - nInputViews);
@@ -253,7 +206,7 @@ static LogicalResult verify(GenericOp op) {
              << " dim(s) to match the number of loops";
 
     if (m.getNumResults() == 1 && view.getRank() == 0) {
-      auto cst = m.getResult(0).dyn_cast<AffineConstantExpr>();
+      auto cst = m.getResult(0).template dyn_cast<AffineConstantExpr>();
       if (!cst || cst.getValue() != 0)
         return op.emitError("op expected indexing_map #")
                << idx << " to be 0 to match 0-D view: " << view;
@@ -286,6 +239,9 @@ static LogicalResult verify(GenericOp op) {
   return success();
 }
 
+static LogicalResult verify(GenericOp op) { return verifyGenericOp(op); }
+static LogicalResult verify(IndexedGenericOp op) { return verifyGenericOp(op); }
+
 //===----------------------------------------------------------------------===//
 // RangeOp
 //===----------------------------------------------------------------------===//
@@ -304,7 +260,7 @@ static ParseResult parseRangeOp(OpAsmParser &parser, OperationState &result) {
   return failure(parser.parseOperand(rangeInfo[0]) || parser.parseColon() ||
                  parser.parseOperand(rangeInfo[1]) || parser.parseColon() ||
                  parser.parseOperand(rangeInfo[2]) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(rangeInfo, indexTy, result.operands) ||
                  parser.addTypeToList(type, result.types));
@@ -353,7 +309,7 @@ static ParseResult parseSliceOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<Type, 8> types;
   if (parser.parseOperand(baseInfo) ||
       parser.parseOperandList(operands, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(types))
     return failure();
 
@@ -374,7 +330,7 @@ static LogicalResult verify(SliceOp op) {
   unsigned rank = op.getBaseViewRank();
   if (rank != llvm::size(op.indexings()))
     return op.emitOpError("expected ")
-           << op.getRank() << " indexings, got " << llvm::size(op.indexings());
+           << rank << " indexings, got " << llvm::size(op.indexings());
   unsigned index = 0;
   for (auto indexing : op.indexings()) {
     if (indexing->getType().isa<IndexType>())
@@ -443,7 +399,7 @@ static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
   // to something resembling
   //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
   if (parser.parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(memRefType))
     return failure();
 
@@ -504,63 +460,10 @@ static ParseResult parseTransposeOp(OpAsmParser &parser,
                  parser.parseAttribute(permutation,
                                        TransposeOp::getPermutationAttrName(),
                                        result.attributes) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperand(view, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
-}
-
-//===----------------------------------------------------------------------===//
-// ViewOp
-//===----------------------------------------------------------------------===//
-void mlir::linalg::ViewOp::build(Builder *b, OperationState &result,
-                                 Value *buffer, ArrayRef<Value *> ranges,
-                                 Type resultType,
-                                 ArrayRef<NamedAttribute> attrs) {
-  // If the result type is not specified, assume sizes are fully dynamic.
-  // Strides are set to match an empty layout map which means "contiguous view".
-  if (!resultType) {
-    auto rank = ranges.size();
-    SmallVector<int64_t, 4> sizes(rank, -1);
-    Type elementType = buffer->getType().cast<BufferType>().getElementType();
-    resultType = MemRefType::get(sizes, elementType, {}, 0);
-  }
-  build(b, result, resultType, buffer, ranges);
-  result.addAttributes(attrs);
-}
-
-static void print(OpAsmPrinter &p, ViewOp op) {
-  p << op.getOperationName() << " " << *op.buffer() << "[";
-  interleaveComma(op.ranges(), p, [&](Value *v) { p << *v; });
-  p << "] ";
-  p.printOptionalAttrDict(op.getAttrs());
-  p << " : " << op.buffer()->getType() << " -> " << op.getType();
-}
-
-static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::OperandType bufferInfo;
-  SmallVector<OpAsmParser::OperandType, 8> rangesInfo;
-  Type bType, vType;
-  if (parser.parseOperand(bufferInfo) ||
-      parser.parseOperandList(rangesInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColon() || parser.parseType(bType) || parser.parseArrow() ||
-      parser.parseType(vType)) {
-    return failure();
-  }
-
-  MemRefType memRefType = vType.dyn_cast<MemRefType>();
-  if (!memRefType)
-    return parser.emitError(parser.getNameLoc(), "expected memref type");
-  if (static_cast<unsigned>(memRefType.getRank()) != rangesInfo.size())
-    return parser.emitError(parser.getNameLoc(), "expected ")
-           << memRefType.getRank() << " ranges";
-  return failure(
-      parser.resolveOperand(bufferInfo, bType, result.operands) ||
-      (!rangesInfo.empty() &&
-       parser.resolveOperands(rangesInfo, RangeType::get(vType.getContext()),
-                              result.operands)) ||
-      parser.addTypeToList(memRefType, result.types));
 }
 
 //===----------------------------------------------------------------------===//
@@ -586,21 +489,13 @@ static ParseResult parseYieldOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<Type, 2> types;
   llvm::SMLoc loc = parser.getCurrentLocation();
   return failure(parser.parseOperandList(opInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  (!opInfo.empty() && parser.parseColonTypeList(types)) ||
                  parser.resolveOperands(opInfo, types, loc, result.operands));
 }
 
-static LogicalResult verify(YieldOp op) {
-  auto *parentOp = op.getParentOp();
-  if (parentOp->getNumRegions() != 1 || parentOp->getRegion(0).empty())
-    return op.emitOpError("op expected single non-empty parent region");
-
-  auto genericOp = dyn_cast<GenericOp>(parentOp);
-  if (!genericOp)
-    return op.emitOpError("op expected '")
-           << GenericOp::getOperationName() << "' parent op";
-
+template <typename GenericOpType>
+LogicalResult verifyYield(YieldOp op, GenericOpType genericOp) {
   // The operand number and types must match the view element types.
   auto nOutputViews = genericOp.getNumOutputs();
   if (op.getNumOperands() != nOutputViews)
@@ -615,6 +510,24 @@ static LogicalResult verify(YieldOp op) {
              << ") doesn't match view element type (" << elementType << ")";
   }
   return success();
+}
+
+static LogicalResult verify(YieldOp op) {
+  auto *parentOp = op.getParentOp();
+  if (parentOp->getNumRegions() != 1 || parentOp->getRegion(0).empty())
+    return op.emitOpError("op expected single non-empty parent region");
+
+  auto genericOp = dyn_cast<GenericOp>(parentOp);
+  if (genericOp)
+    return verifyYield(op, genericOp);
+
+  auto indexedGenericOp = dyn_cast<IndexedGenericOp>(parentOp);
+  if (indexedGenericOp)
+    return verifyYield(op, indexedGenericOp);
+
+  return op.emitOpError("expected '")
+         << GenericOp::getOperationName() << "' or '"
+         << IndexedGenericOp::getOperationName() << "' parent op";
 }
 
 /////// Operations corresponding to library calls defined with Tablegen ////////
@@ -654,7 +567,7 @@ static ParseResult parseLinalgLibraryOp(OpAsmParser &parser,
   SmallVector<Type, 3> types;
   return failure(
       parser.parseOperandList(ops, OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonTypeList(types) ||
       parser.resolveOperands(ops, types, parser.getNameLoc(), result.operands));
 }

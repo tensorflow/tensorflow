@@ -36,7 +36,7 @@ CreateTFExecutorToControlDialectConversion();
 namespace tensorflow {
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
-                           mlir::PassManager* pass_manager) {
+                           mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   pass_manager->addPass(mlir::TFL::CreateQuantizePass());
   bool emit_quant_adaptor_ops =
@@ -46,7 +46,7 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::PassManager* pass_manager) {
+                                mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
   if (pass_config.skip_control_dialect) {
     // Merge islands.

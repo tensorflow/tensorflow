@@ -57,12 +57,15 @@ struct TFE_ContextOptions {
   TFE_ContextDevicePlacementPolicy device_placement_policy{
       TFE_DEVICE_PLACEMENT_SILENT};
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
+  // If true, lazily copy the remote inputs of a function to the target devices.
+  bool lazy_remote_inputs_copy = false;
 };
 
 struct TFE_Context {
   TFE_Context(const tensorflow::SessionOptions& opts,
               TFE_ContextDevicePlacementPolicy default_device_placement_policy,
               TFE_ContextMirroringPolicy default_mirroring_policy, bool async,
+              const bool lazy_remote_inputs_copy,
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
               tensorflow::Rendezvous* rendezvous,
               const tensorflow::CustomKernelCreator* custom_kernel_creator)
@@ -72,8 +75,8 @@ struct TFE_Context {
                 default_device_placement_policy),
             static_cast<tensorflow::ContextMirroringPolicy>(
                 default_mirroring_policy),
-            async, device_mgr, device_mgr_owned, rendezvous,
-            custom_kernel_creator)) {}
+            async, lazy_remote_inputs_copy, device_mgr, device_mgr_owned,
+            rendezvous, custom_kernel_creator)) {}
 
   ~TFE_Context() {
     // TODO(iga): Add a separate API method to shutdown TFE_Context so that we

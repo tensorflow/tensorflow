@@ -341,7 +341,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
       def make_z(self):
         if self.z is None:
-          with ops.name_scope('z_scope'):
+          with ops.name_scope('z_scope', skip_on_eager=False):
             self.z = variables.Variable(1., name='z')
 
     root = HasVars()

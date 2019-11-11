@@ -241,33 +241,6 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   }];
 }
 
-// In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
-// of function arguments.
-// Note: NoSideEffect trait is not added intentionally to preserve the captured
-// attributes even if the input is unused.
-def TF_PlaceholderInputOp : TF_Op<"Placeholder.input",
-    [SameOperandsAndResultType]> {
-  let summary = "PlaceholderInput op";
-
-  let description = [{
-Inserts a placeholder for a tensor that will be always fed.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$arg,
-
-    OptionalAttr<F32Attr>:$min,
-    OptionalAttr<F32Attr>:$max,
-    OptionalAttr<TF_IntTypeAttr>:$type
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
-}
-
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
   let summary = "Placeholder op";
 

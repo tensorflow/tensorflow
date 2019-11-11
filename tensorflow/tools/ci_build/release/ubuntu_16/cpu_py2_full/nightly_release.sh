@@ -23,6 +23,8 @@ set_bazel_outdir
 # Install python dependencies
 install_ubuntu_16_pip_deps pip2.7
 
+update_bazel_linux
+
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.

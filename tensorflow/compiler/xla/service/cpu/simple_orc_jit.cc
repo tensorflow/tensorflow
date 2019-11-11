@@ -26,6 +26,7 @@ limitations under the License.
 #include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
+#include "llvm/IR/Operator.h"
 #include "llvm/Support/CodeGen.h"
 #include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
@@ -84,7 +85,7 @@ SimpleOrcJIT::InferTargetMachineForJIT(
 SimpleOrcJIT::SimpleOrcJIT(
     const llvm::TargetOptions& target_options,
     llvm::CodeGenOpt::Level opt_level, bool optimize_for_size,
-    bool disable_expensive_passes,
+    bool disable_expensive_passes, llvm::FastMathFlags fast_math_flags,
     LLVMCompiler::ModuleHook pre_optimization_hook,
     LLVMCompiler::ModuleHook post_optimization_hook,
     std::function<void(const llvm::object::ObjectFile&)> post_codegen_hook)
@@ -120,10 +121,11 @@ SimpleOrcJIT::SimpleOrcJIT(
           }),
       compile_layer_(
           object_layer_,
-          CompilerFunctor(
-              target_machine_.get(), opt_level, optimize_for_size,
-              disable_expensive_passes, std::move(pre_optimization_hook),
-              std::move(post_optimization_hook), std::move(post_codegen_hook))),
+          CompilerFunctor(target_machine_.get(), opt_level, optimize_for_size,
+                          disable_expensive_passes, fast_math_flags,
+                          std::move(pre_optimization_hook),
+                          std::move(post_optimization_hook),
+                          std::move(post_codegen_hook))),
       gdb_jit_event_listener_(
           llvm::JITEventListener::createGDBRegistrationListener()) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()

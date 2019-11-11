@@ -138,7 +138,7 @@ static void Print(ConstOp op, OpAsmPrinter* printer) {
 }
 
 static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
-  if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
+  if (parser->parseOptionalAttrDict(result->attributes)) return failure();
 
   // If colon is not present after attribute dictionary, it should be short form
   // and attribute 'value' is outside the dictionary.
@@ -773,15 +773,20 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
   }
 
 BINARY_BUILDER(AddOp);
-BINARY_BUILDER(SubOp);
-BINARY_BUILDER(MulOp);
+BINARY_BUILDER(AndOp);
+BINARY_BUILDER(Atan2Op);
 BINARY_BUILDER(DivOp);
 BINARY_BUILDER(MaxOp);
 BINARY_BUILDER(MinOp);
-BINARY_BUILDER(AndOp);
+BINARY_BUILDER(MulOp);
 BINARY_BUILDER(OrOp);
-BINARY_BUILDER(RemOp);
 BINARY_BUILDER(PowOp);
+BINARY_BUILDER(RemOp);
+BINARY_BUILDER(ShiftLeftOp);
+BINARY_BUILDER(ShiftRightArithmeticOp);
+BINARY_BUILDER(ShiftRightLogicalOp);
+BINARY_BUILDER(SubOp);
+BINARY_BUILDER(XorOp);
 
 #undef BINARY_BUILDER
 

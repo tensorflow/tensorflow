@@ -676,9 +676,9 @@ class CudaEventRecorder {
 
   // Registers the start of a kernel launch. The returned index should be passed
   // to StopKernel() after the kernel launch has completed.
+  template <typename T>
   size_t StartKernel(const char *kernel_name, CUcontext context,
-                     uint32 correlation_id,
-                     const cuLaunchKernel_params *params) {
+                     uint32 correlation_id, const T *params) {
     CUstream stream = params->hStream;
     KernelRecord record = {kernel_name, context, stream, correlation_id};
     record.details.registers_per_thread = 0;  // unknown.
@@ -968,8 +968,18 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         DCHECK_NE(cbdata->symbolName, nullptr);
         auto params =
             static_cast<const cuLaunchKernel_params *>(cbdata->functionParams);
-        *cbdata->correlationData = recorder->StartKernel(
+        *cbdata->correlationData = recorder->StartKernel<cuLaunchKernel_params>(
             cbdata->symbolName, cbdata->context, cbdata->correlationId, params);
+        break;
+      }
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernel: {
+        DCHECK_NE(cbdata->symbolName, nullptr);
+        auto params = static_cast<const cuLaunchCooperativeKernel_params_st *>(
+            cbdata->functionParams);
+        *cbdata->correlationData =
+            recorder->StartKernel<cuLaunchCooperativeKernel_params_st>(
+                cbdata->symbolName, cbdata->context, cbdata->correlationId,
+                params);
         break;
       }
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpy: {
@@ -1009,6 +1019,10 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
       case CUPTI_DRIVER_TRACE_CBID_cuMemcpyDtoDAsync_v2:
         StartMemcpyAsync<cuMemcpyDtoDAsync_v2_params>(
             CuptiTracerEventType::MemcpyD2D, cbdata, recorder);
+        break;
+      case CUPTI_DRIVER_TRACE_CBID_cuLaunchCooperativeKernelMultiDevice:
+        // TODO: track these kind of events.
+        VLOG(1) << "untracked cuLaunchCooperativeKernelMultiDevice";
         break;
       default:
         VLOG(1) << "Unexpected callback id: " << cbid;

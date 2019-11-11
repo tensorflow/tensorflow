@@ -356,6 +356,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:mkl_graph_util",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test_mkl(

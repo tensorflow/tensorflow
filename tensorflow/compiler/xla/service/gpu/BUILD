@@ -3,6 +3,10 @@
 
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
+)
+load(
     "//tensorflow/core/platform:default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
@@ -44,10 +48,11 @@ filegroup(
     ]),
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "backend_configs",
     srcs = ["backend_configs.proto"],
-    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
 cc_library(
@@ -204,7 +209,7 @@ cc_library(
     srcs = ["thunk_emitter.cc"],
     hdrs = ["thunk_emitter.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":buffer_allocations",
         ":gpu_constants",
         ":gpu_executable",
@@ -234,7 +239,7 @@ cc_library(
         "kernel_mapping_scheme.h",
     ],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":buffer_allocations",
         ":cudnn_batchnorm_runner",
         ":elemental_ir_emitter",
@@ -505,7 +510,7 @@ cc_library(
         "while_thunk.h",
     ],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":buffer_allocations",
         ":cusolver_context",
         ":cudnn_batchnorm_runner",
@@ -579,7 +584,7 @@ cc_library(
     srcs = ["ir_emission_utils.cc"],
     hdrs = ["ir_emission_utils.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":target_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
@@ -598,7 +603,7 @@ cc_library(
     srcs = ["gemm_rewriter.cc"],
     hdrs = ["gemm_rewriter.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
@@ -617,7 +622,7 @@ cc_library(
     srcs = ["gemm_algorithm_picker.cc"],
     hdrs = ["gemm_algorithm_picker.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":buffer_comparator",
         ":gpu_conv_runner",
         ":gpu_executable",
@@ -644,7 +649,7 @@ cc_library(
     srcs = ["gpu_conv_algorithm_picker.cc"],
     hdrs = ["gpu_conv_algorithm_picker.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":buffer_comparator",
         ":gpu_autotuning_proto",
         ":gpu_conv_runner",
@@ -678,7 +683,7 @@ cc_library(
     srcs = ["gpu_conv_runner.cc"],
     hdrs = ["gpu_conv_runner.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -700,7 +705,7 @@ cc_library(
     srcs = ["cudnn_batchnorm_runner.cc"],
     hdrs = ["cudnn_batchnorm_runner.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -722,7 +727,7 @@ cc_library(
     srcs = ["gpu_conv_rewriter.cc"],
     hdrs = ["gpu_conv_rewriter.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:util",
@@ -737,6 +742,7 @@ cc_library(
 tf_cc_test(
     name = "gpu_conv_rewriter_test",
     srcs = ["gpu_conv_rewriter_test.cc"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_conv_rewriter",
         ":ir_emission_utils",
@@ -1314,7 +1320,7 @@ cc_library(
     srcs = ["gpu_layout_assignment.cc"],
     hdrs = ["gpu_layout_assignment.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":ir_emission_utils",
         ":stream_executor_util",
         "//tensorflow/compiler/xla:shape_util",
@@ -1518,7 +1524,7 @@ cc_library(
     srcs = ["cudnn_fused_conv_rewriter.cc"],
     hdrs = ["cudnn_fused_conv_rewriter.h"],
     deps = [
-        ":backend_configs",
+        ":backend_configs_cc",
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla/service:hlo",
@@ -1603,7 +1609,7 @@ xla_proto_library(
     deps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:autotuning_proto_cc",
+        "//tensorflow/core:autotuning_proto",
     ],
 )
 

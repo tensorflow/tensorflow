@@ -151,6 +151,10 @@ static LogicalResult VerifySavedModelModule(
   }
   SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(module);
+  if (!symbol_uses.hasValue()) {
+    return module.emitError() << "modules with 'tf_saved_model.semantics' must "
+                                 "have analyzable symbol uses";
+  }
   for (auto symbol_use : *symbol_uses) {
     auto func =
         symbol_table.lookup<FuncOp>(symbol_use.getSymbolRef().getValue());
@@ -232,6 +236,12 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
     }
   }
   return ret;
+}
+
+bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
+
+bool HasTfSavedModelSemantics(ModuleOp module) {
+  return module.getAttr("tf_saved_model.semantics") != nullptr;
 }
 
 }  // namespace tf_saved_model

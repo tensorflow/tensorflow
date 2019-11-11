@@ -95,7 +95,7 @@ cc_library(
         "quantization_config.h",
     ],
     deps = [
-        "//tensorflow/core:protos_all_proto_cc",
+        "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
         "@llvm//:support",
     ],

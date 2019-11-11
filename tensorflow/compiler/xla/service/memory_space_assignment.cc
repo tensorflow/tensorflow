@@ -37,7 +37,6 @@ float MemorySpaceAssignmentCostAnalysis::GetInstructionElapsedDueToMemory(
     absl::optional<int64> operand_in_alternate_mem,
     bool output_in_alternate_mem) const {
   float bytes_accessed = cost_analysis_.bytes_accessed(instruction);
-  VLOG(4) << "  bytes_accessed = " << bytes_accessed;
   float elapsed_due_to_bytes =
       bytes_accessed /
       cost_analysis_.per_second_rate(HloCostAnalysis::kBytesAccessedKey);
@@ -124,8 +123,6 @@ void CostAnalysisPrefetchIntervalPicker::SetInstructionSchedule(
       instructions_elapsed_time.resize(logical_time + 1, 0.0);
     }
     instructions_elapsed_time[logical_time] = elapsed_time;
-    VLOG(4) << "Elapsed time in seconds [" << logical_time
-            << "] = " << elapsed_time;
   }
   // As an optimization, create a cumulative sum vector of elapsed time.
   float cumsum = 0.0;
@@ -862,6 +859,13 @@ MemorySpaceAssignment::Run(
 void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
   HloInstruction* operand =
       use.instruction->mutable_operand(use.operand_number);
+  // If the use is a tuple, look inside the tuple to find the actual use.
+  for (int64 index : use.operand_index) {
+    if (operand->opcode() != HloOpcode::kTuple) {
+      break;
+    }
+    operand = operand->mutable_operand(index);
+  }
   // When the operand of a use is a bitcast, we place the bitcast in a separate
   // data structure.
   if (operand->opcode() == HloOpcode::kBitcast) {
@@ -1076,6 +1080,9 @@ void PresetAssignments::RemoveAssignmentForInstruction(
 
 Status MemorySpaceAssignment::SimplifyGraph() {
   for (HloComputation* computation : module_->MakeNonfusionComputations()) {
+    // FixSchedule can miss unused parameters. Just remove unused parameters
+    // here so that FixSchedule doesn't have to deal with them.
+    TF_RETURN_IF_ERROR(computation->RemoveUnusedParametersFromAnyComputation());
     // We perform limited DCE and forward the tuple operand in patterns like
     // GetTupleElement(Tuple(a, b), 0). This is mostly because memory space
     // assignment is ran late in compilation (after DCE and arithmetic

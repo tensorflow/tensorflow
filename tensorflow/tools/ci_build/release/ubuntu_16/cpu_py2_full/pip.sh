@@ -20,6 +20,8 @@ source tensorflow/tools/ci_build/release/common.sh
 
 # Install python dependencies
 install_ubuntu_16_pip_deps pip2.7
+# Update bazel
+update_bazel_linux
 
 # Export required variables for running pip.sh
 export OS_TYPE="UBUNTU"

@@ -332,8 +332,8 @@ bool Operation::isBeforeInBlock(Operation *other) {
   assert(other && other->block == block &&
          "Expected other operation to have the same parent block.");
   // Recompute the parent ordering if necessary.
-  if (!block->isInstOrderValid())
-    block->recomputeInstOrder();
+  if (!block->isOpOrderValid())
+    block->recomputeOpOrder();
   return orderIndex < other->orderIndex;
 }
 
@@ -384,7 +384,7 @@ void llvm::ilist_traits<::mlir::Operation>::addNodeToList(Operation *op) {
   op->block = getContainingBlock();
 
   // Invalidate the block ordering.
-  op->block->invalidateInstOrder();
+  op->block->invalidateOpOrder();
 }
 
 /// This is a trait method invoked when a operation is removed from a block.
@@ -401,7 +401,7 @@ void llvm::ilist_traits<::mlir::Operation>::transferNodesFromList(
   Block *curParent = getContainingBlock();
 
   // Invalidate the ordering of the parent block.
-  curParent->invalidateInstOrder();
+  curParent->invalidateOpOrder();
 
   // If we are transferring operations within the same block, the block
   // pointer doesn't need to be updated.
@@ -423,10 +423,10 @@ void Operation::erase() {
 }
 
 /// Unlink this operation from its current block and insert it right before
-/// `existingInst` which may be in the same or another block in the same
+/// `existingOp` which may be in the same or another block in the same
 /// function.
-void Operation::moveBefore(Operation *existingInst) {
-  moveBefore(existingInst->getBlock(), existingInst->getIterator());
+void Operation::moveBefore(Operation *existingOp) {
+  moveBefore(existingOp->getBlock(), existingOp->getIterator());
 }
 
 /// Unlink this operation from its current basic block and insert it right
@@ -927,7 +927,7 @@ ParseResult impl::parseOneResultSameOperandTypeOp(OpAsmParser &parser,
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
   return failure(parser.parseOperandList(ops) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(ops, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
@@ -966,7 +966,7 @@ ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
   return failure(parser.parseOperand(srcInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(srcType) ||
                  parser.resolveOperand(srcInfo, srcType, result.operands) ||
                  parser.parseKeywordType("to", dstType) ||

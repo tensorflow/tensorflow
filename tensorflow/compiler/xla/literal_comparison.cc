@@ -238,19 +238,30 @@ float IsNan(half value) {
 }
 
 // Converts the given floating-point value to a string.
-template <typename NativeT>
-string FpValueToString(NativeT value) {
-  return absl::StrFormat("%8.4g", static_cast<double>(value));
+string FpValueToString(bfloat16 value) {
+  return absl::StrFormat("%10.4g", static_cast<double>(value));
 }
 
-template <>
-string FpValueToString<complex64>(complex64 value) {
-  return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
+string FpValueToString(half value) {
+  return absl::StrFormat("%11.5g", static_cast<double>(value));
 }
 
-template <>
-string FpValueToString<complex128>(complex128 value) {
-  return absl::StrFormat("%8.4g + %8.4fi", value.real(), value.imag());
+string FpValueToString(float value) {
+  return absl::StrFormat("%15.9g", static_cast<double>(value));
+}
+
+string FpValueToString(double value) {
+  return absl::StrFormat("%24.17g", value);
+}
+
+string FpValueToString(complex64 value) {
+  return absl::StrCat(FpValueToString(value.real()), " + ",
+                      FpValueToString(value.imag()));
+}
+
+string FpValueToString(complex128 value) {
+  return absl::StrCat(FpValueToString(value.real()), " + ",
+                      FpValueToString(value.imag()));
 }
 
 // A wrapper of std::abs to include data types that are not supported by

@@ -18,10 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph.impl import api
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.unconnected_gradients import UnconnectedGradients
 from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.util import nest
@@ -62,13 +60,6 @@ class LossScaleGradientTape(backprop.GradientTape):
     grads = tape.gradient(loss, vars)
     opt.apply_gradients(zip(grads, vars))
   ```
-
-  WARNING: Computing second-order (or higher) gradients with a
-  `LossScaleGradientTape` does not yet work properly when a
-  `tf.distribute.Strategy` is used. Computing second-order gradients will return
-  None instead of the gradient tensors. This only occurs when you nest multiple
-  gradient tapes under each other; if you do not nest them, this issue will not
-  occur.
   """
 
   def __init__(self,
@@ -142,85 +133,22 @@ class LossScaleGradientTape(backprop.GradientTape):
     if self._tape is None:  # pylint: disable=access-member-before-definition
       raise RuntimeError("GradientTape.gradient can only be called once on "
                          "non-persistent tapes.")
-    if distribution_strategy_context.in_cross_replica_context():
-      raise ValueError("LossScaleGradientTape.gradient() must be called in a "
-                       "replica context.")
 
-    if context.executing_eagerly():
-      compute_gradients_until_finite = _compute_gradients_until_finite
-    else:
-      compute_gradients_until_finite = _compute_gradients_until_finite_autograph
+    ready_to_update = False
+    grads = nest.map_structure(array_ops.zeros_like, sources)
 
-    # Note: DistributionStrategy does not support running a while loop in a
-    # replica context. So, we call `compute_gradients_until_finite` in a cross-
-    # replica context.
-    replica_context = distribution_strategy_context.get_replica_context()
-    grads = replica_context.merge_call(
-        compute_gradients_until_finite,
-        args=(self, self._loss_scale, target, sources, output_gradients,
-              unconnected_gradients))
+    while not ready_to_update and self._loss_scale() > 1:
+      with self:  # re-enter the gradient tape so it sees the loss scaling
+        loss_scale = self._loss_scale()
+        scaled_target = nest.map_structure(lambda t: t * loss_scale, target)
+
+      old_grads = super(LossScaleGradientTape, self).gradient(
+          scaled_target, sources, output_gradients, unconnected_gradients)
+      inv_loss_scale = 1.0 / self._loss_scale()
+      grads = nest.map_structure(lambda g: inv_loss_scale * g, old_grads)
+      # Check for non-finite gradients possibly resulting from scaling
+      _, ready_to_update = self._loss_scale.update(grads)
 
     if not self._outer_persistent:
       self._tape = None  # free up resources if a persistent tape was not needed
     return grads
-
-
-def _compute_gradients_until_finite(
-    distribution, loss_scale_gradient_tapes, loss_scale, target, sources,
-    output_gradients, unconnected_gradients):
-  """Compute gradients and update the loss scale until the gradients are finite.
-
-  This must be called in a cross-replica context.
-
-  This is a function instead of a method of LossScaleGradientTape, as the `self`
-  parameter would be meaningless. There is one LossScaleGradientTape per
-  replica, but this function is called once total (not per replica), so there
-  cannot be a singular `self` parameter.
-
-  Args:
-    distribution: The distribution strategy in effect.
-    loss_scale_gradient_tapes: A PerReplica value of LossScaleGradientTapes.
-      Contains the LossScaleGradientTape of each replica.
-    loss_scale: The loss scale to use to scale the loss and unscale the
-      gradient.
-    target: a list or nested structure of Tensors or Variables to be
-      differentiated.
-    sources: a list or nested structure of Tensors or Variables. `target` will
-      be differentiated against elements in `sources`.
-    output_gradients: Passed to GradientTape.gradient
-    unconnected_gradients: Pass to GradientTape.gradient.
-
-  Returns:
-    The gradients of `target` with respect to `sources`.
-  """
-
-  ready_to_update = False
-  grads = sources  # Dummy assignment to make AutoGraph happy. `grads` is always
-                   # overwritten.
-  while not ready_to_update and loss_scale() > 1:
-    def replica_fn(gradient_tape, target, sources, output_gradients):
-      """Scales the loss, computes the gradients, and unscales the gradients."""
-      loss_scale_val = loss_scale()
-      with gradient_tape:  # re-enter gradient tape so it sees the loss scaling
-        scaled_target = nest.map_structure(lambda t: t * loss_scale_val, target)
-      old_grads = super(LossScaleGradientTape, gradient_tape).gradient(
-          scaled_target, sources, output_gradients, unconnected_gradients)
-      inv_loss_scale = 1.0 / loss_scale_val
-      grads = nest.map_structure(lambda g: inv_loss_scale * g, old_grads)
-      return grads
-
-    # Switch to a replica-context to compute gradients once per replica.
-    grads = distribution.experimental_run_v2(
-        replica_fn, args=(loss_scale_gradient_tapes, target, sources,
-                          output_gradients))
-    # Check for non-finite gradients possibly resulting from scaling
-    _, ready_to_update = loss_scale.update(grads)
-
-  return grads
-
-# For some reason, AutoGraph does not convert _compute_gradients_until_finite
-# automatically inside a tf.function, so we convert it manually.
-# TODO(b/143572314): Determine why AutoGraph does not do the conversion
-# automatically
-_compute_gradients_until_finite_autograph = api.to_graph(
-    _compute_gradients_until_finite)

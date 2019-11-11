@@ -789,6 +789,14 @@ Block *ConversionPatternRewriter::splitBlock(Block *block,
   return continuation;
 }
 
+/// PatternRewriter hook for merging a block into another.
+void ConversionPatternRewriter::mergeBlocks(Block *source, Block *dest,
+                                            ArrayRef<Value *> argValues) {
+  // TODO(riverriddle) This requires fixing the implementation of
+  // 'replaceUsesOfBlockArgument', which currently isn't undoable.
+  llvm_unreachable("block merging updates are currently not supported");
+}
+
 /// PatternRewriter hook for moving blocks out of a region.
 void ConversionPatternRewriter::inlineRegionBefore(Region &region,
                                                    Region &parent,
@@ -1490,7 +1498,7 @@ auto TypeConverter::convertBlockSignature(Block *block)
 /// Register a legality action for the given operation.
 void ConversionTarget::setOpAction(OperationName op,
                                    LegalizationAction action) {
-  legalOperations[op] = {action};
+  legalOperations[op] = {action, /*isRecursivelyLegal=*/false};
 }
 
 /// Register a legality action for the given dialects.

@@ -298,7 +298,7 @@ static ParseResult parseVariableDecorations(OpAsmParser &parser,
   }
 
   // Parse other attributes
-  if (parser.parseOptionalAttributeDict(state.attributes))
+  if (parser.parseOptionalAttrDict(state.attributes))
     return failure();
 
   return success();
@@ -383,7 +383,7 @@ static inline bool isMergeBlock(Block &block) {
 
 // Parses an op that has no inputs and no outputs.
 static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
-  if (parser.parseOptionalAttributeDict(state.attributes))
+  if (parser.parseOptionalAttrDict(state.attributes))
     return failure();
   return success();
 }
@@ -447,6 +447,40 @@ static void printLogicalOp(Operation *logicalOp, OpAsmPrinter &printer) {
   printer << logicalOp->getName() << ' ';
   printer.printOperands(logicalOp->getOperands());
   printer << " : " << logicalOp->getOperand(0)->getType();
+}
+
+static ParseResult parseShiftOp(OpAsmParser &parser, OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 2> operandInfo;
+  Type baseType;
+  Type shiftType;
+  auto loc = parser.getCurrentLocation();
+
+  if (parser.parseOperandList(operandInfo, 2) || parser.parseColon() ||
+      parser.parseType(baseType) || parser.parseComma() ||
+      parser.parseType(shiftType) ||
+      parser.resolveOperands(operandInfo, {baseType, shiftType}, loc,
+                             state.operands)) {
+    return failure();
+  }
+  state.addTypes(baseType);
+  return success();
+}
+
+static void printShiftOp(Operation *op, OpAsmPrinter &printer) {
+  Value *base = op->getOperand(0);
+  Value *shift = op->getOperand(1);
+  printer << op->getName() << ' ' << *base << ", " << *shift << " : "
+          << base->getType() << ", " << shift->getType();
+}
+
+static LogicalResult verifyShiftOp(Operation *op) {
+  if (op->getOperand(0)->getType() != op->getResult(0)->getType()) {
+    return op->emitError("expected the same type for the first operand and "
+                         "result, but provided ")
+           << op->getOperand(0)->getType() << " and "
+           << op->getResult(0)->getType();
+  }
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1363,8 +1397,8 @@ static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &state) {
   if (parseEnumAttribute(storageClass, parser) ||
       parser.parseOperand(ptrInfo) ||
       parseMemoryAccessAttributes(parser, state) ||
-      parser.parseOptionalAttributeDict(state.attributes) ||
-      parser.parseColon() || parser.parseType(elementType)) {
+      parser.parseOptionalAttrDict(state.attributes) || parser.parseColon() ||
+      parser.parseType(elementType)) {
     return failure();
   }
 
@@ -1628,10 +1662,8 @@ static ParseResult parseModuleOp(OpAsmParser &parser, OperationState &state) {
   if (parser.parseRegion(*body, /*arguments=*/{}, /*argTypes=*/{}))
     return failure();
 
-  if (succeeded(parser.parseOptionalKeyword("attributes"))) {
-    if (parser.parseOptionalAttributeDict(state.attributes))
-      return failure();
-  }
+  if (parser.parseOptionalAttrDictWithKeyword(state.attributes))
+    return failure();
 
   spirv::ModuleOp::ensureTerminator(*body, parser.getBuilder(), state.location);
   return success();
@@ -1657,19 +1689,7 @@ static void print(spirv::ModuleOp moduleOp, OpAsmPrinter &printer) {
 
   printer.printRegion(op->getRegion(0), /*printEntryBlockArgs=*/false,
                       /*printBlockTerminators=*/false);
-
-  bool printAttrDict =
-      elidedAttrs.size() != 2 ||
-      llvm::any_of(op->getAttrs(), [&addressingModelAttrName,
-                                    &memoryModelAttrName](NamedAttribute attr) {
-        return attr.first != addressingModelAttrName &&
-               attr.first != memoryModelAttrName;
-      });
-
-  if (printAttrDict) {
-    printer << " attributes";
-    printer.printOptionalAttrDict(op->getAttrs(), elidedAttrs);
-  }
+  printer.printOptionalAttrDictWithKeyword(op->getAttrs(), elidedAttrs);
 }
 
 static LogicalResult verify(spirv::ModuleOp moduleOp) {

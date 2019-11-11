@@ -34,6 +34,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 _GRPC_PREFIX = "grpc://"
+_LOCAL_MASTERS = ("", "local")
 
 
 @tf_export("config.experimental_connect_to_host")
@@ -108,6 +109,9 @@ def connect_to_cluster(cluster_spec_or_resolver,
   if isinstance(cluster_spec_or_resolver, server_lib.ClusterSpec):
     cluster_spec = cluster_spec_or_resolver
   elif isinstance(cluster_spec_or_resolver, cluster_resolver.ClusterResolver):
+    if cluster_spec_or_resolver.master() in _LOCAL_MASTERS:
+      # Do nothing if the master is local.
+      return
     cluster_spec = cluster_spec_or_resolver.cluster_spec()
   else:
     raise ValueError(

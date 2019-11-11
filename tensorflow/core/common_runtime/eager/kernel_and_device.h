@@ -51,7 +51,8 @@ class FunctionLibraryRuntime;
 
 struct EagerRemoteFunctionParams {
   int64 op_id;
-  int64 step_id;
+  // Set when this function is a component function.
+  absl::optional<int64> step_id = absl::nullopt;
 };
 
 class EagerKernelArgs : public FunctionArgsInterface {

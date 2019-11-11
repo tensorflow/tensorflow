@@ -187,6 +187,20 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       check_results(expected_normal2, f(constructor))
 
   @test_util.run_v2_only
+  def testGeneratorCreationWithVar(self):
+    """Tests creating generator with a variable.
+    """
+    alg = random.RNG_ALG_PHILOX
+    state = [1, 2, 3]
+    var = variables.Variable(state, dtype=random.STATE_TYPE)
+    g = random.Generator(state=state, alg=alg)
+    g_var = random.Generator(state=var, alg=alg)
+    shape = [2, 3]
+    g.normal(shape)
+    g_var.normal(shape)
+    self.assertAllEqual(g.state.read_value(), var.read_value())
+
+  @test_util.run_v2_only
   def testGeneratorCreationUnseeded(self):
     """Tests generator creation, the unseeded case."""
     shape = [2, 3]

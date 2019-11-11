@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_PROFILING_MEMORY_INFO_H_
 
 #include <cstdint>
+#include <sstream>
 
 namespace tflite {
 namespace profiling {
@@ -35,7 +36,7 @@ struct MemoryUsage {
   // Total allocated space in bytes. This is an alias to mallinfo::uordblks.
   int total_allocated_bytes;
 
-  MemoryUsage operator+(MemoryUsage const &obj) {
+  MemoryUsage operator+(MemoryUsage const& obj) const {
     MemoryUsage res;
     res.max_rss_kb = max_rss_kb + obj.max_rss_kb;
     res.total_allocated_bytes =
@@ -43,12 +44,21 @@ struct MemoryUsage {
     return res;
   }
 
-  MemoryUsage operator-(MemoryUsage const &obj) {
+  MemoryUsage operator-(MemoryUsage const& obj) const {
     MemoryUsage res;
     res.max_rss_kb = max_rss_kb - obj.max_rss_kb;
     res.total_allocated_bytes =
         total_allocated_bytes - obj.total_allocated_bytes;
     return res;
+  }
+
+  void SummaryToStream(std::ostream* stream) const;
+  void ShortSummaryToStream(std::ostream* stream) const;
+
+  friend std::ostream& operator<<(std::ostream& stream,
+                                  const MemoryUsage& obj) {
+    obj.SummaryToStream(&stream);
+    return stream;
   }
 };
 

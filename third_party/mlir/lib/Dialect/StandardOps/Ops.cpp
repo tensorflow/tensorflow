@@ -34,6 +34,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -339,7 +340,7 @@ static ParseResult parseAllocOp(OpAsmParser &parser, OperationState &result) {
   // memref type.
   unsigned numDimOperands;
   if (parseDimAndSymbolList(parser, result.operands, numDimOperands) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type))
     return failure();
 
@@ -473,6 +474,28 @@ void AllocOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // BranchOp
 //===----------------------------------------------------------------------===//
 
+namespace {
+/// Simplify a branch to a block that has a single predecessor. This effectively
+/// merges the two blocks.
+struct SimplifyBrToBlockWithSinglePred : public OpRewritePattern<BranchOp> {
+  using OpRewritePattern<BranchOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(BranchOp op,
+                                     PatternRewriter &rewriter) const override {
+    // Check that the successor block has a single predecessor.
+    Block *succ = op.getDest();
+    Block *opParent = op.getOperation()->getBlock();
+    if (succ == opParent || !has_single_element(succ->getPredecessors()))
+      return matchFailure();
+
+    // Merge the successor into the current block and erase the branch.
+    rewriter.mergeBlocks(succ, opParent, llvm::to_vector<1>(op.getOperands()));
+    rewriter.eraseOp(op);
+    return matchSuccess();
+  }
+};
+} // end anonymous namespace.
+
 static ParseResult parseBranchOp(OpAsmParser &parser, OperationState &result) {
   Block *dest;
   SmallVector<Value *, 4> destOperands;
@@ -495,6 +518,11 @@ void BranchOp::eraseOperand(unsigned index) {
   getOperation()->eraseSuccessorOperand(0, index);
 }
 
+void BranchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<SimplifyBrToBlockWithSinglePred>(context);
+}
+
 //===----------------------------------------------------------------------===//
 // CallOp
 //===----------------------------------------------------------------------===//
@@ -506,7 +534,7 @@ static ParseResult parseCallOp(OpAsmParser &parser, OperationState &result) {
   auto calleeLoc = parser.getNameLoc();
   if (parser.parseAttribute(calleeAttr, "callee", result.attributes) ||
       parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(calleeType) ||
       parser.addTypesToList(calleeType.getResults(), result.types) ||
       parser.resolveOperands(operands, calleeType.getInputs(), calleeLoc,
@@ -596,7 +624,7 @@ static ParseResult parseCallIndirectOp(OpAsmParser &parser,
   return failure(
       parser.parseOperand(callee) || parser.getCurrentLocation(&operandsLoc) ||
       parser.parseOperandList(operands, OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(calleeType) ||
       parser.resolveOperand(callee, calleeType, result.operands) ||
       parser.resolveOperands(operands, calleeType.getInputs(), operandsLoc,
@@ -725,7 +753,7 @@ static ParseResult parseCmpIOp(OpAsmParser &parser, OperationState &result) {
   if (parser.parseAttribute(predicateNameAttr, CmpIOp::getPredicateAttrName(),
                             attrs) ||
       parser.parseComma() || parser.parseOperandList(ops, 2) ||
-      parser.parseOptionalAttributeDict(attrs) || parser.parseColonType(type) ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColonType(type) ||
       parser.resolveOperands(ops, type, result.operands))
     return failure();
 
@@ -901,7 +929,7 @@ static ParseResult parseCmpFOp(OpAsmParser &parser, OperationState &result) {
   if (parser.parseAttribute(predicateNameAttr, CmpFOp::getPredicateAttrName(),
                             attrs) ||
       parser.parseComma() || parser.parseOperandList(ops, 2) ||
-      parser.parseOptionalAttributeDict(attrs) || parser.parseColonType(type) ||
+      parser.parseOptionalAttrDict(attrs) || parser.parseColonType(type) ||
       parser.resolveOperands(ops, type, result.operands))
     return failure();
 
@@ -1043,27 +1071,20 @@ struct SimplifyConstCondBranchPred : public OpRewritePattern<CondBranchOp> {
 
   PatternMatchResult matchAndRewrite(CondBranchOp condbr,
                                      PatternRewriter &rewriter) const override {
-    // Check that the condition is a constant.
-    if (!matchPattern(condbr.getCondition(), m_Op<ConstantOp>()))
-      return matchFailure();
-
-    Block *foldedDest;
-    SmallVector<Value *, 4> branchArgs;
-
-    // If the condition is known to evaluate to false we fold to a branch to the
-    // false destination. Otherwise, we fold to a branch to the true
-    // destination.
-    if (matchPattern(condbr.getCondition(), m_Zero())) {
-      foldedDest = condbr.getFalseDest();
-      branchArgs.assign(condbr.false_operand_begin(),
-                        condbr.false_operand_end());
-    } else {
-      foldedDest = condbr.getTrueDest();
-      branchArgs.assign(condbr.true_operand_begin(), condbr.true_operand_end());
+    if (matchPattern(condbr.getCondition(), m_NonZero())) {
+      // True branch taken.
+      rewriter.replaceOpWithNewOp<BranchOp>(
+          condbr, condbr.getTrueDest(),
+          llvm::to_vector<4>(condbr.getTrueOperands()));
+      return matchSuccess();
+    } else if (matchPattern(condbr.getCondition(), m_Zero())) {
+      // False branch taken.
+      rewriter.replaceOpWithNewOp<BranchOp>(
+          condbr, condbr.getFalseDest(),
+          llvm::to_vector<4>(condbr.getFalseOperands()));
+      return matchSuccess();
     }
-
-    rewriter.replaceOpWithNewOp<BranchOp>(condbr, foldedDest, branchArgs);
-    return matchSuccess();
+    return matchFailure();
   }
 };
 } // end anonymous namespace.
@@ -1131,7 +1152,7 @@ static void print(OpAsmPrinter &p, ConstantOp &op) {
 static ParseResult parseConstantOp(OpAsmParser &parser,
                                    OperationState &result) {
   Attribute valueAttr;
-  if (parser.parseOptionalAttributeDict(result.attributes) ||
+  if (parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseAttribute(valueAttr, "value", result.attributes))
     return failure();
 
@@ -1345,7 +1366,7 @@ static ParseResult parseDimOp(OpAsmParser &parser, OperationState &result) {
   return failure(
       parser.parseOperand(operandInfo) || parser.parseComma() ||
       parser.parseAttribute(indexAttr, indexType, "index", result.attributes) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(operandInfo, type, result.operands) ||
       parser.addTypeToList(indexType, result.types));
@@ -1673,7 +1694,7 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
   return failure(
       parser.parseOperand(aggregateInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(aggregateInfo, type, result.operands) ||
       parser.resolveOperands(indexInfo, indexTy, result.operands) ||
@@ -1754,7 +1775,7 @@ static ParseResult parseLoadOp(OpAsmParser &parser, OperationState &result) {
   return failure(
       parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(memrefInfo, type, result.operands) ||
       parser.resolveOperands(indexInfo, indexTy, result.operands) ||
@@ -1976,7 +1997,7 @@ static ParseResult parseSelectOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<NamedAttribute, 4> attrs;
   Type type;
   if (parser.parseOperandList(ops, 3) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type))
     return failure();
 
@@ -2061,7 +2082,7 @@ static ParseResult parseSplatOp(OpAsmParser &parser, OperationState &result) {
   ShapedType shapedType;
 
   return failure(parser.parseOperand(splatValueInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(shapedType) ||
                  parser.resolveOperand(splatValueInfo,
                                        shapedType.getElementType(),
@@ -2119,7 +2140,7 @@ static ParseResult parseStoreOp(OpAsmParser &parser, OperationState &result) {
       parser.parseOperand(storeValueInfo) || parser.parseComma() ||
       parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(memrefType) ||
       parser.resolveOperand(storeValueInfo, memrefType.getElementType(),
                             result.operands) ||
@@ -2260,7 +2281,7 @@ static ParseResult parseTensorLoadOp(OpAsmParser &parser,
   OpAsmParser::OperandType op;
   Type type;
   return failure(parser.parseOperand(op) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperand(op, type, result.operands) ||
                  parser.addTypeToList(
@@ -2285,7 +2306,7 @@ static ParseResult parseTensorStoreOp(OpAsmParser &parser,
   llvm::SMLoc loc = parser.getCurrentLocation();
   return failure(
       parser.parseOperandList(ops, /*requiredOperandCount=*/2) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperands(
           ops, {getTensorTypeFromMemRefType(parser.getBuilder(), type), type},
@@ -2311,6 +2332,215 @@ static LogicalResult verify(TruncateIOp op) {
            << srcType << " must be wider than result type " << dstType;
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// ViewOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseViewOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType srcInfo;
+  SmallVector<OpAsmParser::OperandType, 1> offsetInfo;
+  SmallVector<OpAsmParser::OperandType, 4> sizesInfo;
+  auto indexType = parser.getBuilder().getIndexType();
+  Type srcType, dstType;
+  return failure(
+      parser.parseOperand(srcInfo) ||
+      parser.parseOperandList(offsetInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(sizesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(srcType) ||
+      parser.resolveOperand(srcInfo, srcType, result.operands) ||
+      parser.resolveOperands(offsetInfo, indexType, result.operands) ||
+      parser.resolveOperands(sizesInfo, indexType, result.operands) ||
+      parser.parseKeywordType("to", dstType) ||
+      parser.addTypeToList(dstType, result.types));
+}
+
+static void print(OpAsmPrinter &p, ViewOp op) {
+  p << op.getOperationName() << ' ' << *op.getOperand(0) << '[';
+  auto *dynamicOffset = op.getDynamicOffset();
+  if (dynamicOffset != nullptr)
+    p.printOperand(dynamicOffset);
+  p << "][";
+  p.printOperands(op.getDynamicSizes());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getOperand(0)->getType() << " to " << op.getType();
+}
+
+Value *ViewOp::getDynamicOffset() {
+  int64_t offset;
+  llvm::SmallVector<int64_t, 4> strides;
+  auto result =
+      succeeded(mlir::getStridesAndOffset(getType(), strides, offset));
+  assert(result);
+  if (result && offset == MemRefType::getDynamicStrideOrOffset())
+    return getOperand(1);
+  return nullptr;
+}
+
+static LogicalResult verify(ViewOp op) {
+  auto baseType = op.getOperand(0)->getType().cast<MemRefType>();
+  auto viewType = op.getResult()->getType().cast<MemRefType>();
+
+  // The base memref should have identity layout map (or none).
+  if (baseType.getAffineMaps().size() > 1 ||
+      (baseType.getAffineMaps().size() == 1 &&
+       !baseType.getAffineMaps()[0].isIdentity()))
+    return op.emitError("unsupported map for base memref type ") << baseType;
+
+  // The base memref and the view memref should be in the same memory space.
+  if (baseType.getMemorySpace() != viewType.getMemorySpace())
+    return op.emitError("different memory spaces specified for base memref "
+                        "type ")
+           << baseType << " and view memref type " << viewType;
+
+  // Verify that the result memref type has a strided layout map. is strided
+  int64_t offset;
+  llvm::SmallVector<int64_t, 4> strides;
+  if (failed(getStridesAndOffset(viewType, strides, offset)))
+    return op.emitError("result type ") << viewType << " is not strided";
+
+  // Verify that we have the correct number of operands for the result type.
+  unsigned memrefOperandCount = 1;
+  unsigned numDynamicDims = viewType.getNumDynamicDims();
+  unsigned dynamicOffsetCount =
+      offset == MemRefType::getDynamicStrideOrOffset() ? 1 : 0;
+  if (op.getNumOperands() !=
+      memrefOperandCount + numDynamicDims + dynamicOffsetCount)
+    return op.emitError("incorrect number of operands for type ") << viewType;
+
+  // Verify dynamic strides symbols were added to correct dimensions based
+  // on dynamic sizes.
+  ArrayRef<int64_t> viewShape = viewType.getShape();
+  unsigned viewRank = viewType.getRank();
+  assert(viewRank == strides.size());
+  bool dynamicStrides = false;
+  for (int i = viewRank - 2; i >= 0; --i) {
+    // If size at dim 'i + 1' is dynamic, set the 'dynamicStrides' flag.
+    if (ShapedType::isDynamic(viewShape[i + 1]))
+      dynamicStrides = true;
+    // If stride at dim 'i' is not dynamic, return error.
+    if (dynamicStrides && strides[i] != MemRefType::getDynamicStrideOrOffset())
+      return op.emitError("incorrect dynamic strides in view memref type ")
+             << viewType;
+  }
+
+  return success();
+}
+
+namespace {
+
+struct ViewOpShapeFolder : public OpRewritePattern<ViewOp> {
+  using OpRewritePattern<ViewOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(ViewOp viewOp,
+                                     PatternRewriter &rewriter) const override {
+    // Return if none of the operands are constants.
+    if (llvm::none_of(viewOp.getOperands(), [](Value *operand) {
+          return matchPattern(operand, m_ConstantIndex());
+        }))
+      return matchFailure();
+
+    // Get result memref type.
+    auto memrefType = viewOp.getType();
+    if (memrefType.getAffineMaps().size() != 1)
+      return matchFailure();
+    auto map = memrefType.getAffineMaps()[0];
+
+    // Get offset from old memref view type 'memRefType'.
+    int64_t oldOffset;
+    llvm::SmallVector<int64_t, 4> oldStrides;
+    if (failed(getStridesAndOffset(memrefType, oldStrides, oldOffset)))
+      return matchFailure();
+
+    SmallVector<Value *, 4> newOperands;
+    SmallVector<Value *, 4> droppedOperands;
+
+    // Fold dynamic offset operand if it is produced by a constant.
+    auto *dynamicOffset = viewOp.getDynamicOffset();
+    int64_t newOffset = oldOffset;
+    unsigned dynamicOffsetOperandCount = 0;
+    if (dynamicOffset != nullptr) {
+      auto *defOp = dynamicOffset->getDefiningOp();
+      if (auto constantIndexOp = dyn_cast_or_null<ConstantIndexOp>(defOp)) {
+        // Dynamic offset will be folded into the map.
+        newOffset = constantIndexOp.getValue();
+        droppedOperands.push_back(dynamicOffset);
+      } else {
+        // Unable to fold dynamic offset. Add it to 'newOperands' list.
+        newOperands.push_back(dynamicOffset);
+        dynamicOffsetOperandCount = 1;
+      }
+    }
+
+    // Fold any dynamic dim operands which are produced by a constant.
+    SmallVector<int64_t, 4> newShapeConstants;
+    newShapeConstants.reserve(memrefType.getRank());
+
+    unsigned dynamicDimPos = viewOp.getDynamicSizesOperandStart();
+    unsigned rank = memrefType.getRank();
+    for (unsigned dim = 0, e = rank; dim < e; ++dim) {
+      int64_t dimSize = memrefType.getDimSize(dim);
+      // If this is already static dimension, keep it.
+      if (!ShapedType::isDynamic(dimSize)) {
+        newShapeConstants.push_back(dimSize);
+        continue;
+      }
+      auto *defOp = viewOp.getOperand(dynamicDimPos)->getDefiningOp();
+      if (auto constantIndexOp = dyn_cast_or_null<ConstantIndexOp>(defOp)) {
+        // Dynamic shape dimension will be folded.
+        newShapeConstants.push_back(constantIndexOp.getValue());
+        // Record to check for zero uses later below.
+        droppedOperands.push_back(constantIndexOp);
+      } else {
+        // Dynamic shape dimension not folded; copy operand from old memref.
+        newShapeConstants.push_back(dimSize);
+        newOperands.push_back(viewOp.getOperand(dynamicDimPos));
+      }
+      dynamicDimPos++;
+    }
+
+    // Compute new strides based on 'newShapeConstants'.
+    SmallVector<int64_t, 4> newStrides(rank);
+    newStrides[rank - 1] = 1;
+    bool dynamicStrides = false;
+    for (int i = rank - 2; i >= 0; --i) {
+      if (ShapedType::isDynamic(newShapeConstants[i + 1]))
+        dynamicStrides = true;
+      if (dynamicStrides)
+        newStrides[i] = MemRefType::getDynamicStrideOrOffset();
+      else
+        newStrides[i] = newShapeConstants[i + 1] * newStrides[i + 1];
+    }
+
+    // Regenerate strided layout map with 'newStrides' and 'newOffset'.
+    map = makeStridedLinearLayoutMap(newStrides, newOffset,
+                                     rewriter.getContext());
+
+    // Create new memref type with constant folded dims and/or offset/strides.
+    auto newMemRefType =
+        MemRefType::get(newShapeConstants, memrefType.getElementType(), {map},
+                        memrefType.getMemorySpace());
+    assert(static_cast<int64_t>(newOperands.size()) ==
+           dynamicOffsetOperandCount + newMemRefType.getNumDynamicDims());
+
+    // Create new ViewOp.
+    auto newShapeCastOp = rewriter.create<ViewOp>(
+        viewOp.getLoc(), newMemRefType, viewOp.getOperand(0), newOperands);
+    // Insert a cast so we have the same type as the old memref type.
+    rewriter.replaceOpWithNewOp<MemRefCastOp>(droppedOperands, viewOp,
+                                              newShapeCastOp, viewOp.getType());
+    return matchSuccess();
+  }
+};
+
+} // end anonymous namespace
+
+void ViewOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                         MLIRContext *context) {
+  results.insert<ViewOpShapeFolder>(context);
 }
 
 //===----------------------------------------------------------------------===//

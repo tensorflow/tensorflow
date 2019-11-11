@@ -283,17 +283,29 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
 // definitions.
 void ModuleTranslation::convertGlobals() {
   for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
-    llvm::Constant *cst;
-    llvm::Type *type;
-    // String attributes are treated separately because they cannot appear as
-    // in-function constants and are thus not supported by getLLVMConstant.
-    if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
-      cst = llvm::ConstantDataArray::getString(
-          llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
-      type = cst->getType();
-    } else {
-      type = op.getType().getUnderlyingType();
-      cst = getLLVMConstant(type, op.getValueOrNull(), op.getLoc());
+    llvm::Type *type = op.getType().getUnderlyingType();
+    llvm::Constant *cst = llvm::UndefValue::get(type);
+    if (op.getValueOrNull()) {
+      // String attributes are treated separately because they cannot appear as
+      // in-function constants and are thus not supported by getLLVMConstant.
+      if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
+        cst = llvm::ConstantDataArray::getString(
+            llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
+        type = cst->getType();
+      } else {
+        cst = getLLVMConstant(type, op.getValueOrNull(), op.getLoc());
+      }
+    } else if (Block *initializer = op.getInitializerBlock()) {
+      llvm::IRBuilder<> builder(llvmModule->getContext());
+      for (auto &op : initializer->without_terminator()) {
+        if (failed(convertOperation(op, builder)) ||
+            !isa<llvm::Constant>(valueMapping.lookup(op.getResult(0)))) {
+          emitError(op.getLoc(), "unemittable constant value");
+          return;
+        }
+      }
+      ReturnOp ret = cast<ReturnOp>(initializer->getTerminator());
+      cst = cast<llvm::Constant>(valueMapping.lookup(ret.getOperand(0)));
     }
 
     auto addrSpace = op.addr_space().getLimitedValue();

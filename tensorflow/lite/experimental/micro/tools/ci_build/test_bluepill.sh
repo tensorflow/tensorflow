@@ -27,9 +27,11 @@ source tensorflow/lite/experimental/micro/tools/ci_build/helper_functions.sh
 
 readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile clean
 
+TARGET=bluepill
+
 # TODO(b/143715361): downloading first to allow for parallel builds.
-readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge third_party_downloads
+readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=${TARGET} third_party_downloads
 
 # TODO(b/143286954): Run all the tests once they pass.
-readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=bluepill kernel_add_test
+readable_run make -j8 -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=${TARGET} kernel_add_test
 

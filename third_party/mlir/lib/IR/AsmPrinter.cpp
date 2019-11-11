@@ -421,7 +421,8 @@ public:
 
 protected:
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                             ArrayRef<StringRef> elidedAttrs = {});
+                             ArrayRef<StringRef> elidedAttrs = {},
+                             bool withKeyword = false);
   void printTrailingLocation(Location loc);
   void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
@@ -1181,9 +1182,12 @@ void ModulePrinter::printAffineExprInternal(
 
     // Pretty print multiplication with -1.
     auto rhsConst = rhsExpr.dyn_cast<AffineConstantExpr>();
-    if (rhsConst && rhsConst.getValue() == -1) {
+    if (rhsConst && binOp.getKind() == AffineExprKind::Mul &&
+        rhsConst.getValue() == -1) {
       os << "-";
       printAffineExprInternal(lhsExpr, BindingStrength::Strong, printValueName);
+      if (enclosingTightness == BindingStrength::Strong)
+        os << ')';
       return;
     }
 
@@ -1327,26 +1331,25 @@ void ModulePrinter::printIntegerSet(IntegerSet set) {
 //===----------------------------------------------------------------------===//
 
 void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                                          ArrayRef<StringRef> elidedAttrs) {
+                                          ArrayRef<StringRef> elidedAttrs,
+                                          bool withKeyword) {
   // If there are no attributes, then there is nothing to be done.
   if (attrs.empty())
     return;
 
   // Filter out any attributes that shouldn't be included.
-  SmallVector<NamedAttribute, 8> filteredAttrs;
-  for (auto attr : attrs) {
-    // If the caller has requested that this attribute be ignored, then drop it.
-    if (llvm::any_of(elidedAttrs,
-                     [&](StringRef elided) { return attr.first.is(elided); }))
-      continue;
-
-    // Otherwise add it to our filteredAttrs list.
-    filteredAttrs.push_back(attr);
-  }
+  SmallVector<NamedAttribute, 8> filteredAttrs(
+      llvm::make_filter_range(attrs, [&](NamedAttribute attr) {
+        return !llvm::is_contained(elidedAttrs, attr.first.strref());
+      }));
 
   // If there are no attributes left to print after filtering, then we're done.
   if (filteredAttrs.empty())
     return;
+
+  // Print the 'attributes' keyword if necessary.
+  if (withKeyword)
+    os << " attributes";
 
   // Otherwise, print them all out in braces.
   os << " {";
@@ -1389,8 +1392,14 @@ public:
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
-    return ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
-  };
+    ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
+  }
+  void printOptionalAttrDictWithKeyword(
+      ArrayRef<NamedAttribute> attrs,
+      ArrayRef<StringRef> elidedAttrs = {}) override {
+    ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs,
+                                         /*withKeyword=*/true);
+  }
 
   enum { nameSentinel = ~0U };
 

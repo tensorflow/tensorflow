@@ -13,6 +13,36 @@ exports_files(glob([
 ]))
 
 cc_library(
+    name = "add_intermediate_tensors",
+    srcs = ["add_intermediate_tensors.cc"],
+    hdrs = ["add_intermediate_tensors.h"],
+    deps = [
+        ":operator_property",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "add_intermediate_tensors_test",
+    srcs = ["add_intermediate_tensors_test.cc"],
+    tags = [
+        "tflite_not_portable_android",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":add_intermediate_tensors",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/memory",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
     name = "quantization_utils",
     srcs = ["quantization_utils.cc"],
     hdrs = ["quantization_utils.h"],
