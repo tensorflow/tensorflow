@@ -58,3 +58,46 @@ func @constval() {
   %4 = constant 1 : index
   return
 }
+
+// CHECK-LABEL: @cmpiop
+func @cmpiop(%arg0 : i32, %arg1 : i32) {
+  // CHECK: spv.IEqual
+  %0 = cmpi "eq", %arg0, %arg1 : i32
+  // CHECK: spv.INotEqual
+  %1 = cmpi "ne", %arg0, %arg1 : i32
+  // CHECK: spv.SLessThan
+  %2 = cmpi "slt", %arg0, %arg1 : i32
+  // CHECK: spv.SLessThanEqual
+  %3 = cmpi "sle", %arg0, %arg1 : i32
+  // CHECK: spv.SGreaterThan
+  %4 = cmpi "sgt", %arg0, %arg1 : i32
+  // CHECK: spv.SGreaterThanEqual
+  %5 = cmpi "sge", %arg0, %arg1 : i32
+  return
+}
+
+// CHECK-LABEL: @select
+func @selectOp(%arg0 : i32, %arg1 : i32) {
+  %0 = cmpi "sle", %arg0, %arg1 : i32
+  // CHECK: spv.Select
+  %1 = select %0, %arg0, %arg1 : i32
+  return
+}
+
+// CHECK-LABEL: @div_rem
+func @div_rem(%arg0 : i32, %arg1 : i32) {
+  // CHECK: spv.SDiv
+  %0 = divis %arg0, %arg1 : i32
+  // CHECK: spv.SMod
+  %1 = remis %arg0, %arg1 : i32
+  return
+}
+
+// CHECK-LABEL: @add_sub
+func @add_sub(%arg0 : i32, %arg1 : i32) {
+  // CHECK: spv.IAdd
+  %0 = addi %arg0, %arg1 : i32
+  // CHECK: spv.ISub
+  %1 = subi %arg0, %arg1 : i32
+  return
+}
