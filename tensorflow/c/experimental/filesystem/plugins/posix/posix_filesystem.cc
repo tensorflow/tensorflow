@@ -46,6 +46,44 @@ static void Cleanup(TF_RandomAccessFile* file) {
   delete posix_file;
 }
 
+static int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
+                    char* buffer, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+  char* dst = buffer;
+  int64_t read = 0;
+
+  while (n > 0) {
+    // Some platforms, notably macs, throw `EINVAL` if `pread` is asked to read
+    // more than fits in a 32-bit integer.
+    size_t requested_read_length;
+    if (n > INT32_MAX)
+      requested_read_length = INT32_MAX;
+    else
+      requested_read_length = n;
+
+    // `pread` returns a `ssize_t` on POSIX, but due to interface being
+    // cross-platform, return type of `Read` is `int64_t`.
+    int64_t r = int64_t{pread(posix_file->fd, dst, requested_read_length,
+                              static_cast<off_t>(offset))};
+    if (r > 0) {
+      dst += r;
+      offset += static_cast<uint64_t>(r);
+      n -= r;  // safe as 0 < r <= n so n will never underflow
+      read += r;
+    } else if (r == 0) {
+      TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
+      break;
+    } else if (errno == EINTR || errno == EAGAIN) {
+      // Retry
+    } else {
+      TF_SetStatusFromIOError(status, errno, posix_file->filename);
+      break;
+    }
+  }
+
+  return read;
+}
+
 }  // namespace tf_random_access_file
 
 // SECTION 2. Implementation for `TF_WritableFile`
@@ -59,9 +97,55 @@ typedef struct PosixFile {
 
 static void Cleanup(TF_WritableFile* file) {
   auto posix_file = static_cast<PosixFile*>(file->plugin_file);
-  if (posix_file->handle != nullptr) fclose(posix_file->handle);
   free(const_cast<char*>(posix_file->filename));
   delete posix_file;
+}
+
+static void Append(const TF_WritableFile* file, const char* buffer, size_t n,
+                   TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  size_t r = fwrite(buffer, 1, n, posix_file->handle);
+  if (r != n)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static int64_t Tell(const TF_WritableFile* file, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  // POSIX's `ftell` returns `long`, do a manual cast.
+  int64_t position = int64_t{ftell(posix_file->handle)};
+  if (position < 0)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+  else
+    TF_SetStatus(status, TF_OK, "");
+
+  return position;
+}
+
+static void Flush(const TF_WritableFile* file, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  TF_SetStatus(status, TF_OK, "");
+  if (fflush(posix_file->handle) != 0)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+}
+
+static void Sync(const TF_WritableFile* file, TF_Status* status) {
+  // For historical reasons, this does the same as `Flush` at the moment.
+  // TODO(b/144055243): This should use `fsync`/`sync`.
+  Flush(file, status);
+}
+
+static void Close(const TF_WritableFile* file, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  if (fclose(posix_file->handle) != 0)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+  else
+    TF_SetStatus(status, TF_OK, "");
 }
 
 }  // namespace tf_writable_file
@@ -135,8 +219,14 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
 
 void TF_InitPlugin(TF_Status* status) {
   TF_RandomAccessFileOps random_access_file_ops = {
-      tf_random_access_file::Cleanup, nullptr};
-  TF_WritableFileOps writable_file_ops = {tf_writable_file::Cleanup, nullptr};
+      tf_random_access_file::Cleanup,
+      tf_random_access_file::Read,
+  };
+  TF_WritableFileOps writable_file_ops = {
+      tf_writable_file::Cleanup, tf_writable_file::Append,
+      tf_writable_file::Tell,    tf_writable_file::Flush,
+      tf_writable_file::Sync,    tf_writable_file::Close,
+  };
   TF_FilesystemOps filesystem_ops = {
       tf_posix_filesystem::Init,
       tf_posix_filesystem::Cleanup,

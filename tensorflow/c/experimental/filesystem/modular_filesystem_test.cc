@@ -356,6 +356,144 @@ TEST_P(ModularFileSystemTest, TestCreateDirPathIsInvalid) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
+TEST_P(ModularFileSystemTest, TestAppendAndTell) {
+  const std::string filename = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filename, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  int64 position;
+  status = file->Tell(&position);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Tell() not supported";
+  EXPECT_EQ(position, 0);
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Tell(&position);
+  EXPECT_EQ(status.code(), Code::OK);
+  EXPECT_EQ(position, test_data.size());
+}
+
+TEST_P(ModularFileSystemTest, TestClose) {
+  const std::string filename = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filename, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+}
+
+TEST_P(ModularFileSystemTest, TestRoundTrip) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Flush();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  std::unique_ptr<RandomAccessFile> read_file;
+  status = env_->NewRandomAccessFile(filepath, &read_file);
+  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+
+  char scratch[64 /* big enough to accomodate test_data */] = {0};
+  StringPiece result;
+  status = read_file->Read(0, test_data.size(), &result, scratch);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(test_data, result);
+}
+
+TEST_P(ModularFileSystemTest, TestRoundTripWithAppendableFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Flush();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  std::unique_ptr<WritableFile> same_file;
+  status = env_->NewAppendableFile(filepath, &same_file);
+  if (!status.ok()) GTEST_SKIP() << "NewAppendableFile() not supported";
+
+  const std::string more_test_data("qwer");
+  EXPECT_EQ(same_file->Append(more_test_data).code(), Code::OK);
+  EXPECT_EQ(same_file->Flush().code(), Code::OK);
+  EXPECT_EQ(same_file->Close().code(), Code::OK);
+
+  std::unique_ptr<RandomAccessFile> read_file;
+  status = env_->NewRandomAccessFile(filepath, &read_file);
+  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+
+  char scratch[64 /* big enough for test_data and more_test_data */] = {0};
+  StringPiece result;
+  status = read_file->Read(0, test_data.size() + more_test_data.size(), &result,
+                           scratch);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(test_data + more_test_data, result);
+  EXPECT_EQ(
+      read_file->Read(test_data.size(), more_test_data.size(), &result, scratch)
+          .code(),
+      Code::OK);
+  EXPECT_EQ(more_test_data, result);
+}
+
+TEST_P(ModularFileSystemTest, TestReadOutOfRange) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Flush();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  std::unique_ptr<RandomAccessFile> read_file;
+  status = env_->NewRandomAccessFile(filepath, &read_file);
+  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+
+  char scratch[64 /* must be bigger than test_data */] = {0};
+  StringPiece result;
+  // read at least 1 byte more than test_data
+  status = read_file->Read(0, test_data.size() + 1, &result, scratch);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OUT_OF_RANGE);
+}
+
 // The URI schemes that need to be tested are provided by the user via flags
 // (or, if none is supplied, all existing schemes are used). As a scheme can
 // become available after a shared object with a filesystem implementation is

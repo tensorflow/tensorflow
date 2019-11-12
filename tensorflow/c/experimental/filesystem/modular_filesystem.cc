@@ -210,51 +210,71 @@ void ModularFileSystem::FlushCaches() {
 
 Status ModularRandomAccessFile::Read(uint64 offset, size_t n,
                                      StringPiece* result, char* scratch) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->read == nullptr)
+    return errors::Unimplemented(
+        tensorflow::strings::StrCat("Read() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  int64_t read =
+      ops_->read(file_.get(), offset, n, scratch, plugin_status.get());
+  if (read > 0) *result = StringPiece(scratch, read);
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularRandomAccessFile::Name(StringPiece* result) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  *result = filename_;
+  return Status::OK();
 }
 
 Status ModularWritableFile::Append(StringPiece data) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->append == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Append() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->append(file_.get(), data.data(), data.size(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Close() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->close == nullptr)
+    return errors::Unimplemented(
+        tensorflow::strings::StrCat("Close() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->close(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Flush() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->flush == nullptr) return Status::OK();
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->flush(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Sync() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->sync == nullptr) return Flush();
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->sync(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Name(StringPiece* result) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  *result = filename_;
+  return Status::OK();
 }
 
 Status ModularWritableFile::Tell(int64* position) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->tell == nullptr)
+    return errors::Unimplemented(
+        tensorflow::strings::StrCat("Tell() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  *position = ops_->tell(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 }  // namespace tensorflow
