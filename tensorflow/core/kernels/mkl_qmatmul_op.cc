@@ -614,7 +614,7 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndReluAndRequantize")
                             .TypeConstraint<quint8>("Toutput"),
                         NoOp);
 
-// Register NoOp kernel for QuantizedIPWithBiasAndRequantize
+// Register NoOp kernel for QuantizedMatMulWithBiasAndRequantize
 // to get a python interface. This kernel will be replaced by an MKL kernel
 // during graph-optimization pass.
 REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRequantize")
