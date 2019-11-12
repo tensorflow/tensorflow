@@ -230,11 +230,9 @@ class IteratorStateVariant {
     if (data.type_name() != TypeName()) {
       return false;
     }
-    std::unique_ptr<VariantTensorData> tensor_data =
-        absl::make_unique<VariantTensorData>();
+    auto tensor_data = absl::make_unique<VariantTensorData>();
     std::swap(*tensor_data, data);
-    std::unique_ptr<VariantTensorDataReader> reader =
-        absl::make_unique<VariantTensorDataReader>(tensor_data.get());
+    auto reader = absl::make_unique<VariantTensorDataReader>(tensor_data.get());
     data_ = std::move(tensor_data);
     reader_ = std::move(reader);
     return true;

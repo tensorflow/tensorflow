@@ -471,7 +471,7 @@ class SerializationContext {
     bool serialize_data_tensors = true;
   };
 
-  explicit SerializationContext(Params params) : params_(std::move(params)) {}
+  explicit SerializationContext(Params params) : params_(params) {}
 
   std::vector<std::pair<string, Tensor>>* input_list() {
     return params_.input_list;
@@ -956,11 +956,6 @@ class DatasetIterator : public DatasetBaseIterator {
   // The dataset from which this iterator was created.
   const DatasetType* dataset() const { return typed_dataset_; }
 
- protected:
-  virtual Status GetNextInternal(IteratorContext* ctx,
-                                 std::vector<Tensor>* out_tensors,
-                                 bool* end_of_sequence) = 0;
-
  private:
   const DatasetType* const typed_dataset_;  // Not owned.
 };
@@ -998,7 +993,7 @@ Status ParseVectorArgument(OpKernelContext* ctx,
 // graph execution engine.
 class DatasetOpKernel : public OpKernel {
  public:
-  DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit DatasetOpKernel(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
   void Compute(OpKernelContext* ctx) final;
 
@@ -1016,7 +1011,8 @@ class DatasetOpKernel : public OpKernel {
 // TensorFlow graph execution engine.
 class UnaryDatasetOpKernel : public DatasetOpKernel {
  public:
-  UnaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+  explicit UnaryDatasetOpKernel(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx) {}
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
@@ -1028,7 +1024,8 @@ class UnaryDatasetOpKernel : public DatasetOpKernel {
 // TensorFlow graph execution engine.
 class BinaryDatasetOpKernel : public DatasetOpKernel {
  public:
-  BinaryDatasetOpKernel(OpKernelConstruction* ctx) : DatasetOpKernel(ctx) {}
+  explicit BinaryDatasetOpKernel(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx) {}
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) final;
