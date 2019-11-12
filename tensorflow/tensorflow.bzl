@@ -20,7 +20,7 @@ load(
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_library",
+    "cuda_default_copts",
     "if_cuda",
 )
 load(
@@ -1126,21 +1126,20 @@ def tf_gpu_only_cc_test(
         kernels = [],
         linkopts = []):
     tags = tags + tf_gpu_tests_tags()
-
-    gpu_lib_name = "%s%s" % (name, "_gpu_lib")
-    tf_gpu_kernel_library(
-        name = gpu_lib_name,
-        srcs = srcs + tf_binary_additional_srcs(),
-        deps = deps,
-        testonly = 1,
-    )
     native.cc_test(
         name = "%s%s" % (name, "_gpu"),
+        srcs = srcs + tf_binary_additional_srcs(),
         size = size,
         args = args,
+        copts = _cuda_copts() + rocm_copts() + tf_copts(),
         features = if_cuda(["-use_header_modules"]),
         data = data + tf_binary_dynamic_kernel_dsos(),
-        deps = [":" + gpu_lib_name],
+        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_cuda_is_configured([
+            clean_dep("//tensorflow/core:cuda"),
+            clean_dep("//tensorflow/core:gpu_lib"),
+        ]) + if_rocm_is_configured([
+            clean_dep("//tensorflow/core:gpu_lib"),
+        ]),
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
         linkstatic = linkstatic or select({
             # cc_tests with ".so"s in srcs incorrectly link on Darwin
@@ -1294,7 +1293,7 @@ def _cuda_copts(opts = []):
         compiler.  If we're not doing CUDA compilation, returns an empty list.
 
         """
-    return select({
+    return cuda_default_copts() + select({
         "//conditions:default": [],
         "@local_config_cuda//cuda:using_nvcc": ([
             "-nvcc_options=relaxed-constexpr",
@@ -1324,7 +1323,7 @@ def tf_gpu_kernel_library(
     copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts(opts = cuda_copts)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
-    cuda_library(
+    native.cc_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
@@ -1792,11 +1791,11 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
 
     if gpu_srcs:
         basename = name.split(".")[0]
-        cuda_library(
+        native.cc_library(
             name = basename + "_gpu",
             srcs = gpu_srcs,
-            copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
-                    if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
+            copts = copts + _cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
+            features = if_cuda(["-use_header_modules"]),
             deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
             **kwargs
         )
