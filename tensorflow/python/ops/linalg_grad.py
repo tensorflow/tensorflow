@@ -635,7 +635,7 @@ def _MatrixTriangularSolveGrad(op, grad):
 
 # To avoid nan in cases with degenerate eigenvalues or
 # degenerate/zero singular values in calculations of
-# f and s_inv_mat, we introduce a Lorentz brodening.
+# f and s_inv_mat, we introduce a Lorentz broadening.
 def _SafeReciprocal(x, epsilon=1E-20):
   return x * math_ops.reciprocal(x * x + epsilon)
 
