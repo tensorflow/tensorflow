@@ -330,8 +330,8 @@ string SanitizeFileName(string file_name) {
 // [2] T. J. Dekker, A floating point technique for extending the available
 //     precision, Numerische Mathematik, vol. 18, pp. 224–242, 1971.
 std::pair<float, float> SplitF64ToF32(double x) {
-  // Early return if x is equal to infinity or -infinity.
-  if (std::isinf(x)) {
+  // Early return if x is an infinity or NaN.
+  if (!std::isfinite(x)) {
     return std::make_pair(static_cast<float>(x), 0.0f);
   }
 
