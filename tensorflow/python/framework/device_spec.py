@@ -85,7 +85,6 @@ class DeviceSpecV2(object):
 
   ```python
   gpu0_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
-  
   with tf.device(DeviceSpec(job="train").to_string()):
     with tf.device(gpu0_spec.to_string()):
       # Nodes created here will be assigned to /job:ps/device:GPU:0.
