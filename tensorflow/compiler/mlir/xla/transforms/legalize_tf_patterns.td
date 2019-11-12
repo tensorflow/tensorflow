@@ -159,6 +159,16 @@ def : Pat<(TF_FloorModOp $l, $r),
          $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
 //===----------------------------------------------------------------------===//
+// BroadcastTo op patterns.
+//===----------------------------------------------------------------------===//
+
+// input and result needs to ranked for computation of the broadcast dimensions.
+def : Pat<(TF_BroadcastToOp:$result AnyRankedTensor:$input, $shape),
+          (HLO_BroadcastInDimOp $input,
+           (BinBroadcastDimensions $input, $result)),
+           [(AnyRankedTensor $result)]>;
+
+//===----------------------------------------------------------------------===//
 // Logical binary op patterns.
 //===----------------------------------------------------------------------===//
 
