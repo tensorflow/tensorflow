@@ -91,7 +91,7 @@ bool BoolAttr::getValue() const { return getImpl()->value; }
 /// NamedAttributes.
 static int compareNamedAttributes(const NamedAttribute *lhs,
                                   const NamedAttribute *rhs) {
-  return lhs->first.str().compare(rhs->first.str());
+  return lhs->first.strref().compare(rhs->first.strref());
 }
 
 DictionaryAttr DictionaryAttr::get(ArrayRef<NamedAttribute> value,
@@ -155,10 +155,12 @@ ArrayRef<NamedAttribute> DictionaryAttr::getValue() const {
 
 /// Return the specified attribute if present, null otherwise.
 Attribute DictionaryAttr::get(StringRef name) const {
-  for (auto elt : getValue())
-    if (elt.first.is(name))
-      return elt.second;
-  return nullptr;
+  ArrayRef<NamedAttribute> values = getValue();
+  auto compare = [](NamedAttribute attr, StringRef name) {
+    return attr.first.strref() < name;
+  };
+  auto it = llvm::lower_bound(values, name, compare);
+  return it != values.end() && it->first.is(name) ? it->second : Attribute();
 }
 Attribute DictionaryAttr::get(Identifier name) const {
   for (auto elt : getValue())
