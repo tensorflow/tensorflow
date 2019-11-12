@@ -184,7 +184,9 @@ CallGraphNode *CallGraph::resolveCallable(CallInterfaceCallable callable,
   // Get the callee operation from the callable.
   Operation *callee;
   if (auto symbolRef = callable.dyn_cast<SymbolRefAttr>())
-    callee = SymbolTable::lookupNearestSymbolFrom(from, symbolRef.getValue());
+    // TODO(riverriddle) Support nested references.
+    callee = SymbolTable::lookupNearestSymbolFrom(from,
+                                                  symbolRef.getRootReference());
   else
     callee = callable.get<Value *>()->getDefiningOp();
 

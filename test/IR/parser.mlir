@@ -1112,3 +1112,7 @@ func @"\"_string_symbol_reference\""() {
   "foo.symbol_reference"() {ref = @"\"_string_symbol_reference\""} : () -> ()
   return
 }
+
+// CHECK-LABEL: func @nested_reference
+// CHECK-NEXT: ref = @some_symbol::@some_nested_symbol
+func @nested_reference() attributes {test.ref = @some_symbol::@some_nested_symbol }

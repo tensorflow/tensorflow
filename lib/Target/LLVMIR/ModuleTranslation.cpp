@@ -52,7 +52,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
     return llvm::ConstantInt::get(llvmType, intAttr.getValue());
   if (auto floatAttr = attr.dyn_cast<FloatAttr>())
     return llvm::ConstantFP::get(llvmType, floatAttr.getValue());
-  if (auto funcAttr = attr.dyn_cast<SymbolRefAttr>())
+  if (auto funcAttr = attr.dyn_cast<FlatSymbolRefAttr>())
     return functionMapping.lookup(funcAttr.getValue());
   if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
     auto *sequentialType = cast<llvm::SequentialType>(llvmType);
@@ -194,7 +194,7 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
   auto convertCall = [this, &builder](Operation &op) -> llvm::Value * {
     auto operands = lookupValues(op.getOperands());
     ArrayRef<llvm::Value *> operandsRef(operands);
-    if (auto attr = op.getAttrOfType<SymbolRefAttr>("callee")) {
+    if (auto attr = op.getAttrOfType<FlatSymbolRefAttr>("callee")) {
       return builder.CreateCall(functionMapping.lookup(attr.getValue()),
                                 operandsRef);
     } else {

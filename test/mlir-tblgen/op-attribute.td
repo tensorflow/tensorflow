@@ -72,7 +72,7 @@ def AOp : NS_Op<"a_op", []> {
 // CHECK:      auto tblgen_cAttr = this->getAttr("cAttr");
 // CHECK-NEXT: if (tblgen_cAttr) {
 // CHECK-NEXT:   if (!((some-condition))) return emitOpError("attribute 'cAttr' failed to satisfy constraint: some attribute kind");
- 
+
 def SomeTypeAttr : TypeAttrBase<"SomeType", "some type attribute">;
 
 def BOp : NS_Op<"b_op", []> {
@@ -85,7 +85,7 @@ def BOp : NS_Op<"b_op", []> {
     F64Attr:$f64_attr,
     StrAttr:$str_attr,
     ElementsAttr:$elements_attr,
-    SymbolRefAttr:$function_attr,
+    FlatSymbolRefAttr:$function_attr,
     SomeTypeAttr:$type_attr,
     ArrayAttr:$array_attr,
     TypedArrayAttrBase<SomeAttr, "SomeAttr array">:$some_attr_array,
@@ -122,7 +122,7 @@ def BOp : NS_Op<"b_op", []> {
 // CHECK: if (!(((tblgen_f64_attr.isa<FloatAttr>())) && ((tblgen_f64_attr.cast<FloatAttr>().getType().isF64()))))
 // CHECK: if (!((tblgen_str_attr.isa<StringAttr>())))
 // CHECK: if (!((tblgen_elements_attr.isa<ElementsAttr>())))
-// CHECK: if (!((tblgen_function_attr.isa<SymbolRefAttr>())))
+// CHECK: if (!((tblgen_function_attr.isa<FlatSymbolRefAttr>())))
 // CHECK: if (!(((tblgen_type_attr.isa<TypeAttr>())) && ((tblgen_type_attr.cast<TypeAttr>().getValue().isa<SomeType>()))))
 // CHECK: if (!((tblgen_array_attr.isa<ArrayAttr>())))
 // CHECK: if (!(((tblgen_some_attr_array.isa<ArrayAttr>())) && (llvm::all_of(tblgen_some_attr_array.cast<ArrayAttr>(), [](Attribute attr) { return (some-condition); }))))

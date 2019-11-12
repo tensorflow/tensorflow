@@ -250,7 +250,7 @@ def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$callee,
+    FlatSymbolRefAttr:$callee,
     Variadic<SPV_Type>:$arguments
   );
 

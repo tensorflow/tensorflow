@@ -239,14 +239,15 @@ def BranchOp : Std_Op<"br", [Terminator]> {
 def CallOp : Std_Op<"call", [CallOpInterface]> {
   let summary = "call operation";
   let description = [{
-    The "call" operation represents a direct call to a function.  The operands
-    and result types of the call must match the specified function type.  The
-    callee is encoded as a function attribute named "callee".
+    The "call" operation represents a direct call to a function that is within
+    the same symbol scope as the call.  The operands and result types of the
+    call must match the specified function type. The callee is encoded as a
+    function attribute named "callee".
 
       %2 = call @my_add(%0, %1) : (f32, f32) -> f32
   }];
 
-  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<

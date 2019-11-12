@@ -55,7 +55,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$variable
+    FlatSymbolRefAttr:$variable
   );
 
   let results = (outs
@@ -174,7 +174,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 
   let arguments = (ins
     SPV_ExecutionModelAttr:$execution_model,
-    SymbolRefAttr:$fn,
+    FlatSymbolRefAttr:$fn,
     SymbolRefArrayAttr:$interface
   );
 
@@ -237,7 +237,7 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
   let arguments = (ins
     TypeAttr:$type,
     StrAttr:$sym_name,
-    OptionalAttr<SymbolRefAttr>:$initializer
+    OptionalAttr<FlatSymbolRefAttr>:$initializer
   );
 
   let builders = [
@@ -394,7 +394,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$spec_const
+    FlatSymbolRefAttr:$spec_const
   );
 
   let results = (outs
