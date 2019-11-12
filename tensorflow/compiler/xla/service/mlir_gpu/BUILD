@@ -141,6 +141,7 @@ cc_library(
         "//tensorflow/compiler/mlir/xla:hlo",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_affine",
         "//tensorflow/compiler/mlir/xla:lhlo_legalize_to_linalg",
+        "//tensorflow/compiler/mlir/xla:xla_dialect_registration",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
