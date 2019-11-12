@@ -60,7 +60,8 @@ NCCL_LIB_PATHS = [
 APPLE_BAZEL_FILES = [
     'tensorflow/lite/experimental/ios/BUILD',
     'tensorflow/lite/experimental/objc/BUILD',
-    'tensorflow/lite/experimental/swift/BUILD'
+    'tensorflow/lite/experimental/swift/BUILD',
+    'tensorflow/lite/tools/benchmark/experimental/ios/BUILD'
 ]
 
 # List of files to move when building for iOS.
