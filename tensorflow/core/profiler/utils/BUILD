@@ -13,16 +13,6 @@ package_group(
 )
 
 cc_library(
-    name = "timespan",
-    hdrs = ["timespan.h"],
-    deps = [
-        ":time_utils",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
-    ],
-)
-
-cc_library(
     name = "event_span",
     srcs = ["event_span.cc"],
     hdrs = ["event_span.h"],
@@ -33,6 +23,25 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "math_utils",
+    hdrs = ["math_utils.h"],
+    visibility = [
+        "//perftools/accelerators/xprof/convert:__pkg__",
+        "//perftools/gputools/profiler/collector:__pkg__",
+    ],
+)
+
+cc_library(
+    name = "timespan",
+    hdrs = ["timespan.h"],
+    deps = [
+        ":time_utils",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
     ],
 )
 
