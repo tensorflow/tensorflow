@@ -425,7 +425,7 @@ class MultiDeviceIteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     specs = [
         tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.scalar)
+        tensor_spec.TensorSpec([], dtypes.variant)
     ]
     for _ in range(len(self._devices)):
       specs.append(iterator_ops.IteratorSpec(self._element_spec))
@@ -565,11 +565,11 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
           self._device_iterators.append(iterator)
           iterator_handles.append(iterator._iterator_resource)  # pylint: disable=protected-access
 
-    self._resource_deleter = MultiDeviceIteratorResourceDeleter(
-        multi_device_iterator=self._multi_device_iterator_resource,
-        iterators=iterator_handles,
-        device=self._source_device,
-        deleter=self._deleter)
+      self._resource_deleter = MultiDeviceIteratorResourceDeleter(
+          multi_device_iterator=self._multi_device_iterator_resource,
+          iterators=iterator_handles,
+          device=self._source_device,
+          deleter=self._deleter)
 
   def get_next(self, device=None):
     """Returns the next element given a `device`, else returns all in a list."""
