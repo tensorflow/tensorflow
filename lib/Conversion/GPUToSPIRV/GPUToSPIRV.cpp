@@ -241,8 +241,13 @@ void GPUToSPIRVPass::runOnModule() {
 
   ConversionTarget target(*context);
   target.addLegalDialect<spirv::SPIRVDialect>();
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp Op) {
-    return basicTypeConverter.isSignatureLegal(Op.getType());
+  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+    // TODO(ravishankarm) : Currently lowering does not support handling
+    // function conversion of non-kernel functions. This is to be added.
+
+    // For kernel functions, verify that the signature is void(void).
+    return gpu::GPUDialect::isKernel(op) && op.getNumResults() == 0 &&
+           op.getNumArguments() == 0;
   });
 
   if (failed(applyFullConversion(spirvModules, target, patterns,
