@@ -16,6 +16,7 @@ cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     deps = [
+        ":time_utils",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
     ],
@@ -42,6 +43,14 @@ tf_cc_test(
         ":timespan",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "time_utils",
+    hdrs = ["time_utils.h"],
+    deps = [
+        "//tensorflow/core/platform:types",
     ],
 )
 
