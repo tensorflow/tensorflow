@@ -244,5 +244,13 @@ bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
 }
 
+GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
+                                const SymbolTable &symbol_table) {
+  auto attr = func.getArgAttrOfType<SymbolRefAttr>(
+      arg_index, "tf_saved_model.bound_input");
+  if (!attr) return nullptr;
+  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
+}
+
 }  // namespace tf_saved_model
 }  // namespace mlir
