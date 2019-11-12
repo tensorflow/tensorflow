@@ -50,6 +50,7 @@ filegroup(
         ":permute_float",
         ":permute_uint8",
     ],
+    data = ["pc_conv.tflite"],
     visibility = ["//tensorflow:__subpackages__"],
 )
 
