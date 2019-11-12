@@ -53,7 +53,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
         ],
     }) + select({
@@ -228,7 +228,7 @@ tf_cuda_library(
             "//tensorflow/core:framework_internal",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
-            "//tensorflow/core:protos_all",
+            "//tensorflow/core:protos_all_cc",
         ],
     }) + select({
         "//tensorflow:with_xla_support": [

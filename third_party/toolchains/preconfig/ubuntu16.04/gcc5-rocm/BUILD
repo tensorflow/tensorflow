@@ -35,10 +35,12 @@ cc_toolchain_suite(
 
 cc_toolchain(
     name = "cc-compiler-local",
-    all_files = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
-    compiler_files = ":empty",
+    all_files = ":crosstool_wrapper_driver_is_not_gcc",
+    ar_files = ":crosstool_wrapper_driver_is_not_gcc",
+    as_files = ":crosstool_wrapper_driver_is_not_gcc",
+    compiler_files = ":crosstool_wrapper_driver_is_not_gcc",
     dwp_files = ":empty",
-    linker_files = "clang/bin/crosstool_wrapper_driver_is_not_gcc",
+    linker_files = ":crosstool_wrapper_driver_is_not_gcc",
     objcopy_files = ":empty",
     strip_files = ":empty",
     # To support linker flags that need to go to the start of command line
@@ -122,7 +124,7 @@ cc_toolchain_config(
         "-ffunction-sections",
         "-fdata-sections",
     ],
-    opt_link_flags = ["-Wl,--gc-sections"],
+    opt_link_flags = [],
     supports_start_end_lib = True,
     target_libc = "local",
     target_system_name = "local",

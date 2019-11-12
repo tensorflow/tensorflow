@@ -970,7 +970,7 @@ LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
   wordIndex++;
 
   // Initializer.
-  SymbolRefAttr initializer = nullptr;
+  FlatSymbolRefAttr initializer = nullptr;
   if (wordIndex < operands.size()) {
     auto initializerOp = getGlobalVariable(operands[wordIndex]);
     if (!initializerOp) {

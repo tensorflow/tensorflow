@@ -273,7 +273,7 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$fn,
+    FlatSymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
     I32ArrayAttr:$values
   );

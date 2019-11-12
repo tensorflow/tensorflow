@@ -658,7 +658,7 @@ void spirv::AddressOfOp::build(Builder *builder, OperationState &state,
 
 static ParseResult parseAddressOfOp(OpAsmParser &parser,
                                     OperationState &state) {
-  SymbolRefAttr varRefAttr;
+  FlatSymbolRefAttr varRefAttr;
   Type type;
   if (parser.parseAttribute(varRefAttr, Type(), kVariableAttrName,
                             state.attributes) ||
@@ -1088,7 +1088,7 @@ static ParseResult parseEntryPointOp(OpAsmParser &parser,
   SmallVector<Type, 0> idTypes;
   SmallVector<Attribute, 4> interfaceVars;
 
-  SymbolRefAttr fn;
+  FlatSymbolRefAttr fn;
   if (parseEnumAttribute(execModel, parser, state) ||
       parser.parseAttribute(fn, Type(), kFnNameAttrName, state.attributes)) {
     return failure();
@@ -1099,7 +1099,7 @@ static ParseResult parseEntryPointOp(OpAsmParser &parser,
     do {
       // The name of the interface variable attribute isnt important
       auto attrName = "var_symbol";
-      SymbolRefAttr var;
+      FlatSymbolRefAttr var;
       SmallVector<NamedAttribute, 1> attrs;
       if (parser.parseAttribute(var, Type(), attrName, attrs)) {
         return failure();
@@ -1186,7 +1186,7 @@ static void print(spirv::ExecutionModeOp execModeOp, OpAsmPrinter &printer) {
 
 static ParseResult parseFunctionCallOp(OpAsmParser &parser,
                                        OperationState &state) {
-  SymbolRefAttr calleeAttr;
+  FlatSymbolRefAttr calleeAttr;
   FunctionType type;
   SmallVector<OpAsmParser::OperandType, 4> operands;
   auto loc = parser.getNameLoc();
@@ -1305,7 +1305,7 @@ static ParseResult parseGlobalVariableOp(OpAsmParser &parser,
 
   // Parse optional initializer
   if (succeeded(parser.parseOptionalKeyword(kInitializerAttrName))) {
-    SymbolRefAttr initSymbol;
+    FlatSymbolRefAttr initSymbol;
     if (parser.parseLParen() ||
         parser.parseAttribute(initSymbol, Type(), kInitializerAttrName,
                               state.attributes) ||
@@ -1361,7 +1361,8 @@ static LogicalResult verify(spirv::GlobalVariableOp varOp) {
   if (varOp.storageClass() == spirv::StorageClass::Generic)
     return varOp.emitOpError("storage class cannot be 'Generic'");
 
-  if (auto init = varOp.getAttrOfType<SymbolRefAttr>(kInitializerAttrName)) {
+  if (auto init =
+          varOp.getAttrOfType<FlatSymbolRefAttr>(kInitializerAttrName)) {
     auto moduleOp = varOp.getParentOfType<spirv::ModuleOp>();
     auto *initOp = moduleOp.lookupSymbol(init.getValue());
     // TODO: Currently only variable initialization with specialization
@@ -1713,7 +1714,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
         }
         if (auto interface = entryPointOp.interface()) {
           for (Attribute varRef : interface) {
-            auto varSymRef = varRef.dyn_cast<SymbolRefAttr>();
+            auto varSymRef = varRef.dyn_cast<FlatSymbolRefAttr>();
             if (!varSymRef) {
               return entryPointOp.emitError(
                          "expected symbol reference for interface "
@@ -1790,7 +1791,7 @@ static LogicalResult verify(spirv::ModuleOp moduleOp) {
 
 static ParseResult parseReferenceOfOp(OpAsmParser &parser,
                                       OperationState &state) {
-  SymbolRefAttr constRefAttr;
+  FlatSymbolRefAttr constRefAttr;
   Type type;
   if (parser.parseAttribute(constRefAttr, Type(), kSpecConstAttrName,
                             state.attributes) ||

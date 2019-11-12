@@ -219,6 +219,8 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/argmax.bin",
         "//tensorflow/lite/tools/optimize:testdata/concat.bin",
         "//tensorflow/lite/tools/optimize:testdata/fc.bin",
+        "//tensorflow/lite/tools/optimize:testdata/lstm_calibrated.bin",
+        "//tensorflow/lite/tools/optimize:testdata/lstm_quantized.bin",
         "//tensorflow/lite/tools/optimize:testdata/mixed.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",

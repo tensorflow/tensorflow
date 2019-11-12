@@ -582,6 +582,20 @@ func @identity(%arg0: tensor<1xi32>) -> tensor<1xi32> {
   return %0: tensor<1xi32>
 }
 
+// CHECK-LABEL: func @stopgradient
+func @stopgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  // CHECK-NEXT:  return %arg0 : tensor<1xi32>
+  %0 = "tf.StopGradient"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
+// CHECK-LABEL: func @preventgradient
+func @preventgradient(%arg0: tensor<1xi32>) -> tensor<1xi32> {
+  // CHECK-NEXT:  return %arg0 : tensor<1xi32>
+  %0 = "tf.PreventGradient"(%arg0) {message = "fin gradients"} : (tensor<1xi32>) -> tensor<1xi32>
+  return %0: tensor<1xi32>
+}
+
 //===----------------------------------------------------------------------===//
 // Nullary op legalizations.
 //===----------------------------------------------------------------------===//
@@ -591,6 +605,13 @@ func @const() -> tensor<2xi32> {
   // CHECK-NEXT: xla_hlo.constant dense<0> : tensor<2xi32>
   %0 = "tf.Const"() {device = "", name = "", dtype = "tfdtype$DT_INT32", value = dense<0> : tensor<2xi32>} : () -> (tensor<2xi32>)
   return %0: tensor<2xi32>
+}
+
+// CHECK-LABEL: @opaque_const
+func @opaque_const() -> tensor<!tf.variant<tensor<2xi32>>> {
+  // CHECK-NOT: xla_hlo.constant
+  %0 = "tf.Const"() {device = "", name = "", dtype = "tfdtype$DT_INT32", value = opaque<"tf", "0x746674656E736F722464747970653A2044545F494E5433320A74656E736F725F7368617065207B0A202064696D207B0A2020202073697A653A20320A20207D0A7D0A74656E736F725F636F6E74656E743A20225C3230305C3030305C3030305C3030305C3230305C3030305C3030305C303030220A"> : tensor<!tf.variant>} : () -> tensor<!tf.variant<tensor<2xi32>>>
+  return %0 : tensor<!tf.variant<tensor<2xi32>>>
 }
 
 //===----------------------------------------------------------------------===//
@@ -786,6 +807,13 @@ func @select_multidimensional(%arg0: tensor<3x2xi1>, %arg1: tensor<3x2xi32>, %ar
   // CHECK-NEXT: "xla_hlo.select"(%arg0, %arg1, %arg2)
   %0 = "tf.Select"(%arg0, %arg1, %arg2) : (tensor<3x2xi1>, tensor<3x2xi32>, tensor<3x2xi32>) -> tensor<3x2xi32>
   return %0: tensor<3x2xi32>
+}
+
+// CHECK-LABEL: func @selectv2
+func @selectv2(%arg0: tensor<i1>, %arg1: tensor<2xi32>, %arg2: tensor<2xi32>) -> tensor<2xi32> {
+  // CHECK-NEXT: "xla_hlo.select"(%arg0, %arg1, %arg2)
+  %0 = "tf.SelectV2"(%arg0, %arg1, %arg2) : (tensor<i1>, tensor<2xi32>, tensor<2xi32>) -> tensor<2xi32>
+  return %0: tensor<2xi32>
 }
 
 //===----------------------------------------------------------------------===//

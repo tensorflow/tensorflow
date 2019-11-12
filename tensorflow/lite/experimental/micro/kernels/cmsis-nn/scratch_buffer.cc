@@ -17,6 +17,7 @@ limitations under the License.
 
 #define SCRATCH_BUFFER_BYTES 13000
 
+
 // todo: remove this function once context->AllocateTemporaryTensor() is
 // implemented.
 // note: buffer must be 32-bit aligned for SIMD

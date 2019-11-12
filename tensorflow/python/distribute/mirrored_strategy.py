@@ -739,7 +739,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, (d, v) in enumerate(zip(var.devices, var.values)):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
                           *values.select_device_mirrored(d, args),
@@ -752,7 +752,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         updates.append(fn(*values.select_device_mirrored(d, args),
                           **values.select_device_mirrored(d, kwargs)))
     return values.update_regroup(self, self._device_map, updates, group)

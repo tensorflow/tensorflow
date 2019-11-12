@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=0.29.1
+LATEST_BAZEL_VERSION=1.1.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -82,7 +82,6 @@ function update_bazel_linux {
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
-# LINT.IfChange
 # Install the given bazel version on macos
 function update_bazel_macos {
   if [[ -z "$1" ]]; then
@@ -142,7 +141,8 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install portpicker
   ${SUDO_CMD} ${PIP_CMD} install scipy
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade "tb-nightly>=2.1.*"
+  # TODO(b/144163919): Remove the version pin once the bug is fixed.
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade "tb-nightly==2.1.0a20191106"
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
@@ -179,7 +179,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
-  "${PIP_CMD}" install --user --upgrade "tb-nightly>=2.1.*"
+  # TODO(b/144163919): Remove the version pin once the bug is fixed.
+  "${PIP_CMD}" install --user --upgrade "tb-nightly==2.1.0a20191106"
   # ===================================================================
 }
 
@@ -271,5 +272,3 @@ function copy_to_new_project_name {
   popd
   rm -rf "${TMP_DIR}"
 }
-# LINT.ThenChange(
-# ) # common.sh

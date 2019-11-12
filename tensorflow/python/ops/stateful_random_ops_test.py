@@ -31,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.kernel_tests.random import util as \
 random_test_util
@@ -577,6 +578,53 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       _ = f()
 
   @test_util.run_v2_only
+  def testFunctionArg(self):
+    """Tests that RNG can be used as tf.function's argument.
+    """
+    shape = [2, 3]
+    @def_function.function
+    def f(gen):
+      return gen.normal(shape)
+    g1 = random.Generator.from_seed(1)
+    g2 = random.Generator.from_seed(1)
+    res1 = f(g1)
+    res2 = g2.normal(shape)
+    self.assertAllEqual(res1, res2)
+    self.assertAllEqual(g1.state.read_value(), g2.state.read_value())
+
+  @test_util.run_v2_only
+  def testLimitedRetracingWithCompositeTensors(self):
+    """Tests that RNGs with the same shape/dtype won't cause retracing.
+    """
+    trace_count = [0]
+
+    @def_function.function
+    def f(x):
+      trace_count[0] += 1
+      return x.normal([])
+
+    f(random.Generator.from_seed(1))
+    f(random.Generator.from_seed(2))
+    self.assertEqual(trace_count[0], 1)
+
+  def testMostSpecificCompatibleType(self):
+    """Tests GeneratorSpec.most_specific_compatible_type.
+    """
+    spec = random.GeneratorSpec(shape=(2, 3), dtype=dtypes.int32)
+    res = spec.most_specific_compatible_type(
+        random.GeneratorSpec(shape=(2, 3), dtype=dtypes.int32))
+    self.assertEqual(spec, res)
+    with self.assertRaisesWithPredicateMatch(ValueError, ""):
+      spec.most_specific_compatible_type(
+          tensor_spec.TensorSpec(shape=(2, 3), dtype=dtypes.int32))
+    with self.assertRaisesWithPredicateMatch(ValueError, ""):
+      spec.most_specific_compatible_type(
+          random.GeneratorSpec(shape=(2, 4), dtype=dtypes.int32))
+    with self.assertRaisesWithPredicateMatch(ValueError, ""):
+      spec.most_specific_compatible_type(
+          random.GeneratorSpec(shape=(2, 3), dtype=dtypes.int64))
+
+  @test_util.run_v2_only
   @test_util.run_cuda_only
   def testMirroredStratSeq(self):
     """Tests RNG/MirrorStrategy interaction #1.
@@ -709,6 +757,30 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
       values = results.values
       self.assertAllEqual(2, len(values))
       self.assertAllDifferent(values)
+
+  @test_util.run_v2_only
+  @test_util.run_cuda_only
+  def testMirroredVarAsFunctionArg(self):
+    """Tests that RNG with MirroredVariable can be used as tf.function's arg.
+    """
+    shape = [3, 4]
+    dtype = dtypes.int32
+    strat = MirroredStrategy(devices=["/cpu:0", test_util.gpu_device_name()])
+    with strat.scope():
+      gen = random.Generator.from_seed(1234)
+      @def_function.function
+      def f(gen):
+        t1 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t2 = gen.uniform_full_int(shape=shape, dtype=dtype)
+        t = array_ops.stack([t1, t2])
+        return t
+      def g():
+        return f(gen)
+      for _ in range(2):
+        results = strat.extended.call_for_each_replica(fn=g)
+        values = results.values
+        self.assertAllEqual(2, len(values))
+        self.assertAllEqual(values[0], values[1])
 
 
 if __name__ == "__main__":

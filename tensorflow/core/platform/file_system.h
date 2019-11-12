@@ -230,14 +230,14 @@ class FileSystem {
 
   FileSystem() {}
 
-  virtual ~FileSystem();
+  virtual ~FileSystem() = default;
 };
 
 /// A file abstraction for randomly reading the contents of a file.
 class RandomAccessFile {
  public:
   RandomAccessFile() {}
-  virtual ~RandomAccessFile();
+  virtual ~RandomAccessFile() = default;
 
   /// \brief Returns the name of the file.
   ///
@@ -287,7 +287,7 @@ class RandomAccessFile {
 class WritableFile {
  public:
   WritableFile() {}
-  virtual ~WritableFile();
+  virtual ~WritableFile() = default;
 
   /// \brief Append 'data' to the file.
   virtual tensorflow::Status Append(StringPiece data) = 0;
@@ -394,7 +394,7 @@ class FileSystemRegistry {
  public:
   typedef std::function<FileSystem*()> Factory;
 
-  virtual ~FileSystemRegistry();
+  virtual ~FileSystemRegistry() = default;
   virtual tensorflow::Status Register(const std::string& scheme,
                                       Factory factory) = 0;
   virtual tensorflow::Status Register(

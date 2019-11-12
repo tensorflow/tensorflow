@@ -46,7 +46,6 @@ def verify_build_defines(params):
         "host_compiler_path",
         "host_compiler_prefix",
         "linker_bin_path",
-        "linker_files",
         "unfiltered_compile_flags",
     ]:
         if ("%{" + param + "}") not in params:
@@ -792,8 +791,6 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
                                                                             _rocm_include_path(repository_ctx, rocm_config))
-
-    rocm_defines["%{linker_files}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
     verify_build_defines(rocm_defines)
 

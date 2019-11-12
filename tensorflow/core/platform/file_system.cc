@@ -29,8 +29,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-FileSystem::~FileSystem() {}
-
 string FileSystem::TranslateName(const string& name) const {
   // If the name is empty, CleanPath returns "." which is incorrect and
   // we should return the empty path instead.
@@ -58,12 +56,6 @@ Status FileSystem::IsDirectory(const string& name) {
 }
 
 void FileSystem::FlushCaches() {}
-
-RandomAccessFile::~RandomAccessFile() {}
-
-WritableFile::~WritableFile() {}
-
-FileSystemRegistry::~FileSystemRegistry() {}
 
 bool FileSystem::FilesExist(const std::vector<string>& files,
                             std::vector<Status>* status) {
