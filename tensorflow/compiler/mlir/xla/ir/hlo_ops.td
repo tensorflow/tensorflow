@@ -158,6 +158,10 @@ def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_ExpOp;
 
+def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_Expm1Op;
+
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
@@ -165,9 +169,21 @@ def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_LogOp;
 
+def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_Log1pOp;
+
+def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
+    [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
+    BASE_HLO_NotOp;
+
 def HLO_NegOp: HLO_UnaryElementwiseOp<"neg",
     [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
     BASE_HLO_NegOp;
+
+def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
+    [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
+    BASE_HLO_PopulationCountOp;
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
