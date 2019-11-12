@@ -21,7 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-namespace utils {
 
 // A Timespan is the time extent of an event: a pair of (begin, duration).
 // Events may have duration 0 ("instant events") but duration can't be negative.
@@ -93,7 +92,6 @@ class Timespan {
   uint64 duration_ps_;  // 0 for an instant event.
 };
 
-}  // namespace utils
 }  // namespace profiler
 }  // namespace tensorflow
 

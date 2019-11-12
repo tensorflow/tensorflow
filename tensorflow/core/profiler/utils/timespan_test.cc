@@ -19,7 +19,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-namespace utils {
 
 TEST(TimespanTests, NonInstantSpanIncludesSingleTimeTests) {
   EXPECT_TRUE(Timespan(10, 2).Includes(12));
@@ -81,6 +80,5 @@ TEST(TimespanTests, InstantSpanNonInstantSpanOverlappedDuration) {
   EXPECT_EQ(0, Timespan(12, 0).OverlappedDurationPs(Timespan(8, 16)));
 }
 
-}  // namespace utils
 }  // namespace profiler
 }  // namespace tensorflow

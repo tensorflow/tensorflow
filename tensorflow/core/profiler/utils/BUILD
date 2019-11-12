@@ -1,8 +1,15 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    default_visibility = ["//tensorflow/core/profiler:internal"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+package_group(
+    name = "friends",
+    includes = [
+        "//tensorflow/core/profiler:friends",
+    ],
 )
 
 cc_library(
@@ -28,6 +35,7 @@ cc_library(
     name = "xplane_builder",
     srcs = ["xplane_builder.cc"],
     hdrs = ["xplane_builder.h"],
+    visibility = [":friends"],
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
