@@ -176,7 +176,7 @@ class BatchNormalizationBase(Layer):
   def __init__(self,
                axis=-1,
                momentum=0.99,
-               epsilon=1e-8,
+               epsilon=1e-3,
                center=True,
                scale=True,
                beta_initializer='zeros',
@@ -950,7 +950,7 @@ class LayerNormalization(Layer):
 
   def __init__(self,
                axis=-1,
-               epsilon=1e-8,
+               epsilon=1e-3,
                center=True,
                scale=True,
                beta_initializer='zeros',
