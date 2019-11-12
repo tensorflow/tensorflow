@@ -649,11 +649,15 @@ float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
   float scale = 1.0f;
   OperatorT* op = subgraph->operators[op_idx].get();
   for (int i = 0; i < input_index.size(); ++i) {
-    TensorT* tensor = subgraph->tensors[op->inputs[i]].get();
+    const int index_local = input_index[i];
+    const int index_global = op->inputs[index_local];
+    const TensorT* tensor = subgraph->tensors[index_global].get();
     scale *= tensor->quantization->scale[0];
   }
   for (int i = 0; i < intermediate_index.size(); ++i) {
-    TensorT* tensor = subgraph->tensors[op->intermediates[i]].get();
+    const int index_local = intermediate_index[i];
+    const int index_global = op->intermediates[index_local];
+    const TensorT* tensor = subgraph->tensors[index_global].get();
     scale *= tensor->quantization->scale[0];
   }
   for (int i = 0; i < factors.size(); ++i) {
@@ -674,6 +678,15 @@ void QuantizeActivation(TensorT* tensor, TensorType activations_type) {
   if (activations_type == TensorType_INT16) {
     tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
   }
+}
+
+TfLiteStatus QuantizeActivationToInt16(TensorT* tensor, float scale) {
+  const int32 zero_point = 0;
+  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  tensor->quantization->scale.push_back(scale);
+  tensor->quantization->zero_point.push_back(zero_point);
+  tensor->type = TensorType_INT16;
+  return kTfLiteOk;
 }
 
 int GetPowerOfTwoScale(float min, float max) {

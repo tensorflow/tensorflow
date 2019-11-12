@@ -53,12 +53,6 @@ def HLO_FpTensor : TensorOf<[AnyFloat]>;
 
 def HLO_PredTensor : TensorOf<[HLO_Pred]>;
 
-// Any integer or floating-point tensor types
-def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
-
-// Any integer or predicate tensor types
-def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
-
 def HLO_Tensor : TensorOf<[AnyFloat, AnyInteger, AnyComplex]>;
 
 def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
@@ -66,6 +60,22 @@ def HLO_ComplexTensor : TensorOf<[AnyComplex]>;
 def HLO_Tuple : NestedTupleOf<[HLO_Tensor]>;
 
 def HLO_TensorOrTuple : AnyTypeOf<[HLO_Tensor, HLO_Tuple]>;
+
+//===----------------------------------------------------------------------===//
+// XLA combined type definitions.
+//===----------------------------------------------------------------------===//
+
+// Any integer or floating-point tensor types
+def HLO_IntOrFpTensor : TensorOf<[HLO_Int, AnyFloat]>;
+
+// Any integer or predicate tensor types
+def HLO_PredOrIntTensor : TensorOf<[HLO_Pred, HLO_Int]>;
+
+// Any floating-point or complex tensor types
+def HLO_FpOrComplexTensor : TensorOf<[AnyFloat, AnyComplex]>;
+
+// Any int, floating-point or complex tensor types
+def HLO_IntFpOrComplexTensor : TensorOf<[HLO_Int, AnyFloat, AnyComplex]>;
 
 //===----------------------------------------------------------------------===//
 // XLA nullary op definitions.
@@ -108,25 +118,27 @@ def HLO_IotaOp : BASE_HLO_IotaOp, HLO_Op<"iota", [NoSideEffect]> {
 // XLA unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
-class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits>:
-    HLO_Op<mnemonic, traits> {
+class HLO_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
+      Type TensorType>: HLO_Op<mnemonic, traits> {
 
-    let arguments = (ins HLO_Tensor:$operand);
-    let results = (outs HLO_Tensor);
+    let arguments = (ins TensorType:$operand);
+    let results = (outs TensorType);
 }
 
 // Abs supports complex to real, so element type is not guaranteed to match.
 def HLO_AbsOp: HLO_UnaryElementwiseOp<"abs",
-    [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_AbsOp {
+    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>, BASE_HLO_AbsOp {
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *operand"
   >];
 }
 
-def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil", [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CeilOp;
+def HLO_CeilOp: HLO_UnaryElementwiseOp<"ceil",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_CeilOp;
 
 def HLO_ConvertOp : HLO_UnaryElementwiseOp<
-      "convert", [NoSideEffect, SameOperandsAndResultShape]>, BASE_HLO_ConvertOp {
+    "convert", [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
+    BASE_HLO_ConvertOp {
 
   let builders = [OpBuilder<
     "Builder *, OperationState &tblgen_state, Value *operand, "
@@ -139,35 +151,59 @@ def HLO_ConvertOp : HLO_UnaryElementwiseOp<
 }
 
 def HLO_CosOp: HLO_UnaryElementwiseOp<"cos",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_CosOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_CosOp;
 
 def HLO_ExpOp: HLO_UnaryElementwiseOp<"exp",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ExpOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_ExpOp;
+
+def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_Expm1Op;
 
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_FloorOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
 def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_LogOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_LogOp;
+
+def HLO_Log1pOp: HLO_UnaryElementwiseOp<"log_plus_one",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_Log1pOp;
+
+def HLO_NotOp: HLO_UnaryElementwiseOp<"not",
+    [NoSideEffect, SameOperandsAndResultType], HLO_PredOrIntTensor>,
+    BASE_HLO_NotOp;
 
 def HLO_NegOp: HLO_UnaryElementwiseOp<"neg",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_NegOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
+    BASE_HLO_NegOp;
+
+def HLO_PopulationCountOp: HLO_UnaryElementwiseOp<"popcnt",
+    [NoSideEffect, SameOperandsAndResultType], HLO_IntTensor>,
+    BASE_HLO_PopulationCountOp;
 
 def HLO_RsqrtOp: HLO_UnaryElementwiseOp<"rsqrt",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_RsqrtOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_RsqrtOp;
 
 def HLO_SignOp: HLO_UnaryElementwiseOp<"sign",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SignOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_IntFpOrComplexTensor>,
+    BASE_HLO_SignOp;
 
 def HLO_SinOp: HLO_UnaryElementwiseOp<"sin",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SinOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_SinOp;
 
 def HLO_SqrtOp: HLO_UnaryElementwiseOp<"sqrt",
-    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_SqrtOp;
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
+    BASE_HLO_SqrtOp;
 
 def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
-    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType]>,
-    BASE_HLO_TanhOp;
+    [ResultsAreFloatLike, NoSideEffect, SameOperandsAndResultType],
+    HLO_FpOrComplexTensor>, BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
 // XLA complex unary elementwise op definitions.
@@ -652,7 +688,7 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let hasCustomHLOConverter = 1;
 }
 
-
+// TODO(jpienaar): Add broadcastable trait.
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
   let arguments = (ins
     HLO_PredTensor:$pred,

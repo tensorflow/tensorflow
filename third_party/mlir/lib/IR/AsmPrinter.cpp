@@ -801,9 +801,15 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   case StandardAttributes::Type:
     printType(attr.cast<TypeAttr>().getValue());
     break;
-  case StandardAttributes::SymbolRef:
-    printSymbolReference(attr.cast<SymbolRefAttr>().getValue(), os);
+  case StandardAttributes::SymbolRef: {
+    auto refAttr = attr.dyn_cast<SymbolRefAttr>();
+    printSymbolReference(refAttr.getRootReference(), os);
+    for (FlatSymbolRefAttr nestedRef : refAttr.getNestedReferences()) {
+      os << "::";
+      printSymbolReference(nestedRef.getValue(), os);
+    }
     break;
+  }
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";

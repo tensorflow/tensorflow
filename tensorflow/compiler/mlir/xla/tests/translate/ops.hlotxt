@@ -308,6 +308,14 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %exp.2 = f32[16] exponential(f32[16] %arg0.1)
 }
 
+// CHECK-LABEL: func @test_expm1(%arg0: tensor<16xf32>) -> tensor<16xf32> {
+%test_expm1 (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK: "xla_hlo.exponential_minus_one"(%arg0) {name = "{{.*}}"} : (tensor<16xf32>) -> tensor<16xf32>
+  ROOT %expm1.2 = f32[16] exponential-minus-one(f32[16] %arg0.1)
+}
+
 // CHECK-LABEL: func @test_fft(%arg0: tensor<3x9xf32>) -> tensor<3x5xcomplex<f32>> {
 %test_fft {
   %arg0.1 = f32[3,9]{1,0} parameter(0), parameter_replication={false}, metadata={op_name="XLA_Args"}
@@ -356,6 +364,14 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %log.2 = f32[16] log(f32[16] %arg0.1)
 }
 
+// CHECK-LABEL: func @test_log1p(%arg0: tensor<16xf32>) -> tensor<16xf32> {
+%test_log1p (arg0.1: f32[16]) -> f32[16] {
+  %arg0.1 = f32[16] parameter(0)
+
+  // CHECK: "xla_hlo.log_plus_one"(%arg0) {name = "{{.*}}"} : (tensor<16xf32>) -> tensor<16xf32>
+  ROOT %log1p.2 = f32[16] log-plus-one(f32[16] %arg0.1)
+}
+
 // CHECK-LABEL: func @test_maximum(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
 %test_maximum (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
   %Arg_0.1 = f32[4] parameter(0)
@@ -392,6 +408,14 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-NEXT: %0 = "xla_hlo.neg"(%arg0) {name = "negate.2"} : (tensor<16xf32>) -> tensor<16xf32>
   // CHECK-NEXT: return %0 : tensor<16xf32>
   ROOT %negate.2 = f32[16] negate(f32[16] %arg0.1)
+}
+
+// CHECK-LABEL: func @test_not(%arg0: tensor<16xi1>) -> tensor<16xi1> {
+%test_not (arg0.1: pred[16]) -> pred[16] {
+  %arg0.1 = pred[16] parameter(0)
+
+  // CHECK: "xla_hlo.not"(%arg0) {name = "{{.*}}"} : (tensor<16xi1>) -> tensor<16xi1>
+  ROOT %not.2 = pred[16] not(pred[16] %arg0.1)
 }
 
 // CHECK-LABEL: func @test_or
@@ -431,6 +455,14 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   // CHECK-NEXT: [[VAL:%.*]] = "xla_hlo.pad"(%arg0, %arg1) {edge_padding_high = dense<0> : tensor<1xi64>, edge_padding_low = dense<0> : tensor<1xi64>, interior_padding = dense<2> : tensor<1xi64>} : (tensor<4xf32>, tensor<f32>) -> tensor<10xf32>
   // CHECK-NEXT: return [[VAL]] : tensor<10xf32>
   ROOT %pad.3 = f32[10] pad(%Arg_0.1, %Arg_1.2), padding=0_0_2
+}
+
+// CHECK-LABEL: func @test_popcnt(%arg0: tensor<16xi32>) -> tensor<16xi32> {
+%test_popcnt (arg0.1: s32[16]) -> s32[16] {
+  %arg0.1 = s32[16] parameter(0)
+
+  // CHECK: "xla_hlo.popcnt"(%arg0) {name = "{{.*}}"} : (tensor<16xi32>) -> tensor<16xi32>
+  ROOT %popcnt.2 = s32[16] popcnt(s32[16] %arg0.1)
 }
 
 // CHECK-LABEL: func @test_pow(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {

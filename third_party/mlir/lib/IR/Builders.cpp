@@ -150,14 +150,19 @@ ArrayAttr Builder::getArrayAttr(ArrayRef<Attribute> value) {
   return ArrayAttr::get(value, context);
 }
 
-SymbolRefAttr Builder::getSymbolRefAttr(Operation *value) {
+FlatSymbolRefAttr Builder::getSymbolRefAttr(Operation *value) {
   auto symName =
       value->getAttrOfType<StringAttr>(SymbolTable::getSymbolAttrName());
   assert(symName && "value does not have a valid symbol name");
   return getSymbolRefAttr(symName.getValue());
 }
-SymbolRefAttr Builder::getSymbolRefAttr(StringRef value) {
+FlatSymbolRefAttr Builder::getSymbolRefAttr(StringRef value) {
   return SymbolRefAttr::get(value, getContext());
+}
+SymbolRefAttr
+Builder::getSymbolRefAttr(StringRef value,
+                          ArrayRef<FlatSymbolRefAttr> nestedReferences) {
+  return SymbolRefAttr::get(value, nestedReferences, getContext());
 }
 
 ArrayAttr Builder::getI32ArrayAttr(ArrayRef<int32_t> values) {

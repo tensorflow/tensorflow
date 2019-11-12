@@ -129,6 +129,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateDeleteUnusedFuncsPass();
 // Creates a pass that optimizes tf_saved_model.global_tensor ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
 
+// Creates a pass that inlines global tensors as tf.Const ops in the function
+// body.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateInlineGlobalTensorsPass();
+
 }  // namespace tf_saved_model
 
 }  // namespace mlir

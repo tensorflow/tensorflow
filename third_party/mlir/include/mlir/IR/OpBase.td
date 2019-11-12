@@ -1139,8 +1139,16 @@ class StructAttr<string name, Dialect dialect,
 def SymbolRefAttr : Attr<CPred<"$_self.isa<SymbolRefAttr>()">,
                         "symbol reference attribute"> {
   let storageType = [{ SymbolRefAttr }];
+  let returnType = [{ SymbolRefAttr }];
+  let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+  let convertFromStorage = "$_self";
+}
+def FlatSymbolRefAttr : Attr<CPred<"$_self.isa<FlatSymbolRefAttr>()">,
+                                   "flat symbol reference attribute"> {
+  let storageType = [{ FlatSymbolRefAttr }];
   let returnType = [{ StringRef }];
   let constBuilderCall = "$_builder.getSymbolRefAttr($0)";
+  let convertFromStorage = "$_self.getValue()";
 }
 
 def SymbolRefArrayAttr :
@@ -1241,12 +1249,14 @@ class IntArrayNthElemMinValue<int index, int min> : AttrConstraint<
 def IsNullAttr : AttrConstraint<
     CPred<"!$_self">, "empty attribute (for optional attributes)">;
 
-// An attribute constraint on SymbolRefAttr that requires the SymbolRefAttr
-// pointing to an op of `opClass` within the closest parent with a symbol table.
+// An attribute constraint on FlatSymbolRefAttr that requires that the
+// reference point to an op of `opClass` within the closest parent with a symbol
+// table.
+// TODO(riverriddle) Add support for nested symbol references.
 class ReferToOp<string opClass> : AttrConstraint<
     CPred<"isa_and_nonnull<" # opClass # ">("
             "::mlir::SymbolTable::lookupNearestSymbolFrom("
-              "&$_op, $_self.cast<SymbolRefAttr>().getValue()))">,
+              "&$_op, $_self.cast<FlatSymbolRefAttr>().getValue()))">,
     "referencing to a '" # opClass # "' symbol">;
 
 //===----------------------------------------------------------------------===//

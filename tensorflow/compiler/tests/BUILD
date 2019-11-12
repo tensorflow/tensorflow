@@ -1209,11 +1209,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
-    tags = [
-        # TODO(b/134780716): Re-enable this test.
-        "nogpu",
-        "no_cuda_on_cpu_tap",
-    ],
     xla_enable_strict_auto_jit = False,
 )
 

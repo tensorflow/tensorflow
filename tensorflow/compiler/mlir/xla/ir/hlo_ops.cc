@@ -618,28 +618,8 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SelectOp op) {
-  auto onTrueType = op.on_true()->getType().cast<RankedTensorType>();
-  auto onFalseType = op.on_false()->getType().cast<RankedTensorType>();
-
-  if (onTrueType != onFalseType) {
-    return op.emitOpError(
-        llvm::formatv("on_true type ({0}) does not match on_false type ({1})",
-                      onTrueType, onFalseType));
-  }
-
-  auto predType = op.pred()->getType().cast<RankedTensorType>();
-  auto predShape = predType.getShape();
-  auto predRank = predType.getRank();
-  auto selectShape = onTrueType.getShape();
-
-  if (predRank != 0 && predShape != selectShape) {
-    return op.emitOpError(llvm::formatv(
-        "pred shape ([{0}]) is not scalar and does not match operand shapes "
-        "([{1}])",
-        llvm::make_range(predShape.begin(), predShape.end()),
-        llvm::make_range(selectShape.begin(), selectShape.end())));
-  }
-
+  // TODO(jpienaar): Update to allow broadcastable and unranked inputs. This
+  // corresponds to the client side HLO.
   return success();
 }
 

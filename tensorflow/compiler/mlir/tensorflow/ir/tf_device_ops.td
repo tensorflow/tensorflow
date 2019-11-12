@@ -112,7 +112,7 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
 
   let arguments = (ins
     StrAttr:$device,
-    SymbolRefAttr:$func,
+    FlatSymbolRefAttr:$func,
     Variadic<AnyType>:$operands);
 
   let results = (outs

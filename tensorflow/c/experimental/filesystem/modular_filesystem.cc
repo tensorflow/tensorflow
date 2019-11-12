@@ -12,8 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
+
+#include <string>
+#include <utility>
+
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 // TODO(mihaimaruseac): After all filesystems are converted, all calls to
 // methods from `FileSystem` will have to be replaced to calls to private
@@ -22,25 +29,64 @@ limitations under the License.
 
 namespace tensorflow {
 
+using UniquePtrTo_TF_Status =
+    ::std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)>;
+
 Status ModularFileSystem::NewRandomAccessFile(
     const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_random_access_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support NewRandomAccessFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto file = tensorflow::MakeUnique<TF_RandomAccessFile>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_random_access_file(filesystem_.get(), translated_name.c_str(),
+                               file.get(), plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = tensorflow::MakeUnique<ModularRandomAccessFile>(
+        translated_name, std::move(file), random_access_file_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewWritableFile(
     const std::string& fname, std::unique_ptr<WritableFile>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_writable_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support NewWritableFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto file = tensorflow::MakeUnique<TF_WritableFile>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_writable_file(filesystem_.get(), translated_name.c_str(),
+                          file.get(), plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = tensorflow::MakeUnique<ModularWritableFile>(
+        translated_name, std::move(file), writable_file_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewAppendableFile(
     const std::string& fname, std::unique_ptr<WritableFile>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_appendable_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support NewAppendableFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto file = tensorflow::MakeUnique<TF_WritableFile>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_appendable_file(filesystem_.get(), translated_name.c_str(),
+                            file.get(), plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = tensorflow::MakeUnique<ModularWritableFile>(
+        translated_name, std::move(file), writable_file_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -103,9 +149,15 @@ Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname) {
 }
 
 Status ModularFileSystem::CreateDir(const std::string& dirname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->create_dir == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", dirname, " does not support CreateDir()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  ops_->create_dir(filesystem_.get(), translated_name.c_str(),
+                   plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::Stat(const std::string& fname, FileStatistics* stat) {

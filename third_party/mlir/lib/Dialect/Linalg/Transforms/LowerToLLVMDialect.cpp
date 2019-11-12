@@ -359,8 +359,8 @@ public:
 // Get a SymbolRefAttr containing the library function name for the LinalgOp.
 // If the library function does not exist, insert a declaration.
 template <typename LinalgOp>
-static SymbolRefAttr getLibraryCallSymbolRef(Operation *op,
-                                             PatternRewriter &rewriter) {
+static FlatSymbolRefAttr getLibraryCallSymbolRef(Operation *op,
+                                                 PatternRewriter &rewriter) {
   auto linalgOp = cast<LinalgOp>(op);
   auto fnName = linalgOp.getLibraryCallName();
   if (fnName.empty()) {
@@ -369,7 +369,7 @@ static SymbolRefAttr getLibraryCallSymbolRef(Operation *op,
   }
 
   // fnName is a dynamic std::String, unique it via a SymbolRefAttr.
-  SymbolRefAttr fnNameAttr = rewriter.getSymbolRefAttr(fnName);
+  FlatSymbolRefAttr fnNameAttr = rewriter.getSymbolRefAttr(fnName);
   auto module = op->getParentOfType<ModuleOp>();
   if (module.lookupSymbol(fnName)) {
     return fnNameAttr;
@@ -487,11 +487,11 @@ public:
 
 /// A non-conversion rewrite pattern kicks in to convert SubViewOp into RangeOps
 /// and SliceOps.
-class SubViewOpConversion : public OpRewritePattern<SubViewOp> {
+class SubViewOpConversion : public OpRewritePattern<mlir::linalg::SubViewOp> {
 public:
-  using OpRewritePattern<SubViewOp>::OpRewritePattern;
+  using OpRewritePattern<mlir::linalg::SubViewOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(SubViewOp op,
+  PatternMatchResult matchAndRewrite(mlir::linalg::SubViewOp op,
                                      PatternRewriter &rewriter) const override {
     auto *view = op.getView();
     SmallVector<Value *, 8> ranges;

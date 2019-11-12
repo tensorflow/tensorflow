@@ -528,7 +528,7 @@ void BranchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseCallOp(OpAsmParser &parser, OperationState &result) {
-  SymbolRefAttr calleeAttr;
+  FlatSymbolRefAttr calleeAttr;
   FunctionType calleeType;
   SmallVector<OpAsmParser::OperandType, 4> operands;
   auto calleeLoc = parser.getNameLoc();
@@ -555,7 +555,7 @@ static void print(OpAsmPrinter &p, CallOp op) {
 
 static LogicalResult verify(CallOp op) {
   // Check that the callee attribute was specified.
-  auto fnAttr = op.getAttrOfType<SymbolRefAttr>("callee");
+  auto fnAttr = op.getAttrOfType<FlatSymbolRefAttr>("callee");
   if (!fnAttr)
     return op.emitOpError("requires a 'callee' symbol reference attribute");
   auto fn =
@@ -608,8 +608,8 @@ struct SimplifyIndirectCallWithKnownCallee
     // Replace with a direct call.
     SmallVector<Type, 8> callResults(indirectCall.getResultTypes());
     SmallVector<Value *, 8> callOperands(indirectCall.getArgOperands());
-    rewriter.replaceOpWithNewOp<CallOp>(indirectCall, calledFn.getValue(),
-                                        callResults, callOperands);
+    rewriter.replaceOpWithNewOp<CallOp>(indirectCall, calledFn, callResults,
+                                        callOperands);
     return matchSuccess();
   }
 };
@@ -1206,7 +1206,7 @@ static LogicalResult verify(ConstantOp &op) {
   }
 
   if (type.isa<FunctionType>()) {
-    auto fnAttr = value.dyn_cast<SymbolRefAttr>();
+    auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>();
     if (!fnAttr)
       return op.emitOpError("requires 'value' to be a function reference");
 
@@ -2380,6 +2380,23 @@ Value *ViewOp::getDynamicOffset() {
   return nullptr;
 }
 
+static LogicalResult verifyDynamicStrides(MemRefType memrefType,
+                                          ArrayRef<int64_t> strides) {
+  ArrayRef<int64_t> shape = memrefType.getShape();
+  unsigned rank = memrefType.getRank();
+  assert(rank == strides.size());
+  bool dynamicStrides = false;
+  for (int i = rank - 2; i >= 0; --i) {
+    // If size at dim 'i + 1' is dynamic, set the 'dynamicStrides' flag.
+    if (ShapedType::isDynamic(shape[i + 1]))
+      dynamicStrides = true;
+    // If stride at dim 'i' is not dynamic, return error.
+    if (dynamicStrides && strides[i] != MemRefType::getDynamicStrideOrOffset())
+      return failure();
+  }
+  return success();
+}
+
 static LogicalResult verify(ViewOp op) {
   auto baseType = op.getOperand(0)->getType().cast<MemRefType>();
   auto viewType = op.getResult()->getType().cast<MemRefType>();
@@ -2396,7 +2413,7 @@ static LogicalResult verify(ViewOp op) {
                         "type ")
            << baseType << " and view memref type " << viewType;
 
-  // Verify that the result memref type has a strided layout map. is strided
+  // Verify that the result memref type has a strided layout map.
   int64_t offset;
   llvm::SmallVector<int64_t, 4> strides;
   if (failed(getStridesAndOffset(viewType, strides, offset)))
@@ -2413,20 +2430,9 @@ static LogicalResult verify(ViewOp op) {
 
   // Verify dynamic strides symbols were added to correct dimensions based
   // on dynamic sizes.
-  ArrayRef<int64_t> viewShape = viewType.getShape();
-  unsigned viewRank = viewType.getRank();
-  assert(viewRank == strides.size());
-  bool dynamicStrides = false;
-  for (int i = viewRank - 2; i >= 0; --i) {
-    // If size at dim 'i + 1' is dynamic, set the 'dynamicStrides' flag.
-    if (ShapedType::isDynamic(viewShape[i + 1]))
-      dynamicStrides = true;
-    // If stride at dim 'i' is not dynamic, return error.
-    if (dynamicStrides && strides[i] != MemRefType::getDynamicStrideOrOffset())
-      return op.emitError("incorrect dynamic strides in view memref type ")
-             << viewType;
-  }
-
+  if (failed(verifyDynamicStrides(viewType, strides)))
+    return op.emitError("incorrect dynamic strides in view memref type ")
+           << viewType;
   return success();
 }
 
@@ -2541,6 +2547,91 @@ struct ViewOpShapeFolder : public OpRewritePattern<ViewOp> {
 void ViewOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
   results.insert<ViewOpShapeFolder>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// SubViewOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
+  OpAsmParser::OperandType srcInfo;
+  SmallVector<OpAsmParser::OperandType, 4> offsetsInfo;
+  SmallVector<OpAsmParser::OperandType, 4> sizesInfo;
+  SmallVector<OpAsmParser::OperandType, 4> stridesInfo;
+  auto indexType = parser.getBuilder().getIndexType();
+  Type srcType, dstType;
+  return failure(
+      parser.parseOperand(srcInfo) ||
+      parser.parseOperandList(offsetsInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(sizesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(stridesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(srcType) ||
+      parser.resolveOperand(srcInfo, srcType, result.operands) ||
+      parser.resolveOperands(offsetsInfo, indexType, result.operands) ||
+      parser.resolveOperands(sizesInfo, indexType, result.operands) ||
+      parser.resolveOperands(stridesInfo, indexType, result.operands) ||
+      parser.parseKeywordType("to", dstType) ||
+      parser.addTypeToList(dstType, result.types));
+}
+
+static void print(OpAsmPrinter &p, SubViewOp op) {
+  p << op.getOperationName() << ' ' << *op.getOperand(0) << '[';
+  p.printOperands(op.getDynamicOffsets());
+  p << "][";
+  p.printOperands(op.getDynamicSizes());
+  p << "][";
+  p.printOperands(op.getDynamicStrides());
+  p << ']';
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getOperand(0)->getType() << " to " << op.getType();
+}
+
+static LogicalResult verify(SubViewOp op) {
+  auto baseType = op.getOperand(0)->getType().cast<MemRefType>();
+  auto subViewType = op.getResult()->getType().cast<MemRefType>();
+
+  // The base memref and the view memref should be in the same memory space.
+  if (baseType.getMemorySpace() != subViewType.getMemorySpace())
+    return op.emitError("different memory spaces specified for base memref "
+                        "type ")
+           << baseType << " and subview memref type " << subViewType;
+
+  // Verify that the base memref type has a strided layout map.
+  int64_t baseOffset;
+  llvm::SmallVector<int64_t, 4> baseStrides;
+  if (failed(getStridesAndOffset(baseType, baseStrides, baseOffset)))
+    return op.emitError("base type ") << subViewType << " is not strided";
+
+  // Verify that the result memref type has a strided layout map.
+  int64_t subViewOffset;
+  llvm::SmallVector<int64_t, 4> subViewStrides;
+  if (failed(getStridesAndOffset(subViewType, subViewStrides, subViewOffset)))
+    return op.emitError("result type ") << subViewType << " is not strided";
+
+  unsigned memrefOperandCount = 1;
+  unsigned numDynamicOffsets = llvm::size(op.getDynamicOffsets());
+  unsigned numDynamicSizes = llvm::size(op.getDynamicSizes());
+  unsigned numDynamicStrides = llvm::size(op.getDynamicStrides());
+
+  // Verify that we have the correct number of operands for the result type.
+  if (op.getNumOperands() != memrefOperandCount + numDynamicOffsets +
+                                 numDynamicSizes + numDynamicStrides)
+    return op.emitError("incorrect number of operands for type ")
+           << subViewType;
+
+  // Verify that the subview layout map has a dynamic offset.
+  if (subViewOffset != MemRefType::getDynamicStrideOrOffset())
+    return op.emitError("subview memref layout map must specify a dynamic "
+                        "offset for type ")
+           << subViewType;
+
+  // Verify dynamic strides symbols were added to correct dimensions based
+  // on dynamic sizes.
+  if (failed(verifyDynamicStrides(subViewType, subViewStrides)))
+    return op.emitError("incorrect dynamic strides in view memref type ")
+           << subViewType;
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

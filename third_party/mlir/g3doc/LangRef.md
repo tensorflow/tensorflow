@@ -1367,13 +1367,15 @@ A string attribute is an attribute that represents a string literal value.
 Syntax:
 
 ``` {.ebnf}
-symbol-ref-attribute ::= symbol-ref-id
+symbol-ref-attribute ::= symbol-ref-id (`::` symbol-ref-id)*
 ```
 
 A symbol reference attribute is a literal attribute that represents a named
 reference to an operation that is nested within an operation with the
 `OpTrait::SymbolTable` trait. As such, this reference is given meaning by the
-nearest parent operation containing the `OpTrait::SymbolTable` trait.
+nearest parent operation containing the `OpTrait::SymbolTable` trait. It may
+optionally contain a set of nested references that further resolve to a symbol
+nested within a different symbol table.
 
 This attribute can only be held internally by
 [array attributes](#array-attribute) and

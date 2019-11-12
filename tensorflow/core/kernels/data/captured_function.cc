@@ -624,7 +624,7 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
-      cancellation_manager_(cancellation_manager),
+      captured_cancellation_manager_(cancellation_manager),
       captured_func_(captured_func) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
@@ -654,7 +654,7 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      cancellation_manager_,
+      ctx->cancellation_manager(),
       [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
@@ -691,7 +691,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      cancellation_manager_,
+      ctx->cancellation_manager(),
       [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
@@ -728,7 +728,7 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      cancellation_manager_,
+      captured_cancellation_manager_,
       [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
@@ -780,7 +780,7 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.cancellation_manager = cancellation_manager.get();
   std::function<void()> deregister_fn;
   Status s = RegisterCancellationCallback(
-      cancellation_manager_,
+      ctx->cancellation_manager(),
       [cm = cancellation_manager.get()]() { cm->StartCancel(); },
       &deregister_fn);
   if (!s.ok()) {

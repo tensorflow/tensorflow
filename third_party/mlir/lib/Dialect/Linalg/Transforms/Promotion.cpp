@@ -89,7 +89,7 @@ static Value *allocBuffer(Type elementType, Value *size, bool dynamicBuffers) {
 // boundary tiles. For now this is done with an unconditional `fill` op followed
 // by a partial `copy` op.
 static PromotionInfo promoteFullTileBuffer(OpBuilder &b, Location loc,
-                                           SubViewOp subView,
+                                           mlir::linalg::SubViewOp subView,
                                            bool dynamicBuffers,
                                            OperationFolder *folder) {
   auto zero = constant_index(folder, 0);
@@ -135,7 +135,8 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
   res.reserve(subViews.size());
   DenseMap<Value *, PromotionInfo> promotionInfoMap;
   for (auto *v : subViews) {
-    SubViewOp subView = cast<SubViewOp>(v->getDefiningOp());
+    mlir::linalg::SubViewOp subView =
+        cast<mlir::linalg::SubViewOp>(v->getDefiningOp());
     auto viewType = subView.getViewType();
     // TODO(ntv): support more cases than just float.
     if (!viewType.getElementType().isa<FloatType>())
@@ -147,7 +148,8 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
   }
 
   for (auto *v : subViews) {
-    SubViewOp subView = cast<SubViewOp>(v->getDefiningOp());
+    mlir::linalg::SubViewOp subView =
+        cast<mlir::linalg::SubViewOp>(v->getDefiningOp());
     auto info = promotionInfoMap.find(v);
     if (info == promotionInfoMap.end())
       continue;
@@ -165,7 +167,8 @@ mlir::linalg::promoteSubViews(OpBuilder &b, Location loc,
     auto info = promotionInfoMap.find(v);
     if (info == promotionInfoMap.end())
       continue;
-    copy(cast<SubViewOp>(v->getDefiningOp()), info->second.partialLocalView);
+    copy(cast<mlir::linalg::SubViewOp>(v->getDefiningOp()),
+         info->second.partialLocalView);
   }
   return res;
 }
@@ -223,7 +226,8 @@ static void promoteSubViews(FuncOp f, bool dynamicBuffers) {
     // nothing.
     SetVector<Value *> subViews;
     for (auto it : op.getInputsAndOutputs())
-      if (auto sv = dyn_cast_or_null<SubViewOp>(it->getDefiningOp()))
+      if (auto sv =
+              dyn_cast_or_null<mlir::linalg::SubViewOp>(it->getDefiningOp()))
         subViews.insert(sv);
     if (!subViews.empty()) {
       promoteSubViewOperands(op, subViews, dynamicBuffers, &folder);

@@ -26,9 +26,9 @@ During lowering we can get, or build, the declaration for printf as so:
 ```c++
 /// Return a symbol reference to the printf function, inserting it into the
 /// module if necessary.
-static SymbolRefAttr getOrInsertPrintf(PatternRewriter &rewriter,
-                                       ModuleOp module,
-                                       LLVM::LLVMDialect *llvmDialect) {
+static FlatSymbolRefAttr getOrInsertPrintf(PatternRewriter &rewriter,
+                                           ModuleOp module,
+                                           LLVM::LLVMDialect *llvmDialect) {
   auto *context = module.getContext();
   if (module.lookupSymbol<LLVM::LLVMFuncOp>("printf"))
     return SymbolRefAttr::get("printf", context);

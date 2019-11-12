@@ -123,8 +123,8 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
     Optional<SymbolTable::UseRange> uses = SymbolTable::getSymbolUses(func);
     assert(uses && "expected to be able to collect symbol uses");
     for (SymbolTable::SymbolUse use : *uses) {
-      FuncOp referenced_func =
-          entry_module_table.lookup<FuncOp>(use.getSymbolRef().getValue());
+      FuncOp referenced_func = entry_module_table.lookup<FuncOp>(
+          use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
 
       // Skip Symbols that do not map to a function.
       if (!referenced_func) continue;
@@ -297,7 +297,8 @@ Operation* BuildCompileOp(tf_device::LaunchFuncOp launch_func, int num_replicas,
       "NumDynamicShapes",
       builder->getI64IntegerAttr(compile_op_operands.size()));
 
-  SymbolRefAttr func_attr = launch_func.getAttrOfType<SymbolRefAttr>("func");
+  FlatSymbolRefAttr func_attr =
+      launch_func.getAttrOfType<FlatSymbolRefAttr>("func");
   if (!func_attr) {
     launch_func.emitOpError("does not have `func` attribute");
     return nullptr;
