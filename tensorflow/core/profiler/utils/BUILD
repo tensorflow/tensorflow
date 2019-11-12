@@ -21,6 +21,20 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "event_span",
+    srcs = ["event_span.cc"],
+    hdrs = ["event_span.h"],
+    deps = [
+        ":timespan",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "timespan_test",
     srcs = ["timespan_test.cc"],
