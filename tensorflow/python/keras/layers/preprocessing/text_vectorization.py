@@ -42,6 +42,7 @@ from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import keras_export
 
 LOWER_AND_STRIP_PUNCTUATION = "lower_and_strip_punctuation"
 
@@ -74,6 +75,8 @@ _ACCUMULATOR_DOCUMENT_COUNTS = "document_counts"
 _ACCUMULATOR_NUM_DOCUMENTS = "num_documents"
 
 
+@keras_export(
+    "keras.layers.experimental.preprocessing.TextVectorization", v1=[])
 class TextVectorization(CombinerPreprocessingLayer):
   """Text vectorization layer.
 
