@@ -207,6 +207,8 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         ARM_MATH_SUCCESS);
   }
 #else
+#pragma message( \
+    "CMSIS-NN optimization for depthwise_conv not available for this target. Using reference kernel.")
 
   reference_integer_ops::DepthwiseConvPerChannel(
       op_params, data->per_channel_output_multiplier,
@@ -276,8 +278,6 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         op_params.output_multiplier);
   } else
 #endif
-#pragma message( \
-    "CMSIS-NN optimization for depthwise_conv not available for this target. Using reference kernel.")
 
   {
     tflite::reference_ops::DepthwiseConv(
