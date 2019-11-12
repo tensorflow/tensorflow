@@ -6684,6 +6684,24 @@ tf_py_test(
     tags = ["no_windows"],
 )
 
+py_test(
+    name = "ops/array_ops_test",
+    srcs = ["ops/array_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":constant_op",
+        ":dtypes",
+        ":framework_ops",
+        ":framework_test_lib",
+        ":gradients",
+        ":math_ops",
+        ":random_ops",
+    ],
+)
+
 cuda_py_test(
     name = "accumulate_n_benchmark",
     size = "medium",
