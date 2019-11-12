@@ -703,18 +703,6 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(ValueError, msg):
       func._decorate(lambda f: f)
 
-  def testGetConcreteFunctionGraphLifetime(self):
-
-    @def_function.function
-    def func():
-      pass
-
-    graph = func.get_concrete_function().graph
-    del func
-
-    # If the graph is deleted, then an exception is raised on reading `captures`
-    self.assertEmpty(graph.captures)
-
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
