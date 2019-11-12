@@ -1412,6 +1412,118 @@ struct SplatNdOpLowering : public LLVMLegalizationPattern<SplatOp> {
   }
 };
 
+/// Conversion pattern that transforms a subview op into:
+///   1. An `llvm.mlir.undef` operation to create a memref descriptor
+///   2. Updates to the descriptor to introduce the data ptr, offset, size
+///      and stride.
+/// The subview op is replaced by the descriptor.
+struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
+  using LLVMLegalizationPattern<SubViewOp>::LLVMLegalizationPattern;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto loc = op->getLoc();
+    auto viewOp = cast<SubViewOp>(op);
+    SubViewOpOperandAdaptor adaptor(operands);
+    auto sourceMemRefType = viewOp.source()->getType().cast<MemRefType>();
+    auto sourceElementTy =
+        lowering.convertType(sourceMemRefType.getElementType())
+            .dyn_cast_or_null<LLVM::LLVMType>();
+
+    auto viewMemRefType = viewOp.getType();
+    auto targetElementTy = lowering.convertType(viewMemRefType.getElementType())
+                               .dyn_cast<LLVM::LLVMType>();
+    auto targetDescTy =
+        lowering.convertType(viewMemRefType).dyn_cast_or_null<LLVM::LLVMType>();
+    if (!sourceElementTy || !targetDescTy)
+      return matchFailure();
+
+    // Early exit for 0-D and operands lesser than `rank` corner cases.
+    unsigned rank = sourceMemRefType.getRank();
+    if (viewMemRefType.getRank() == 0 || rank != adaptor.offsets().size() ||
+        rank != adaptor.sizes().size() || rank != adaptor.strides().size())
+      return matchFailure();
+
+    int64_t offset;
+    SmallVector<int64_t, 4> strides;
+    auto successStrides = getStridesAndOffset(viewMemRefType, strides, offset);
+    if (failed(successStrides))
+      return matchFailure();
+
+    // Create the descriptor.
+    Value *desc = rewriter.create<LLVM::UndefOp>(loc, targetDescTy);
+
+    // Copy the buffer pointer from the old descriptor to the new one.
+    Value *sourceDescriptor = adaptor.source();
+    Value *extracted = rewriter.create<LLVM::ExtractValueOp>(
+        loc, sourceElementTy.getPointerTo(), sourceDescriptor,
+        rewriter.getI64ArrayAttr(
+            LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor));
+    Value *bitcastPtr = rewriter.create<LLVM::BitcastOp>(
+        loc, targetElementTy.getPointerTo(), extracted);
+    desc = rewriter.create<LLVM::InsertValueOp>(
+        loc, desc, bitcastPtr,
+        rewriter.getI64ArrayAttr(
+            LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor));
+    extracted = rewriter.create<LLVM::ExtractValueOp>(
+        loc, sourceElementTy.getPointerTo(), sourceDescriptor,
+        rewriter.getI64ArrayAttr(
+            LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor));
+    bitcastPtr = rewriter.create<LLVM::BitcastOp>(
+        loc, targetElementTy.getPointerTo(), extracted);
+    desc = rewriter.create<LLVM::InsertValueOp>(
+        loc, desc, bitcastPtr,
+        rewriter.getI64ArrayAttr(
+            LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor));
+
+    // Extract strides needed to compute offset.
+    SmallVector<Value *, 4> strideValues;
+    strideValues.reserve(viewMemRefType.getRank());
+    for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i) {
+      strideValues.push_back(rewriter.create<LLVM::ExtractValueOp>(
+          loc, getIndexType(), sourceDescriptor,
+          rewriter.getI64ArrayAttr(
+              {LLVMTypeConverter::kStridePosInMemRefDescriptor, i})));
+    }
+
+    // Offset.
+    Value *baseOffset = rewriter.create<LLVM::ExtractValueOp>(
+        loc, getIndexType(), sourceDescriptor,
+        rewriter.getI64ArrayAttr(
+            LLVMTypeConverter::kOffsetPosInMemRefDescriptor));
+    for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i) {
+      Value *min = adaptor.offsets()[i];
+      baseOffset = rewriter.create<LLVM::AddOp>(
+          loc, baseOffset,
+          rewriter.create<LLVM::MulOp>(loc, min, strideValues[i]));
+    }
+    desc = rewriter.create<LLVM::InsertValueOp>(
+        loc, desc, baseOffset,
+        rewriter.getI64ArrayAttr(
+            LLVMTypeConverter::kOffsetPosInMemRefDescriptor));
+
+    // Update sizes and strides.
+    for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
+      // Update size.
+      desc = rewriter.create<LLVM::InsertValueOp>(
+          loc, desc, adaptor.sizes()[i],
+          rewriter.getI64ArrayAttr(
+              {LLVMTypeConverter::kSizePosInMemRefDescriptor, i}));
+      // Update stride.
+      desc = rewriter.create<LLVM::InsertValueOp>(
+          loc, desc,
+          rewriter.create<LLVM::MulOp>(loc, adaptor.strides()[i],
+                                       strideValues[i]),
+          rewriter.getI64ArrayAttr(
+              {LLVMTypeConverter::kStridePosInMemRefDescriptor, i}));
+    }
+
+    rewriter.replaceOp(op, desc);
+    return matchSuccess();
+  }
+};
+
 /// Conversion pattern that transforms a op into:
 ///   1. An `llvm.mlir.undef` operation to create a memref descriptor
 ///   2. Updates to the descriptor to introduce the data ptr, offset, size
@@ -1647,6 +1759,7 @@ void mlir::populateStdToLLVMConversionPatterns(
       StoreOpLowering,
       SubFOpLowering,
       SubIOpLowering,
+      SubViewOpLowering,
       TruncateIOpLowering,
       ViewOpLowering,
       XOrOpLowering,
