@@ -1035,7 +1035,8 @@ class Model(network.Network):
     if self._experimental_run_tf_function:
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
-          class_weight=class_weight, reset_metrics=reset_metrics)
+          class_weight=class_weight, reset_metrics=reset_metrics,
+          standalone=True)
       outputs = (outputs['total_loss'] + outputs['output_losses'] +
                  outputs['metrics'])
       outputs = [
@@ -1132,7 +1133,7 @@ class Model(network.Network):
     if self._experimental_run_tf_function:
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
-          reset_metrics=reset_metrics)
+          reset_metrics=reset_metrics, standalone=True)
       outputs = (outputs['total_loss'] + outputs['output_losses'] +
                  outputs['metrics'])
       outputs = [
@@ -1197,7 +1198,7 @@ class Model(network.Network):
     """
     self._check_call_args('predict_on_batch')
     if self._experimental_run_tf_function:
-      return training_v2_utils.predict_on_batch(self, x)
+      return training_v2_utils.predict_on_batch(self, x, standalone=True)
 
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
