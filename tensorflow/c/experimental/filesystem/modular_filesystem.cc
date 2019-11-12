@@ -34,9 +34,21 @@ using UniquePtrTo_TF_Status =
 
 Status ModularFileSystem::NewRandomAccessFile(
     const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_random_access_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support NewRandomAccessFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto file = tensorflow::MakeUnique<TF_RandomAccessFile>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_random_access_file(filesystem_.get(), translated_name.c_str(),
+                               file.get(), plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = tensorflow::MakeUnique<ModularRandomAccessFile>(
+        translated_name, std::move(file), random_access_file_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewWritableFile(

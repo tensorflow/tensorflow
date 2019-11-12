@@ -267,6 +267,53 @@ TEST_P(ModularFileSystemTest, TestAppendFilePathIsInvalid) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
+TEST_P(ModularFileSystemTest, TestReadFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<RandomAccessFile> new_file;
+  Status status = env_->NewRandomAccessFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestReadFileNonExisting) {
+  const std::string filepath = GetURIForPath("dir_not_found/a_file");
+  std::unique_ptr<RandomAccessFile> new_file;
+  Status status = env_->NewRandomAccessFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestReadFileExistingDir) {
+  const std::string filepath = GetURIForPath("a_file");
+  Status status = env_->CreateDir(filepath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  std::unique_ptr<RandomAccessFile> new_file;
+  status = env_->NewRandomAccessFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateThenReadFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  std::unique_ptr<RandomAccessFile> same_file;
+  status = env_->NewRandomAccessFile(filepath, &same_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestReadFilePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_file");
+  std::unique_ptr<RandomAccessFile> same_file;
+  status = env_->NewRandomAccessFile(new_path, &same_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
 TEST_P(ModularFileSystemTest, TestCreateDir) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);
