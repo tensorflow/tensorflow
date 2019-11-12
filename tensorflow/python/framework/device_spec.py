@@ -84,8 +84,10 @@ class DeviceSpecV2(object):
   outer scopes.
 
   ```python
-  with tf.device(DeviceSpec(job="train", ).to_string()):
-    with tf.device(DeviceSpec(job="ps", device_type="GPU", device_index=0).to_string()):
+  gpu0_spec = DeviceSpec(job="ps", device_type="GPU", device_index=0)
+  
+  with tf.device(DeviceSpec(job="train").to_string()):
+    with tf.device(gpu0_spec.to_string()):
       # Nodes created here will be assigned to /job:ps/device:GPU:0.
     with tf.device(DeviceSpec(device_type="GPU", device_index=1).to_string()):
       # Nodes created here will be assigned to /job:train/device:GPU:1.
