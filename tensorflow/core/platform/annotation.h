@@ -18,11 +18,11 @@ limitations under the License.
 #include <stddef.h>
 
 #include <atomic>
-#include <string>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -35,18 +35,18 @@ class Annotation {
   // The choice of separator "::" is based on characters not used by
   // TensorFlow for its TensorOps.
   static size_t PushAnnotation(absl::string_view name) {
-    std::string* annotation = ThreadAnnotation();
+    string* annotation = ThreadAnnotation();
     size_t old_length = annotation->size();
     if (old_length != 0) {
       absl::StrAppend(annotation, "::", name);
     } else {
-      *annotation = std::string(name);
+      *annotation = string(name);
     }
     return old_length;
   }
 
-  static size_t PushAnnotation(std::string&& name) {
-    std::string* annotation = ThreadAnnotation();
+  static size_t PushAnnotation(string&& name) {
+    string* annotation = ThreadAnnotation();
     size_t old_length = annotation->size();
     if (old_length != 0) {
       absl::StrAppend(annotation, "::", name);
@@ -57,7 +57,7 @@ class Annotation {
   }
 
   // Returns the annotation for the current thread.
-  static const std::string& CurrentAnnotation() { return *ThreadAnnotation(); }
+  static const string& CurrentAnnotation() { return *ThreadAnnotation(); }
 
   // Resizes the annotation for the current thread to its old length.
   static void PopAnnotation(size_t old_length) {
@@ -68,7 +68,7 @@ class Annotation {
   Annotation(const Annotation&) = delete;  // Unconstructible.
 
   // Returns a reference to the annotation for the current thread.
-  static std::string* ThreadAnnotation();
+  static string* ThreadAnnotation();
 };
 
 namespace tracing {
@@ -92,13 +92,13 @@ class ScopedAnnotation {
   explicit ScopedAnnotation(const char* name)
       : ScopedAnnotation(absl::string_view(name)) {}
 
-  explicit ScopedAnnotation(const std::string& name) {
+  explicit ScopedAnnotation(const string& name) {
     if (TF_PREDICT_FALSE(IsEnabled())) {
       old_length_ = Annotation::PushAnnotation(name);
     }
   }
 
-  explicit ScopedAnnotation(std::string&& name) {
+  explicit ScopedAnnotation(string&& name) {
     if (TF_PREDICT_FALSE(IsEnabled())) {
       old_length_ = Annotation::PushAnnotation(std::move(name));
     }

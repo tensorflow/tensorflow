@@ -15,14 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TRACEME_RECORDER_H_
 
+#include <stddef.h>
+
 #include <atomic>
-#include <cstddef>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
-#include "absl/base/optimization.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -77,7 +78,7 @@ class TraceMeRecorder {
 
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
-    return ABSL_PREDICT_FALSE(
+    return TF_PREDICT_FALSE(
         internal::g_trace_level.load(std::memory_order_acquire) >= level);
   }
 

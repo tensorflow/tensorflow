@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_binary_additional_srcs")
 
 package(
     default_visibility = ["//tensorflow/python/profiler:__subpackages__"],
@@ -71,4 +72,28 @@ cuda_py_test(
         "no_pip",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+)
+
+pybind_extension(
+    name = "_pywrap_traceme",
+    srcs = ["traceme_wrapper.cc"] + tf_binary_additional_srcs(),
+    module_name = "_pywrap_traceme",
+    visibility = [
+        "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",
+        "//tensorflow/python/profiler:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/core/profiler/internal:python_traceme",
+        "@pybind11",
+    ],
+)
+
+pybind_extension(
+    name = "_pywrap_scoped_annotation",
+    srcs = ["scoped_annotation_wrapper.cc"] + tf_binary_additional_srcs(),
+    module_name = "_pywrap_scoped_annotation",
+    deps = [
+        "//tensorflow/core/profiler/internal:python_scoped_annotation",
+        "@pybind11",
+    ],
 )

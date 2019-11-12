@@ -374,11 +374,9 @@ cc_library(
         "//tensorflow/core:__pkg__",  # executor.cc
         "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
         "//tensorflow/core/profiler/lib:__pkg__",  # traceme
-        "//tensorflow/python:__pkg__",  # pybind11 wrapper
     ],
     deps = [
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base:core_headers",
     ],
     alwayslink = 1,
 )
@@ -439,22 +437,10 @@ tf_cc_test(
     ],
 )
 
-filegroup(
-    name = "python_traceme_hdrs",
-    srcs = [
-        "python_traceme.h",
-        "traceme_recorder.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
 cc_library(
     name = "python_traceme",
     hdrs = ["python_traceme.h"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
         ":traceme_recorder",
         "//tensorflow/core/profiler/lib:traceme",
@@ -462,23 +448,12 @@ cc_library(
     ],
 )
 
-filegroup(
-    name = "python_scoped_annotation_hdrs",
-    srcs = [
-        "python_scoped_annotation.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
 cc_library(
     name = "python_scoped_annotation",
     hdrs = ["python_scoped_annotation.h"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
-        "//tensorflow/core/platform:annotation",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

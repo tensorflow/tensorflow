@@ -14,9 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace profiler {
