@@ -26,9 +26,9 @@ cc_library(
     srcs = ["grpc_stub.cc"],
     hdrs = ["grpc_stub.h"],
     deps = [
-        ":xla_service_proto",
+        ":xla_service_proto_cc",
         "//tensorflow/compiler/xla:service_interface",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
     ],
@@ -81,7 +81,7 @@ cc_library(
     srcs = ["grpc_service.cc"],
     hdrs = ["grpc_service.h"],
     deps = [
-        ":xla_service_proto",
+        ":xla_service_proto_cc",
         "//tensorflow:grpc++",
         "//tensorflow/compiler/xla/service",
         "//tensorflow/compiler/xla/service:platform_util",
