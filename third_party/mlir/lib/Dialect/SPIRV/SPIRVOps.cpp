@@ -1442,6 +1442,13 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
 // spv.loop
 //===----------------------------------------------------------------------===//
 
+void spirv::LoopOp::build(Builder *builder, OperationState &state) {
+  state.addAttribute("loop_control",
+                     builder->getI32IntegerAttr(
+                         static_cast<uint32_t>(spirv::LoopControl::None)));
+  state.addRegion();
+}
+
 static ParseResult parseLoopOp(OpAsmParser &parser, OperationState &state) {
   // TODO(antiagainst): support loop control properly
   Builder builder = parser.getBuilder();
@@ -1555,6 +1562,11 @@ static LogicalResult verify(spirv::LoopOp loopOp) {
   }
 
   return success();
+}
+
+Block *spirv::LoopOp::getEntryBlock() {
+  assert(!body().empty() && "op region should not be empty!");
+  return &body().front();
 }
 
 Block *spirv::LoopOp::getHeaderBlock() {

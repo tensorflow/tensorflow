@@ -1515,6 +1515,17 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   // afterwards.
   encodeInstructionInto(functions, spirv::Opcode::OpBranch, {headerID});
 
+  // We omit the LoopOp's entry block and start serialization from the loop
+  // header block. The entry block should not contain any additional ops other
+  // than a single spv.Branch that jumps to the loop header block. However,
+  // the spv.Branch can contain additional block arguments. Those block
+  // arguments must come from out of the loop using implicit capture. We will
+  // need to query the <id> for the value sent and the <id> for the incoming
+  // parent block. For the latter, we need to make sure this block is
+  // registered. The value sent should come from the block this loop resides in.
+  blockIDMap[loopOp.getEntryBlock()] =
+      getBlockID(loopOp.getOperation()->getBlock());
+
   // Emit the loop header block, which dominates all other blocks, first. We
   // need to emit an OpLoopMerge instruction before the loop header block's
   // terminator.
