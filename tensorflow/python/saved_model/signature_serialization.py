@@ -38,7 +38,7 @@ SIGNATURE_ATTRIBUTE_NAME = "signatures"
 def _get_signature(function):
   if (isinstance(function, (defun.Function, def_function.Function)) and
       function.input_signature is not None):
-    function = function.get_concrete_function()
+    function = function._get_concrete_function_garbage_collected()  # pylint: disable=protected-access
   if not isinstance(function, defun.ConcreteFunction):
     return None
   return function
@@ -127,7 +127,7 @@ def canonicalize_signatures(signatures):
       keyword = compat.as_str(keyword)
       tensor_spec_signature[keyword] = tensor_spec.TensorSpec.from_tensor(
           tensor, name=keyword)
-    final_concrete = signature_wrapper.get_concrete_function(
+    final_concrete = signature_wrapper._get_concrete_function_garbage_collected(  # pylint: disable=protected-access
         **tensor_spec_signature)
     # pylint: disable=protected-access
     if len(final_concrete._arg_keywords) == 1:
