@@ -2786,11 +2786,11 @@ tf_module {
   }
   member_method {
     name: "QuantizedDepthwiseConv2DWithBiasAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'paddings\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedInstanceNorm"
