@@ -341,7 +341,7 @@ def LLVM_FPTruncOp : LLVM_CastOp<"fptrunc", "CreateFPTrunc">;
 
 // Call-related operations.
 def LLVM_CallOp : LLVM_Op<"call">,
-                  Arguments<(ins OptionalAttr<SymbolRefAttr>:$callee,
+                  Arguments<(ins OptionalAttr<FlatSymbolRefAttr>:$callee,
                              Variadic<LLVM_Type>)>,
                   Results<(outs Variadic<LLVM_Type>)>,
                   LLVM_TwoBuilders<LLVM_OneResultOpBuilder,
@@ -479,7 +479,7 @@ def LLVM_UnreachableOp : LLVM_TerminatorOp<"unreachable", []> {
 // to work correctly).
 def LLVM_AddressOfOp
     : LLVM_OneResultOp<"mlir.addressof">,
-      Arguments<(ins SymbolRefAttr:$global_name)> {
+      Arguments<(ins FlatSymbolRefAttr:$global_name)> {
   let builders = [
     OpBuilder<"Builder *builder, OperationState &result, LLVMType resType, "
               "StringRef name, ArrayRef<NamedAttribute> attrs = {}", [{

@@ -189,7 +189,8 @@ private:
       if (Optional<SymbolTable::UseRange> symbolUses =
               SymbolTable::getSymbolUses(symbolDefWorklist.pop_back_val())) {
         for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
-          StringRef symbolName = symbolUse.getSymbolRef().getValue();
+          StringRef symbolName =
+              symbolUse.getSymbolRef().cast<FlatSymbolRefAttr>().getValue();
           if (moduleManager.lookupSymbol(symbolName))
             continue;
 

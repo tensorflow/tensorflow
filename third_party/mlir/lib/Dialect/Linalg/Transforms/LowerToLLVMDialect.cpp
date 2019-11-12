@@ -359,8 +359,8 @@ public:
 // Get a SymbolRefAttr containing the library function name for the LinalgOp.
 // If the library function does not exist, insert a declaration.
 template <typename LinalgOp>
-static SymbolRefAttr getLibraryCallSymbolRef(Operation *op,
-                                             PatternRewriter &rewriter) {
+static FlatSymbolRefAttr getLibraryCallSymbolRef(Operation *op,
+                                                 PatternRewriter &rewriter) {
   auto linalgOp = cast<LinalgOp>(op);
   auto fnName = linalgOp.getLibraryCallName();
   if (fnName.empty()) {
@@ -369,7 +369,7 @@ static SymbolRefAttr getLibraryCallSymbolRef(Operation *op,
   }
 
   // fnName is a dynamic std::String, unique it via a SymbolRefAttr.
-  SymbolRefAttr fnNameAttr = rewriter.getSymbolRefAttr(fnName);
+  FlatSymbolRefAttr fnNameAttr = rewriter.getSymbolRefAttr(fnName);
   auto module = op->getParentOfType<ModuleOp>();
   if (module.lookupSymbol(fnName)) {
     return fnNameAttr;

@@ -94,7 +94,8 @@ static GlobalTensorUsesMap CreateGlobalTensorUsesMap(ModuleOp module) {
       if (!sym) {
         continue;
       }
-      auto global_tensor = symbol_table.lookup<GlobalTensorOp>(sym.getValue());
+      auto global_tensor = symbol_table.lookup<GlobalTensorOp>(
+          sym.cast<FlatSymbolRefAttr>().getValue());
       global_tensor_uses[global_tensor].push_back({func, i});
     }
   }

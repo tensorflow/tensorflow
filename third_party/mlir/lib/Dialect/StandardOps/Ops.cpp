@@ -528,7 +528,7 @@ void BranchOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 static ParseResult parseCallOp(OpAsmParser &parser, OperationState &result) {
-  SymbolRefAttr calleeAttr;
+  FlatSymbolRefAttr calleeAttr;
   FunctionType calleeType;
   SmallVector<OpAsmParser::OperandType, 4> operands;
   auto calleeLoc = parser.getNameLoc();
@@ -555,7 +555,7 @@ static void print(OpAsmPrinter &p, CallOp op) {
 
 static LogicalResult verify(CallOp op) {
   // Check that the callee attribute was specified.
-  auto fnAttr = op.getAttrOfType<SymbolRefAttr>("callee");
+  auto fnAttr = op.getAttrOfType<FlatSymbolRefAttr>("callee");
   if (!fnAttr)
     return op.emitOpError("requires a 'callee' symbol reference attribute");
   auto fn =
@@ -608,8 +608,8 @@ struct SimplifyIndirectCallWithKnownCallee
     // Replace with a direct call.
     SmallVector<Type, 8> callResults(indirectCall.getResultTypes());
     SmallVector<Value *, 8> callOperands(indirectCall.getArgOperands());
-    rewriter.replaceOpWithNewOp<CallOp>(indirectCall, calledFn.getValue(),
-                                        callResults, callOperands);
+    rewriter.replaceOpWithNewOp<CallOp>(indirectCall, calledFn, callResults,
+                                        callOperands);
     return matchSuccess();
   }
 };
@@ -1206,7 +1206,7 @@ static LogicalResult verify(ConstantOp &op) {
   }
 
   if (type.isa<FunctionType>()) {
-    auto fnAttr = value.dyn_cast<SymbolRefAttr>();
+    auto fnAttr = value.dyn_cast<FlatSymbolRefAttr>();
     if (!fnAttr)
       return op.emitOpError("requires 'value' to be a function reference");
 

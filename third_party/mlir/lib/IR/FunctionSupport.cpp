@@ -159,7 +159,7 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   auto &builder = parser.getBuilder();
 
   // Parse the name as a symbol reference attribute.
-  SymbolRefAttr nameAttr;
+  FlatSymbolRefAttr nameAttr;
   if (parser.parseAttribute(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
                             result.attributes))
     return failure();

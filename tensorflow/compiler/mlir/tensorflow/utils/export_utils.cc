@@ -129,7 +129,7 @@ Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-Status ConvertAttribute(const mlir::SymbolRefAttr& attr, AttrValue* value) {
+Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue());
   return Status::OK();
 }
@@ -163,7 +163,7 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       TensorProto tensor;
       TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor));
       *list->add_tensor() = tensor;
-    } else if (auto attr = a.dyn_cast<mlir::SymbolRefAttr>()) {
+    } else if (auto attr = a.dyn_cast<mlir::FlatSymbolRefAttr>()) {
       AttrValue attr_val;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
       *list->add_func() = attr_val.func();
@@ -318,7 +318,7 @@ Status ConvertAttributes(
     AttrValue value;
     switch (attr.getKind()) {
       case mlir::StandardAttributes::SymbolRef: {
-        auto func_attr = attr.cast<mlir::SymbolRefAttr>();
+        auto func_attr = attr.cast<mlir::FlatSymbolRefAttr>();
         value.mutable_func()->set_name(func_attr.getValue());
         func_call_attrs[string(name)] = value;
         continue;

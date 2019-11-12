@@ -119,7 +119,7 @@ public:
   /// to. This may return null in the case of an external callable object, e.g.
   /// an external function.
   Region *getCallableRegion(CallInterfaceCallable callable) {
-    assert(callable.get<SymbolRefAttr>().getValue() == getName());
+    assert(callable.get<SymbolRefAttr>().getLeafReference() == getName());
     return isExternal() ? nullptr : &getBody();
   }
 

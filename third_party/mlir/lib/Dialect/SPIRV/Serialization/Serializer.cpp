@@ -1696,7 +1696,7 @@ Serializer::processOp<spirv::EntryPointOp>(spirv::EntryPointOp op) {
   // Add the interface values.
   if (auto interface = op.interface()) {
     for (auto var : interface.getValue()) {
-      auto id = getVariableID(var.cast<SymbolRefAttr>().getValue());
+      auto id = getVariableID(var.cast<FlatSymbolRefAttr>().getValue());
       if (!id) {
         return op.emitError("referencing undefined global variable."
                             "spv.EntryPoint is at the end of spv.module. All "

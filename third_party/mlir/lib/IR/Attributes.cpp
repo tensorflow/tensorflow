@@ -249,12 +249,27 @@ FloatAttr::verifyConstructionInvariants(llvm::Optional<Location> loc,
 // SymbolRefAttr
 //===----------------------------------------------------------------------===//
 
-SymbolRefAttr SymbolRefAttr::get(StringRef value, MLIRContext *ctx) {
-  return Base::get(ctx, StandardAttributes::SymbolRef, value,
-                   NoneType::get(ctx));
+FlatSymbolRefAttr SymbolRefAttr::get(StringRef value, MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::SymbolRef, value, llvm::None)
+      .cast<FlatSymbolRefAttr>();
 }
 
-StringRef SymbolRefAttr::getValue() const { return getImpl()->value; }
+SymbolRefAttr SymbolRefAttr::get(StringRef value,
+                                 ArrayRef<FlatSymbolRefAttr> nestedReferences,
+                                 MLIRContext *ctx) {
+  return Base::get(ctx, StandardAttributes::SymbolRef, value, nestedReferences);
+}
+
+StringRef SymbolRefAttr::getRootReference() const { return getImpl()->value; }
+
+StringRef SymbolRefAttr::getLeafReference() const {
+  ArrayRef<FlatSymbolRefAttr> nestedRefs = getNestedReferences();
+  return nestedRefs.empty() ? getRootReference() : nestedRefs.back().getValue();
+}
+
+ArrayRef<FlatSymbolRefAttr> SymbolRefAttr::getNestedReferences() const {
+  return getImpl()->getNestedRefs();
+}
 
 //===----------------------------------------------------------------------===//
 // IntegerAttr
