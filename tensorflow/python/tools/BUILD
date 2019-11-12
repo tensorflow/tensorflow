@@ -70,6 +70,7 @@ py_library(
         "//tensorflow/python:no_contrib",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python:training",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:loader",
@@ -152,7 +153,7 @@ py_library(
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:py_checkpoint_reader",
     ],
 )
 
