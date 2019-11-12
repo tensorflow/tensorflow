@@ -1015,6 +1015,18 @@ TEST_F(QuantizeLSTMTest, VerifyLSTM) {
       EXPECT_EQ(tensor->shape, expected_tensor->shape);
       EXPECT_EQ(tensor->name, expected_tensor->name);
       EXPECT_EQ(tensor->type, expected_tensor->type);
+      const auto quantization_params = tensor->quantization.get();
+      const auto expected_quantization_params =
+          expected_tensor->quantization.get();
+      if (quantization_params != nullptr ||
+          expected_quantization_params != nullptr) {
+        EXPECT_NE(quantization_params, nullptr);
+        EXPECT_NE(expected_quantization_params, nullptr);
+        EXPECT_EQ(quantization_params->scale,
+                  expected_quantization_params->scale);
+        EXPECT_EQ(quantization_params->zero_point,
+                  expected_quantization_params->zero_point);
+      }
     }
   }
   ASSERT_EQ(model_.buffers.size(), expected_model.buffers.size());
