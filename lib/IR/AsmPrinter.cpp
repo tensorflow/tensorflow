@@ -92,7 +92,7 @@ OpPrintingFlags::OpPrintingFlags()
               : Optional<int64_t>()),
       printDebugInfoFlag(printDebugInfoOpt),
       printDebugInfoPrettyFormFlag(printPrettyDebugInfoOpt),
-      printGenericOpFormFlag(printGenericOpFormOpt) {}
+      printGenericOpFormFlag(printGenericOpFormOpt), printLocalScope(false) {}
 
 /// Enable the elision of large elements attributes, by printing a '...'
 /// instead of the element data, when the number of elements is greater than
@@ -118,6 +118,14 @@ OpPrintingFlags &OpPrintingFlags::printGenericOpForm() {
   return *this;
 }
 
+/// Use local scope when printing the operation. This allows for using the
+/// printer in a more localized and thread-safe setting, but may not necessarily
+/// be identical of what the IR will look like when dumping the full module.
+OpPrintingFlags &OpPrintingFlags::useLocalScope() {
+  printLocalScope = true;
+  return *this;
+}
+
 /// Return if the given ElementsAttr should be elided.
 bool OpPrintingFlags::shouldElideElementsAttr(ElementsAttr attr) const {
   return elementsAttrElementLimit.hasValue() &&
@@ -138,6 +146,9 @@ bool OpPrintingFlags::shouldPrintDebugInfoPrettyForm() const {
 bool OpPrintingFlags::shouldPrintGenericOpForm() const {
   return printGenericOpFormFlag;
 }
+
+/// Return if the printer should use local scope when dumping the IR.
+bool OpPrintingFlags::shouldUseLocalScope() const { return printLocalScope; }
 
 //===----------------------------------------------------------------------===//
 // ModuleState
@@ -1516,8 +1527,10 @@ private:
 
 OperationPrinter::OperationPrinter(Operation *op, ModulePrinter &other)
     : ModulePrinter(other) {
+  llvm::ScopedHashTable<StringRef, char>::ScopeTy usedNamesScope(usedNames);
   if (op->getNumResults() != 0)
     numberValueID(op->getResult(0));
+
   for (auto &region : op->getRegions())
     numberValuesInRegion(region);
 }
@@ -1725,7 +1738,7 @@ void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
 
   auto it = valueIDs.find(lookupValue);
   if (it == valueIDs.end()) {
-    stream << "<<INVALID SSA VALUE>>";
+    stream << "<<UNKNOWN SSA VALUE>>";
     return;
   }
 
@@ -1943,9 +1956,10 @@ void Value::dump() {
 }
 
 void Operation::print(raw_ostream &os, OpPrintingFlags flags) {
-  // Handle top-level operations.
-  if (!getParent()) {
-    ModulePrinter modulePrinter(os, flags);
+  // Handle top-level operations or local printing.
+  if (!getParent() || flags.shouldUseLocalScope()) {
+    ModuleState state(getContext());
+    ModulePrinter modulePrinter(os, flags, &state);
     OperationPrinter(this, modulePrinter).print(this);
     return;
   }
@@ -1966,7 +1980,7 @@ void Operation::print(raw_ostream &os, OpPrintingFlags flags) {
 }
 
 void Operation::dump() {
-  print(llvm::errs());
+  print(llvm::errs(), OpPrintingFlags().useLocalScope());
   llvm::errs() << "\n";
 }
 

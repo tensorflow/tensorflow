@@ -624,9 +624,6 @@ $ mlir-opt foo.mlir -cse -canonicalize -lower-to-llvm -pass-timing
 
 #### IR Printing
 
-Note: The IR Printing instrumentation should only be used when multi-threading
-is disabled(`-disable-pass-threading`)
-
 When debugging it is often useful to dump the IR at various stages of a pass
 pipeline. This is where the IR printing instrumentation comes into play. This
 instrumentation allows for conditionally printing the IR before and after pass
@@ -641,7 +638,7 @@ this instrumentation:
     *   Print the IR before every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-before=cse
+$ mlir-opt foo.mlir -cse -print-ir-before=cse
 
 *** IR Dump Before CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -657,7 +654,7 @@ func @simple_constant() -> (i32, i32) {
     *   Print the IR after every pass in the pipeline.
 
 ```shell
-$ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-after=cse
+$ mlir-opt foo.mlir -cse -print-ir-after=cse
 
 *** IR Dump After CSE ***
 func @simple_constant() -> (i32, i32) {
@@ -669,6 +666,8 @@ func @simple_constant() -> (i32, i32) {
 *   `print-ir-module-scope`
     *   Always print the top-level module operation, regardless of pass type or
         operation nesting level.
+    *   Note: Printing at module scope should only be used when multi-threading
+        is disabled(`-disable-pass-threading`)
 
 ```shell
 $ mlir-opt foo.mlir -disable-pass-threading -cse -print-ir-after=cse -print-ir-module-scope

@@ -74,7 +74,7 @@ void DiagnosticArgument::print(raw_ostream &os) const {
     os << getAsInteger();
     break;
   case DiagnosticArgumentKind::Operation:
-    os << getAsOperation();
+    getAsOperation().print(os, OpPrintingFlags().useLocalScope());
     break;
   case DiagnosticArgumentKind::String:
     os << getAsString();
