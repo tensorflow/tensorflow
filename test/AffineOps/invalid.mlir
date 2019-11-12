@@ -151,3 +151,33 @@ func @affine_store_missing_l_square(%C: memref<4096x4096xf32>) {
   affine.store %9, %C : memref<4096x4096xf32>
   return
 }
+
+// -----
+
+// CHECK-LABEL: @affine_min
+func @affine_min(%arg0 : index, %arg1 : index, %arg2 : index) {
+  // expected-error@+1 {{operand count and affine map dimension and symbol count must match}}
+  %0 = affine.min (d0) -> (d0) (%arg0, %arg1)
+
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @affine_min
+func @affine_min(%arg0 : index, %arg1 : index, %arg2 : index) {
+  // expected-error@+1 {{operand count and affine map dimension and symbol count must match}}
+  %0 = affine.min ()[s0] -> (s0) (%arg0, %arg1)
+
+  return
+}
+
+// -----
+
+// CHECK-LABEL: @affine_min
+func @affine_min(%arg0 : index, %arg1 : index, %arg2 : index) {
+  // expected-error@+1 {{operand count and affine map dimension and symbol count must match}}
+  %0 = affine.min (d0) -> (d0) ()
+
+  return
+}

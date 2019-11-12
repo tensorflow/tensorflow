@@ -1,4 +1,4 @@
-// RUN: mlir-opt %s | FileCheck %s
+// RUN: mlir-opt -split-input-file %s | FileCheck %s
 // RUN: mlir-opt %s -mlir-print-op-generic | FileCheck -check-prefix=GENERIC %s
 
 // Check that the attributes for the affine operations are round-tripped.
@@ -56,5 +56,25 @@ func @affine_terminator() {
   affine.for %i = 0 to 10 {
     "affine.terminator"() : () -> ()
   }
+  return
+}
+
+// -----
+
+// CHECK-DAG: #[[MAP0:map[0-9]+]] = (d0)[s0] -> (1000, d0 + 512, s0)
+// CHECK-DAG: #[[MAP1:map[0-9]+]] = (d0, d1)[s0] -> (d0 - d1, s0 + 512)
+// CHECK-DAG: #[[MAP2:map[0-9]+]] = ()[s0, s1] -> (s0 - s1, 11)
+// CHECK-DAG: #[[MAP3:map[0-9]+]] = () -> (77, 78, 79)
+
+// CHECK-LABEL: @affine_min
+func @affine_min(%arg0 : index, %arg1 : index, %arg2 : index) {
+  // CHECK: affine.min #[[MAP0]](%arg0)[%arg1]
+  %0 = affine.min (d0)[s0] -> (1000, d0 + 512, s0) (%arg0)[%arg1]
+  // CHECK: affine.min #[[MAP1]](%arg0, %arg1)[%arg2]
+  %1 = affine.min (d0, d1)[s0] -> (d0 - d1, s0 + 512) (%arg0, %arg1)[%arg2]
+  // CHECK: affine.min #[[MAP2]]()[%arg1, %arg2]
+  %2 = affine.min ()[s0, s1] -> (s0 - s1, 11) ()[%arg1, %arg2]
+  // CHECK: affine.min #[[MAP3]]()
+  %3 = affine.min ()[] -> (77, 78, 79) ()[]
   return
 }
