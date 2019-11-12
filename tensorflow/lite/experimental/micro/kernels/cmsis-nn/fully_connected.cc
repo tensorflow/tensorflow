@@ -111,6 +111,8 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
           data->output_activation_min, data->output_activation_max, buf),
       ARM_MATH_SUCCESS);
 #else
+#pragma message( \
+    "CMSIS-NN optimization for conv not available for this target. Using reference kernel.")
 
   FullyConnectedParams op_params;
   op_params.input_offset = -input->params.zero_point;
