@@ -918,3 +918,30 @@ tf_cc_test(
         "@local_config_mlir//:Support",
     ],
 )
+
+cc_library(
+    name = "dump_mlir_util",
+    srcs = ["utils/dump_mlir_util.cc"],
+    hdrs = ["utils/dump_mlir_util.h"],
+    deps = [
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+    ],
+)
+
+tf_cc_test(
+    name = "dump_mlir_util_test",
+    size = "small",
+    srcs = ["utils/dump_mlir_util_test.cc"],
+    deps = [
+        ":dump_mlir_util",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:test",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+    ],
+)
