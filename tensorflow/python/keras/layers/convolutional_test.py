@@ -308,6 +308,15 @@ class ConvSequentialTest(keras_parameterized.TestCase):
     self._run_test(keras.layers.Conv3D, kwargs, input_shape1, input_shape2,
                    expected_output_shape1, expected_output_shape2)
 
+  def test_dynamic_shape(self):
+    with self.cached_session(use_gpu=True):
+      layer = keras.layers.Conv3D(2, 3)
+      input_shape = (5, None, None, 2)
+      inputs = keras.Input(shape=input_shape)
+      x = layer(inputs)
+      # Won't raise error here with None values in input shape (b/144282043).
+      layer(x)
+
 
 @keras_parameterized.run_all_keras_modes
 class ZeroPaddingTest(keras_parameterized.TestCase):
