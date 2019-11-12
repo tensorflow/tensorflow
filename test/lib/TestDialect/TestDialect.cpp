@@ -116,6 +116,13 @@ TestDialect::TestDialect(MLIRContext *context)
   allowUnknownOperations();
 }
 
+LogicalResult TestDialect::verifyOperationAttribute(Operation *op,
+                                                    NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
+}
+
 LogicalResult TestDialect::verifyRegionArgAttribute(Operation *op,
                                                     unsigned regionIndex,
                                                     unsigned argIndex,
