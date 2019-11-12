@@ -43,6 +43,7 @@ namespace {
 class ArrayElementwiseOpTest : public ClientLibraryTestBase {
  public:
   ErrorSpec error_spec_{0.0001, 0.0001};
+  ErrorSpec strict_error_spec_{0x1p-48, 0x1p-48};
 };
 
 class ArrayElementwiseOpTestParamCount
@@ -71,7 +72,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, NegConstantF64) {
   auto a = ConstantR1<double>(&builder, {-2.5, 3.14, 2.25, -10.0, 6.0});
   Neg(a);
 
-  ComputeAndCompare(&builder, {}, error_spec_);
+  ComputeAndCompare(&builder, {}, strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, NegConstantS32) {
@@ -458,7 +459,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantF64s) {
   auto b = ConstantR1<double>(&builder, {100.0, 3.13, 2.75, 10.5, -999.0});
   Sub(a, b);
 
-  ComputeAndCompare(&builder, {}, error_spec_);
+  ComputeAndCompare(&builder, {}, strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF32s) {
@@ -490,7 +491,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF64s) {
                  2.1, 3.1, 9.9, -4.5, -11.0, -21.5, M_PI});
   Div(a, b);
 
-  ComputeAndCompare(&builder, {}, error_spec_);
+  ComputeAndCompare(&builder, {}, strict_error_spec_);
 }
 
 class IntegerDivideOpTest : public ArrayElementwiseOpTest {
