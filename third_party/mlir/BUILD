@@ -1,6 +1,8 @@
 # Description:
 #   The MLIR "Multi-Level Intermediate Representation" Compiler Infrastructure
 
+load(":tblgen.bzl", "gentbl")
+
 licenses(["notice"])
 
 package(default_visibility = [":friends"])
@@ -32,8 +34,6 @@ exports_files([
     "run_lit.sh",
     "LICENSE.TXT",
 ])
-
-load(":tblgen.bzl", "gentbl")
 
 cc_library(
     name = "DialectSymbolRegistry",
@@ -714,6 +714,7 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
+        ":LoopOps",
         ":Pass",
         ":SPIRVDialect",
         ":StandardOps",
