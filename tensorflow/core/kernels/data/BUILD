@@ -132,7 +132,7 @@ cc_library(
         ":captured_function",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/core:status",
     ],
 )
