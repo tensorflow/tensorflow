@@ -1807,8 +1807,8 @@ class Pat<dag pattern, dag result, list<dag> preds = [],
 //
 // * `$_builder` will be replaced by the current `mlir::PatternRewriter`.
 // * `$_self` will be replaced with the entity this transformer is attached to.
-//   E.g., with the definition `def transform : tAttr<$_self...>`, `$_self` in
-//   `transform:$attr` will be replaced by  the value for `$att`.
+//   E.g., with the definition `def transform : NativeCodeCall<"$_self...">`,
+//   `$_self` in `transform:$attr` will be replaced by the value for `$attr`.
 //
 // If used as a DAG node, i.e., `(NativeCodeCall<"..."> <arg0>, ..., <argN>)`,
 // then positional placeholders are also supported; placeholder `$N` in the
