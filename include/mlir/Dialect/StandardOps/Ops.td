@@ -165,18 +165,35 @@ def AllocOp : Std_Op<"alloc"> {
 
     This operation returns a single ssa value of memref type, which can be used
     by subsequent load and store operations.
+
+    The optional `alignment` attribute may be specified to ensure that the
+    region of memory that will be indexed is aligned at the specified byte
+    boundary. TODO(b/144281289) optional alignment attribute to MemRefType.
+
+      %0 = alloc()[%s] {alignment = 8} :
+        memref<8x64xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
   }];
 
-  let arguments = (ins Variadic<Index>:$value);
+  let arguments = (ins Variadic<Index>:$value,
+                   Confined<OptionalAttr<I64Attr>, [IntMinValue<0>]>:$alignment);
   let results = (outs AnyMemRef);
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, MemRefType memrefType", [{
        result.types.push_back(memrefType);
-     }]
-  >];
+     }]>,
+    OpBuilder<
+    "Builder *builder, OperationState &result, MemRefType memrefType, " #
+    "ArrayRef<Value*> operands, IntegerAttr alignment = IntegerAttr()", [{
+       result.addOperands(operands);
+       result.types.push_back(memrefType);
+       if (alignment)
+         result.addAttribute(getAlignmentAttrName(), alignment);
+     }]>];
 
   let extraClassDeclaration = [{
+    static StringRef getAlignmentAttrName() { return "alignment"; }
+
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
     /// Returns the number of symbolic operands (the ones in square brackets),

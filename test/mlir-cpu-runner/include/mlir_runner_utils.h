@@ -35,6 +35,7 @@
 
 /// StridedMemRef descriptor type with static rank.
 template <typename T, int N> struct StridedMemRefType {
+  T *basePtr;
   T *data;
   int64_t offset;
   int64_t sizes[N];
@@ -43,6 +44,7 @@ template <typename T, int N> struct StridedMemRefType {
 
 /// StridedMemRef descriptor type specialized for rank 0.
 template <typename T> struct StridedMemRefType<T, 0> {
+  T *basePtr;
   T *data;
   int64_t offset;
 };

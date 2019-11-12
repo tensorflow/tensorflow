@@ -127,14 +127,6 @@ static Type convertLinalgType(Type t, LLVMTypeConverter &lowering) {
   return Type();
 }
 
-static constexpr int kBasePtrPosInBuffer = 0;
-static constexpr int kPtrPosInBuffer = 1;
-static constexpr int kSizePosInBuffer = 2;
-static constexpr int kPtrPosInView = 0;
-static constexpr int kOffsetPosInView = 1;
-static constexpr int kSizePosInView = 2;
-static constexpr int kStridePosInView = 3;
-
 namespace {
 /// Factor out the common information for all view conversions:
 ///   1. common types in (standard and LLVM dialects)
@@ -224,12 +216,14 @@ public:
     // TODO(ntv): extract sizes and emit asserts.
     SmallVector<Value *, 4> strides(memRefType.getRank());
     for (int i = 0, e = memRefType.getRank(); i < e; ++i)
-      strides[i] =
-          extractvalue(int64Ty, baseDesc, helper.pos({kStridePosInView, i}));
+      strides[i] = extractvalue(
+          int64Ty, baseDesc,
+          helper.pos({LLVMTypeConverter::kStridePosInMemRefDescriptor, i}));
 
     // Compute base offset.
-    Value *baseOffset =
-        extractvalue(int64Ty, baseDesc, helper.pos(kOffsetPosInView));
+    Value *baseOffset = extractvalue(
+        int64Ty, baseDesc,
+        helper.pos(LLVMTypeConverter::kOffsetPosInMemRefDescriptor));
     for (int i = 0, e = memRefType.getRank(); i < e; ++i) {
       Value *indexing = adaptor.indexings()[i];
       Value *min = indexing;
@@ -238,12 +232,17 @@ public:
       baseOffset = add(baseOffset, mul(min, strides[i]));
     }
 
-    // Insert base pointer.
-    auto ptrPos = helper.pos(kPtrPosInView);
+    // Insert the base and aligned pointers.
+    auto ptrPos =
+        helper.pos(LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor);
+    desc = insertvalue(desc, extractvalue(elementTy, baseDesc, ptrPos), ptrPos);
+    ptrPos = helper.pos(LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor);
     desc = insertvalue(desc, extractvalue(elementTy, baseDesc, ptrPos), ptrPos);
 
     // Insert base offset.
-    desc = insertvalue(desc, baseOffset, helper.pos(kOffsetPosInView));
+    desc = insertvalue(
+        desc, baseOffset,
+        helper.pos(LLVMTypeConverter::kOffsetPosInMemRefDescriptor));
 
     // Corner case, no sizes or strides: early return the descriptor.
     if (helper.zeroDMemRef)
@@ -262,8 +261,9 @@ public:
         Value *min = extractvalue(int64Ty, rangeDescriptor, helper.pos(0));
         Value *max = extractvalue(int64Ty, rangeDescriptor, helper.pos(1));
         Value *step = extractvalue(int64Ty, rangeDescriptor, helper.pos(2));
-        Value *baseSize =
-            extractvalue(int64Ty, baseDesc, helper.pos({kSizePosInView, rank}));
+        Value *baseSize = extractvalue(
+            int64Ty, baseDesc,
+            helper.pos({LLVMTypeConverter::kSizePosInMemRefDescriptor, rank}));
         // Bound upper by base view upper bound.
         max = llvm_select(llvm_icmp(ICmpPredicate::slt, max, baseSize), max,
                           baseSize);
@@ -272,10 +272,14 @@ public:
         size =
             llvm_select(llvm_icmp(ICmpPredicate::slt, size, zero), zero, size);
         Value *stride = mul(strides[rank], step);
-        desc =
-            insertvalue(desc, size, helper.pos({kSizePosInView, numNewDims}));
-        desc = insertvalue(desc, stride,
-                           helper.pos({kStridePosInView, numNewDims}));
+        desc = insertvalue(
+            desc, size,
+            helper.pos(
+                {LLVMTypeConverter::kSizePosInMemRefDescriptor, numNewDims}));
+        desc = insertvalue(
+            desc, stride,
+            helper.pos(
+                {LLVMTypeConverter::kStridePosInMemRefDescriptor, numNewDims}));
         ++numNewDims;
       }
     }
@@ -316,25 +320,39 @@ public:
     Value *desc = helper.desc;
 
     edsc::ScopedContext context(rewriter, op->getLoc());
-    // Copy the base pointer from the old descriptor to the new one.
-    ArrayAttr ptrPos = helper.pos(kPtrPosInView);
+    // Copy the base and aligned pointers from the old descriptor to the new
+    // one.
+    ArrayAttr ptrPos =
+        helper.pos(LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor);
+    desc = insertvalue(desc, extractvalue(elementTy, baseDesc, ptrPos), ptrPos);
+    ptrPos = helper.pos(LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor);
     desc = insertvalue(desc, extractvalue(elementTy, baseDesc, ptrPos), ptrPos);
 
     // Copy the offset pointer from the old descriptor to the new one.
-    ArrayAttr offPos = helper.pos(kOffsetPosInView);
+    ArrayAttr offPos =
+        helper.pos(LLVMTypeConverter::kOffsetPosInMemRefDescriptor);
     desc = insertvalue(desc, extractvalue(int64Ty, baseDesc, offPos), offPos);
 
     // Iterate over the dimensions and apply size/stride permutation.
     for (auto en : llvm::enumerate(transposeOp.permutation().getResults())) {
       int sourcePos = en.index();
       int targetPos = en.value().cast<AffineDimExpr>().getPosition();
-      Value *size = extractvalue(int64Ty, baseDesc,
-                                 helper.pos({kSizePosInView, sourcePos}));
-      desc = insertvalue(desc, size, helper.pos({kSizePosInView, targetPos}));
-      Value *stride = extractvalue(int64Ty, baseDesc,
-                                   helper.pos({kStridePosInView, sourcePos}));
+      Value *size = extractvalue(
+          int64Ty, baseDesc,
+          helper.pos(
+              {LLVMTypeConverter::kSizePosInMemRefDescriptor, sourcePos}));
       desc =
-          insertvalue(desc, stride, helper.pos({kStridePosInView, targetPos}));
+          insertvalue(desc, size,
+                      helper.pos({LLVMTypeConverter::kSizePosInMemRefDescriptor,
+                                  targetPos}));
+      Value *stride = extractvalue(
+          int64Ty, baseDesc,
+          helper.pos(
+              {LLVMTypeConverter::kStridePosInMemRefDescriptor, sourcePos}));
+      desc = insertvalue(
+          desc, stride,
+          helper.pos(
+              {LLVMTypeConverter::kStridePosInMemRefDescriptor, targetPos}));
     }
 
     rewriter.replaceOp(op, desc);
