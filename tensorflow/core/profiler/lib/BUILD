@@ -51,7 +51,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+cc_library(
     name = "traceme",
     srcs = ["traceme.cc"],
     hdrs = ["traceme.h"],

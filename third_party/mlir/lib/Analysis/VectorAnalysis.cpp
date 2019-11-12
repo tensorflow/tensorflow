@@ -182,7 +182,7 @@ AffineMap mlir::makePermutationMap(
 
 bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
                                              VectorType subVectorType) {
-  // First, extract the vector type and ditinguish between:
+  // First, extract the vector type and distinguish between:
   //   a. ops that *must* lower a super-vector (i.e. vector.transfer_read,
   //      vector.transfer_write); and
   //   b. ops that *may* lower a super-vector (all other ops).

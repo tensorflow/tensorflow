@@ -25,7 +25,7 @@ from __future__ import print_function
 
 import six
 
-from tensorflow.python.pywrap_tensorflow import PythonTraceMe
+from tensorflow.python.profiler.internal._pywrap_traceme import PythonTraceMe
 
 
 class TraceMe(object):

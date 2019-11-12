@@ -95,11 +95,18 @@ standard approach for
 of TF2 programs. You can enable compilation with XLA by setting the
 `experimental_compile` argument of `tf.function` to `True`.
 
+Note: `experimental_compile` only works in
+[eager](https://www.tensorflow.org/guide/eager) mode.
+
 #### TF1: Use `xla.compile`
 
 If you are using TF1, you can use the `xla.compile` API for explicit compilation
 using XLA. See the [tutorial colab](./tutorials/xla_compile.ipynb) for usage
 examples.
+
+Note: Gradient computation of graph in `xla.compile()` is prohibited because it
+can cause performance degradation. To avoid this issue, move gradient
+computation inside `xla.compile()`.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 

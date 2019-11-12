@@ -45,6 +45,7 @@ void Kernel8bitNeonOutOfOrder1Col(const KernelParams8bit<4, 2>& params);
 #endif
 void Kernel8bitNeonInOrder(const KernelParams8bit<4, 4>& params);
 void Kernel8bitNeonDotprodOutOfOrder(const KernelParams8bit<8, 8>& params);
+void Kernel8bitNeonDotprodOutOfOrder1Col(const KernelParams8bit<8, 8>& params);
 void Kernel8bitNeonDotprodInOrder(const KernelParams8bit<8, 8>& params);
 
 #if RUY_PLATFORM(NEON_64)
@@ -113,7 +114,9 @@ struct Kernel<Path::kNeonDotprod, std::int8_t, std::int8_t, DstScalar,
     KernelParams8bit<LhsLayout::kCols, RhsLayout::kCols> params;
     MakeKernelParams8bit(lhs, rhs, spec, start_row, start_col, end_row, end_col,
                          dst, &params);
-    if (__builtin_expect(tuning == Tuning::kInOrder, true)) {
+    if (dst->layout.cols == 1) {
+      Kernel8bitNeonDotprodOutOfOrder1Col(params);
+    } else if (__builtin_expect(tuning == Tuning::kInOrder, true)) {
       Kernel8bitNeonDotprodInOrder(params);
     } else {
       Kernel8bitNeonDotprodOutOfOrder(params);

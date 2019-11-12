@@ -564,6 +564,7 @@ class QuantizedLstmParam {
 };
 
 void TestOneFullyQuantizedLSTM() {
+  CpuBackendContext context;
   QuantizedLstmParam one_parameter;
   auto activation = one_parameter.GetActivation();
   auto output = one_parameter.GetOutput();
@@ -581,7 +582,7 @@ void TestOneFullyQuantizedLSTM() {
       one_parameter.GetProjectionBias(), nullptr, param, activation, cell,
       output, one_parameter.GetScratch0(), one_parameter.GetScratch1(),
       one_parameter.GetScratch2(), one_parameter.GetScratch3(),
-      one_parameter.GetScratch4(), one_parameter.GetScratch5());
+      one_parameter.GetScratch4(), one_parameter.GetScratch5(), &context);
 
   // Verify results.
   const std::vector<int16_t> expected_cell = {

@@ -311,6 +311,26 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     g = gradients_impl.gradients(c, [b], unconnected_gradients="zero")[0]
     self.assertAllEqual(g.shape.as_list(), [1, 2])
 
+  @test_util.run_deprecated_v1
+  def testGradientCondInWhileLoop(self):
+    v = resource_variable_ops.ResourceVariable(initial_value=1.0)
+    def cond(i, unused_x):
+      return i < 1
+
+    def body(i, x):
+      def true():
+        return x + v
+      def false():
+        return 2.0 * v
+      return i + 1, control_flow_ops.cond(i > 0, true, false)
+
+    _, x = control_flow_ops.while_loop(cond, body, [0, 0.0])
+    # Computing gradients does not produce an exception:
+    g = gradients_impl.gradients(x, v)
+    self.evaluate(variables.global_variables_initializer())
+    # Only the false branch is taken so the gradient is 2.
+    self.assertAllEqual(g[0], 2.0)
+
   @test_util.run_in_graph_and_eager_modes
   def testGradientGatherNdIndexedSlices(self):
     v = resource_variable_ops.ResourceVariable(
@@ -1048,7 +1068,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
     with context.eager_mode():
       init = array_ops.ones(shape=[10, 20, 35], dtype=dtypes.int32)
       constraint = lambda x: x
-      with ops.name_scope("foo"):
+      with ops.name_scope("foo", skip_on_eager=False):
         v = resource_variable_ops.ResourceVariable(
             name="var7",
             initial_value=init,

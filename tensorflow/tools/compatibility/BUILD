@@ -14,6 +14,7 @@ py_library(
     name = "ipynb",
     srcs = ["ipynb.py"],
     srcs_version = "PY2AND3",
+    deps = ["@six_archive//:six"],
 )
 
 py_library(
@@ -29,7 +30,7 @@ py_library(
 py_test(
     name = "ast_edits_test",
     srcs = ["ast_edits_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":ast_edits",
@@ -42,22 +43,28 @@ py_test(
 py_binary(
     name = "tf_upgrade",
     srcs = ["tf_upgrade.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
-    deps = [":tf_upgrade_lib"],
+    deps = [
+        ":tf_upgrade_lib",
+        "@six_archive//:six",
+    ],
 )
 
 py_library(
     name = "tf_upgrade_lib",
     srcs = ["tf_upgrade.py"],
     srcs_version = "PY2AND3",
-    deps = [":ast_edits"],
+    deps = [
+        ":ast_edits",
+        "@six_archive//:six",
+    ],
 )
 
 py_test(
     name = "tf_upgrade_test",
     srcs = ["tf_upgrade_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -96,6 +103,7 @@ py_library(
 py_test(
     name = "all_renames_v2_test",
     srcs = ["all_renames_v2_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":all_renames_v2",
@@ -108,6 +116,7 @@ py_test(
 py_library(
     name = "module_deprecations_v2",
     srcs = ["module_deprecations_v2.py"],
+    srcs_version = "PY2AND3",
     deps = [":ast_edits"],
 )
 
@@ -129,6 +138,7 @@ py_library(
     srcs = ["tf_upgrade_v2_safety.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":all_renames_v2",
         ":ast_edits",
         ":module_deprecations_v2",
     ],
@@ -145,13 +155,14 @@ py_binary(
         ":ipynb",
         ":tf_upgrade_v2_lib",
         ":tf_upgrade_v2_safety_lib",
+        "@six_archive//:six",
     ],
 )
 
 py_test(
     name = "tf_upgrade_v2_test",
     srcs = ["tf_upgrade_v2_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["v1only"],
     deps = [
@@ -169,6 +180,7 @@ py_test(
 py_test(
     name = "tf_upgrade_v2_safety_test",
     srcs = ["tf_upgrade_v2_safety_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":tf_upgrade_v2_safety_lib",
@@ -208,7 +220,7 @@ py_test(
     name = "test_file_v1_0",
     size = "small",
     srcs = ["test_file_v1_0.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
@@ -235,7 +247,7 @@ py_test(
     name = "test_file_v1_12",
     size = "small",
     srcs = ["testdata/test_file_v1_12.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["v1only"],
     deps = [
@@ -247,7 +259,7 @@ py_test(
     name = "test_file_v2_0",
     size = "small",
     srcs = ["test_file_v2_0.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",

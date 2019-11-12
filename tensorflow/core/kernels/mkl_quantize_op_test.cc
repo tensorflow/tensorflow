@@ -95,4 +95,95 @@ TEST_F(MklQuantizeV2OpTest, small_int8) {
   test::ExpectTensorEqual<float>(expected_min, *GetOutput(1));
   test::ExpectTensorEqual<float>(expected_max, *GetOutput(2));
 }
+
+TEST_F(MklQuantizeV2OpTest, small_minfirst) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({8}),
+                           {1.0, 1.25, 1.75, 2, 3.15, 127.0, 255.0, 500.0});
+  AddInputFromArray<float>(TensorShape({1}), {0});
+  AddInputFromArray<float>(TensorShape({1}), {255.0f});
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
+  test::FillValues<quint8>(&expected, {1, 1, 2, 2, 3, 127, 255, 255});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  EXPECT_NEAR(0.0f, output_min, 1e-5f);
+  EXPECT_NEAR(255.0f, output_max, 1e-5f);
+}
+
+TEST_F(MklQuantizeV2OpTest, small_minfirst_uint) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({8}),
+                           {0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8});
+  AddInputFromArray<float>(TensorShape({1}), {0.1});
+  AddInputFromArray<float>(TensorShape({1}), {0.8});
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
+  test::FillValues<quint8>(&expected, {32, 64, 96, 128, 159, 191, 223, 255});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  EXPECT_NEAR(0.0f, output_min, 1e-5f);
+  EXPECT_NEAR(0.8f, output_max, 1e-5f);
+}
+
+TEST_F(MklQuantizeV2OpTest, small_minfirst_int) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "_MklQuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Input(FakeInput(DT_UINT8))  // MKL second tensor
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({8}),
+                           {-0.1, -0.2, -0.3, -0.4, -0.5, -0.6, -0.7, -0.8});
+  AddInputFromArray<float>(TensorShape({1}), {-0.8});
+  AddInputFromArray<float>(TensorShape({1}), {-0.1});
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
+  test::FillValues<quint8>(&expected, {223, 191, 159, 128, 96, 64, 32, 0});
+  test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  EXPECT_NEAR(-0.8f, output_min, 1e-5f);
+  EXPECT_NEAR(0.0f, output_max, 1e-5f);
+}
+
 }  // end namespace tensorflow

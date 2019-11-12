@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #ifndef TF_LITE_STATIC_MEMORY
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #endif  // TF_LITE_STATIC_MEMORY
@@ -50,16 +49,6 @@ TfLiteIntArray* TfLiteIntArrayCreate(int size) {
   return ret;
 }
 
-void TfLiteIntArrayPrint(const char* s, TfLiteIntArray* a) {
-  printf("%s: length=%d [", s, a->size);
-  if (a->size) printf("%d", a->data[0]);
-  int i = 1;
-  for (; i < a->size; i++) {
-    printf(" %d", a->data[i]);
-  }
-  printf("]\n");
-}
-
 TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
   if (!src) return NULL;
   TfLiteIntArray* ret = TfLiteIntArrayCreate(src->size);
@@ -71,10 +60,14 @@ TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
 
 void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
+#endif  // TF_LITE_STATIC_MEMORY
+
 int TfLiteFloatArrayGetSizeInBytes(int size) {
   static TfLiteFloatArray dummy;
   return sizeof(dummy) + sizeof(dummy.data[0]) * size;
 }
+
+#ifndef TF_LITE_STATIC_MEMORY
 
 TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
   TfLiteFloatArray* ret =
@@ -86,7 +79,7 @@ TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
 void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
 
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic && t->data.raw) {
+  if (t->allocation_type == kTfLiteDynamic) {
     free(t->data.raw);
   }
   t->data.raw = NULL;

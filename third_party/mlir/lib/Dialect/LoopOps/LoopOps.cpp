@@ -80,7 +80,7 @@ void ForOp::build(Builder *builder, OperationState &result, Value *lb,
 LogicalResult verify(ForOp op) {
   if (auto cst = dyn_cast_or_null<ConstantIndexOp>(op.step()->getDefiningOp()))
     if (cst.getValue() <= 0)
-      return op.emitOpError("constant step operand must be nonnegative");
+      return op.emitOpError("constant step operand must be positive");
 
   // Check that the body defines as single block argument for the induction
   // variable.
@@ -126,7 +126,7 @@ static ParseResult parseForOp(OpAsmParser &parser, OperationState &result) {
   ForOp::ensureTerminator(*body, builder, result.location);
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   return success();
@@ -207,7 +207,7 @@ static ParseResult parseIfOp(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   return success();

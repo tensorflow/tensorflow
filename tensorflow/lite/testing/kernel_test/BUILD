@@ -108,9 +108,6 @@ tf_cc_test(
     data = [
         "//tensorflow/lite:testdata/test_input.csv",
     ],
-    tags = [
-        "no_oss",
-    ],
     deps = [
         ":diff_analyzer",
         "//tensorflow/core:lib",

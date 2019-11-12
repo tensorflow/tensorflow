@@ -13,20 +13,12 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
-)
-
-gen_zipped_test_file(
-    name = "zip_conv_edgetpu",
-    file = "conv_edgetpu.zip",
-    flags = " --make_edgetpu_tests",
-    toco = "//tensorflow/lite/toco:toco",  # Unused
 )
 
 [gen_zip_test(
@@ -485,3 +477,45 @@ tf_py_wrap_cc(
 )
 
 tflite_portable_test_suite()
+
+edgetpu_ops = [
+    "add",
+    "avg_pool",
+    "concat",
+    "conv",  # high error
+    "conv_relu",
+    "conv_relu1",
+    "conv_relu6",
+    "depthwiseconv",  # high error
+    "fully_connected",
+    "l2norm",  # high error
+    "max_pool",
+    "mean",
+    "mul",
+    "pad",  # high error
+    "relu",
+    "relu1",
+    "relu6",
+    "reshape",
+    "resize_bilinear",
+    "resize_nearest_neighbor",
+    "sigmoid",
+    "slice",
+    "softmax",
+    "space_to_depth",
+    "split",
+    "squeeze",
+    "strided_slice",
+    "sub",
+    "sum",  # high error
+    "tanh",
+]
+
+[gen_zipped_test_file(
+    name = "zip_%s_edgetpu" % op_name,
+    file = "%s_edgetpu.zip" % op_name,
+    flags = " --make_edgetpu_tests",
+    toco = "//tensorflow/lite/toco:toco",  # Unused
+) for op_name in edgetpu_ops]
+
+edgetpu_targets = [":zip_%s_edgetpu" % op_name for op_name in edgetpu_ops]

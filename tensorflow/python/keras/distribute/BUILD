@@ -121,6 +121,7 @@ distribute_py_test(
         "multi_and_single_gpu",
         "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "notpu",  # TODO(b/142805125): Enable tpu_test_target once fixed on tpu.
         "notsan",
     ],
     deps = [
@@ -352,8 +353,8 @@ cuda_py_test(
 )
 
 cuda_py_test(
-    name = "multi_worker_callback_test",
-    srcs = ["multi_worker_callback_test.py"],
+    name = "multi_worker_callback_tf1_test",
+    srcs = ["multi_worker_callback_tf1_test.py"],
     additional_deps = [
         ":distribute",
         "//tensorflow/python:platform",
@@ -372,6 +373,18 @@ cuda_py_test(
         "no_oss",
         "noguitar",
         "notap",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_callback_tf2_test",
+    srcs = ["multi_worker_callback_tf2_test.py"],
+    additional_deps = [
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     ],
 )
 

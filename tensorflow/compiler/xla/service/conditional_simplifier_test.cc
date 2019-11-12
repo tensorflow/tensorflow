@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -202,7 +201,7 @@ ENTRY main {
   ROOT result = (f32[20, 40]) conditional(p,t,t), false_computation=on_false, true_computation=on_true
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
@@ -268,7 +267,7 @@ TEST_F(ConditionalSimplifierTest,
         param.1), true_computation=computation.1,
         false_computation=computation.2
     })";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   std::unique_ptr<HloModule> module = status.ConsumeValueOrDie();
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
@@ -315,7 +314,7 @@ ENTRY main {
   ROOT result = () tuple()
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
@@ -359,7 +358,7 @@ ENTRY main {
   ROOT result = (f32[10,10]{1,0}) tuple(get-first-index)
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
@@ -405,7 +404,7 @@ ENTRY main {
   ROOT result = (f32[10,10]{1,0}) tuple(get-second-index)
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());
@@ -471,7 +470,7 @@ ENTRY main {
   ROOT add = f32[] add(gte.0, gte.1)
 }
 )";
-  auto status = ParseAndReturnUnverifiedModule(hlo_string);
+  auto status = ParseAndReturnVerifiedModule(hlo_string);
   TF_ASSERT_OK(status.status());
   HloVerifier v(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false);
   TF_ASSERT_OK(v.Run(status.ValueOrDie().get()).status());

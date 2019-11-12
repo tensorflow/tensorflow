@@ -69,7 +69,7 @@ TEST(UtilTest, LogLines) {
 TEST(UtilTest, CommonFactors) {
   struct {
     std::vector<int64> a, b;
-    std::vector<std::pair<int64, int64>> expected;
+    absl::InlinedVector<std::pair<int64, int64>, 8> expected;
   } test_cases[] = {
       {/*.a =*/{0}, /*.b =*/{0}, /*.expected =*/{{0, 0}, {1, 1}}},
       {/*.a =*/{}, /*.b =*/{}, /*.expected =*/{{0, 0}}},

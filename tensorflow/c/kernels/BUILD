@@ -1,8 +1,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
-    "tf_kernel_library",
     "tf_gen_op_libs",
+    "tf_kernel_library",
 )
 
 package(

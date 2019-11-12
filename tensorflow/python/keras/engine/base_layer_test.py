@@ -1009,12 +1009,14 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
-    _, train_metric = model.train_on_batch(np.ones((2, 3)),
+    for _ in range(3):
+      _, train_metric = model.train_on_batch(np.ones((2, 3)),
+                                             np.ones((2, 3)))
+
+      self.assertEqual(train_metric, 2 * 3)
+      _, test_metric = model.test_on_batch(np.ones((2, 3)),
                                            np.ones((2, 3)))
-    self.assertEqual(train_metric, 2 * 3)
-    _, test_metric = model.test_on_batch(np.ones((2, 3)),
-                                         np.ones((2, 3)))
-    self.assertEqual(test_metric, 0)
+      self.assertEqual(test_metric, 0)
 
   def test_if_training_pattern_update(self):
 
@@ -1451,11 +1453,25 @@ class DTypeTest(keras_parameterized.TestCase):
         row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
 
     layer = IdentityLayer(dtype='float16')
+    layer._supports_ragged_inputs = True
+
     for x in sparse, ragged:
       self.assertEqual(x.dtype, 'float32')
       y = layer(x)
       self.assertEqual(y.dtype, 'float16')
       self.assertEqual(type(x), type(y))
+
+  def test_supports_ragged_inputs_attribute_error(self):
+    with self.assertRaisesRegexp(ValueError,
+                                 'does not support RaggedTensors'):
+      ragged = ragged_tensor.RaggedTensor.from_row_splits(
+          values=array_ops.constant([1., 2., 3.], dtype='float32'),
+          row_splits=array_ops.constant([0, 2, 2, 3], dtype='int64'))
+      model = keras.Sequential([
+          keras.layers.InputLayer(input_shape=(None,), ragged=True),
+          IdentityLayer()])
+      model.compile(rmsprop.RMSprop(0.001), loss='mse')
+      model.train_on_batch(ragged)
 
   @testing_utils.enable_v2_dtype_behavior
   def test_passing_non_tensor(self):

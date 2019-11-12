@@ -229,6 +229,44 @@ void Im2col(const ConvParams& params, int kheight, int kwidth, uint8 zero_byte,
   }
 }
 
+template <typename T>
+void Im2col(const ConvParams& params, int kheight, int kwidth,
+            const int32_t* input_offsets, const int input_offsets_size,
+            const RuntimeShape& input_shape, const T* input_data,
+            const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Im2col");
+  const int stride_width = params.stride_width;
+  const int stride_height = params.stride_height;
+  const int pad_width = params.padding_values.width;
+  const int pad_height = params.padding_values.height;
+  TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
+  TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
+
+  const int batches = MatchingDim(input_shape, 0, output_shape, 0);
+  TFLITE_DCHECK_EQ(batches, input_offsets_size);
+  const int input_depth = input_shape.Dims(3);
+  const int input_width = input_shape.Dims(2);
+  const int input_height = input_shape.Dims(1);
+  const int output_depth = output_shape.Dims(3);
+  const int output_width = output_shape.Dims(2);
+  const int output_height = output_shape.Dims(1);
+
+  int buffer_id = 0;
+  // Loop over the output nodes.
+  for (int b = 0; b < batches; ++b) {
+    uint8_t zero_byte = static_cast<uint8_t>(input_offsets[b]);
+    for (int h = 0; h < output_height; ++h) {
+      for (int w = 0; w < output_width; ++w) {
+        ExtractPatchIntoBufferColumn(
+            input_shape, w, h, b, kheight, kwidth, stride_width, stride_height,
+            pad_width, pad_height, input_width, input_height, input_depth,
+            output_depth, buffer_id, input_data, output_data, zero_byte);
+        ++buffer_id;
+      }
+    }
+  }
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 

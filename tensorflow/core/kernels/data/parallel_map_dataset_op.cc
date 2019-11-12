@@ -285,9 +285,13 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   string BuildTraceMeName() override {
-    // NOTE: We do not synchronize the following access to num_parallel_calls_
-    // to minimize the tracing overhead.
-    int64 parallelism = num_parallel_calls_->value;
+    int64 parallelism = -1;
+    // NOTE: We only set the parallelism value if the lock can be acquired right
+    // away to avoid introducing tracing overhead.
+    if (mu_->try_lock()) {
+      parallelism = num_parallel_calls_->value;
+      mu_->unlock();
+    }
     return strings::StrCat(this->prefix(), "#parallelism=", parallelism,
                            ",autotune=", autotune_, ",deterministic=", !sloppy_,
                            "#");

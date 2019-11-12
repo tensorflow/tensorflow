@@ -166,11 +166,10 @@ cc_library(
         "toco_types.h",
     ],
     deps = [
-        # Placeholder for internal file dependency.
-        "@com_google_protobuf//:protobuf_headers",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 
@@ -207,6 +206,7 @@ cc_library(
         "graph_transformations/identify_lstm.cc",
         "graph_transformations/identify_lstm_merge_inputs.cc",
         "graph_transformations/identify_lstm_split_inputs.cc",
+        "graph_transformations/identify_nearest_upsample.cc",
         "graph_transformations/identify_prelu.cc",
         "graph_transformations/identify_relu1.cc",
         "graph_transformations/identify_util.cc",

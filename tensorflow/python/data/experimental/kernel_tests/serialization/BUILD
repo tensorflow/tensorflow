@@ -787,7 +787,7 @@ py_test(
 
 py_test(
     name = "take_while_dataset_serialization_test",
-    size = "small",
+    size = "medium",
     srcs = ["take_while_dataset_serialization_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",

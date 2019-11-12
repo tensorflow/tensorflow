@@ -24,7 +24,11 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/ruy/detect_arm.h"
+#include "tensorflow/lite/experimental/ruy/ruy.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm.h"
+#include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
@@ -429,6 +433,119 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
   free(shuffled_vectors_free);
 }
 
+static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* vectors, const float* scaling_factors, int n_batch,
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset) {
+  void* shuffled_vectors_free;
+  const int8_t* shuffled_vectors =
+      ShuffleVectors(vectors, n_batch, m_cols, &shuffled_vectors_free);
+
+  for (int row = 0; row < m_rows; row += 2) {
+    const float* channel_scales_ptr = per_channel_scale + row;
+    for (int batch = 0; batch < n_batch; batch += 4) {
+      float* result_ptr = result + (batch * m_rows) + row;
+      const int8* mat_ptr0 = matrix + (row * m_cols);
+      const int8* mat_ptr1 = matrix + ((row + 1) * m_cols);
+      const int8* mat_ptr0_end = mat_ptr1;
+      const int8* vec_ptr = shuffled_vectors + (batch * m_cols);
+      const float* scaling_factors_ptr = scaling_factors + batch;
+      const uint64_t wide_rows = m_rows * sizeof(float);
+      const int32_t* batch_offsets_ptr = input_offset + batch;
+
+      asm volatile(
+          "dup v0.4s, wzr\n"
+          "dup v1.4s, wzr\n"
+          "dup v2.4s, wzr\n"
+          "dup v3.4s, wzr\n"
+          // Load zero points.
+          "ld1 {v7.4s}, [%[batch_offsets_ptr]]\n"
+
+          // Zero out zero point accumulators.
+          "dup v14.4s, wzr\n"
+          "dup v15.4s, wzr\n"
+
+          // Load per channel scales
+          "ld1r {v16.4s}, [%[channel_scales_ptr]], #4\n"
+          "ld1r {v17.4s}, [%[channel_scales_ptr]]\n"
+
+          "1:\n"
+          "ld1 {v12.16b}, [%[mat_ptr0]], #16\n"
+          "ld1 {v8.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4f8ce100  // sdot v0.4s, v8.16b, v12.4b[0]\n"
+          "ld1 {v9.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4face121  // sdot v1.4s, v9.16b, v12.4b[1]\n"
+          "ld1 {v10.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4f8ce940  // sdot v0.4s, v10.16b, v12.4b[2]\n"
+          "ld1 {v11.16b}, [%[vec_ptr]], #16\n"
+          ".word 0x4face961  // sdot v1.4s, v11.16b, v12.4b[3]\n"
+          "ld1 {v13.16b}, [%[mat_ptr1]], #16\n"
+          ".word 0x4f8de102  // sdot v2.4s, v8.16b, v13.4b[0]\n"
+          ".word 0x4fade123  // sdot v3.4s, v9.16b, v13.4b[1]\n"
+          ".word 0x4f8de942  // sdot v2.4s, v10.16b, v13.4b[2]\n"
+          ".word 0x4fade963  // sdot v3.4s, v11.16b, v13.4b[3]\n"
+
+          // Accumulate row_sums for zero point calculations.
+          "saddlp v12.8h, v12.16b\n"
+          "saddlp v13.8h, v13.16b\n"
+          "sadalp v14.4s, v12.8h\n"
+          "sadalp v15.4s, v13.8h\n"
+
+          "cmp %[mat_ptr0], %[mat_ptr0_end]\n"
+          "bne 1b\n"
+          "add v0.4s, v0.4s, v1.4s\n"
+          "add v2.4s, v2.4s, v3.4s\n"
+
+          // Calculate zero point offsets.
+          "addv s12, v14.4s\n"
+          "addv s13, v15.4s\n"
+          "fmov w0, s12\n"
+          "fmov w1, s13\n"
+          "dup v14.4s, w0\n"
+          "dup v15.4s, w1\n"
+          "mul v14.4s, v14.4s, v7.4s\n"
+          "mul v15.4s, v15.4s, v7.4s\n"
+          "sub v0.4s, v0.4s, v14.4s\n"
+          "sub v2.4s, v2.4s, v15.4s\n"
+
+          "scvtf v0.4s, v0.4s\n"
+          "scvtf v1.4s, v2.4s\n"
+          "ld1 {v4.4s}, [%[scaling_factors_ptr]]\n"
+          "fmul v0.4s, v4.4s, v0.4s\n"
+          "fmul v1.4s, v4.4s, v1.4s\n"
+
+          // Multiply channel scales.
+          "fmul v0.4s, v16.4s, v0.4s\n"
+          "fmul v1.4s, v17.4s, v1.4s\n"
+
+          "ld2 {v9.s, v10.s}[0], [%[result_ptr]], %[wide_rows]\n"
+          "ld2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
+          "ld2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
+          "ld2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
+          "sub %[result_ptr], %[result_ptr], %[wide_rows], lsl #2\n"
+          "fadd v9.4s, v9.4s, v0.4s\n"
+          "fadd v10.4s, v10.4s, v1.4s\n"
+          "st2 {v9.s, v10.s}[0], [%[result_ptr]], %[wide_rows]\n"
+          "st2 {v9.s, v10.s}[1], [%[result_ptr]], %[wide_rows]\n"
+          "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
+          "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
+          : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
+            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr)
+          : [ mat_ptr0_end ] "r"(mat_ptr0_end),
+            [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
+            [ wide_rows ] "r"(wide_rows),
+            [ channel_scales_ptr ] "r"(channel_scales_ptr),
+            [ batch_offsets_ptr ] "r"(batch_offsets_ptr)
+          : "x0", "v0", "v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8", "v9",
+            "v10", "v11", "v12", "v13", "v14", "v15", "v16", "v17", "w0", "w1",
+            "cc", "memory");
+    }
+  }
+
+  free(shuffled_vectors_free);
+}
+
 static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,
@@ -609,13 +726,9 @@ void NeonMatrixBatchVectorMultiplyImpl(const int8_t* input, const int32_t* bias,
   free(aligned_vec_free);
 }
 
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* bias,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
-                                    n_input, n_output, output_zp, scratch);
+inline void NeonMatrixBatchVectorAccumulateImpl(
+    int32_t multiplier, int32_t shift, int32_t n_batch, int32_t n_output,
+    int32_t output_zp, int32_t* scratch, int16_t* output) {
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -666,13 +779,9 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
   }
 }
 
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* input, const int32_t* bias,
-    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
-    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output) {
-  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
-                                    n_input, n_output, output_zp, scratch);
+inline void NeonMatrixBatchVectorAccumulateImpl(
+    int32_t multiplier, int32_t shift, int32_t n_batch, int32_t n_output,
+    int32_t output_zp, int32_t* scratch, int8_t* output) {
   int i = 0;
   const int total_size = n_batch * n_output;
 
@@ -742,6 +851,77 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     }
     output[i] = static_cast<int8_t>(temp);
   }
+}
+
+void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
+                        const int8_t* input_to_gate_weights, int32_t n_batch,
+                        int32_t n_input, int32_t n_output, int32_t output_zp,
+                        int32_t* scratch, CpuBackendContext* context) {
+  using ::tflite::cpu_backend_gemm::Gemm;
+  using ::tflite::cpu_backend_gemm::GemmParams;
+  using ::tflite::cpu_backend_gemm::MatrixParams;
+  using ::tflite::cpu_backend_gemm::QuantizationFlavor;
+
+  ruy::Matrix<int8_t> ruy_lhs;
+  ruy::Matrix<int8_t> ruy_rhs;
+  ruy::Matrix<int32_t> ruy_dst;
+
+  MatrixParams<int8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = n_output;
+  lhs_params.cols = n_input;
+
+  MatrixParams<int8_t> rhs_params;
+  rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+  rhs_params.rows = n_input;
+  rhs_params.cols = n_batch;
+
+  MatrixParams<int32_t> dst_params;
+  dst_params.order = cpu_backend_gemm::Order::kColMajor;
+  dst_params.rows = n_output;
+  dst_params.cols = n_batch;
+
+  cpu_backend_gemm::detail::MakeRuyMatrix(lhs_params, input_to_gate_weights,
+                                          &ruy_lhs);
+  cpu_backend_gemm::detail::MakeRuyMatrix(rhs_params, input, &ruy_rhs);
+  cpu_backend_gemm::detail::MakeRuyMatrix(dst_params, scratch, &ruy_dst);
+
+  ruy::BasicSpec<int32_t, int32_t> ruy_spec;
+  ruy_spec.bias = bias;
+  ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec, context->ruy_context(),
+                           &ruy_dst);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
+#ifdef TFLITE_WITH_RUY_GEMV
+  NeonCpuBackendGemm(input, bias, input_to_gate_weights, n_batch, n_input,
+                     n_output, output_zp, scratch, context);
+#else
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
+#endif
+  NeonMatrixBatchVectorAccumulateImpl(multiplier, shift, n_batch, n_output,
+                                      output_zp, scratch, output);
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
+#ifdef TFLITE_WITH_RUY_GEMV
+  NeonCpuBackendGemm(input, bias, input_to_gate_weights, n_batch, n_input,
+                     n_output, output_zp, scratch, context);
+#else
+  NeonMatrixBatchVectorMultiplyImpl(input, bias, input_to_gate_weights, n_batch,
+                                    n_input, n_output, output_zp, scratch);
+#endif
+  NeonMatrixBatchVectorAccumulateImpl(multiplier, shift, n_batch, n_output,
+                                      output_zp, scratch, output);
 }
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
@@ -894,6 +1074,109 @@ void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
     }
     output[i] += sum * scalar;
   }
+}
+
+void NeonMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset) {
+#ifdef __aarch64__
+  if (HasSdotInstruction() && m_cols % 16 == 0 && m_rows % 2 == 0 &&
+      m_rows >= n_batch) {
+    if (n_batch % 4 == 0 && result_stride == 1) {
+      DotprodMatrixBatchFourVectorMultiplyAccumulate(
+          matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
+          per_channel_scale, input_offset);
+      return;
+    }
+  }
+#endif  // __aarch64__
+
+  static const int kWeightsPerUint32 = 4;
+  static const int kWeightsPerNeonLane = 16;
+  bool unaligned = false;
+  int8_t* aligned_row = nullptr;
+  void* aligned_row_free = nullptr;
+  if ((m_cols & (kWeightsPerUint32 - 1)) != 0) {
+    unaligned = true;
+    aligned_row = (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+                                         &aligned_row_free);
+  }
+  void* aligned_vec_free = nullptr;
+  int8_t* aligned_vec =
+      (int8_t*)aligned_alloc(kWeightsPerUint32, m_cols,  // NOLINT
+                             &aligned_vec_free);
+
+  const int postamble_half_start = m_cols & ~(kWeightsPerNeonLane - 1);
+  const int postamble_start = m_cols & ~((kWeightsPerNeonLane >> 1) - 1);
+
+  for (int batch = 0; batch < n_batch; ++batch) {
+    const float batch_scaling_factor = scaling_factors[batch];
+    memcpy(aligned_vec, vectors + batch * m_cols, sizeof(int8_t) * m_cols);
+    for (int row = 0; row < m_rows; ++row, result += result_stride) {
+      int8_t* row_ptr = (int8_t*)matrix + row * m_cols;  // NOLINT
+      if (unaligned) {
+        memcpy(aligned_row, row_ptr, sizeof(int8_t) * m_cols);
+        row_ptr = aligned_row;
+      }
+      int32x4_t dotprod_32x4 = vmovq_n_s32(0);
+
+      // Initialize row sums to 0.
+      int32x4_t row_sum_32x4 = vmovq_n_s32(0);
+
+      __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
+                         3 /* temporal locality */);
+
+      int col = 0;
+      for (; col < postamble_half_start; col += kWeightsPerNeonLane) {
+        TFLITE_DCHECK_EQ(  // NOLINT
+            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+        const int8x16_t s1_8x16 = vld1q_s8((const int8_t*)(aligned_vec + col));
+        const int8x16_t s2_8x16 = vld1q_s8((const int8_t*)(row_ptr + col));
+        int16x8_t prod_16x8 =
+            vmull_s8(vget_low_s8(s1_8x16), vget_low_s8(s2_8x16));
+        prod_16x8 =
+            vmlal_s8(prod_16x8, vget_high_s8(s1_8x16), vget_high_s8(s2_8x16));
+
+        dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
+
+        // Compute the row sums.
+        const int16x8_t row_sum_16x8 = vpaddlq_s8(s2_8x16);
+        row_sum_32x4 = vpadalq_s16(row_sum_32x4, row_sum_16x8);
+      }
+
+      if (col < postamble_start) {
+        TFLITE_DCHECK_EQ(  // NOLINT
+            (uintptr_t)(&row_ptr[col]) & (kWeightsPerUint32 - 1), 0);
+        const int8x8_t s1_8x8 = vld1_s8((const int8_t*)(aligned_vec + col));
+        const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
+        const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
+        dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
+
+        // Extend row values to 16 bit and add to the row sums.
+        const int16x8_t row_sum_16x8 = vmovl_s8(s2_8x8);
+        row_sum_32x4 = vpadalq_s16(row_sum_32x4, row_sum_16x8);
+        col += (kWeightsPerNeonLane >> 1);
+      }
+
+      // Reduce to scalar and multiply the batch offset.
+      int32_t row_sum = AccumulateNeonLane(row_sum_32x4);
+      int32_t dotprod = AccumulateNeonLane(dotprod_32x4);
+      for (; col < m_cols; ++col) {
+        dotprod += row_ptr[col] * aligned_vec[col];
+        row_sum += row_ptr[col];
+      }
+      const int32_t batch_offset = input_offset[batch];
+      dotprod -= row_sum * batch_offset;
+      // Multipy the per-channel scale.
+      *result += dotprod * batch_scaling_factor * per_channel_scale[row];
+    }
+  }
+  if (unaligned) {
+    free(aligned_row_free);
+  }
+  free(aligned_vec_free);
 }
 
 inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
@@ -1750,6 +2033,41 @@ inline int32x4_t RoundToNearest(const float32x4_t input) {
 #endif
 }
 
+inline void NeonMinMax(const float* values, const int size, float* min,
+                       float* max) {
+  const int postamble_start = RoundDownVectors<kFloatValuesPerNeonVector>(size);
+  double rmin = 0.0, rmax = 0.0;
+  int i = 0;
+  if (postamble_start) {
+    float32x4_t min_f32x4 = vld1q_f32(values);
+    float32x4_t max_f32x4 = min_f32x4;
+    for (i = kFloatValuesPerNeonVector; i < postamble_start;
+         i += kFloatValuesPerNeonVector) {
+      const float32x4_t value0_f32x4 = vld1q_f32(&values[i]);
+      min_f32x4 = vminq_f32(min_f32x4, value0_f32x4);
+      max_f32x4 = vmaxq_f32(max_f32x4, value0_f32x4);
+    }
+    float32x2_t min_f32x2 =
+        vmin_f32(vget_low_f32(min_f32x4), vget_high_f32(min_f32x4));
+    float32x2_t max_f32x2 =
+        vmax_f32(vget_low_f32(max_f32x4), vget_high_f32(max_f32x4));
+    min_f32x2 = vpmin_f32(min_f32x2, min_f32x2);
+    const float fmin = vget_lane_f32(min_f32x2, 0);
+    rmin = rmin < fmin ? rmin : fmin;
+    max_f32x2 = vpmax_f32(max_f32x2, max_f32x2);
+    const float fmax = vget_lane_f32(max_f32x2, 0);
+    rmax = rmax > fmax ? rmax : fmax;
+    *min = rmin;
+    *max = rmax;
+  }
+  if (i < size) {
+    const auto minmax =
+        std::minmax_element(values + postamble_start, values + size);
+    *min = rmin < *minmax.first ? rmin : *minmax.first;
+    *max = rmax > *minmax.second ? rmax : *minmax.second;
+  }
+}
+
 void NeonSymmetricQuantizeFloats(const float* values, const int size,
                                  int8_t* quantized_values, float* min,
                                  float* max, float* scaling_factor) {
@@ -1815,6 +2133,87 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     const int32 quantized_value =
         static_cast<int32>(TfLiteRound(scaling_factor_inv * values[i]));
     quantized_values[i] = std::min(kScale, std::max(-kScale, quantized_value));
+  }
+}
+
+void NeonAsymmetricQuantizeFloats(const float* values, const int size,
+                                  int8_t* quantized_values,
+                                  float* scaling_factor, int32_t* offset) {
+  float rmin = 0.0, rmax = 0.0;
+  NeonMinMax(values, size, &rmin, &rmax);
+
+  const int32_t kMinScale = -128;
+  const int32_t kMaxScale = 127;
+  const double qmin_double = kMinScale;
+  const double qmax_double = kMaxScale;
+  if (rmin == rmax) {
+    *scaling_factor = 0;
+    *offset = 0;
+  } else {
+    const double scale = (rmax - rmin) / (qmax_double - qmin_double);
+    const double zero_point_from_min = qmin_double - rmin / scale;
+    const double zero_point_from_max = qmax_double - rmax / scale;
+    const double zero_point_from_min_error =
+        std::abs(qmin_double) + std::abs(rmin / scale);
+    const double zero_point_from_max_error =
+        std::abs(qmax_double) + std::abs(rmax / scale);
+    const double zero_point_double =
+        zero_point_from_min_error < zero_point_from_max_error
+            ? zero_point_from_min
+            : zero_point_from_max;
+    int8 nudged_zero_point = 0;
+    if (zero_point_double < qmin_double) {
+      nudged_zero_point = kMinScale;
+    } else if (zero_point_double > qmax_double) {
+      nudged_zero_point = kMaxScale;
+    } else {
+      nudged_zero_point = static_cast<int8>(round(zero_point_double));
+    }
+    *scaling_factor = scale;
+    *offset = nudged_zero_point;
+  }
+
+  const int postamble_start = size & ~(2 * kFloatValuesPerNeonVector - 1);
+  const float scaling_factor_inv =
+      *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
+  const float32x4_t q_factor_f32x4 = vmovq_n_f32(scaling_factor_inv);
+  const int32x4_t scale_i32x4 = vmovq_n_s32(kMaxScale);
+  const int32x4_t neg_scale_i32x4 = vmovq_n_s32(kMinScale);
+  const int32x4_t offset_i32x4 = vmovq_n_s32(*offset);
+
+  int i = 0;
+  for (; i < postamble_start; i += 2 * kFloatValuesPerNeonVector) {
+    float32x4_t value0_f32x4 = vld1q_f32(&values[i]);
+    float32x4_t value1_f32x4 =
+        vld1q_f32(&values[i + kFloatValuesPerNeonVector]);
+    float32x4_t mul0_f32x4 = vmulq_f32(value0_f32x4, q_factor_f32x4);
+    float32x4_t mul1_f32x4 = vmulq_f32(value1_f32x4, q_factor_f32x4);
+
+    const int32x4_t f2i0_i32x4 = RoundToNearest(mul0_f32x4);
+    const int32x4_t f2i1_i32x4 = RoundToNearest(mul1_f32x4);
+
+    // Add offset
+    int32x4_t q0_i32x4 = vaddq_s32(f2i0_i32x4, offset_i32x4);
+    int32x4_t q1_i32x4 = vaddq_s32(f2i1_i32x4, offset_i32x4);
+
+    int32x4_t max0_i32x4 = vmaxq_s32(q0_i32x4, neg_scale_i32x4);
+    int32x4_t max1_i32x4 = vmaxq_s32(q1_i32x4, neg_scale_i32x4);
+    int32x4_t min0_i32x4 = vminq_s32(max0_i32x4, scale_i32x4);
+    int32x4_t min1_i32x4 = vminq_s32(max1_i32x4, scale_i32x4);
+
+    int16x4_t min0_16x4 = vmovn_s32(min0_i32x4);
+    int16x4_t min1_16x4 = vmovn_s32(min1_i32x4);
+
+    int16x8_t min_16x8 = vcombine_s16(min0_16x4, min1_16x4);
+    int8x8_t min_s8x8 = vqmovn_s16(min_16x8);
+    vst1_s8(&quantized_values[i], min_s8x8);
+  }
+
+  for (; i < size; ++i) {
+    const int32 quantized_value = static_cast<int32>(
+        *offset + TfLiteRound(scaling_factor_inv * values[i]));
+    quantized_values[i] =
+        std::min(kMaxScale, std::max(kMinScale, quantized_value));
   }
 }
 

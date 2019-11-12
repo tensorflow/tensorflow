@@ -19,17 +19,18 @@ limitations under the License.
 // implemented.
 
 // This buffer is used by CMSIS-NN optimized operator implementations.
-// SCRATCH_BUFFER_BYTES bytes is chosenn empirically. It needs to be large
+// SCRATCH_BUFFER_BYTES bytes is chosen empirically. It needs to be large
 // enough to hold the biggest buffer needed by all CMSIS-NN operators in the
 // network.
-#define SCRATCH_BUFFER_BYTES 6000
+#define SCRATCH_BUFFER_BYTES 13000
 
-__attribute__((aligned(
-    4))) static int16_t cmsis_scratch_buffer[SCRATCH_BUFFER_BYTES / 2] = {0};
 
 TfLiteStatus get_cmsis_scratch_buffer(TfLiteContext* context, int16_t** buf,
-                                      int32_t buf_size) {
-  TF_LITE_ENSURE(context, buf_size <= SCRATCH_BUFFER_BYTES / 2);
+                                      int32_t buf_size_bytes) {
+  __attribute__((aligned(
+      4))) static int16_t cmsis_scratch_buffer[SCRATCH_BUFFER_BYTES / 2] = {0};
+
+  TF_LITE_ENSURE(context, buf_size_bytes <= SCRATCH_BUFFER_BYTES);
   *buf = cmsis_scratch_buffer;
   return kTfLiteOk;
 }

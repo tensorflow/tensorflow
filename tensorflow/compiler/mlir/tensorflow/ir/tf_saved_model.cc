@@ -63,15 +63,36 @@ TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
       >();
 }
 
+static LogicalResult VerifyIndexPath(Operation *op, NamedAttribute named_attr) {
+  auto attr = named_attr.second.dyn_cast<ArrayAttr>();
+  if (!attr) {
+    return op->emitError()
+           << "'tf_saved_model.index_path' attribute should be an ArrayAttr";
+  }
+  for (auto element : attr) {
+    if (element.isa<StringAttr>()) {
+      continue;
+    }
+    if (auto integer = element.dyn_cast<IntegerAttr>()) {
+      if (integer.getValue().getBitWidth() == 64) {
+        continue;
+      }
+    }
+    return op->emitError() << "'tf_saved_model.index_path' elements should "
+                              "be strings or 64-bit integers";
+  }
+  return mlir::success();
+}
+
 LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.bound_input") {
-    if (!named_attr.second.isa<SymbolRefAttr>()) {
+    if (!named_attr.second.isa<FlatSymbolRefAttr>()) {
       return op->emitError() << "'tf_saved_model.bound_input' attribute should "
-                                "be a SymbolRefAttr";
+                                "be a FlatSymbolRefAttr";
     }
-    auto symbol_name = named_attr.second.cast<SymbolRefAttr>().getValue();
+    auto symbol_name = named_attr.second.cast<FlatSymbolRefAttr>().getValue();
     auto module = op->getParentOfType<ModuleOp>();
     auto global_tensor = module.lookupSymbol<GlobalTensorOp>(symbol_name);
     if (!global_tensor) {
@@ -83,27 +104,21 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     return success();
   }
   if (named_attr.first == "tf_saved_model.index_path") {
-    auto attr = named_attr.second.dyn_cast<ArrayAttr>();
-    if (!attr) {
-      return op->emitError()
-             << "'tf_saved_model.index_path' attribute should be an ArrayAttr";
-    }
-    for (auto element : attr) {
-      if (element.isa<StringAttr>()) {
-        continue;
-      }
-      if (auto integer = element.dyn_cast<IntegerAttr>()) {
-        if (integer.getValue().getBitWidth() == 64) {
-          continue;
-        }
-      }
-      return op->emitError() << "'tf_saved_model.index_path' elements should "
-                                "be strings or 64-bit integers";
-    }
-    return mlir::success();
+    return VerifyIndexPath(op, named_attr);
   }
 
   return op->emitError() << "unknown tf_saved_model dialect arg attribute '"
+                         << named_attr.first << "'";
+}
+
+LogicalResult TensorFlowSavedModelDialect::verifyRegionResultAttribute(
+    Operation *op, unsigned region_index, unsigned result_index,
+    NamedAttribute named_attr) {
+  if (named_attr.first == "tf_saved_model.index_path") {
+    return VerifyIndexPath(op, named_attr);
+  }
+
+  return op->emitError() << "unknown tf_saved_model dialect result attribute '"
                          << named_attr.first << "'";
 }
 
@@ -132,6 +147,22 @@ static LogicalResult VerifySavedModelModule(
             .attachNote(p.first->getSecond()->getLoc())
             .append("previously seen here");
       }
+    }
+  }
+  SymbolTable symbol_table(module);
+  auto symbol_uses = SymbolTable::getSymbolUses(module);
+  if (!symbol_uses.hasValue()) {
+    return module.emitError() << "modules with 'tf_saved_model.semantics' must "
+                                 "have analyzable symbol uses";
+  }
+  for (auto symbol_use : *symbol_uses) {
+    auto func = symbol_table.lookup<FuncOp>(
+        symbol_use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
+    if (func && !GetExportedNames(func).empty()) {
+      return symbol_use.getUser()
+          ->emitError("exported function cannot be internally referenced")
+          .attachNote(func.getLoc())
+          .append("references this exported function");
     }
   }
   return success();
@@ -173,6 +204,12 @@ LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
                << "all arguments should have 'tf_saved_model.index_path' or "
                   "'tf_saved_model.bound_input' attributes";
       }
+      for (int i = 0, e = func.getNumResults(); i < e; i++) {
+        if (!func.getResultAttr(i, "tf_saved_model.index_path")) {
+          return op->emitError() << "all results should have "
+                                    "'tf_saved_model.index_path' attributes";
+        }
+      }
     }
     return success();
   }
@@ -199,6 +236,20 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
     }
   }
   return ret;
+}
+
+bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
+
+bool HasTfSavedModelSemantics(ModuleOp module) {
+  return module.getAttr("tf_saved_model.semantics") != nullptr;
+}
+
+GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
+                                const SymbolTable &symbol_table) {
+  auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
+      arg_index, "tf_saved_model.bound_input");
+  if (!attr) return nullptr;
+  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
 }
 
 }  // namespace tf_saved_model

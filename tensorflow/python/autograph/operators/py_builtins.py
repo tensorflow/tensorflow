@@ -370,7 +370,22 @@ def _py_map(fn, *iterables):
   return map(fn, *iterables)
 
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map)
+def filter_(function, iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_filter(function, iterable)
+  return _py_filter(function, iterable)
+
+
+def _tf_dataset_filter(function, iterable):
+  return iterable.filter(function)
+
+
+def _py_filter(function, iterable):
+  return filter(function, iterable)
+
+
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
+                      filter)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -387,4 +402,5 @@ BUILTIN_FUINCTIONS_MAP = {
     'enumerate': enumerate_,
     'zip': zip_,
     'map': map_,
+    'filter': filter_,
 }

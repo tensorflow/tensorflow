@@ -303,6 +303,7 @@ class ApiCompatibilityTest(test.TestCase):
     visitor.do_not_descend_map['tf'].append('contrib')
     if FLAGS.only_test_core_api:
       visitor.do_not_descend_map['tf'].extend(_NON_CORE_PACKAGES)
+    visitor.private_map['tf.compat'] = ['v1', 'v2']
     traverse.traverse(tf.compat.v1, visitor)
 
   def testNoSubclassOfMessageV2(self):
@@ -401,7 +402,10 @@ class ApiCompatibilityTest(test.TestCase):
         _KeyToFilePath('*', api_version))
     self._checkBackwardsCompatibility(
         tf.compat.v1, golden_file_pattern, api_version,
-        additional_private_map={'tf': ['pywrap_tensorflow']},
+        additional_private_map={
+            'tf': ['pywrap_tensorflow'],
+            'tf.compat': ['v1', 'v2'],
+        },
         omit_golden_symbols_map={'tensorflow': ['pywrap_tensorflow']})
 
   def testAPIBackwardsCompatibilityV2(self):

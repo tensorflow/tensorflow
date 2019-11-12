@@ -2878,7 +2878,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     // Calculate output dynamic reshape dimension.
     int64 output_dynamic_dimension = -1;
 
-    if (operand.dimensions(input_dim) == 1) {
+    if (operand.dimensions(input_dim) == 1 && !new_sizes.empty()) {
       // If dynamic dimension is size 1, it can only be most-major or
       // most-minor.
       if (input_dim == 0) {

@@ -162,9 +162,6 @@ void RemoveNode(NodeDef* nd, GraphDef* graph, NodeMap* node_map) {
 // Removes a named edge from between two nodes.
 Status RemoveEdge(const string& input_edge_name, const string& from_node_name,
                   NodeDef* to_node, NodeMap* node_map) {
-  if (node_map) {
-    node_map->RemoveOutput(from_node_name, to_node->name());
-  }
   protobuf::RepeatedPtrField<string>* inputs = to_node->mutable_input();
   int edge_index = -1;
   for (edge_index = 0; edge_index < inputs->size(); ++edge_index) {
@@ -176,6 +173,9 @@ Status RemoveEdge(const string& input_edge_name, const string& from_node_name,
   if (edge_index >= inputs->size()) {
     return errors::Internal("Could not find input name ", input_edge_name,
                             " at node ", to_node->name());
+  }
+  if (node_map) {
+    node_map->RemoveOutput(from_node_name, to_node->name());
   }
   inputs->DeleteSubrange(edge_index, 1);
   return Status::OK();
@@ -221,11 +221,7 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
     return Status::OK();
   }
 
-  // Remove edge between `input` and `op`. Leave the input on `op` because we
-  // will overwrite it with identity op below.
-  node_map->RemoveOutput(input->name(), op->name());
   // Create new Identity op.
-  NodeDef* identity = graph->add_node();
   int unique_id;
   LOG_WARNING_AND_RETURN_IF_ERROR(sa_opti->NewIdentityId(&unique_id));
   string identity_name = strings::StrCat("scoped_allocator_identity_",
@@ -236,13 +232,12 @@ Status MaybeRewriteInput(ScopedAllocatorOptimizer* sa_opti,
   // Connect output at `output_index` from `input` to `identity`.
   identity_builder.Input(
       NodeDefBuilder::NodeOut(input->name(), output_index, dtype));
+  NodeDef* identity = graph->add_node();
   LOG_WARNING_AND_RETURN_IF_ERROR(identity_builder.Finalize(identity));
   node_map->AddNode(identity_name, identity);
   node_map->AddOutput(input->name(), identity_name);
-  // Connect `identity` to `op`.  Both output index at `identity` and input
-  // index at `op` are 0.
-  node_map->AddOutput(identity_name, op->name());
-  *op->mutable_input(0) = strings::StrCat(identity_name, ":", 0);
+  node_map->UpdateInput(op->name(), input->name(), identity_name);
+  *op->mutable_input(0) = identity_name;
   *new_input = identity;
   *new_output_index = 0;
   VLOG(1) << "Rewrite input " << edge_name << " op " << op->name()
@@ -627,6 +622,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     LOG_WARNING_AND_RETURN_IF_ERROR(sas_builder.Finalize(sas_node));
     node_map->AddNode(sas_name, sas_node);
     node_map->AddOutput(sa_op_name, sas_name);
+    for (const auto& input : sas_inputs) {
+      node_map->AddOutput(input.node, sas_name);
+    }
     return Status::OK();
   }
 
@@ -685,8 +683,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                   << "name " << n->input(i) << " pos " << position;
               *n->mutable_input(i) = strings::StrCat(sas_name, ":", op_idx);
             }
-            node_map->RemoveOutput(old_op->name(), n->name());
-            node_map->AddOutput(sas_name, n->name());
+            node_map->UpdateInput(n->name(), old_op->name(), sas_name);
             VLOG(3) << "breaking on success";
             break;
           } else {

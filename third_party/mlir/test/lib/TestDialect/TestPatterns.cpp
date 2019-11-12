@@ -26,6 +26,16 @@ static Value *chooseOperand(Value *input1, Value *input2, BoolAttr choice) {
   return choice.getValue() ? input1 : input2;
 }
 
+static void createOpI(PatternRewriter &rewriter, Value *input) {
+  rewriter.create<OpI>(rewriter.getUnknownLoc(), input);
+}
+
+void handleNoResultOp(PatternRewriter &rewriter, OpSymbolBindingNoResult op) {
+  // Turn the no result op to a one-result op.
+  rewriter.create<OpSymbolBindingB>(op.getLoc(), op.operand()->getType(),
+                                    op.operand());
+}
+
 namespace {
 #include "TestPatterns.inc"
 } // end anonymous namespace
@@ -67,8 +77,13 @@ struct ReturnTypeOpMatch : public RewritePattern {
       values.reserve(op->getNumOperands());
       for (auto &operand : op->getOpOperands())
         values.push_back(operand.get());
-      (void)retTypeFn.inferReturnTypes(op->getLoc(), values, op->getAttrs(),
-                                       op->getRegions());
+      auto res = retTypeFn.inferReturnTypes(op->getLoc(), values,
+                                            op->getAttrs(), op->getRegions());
+      SmallVector<Type, 1> result_types(op->getResultTypes());
+      if (!retTypeFn.isCompatibleReturnTypes(res, result_types))
+        return op->emitOpError(
+                   "inferred type incompatible with return type of operation"),
+               matchFailure();
     }
     return matchFailure();
   }
@@ -344,6 +359,12 @@ struct TestLegalizePatternDriver
         [](TestTypeProducerOp op) { return op.getType().isF64(); });
     target.addDynamicallyLegalOp<TestTypeConsumerOp>([](TestTypeConsumerOp op) {
       return op.getOperand()->getType().isF64();
+    });
+
+    // Check support for marking certain operations as recursively legal.
+    target.markOpRecursivelyLegal<FuncOp, ModuleOp>([](Operation *op) {
+      return static_cast<bool>(
+          op->getAttrOfType<UnitAttr>("test.recursively_legal"));
     });
 
     // Handle a partial conversion.

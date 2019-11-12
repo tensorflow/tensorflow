@@ -101,7 +101,7 @@ bin_path = None
 def main(unused_args):
   # Eager execution is enabled by default in TF 2.0, but generated example
   # tests are still using non-eager features (e.g. `tf.placeholder`).
-  tf.disable_eager_execution()
+  tf.compat.v1.disable_eager_execution()
 
   options = generate_examples_lib.Options()
 

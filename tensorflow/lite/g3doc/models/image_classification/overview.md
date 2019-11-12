@@ -37,14 +37,18 @@ For each example, we provide a guide that explains how it works.
 <a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android">View
 Android example</a>
 
-Read the [Android example guide](android.md) to learn how the app works.
+Read the
+[Android example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md)
+to learn how the app works.
 
 #### iOS
 
-<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios.md">View
+<a class="button button-primary" href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios">View
 iOS example</a>
 
-Read the [iOS example guide](ios.md) to learn how the app works.
+Read the
+[iOS example guide](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md)
+to learn how the app works.
 
 #### Screenshot
 
@@ -212,6 +216,48 @@ experiment with different models to find the optimal balance between
 performance, accuracy, and model size. For guidance, see
 <a href="#choose_a_different_model">Choose a different model</a>.
 
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>NNAPI</th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_1.0_224_quant_and_labels.zip">Mobilenet_V1_1.0_224_quant</a>
+    </td>
+    <td rowspan = 3>
+      4.3 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>6ms</td>
+    <td>13ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>3.3ms</td>
+    <td>5ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+     <td></td>
+    <td>11ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
+
 ## Choose a different model
 
 There are a large number of image classification models available on our
@@ -265,7 +311,7 @@ The architecture of a model impacts its performance, accuracy, and size. All of
 our hosted models are trained on the same data, meaning you can use the provided
 statistics to compare them and choose which is optimal for your application.
 
-Note: The image classification models we provide accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. <br /><br />All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel.<br /><br />Our <a href="android.md">Android</a> and <a href="ios.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
+Note: The image classification models we provide accept varying sizes of input. For some models, this is indicated in the filename. For example, the Mobilenet_V1_1.0_224 model accepts an input of 224x224 pixels. <br /><br />All of the models require three color channels per pixel (red, green, and blue). Quantized models require 1 byte per channel, and float models require 4 bytes per channel.<br /><br />Our <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md">Android</a> and <a href="https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios/EXPLORE_THE_CODE.md">iOS</a> code samples demonstrate how to process full-sized camera images into the required format for each model.
 
 ## Customize model
 
@@ -282,4 +328,5 @@ images for each of the new labels you wish to train.
 
 Learn how to perform transfer learning in the
 <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">Recognize
-flowers with TensorFlow</a> codelab.
+flowers with TensorFlow</a> codelab, or with the [model customization toolkit]
+(https://github.com/tensorflow/examples/tree/master/tensorflow_examples/lite/model_customization/demo/image_classification.ipynb).

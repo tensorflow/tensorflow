@@ -161,6 +161,9 @@ int main(int argc, char **argv) {
       return kTrFailure;
     }
   }
+  if (!emit_quant_adaptor_ops) {
+    quant_specs.inference_input_type = quant_specs.inference_type;
+  }
 
   if (!quant_stats_file_name.empty()) {
     std::string error_message;
@@ -175,7 +178,6 @@ int main(int argc, char **argv) {
 
   mlir::TFL::PassConfig pass_config(quant_specs);
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
-  pass_config.emit_quant_adaptor_ops = emit_quant_adaptor_ops;
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
 
   tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);

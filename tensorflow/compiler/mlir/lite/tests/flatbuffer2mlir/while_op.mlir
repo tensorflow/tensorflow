@@ -3,14 +3,12 @@
 func @main(%arg0: tensor<i32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
 // TODO(b/138222071) Expect first output to be a scalar
 // CHECK:   %{{.*}}:2 = "tf.While"(%{{.*}}, %{{.*}}) {body = @body, cond = @cond, is_stateless = false} : (tensor<i32>, tensor<1xf32>) -> (tensor<*xi32>, tensor<1xf32>)
-  %0 = "tfl.pseudo_input"(%arg0) : (tensor<i32>) -> tensor<i32>
-  %1 = "tfl.pseudo_input"(%arg1) : (tensor<1xf32>) -> tensor<1xf32>
 
-  // While %0 is greater than zero, element wise add %1 with itself.
-  %2:2 = "tf.While"(%0, %1) {
+  // While %arg0 is greater than zero, element wise add %arg1 with itself.
+  %0:2 = "tf.While"(%arg0, %arg1) {
     cond = @cond, body = @body, is_stateless = false
   } : (tensor<i32>, tensor<1xf32>) -> (tensor<i32>, tensor<1xf32>)
-  return %2#1 : tensor<1xf32>
+  return %0#1 : tensor<1xf32>
 }
 
 func @cond(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tensor<i1> {

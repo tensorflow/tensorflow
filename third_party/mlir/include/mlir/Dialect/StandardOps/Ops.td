@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef STANDARD_OPS
-#else
+#ifndef STANDARD_OPS
 #define STANDARD_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -82,7 +80,8 @@ class UnaryOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 }
 
-class UnaryOpSameOperandAndResultType<string mnemonic, list<OpTrait> traits = []> :
+class UnaryOpSameOperandAndResultType<string mnemonic,
+                                      list<OpTrait> traits = []> :
     UnaryOp<mnemonic, !listconcat(traits, [SameOperandsAndResultType])> {
   let parser = [{
     return impl::parseOneResultSameOperandTypeOp(parser, result);
@@ -166,18 +165,35 @@ def AllocOp : Std_Op<"alloc"> {
 
     This operation returns a single ssa value of memref type, which can be used
     by subsequent load and store operations.
+
+    The optional `alignment` attribute may be specified to ensure that the
+    region of memory that will be indexed is aligned at the specified byte
+    boundary. TODO(b/144281289) optional alignment attribute to MemRefType.
+
+      %0 = alloc()[%s] {alignment = 8} :
+        memref<8x64xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
   }];
 
-  let arguments = (ins Variadic<Index>:$value);
+  let arguments = (ins Variadic<Index>:$value,
+                   Confined<OptionalAttr<I64Attr>, [IntMinValue<0>]>:$alignment);
   let results = (outs AnyMemRef);
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, MemRefType memrefType", [{
        result.types.push_back(memrefType);
-     }]
-  >];
+     }]>,
+    OpBuilder<
+    "Builder *builder, OperationState &result, MemRefType memrefType, " #
+    "ArrayRef<Value*> operands, IntegerAttr alignment = IntegerAttr()", [{
+       result.addOperands(operands);
+       result.types.push_back(memrefType);
+       if (alignment)
+         result.addAttribute(getAlignmentAttrName(), alignment);
+     }]>];
 
   let extraClassDeclaration = [{
+    static StringRef getAlignmentAttrName() { return "alignment"; }
+
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
     /// Returns the number of symbolic operands (the ones in square brackets),
@@ -233,19 +249,22 @@ def BranchOp : Std_Op<"br", [Terminator]> {
     /// Erase the operand at 'index' from the operand list.
     void eraseOperand(unsigned index);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def CallOp : Std_Op<"call", [CallOpInterface]> {
   let summary = "call operation";
   let description = [{
-    The "call" operation represents a direct call to a function.  The operands
-    and result types of the call must match the specified function type.  The
-    callee is encoded as a function attribute named "callee".
+    The "call" operation represents a direct call to a function that is within
+    the same symbol scope as the call.  The operands and result types of the
+    call must match the specified function type. The callee is encoded as a
+    function attribute named "callee".
 
       %2 = call @my_add(%0, %1) : (f32, f32) -> f32
   }];
 
-  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
@@ -255,11 +274,16 @@ def CallOp : Std_Op<"call", [CallOpInterface]> {
       result.addAttribute("callee", builder->getSymbolRefAttr(callee));
       result.addTypes(callee.getType().getResults());
   }]>, OpBuilder<
-    "Builder *builder, OperationState &result, StringRef callee,"
+    "Builder *builder, OperationState &result, SymbolRefAttr callee,"
     "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
       result.addOperands(operands);
-      result.addAttribute("callee", builder->getSymbolRefAttr(callee));
+      result.addAttribute("callee", callee);
       result.addTypes(results);
+  }]>, OpBuilder<
+    "Builder *builder, OperationState &result, StringRef callee,"
+    "ArrayRef<Type> results, ArrayRef<Value *> operands = {}", [{
+      build(builder, result, builder->getSymbolRefAttr(callee), results,
+            operands);
   }]>];
 
   let extraClassDeclaration = [{
@@ -1062,8 +1086,8 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
-      auto resultType = builder->getTensorType(memrefType.getShape(),
-          memrefType.getElementType());
+      auto resultType = RankedTensorType::get(memrefType.getShape(),
+                                              memrefType.getElementType());
       result.addOperands(memref);
       result.addTypes(resultType);
   }]>];
@@ -1125,6 +1149,147 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
   let printer = [{
     return printStandardCastOp(this->getOperation(), p);
   }];
+}
+
+def ViewOp : Std_Op<"view"> {
+  let summary = "memref view operation";
+  let description = [{
+    The "view" operation converts a 1-D memref with i8 element type,
+    to an N-D memref with arbitrary element type. In addition, the ViewOp
+    supports the following arguments:
+    *) A single dynamic offset operand can be specified which represents a
+       a dynamic offset within the base 1-D memref at which to create the
+       resulting memref view.
+    *) A dynamic size operand must be specified for each dynamic dimension
+       in the resulting view memref type.
+
+    // Allocate a flat 1D/i8 memref.
+    %0 = alloc() : memref<2048xi8>
+
+    // ViewOp with static offset and sizes.
+    %1 = view %0[][] : memref<2048xi8> to memref<64x4xf32>
+
+    // ViewOp with dynamic offset and one dynamic size.
+    %2 = view %0[%offset_1024][%size0]
+      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)
+
+    // ViewOp creating 3D shape where two of the dim sizes are dynamic.
+    // *) The dynamic offset specified in the ViewOp is applied to the
+    //    base 1-D memref, and is represented by the symbol 's0' in the
+    //    layout map of the ViewOp result memref type.
+    // *) The dynamic size for the second dimension induces a dynamic
+    //    stride for the first dimension, which is represented by the
+    //    symbol 's1' in the layout map of the ViewOp result memref type.
+    //    Note that this dynamic stride will be computed from the view
+    //    shape and dynamic sizes.
+    %3 = view %0[%offset_1024][%size0, %size1]
+      : memref<2048xi8> to memref<?x?x4xf32,
+        (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * 4 + d2 + s0)
+  }];
+
+  let arguments = (ins MemRefRankOf<[I8], [1]>:$source,
+                       Variadic<Index>:$operands);
+  let results = (outs AnyMemRef);
+
+  let extraClassDeclaration = [{
+    /// The result of a view is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the dynamic offset for this view operation if specified.
+    /// Returns nullptr if no dynamic offset was specified.
+    Value *getDynamicOffset();
+
+    /// Returns the starting operand list position of the dynamic size operands.
+    unsigned getDynamicSizesOperandStart() {
+      return getDynamicOffset() == nullptr ? 1 : 2;
+    }
+
+    /// Returns the dynamic sizes for this view operation.
+    operand_range getDynamicSizes() {
+      return {operand_begin() + getDynamicSizesOperandStart(), operand_end()};
+    }
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
+def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
+  let summary = "memref subview operation";
+  let description = [{
+    The "subview" operation converts a memref type to another memref type
+    which represents a reduced-size view of the original memref as specified by
+    the operation's offsets, sizes and strides arguments.
+
+    The SubView operation supports the following arguments:
+    *) Memref: the "base" memref on which to create a "view" memref.
+    *) Offsets: memref-rank number of dynamic offsets into the "base" memref at
+                which to create the "view" memref.
+    *) Sizes: memref-rank dynamic size operands which specify the dynamic sizes
+              of the result "view" memref type.
+    *) Strides: memref-rank number of dynamic strides which are applied
+                multiplicatively to the base memref strides in each dimension.
+
+    Example 1:
+
+      %0 = alloc() : memref<64x4xf32, (d0, d1) -> (d0 * 4 + d1)>
+
+      // Create a sub-view of "base" memref '%0' with offset arguments '%c0',
+      // dynamic sizes for each dimension, and stride arguments '%c1'.
+      %1 = subview %0[%c0, %c0][%size0, %size1][%c1, %c1]
+        : memref<64x4xf32, (d0, d1) -> (d0 * 4 + d1) > to
+          memref<?x?xf32, (d0, d1)[s0, s1] -> (d0 * s1 + d1 + s0)>
+
+    Example 2:
+
+      %0 = alloc() : memref<8x16x4xf32, (d0, d1, d1) -> (d0 * 64 + d1 * 4 + d2)>
+
+      // Create a sub-view of "base" memref '%0' with dynamic offsets, sizes,
+      // and strides.
+      // Note that dynamic offsets are represented by the linearized dynamic
+      // offset symbol 's0' in the subview memref layout map, and that the
+      // dynamic strides operands, after being applied to the base memref
+      // strides in each dimension, are represented in the view memref layout
+      // map as symbols 's1', 's2' and 's3'.
+      %1 = subview %0[%i, %j, %k][%size0, %size1, %size2][%x, %y, %z]
+        : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+          memref<?x?x?xf32,
+            (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
+    }
+  }];
+
+  let arguments = (ins AnyMemRef:$source, Variadic<Index>:$offsets,
+                   Variadic<Index>:$sizes, Variadic<Index>:$strides);
+  let results = (outs AnyMemRef);
+
+  let extraClassDeclaration = [{
+    /// The result of a subview is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the dynamic offsets for this subview operation.
+    operand_range getDynamicOffsets() {
+      return {operand_begin() + 1, operand_begin() + 1 + getType().getRank()};
+    }
+
+    /// Returns the operand starting position of the size operands.
+    unsigned getSizeOperandsStart() { return 1 + getType().getRank(); }
+
+    /// Returns the dynamic sizes for this subview operation if specified.
+    operand_range getDynamicSizes() {
+      return {operand_begin() + getSizeOperandsStart(),
+              operand_begin() + getSizeOperandsStart() + getType().getRank()};
+    }
+
+    /// Returns the operand starting position of the size operands.
+    unsigned getStrideOperandsStart() { return 1 + 2 * getType().getRank(); }
+
+    /// Returns the dynamic strides for this subview operation if specified.
+    operand_range getDynamicStrides() {
+      return {operand_begin() + getStrideOperandsStart(),
+              operand_begin() + getStrideOperandsStart() + getType().getRank()};
+    }
+  }];
+
+  // TODO(andydavis) Add canonicalizer.
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {

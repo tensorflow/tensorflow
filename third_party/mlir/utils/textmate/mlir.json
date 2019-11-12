@@ -105,6 +105,9 @@
       },
       "patterns" : [
         {
+          "include" : "#comment"
+        },
+        {
           "include" : "#branch_target"
         },
         {
@@ -274,6 +277,9 @@
       },
       "patterns" : [
         {
+          "include" : "#comment"
+        },
+        {
           "include" : "#attributes"
         },
         {
@@ -332,8 +338,8 @@
       "name" : "meta.attributes.mlir"
     },
     "function_params" : {
-      "end" : ")",
-      "begin" : "(",
+      "end" : "\\)",
+      "begin" : "\\(",
       "patterns" : [
         {
           "include" : "#identifier"
@@ -344,7 +350,6 @@
       ]
     }
   },
-  "scope" : "mlir",
   "patterns" : [
     {
       "match" : "\\b(module)\\b",

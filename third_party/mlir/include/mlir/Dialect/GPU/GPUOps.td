@@ -19,12 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef GPU_OPS
-#else
+#ifndef GPU_OPS
 #define GPU_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -41,12 +39,12 @@ class GPU_IndexOp<string mnemonic, list<OpTrait> traits = []> :
   let verifier = [{ return ::verifyIndexOp(*this); }];
 }
 
-def gpu_BlockDim : GPU_IndexOp<"block_dim">;
-def gpu_BlockId : GPU_IndexOp<"block_id">;
-def gpu_GridDim : GPU_IndexOp<"grid_dim">;
-def gpu_ThreadId : GPU_IndexOp<"thread_id">;
+def GPU_BlockDimOp : GPU_IndexOp<"block_dim">;
+def GPU_BlockIdOp : GPU_IndexOp<"block_id">;
+def GPU_GridDimOp : GPU_IndexOp<"grid_dim">;
+def GPU_ThreadIdOp : GPU_IndexOp<"thread_id">;
 
-def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
+def GPU_ReturnOp : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
     Results<(outs)> {
   let summary = "Terminator for GPU launch regions.";
   let description = [{
@@ -59,7 +57,7 @@ def gpu_Return : GPU_Op<"return", [Terminator]>, Arguments<(ins)>,
   let printer = [{ p << getOperationName(); }];
 }
 
-def gpu_Yield : GPU_Op<"yield", [Terminator]>,
+def GPU_YieldOp : GPU_Op<"yield", [Terminator]>,
     Arguments<(ins Variadic<AnyType>:$values)> {
   let summary = "GPU yield operation";
   let description = [{
@@ -68,19 +66,31 @@ def gpu_Yield : GPU_Op<"yield", [Terminator]>,
 
     Example:
 
-       gpu.yield %f0, %f1 : f32, f32
+       ```gpu.yield %f0, %f1 : f32, f32
+       ```
   }];
 }
 
+// These mirror the XLA ComparisonDirection enum.
+def GPU_AllReduceOpAdd : StrEnumAttrCase<"add">;
+def GPU_AllReduceOpMul : StrEnumAttrCase<"mul">;
 
-def gpu_AllReduce : GPU_Op<"all_reduce",
+def GPU_AllReduceOperationAttr : StrEnumAttr<"AllReduceOperationAttr",
+    "built-in reduction operations supported by gpu.allreduce.",
+    [
+      GPU_AllReduceOpAdd,
+      GPU_AllReduceOpMul,
+    ]>;
+
+def GPU_AllReduceOp : GPU_Op<"all_reduce",
     [SameOperandsAndResultType, IsolatedFromAbove]>,
-    Arguments<(ins AnyType:$value, OptionalAttr<StrAttr>:$op)>,
+    Arguments<(ins AnyType:$value,
+               OptionalAttr<GPU_AllReduceOperationAttr>:$op)>,
     Results<(outs AnyType)> {
   let summary = "Reduce values among workgroup.";
   let description = [{
-    The "all_reduce" op reduces the value of every invocation across a local
-    workgroup. The result is equal for all invocations of a local workgroup.
+    The "all_reduce" op reduces the value of every work item across a local
+    workgroup. The result is equal for all work items of a workgroup.
 
     For example, both
     ```
@@ -91,16 +101,38 @@ def gpu_AllReduce : GPU_Op<"all_reduce",
         "gpu.yield"(%sum) : (f32) -> ()
       }) : (f32) -> (f32)
     ```
-    compute the sum of each invocation's %0 value. The first version specifies
+    compute the sum of each work item's %0 value. The first version specifies
     the accumulation as operation, whereas the second version specifies the
     accumulation as code region. The accumulation operation must either be
     `add` or `mul`.
 
-    Either none or all invocations of a local workgroup need to execute this op
+    Either none or all work items of a workgroup need to execute this op
     in convergence.
   }];
   let regions = (region AnyRegion:$body);
   let verifier = [{ return ::verifyAllReduce(*this); }];
+}
+
+def GPU_BarrierOp : GPU_Op<"barrier"> {
+  let summary = "Synchronizes all work items of a workgroup.";
+  let description = [{
+    The "barrier" op synchronizes all work items of a workgroup. It is used
+    to coordinate communication between the work items of the workgroup.
+
+    ```
+      gpu.barrier
+    ```
+    waits until all work items in the workgroup have reached this point
+    and all memory accesses made by these work items prior to the op are
+    visible to all work items in the workgroup. Data hazards between work items
+    accessing the same memory can be avoided by synchronizing work items
+    in-between these accesses.
+
+    Either none or all work items of a workgroup need to execute this op
+    in convergence.
+  }];
+  let parser = [{ return success(); }];
+  let printer = [{ p << getOperationName(); }];
 }
 
 #endif // GPU_OPS

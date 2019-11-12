@@ -20,11 +20,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef DIALECT_FXPMATHOPS_FXPMATH_OPS_
-#else
+#ifndef DIALECT_FXPMATHOPS_FXPMATH_OPS_
 #define DIALECT_FXPMATHOPS_FXPMATH_OPS_
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

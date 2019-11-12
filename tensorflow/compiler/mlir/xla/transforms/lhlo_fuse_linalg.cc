@@ -30,7 +30,13 @@ using linalg::LinalgOp;
 struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
   void runOnFunction() override {
     auto func = getFunction();
-    OperationFolder state(func.getContext());
+
+    // TODO(pifon): Remove assumption that the function has a single block.
+    if (func.getBlocks().size() != 1) {
+      emitError(func.getLoc(), "The function needs to have a single block.");
+      signalPassFailure();
+      return;
+    }
 
     // The fusion in Linalg is currently possible only when the consumer op is
     // tiled. In order to greedily fuse the ops, we have to start from the tiled
@@ -40,13 +46,15 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     for (auto func_arg : func.getArguments()) {
       func_args.insert(func_arg);
     }
+    OpBuilder b(func);
+    OperationFolder folder(func.getContext());
     func.walk([&](linalg::GenericOp generic_op) {
       const SmallVector<int64_t, 2> tile_sizes(
           generic_op.getNumInputsAndOutputs(), 1);
       auto op = cast<LinalgOp>(generic_op.getOperation());
       for (const Value* result : op.getOutputs()) {
         if (!func_args.count(result)) continue;
-        if (linalg::tileLinalgOp(op, tile_sizes, state)) {
+        if (linalg::tileLinalgOp(b, op, tile_sizes, &folder)) {
           generic_op.erase();
           return;
         }
@@ -56,16 +64,12 @@ struct LhloFuseLinalg : public FunctionPass<LhloFuseLinalg> {
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
     SmallVector<Operation*, 8> linalg_ops;
-    // TODO(pifon): Remove assumption that the function has a single block.
-    if (func.getBlocks().size() != 1) {
-      emitError(func.getLoc(), "The function needs to have a single block.");
-    }
     func.walk([&](LinalgOp op) { linalg_ops.push_back(op); });
     linalg::Aliases aliases;
     linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
     for (auto* op : llvm::reverse(linalg_ops)) {
       for (unsigned id = 0, e = LinalgOp(op).getNumInputs(); id < e; ++id) {
-        if (auto info = fuseProducerOf(op, id, graph, state)) {
+        if (auto info = fuseProducerOf(b, op, id, graph, &folder)) {
           erase_set.insert(info->originalProducer.getOperation());
         }
       }

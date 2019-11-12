@@ -77,6 +77,9 @@ protected:
                                          llvm::IRBuilder<> &builder);
   static std::unique_ptr<llvm::Module> prepareLLVMModule(ModuleOp m);
 
+  template <typename Range>
+  SmallVector<llvm::Value *, 8> lookupValues(Range &&values);
+
 private:
   /// Check whether the module contains only supported ops directly in its body.
   static LogicalResult checkSupportedModuleOps(ModuleOp m);
@@ -86,9 +89,6 @@ private:
   LogicalResult convertOneFunction(LLVMFuncOp func);
   void connectPHINodes(LLVMFuncOp func);
   LogicalResult convertBlock(Block &bb, bool ignoreArguments);
-
-  template <typename Range>
-  SmallVector<llvm::Value *, 8> lookupValues(Range &&values);
 
   llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
                                   Location loc);

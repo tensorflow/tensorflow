@@ -59,7 +59,7 @@ def make_padv2_tests(options):
 
   def build_graph(parameters):
     """Build a pad graph given `parameters`."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -70,7 +70,8 @@ def make_padv2_tests(options):
       input_tensors = [input_tensor]
     else:
       shape = [len(parameters["paddings"]), 2]
-      paddings = tf.placeholder(dtype=tf.int32, name="padding", shape=shape)
+      paddings = tf.compat.v1.placeholder(
+          dtype=tf.int32, name="padding", shape=shape)
       input_tensors = [input_tensor, paddings]
 
     out = tf.pad(

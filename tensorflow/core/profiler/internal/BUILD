@@ -1,5 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "if_not_windows", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test", "tf_cuda_library")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -365,7 +364,7 @@ cc_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "traceme_recorder",
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
@@ -378,11 +377,11 @@ tf_cuda_library(
     ],
     deps = [
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base:core_headers",
     ],
+    alwayslink = 1,
 )
 
-tf_cuda_cc_test(
+tf_cc_test(
     name = "traceme_recorder_test",
     srcs = ["traceme_recorder_test.cc"],
     deps = [
@@ -438,10 +437,10 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "python_traceme",
     hdrs = ["python_traceme.h"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
         ":traceme_recorder",
         "//tensorflow/core/profiler/lib:traceme",
@@ -449,12 +448,12 @@ tf_cuda_library(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "python_scoped_annotation",
     hdrs = ["python_scoped_annotation.h"],
-    visibility = ["//tensorflow/python:__pkg__"],
+    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
-        "//tensorflow/core/platform:annotation",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
