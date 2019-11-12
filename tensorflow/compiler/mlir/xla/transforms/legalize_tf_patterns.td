@@ -302,9 +302,8 @@ def : Pat<(TF_MatMulOp $a, $b, $transpose_a, $transpose_b),
 // Nullary op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(riverriddle) Formalize a policy on converting opaque attributes.
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value), (HLO_ConstOp $value),
-          [(AnyStaticShapeTensor $res)]>;
+          [(AnyStaticShapeTensor $res), (HLO_Tensor $res)]>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
