@@ -392,6 +392,14 @@ func @or_invalid_f32_type(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<
 
 // -----
 
+func @floor_invalid_i32_type(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // expected-error@+1 {{must be tensor of floating-point values, but got 'tensor<4xi32>'}}
+  %0 = "xla_hlo.floor"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+
 // Verifiers HLO constant op custom printing and parsing.
 // CHECK-LABEL: func @constants
 func @constants() -> () {
