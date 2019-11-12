@@ -1,8 +1,11 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
+)
+load(
     "//tensorflow/compiler/xla:xla.bzl",
-    "xla_proto_library",
     "xla_py_grpc_library",
 )
 
@@ -11,14 +14,16 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xla_service_proto",
     srcs = ["xla_service.proto"],
-    use_grpc_plugin = True,
-    visibility = ["//visibility:public"],
-    deps = [
+    has_services = 1,
+    cc_api_version = 2,
+    cc_grpc_version = 1,
+    protodeps = [
         "//tensorflow/compiler/xla:xla_proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(

@@ -1,7 +1,6 @@
 # Description:
 #   GPU-specific components in XLA service implementation.
 
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_cc",
@@ -1603,10 +1602,11 @@ tf_cc_test(
     ],
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "gpu_autotuning_proto",
     srcs = ["gpu_autotuning.proto"],
-    deps = [
+    cc_api_version = 2,
+    protodeps = [
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
         "//tensorflow/core:autotuning_proto",
