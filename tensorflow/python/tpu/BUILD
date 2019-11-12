@@ -438,7 +438,7 @@ tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
     protodeps = [
-        "//tensorflow/core:protos_all_proto",
+        "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
 )
