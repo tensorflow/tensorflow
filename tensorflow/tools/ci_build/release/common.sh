@@ -82,7 +82,6 @@ function update_bazel_linux {
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
-# LINT.IfChange
 # Install the given bazel version on macos
 function update_bazel_macos {
   if [[ -z "$1" ]]; then
@@ -273,5 +272,3 @@ function copy_to_new_project_name {
   popd
   rm -rf "${TMP_DIR}"
 }
-# LINT.ThenChange(
-# ) # common.sh
