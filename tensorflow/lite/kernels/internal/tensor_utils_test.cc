@@ -1463,7 +1463,50 @@ TEST(uKernels, ReductionSumVectorTest) {
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
 }
 
-TEST(uKernels, MeanStddevNormalization) {
+namespace {
+// Parameterized test: mean, difference, tolerance.
+// Input is constructed as [mean-2*diff, mean-diff, mean+diff, mean+2*diff]
+class MeanStddevNormalizationTest
+    : public testing::TestWithParam<std::tuple<float, float, float>> {};
+}  // namespace
+
+TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
+  const float mean = std::get<0>(GetParam());
+  const float diff = std::get<1>(GetParam());
+  const float tolerance = std::get<2>(GetParam());
+
+  constexpr int kVectorSize = 4;
+  const float input[kVectorSize] = {mean - 2 * diff, mean - diff, mean + diff,
+                                    mean + 2 * diff};
+  float output[kVectorSize];
+  MeanStddevNormalization(input, output, kVectorSize, 1);
+  std::vector<float> expected_output;
+  if (diff == 0.0f) {
+    expected_output.assign({0.0f, 0.0f, 0.0f, 0.0f});
+  } else {
+    const float ksqrt16 = std::sqrt(1.6f);
+    const float ksqrt04 = std::sqrt(0.4f);
+    expected_output.assign({-ksqrt16, -ksqrt04, ksqrt04, ksqrt16});
+  }
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          ArrayFloatNear(expected_output, tolerance)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    uKernels, MeanStddevNormalizationTest,
+    testing::Values(
+        std::make_tuple(0.0f, 0.0f, 0.0f),         // zero mean, zero variance
+        std::make_tuple(0.0f, 0.01f, 0.0f),        // zero mean, small variance
+        std::make_tuple(0.0f, 100.0f, 1.20e-7f),   // zero mean, large variance
+        std::make_tuple(0.01f, 0.0f, 0.0f),        // small mean, zero variance
+        std::make_tuple(0.01f, 0.01f, 0.0f),       // small mean, small variance
+        std::make_tuple(0.01f, 100.0f, 1.20e-7f),  // small mean, large variance
+        std::make_tuple(100.0f, 0.0f, 0.0f),       // large mean, zero variance
+        std::make_tuple(100.0f, 0.01f, 199.0f),    // large mean, small variance
+        std::make_tuple(100.0f, 100.0f, 1.20e-7f)  // large mean, large variance
+        ));
+
+TEST(uKernels, MeanStddevNormalizationAllBatches) {
   constexpr int kVectorSize = 4;
   constexpr int kBatchSize = 8;  // 9, but large mean, small variance fails
 
