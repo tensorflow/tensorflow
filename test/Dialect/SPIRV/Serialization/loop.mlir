@@ -1,4 +1,4 @@
-// RUN: mlir-translate -test-spirv-roundtrip %s | FileCheck %s
+// RUN: mlir-translate -split-input-file -test-spirv-roundtrip %s | FileCheck %s
 
 // Single loop
 
@@ -60,6 +60,50 @@ spv.module "Logical" "GLSL450" {
 }
 
 // -----
+
+spv.module "Logical" "GLSL450" {
+  spv.globalVariable @GV1 bind(0, 0) : !spv.ptr<!spv.struct<!spv.array<10 x f32 [4]> [0]>, StorageBuffer>
+  spv.globalVariable @GV2 bind(0, 1) : !spv.ptr<!spv.struct<!spv.array<10 x f32 [4]> [0]>, StorageBuffer>
+  func @loop_kernel() {
+    %0 = spv._address_of @GV1 : !spv.ptr<!spv.struct<!spv.array<10 x f32 [4]> [0]>, StorageBuffer>
+    %1 = spv.constant 0 : i32
+    %2 = spv.AccessChain %0[%1] : !spv.ptr<!spv.struct<!spv.array<10 x f32 [4]> [0]>, StorageBuffer>
+    %3 = spv._address_of @GV2 : !spv.ptr<!spv.struct<!spv.array<10 x f32 [4]> [0]>, StorageBuffer>
+    %5 = spv.AccessChain %3[%1] : !spv.ptr<!spv.struct<!spv.array<10 x f32 [4]> [0]>, StorageBuffer>
+    %6 = spv.constant 4 : i32
+    %7 = spv.constant 42 : i32
+    %8 = spv.constant 2 : i32
+// CHECK:        spv.Branch ^bb1(%{{.*}} : i32)
+// CHECK-NEXT: ^bb1(%[[OUTARG:.*]]: i32):
+// CHECK-NEXT:   spv.loop {
+    spv.loop {
+// CHECK-NEXT:     spv.Branch ^bb1(%[[OUTARG]] : i32)
+      spv.Branch ^header(%6 : i32)
+// CHECK-NEXT:   ^bb1(%[[HEADARG:.*]]: i32):
+    ^header(%9: i32):
+      %10 = spv.SLessThan %9, %7 : i32
+// CHECK:          spv.BranchConditional %{{.*}}, ^bb2, ^bb3
+      spv.BranchConditional %10, ^body, ^merge
+// CHECK-NEXT:   ^bb2:     // pred: ^bb1
+    ^body:
+      %11 = spv.AccessChain %2[%9] : !spv.ptr<!spv.array<10 x f32 [4]>, StorageBuffer>
+      %12 = spv.Load "StorageBuffer" %11 : f32
+      %13 = spv.AccessChain %5[%9] : !spv.ptr<!spv.array<10 x f32 [4]>, StorageBuffer>
+      spv.Store "StorageBuffer" %13, %12 : f32
+// CHECK:          %[[ADD:.*]] = spv.IAdd
+      %14 = spv.IAdd %9, %8 : i32
+// CHECK-NEXT:     spv.Branch ^bb1(%[[ADD]] : i32)
+      spv.Branch ^header(%14 : i32)
+// CHECK-NEXT:   ^bb3:
+    ^merge:
+// CHECK-NEXT:     spv._merge
+      spv._merge
+    }
+    spv.Return
+  }
+  spv.EntryPoint "GLCompute" @loop_kernel
+  spv.ExecutionMode @loop_kernel "LocalSize", 1, 1, 1
+} attributes {capabilities = ["Shader"], extensions = ["SPV_KHR_storage_buffer_storage_class"]}
 
 // TODO(antiagainst): re-enable this after fixing the assertion failure.
 // Nested loop
