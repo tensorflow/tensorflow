@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 
+#include "absl/strings/numbers.h"
+
 namespace tensorflow {
 namespace profiler {
 

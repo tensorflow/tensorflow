@@ -74,7 +74,7 @@ class XEventBuilder {
     AddStat(metadata)->set_double_value(value);
   }
   void AddStatValue(const XStatMetadata& metadata, absl::string_view value) {
-    AddStat(metadata)->set_str_value(value);
+    AddStat(metadata)->set_str_value(string(value));
   }
   void AddStatValue(const XStatMetadata& metadata, string&& value) {
     AddStat(metadata)->set_str_value(std::move(value));
@@ -104,10 +104,10 @@ class XLineBuilder {
 
   void SetId(int64 id) { line_->set_id(id); }
 
-  void SetName(absl::string_view name) { line_->set_name(name); }
+  void SetName(absl::string_view name) { line_->set_name(string(name)); }
 
   void SetNameIfEmpty(absl::string_view name) {
-    if (line_->name().empty()) line_->set_name(name);
+    if (line_->name().empty()) SetName(name);
   }
 
   void SetTimestampNs(int64 timestamp_ns) {
@@ -133,7 +133,7 @@ class XPlaneBuilder {
 
   void SetId(int64 id) { plane_->set_id(id); }
 
-  void SetName(absl::string_view name) { plane_->set_name(name); }
+  void SetName(absl::string_view name) { plane_->set_name(string(name)); }
 
   void ReserveLines(size_t num_lines) {
     plane_->mutable_lines()->Reserve(num_lines);
