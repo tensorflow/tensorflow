@@ -66,6 +66,14 @@ XLA_TEST_F(ArrayElementwiseOpTest, NegConstantF32) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, NegConstantF64) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<double>(&builder, {-2.5, 3.14, 2.25, -10.0, 6.0});
+  Neg(a);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, NegConstantS32) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<int32>(&builder,
@@ -444,6 +452,15 @@ XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantZeroElementC64s) {
   ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantF64s) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<double>(&builder, {-2.5, 3.14, 2.25, -10.0, 6.0});
+  auto b = ConstantR1<double>(&builder, {100.0, 3.13, 2.75, 10.5, -999.0});
+  Sub(a, b);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF32s) {
   XlaBuilder builder(TestName());
   auto a = ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, -10.0f, 6.0f});
@@ -461,6 +478,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantZeroElementF32s) {
   Div(a, b);
 
   ComputeAndCompareR1<float>(&builder, {}, {}, error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, DivTwoConstantF64s) {
+  XlaBuilder builder(TestName());
+  auto a = ConstantR1<double>(
+      &builder, {-2.5, 25.5, 2.25, -10.0, 6.0, 1.0, 2.0, 3.2, -4.0, 0.45, 5.7,
+                 0.1, 1.0, 2.0, 0.5, -1.0, -0.5, 1.0});
+  auto b = ConstantR1<double>(
+      &builder, {10.0, 5.1, 1.0, 10.0, -6.0, 0.1, 1.0, 2.0, 0.5, -1.0, -0.5,
+                 2.1, 3.1, 9.9, -4.5, -11.0, -21.5, M_PI});
+  Div(a, b);
+
+  ComputeAndCompare(&builder, {}, error_spec_);
 }
 
 class IntegerDivideOpTest : public ArrayElementwiseOpTest {
