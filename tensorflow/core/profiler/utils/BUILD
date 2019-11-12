@@ -29,10 +29,6 @@ cc_library(
 cc_library(
     name = "math_utils",
     hdrs = ["math_utils.h"],
-    visibility = [
-        "//perftools/accelerators/xprof/convert:__pkg__",
-        "//perftools/gputools/profiler/collector:__pkg__",
-    ],
 )
 
 cc_library(
