@@ -276,6 +276,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         op_params.output_multiplier);
   } else
 #endif
+#pragma message( \
+    "CMSIS-NN optimization for depthwise_conv not available for this target. Using reference kernel.")
+
   {
     tflite::reference_ops::DepthwiseConv(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
