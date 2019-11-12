@@ -236,6 +236,8 @@ TfLiteStatus EvalQuantizedPerChannel(
     }
   }
 #else
+#pragma message( \
+    "CMSIS-NN optimization for conv not available for this target. Using reference kernel.")
 
   reference_integer_ops::ConvPerChannel(
       op_params, data->per_channel_output_multiplier,
