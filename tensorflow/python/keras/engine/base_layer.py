@@ -1709,7 +1709,7 @@ class Layer(trackable.Trackable):
       input_shapes = nest.map_structure(lambda x: x.shape, inputs)
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
-      self.build(input_shapes)
+      self.build(tuple(input_list))
     # We must set self.built since user defined build functions are not
     # constrained to set self.built.
     self.built = True
