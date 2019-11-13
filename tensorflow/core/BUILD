@@ -5252,11 +5252,9 @@ tf_portable_proto_library(
     header_outs = tf_android_core_proto_headers(CORE_PROTO_SRCS) + ["//google/protobuf/any.proto.h"],
     link_full_protobuf = False,
     prefix_dir = "emscripten_proto_no_rtti",
-    proto_deps = [
-        ":protos_all",
-        "@com_google_protobuf//:protobuf",
-    ],
+    proto_deps = [":protos_all"],
     visibility = ["//visibility:public"],
+    deps = ["@com_google_protobuf//:protobuf"],
 )
 
 # There is currently no need for a full proto version of emscripten tf lib lite.
