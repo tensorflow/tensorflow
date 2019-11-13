@@ -1297,7 +1297,7 @@ def resize_images_v2(images,
   Raises:
     ValueError: if the shape of `images` is incompatible with the
       shape arguments to this function
-    ValueError: if `size` has invalid shape or type.
+    ValueError: if `size` has an invalid shape or type.
     ValueError: if an unsupported resize method is specified.
 
   Returns:
