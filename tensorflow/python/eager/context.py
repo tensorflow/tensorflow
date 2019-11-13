@@ -66,11 +66,7 @@ ASYNC = 1
 MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
 MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 
-# TODO(b/143164764): Currently _KEEP_ALIVE_SECS is set to a very long time
-# (i.e. 30 days) because the server may deadlock when destroying the eager
-# context. This may cause memory leak in the headless TPU case, we should change
-# it back to 600 once the deadlock is fixed.
-_KEEP_ALIVE_SECS = 2592000
+_KEEP_ALIVE_SECS = 600
 
 _python_eager_context_create_counter = monitoring.Counter(
     "/tensorflow/api/python/eager_context_create_counter",
