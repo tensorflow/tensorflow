@@ -165,6 +165,10 @@ Status GpuCompiler::OptimizeHloModule(
       // where possible.  Not every batchnorm op can be implemented as a call to
       // cudnn, so decompose any remaining batchnorm ops into a soup of HLOs.
       if (hlo_module->config().debug_options().xla_gpu_use_cudnn_batchnorm()) {
+        pass.AddPass<BatchNormExpander>(
+          /*rewrite_training_op=*/false,
+          /*rewrite_inference_op=*/true,
+          /*rewrite_grad_op=*/false);
         pass.AddPass<CudnnBatchNormRewriter>();
       }
       pass.AddPass<BatchNormExpander>(
