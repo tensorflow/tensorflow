@@ -2400,8 +2400,13 @@ class Function(object):
     graph_function._garbage_collector.release()  # pylint: disable=protected-access
     return graph_function
 
-  def get_concrete_function(self, *args, **kwargs):
+  def _get_concrete_function_garbage_collected(self, *args, **kwargs):
     """Returns a `ConcreteFunction` specialized to inputs and execution context.
+
+    Unlike `get_concrete_function(...)`, the graph will be deleted when the
+    returned function is deleted.  It's useful to avoid creating a reference
+    cycle when you know for sure that the graph will be no longer used without
+    the returned function.
 
     Args:
       *args: inputs to specialize on.
@@ -2458,6 +2463,18 @@ class Function(object):
       # Anything can be a positional argument, in the same order as .inputs
       graph_function._num_positional_args = num_positional  # pylint: disable=protected-access
       return graph_function
+
+  def get_concrete_function(self, *args, **kwargs):
+    """Returns a `ConcreteFunction` specialized to inputs and execution context.
+
+    Args:
+      *args: inputs to specialize on.
+      **kwargs: inputs to specialize on.
+    """
+    graph_function = self._get_concrete_function_garbage_collected(
+        *args, **kwargs)
+    graph_function._garbage_collector.release()  # pylint: disable=protected-access
+    return graph_function
 
   def __get__(self, instance, owner):
     """Makes it possible to defun instance methods."""
