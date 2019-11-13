@@ -357,9 +357,21 @@ public:
   // Identifier Parsing
   //===--------------------------------------------------------------------===//
 
+  /// Parse an @-identifier and store it (without the '@' symbol) in a string
+  /// attribute named 'attrName'.
+  ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
+                              SmallVectorImpl<NamedAttribute> &attrs) {
+    if (failed(parseOptionalSymbolName(result, attrName, attrs)))
+      return emitError(getCurrentLocation())
+             << "expected valid '@'-identifier for symbol name";
+    return success();
+  }
+
+  /// Parse an optional @-identifier and store it (without the '@' symbol) in a
+  /// string attribute named 'attrName'.
   virtual ParseResult
-  parseSymbolName(StringAttr &result, StringRef attrName,
-                  SmallVectorImpl<NamedAttribute> &attrs) = 0;
+  parseOptionalSymbolName(StringAttr &result, StringRef attrName,
+                          SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   //===--------------------------------------------------------------------===//
   // Operand Parsing

@@ -847,12 +847,13 @@ static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
 //===----------------------------------------------------------------------===//
 
 InFlightDiagnostic Parser::emitError(SMLoc loc, const Twine &message) {
+  auto diag = mlir::emitError(getEncodedSourceLocation(loc), message);
+
   // If we hit a parse error in response to a lexer error, then the lexer
   // already reported the error.
   if (getToken().is(Token::error))
-    return InFlightDiagnostic();
-
-  return mlir::emitError(getEncodedSourceLocation(loc), message);
+    diag.abandon();
+  return diag;
 }
 
 //===----------------------------------------------------------------------===//
@@ -3937,10 +3938,11 @@ public:
     return success();
   }
 
-  /// Parse an @-identifier and store it (without the '@' symbol) in a string
-  /// attribute named 'attrName'.
-  ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
-                              SmallVectorImpl<NamedAttribute> &attrs) override {
+  /// Parse an optional @-identifier and store it (without the '@' symbol) in a
+  /// string attribute named 'attrName'.
+  ParseResult
+  parseOptionalSymbolName(StringAttr &result, StringRef attrName,
+                          SmallVectorImpl<NamedAttribute> &attrs) override {
     Token atToken = parser.getToken();
     if (atToken.isNot(Token::at_identifier))
       return failure();
