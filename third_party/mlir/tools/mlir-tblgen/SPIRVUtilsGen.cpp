@@ -231,7 +231,7 @@ static void emitSerializationFunction(const Record *attrClass,
                   record->getValueAsInt("extendedInstOpcode"), operands);
   } else {
     os << formatv("  encodeInstructionInto("
-                  "functions, spirv::getOpcode<{0}>(), {1});\n",
+                  "functionBody, spirv::getOpcode<{0}>(), {1});\n",
                   op.getQualCppClassName(), operands);
   }
 
