@@ -1303,7 +1303,7 @@ def get(identifier):
     identifier = str(identifier)
     return deserialize(identifier)
   if isinstance(identifier, dict):
-    return deserialize(identifier, custom_objects)
+    return deserialize(identifier)
   elif callable(identifier):
     return identifier
   else:
