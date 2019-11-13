@@ -84,6 +84,11 @@ static llvm::cl::opt<bool>
                           llvm::cl::desc("Print the generic op form"),
                           llvm::cl::init(false), llvm::cl::Hidden);
 
+static llvm::cl::opt<bool> printLocalScopeOpt(
+    "mlir-print-local-scope",
+    llvm::cl::desc("Print assuming in local scope by default"),
+    llvm::cl::init(false), llvm::cl::Hidden);
+
 /// Initialize the printing flags with default supplied by the cl::opts above.
 OpPrintingFlags::OpPrintingFlags()
     : elementsAttrElementLimit(
@@ -92,7 +97,8 @@ OpPrintingFlags::OpPrintingFlags()
               : Optional<int64_t>()),
       printDebugInfoFlag(printDebugInfoOpt),
       printDebugInfoPrettyFormFlag(printPrettyDebugInfoOpt),
-      printGenericOpFormFlag(printGenericOpFormOpt), printLocalScope(false) {}
+      printGenericOpFormFlag(printGenericOpFormOpt),
+      printLocalScope(printLocalScopeOpt) {}
 
 /// Enable the elision of large elements attributes, by printing a '...'
 /// instead of the element data, when the number of elements is greater than
@@ -2020,7 +2026,9 @@ void Block::printAsOperand(raw_ostream &os, bool printType) {
 
 void ModuleOp::print(raw_ostream &os, OpPrintingFlags flags) {
   ModuleState state(getContext());
-  state.initialize(*this);
+  // Skip initializing in local scope to avoid populating aliases.
+  if (!flags.shouldUseLocalScope())
+    state.initialize(*this);
   ModulePrinter(os, flags, &state).print(*this);
 }
 
