@@ -38,6 +38,7 @@ from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolve
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -206,7 +207,8 @@ def _is_device_list_single_worker(devices):
   """Checks whether the devices list is for single or multi-worker.
 
   Args:
-    devices: a list of device strings, either local or for remote devices.
+    devices: a list of device strings or tf.config.LogicalDevice objects, for
+      either local or for remote devices.
 
   Returns:
     a boolean indicating whether these device strings are for local or for
@@ -215,7 +217,10 @@ def _is_device_list_single_worker(devices):
   Raises:
     ValueError: if device strings are not consistent.
   """
-  specs = (tf_device.DeviceSpec.from_string(d) for d in devices)
+  specs = []
+  for d in devices:
+    name = d.name if isinstance(d, context.LogicalDevice) else d
+    specs.append(tf_device.DeviceSpec.from_string(name))
   num_workers = len({(d.job, d.task, d.replica) for d in specs})
   all_local = all(d.job in (None, "localhost") for d in specs)
   any_local = any(d.job in (None, "localhost") for d in specs)
@@ -321,9 +326,10 @@ def _infer_num_gpus_per_worker(devices):
 
 
 def all_local_devices(num_gpus=None):
-  if num_gpus is None:
-    num_gpus = context.num_gpus()
-  return device_util.local_devices_from_num_gpus(num_gpus)
+  devices = config.list_logical_devices("GPU")
+  if num_gpus is not None:
+    devices = devices[:num_gpus]
+  return devices or config.list_logical_devices("CPU")
 
 
 def all_devices():
