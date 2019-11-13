@@ -165,4 +165,17 @@ spv.module "Logical" "GLSL450" {
     %1 = spv.IAdd %0, %0 : i32
     spv.ReturnValue %1 : i32
   }
+
+  // CHECK-LABEL: @const_variable
+  func @const_variable(%arg0 : i32, %arg1 : i32) -> () {
+    // CHECK: %[[CONST:.*]] = spv.constant 5 : i32
+    // CHECK: spv.Variable init(%[[CONST]]) : !spv.ptr<i32, Function>
+    // CHECK: spv.IAdd %arg0, %arg1
+    %0 = spv.IAdd %arg0, %arg1 : i32
+    %1 = spv.constant 5 : i32
+    %2 = spv.Variable init(%1) : !spv.ptr<i32, Function>
+    %3 = spv.Load "Function" %2 : i32
+    %4 = spv.IAdd %0, %3 : i32
+    spv.Return
+  }
 }
