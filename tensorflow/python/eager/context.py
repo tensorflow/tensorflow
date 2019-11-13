@@ -597,6 +597,26 @@ class Context(object):
 
     self._clear_caches()
 
+  def check_alive(self, worker_name):
+    """Checks whether a remote worker is alive or not.
+
+    Args:
+      worker_name: a string representing the remote worker. It must be a fully
+      specified name like "/job:worker/replica:0/task:0".
+
+    Returns:
+      a boolean indicating whether the remote worker is alive or not.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    # TODO(yuefengz): support checking multiple workers.
+    if self._context_handle:
+      return pywrap_tensorflow.TFE_ContextCheckAlive(self._context_handle,
+                                                     worker_name)
+    else:
+      raise ValueError("Context is not initialized.")
+
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
 
@@ -2054,6 +2074,10 @@ def set_server_def(server_def):
 
 def update_server_def(server_def):
   context().update_server_def(server_def)
+
+
+def check_alive(worker_name):
+  return context().check_alive(worker_name)
 
 
 def add_function(fdef):
