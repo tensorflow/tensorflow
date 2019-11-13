@@ -259,6 +259,16 @@ Status ReadMetadataFile(const string& hash_dir,
   return Status::OK();
 }
 
+Status DumpDatasetGraph(const std::string& path, uint64 hash,
+                        const GraphDef& graph) {
+  std::unique_ptr<WritableFile> file;
+  std::string graph_file = absl::StrCat(path, "/graph-", hash, ".pbtxt");
+
+  LOG(INFO) << "Graph hash is " << hash << ", writing to " << graph_file;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
+  return WriteTextProto(Env::Default(), graph_file, graph);
+}
+
 Status DetermineOpState(const Status& file_status,
                         const experimental::SnapshotMetadataRecord& metadata,
                         const uint64 pending_snapshot_expiry_seconds,
@@ -365,6 +375,12 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     uint64 hash;
     OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
+
+    Status dump_status = DumpDatasetGraph(path, hash, graph_def);
+    if (!dump_status.ok()) {
+      LOG(WARNING) << "Unable to write graphdef to disk, error: "
+                   << dump_status.ToString();
+    }
 
     *output = new Dataset(
         ctx, input, path,
