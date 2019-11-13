@@ -130,6 +130,7 @@ void AllocateAndParseFlags() {
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;
+  ops_flags->tf_xla_noresolve_compile_time_constants = false;
 
   jitter_flags = new IntroduceFloatingPointJitterPassFlags;
   jitter_flags->jitter_amount = 1e-5;
