@@ -84,7 +84,7 @@ struct GemmImplUsingRuy {
 // and GEMMLOWP_NEON is absent, we fall back to Ruy for some quantized
 // kernels. Some Ruy paths are still experimental, so we restrict to reference
 // code in that case.
-#if not defined(TFLITE_WITH_RUY) && not defined(GEMMLOWP_NEON)
+#if !defined(TFLITE_WITH_RUY) && !defined(GEMMLOWP_NEON)
     constexpr ruy::Path kRuyPath =
         ruy::Path::kReference | ruy::Path::kStandardCpp;
 #else
