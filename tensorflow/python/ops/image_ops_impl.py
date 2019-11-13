@@ -102,7 +102,7 @@ def _ImageDimensions(image, rank):
   Returns:
     A list of corresponding to the dimensions of the
     input image.  Dimensions that are statically known are python integers,
-    otherwise they are integer scalar tensors.
+    otherwise, they are integer scalar tensors.
   """
   if image.get_shape().is_fully_defined():
     return image.get_shape().as_list()
@@ -115,7 +115,7 @@ def _ImageDimensions(image, rank):
 
 
 def _Check3DImage(image, require_static=True):
-  """Assert that we are working with properly shaped image.
+  """Assert that we are working with a properly shaped image.
 
   Args:
     image: 3-D Tensor of shape [height, width, channels]
@@ -194,7 +194,7 @@ def _AssertAtLeast3DImage(image):
 
 
 def _CheckAtLeast3DImage(image, require_static=True):
-  """Assert that we are working with properly shaped image.
+  """Assert that we are working with a properly shaped image.
 
   Args:
     image: >= 3-D Tensor of size [*, height, width, depth]
@@ -308,7 +308,7 @@ def fix_image_flip_shape(image, result):
     result: flipped or transformed image
 
   Returns:
-    An image whose shape is at least None,None,None.
+    An image whose shape is at least None, None, None.
   """
 
   image_shape = image.get_shape()
@@ -324,7 +324,7 @@ def random_flip_up_down(image, seed=None):
   """Randomly flips an image vertically (upside down).
 
   With a 1 in 2 chance, outputs the contents of `image` flipped along the first
-  dimension, which is `height`.  Otherwise output the image as-is.
+  dimension, which is `height`.  Otherwise, output the image as-is.
   When passing a batch of images, each image will be randomly flipped
   independent of other images.
 
@@ -407,7 +407,7 @@ def _random_flip(image, flip_index, seed, scope_name):
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    flip_index: Dimension along which to flip image. Vertical: 0, Horizontal: 1
+    flip_index: Dimension along which to flip the image. Vertical: 0, Horizontal: 1
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
     scope_name: Name of the scope in which the ops are added.
@@ -1249,7 +1249,7 @@ def resize_images_v2(images,
     true, becomes a hat/tent filter function with radius 1 when downsampling.
   *   <b>`lanczos3`</b>:  [Lanczos kernel](
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
-    High-quality practical filter but may have some ringing especially on
+    High-quality practical filter but may have some ringing, especially on
     synthetic images.
   *   <b>`lanczos5`</b>: [Lanczos kernel] (
     https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 5.
@@ -1297,7 +1297,7 @@ def resize_images_v2(images,
   Raises:
     ValueError: if the shape of `images` is incompatible with the
       shape arguments to this function
-    ValueError: if `size` has invalid shape or type.
+    ValueError: if `size` has an invalid shape or type.
     ValueError: if an unsupported resize method is specified.
 
   Returns:
@@ -1530,7 +1530,7 @@ def per_image_standardization(image):
       dimensions of each image.
 
   Returns:
-    A `Tensor` with same shape and dtype as `image`.
+    A `Tensor` with the same shape and dtype as `image`.
 
   Raises:
     ValueError: if the shape of 'image' is incompatible with this function.
@@ -1720,7 +1720,7 @@ def adjust_gamma(image, gamma=1, gain=1):
 
   Args:
     image : RGB image or images to adjust.
-    gamma : A scalar or tensor. Non negative real number.
+    gamma : A scalar or tensor. Non-negative real number.
     gain  : A scalar or tensor. The constant multiplier.
 
   Returns:
@@ -1865,7 +1865,7 @@ def rgb_to_grayscale(images, name=None):
   pixels.
 
   Args:
-    images: The RGB tensor to convert. Last dimension must have size 3 and
+    images: The RGB tensor to convert.The last dimension must have size 3 and
       should contain RGB values.
     name: A name for the operation (optional).
 
@@ -1895,7 +1895,7 @@ def grayscale_to_rgb(images, name=None):
   The input images' last dimension must be size 1.
 
   Args:
-    images: The Grayscale tensor to convert. Last dimension must be size 1.
+    images: The Grayscale tensor to convert. The last dimension must be size 1.
     name: A name for the operation (optional).
 
   Returns:
@@ -1925,8 +1925,8 @@ def random_hue(image, max_delta, seed=None):
   `max_delta` must be in the interval `[0, 0.5]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
-    max_delta: float.  Maximum value for the random delta.
+    image: RGB image or images. The size of the last dimension must be 3.
+    max_delta: float. The maximum value for the random delta.
     seed: An operation-specific seed. It will be used in conjunction with the
       graph-level seed to determine the real seeds that will be used in this
       operation. Please see the documentation of set_random_seed for its
@@ -1953,7 +1953,7 @@ def adjust_hue(image, delta, name=None):
   """Adjust hue of RGB images.
 
   This is a convenience method that converts an RGB image to float
-  representation, converts it to HSV, add an offset to the hue channel, converts
+  representation, converts it to HSV, adds an offset to the hue channel, converts
   back to RGB and then back to the original data type. If several adjustments
   are chained it is advisable to minimize the number of redundant conversions.
 
@@ -1964,7 +1964,7 @@ def adjust_hue(image, delta, name=None):
   `delta` must be in the interval `[-1, 1]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
+    image: RGB image or images. The size of the last dimension must be 3.
     delta: float.  How much to add to the hue channel.
     name: A name for this operation (optional).
 
@@ -2042,7 +2042,7 @@ def adjust_jpeg_quality(image, jpeg_quality, name=None):
   `jpeg_quality` must be in the interval `[0, 100]`.
 
   Args:
-    image: 3D image. Size of the last dimension must be None, 1 or 3.
+    image: 3D image. The size of the last dimension must be None, 1 or 3.
     jpeg_quality: Python int or Tensor of type int32. jpeg encoding quality.
     name: A name for this operation (optional).
 
@@ -2082,7 +2082,7 @@ def random_saturation(image, lower, upper, seed=None):
   picked in the interval `[lower, upper]`.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
+    image: RGB image or images. The size of the last dimension must be 3.
     lower: float.  Lower bound for the random saturation factor.
     upper: float.  Upper bound for the random saturation factor.
     seed: An operation-specific seed. It will be used in conjunction with the
@@ -2112,7 +2112,7 @@ def adjust_saturation(image, saturation_factor, name=None):
   """Adjust saturation of RGB images.
 
   This is a convenience method that converts RGB images to float
-  representation, converts them to HSV, add an offset to the saturation channel,
+  representation, converts them to HSV, adds an offset to the saturation channel,
   converts back to RGB and then back to the original data type. If several
   adjustments are chained it is advisable to minimize the number of redundant
   conversions.
@@ -2122,7 +2122,7 @@ def adjust_saturation(image, saturation_factor, name=None):
   `saturation_factor` and clipping. The images are then converted back to RGB.
 
   Args:
-    image: RGB image or images. Size of the last dimension must be 3.
+    image: RGB image or images. The size of the last dimension must be 3.
     saturation_factor: float. Factor to multiply the saturation by.
     name: A name for this operation (optional).
 
@@ -2162,7 +2162,7 @@ def is_jpeg(contents, name=None):
     name: A name for the operation (optional)
 
   Returns:
-     A scalar boolean tensor indicating if 'contents' may be a JPEG image.
+     A scalar boolean tensor indicating if 'contents' maybe a JPEG image.
      is_jpeg is susceptible to false positives.
   """
   # Normal JPEGs start with \xff\xd8\xff\xe0
@@ -2181,7 +2181,7 @@ def _is_png(contents, name=None):
     name: A name for the operation (optional)
 
   Returns:
-     A scalar boolean tensor indicating if 'contents' may be a PNG image.
+     A scalar boolean tensor indicating if 'contents' maybe a PNG image.
      is_png is susceptible to false positives.
   """
   with ops.name_scope(name, 'is_png'):
@@ -2442,7 +2442,7 @@ def sample_distorted_bounding_box_v2(image_size,
 
   Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
   The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
-  and height of the underlying image.
+  and the height of the underlying image.
 
   For example,
 
@@ -2661,7 +2661,7 @@ def non_max_suppression(boxes,
     scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
-      of boxes to be selected by non max suppression.
+      of boxes to be selected by non-max suppression.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
@@ -2729,7 +2729,7 @@ def non_max_suppression_with_scores(boxes,
     scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
-      of boxes to be selected by non max suppression.
+      of boxes to be selected by non-max suppression.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
@@ -2798,7 +2798,7 @@ def non_max_suppression_padded(boxes,
     scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
-      of boxes to be selected by non max suppression.
+      of boxes to be selected by non-max suppression.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
@@ -2848,7 +2848,7 @@ def non_max_suppression_with_overlaps(overlaps,
     scores: A 1-D float `Tensor` of shape `[num_boxes]` representing a single
       score corresponding to each box (each row of boxes).
     max_output_size: A scalar integer `Tensor` representing the maximum number
-      of boxes to be selected by non max suppression.
+      of boxes to be selected by non-max suppression.
     overlap_threshold: A float representing the threshold for deciding whether
       boxes overlap too much with respect to the provided overlap values.
     score_threshold: A float representing the threshold for deciding when to
@@ -3093,7 +3093,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
   Arguments:
     x: First set of images.
     y: Second set of images.
-    reducer: Function that computes 'local' averages from set of images. For
+    reducer: Function that computes 'local' averages from the set of images. For
       non-convolutional version, this is usually tf.reduce_mean(x, [1, 2]), and
       for convolutional version, this is usually tf.nn.avg_pool2d or
       tf.nn.conv2d with weighted-sum kernel.
@@ -3102,7 +3102,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
     compensation: Compensation factor. See above.
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we taken the values in range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0< K2 <0.4).
 
   Returns:
     A pair containing the luminance measure, and the contrast-structure measure.
@@ -3177,7 +3177,7 @@ def _ssim_per_channel(img1,
     filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we taken the values in range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0< K2 <0.4).
 
   Returns:
     A pair of tensors containing and channel-wise SSIM and contrast-structure
@@ -3248,7 +3248,7 @@ def ssim(img1,
   transactions on image processing.
 
   Note: The true SSIM is only defined on grayscale.  This function does not
-  perform any colorspace transform.  (If input is already YUV, then it will
+  perform any colorspace transform.  (If the input is already YUV, then it will
   compute YUV SSIM average.)
 
   Details:
@@ -3284,7 +3284,7 @@ def ssim(img1,
     filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we taken the values in range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0< K2 <0.4).
 
   Returns:
     A tensor containing an SSIM value for each image in batch.  Returned SSIM
@@ -3326,7 +3326,7 @@ def ssim_multiscale(img1,
   three dimensions are [height, width, channels].
 
   Note: The true SSIM is only defined on grayscale.  This function does not
-  perform any colorspace transform.  (If input is already YUV, then it will
+  perform any colorspace transform.  (If the input is already YUV, then it will
   compute YUV SSIM average.)
 
   Original paper: Wang, Zhou, Eero P. Simoncelli, and Alan C. Bovik. "Multiscale
@@ -3347,7 +3347,7 @@ def ssim_multiscale(img1,
     filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we taken the values in range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0< K2 <0.4).
 
   Returns:
     A tensor containing an MS-SSIM value for each image in batch.  The values
@@ -3740,7 +3740,7 @@ def extract_glimpse(
 
   Returns a set of windows called glimpses extracted at location
   `offsets` from the input tensor. If the windows only partially
-  overlaps the inputs, the non overlapping areas will be filled with
+  overlaps the inputs, the non-overlapping areas will be filled with
   random noise.
 
   The result is a 4-D tensor of shape `[batch_size, glimpse_height,
@@ -3819,7 +3819,7 @@ def extract_glimpse_v2(
 
   Returns a set of windows called glimpses extracted at location
   `offsets` from the input tensor. If the windows only partially
-  overlaps the inputs, the non overlapping areas will be filled with
+  overlaps the inputs, the non-overlapping areas will be filled with
   random noise.
 
   The result is a 4-D tensor of shape `[batch_size, glimpse_height,
@@ -3919,8 +3919,8 @@ def combined_non_max_suppression(boxes,
     scores: A 3-D float `Tensor` of shape `[batch_size, num_boxes, num_classes]`
       representing a single score corresponding to each box (each row of boxes).
     max_output_size_per_class: A scalar integer `Tensor` representing the
-      maximum number of boxes to be selected by non max suppression per class
-    max_total_size: A scalar representing maximum number of boxes retained over
+      maximum number of boxes to be selected by non-max suppression per class
+    max_total_size: A scalar representing the maximum number of boxes retained over
       all classes.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
@@ -3966,7 +3966,7 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
   bounding boxes specified by the locations in `boxes`. The coordinates of the
   each bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`.
   The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
-  and height of the underlying image.
+  and the height of the underlying image.
 
   For example, if an image is 100 x 200 pixels (height x width) and the bounding
   box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
@@ -3999,7 +3999,7 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
   bounding boxes specified by the locations in `boxes`. The coordinates of the
   each bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`.
   The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
-  and height of the underlying image.
+  and the height of the underlying image.
 
   For example, if an image is 100 x 200 pixels (height x width) and the bounding
   box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
@@ -4034,7 +4034,7 @@ def generate_bounding_box_proposals(scores,
 
   Returns:
     rois: Region of interest boxes sorted by their scores.
-    roi_probabilities: scores of the roi boxes in the rois tensor.
+    roi_probabilities: scores of the ROI boxes in the ROIs' tensor.
   """
   return gen_image_ops.generate_bounding_box_proposals(
       scores=scores,
