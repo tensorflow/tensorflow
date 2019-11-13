@@ -965,8 +965,8 @@ cc_header_only_library(
     name = "xla_headers_lib",
     visibility = ["//visibility:public"],
     deps = [
-        ":xla_data_proto",
-        ":xla_proto",
+        ":xla_data_proto_cc",
+        ":xla_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework_headers_lib",
