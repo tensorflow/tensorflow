@@ -39,13 +39,13 @@ Status ModularFileSystem::NewRandomAccessFile(
         "Filesystem for ", fname, " does not support NewRandomAccessFile()"));
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
-  auto file = tensorflow::MakeUnique<TF_RandomAccessFile>();
+  auto file = MakeUnique<TF_RandomAccessFile>();
   std::string translated_name = TranslateName(fname);
   ops_->new_random_access_file(filesystem_.get(), translated_name.c_str(),
                                file.get(), plugin_status.get());
 
   if (TF_GetCode(plugin_status.get()) == TF_OK)
-    *result = tensorflow::MakeUnique<ModularRandomAccessFile>(
+    *result = MakeUnique<ModularRandomAccessFile>(
         translated_name, std::move(file), random_access_file_ops_.get());
 
   return StatusFromTF_Status(plugin_status.get());
@@ -58,14 +58,14 @@ Status ModularFileSystem::NewWritableFile(
         "Filesystem for ", fname, " does not support NewWritableFile()"));
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
-  auto file = tensorflow::MakeUnique<TF_WritableFile>();
+  auto file = MakeUnique<TF_WritableFile>();
   std::string translated_name = TranslateName(fname);
   ops_->new_writable_file(filesystem_.get(), translated_name.c_str(),
                           file.get(), plugin_status.get());
 
   if (TF_GetCode(plugin_status.get()) == TF_OK)
-    *result = tensorflow::MakeUnique<ModularWritableFile>(
-        translated_name, std::move(file), writable_file_ops_.get());
+    *result = MakeUnique<ModularWritableFile>(translated_name, std::move(file),
+                                              writable_file_ops_.get());
 
   return StatusFromTF_Status(plugin_status.get());
 }
@@ -77,23 +77,37 @@ Status ModularFileSystem::NewAppendableFile(
         "Filesystem for ", fname, " does not support NewAppendableFile()"));
 
   UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
-  auto file = tensorflow::MakeUnique<TF_WritableFile>();
+  auto file = MakeUnique<TF_WritableFile>();
   std::string translated_name = TranslateName(fname);
   ops_->new_appendable_file(filesystem_.get(), translated_name.c_str(),
                             file.get(), plugin_status.get());
 
   if (TF_GetCode(plugin_status.get()) == TF_OK)
-    *result = tensorflow::MakeUnique<ModularWritableFile>(
-        translated_name, std::move(file), writable_file_ops_.get());
+    *result = MakeUnique<ModularWritableFile>(translated_name, std::move(file),
+                                              writable_file_ops_.get());
 
   return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewReadOnlyMemoryRegionFromFile(
     const std::string& fname, std::unique_ptr<ReadOnlyMemoryRegion>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_read_only_memory_region_from_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname,
+        " does not support NewReadOnlyMemoryRegionFromFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto region = MakeUnique<TF_ReadOnlyMemoryRegion>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_read_only_memory_region_from_file(
+      filesystem_.get(), translated_name.c_str(), region.get(),
+      plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = MakeUnique<ModularReadOnlyMemoryRegion>(
+        std::move(region), read_only_memory_region_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::FileExists(const std::string& fname) {
