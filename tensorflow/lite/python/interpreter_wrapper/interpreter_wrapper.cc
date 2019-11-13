@@ -86,12 +86,6 @@ std::unique_ptr<tflite::Interpreter> CreateInterpreter(
   return interpreter;
 }
 
-PyObject* PyArrayFromFloatVector(const float* data, npy_intp size) {
-  void* pydata = malloc(size * sizeof(float));
-  memcpy(pydata, data, size * sizeof(float));
-  return PyArray_SimpleNewFromData(1, &size, NPY_FLOAT32, pydata);
-}
-
 PyObject* PyArrayFromIntVector(const int* data, npy_intp size) {
   void* pydata = malloc(size * sizeof(int));
   memcpy(pydata, data, size * sizeof(int));
@@ -305,40 +299,6 @@ PyObject* InterpreterWrapper::TensorQuantization(int i) const {
   TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
   const TfLiteTensor* tensor = interpreter_->tensor(i);
   return PyTupleFromQuantizationParam(tensor->params);
-}
-
-PyObject* InterpreterWrapper::TensorQuantizationParameters(int i) const {
-  TFLITE_PY_ENSURE_VALID_INTERPRETER();
-  TFLITE_PY_TENSOR_BOUNDS_CHECK(i);
-  const TfLiteTensor* tensor = interpreter_->tensor(i);
-  const TfLiteQuantization quantization = tensor->quantization;
-  float* scales_data = nullptr;
-  int32_t* zero_points_data = nullptr;
-  int32_t scales_size = 0;
-  int32_t zero_points_size = 0;
-  int32_t quantized_dimension = 0;
-  if (quantization.type == kTfLiteAffineQuantization) {
-    const TfLiteAffineQuantization* q_params =
-        reinterpret_cast<const TfLiteAffineQuantization*>(quantization.params);
-    if (q_params->scale) {
-      scales_data = q_params->scale->data;
-      scales_size = q_params->scale->size;
-    }
-    if (q_params->zero_point) {
-      zero_points_data = q_params->zero_point->data;
-      zero_points_size = q_params->zero_point->size;
-    }
-    quantized_dimension = q_params->quantized_dimension;
-  }
-  PyObject* scales_array = PyArrayFromFloatVector(scales_data, scales_size);
-  PyObject* zero_points_array =
-      PyArrayFromIntVector(zero_points_data, zero_points_size);
-
-  PyObject* result = PyTuple_New(3);
-  PyTuple_SET_ITEM(result, 0, scales_array);
-  PyTuple_SET_ITEM(result, 1, zero_points_array);
-  PyTuple_SET_ITEM(result, 2, PyLong_FromLong(quantized_dimension));
-  return result;
 }
 
 PyObject* InterpreterWrapper::SetTensor(int i, PyObject* value) {
