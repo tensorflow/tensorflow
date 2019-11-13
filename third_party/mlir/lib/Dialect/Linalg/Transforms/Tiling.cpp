@@ -207,12 +207,10 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
   // Traverse the mins/maxes and erase those that don't have uses left.
   // This is a special type of folding that we only apply when `folder` is
   // defined.
-  if (folder) {
-    lbs.append(subViewSizes.begin(), subViewSizes.end());
-    for (auto *v : lbs)
+  if (folder)
+    for (auto *v : llvm::concat<Value *>(lbs, subViewSizes))
       if (v->use_empty())
         v->getDefiningOp()->erase();
-  }
 
   return res;
 }
