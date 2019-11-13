@@ -73,6 +73,13 @@ cc_library(
 
 filegroup(
     name = "mobile_srcs",
-    srcs = glob(["*"]),
+    srcs = [
+        "profiler_session.cc",
+        "profiler_session.h",
+        "profiler_utils.cc",
+        "profiler_utils.h",
+        "traceme.cc",
+        "traceme.h",
+    ],
     visibility = ["//visibility:public"],
 )

@@ -16,7 +16,14 @@ tf_proto_library(
     name = "xplane_proto",
     srcs = ["xplane.proto"],
     cc_api_version = 2,
+    make_default_target_header_only = True,
     visibility = [":friends"],
+)
+
+# This is needed because of how tf_android_core_proto_sources parses proto paths.
+exports_files(
+    srcs = ["xplane.proto"],
+    visibility = ["//tensorflow/core:__pkg__"],
 )
 
 tf_proto_library(

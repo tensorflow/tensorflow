@@ -216,13 +216,17 @@ COMMON_PROTO_SRCS = [
     "util/saved_tensor_slice.proto",
 ]
 
+PROFILER_PROTO_SRCS = [
+    "//tensorflow/core/profiler/protobuf:xplane.proto",
+]
+
 ERROR_CODES_PROTO_SRCS = [
     "protobuf/error_codes.proto",
     "//tensorflow/core/lib/core:error_codes.proto",
 ]
 # LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
 
-CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
+CORE_PROTO_SRCS = COMMON_PROTO_SRCS + PROFILER_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
 tf_proto_library(
     name = "protos_all",
@@ -2526,6 +2530,7 @@ tf_proto_library(
     protodeps = [
         ":error_codes_proto_impl",
         "//tensorflow/core/lib/core:error_codes_proto",
+        "//tensorflow/core/profiler/protobuf:xplane_proto",
     ],
     visibility = ["//visibility:private"],
 )

@@ -37,6 +37,7 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal:parse_annotation",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/flags:flag",
     ],
     alwayslink = 1,

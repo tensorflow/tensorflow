@@ -234,6 +234,7 @@ class GpuTracer : public profiler::ProfilerInterface {
   Status Start() override;
   Status Stop() override;
   Status CollectData(RunMetadata* run_metadata) override;
+  Status CollectData(XSpace* space) override;
   profiler::DeviceType GetDeviceType() override {
     return profiler::DeviceType::kGpu;
   }
@@ -373,6 +374,10 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
     }
   }
   return errors::Internal("Invalid profiling state: ", profiling_state_);
+}
+
+Status GpuTracer::CollectData(XSpace* space) {
+  return errors::Unimplemented("Collect data into XSpace not yet implemented");
 }
 
 }  // namespace profiler
