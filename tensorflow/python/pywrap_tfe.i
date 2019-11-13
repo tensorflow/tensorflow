@@ -53,6 +53,7 @@ limitations under the License.
 %rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextUpdateServerDef;
+%rename("%s") TFE_ContextCheckAlive;
 %rename("%s") TFE_NewExecutor;
 %rename("%s") TFE_DeleteExecutor;
 %rename("%s") TFE_ExecutorIsAsync;

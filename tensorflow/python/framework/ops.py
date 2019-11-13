@@ -5495,8 +5495,9 @@ def init_scope():
     outer_graph = None
     outer_device_stack = None
     try:
-      with outer_context(), name_scope(scope), control_dependencies(
-          None), tape.stop_recording():
+      with outer_context(), name_scope(
+          scope, skip_on_eager=False), control_dependencies(
+              None), tape.stop_recording():
         context_manager = NullContextmanager
         context_manager_input = None
         if not context.executing_eagerly():
@@ -6140,7 +6141,7 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
-def name_scope(name, default_name=None, values=None):
+def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   """Internal-only entry point for `name_scope*`.
 
   Internal ops do not use the public API and instead rely on
@@ -6156,6 +6157,11 @@ def name_scope(name, default_name=None, values=None):
     name: The name argument that is passed to the op function.
     default_name: The default name to use if the `name` argument is `None`.
     values: The list of `Tensor` arguments that are passed to the op function.
+    skip_on_eager: Indicates to return NullContextmanager if executing eagerly.
+      By default this is True since naming tensors and operations in eager mode
+      have little use and cause unecessary performance overhead. However, it is
+      important to preseve variable names since they are often useful for
+      debugging and saved models.
 
   Returns:
     `name_scope*` context manager.
@@ -6175,6 +6181,10 @@ def name_scope(name, default_name=None, values=None):
     # pylint: enable=unidiomatic-typecheck
     if graph_value is not None:
       return graph_value.graph.name_scope(name)
+
+  if skip_on_eager:
+    return NullContextmanager()
+
   return name_scope_v2(name or "")
 
 
@@ -6291,7 +6301,8 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
     Raises:
       TypeError: if `default_name` is passed in but not a string.
     """
-    self._name_scope = name_scope(name, default_name, values)
+    self._name_scope = name_scope(
+        name, default_name, values, skip_on_eager=False)
     self._name = default_name if name is None else name
 
   def __enter__(self):

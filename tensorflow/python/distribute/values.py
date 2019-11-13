@@ -317,9 +317,11 @@ class DistributedValues(object):
         return self._device_map.select_for_current_replica(
             self._values, replica_context)
       else:
-        device = distribute_lib.get_update_device()
-        if device is None:
+        update_replica_id = distribute_lib.get_update_replica_id()
+        if update_replica_id is None:
           return self._get_cross_replica()
+        else:
+          return self._values[update_replica_id]
     device = device_util.canonicalize(device)
     return self._device_map.select_for_device(self._values, device)
 
@@ -662,9 +664,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     if replica_context:
       return self._device_map.select_for_current_replica(
           self._values, replica_context)
-    device = distribute_lib.get_update_device()
-    if device is None:
-      device = device_util.canonicalize(device_util.current())
+    update_replica_id = distribute_lib.get_update_replica_id()
+    if update_replica_id is not None:
+      return self._values[update_replica_id]
+    device = device_util.canonicalize(device_util.current())
     replica_id = self._device_map.replica_for_device(device)
     if replica_id is None:
       return self.primary
@@ -712,14 +715,14 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def handle(self):
-    device = None
     replica_context = distribution_strategy_context.get_replica_context()
     if replica_context is None:
-      device = distribute_lib.get_update_device()
-      if device is None:
+      update_replica_id = distribute_lib.get_update_replica_id()
+      if update_replica_id is None:
         raise ValueError("`handle` is not available outside the replica context"
                          " or a `tf.distribute.Strategy.update()` call.")
-    return self.get(device=device).handle
+      return self._values[update_replica_id].handle
+    return self.get().handle
 
   def eval(self, session=None):
     return self._get_closest().eval(session)
@@ -1084,12 +1087,11 @@ class MirroredVariable(DistributedVariable, Mirrored):
     with _enter_or_assert_strategy(self._distribute_strategy):
       f = kwargs.pop("f")
       if distribution_strategy_context.in_cross_replica_context():
-        update_device = distribute_lib.get_update_device()
-        if update_device is not None:
+        update_replica_id = distribute_lib.get_update_replica_id()
+        if update_replica_id is not None:
           # We are calling an assign function on the mirrored variable in an
           # update context.
-          v = self.get(device=update_device)
-          return f(v, *args, **kwargs)
+          return f(self.values[update_replica_id], *args, **kwargs)
 
         # We are calling assign on the mirrored variable in cross replica
         # context, use `strategy.extended.update()` to update the variable.
@@ -1613,8 +1615,7 @@ class AggregatingVariable(variables_lib.Variable):
     with _enter_or_assert_strategy(self._distribute_strategy):
       f = kwargs.pop("f")
       if distribution_strategy_context.in_cross_replica_context():
-        update_device = distribute_lib.get_update_device()
-        if update_device is not None:
+        if distribute_lib.get_update_replica_id() is not None:
           # We are calling an assign function in an update context.
           return f(self._v, *args, **kwargs)
 

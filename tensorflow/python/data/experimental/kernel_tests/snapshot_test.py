@@ -57,7 +57,14 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
   def assertSnapshotDirectoryContains(
       self, directory, num_fingerprints, num_runs_per_fp, num_snapshot_files):
-    dirlist = os.listdir(directory)
+    dirlist_raw = os.listdir(directory)
+    dirlist = []
+
+    # Ignore the graphdef pbtxts we write for debugging purposes.
+    for i in range(len(dirlist_raw)):
+      if not dirlist_raw[i].startswith("graph-"):
+        dirlist.append(dirlist_raw[i])
+
     self.assertLen(dirlist, num_fingerprints)
 
     for i in range(num_fingerprints):

@@ -15,10 +15,10 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
-    "tf_cc_binary",
 )
 
 # For platform specific build config

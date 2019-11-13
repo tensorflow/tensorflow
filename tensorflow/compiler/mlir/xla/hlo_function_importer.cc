@@ -444,14 +444,18 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       NoAttributeCase(kCos, CosOp);
       NoAttributeCase(kDivide, DivOp);
       NoAttributeCase(kExp, ExpOp);
+      NoAttributeCase(kExpm1, Expm1Op);
       NoAttributeCase(kFloor, FloorOp);
       NoAttributeCase(kImag, ImagOp);
       NoAttributeCase(kLog, LogOp);
+      NoAttributeCase(kLog1p, Log1pOp);
       NoAttributeCase(kMaximum, MaxOp);
       NoAttributeCase(kMinimum, MinOp);
       NoAttributeCase(kMultiply, MulOp);
       NoAttributeCase(kNegate, NegOp);
+      NoAttributeCase(kNot, NotOp);
       NoAttributeCase(kOr, OrOp);
+      NoAttributeCase(kPopulationCount, PopulationCountOp);
       NoAttributeCase(kPower, PowOp);
       NoAttributeCase(kReal, RealOp);
       NoAttributeCase(kRemainder, RemOp);

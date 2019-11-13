@@ -492,7 +492,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, (d, v) in enumerate(zip(var.devices, var.values)):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
                           *values.select_device_mirrored(d, args),
@@ -591,8 +591,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    with ops.device(self._host_device), distribute_lib.UpdateContext(
-        self._host_device):
+    with ops.device(self._host_device), distribute_lib.UpdateContext(None):
       result = fn(*args, **kwargs)
       if group:
         return result

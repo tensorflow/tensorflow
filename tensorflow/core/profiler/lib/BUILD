@@ -51,17 +51,6 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-filegroup(
-    name = "traceme_hdrs",
-    srcs = [
-        "traceme.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
 cc_library(
     name = "traceme",
     srcs = ["traceme.cc"],

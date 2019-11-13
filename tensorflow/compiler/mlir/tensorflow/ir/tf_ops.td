@@ -157,8 +157,8 @@ else_branch: A function that takes 'inputs' and returns a list of
     TF_Tensor:$cond,
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$then_branch,
-    SymbolRefAttr:$else_branch,
+    FlatSymbolRefAttr:$then_branch,
+    FlatSymbolRefAttr:$else_branch,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
@@ -217,7 +217,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -290,7 +290,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -339,8 +339,8 @@ body: A function that takes a list of tensors and returns another
   let arguments = (ins
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$cond,
-    SymbolRefAttr:$body,
+    FlatSymbolRefAttr:$cond,
+    FlatSymbolRefAttr:$body,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 

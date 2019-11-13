@@ -12,6 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <errno.h>
+#include <fcntl.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
 #include <vector>
 
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
@@ -22,7 +30,129 @@ limitations under the License.
 
 // TODO(mihaimaruseac): More implementations to follow in subsequent changes.
 
-namespace posix_filesystem {
+// SECTION 1. Implementation for `TF_RandomAccessFile`
+// ----------------------------------------------------------------------------
+namespace tf_random_access_file {
+
+typedef struct PosixFile {
+  const char* filename;
+  int fd;
+} PosixFile;
+
+static void Cleanup(TF_RandomAccessFile* file) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+  close(posix_file->fd);
+  free(const_cast<char*>(posix_file->filename));
+  delete posix_file;
+}
+
+static int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
+                    char* buffer, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+  char* dst = buffer;
+  int64_t read = 0;
+
+  while (n > 0) {
+    // Some platforms, notably macs, throw `EINVAL` if `pread` is asked to read
+    // more than fits in a 32-bit integer.
+    size_t requested_read_length;
+    if (n > INT32_MAX)
+      requested_read_length = INT32_MAX;
+    else
+      requested_read_length = n;
+
+    // `pread` returns a `ssize_t` on POSIX, but due to interface being
+    // cross-platform, return type of `Read` is `int64_t`.
+    int64_t r = int64_t{pread(posix_file->fd, dst, requested_read_length,
+                              static_cast<off_t>(offset))};
+    if (r > 0) {
+      dst += r;
+      offset += static_cast<uint64_t>(r);
+      n -= r;  // safe as 0 < r <= n so n will never underflow
+      read += r;
+    } else if (r == 0) {
+      TF_SetStatus(status, TF_OUT_OF_RANGE, "Read fewer bytes than requested");
+      break;
+    } else if (errno == EINTR || errno == EAGAIN) {
+      // Retry
+    } else {
+      TF_SetStatusFromIOError(status, errno, posix_file->filename);
+      break;
+    }
+  }
+
+  return read;
+}
+
+}  // namespace tf_random_access_file
+
+// SECTION 2. Implementation for `TF_WritableFile`
+// ----------------------------------------------------------------------------
+namespace tf_writable_file {
+
+typedef struct PosixFile {
+  const char* filename;
+  FILE* handle;
+} PosixFile;
+
+static void Cleanup(TF_WritableFile* file) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+  free(const_cast<char*>(posix_file->filename));
+  delete posix_file;
+}
+
+static void Append(const TF_WritableFile* file, const char* buffer, size_t n,
+                   TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  size_t r = fwrite(buffer, 1, n, posix_file->handle);
+  if (r != n)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static int64_t Tell(const TF_WritableFile* file, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  // POSIX's `ftell` returns `long`, do a manual cast.
+  int64_t position = int64_t{ftell(posix_file->handle)};
+  if (position < 0)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+  else
+    TF_SetStatus(status, TF_OK, "");
+
+  return position;
+}
+
+static void Flush(const TF_WritableFile* file, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  TF_SetStatus(status, TF_OK, "");
+  if (fflush(posix_file->handle) != 0)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+}
+
+static void Sync(const TF_WritableFile* file, TF_Status* status) {
+  // For historical reasons, this does the same as `Flush` at the moment.
+  // TODO(b/144055243): This should use `fsync`/`sync`.
+  Flush(file, status);
+}
+
+static void Close(const TF_WritableFile* file, TF_Status* status) {
+  auto posix_file = static_cast<PosixFile*>(file->plugin_file);
+
+  if (fclose(posix_file->handle) != 0)
+    TF_SetStatusFromIOError(status, errno, posix_file->filename);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+}  // namespace tf_writable_file
+
+// SECTION 3. Implementation for `TF_Filesystem`, the actual filesystem
+// ----------------------------------------------------------------------------
+namespace tf_posix_filesystem {
 
 static void Init(TF_Filesystem* filesystem, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
@@ -30,16 +160,86 @@ static void Init(TF_Filesystem* filesystem, TF_Status* status) {
 
 static void Cleanup(TF_Filesystem* filesystem) {}
 
-}  // namespace posix_filesystem
+static void NewRandomAccessFile(const TF_Filesystem* filesystem,
+                                const char* path, TF_RandomAccessFile* file,
+                                TF_Status* status) {
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return;
+  }
+
+  struct stat st;
+  fstat(fd, &st);
+  if (S_ISDIR(st.st_mode)) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
+    close(fd);
+    return;
+  }
+
+  file->plugin_file = new tf_random_access_file::PosixFile({strdup(path), fd});
+  TF_SetStatus(status, TF_OK, "");
+}
+
+static void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
+                            TF_WritableFile* file, TF_Status* status) {
+  FILE* f = fopen(path, "w");
+  if (f == nullptr) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return;
+  }
+
+  file->plugin_file = new tf_writable_file::PosixFile({strdup(path), f});
+  TF_SetStatus(status, TF_OK, "");
+}
+
+static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                              TF_WritableFile* file, TF_Status* status) {
+  FILE* f = fopen(path, "a");
+  if (f == nullptr) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return;
+  }
+
+  file->plugin_file = new tf_writable_file::PosixFile({strdup(path), f});
+  TF_SetStatus(status, TF_OK, "");
+}
+
+static void CreateDir(const TF_Filesystem* filesystem, const char* path,
+                      TF_Status* status) {
+  if (strlen(path) == 0)
+    TF_SetStatus(status, TF_ALREADY_EXISTS, "already exists");
+  else if (mkdir(path, /*mode=*/0755) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+}  // namespace tf_posix_filesystem
 
 void TF_InitPlugin(TF_Status* status) {
-  TF_FilesystemOps filesystem_ops = {posix_filesystem::Init,
-                                     posix_filesystem::Cleanup, nullptr};
+  TF_RandomAccessFileOps random_access_file_ops = {
+      tf_random_access_file::Cleanup,
+      tf_random_access_file::Read,
+  };
+  TF_WritableFileOps writable_file_ops = {
+      tf_writable_file::Cleanup, tf_writable_file::Append,
+      tf_writable_file::Tell,    tf_writable_file::Flush,
+      tf_writable_file::Sync,    tf_writable_file::Close,
+  };
+  TF_FilesystemOps filesystem_ops = {
+      tf_posix_filesystem::Init,
+      tf_posix_filesystem::Cleanup,
+      tf_posix_filesystem::NewRandomAccessFile,
+      tf_posix_filesystem::NewWritableFile,
+      tf_posix_filesystem::NewAppendableFile,
+      /*new_read_only_memory_region_from_file=*/nullptr,
+      tf_posix_filesystem::CreateDir,
+      nullptr,
+  };
 
   for (const char* scheme : {"", "file"})
-    TF_REGISTER_FILESYSTEM_PLUGIN(scheme, &filesystem_ops,
-                                  /*pluginRandomAccessFileOps=*/nullptr,
-                                  /*pluginWritableFileOps=*/nullptr,
-                                  /*pluginReadOnlyMemoryRegionOps=*/nullptr,
-                                  status);
+    TF_REGISTER_FILESYSTEM_PLUGIN(
+        scheme, &filesystem_ops, &random_access_file_ops, &writable_file_ops,
+        /*pluginReadOnlyMemoryRegionOps=*/nullptr, status);
 }

@@ -600,7 +600,7 @@ def summary_scope(name, default_name="summary", values=None):
   # Strip illegal characters from the scope name, and if that leaves nothing,
   # use None instead so we pick up the default name.
   name = _INVALID_SCOPE_CHARACTERS.sub("", name) or None
-  with ops.name_scope(name, default_name, values) as scope:
+  with ops.name_scope(name, default_name, values, skip_on_eager=False) as scope:
     yield tag, scope
 
 

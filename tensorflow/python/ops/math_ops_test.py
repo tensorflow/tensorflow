@@ -627,7 +627,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       error = errors_impl.InvalidArgumentError
       error_message = (
           r"cannot compute Add(V2)? as input #1\(zero-based\) was expected to "
-          r"be a int32 tensor but is a float tensor \[Op:Add(V2)?\] name: add/")
+          r"be a int32 tensor but is a float tensor \[Op:Add(V2)?\]")
     else:
       error = TypeError
       error_message = (

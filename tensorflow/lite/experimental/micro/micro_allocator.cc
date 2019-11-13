@@ -481,6 +481,9 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     quantization->scale = reinterpret_cast<TfLiteFloatArray*>(scale_array);
     quantization->zero_point =
         reinterpret_cast<TfLiteIntArray*>(zero_point_array);
+    // TODO(rocky): Need to add a micro_allocator test case that fails when
+    // this is not copied:
+    quantization->quantized_dimension = src_quantization->quantized_dimension();
 
     result->quantization = {kTfLiteAffineQuantization, quantization};
   }

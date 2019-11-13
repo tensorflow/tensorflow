@@ -189,9 +189,9 @@ public:
       return matchFailure();
 
     Type llvmSourceElementTy = llvmSourceDescriptorTy.getStructElementType(
-        LLVMTypeConverter::kPtrPosInMemRefDescriptor);
+        LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor);
     Type llvmTargetElementTy = llvmTargetDescriptorTy.getStructElementType(
-        LLVMTypeConverter::kPtrPosInMemRefDescriptor);
+        LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor);
 
     int64_t offset;
     SmallVector<int64_t, 4> strides;
@@ -215,16 +215,27 @@ public:
 
     // Create descriptor.
     Value *desc = rewriter.create<LLVM::UndefOp>(loc, llvmTargetDescriptorTy);
+    // Set allocated ptr.
+    Value *allocated = rewriter.create<LLVM::ExtractValueOp>(
+        loc, llvmSourceElementTy, sourceMemRef,
+        rewriter.getIndexArrayAttr(
+            LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor));
+    allocated =
+        rewriter.create<LLVM::BitcastOp>(loc, llvmTargetElementTy, allocated);
+    desc = rewriter.create<LLVM::InsertValueOp>(
+        op->getLoc(), llvmTargetDescriptorTy, desc, allocated,
+        rewriter.getIndexArrayAttr(
+            LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor));
     // Set ptr.
     Value *ptr = rewriter.create<LLVM::ExtractValueOp>(
         loc, llvmSourceElementTy, sourceMemRef,
         rewriter.getIndexArrayAttr(
-            LLVMTypeConverter::kPtrPosInMemRefDescriptor));
+            LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor));
     ptr = rewriter.create<LLVM::BitcastOp>(loc, llvmTargetElementTy, ptr);
     desc = rewriter.create<LLVM::InsertValueOp>(
         op->getLoc(), llvmTargetDescriptorTy, desc, ptr,
         rewriter.getIndexArrayAttr(
-            LLVMTypeConverter::kPtrPosInMemRefDescriptor));
+            LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor));
     // Fill offset 0.
     auto attr = rewriter.getIntegerAttr(rewriter.getIndexType(), 0);
     auto zero = rewriter.create<LLVM::ConstantOp>(loc, int64Ty, attr);

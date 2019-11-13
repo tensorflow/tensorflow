@@ -252,9 +252,9 @@ typedef struct TF_WritableFileOps {
   ///
   /// Flushes all buffers and deallocates all resources.
   ///
-  /// Plugins must ensure that calling this on an already closed `*file` only
-  /// sets `status` to a non `TF_OK` value. Furthermore, calling `close` must
-  /// not result in calling `cleanup`.
+  /// Calling `close` must not result in calling `cleanup`.
+  ///
+  /// Core TensorFlow will never call `close` twice.
   void (*close)(const TF_WritableFile* file, TF_Status* status);
 } TF_WritableFileOps;
 // LINT.ThenChange(:writable_file_ops_version)

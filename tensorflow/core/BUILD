@@ -2527,6 +2527,7 @@ tf_proto_library(
         ":error_codes_proto_impl",
         "//tensorflow/core/lib/core:error_codes_proto",
     ],
+    visibility = ["//visibility:private"],
 )
 
 alias(

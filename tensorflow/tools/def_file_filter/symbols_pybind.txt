@@ -81,12 +81,6 @@ tensorflow::DeviceAttributes::SerializeToString
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
 
-[python_scoped_annotation] # scoped_annotation
-tensorflow::profiler::PythonScopedAnnotation::Init
-tensorflow::profiler::PythonScopedAnnotation::Enter
-tensorflow::profiler::PythonScopedAnnotation::Exit
-tensorflow::profiler::PythonScopedAnnotation::IsEnabled
-
 [kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
 
@@ -97,15 +91,6 @@ toco::TocoGetPotentiallySupportedOps
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
 tensorflow::graph_transforms::ParseTransformParameters
-
-[python_traceme] # traceme
-tensorflow::profiler::PythonTraceMe::Init
-tensorflow::profiler::PythonTraceMe::Enter
-tensorflow::profiler::PythonTraceMe::Exit
-tensorflow::profiler::PythonTraceMe::IsEnabled
-
-[traceme_recorder] # traceme
-tensorflow::profiler::internal::g_trace_level
 
 [checkpoint_reader] # py_checkpoint_reader
 tensorflow::checkpoint::CheckpointReader

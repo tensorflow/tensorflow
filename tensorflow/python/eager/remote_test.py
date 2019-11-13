@@ -356,6 +356,13 @@ class MultiJobsTest(test.TestCase, parameterized.TestCase):
     local_resolver = SimpleClusterResolver(ClusterSpec({}), master='local')
     remote.connect_to_cluster(local_resolver)
 
+  @test_util.eager_lazy_remote_copy_on_and_off
+  def testConnectToClusterInGraphModeWillFail(self):
+    ops.disable_eager_execution()
+    with self.assertRaises(ValueError):
+      remote.connect_to_cluster(self._cluster_resolver)
+    ops.enable_eager_execution()
+
 
 def _strip_prefix(s, prefix):
   return s[len(prefix):] if s.startswith(prefix) else s

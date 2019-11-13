@@ -88,11 +88,11 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.bound_input") {
-    if (!named_attr.second.isa<SymbolRefAttr>()) {
+    if (!named_attr.second.isa<FlatSymbolRefAttr>()) {
       return op->emitError() << "'tf_saved_model.bound_input' attribute should "
-                                "be a SymbolRefAttr";
+                                "be a FlatSymbolRefAttr";
     }
-    auto symbol_name = named_attr.second.cast<SymbolRefAttr>().getValue();
+    auto symbol_name = named_attr.second.cast<FlatSymbolRefAttr>().getValue();
     auto module = op->getParentOfType<ModuleOp>();
     auto global_tensor = module.lookupSymbol<GlobalTensorOp>(symbol_name);
     if (!global_tensor) {
@@ -156,8 +156,8 @@ static LogicalResult VerifySavedModelModule(
                                  "have analyzable symbol uses";
   }
   for (auto symbol_use : *symbol_uses) {
-    auto func =
-        symbol_table.lookup<FuncOp>(symbol_use.getSymbolRef().getValue());
+    auto func = symbol_table.lookup<FuncOp>(
+        symbol_use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
     if (func && !GetExportedNames(func).empty()) {
       return symbol_use.getUser()
           ->emitError("exported function cannot be internally referenced")
@@ -242,6 +242,14 @@ bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
 
 bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
+}
+
+GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
+                                const SymbolTable &symbol_table) {
+  auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
+      arg_index, "tf_saved_model.bound_input");
+  if (!attr) return nullptr;
+  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
 }
 
 }  // namespace tf_saved_model

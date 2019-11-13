@@ -362,9 +362,8 @@ Status DatasetOpsTestBase::RestoreIterator(
     IteratorContext* ctx, IteratorStateReader* reader,
     const string& output_prefix, const DatasetBase& dataset,
     std::unique_ptr<IteratorBase>* iterator) {
-  TF_RETURN_IF_ERROR(dataset.MakeIterator(ctx, output_prefix, iterator));
-  TF_RETURN_IF_ERROR((*iterator)->Restore(ctx, reader));
-  return Status::OK();
+  return dataset.MakeIteratorFromCheckpoint(ctx, output_prefix, reader,
+                                            iterator);
 }
 
 Status DatasetOpsTestBase::CreateIteratorContext(

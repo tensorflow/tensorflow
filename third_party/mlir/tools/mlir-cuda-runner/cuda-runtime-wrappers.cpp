@@ -82,6 +82,7 @@ extern "C" int32_t mcuStreamSynchronize(void *stream) {
 
 // A struct that corresponds to how MLIR represents memrefs.
 template <typename T, int N> struct MemRefType {
+  T *basePtr;
   T *data;
   int64_t offset;
   int64_t sizes[N];

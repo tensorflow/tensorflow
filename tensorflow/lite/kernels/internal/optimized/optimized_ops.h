@@ -5633,41 +5633,30 @@ inline void TransposeConvV2(
   const int hwoi_ordered_filter_total_size =
       filter_height * filter_width * output_depth;
 
-  // TODO(b/144197699): Should use GEMM backend instead of using Ruy directly
-  // once GEMM backend supports query raw accumulators.
-  ruy::Matrix<uint8_t> ruy_lhs;
-  ruy_lhs.layout.rows = hwoi_ordered_filter_total_size;
-  ruy_lhs.layout.cols = input_depth;
-  ruy_lhs.layout.order = ruy::Order::kRowMajor;
-  ruy_lhs.layout.stride = input_depth;
-
-  ruy_lhs.data = hwoi_ordered_filter_data;
-  ruy_lhs.zero_point = -params.weights_offset;
+  cpu_backend_gemm::MatrixParams<uint8_t> lhs_params;
+  lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
+  lhs_params.rows = hwoi_ordered_filter_total_size;
+  lhs_params.cols = input_depth;
+  lhs_params.zero_point = -params.weights_offset;
 
   int32_t* scratch_data_p = scratch_data;
   std::fill_n(scratch_data, output_offset * batch_size, static_cast<int32>(0));
   for (int i = 0; i < batch_size; ++i) {
-    ruy::Matrix<uint8_t> ruy_rhs;
-    ruy_rhs.layout.rows = input_depth;
-    ruy_rhs.layout.cols = input_image_size;
-    ruy_rhs.layout.order = ruy::Order::kColMajor;
-    ruy_rhs.layout.stride = input_depth;
+    cpu_backend_gemm::MatrixParams<uint8_t> rhs_params;
+    rhs_params.order = cpu_backend_gemm::Order::kColMajor;
+    rhs_params.rows = input_depth;
+    rhs_params.cols = input_image_size;
+    rhs_params.zero_point = -params.input_offset;
 
-    ruy_rhs.data = input_data + input_offset * i;
-    ruy_rhs.zero_point = -params.input_offset;
+    cpu_backend_gemm::MatrixParams<int32_t> dst_params;
+    dst_params.order = cpu_backend_gemm::Order::kColMajor;
+    dst_params.rows = hwoi_ordered_filter_total_size;
+    dst_params.cols = input_image_size;
 
-    ruy::Matrix<int32_t> ruy_dst;
-    ruy_dst.layout.rows = hwoi_ordered_filter_total_size;
-    ruy_dst.layout.cols = input_image_size;
-    ruy_dst.layout.order = ruy::Order::kColMajor;
-    ruy_dst.layout.stride = hwoi_ordered_filter_total_size;
-
-    ruy_dst.data = col2im_data;
-
-    ruy::BasicSpec<int32_t, int32_t> ruy_spec;
-
-    ruy::Mul<ruy::kAllPaths>(ruy_lhs, ruy_rhs, ruy_spec,
-                             cpu_backend_context->ruy_context(), &ruy_dst);
+    cpu_backend_gemm::GemmParams<int32_t, int32_t> gemm_params;
+    cpu_backend_gemm::Gemm(lhs_params, hwoi_ordered_filter_data, rhs_params,
+                           input_data + input_offset * i, dst_params,
+                           col2im_data, gemm_params, cpu_backend_context);
 
     Col2im(col2im_data, output_depth, output_height, output_width,
            filter_height, filter_width, padding_top, padding_left,

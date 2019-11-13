@@ -30,7 +30,7 @@ enable_v2_behavior()
 
 
 class TestModule(tf.Module):
-  """The test model has supported op."""
+  """The test model has unsupported op."""
 
   @tf.function(input_signature=[tf.TensorSpec(shape=[3, 3], dtype=tf.float32)])
   def model(self, x):

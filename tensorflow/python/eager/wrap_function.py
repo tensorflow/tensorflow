@@ -61,7 +61,8 @@ class VariableHolder(object):
     v = None
 
     # Get expected variable name.
-    with ops.name_scope(kwargs.get("name", None), "Variable") as name:
+    with ops.name_scope(
+        kwargs.get("name", None), "Variable", skip_on_eager=False) as name:
       variable_name = ops.name_from_scope_name(name)
       kwargs["name"] = name
 
