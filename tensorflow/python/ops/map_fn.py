@@ -90,11 +90,11 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
     return tf.map_fn(fn, tensor)
   ```
 
-  Note that if you use the `tf.function` decorator, any non-TensorFlow Python code
-  that you may have written in your function won't get executed. See
-  [`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function) for more details. 
-  The recommendation would be to debug without `tf.function` but switch to it to get 
-  performance benefits of running `map_fn` in parallel.
+  Note that if you use the `tf.function` decorator, any non-TensorFlow Python 
+  code that you may have written in your function won't get executed. See
+  [`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function) for 
+  more  details. The recommendation would be to debug without `tf.function` but 
+  switch to it to get performance benefits of running `map_fn` in parallel.
 
   Args:
     fn: The callable to be performed.  It accepts one argument, which will
