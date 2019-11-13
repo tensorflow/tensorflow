@@ -651,6 +651,10 @@ class Layer(module.Module):
       ValueError: if the layer's `call` method returns None (an invalid value).
     """
     call_context = base_layer_utils.call_context()
+
+    if isinstance(inputs, list):
+      inputs = inputs[:]
+
     input_list = nest.flatten(inputs)
 
     # We will attempt to build a TF graph if & only if all inputs are symbolic.

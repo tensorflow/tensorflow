@@ -189,6 +189,11 @@ class MergeLayersTest(keras_parameterized.TestCase):
                 concat_layer.compute_mask(
                     [i1, i2], [K.variable(x1), K.variable(x2)]))))
 
+    concat_list = [i1, i1]
+    concat_list += [concat_layer(concat_list)]
+    recursive_output = concat_layer(concat_list)
+    keras.models.Model([i1, i2], recursive_output)
+
     with self.assertRaisesRegexp(ValueError, '`mask` should be a list.'):
       concat_layer.compute_mask([i1, i2], x1)
     with self.assertRaisesRegexp(ValueError, '`inputs` should be a list.'):
