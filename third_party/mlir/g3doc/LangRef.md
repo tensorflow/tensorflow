@@ -12,8 +12,8 @@ continuous design provides a framework to lower from dataflow graphs to
 high-performance target-specific code.
 
 This document defines and describes the key concepts in MLIR, and is intended to
-be a dry reference document - [rationale documentation](Rationale.md) and other
-content is hosted elsewhere.
+be a dry reference document - the [rationale documentation](Rationale.md),
+[glossary](Glossary.md), and other content are hosted elsewhere.
 
 MLIR is designed to be used in three different forms: a human-readable textual
 form suitable for debugging, an in-memory form suitable for programmatic
@@ -285,7 +285,7 @@ printing operations. In the operation sets listed below, we show both forms.
 
 ### Terminator Operations
 
-These are a special class of operations that *must* terminate a block, for
+These are a special category of operations that *must* terminate a block, for
 example [branches](Dialects/Standard.md#terminator-operations). These operations
 may also have a list of successors ([blocks](#blocks) and their arguments).
 
