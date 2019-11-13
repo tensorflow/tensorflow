@@ -1865,7 +1865,7 @@ def rgb_to_grayscale(images, name=None):
   pixels.
 
   Args:
-    images: The RGB tensor to convert.The last dimension must have size 3 and
+    images: The RGB tensor to convert. The last dimension must have size 3 and
       should contain RGB values.
     name: A name for the operation (optional).
 
