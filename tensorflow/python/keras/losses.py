@@ -1296,7 +1296,7 @@ def deserialize(name, custom_objects=None):
 
 
 @keras_export('keras.losses.get')
-def get(identifier, custom_objects=None):
+def get(identifier):
   if identifier is None:
     return None
   if isinstance(identifier, six.string_types):

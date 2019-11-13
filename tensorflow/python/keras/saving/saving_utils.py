@@ -24,6 +24,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import losses
+from tensorflow.python.keras import metrics
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
@@ -231,21 +232,35 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   # Recover loss functions and metrics.
   loss_config = training_config['loss']  # Deserialize loss class.
   if isinstance(loss_config, dict) and 'class_name' in loss_config:
-    loss_config = losses.get(loss_config, custom_objects)
-  loss = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj), loss_config)
-  metrics = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj), training_config['metrics'])
-  weighted_metrics = nest.map_structure(
-      lambda obj: custom_objects.get(obj, obj),
-      training_config.get('weighted_metrics', None))
+    loss = losses.deserialize(loss_config, custom_objects)
+  else:
+    loss = nest.map_structure(
+      lambda obj: losses.deserialize(obj, custom_objects),
+      loss_config)
+  
+  metrics_config = training_config['metrics']
+  if isinstance(metrics_config, dict) and 'class_name' in metrics_config:
+    metrics_obj = metrics.deserialize(metrics_config, custom_objects)
+  else:
+    metrics_obj = nest.map_structure(
+      lambda obj: metrics.deserialize(obj, custom_objects),
+      metrics_config)
+  
+  weighted_metrics_config = training_config['weighted_metrics']
+  if isinstance(weighted_metrics_config, dict) and 'class_name' in weighted_metrics_config:
+    weighted_metrics = metrics.deserialize(weighted_metrics_config, custom_objects)
+  else:
+    weighted_metrics = nest.map_structure(
+      lambda obj: metrics.deserialize(obj, custom_objects),
+      weighted_metrics_config)
+
   sample_weight_mode = training_config['sample_weight_mode']
   loss_weights = training_config['loss_weights']
 
   return dict(
       optimizer=optimizer,
       loss=loss,
-      metrics=metrics,
+      metrics=metrics_obj,
       weighted_metrics=weighted_metrics,
       loss_weights=loss_weights,
       sample_weight_mode=sample_weight_mode)
