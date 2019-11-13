@@ -359,6 +359,8 @@ ParseResult parseDimAndSymbolList(OpAsmParser &parser,
                                   SmallVector<Value *, 4> &operands,
                                   unsigned &numDims);
 
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
+
 } // end namespace mlir
 
 #endif // MLIR_DIALECT_STANDARDOPS_OPS_H

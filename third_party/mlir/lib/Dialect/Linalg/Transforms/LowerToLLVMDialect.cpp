@@ -503,24 +503,6 @@ public:
   }
 };
 
-/// A non-conversion rewrite pattern kicks in to convert SubViewOp into RangeOps
-/// and SliceOps.
-class SubViewOpConversion : public OpRewritePattern<mlir::linalg::SubViewOp> {
-public:
-  using OpRewritePattern<mlir::linalg::SubViewOp>::OpRewritePattern;
-
-  PatternMatchResult matchAndRewrite(mlir::linalg::SubViewOp op,
-                                     PatternRewriter &rewriter) const override {
-    auto *view = op.getView();
-    SmallVector<Value *, 8> ranges;
-    for (auto sliceRange : op.getRanges())
-      ranges.push_back(rewriter.create<RangeOp>(
-          op.getLoc(), sliceRange.min, sliceRange.max, sliceRange.step));
-    rewriter.replaceOpWithNewOp<SliceOp>(op, view, ranges);
-    return matchSuccess();
-  }
-};
-
 /// Populate the given list with patterns that convert from Linalg to Standard.
 static void
 populateLinalgToStandardConversionPatterns(OwningRewritePatternList &patterns,
@@ -530,8 +512,8 @@ populateLinalgToStandardConversionPatterns(OwningRewritePatternList &patterns,
   patterns.insert<CopyTransposeConversion, LinalgOpConversion<CopyOp>,
                   LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
                   LinalgOpConversion<MatvecOp>, LinalgOpConversion<MatmulOp>,
-                  LinalgOpConversion<ConvOp>, LinalgOpConversion<GenericOp>,
-                  SubViewOpConversion>(ctx);
+                  LinalgOpConversion<ConvOp>, LinalgOpConversion<GenericOp>>(
+      ctx);
 }
 
 /// Populate the given list with patterns that convert from Linalg to LLVM.
