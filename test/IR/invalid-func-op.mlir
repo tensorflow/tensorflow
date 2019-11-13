@@ -3,7 +3,7 @@
 // -----
 
 func @func_op() {
-  // expected-error@+1 {{expected non-function type}}
+  // expected-error@+1 {{expected valid '@'-identifier for symbol name}}
   func missingsigil() -> (i1, index, f32)
   return
 }

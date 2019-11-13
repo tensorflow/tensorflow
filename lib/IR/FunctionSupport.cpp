@@ -159,12 +159,10 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   auto &builder = parser.getBuilder();
 
   // Parse the name as a symbol reference attribute.
-  FlatSymbolRefAttr nameAttr;
-  if (parser.parseAttribute(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
-                            result.attributes))
+  StringAttr nameAttr;
+  if (parser.parseSymbolName(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
+                             result.attributes))
     return failure();
-  // Convert the parsed function attr into a string attr.
-  result.attributes.back().second = builder.getStringAttr(nameAttr.getValue());
 
   // Parse the function signature.
   auto signatureLocation = parser.getCurrentLocation();
