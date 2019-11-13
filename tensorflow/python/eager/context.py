@@ -471,8 +471,12 @@ class Context(object):
         dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
         self._context_devices.append(pydev.canonical_name(dev_name))
         spec = pydev.DeviceSpec.from_string(dev_name)
+        # If the job is localhost, we assume that the cluster has not yet been
+        # configured and thus clear the job, replica & task.
+        if spec.job == "localhost":
+          spec = spec.replace(job=None, replica=None, task=None)
         self._logical_devices.append(
-            LogicalDevice(name=dev_name, device_type=spec.device_type))
+            LogicalDevice(name=spec.to_string(), device_type=spec.device_type))
         dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
         if dev_type == "GPU":
           self._num_gpus += 1
