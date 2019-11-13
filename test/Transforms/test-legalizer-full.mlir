@@ -13,7 +13,7 @@ func @multi_level_mapping() {
 // CHECK-LABEL: func @dropped_region_with_illegal_ops
 func @dropped_region_with_illegal_ops() {
   // CHECK-NEXT: test.return
-  "test.drop_op"() ({
+  "test.drop_region_op"() ({
     %ignored = "test.illegal_op_f"() : () -> (i32)
     "test.return"() : () -> ()
   }) : () -> ()

@@ -91,7 +91,7 @@ func @remap_cloned_region_args() {
 func @remap_drop_region() {
   // CHECK-NEXT: return
   // CHECK-NEXT: }
-  "test.drop_op"() ({
+  "test.drop_region_op"() ({
     ^bb1(%i0: i64, %unused: i16, %i1: i64, %2: f32):
       "test.invalid"(%i0, %i1, %2) : (i64, i64, f32) -> ()
   }) : () -> ()
