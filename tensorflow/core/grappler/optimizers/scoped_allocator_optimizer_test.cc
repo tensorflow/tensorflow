@@ -64,7 +64,7 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
   // (Flow is top to bottom, like nature intends.)
   //
   // The intended optimization is to have s1 and s2 allocate from
-  // an new ScopedAllocator, then replace a1 and a2 with a3 that
+  // a new ScopedAllocator, then replace a1 and a2 with a3 that
   // reads from the backing buffer.
   /*
         a    b    c
@@ -101,6 +101,49 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
     Output a2 = ops::Abs(s.WithOpName("a2"), int2);
     Output r1 = ops::Reshape(s.WithOpName("r1"), a1, {1, 4});
     Output r2 = ops::Reshape(s.WithOpName("r2"), a2, {4, 1});
+    TF_CHECK_OK(s.ToGraphDef(graph_def));
+  }
+
+  // Constructs the following graph.
+  // (Flow is top to bottom, like nature intends.)
+  //
+  // a, b, and c are constants.  s is an Add op.  a1, a2, and a3 are Abs ops.
+  // r1, r2, and r3 are Reshape ops.
+  //
+  // After this graph undergoes SA optimization, we expect a, b, and s to be
+  // allocated from a new ScopedAllocator.  There will be control edges from the
+  // ScopedAllocator node to a, b, and s, to ensure that we allocate the
+  // backing tensor before we need it.  There will also be a control edge from c
+  // to ScopedAllocator node, so that we delay allocation as much as possible.
+  // There should be no edge from b to ScopedAllocator node, because that would
+  // imply a cycle in the graph.
+  /*
+      a      b     c
+      |     / \   /
+      |    /   \ /
+      |    |    s1
+      |    |    |
+      a1   a2   a3
+      |    |    |
+      r1   r2   r3
+  */
+  void BuildAbsGraphWithInputDependencies(GraphDef* graph_def) {
+    Scope s = Scope::NewRootScope();
+    s = s.WithDevice("/job:localhost/replica:0/task:0/device:CPU:0");
+
+    Output a =
+        ops::Const<float>(s.WithOpName("a"), {1.0, 0.0, 0.0, -1.0}, {2, 2});
+    Output b =
+        ops::Const<float>(s.WithOpName("b"), {1.0, -2.0, 3.0, 4.0}, {2, 2});
+    Output c =
+        ops::Const<float>(s.WithOpName("c"), {-5.0, -2.0, 0.0, -2.0}, {2, 2});
+    Output s1 = ops::Add(s.WithOpName("s1"), b, c);
+    Output a1 = ops::Abs(s.WithOpName("a1"), a);
+    Output a2 = ops::Abs(s.WithOpName("a2"), b);
+    Output a3 = ops::Abs(s.WithOpName("a3"), s1);
+    Output r1 = ops::Reshape(s.WithOpName("r1"), a1, {1, 4});
+    Output r2 = ops::Reshape(s.WithOpName("r2"), a2, {4, 1});
+    Output r3 = ops::Reshape(s.WithOpName("r3"), a3, {4, 1});
     TF_CHECK_OK(s.ToGraphDef(graph_def));
   }
 
@@ -202,6 +245,27 @@ class ScopedAllocatorOptimizerTest : public ::testing::Test {
         EXPECT_EQ(expected[i][j], outputs[i].flat<float>()(j));
       }
     }
+  }
+
+  // Validate that a node has a single control input from scoped allocator node.
+  // Return the scoped allocator node.
+  NodeDef* ValidateSAControlInput(GraphDef* graph, NodeMap* node_map,
+                                  const string& node_name) {
+    NodeDef* node = node_map->GetNode(node_name);
+    EXPECT_TRUE(node);
+    int num_control_inputs = 0;
+    string control_input_name;
+    for (const auto& input : node->input()) {
+      if (input[0] == '^') {
+        ++num_control_inputs;
+        control_input_name = input;
+      }
+    }
+    EXPECT_EQ(num_control_inputs, 1);
+    NodeDef* control_input_node = node_map->GetNode(control_input_name);
+    EXPECT_TRUE(control_input_node);
+    EXPECT_EQ(control_input_node->op(), "_ScopedAllocator");
+    return control_input_node;
   }
 };
 
@@ -322,6 +386,38 @@ TEST_F(ScopedAllocatorOptimizerTest, ForwardInputToOutput) {
   // a + b == 2, -2, 3, 3
   // b + c == -4, -4, 3, 2
   ValidateValues(outputs, /*expected=*/{{2, 2, 3, 3}, {4, 4, 3, 2}});
+}
+
+// Test that graphs with a dependency upstream from the inputs, such as the one
+// produced by `BuildAbsGraphWithInputDependencies`, are handled well by this
+// optimizer.  In particular, the optimizer should not create cycles.
+TEST_F(ScopedAllocatorOptimizerTest, InputDependencies) {
+  GrapplerItem item;
+  BuildAbsGraphWithInputDependencies(&item.graph);
+  SetShapes(&item.graph);
+
+  ScopedAllocatorOptions opts;
+  opts.add_enable_op("Abs");
+  ScopedAllocatorOptimizer sao(RewriterConfig::ON, opts);
+  ScopedAllocatorOptimizer::OpNameSet ons;
+  ons.insert("Add");
+
+  GraphDef optimized_graph;
+  TF_ASSERT_OK(sao.Optimize(/*cluster=*/nullptr, item, &optimized_graph));
+  NodeMap node_map(&optimized_graph);
+
+  // Check that all inputs to Abs ops have ScopedAllocator as a control
+  // dependency.
+  NodeDef* scoped_allocator_node =
+      ValidateSAControlInput(&optimized_graph, &node_map, "a");
+  VLOG(1) << scoped_allocator_node->DebugString();
+  EXPECT_TRUE(ValidateSAControlInput(&optimized_graph, &node_map, "b"));
+  EXPECT_TRUE(ValidateSAControlInput(&optimized_graph, &node_map, "s1"));
+
+  // Check that ScopedAllocator node has a single input, which is a control edge
+  // from c.
+  EXPECT_EQ(scoped_allocator_node->input_size(), 1);
+  EXPECT_EQ(scoped_allocator_node->input(0), "^c");
 }
 
 }  // namespace
