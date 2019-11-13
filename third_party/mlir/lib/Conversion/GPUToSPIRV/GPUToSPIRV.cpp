@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Pass/Pass.h"
@@ -28,6 +29,16 @@
 using namespace mlir;
 
 namespace {
+
+/// Pattern to convert a loop::ForOp within kernel functions into spirv::LoopOp.
+class ForOpConversion final : public SPIRVOpLowering<loop::ForOp> {
+public:
+  using SPIRVOpLowering<loop::ForOp>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override;
+};
 
 /// Pattern lowering GPU block/thread size/id to loading SPIR-V invocation
 /// builin variables.
@@ -51,7 +62,78 @@ public:
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override;
 };
+
 } // namespace
+
+PatternMatchResult
+ForOpConversion::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+                                 ConversionPatternRewriter &rewriter) const {
+  // loop::ForOp can be lowered to the structured control flow represented by
+  // spirv::LoopOp by making the continue block of the spirv::LoopOp the loop
+  // latch and the merge block the exit block. The resulting spirv::LoopOp has a
+  // single back edge from the continue to header block, and a single exit from
+  // header to merge.
+  auto forOp = cast<loop::ForOp>(op);
+  loop::ForOpOperandAdaptor forOperands(operands);
+  auto loc = op->getLoc();
+  auto loopControl = rewriter.getI32IntegerAttr(
+      static_cast<uint32_t>(spirv::LoopControl::None));
+  auto loopOp = rewriter.create<spirv::LoopOp>(loc, loopControl);
+  loopOp.addEntryAndMergeBlock();
+
+  OpBuilder::InsertionGuard guard(rewriter);
+  // Create the block for the header.
+  auto header = new Block();
+  // Insert the header.
+  loopOp.body().getBlocks().insert(std::next(loopOp.body().begin(), 1), header);
+
+  // Create the new induction variable to use.
+  BlockArgument *newIndVar =
+      header->addArgument(forOperands.lowerBound()->getType());
+  Block *body = forOp.getBody();
+
+  // Apply signature conversion to the body of the forOp. It has a single block,
+  // with argument which is the induction variable. That has to be replaced with
+  // the new induction variable.
+  TypeConverter::SignatureConversion signatureConverter(
+      body->getNumArguments());
+  signatureConverter.remapInput(0, newIndVar);
+  rewriter.applySignatureConversion(&forOp.getOperation()->getRegion(0),
+                                    signatureConverter);
+
+  // Delete the loop terminator.
+  rewriter.eraseOp(body->getTerminator());
+
+  // Move the blocks from the forOp into the loopOp. This is the body of the
+  // loopOp.
+  rewriter.inlineRegionBefore(forOp.getOperation()->getRegion(0), loopOp.body(),
+                              std::next(loopOp.body().begin(), 2));
+
+  // Branch into it from the entry.
+  rewriter.setInsertionPointToEnd(&(loopOp.body().front()));
+  rewriter.create<spirv::BranchOp>(loc, header, forOperands.lowerBound());
+
+  // Generate the rest of the loop header.
+  rewriter.setInsertionPointToEnd(header);
+  auto mergeBlock = loopOp.getMergeBlock();
+  auto cmpOp = rewriter.create<spirv::SLessThanOp>(
+      loc, rewriter.getI1Type(), newIndVar, forOperands.upperBound());
+  rewriter.create<spirv::BranchConditionalOp>(
+      loc, cmpOp, body, ArrayRef<Value *>(), mergeBlock, ArrayRef<Value *>());
+
+  // Generate instructions to increment the step of the induction variable and
+  // branch to the header.
+  Block *continueBlock = loopOp.getContinueBlock();
+  rewriter.setInsertionPointToEnd(continueBlock);
+
+  // Add the step to the induction variable and branch to the header.
+  Value *updatedIndVar = rewriter.create<spirv::IAddOp>(
+      loc, newIndVar->getType(), newIndVar, forOperands.step());
+  rewriter.create<spirv::BranchOp>(loc, header, updatedIndVar);
+
+  rewriter.eraseOp(forOp);
+  return matchSuccess();
+}
 
 template <typename OpTy, spirv::BuiltIn builtin>
 PatternMatchResult LaunchConfigConversion<OpTy, builtin>::matchAndRewrite(
@@ -148,7 +230,7 @@ void GPUToSPIRVPass::runOnModule() {
   SPIRVTypeConverter typeConverter(&basicTypeConverter);
   OwningRewritePatternList patterns;
   patterns.insert<
-      KernelFnConversion,
+      ForOpConversion, KernelFnConversion,
       LaunchConfigConversion<gpu::BlockDimOp, spirv::BuiltIn::WorkgroupSize>,
       LaunchConfigConversion<gpu::BlockIdOp, spirv::BuiltIn::WorkgroupId>,
       LaunchConfigConversion<gpu::GridDimOp, spirv::BuiltIn::NumWorkgroups>,
@@ -159,8 +241,13 @@ void GPUToSPIRVPass::runOnModule() {
 
   ConversionTarget target(*context);
   target.addLegalDialect<spirv::SPIRVDialect>();
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp Op) {
-    return basicTypeConverter.isSignatureLegal(Op.getType());
+  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
+    // TODO(ravishankarm) : Currently lowering does not support handling
+    // function conversion of non-kernel functions. This is to be added.
+
+    // For kernel functions, verify that the signature is void(void).
+    return gpu::GPUDialect::isKernel(op) && op.getNumResults() == 0 &&
+           op.getNumArguments() == 0;
   });
 
   if (failed(applyFullConversion(spirvModules, target, patterns,

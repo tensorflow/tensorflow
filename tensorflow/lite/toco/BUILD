@@ -166,11 +166,10 @@ cc_library(
         "toco_types.h",
     ],
     deps = [
-        # Placeholder for internal file dependency.
-        "@com_google_protobuf//:protobuf_headers",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_protobuf//:protobuf_headers",
     ],
 )
 

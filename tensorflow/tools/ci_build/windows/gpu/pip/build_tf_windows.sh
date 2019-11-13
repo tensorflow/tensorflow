@@ -162,9 +162,6 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
-# TODO(pcloudy): remove --experimental_windows_native_test_wrapper once
-# native test wrapper is enabled by default.
-# https://github.com/bazelbuild/bazel/issues/6622
 bazel test --announce_rc --config=opt -k --test_output=errors \
   --test_env=TF_GPU_COUNT \
   ${EXTRA_TEST_FLAGS} \

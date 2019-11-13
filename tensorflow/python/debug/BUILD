@@ -74,6 +74,7 @@ py_library(
         ":op_callbacks_common",
         ":source_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:op_callbacks",
         "//third_party/py/numpy",
     ],
@@ -704,6 +705,35 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "distributed_callbacks_test",
+    size = "medium",
+    srcs = ["lib/distributed_callbacks_test.py"],
+    additional_deps = [
+        ":check_numerics_callback",
+        ":debug_events_writer",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
+        "//third_party/py/numpy",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras",
+    ],
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
+        "no_rocm",
+        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
+        "no_windows_gpu",  # TODO(b/130551176)
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+)
+
+cuda_py_test(
     name = "dumping_callback_test",
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
@@ -719,7 +749,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/keras",
     ],
-    shard_count = 6,
+    shard_count = 8,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
     ],
@@ -1377,6 +1407,7 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/143150907)
         "nomsan",  # TODO(b/143150907)
         "v1only",
     ],

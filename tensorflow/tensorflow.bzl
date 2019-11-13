@@ -2331,6 +2331,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         hdrs = out_hdrs,
         visibility = visibility,
         deps = deps,
+        alwayslink = 1,
     )
 
 def tf_genrule_cmd_append_to_srcs(to_append):
@@ -2504,7 +2505,8 @@ def tf_python_pybind_extension(
         features = [],
         copts = [],
         hdrs = [],
-        deps = []):
+        deps = [],
+        visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
     It is used for targets under //third_party/tensorflow/python that link
@@ -2518,6 +2520,7 @@ def tf_python_pybind_extension(
         copts = copts,
         hdrs = hdrs,
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
+        visibility = visibility,
     )
 
 def if_cuda_or_rocm(if_true, if_false = []):

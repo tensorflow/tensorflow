@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -133,7 +134,7 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
 
   // Allocate transposed_weights tensor. Currently it's only used for optimized
   // float kernels.
-  if (kernel_type == kGenericOptimized && input_type == kTfLiteFloat32) {
+  if (kernel_type == kGenericOptimized) {
     if (data->transposed_weights_id == kTensorNotAllocated) {
       context->AddTensors(context, 1, &data->transposed_weights_id);
     }
@@ -175,7 +176,7 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
   col2im_shape_array->data[1] =
       weights_shape.Dims(0) * weights_shape.Dims(1) * weights_shape.Dims(2);
 
-  col2im->type = input->type;
+  col2im->type = input->type == kTfLiteFloat32 ? kTfLiteFloat32 : kTfLiteInt32;
   col2im->allocation_type = kTfLiteDynamic;
   return context->ResizeTensor(context, col2im, col2im_shape_array);
 }
@@ -203,10 +204,21 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
   transpose_params.perm[2] = 0;
   transpose_params.perm[3] = 3;
 
-  optimized_ops::Transpose(transpose_params, input_shape,
-                           GetTensorData<float>(weights),
-                           GetTensorShape(transposed_weights),
-                           GetTensorData<float>(transposed_weights));
+  if (weights->type == kTfLiteFloat32) {
+    optimized_ops::Transpose(transpose_params, input_shape,
+                             GetTensorData<float>(weights),
+                             GetTensorShape(transposed_weights),
+                             GetTensorData<float>(transposed_weights));
+  } else if (weights->type == kTfLiteUInt8) {
+    optimized_ops::Transpose(transpose_params, input_shape,
+                             GetTensorData<uint8>(weights),
+                             GetTensorShape(transposed_weights),
+                             GetTensorData<uint8>(transposed_weights));
+  } else {
+    context->ReportError(
+        context, "Transpose conv only support float & uint8 right now.");
+    return kTfLiteError;
+  }
 
   return kTfLiteOk;
 }
@@ -342,10 +354,12 @@ void EvalFloat(TfLiteContext* context, const TfLiteTransposeConvParams* params,
   }
 }
 
-void EvalQuantized(const TfLiteTransposeConvParams* params, OpData* data,
+template <KernelType kernel_type>
+void EvalQuantized(TfLiteContext* context,
+                   const TfLiteTransposeConvParams* params, OpData* data,
                    const TfLiteTensor* input, const TfLiteTensor* weights,
-                   TfLiteTensor* col2im, TfLiteTensor* output,
-                   TfLiteTensor* scratch_buffer) {
+                   const TfLiteTensor* transposed_weights, TfLiteTensor* col2im,
+                   TfLiteTensor* output, TfLiteTensor* scratch_buffer) {
   int32_t input_offset = -input->params.zero_point;
   int32_t filter_offset = -weights->params.zero_point;
   int32_t output_offset = output->params.zero_point;
@@ -354,6 +368,8 @@ void EvalQuantized(const TfLiteTransposeConvParams* params, OpData* data,
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
   op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width_offset = data->padding.width_offset;
+  op_params.padding_values.height_offset = data->padding.height_offset;
   op_params.stride_width = params->stride_width;
   op_params.stride_height = params->stride_height;
   op_params.input_offset = input_offset;
@@ -364,13 +380,27 @@ void EvalQuantized(const TfLiteTransposeConvParams* params, OpData* data,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  // TODO(haoliang): Add optimized implementation later.
-  reference_ops::TransposeConv(
-      op_params, GetTensorShape(input), GetTensorData<uint8>(input),
-      GetTensorShape(weights), GetTensorData<uint8>(weights),
-      GetTensorShape(output), GetTensorData<uint8>(output),
-      GetTensorShape(col2im), GetTensorData<uint8>(col2im),
-      GetTensorData<int32_t>(scratch_buffer));
+  switch (kernel_type) {
+    case kReference: {
+      reference_ops::TransposeConv(
+          op_params, GetTensorShape(input), GetTensorData<uint8>(input),
+          GetTensorShape(weights), GetTensorData<uint8>(weights),
+          GetTensorShape(output), GetTensorData<uint8>(output),
+          GetTensorShape(col2im), GetTensorData<uint8>(col2im),
+          GetTensorData<int32_t>(scratch_buffer));
+      break;
+    }
+    case kGenericOptimized: {
+      optimized_ops::TransposeConvV2(
+          op_params, GetTensorShape(input), GetTensorData<uint8>(input),
+          GetTensorShape(transposed_weights),
+          GetTensorData<uint8>(transposed_weights), GetTensorShape(output),
+          GetTensorData<uint8>(output), GetTensorShape(col2im),
+          GetTensorData<int32>(col2im), GetTensorData<int32>(scratch_buffer),
+          CpuBackendContext::GetFromContext(context));
+      break;
+    }
+  }
 }
 
 template <KernelType kernel_type>
@@ -427,16 +457,20 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     case kTfLiteUInt8: {
-      // TODO(haoliang): support optimized implementation for quantized
-      // TransposeConv.
       TfLiteTensor* scratch_buffer =
           GetTemporary(context, node, data->scratch_tensor_index);
       if (IsDynamicTensor(scratch_buffer)) {
         TF_LITE_ENSURE_OK(context,
                           ResizeTensor(context, output_shape, scratch_buffer));
       }
-      EvalQuantized(params, data, input, weights, col2im, output,
-                    scratch_buffer);
+      if (data->weights_are_transposed) {
+        if (!IsConstantTensor(weights)) {
+          ResizeAndTransposeWeights(context, weights, transposed_weights);
+        }
+      }
+      EvalQuantized<kernel_type>(context, params, data, input, weights,
+                                 transposed_weights, col2im, output,
+                                 scratch_buffer);
       break;
     }
     default:

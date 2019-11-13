@@ -90,6 +90,10 @@ void MultiRunStatsRecorder::OutputStats() {
     // Output the name of this run first.
     stream << std::setw(26) << run_stats.first << ": ";
     run_stats.second.inference_time_us().OutputToStream(&stream);
+    // NOTE: As of 2019/11/07, the memory usage is collected in an
+    // OS-process-wide way and this program performs multiple runs in a single
+    // OS process, therefore, the memory usage information of each run becomes
+    // incorrect, hence no output here.
     TFLITE_LOG(INFO) << stream.str();
   }
 }

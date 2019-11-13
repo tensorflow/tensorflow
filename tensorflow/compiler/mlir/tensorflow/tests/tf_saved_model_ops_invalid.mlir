@@ -13,7 +13,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  // expected-error@+1 {{'tf_saved_model.bound_input' attribute should be a SymbolRefAttr}}
+  // expected-error@+1 {{'tf_saved_model.bound_input' attribute should be a FlatSymbolRefAttr}}
   func @f(
     %arg0: tensor<f32> {tf_saved_model.bound_input = 1 : i32}
   ) attributes { tf_saved_model.exported_names = ["foo.some_func"] } {
@@ -192,3 +192,16 @@ module attributes {tf_saved_model.semantics} {
 
 }
 
+// -----
+
+// expected-error@+1 {{modules with 'tf_saved_model.semantics' must have analyzable symbol uses}}
+module attributes {tf_saved_model.semantics} {
+
+  func @root() attributes {tf_saved_model.exported_names = ["root"]} {
+    "some_unregistered_dialect.maybe_a_symbol_table"() ({
+      return
+    }) : () -> ()
+    return
+  }
+
+}

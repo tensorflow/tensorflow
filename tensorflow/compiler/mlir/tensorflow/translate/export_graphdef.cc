@@ -200,25 +200,32 @@ std::string Exporter::UniqueName(Operation* op) {
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument* arg, unsigned index, llvm::StringRef name) {
+  auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
+
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(UniqueName(arg->getParentRegion()
-                                      ->getParentOfType<mlir::FuncOp>()
-                                      .getName()
-                                      .str()));
+    node_def->set_name(UniqueName(func.getName().str()));
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
+
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       arg->getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
+
   AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
+
+  if (auto device_attr =
+          func.getArgAttrOfType<mlir::StringAttr>(index, "tf.device")) {
+    *node_def->mutable_device() = device_attr.getValue().str();
+  }
+
   return node_def;
 }
 
@@ -572,7 +579,8 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   // Checks for gradient attribute. If present converts the gradient function
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
-  if (auto attr = function.getAttrOfType<mlir::SymbolRefAttr>(grad_string)) {
+  if (auto attr =
+          function.getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
     auto grad_func =
         function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             attr.getValue());

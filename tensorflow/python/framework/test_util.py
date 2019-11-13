@@ -1019,6 +1019,21 @@ def build_as_function_and_v1_graph(func=None):
   return decorator
 
 
+def eager_lazy_remote_copy_on_and_off(f):
+  """Execute the test method w/o lazy tensor copy for function remote inputs."""
+
+  @parameterized.named_parameters([("WithLazyRemoteCopy", True), ("", False)])
+  @functools.wraps(f)
+  def decorator(self, lazily_remote_copy, *args, **kwargs):
+    if lazily_remote_copy:
+      context.context().lazy_remote_inputs_copy = True
+    else:
+      context.context().lazy_remote_inputs_copy = False
+    f(self, *args, **kwargs)
+
+  return decorator
+
+
 def run_in_graph_and_eager_modes(func=None,
                                  config=None,
                                  use_gpu=True,
@@ -2152,7 +2167,11 @@ class TensorFlowTestCase(googletest.TestCase):
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
-      self.skipTest("Not a test.")
+      self.skipTest(
+          "Tests that have the name \"test_session\" are automatically skipped "
+          "by TensorFlow test fixture, as the name is reserved for creating "
+          "sessions within tests. Please rename your test if you have a test "
+          "with this name.")
     if context.executing_eagerly():
       yield None
     else:

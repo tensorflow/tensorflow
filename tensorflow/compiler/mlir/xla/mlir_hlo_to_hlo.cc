@@ -258,11 +258,13 @@ class ConvertToHloModule {
   using ValueLoweringMap = llvm::DenseMap<Value*, xla::XlaOp>;
   using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
 
-  explicit ConvertToHloModule(mlir::ModuleOp module, bool use_tuple_args,
+  explicit ConvertToHloModule(mlir::ModuleOp module,
+                              bool use_tuple_args_for_entry_computation,
                               bool always_return_tuple)
       : module_(module),
         module_builder_("main"),
-        use_tuple_args_(use_tuple_args),
+        use_tuple_args_for_entry_computation_(
+            use_tuple_args_for_entry_computation),
         always_return_tuple_(always_return_tuple) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
@@ -287,6 +289,7 @@ class ConvertToHloModule {
   // Lower a single `Block` to a `XlaComputation`
   LogicalResult LowerBasicBlockAsFunction(Block* block,
                                           xla::XlaBuilder* builder,
+                                          bool is_entry_function,
                                           xla::XlaComputation* result);
 
   ::xla::HloModuleProto ConsumeMainProto() {
@@ -309,7 +312,7 @@ class ConvertToHloModule {
   FunctionLoweringMap lowered_computation_;
 
   // Whether the entry function should take a single tuple as input.
-  bool use_tuple_args_;
+  bool use_tuple_args_for_entry_computation_;
 
   // Whether to always return a tuple.
   bool always_return_tuple_;
@@ -620,7 +623,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   auto& builder = entry_function ? module_builder_ : *builder_up;
 
   xla::XlaComputation computation;
-  if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, &computation))) {
+  if (failed(LowerBasicBlockAsFunction(&f.front(), &builder, entry_function,
+                                       &computation))) {
     return failure();
   }
   lowered_computation_[f] = std::move(computation);
@@ -628,7 +632,8 @@ LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
 }
 
 LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
-    Block* block, xla::XlaBuilder* builder, xla::XlaComputation* result) {
+    Block* block, xla::XlaBuilder* builder, bool is_entry_function,
+    xla::XlaComputation* result) {
   auto& bb = *block;
   // Mapping from the Value to lowered XlaOp. The code below lowers in
   // program order and will fail if an operand is unseen. This can be improved.
@@ -636,7 +641,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 
   // If using tuples as input, then there is only one input parameter that is a
   // tuple.
-  if (use_tuple_args_) {
+  if (is_entry_function && use_tuple_args_for_entry_computation_) {
     std::vector<xla::Shape> arg_shapes;
     arg_shapes.reserve(bb.getNumArguments());
     for (auto& arg : bb.getArguments())
@@ -666,7 +671,8 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
     mlir::Region* region, xla::XlaComputation* func) {
   std::unique_ptr<xla::XlaBuilder> builder =
       module_builder_.CreateSubBuilder(absl::StrCat("region_", region_id_++));
-  return LowerBasicBlockAsFunction(&region->front(), builder.get(), func);
+  return LowerBasicBlockAsFunction(&region->front(), builder.get(),
+                                   /*is_entry_function=*/false, func);
 }
 
 }  // namespace

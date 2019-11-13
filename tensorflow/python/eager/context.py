@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import copy
 import random
 import threading
@@ -408,6 +409,7 @@ class Context(object):
     if execution_mode is None:
       execution_mode = SYNC
     self._default_is_async = execution_mode == ASYNC
+    self._lazy_remote_inputs_copy = False
     self._server_def = server_def
     self._collective_ops_server_def = None
     self._collective_leader = None
@@ -502,6 +504,9 @@ class Context(object):
               opts, self._mirroring_policy)
         if self._default_is_async == ASYNC:
           pywrap_tensorflow.TFE_ContextOptionsSetAsync(opts, True)
+        if self._lazy_remote_inputs_copy:
+          pywrap_tensorflow.TFE_ContextOptionsSetLazyRemoteInputsCopy(
+              opts, True)
         context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
@@ -591,6 +596,26 @@ class Context(object):
       self._initialize_logical_devices()
 
     self._clear_caches()
+
+  def check_alive(self, worker_name):
+    """Checks whether a remote worker is alive or not.
+
+    Args:
+      worker_name: a string representing the remote worker. It must be a fully
+      specified name like "/job:worker/replica:0/task:0".
+
+    Returns:
+      a boolean indicating whether the remote worker is alive or not.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    # TODO(yuefengz): support checking multiple workers.
+    if self._context_handle:
+      return pywrap_tensorflow.TFE_ContextCheckAlive(self._context_handle,
+                                                     worker_name)
+    else:
+      raise ValueError("Context is not initialized.")
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -1445,6 +1470,22 @@ class Context(object):
         pywrap_tensorflow.TFE_ContextSetThreadLocalMirroringPolicy(
             self._handle, self._mirroring_policy)
 
+  @property
+  def lazy_remote_inputs_copy(self):
+    return self._lazy_remote_inputs_copy
+
+  @lazy_remote_inputs_copy.setter
+  def lazy_remote_inputs_copy(self, lazy_copy):
+    """Sets whether to copy remote inputs lazily for functions."""
+    if not isinstance(lazy_copy, bool):
+      raise ValueError("Expecting a boolean but got %s" % type(lazy_copy))
+
+    if self._lazy_remote_inputs_copy != lazy_copy:
+      if self._initialized:
+        raise ValueError(
+            "lazy_remote_inputs_copy should be set before being initialized.")
+      self._lazy_remote_inputs_copy = lazy_copy
+
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
 
@@ -1987,6 +2028,42 @@ def export_run_metadata():
   return context().export_run_metadata()
 
 
+@contextlib.contextmanager
+def collect_optimized_graphs():
+  """Collects a flat list of post-optimization graphs.
+
+  The collected graphs include device placements, which can be useful for
+  testing.
+
+  Usage:
+
+  ```
+  @def_function.function
+  def f(x):
+    return x + constant_op.constant(1.)
+
+  with context.collect_optimized_graphs() as graphs:
+    with ops.device("CPU:0"):
+      f(constant_op.constant(1.))
+
+  graph, = graphs  # `graph` contains a single GraphDef for inspection
+  ```
+
+  Yields:
+    A list of GraphDefs, populated when the context manager exits.
+  """
+  ctx = context()
+  ctx.enable_graph_collection()
+  try:
+    graphs = []
+    yield graphs
+    metadata = ctx.export_run_metadata()
+  finally:
+    ctx.disable_graph_collection()
+  for graph in metadata.function_graphs:
+    graphs.append(graph.post_optimization_graph)
+
+
 def get_server_def():
   return context().get_server_def()
 
@@ -1997,6 +2074,10 @@ def set_server_def(server_def):
 
 def update_server_def(server_def):
   context().update_server_def(server_def)
+
+
+def check_alive(worker_name):
+  return context().check_alive(worker_name)
 
 
 def add_function(fdef):

@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -69,6 +70,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -264,6 +266,7 @@ tensorflow::Status CreateRemoteContexts(
     tensorflow::uint64 context_view_id, int keep_alive_secs,
     const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
+    const bool lazy_copy_remote_function_inputs,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -300,6 +303,8 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
+    request.set_lazy_copy_remote_function_inputs(
+        lazy_copy_remote_function_inputs);
 
     eager_client->CreateContextAsync(
         &request, response,
@@ -319,7 +324,7 @@ tensorflow::Status CreateRemoteContexts(
 tensorflow::Status UpdateRemoteContexts(
     const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
     tensorflow::uint64 context_view_id, const tensorflow::ServerDef& server_def,
-    tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
+    tensorflow::eager::EagerClientCache* remote_eager_workers,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -527,7 +532,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(),
-        ctx->context->Executor().Async(), base_request));
+        ctx->context->Executor().Async(),
+        ctx->context->LazyCopyFunctionRemoteInputs(), base_request));
   } else {
     // The master's context_view_id will be incremented by one
     // the UpdateRemoteMaster call later. We want all new workers and
@@ -537,7 +543,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         added_workers, context_id, context_view_id + 1, keep_alive_secs,
         server_def, remote_eager_workers.get(),
-        ctx->context->Executor().Async(), base_request));
+        ctx->context->Executor().Async(),
+        ctx->context->LazyCopyFunctionRemoteInputs(), base_request));
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
         for (const string& w : existing_workers) {
@@ -546,8 +553,7 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       }
       LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
           existing_workers, context_id, context_view_id + 1, server_def,
-          remote_eager_workers.get(), ctx->context->Executor().Async(),
-          base_request));
+          remote_eager_workers.get(), base_request));
     }
   }
 
@@ -713,7 +719,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
 
   return new TFE_Context(opts->session_options.options,
                          opts->device_placement_policy, opts->mirroring_policy,
-                         opts->async, device_mgr.release(),
+                         opts->async, opts->lazy_remote_inputs_copy,
+                         device_mgr.release(),
                          /*device_mgr_owned*/ true, r,
                          tensorflow::GetDefaultCustomKernelCreator());
 }
@@ -728,7 +735,8 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
 
   return new TFE_Context(opts->session_options.options,
                          opts->device_placement_policy, opts->mirroring_policy,
-                         opts->async, device_mgr, /*device_mgr_owned*/ false, r,
+                         opts->async, opts->lazy_remote_inputs_copy, device_mgr,
+                         /*device_mgr_owned*/ false, r,
                          tensorflow::GetDefaultCustomKernelCreator());
 }
 
@@ -788,6 +796,63 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
   // TODO(haoyuzhang): Check server_def compatibility before the update
   status->status = UpdateTFE_ContextWithServerDef(keep_alive_secs, server_def,
                                                   ctx, /*reset_context=*/false);
+#endif  // !IS_MOBILE_PLATFORM
+}
+
+TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
+                                                 const char* worker_name,
+                                                 TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM)
+  status->status = tensorflow::errors::Unimplemented(
+      "TFE_ContextSetServerDef not supported on mobile");
+  return false;
+#else   // !defined(IS_MOBILE_PLATFORM)
+  tensorflow::GrpcServer* grpc_server =
+      static_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
+
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
+  status->status = grpc_server->master_env()->worker_cache->GetEagerClientCache(
+      &remote_eager_workers);
+  if (!status->status.ok()) {
+    LOG(ERROR) << "Failed to get client cache for remote workers.";
+    return false;
+  }
+
+  // TODO(yuefengz): support partially specified `worker_name`.
+  tensorflow::eager::EagerClient* eager_client;
+  status->status = remote_eager_workers->GetClient(worker_name, &eager_client);
+  if (!status->status.ok()) {
+    return false;
+  }
+
+  // Send a rpc request to the worker to check aliveness.
+  tensorflow::eager::KeepAliveRequest request;
+  request.set_context_id(ctx->context->GetContextId());
+  tensorflow::eager::KeepAliveResponse response;
+
+  tensorflow::Status keep_alive_status;
+  tensorflow::Notification done;
+  eager_client->KeepAliveAsync(
+      &request, &response,
+      [&keep_alive_status, &done](const tensorflow::Status& s) {
+        keep_alive_status = s;
+        done.Notify();
+      });
+  done.WaitForNotification();
+
+  status->status = tensorflow::Status::OK();
+
+  // If `context_id` doesn't exist on the remote worker, an InvalidArgument
+  // error will return. But this still indicates that the remote worker is
+  // alive.
+  if (keep_alive_status.ok() ||
+      keep_alive_status.code() == tensorflow::error::INVALID_ARGUMENT) {
+    return true;
+  } else {
+    LOG(INFO) << "Remote worker " << worker_name
+              << " is not alive: " << keep_alive_status.error_message();
+    return false;
+  }
 #endif  // !IS_MOBILE_PLATFORM
 }
 

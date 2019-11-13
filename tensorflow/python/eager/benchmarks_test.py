@@ -58,6 +58,7 @@ from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import gradient_descent
@@ -867,6 +868,34 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(GPU):
       func = lambda: random_ops.random_uniform((2, 2))
       self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def _benchmark_tf_dropout_2_by_2(self,
+                                   is_rate_tensor=True,
+                                   noise_shape=None,
+                                   device=CPU):
+    if is_rate_tensor:
+      rate = constant_op.constant(0.5, dtype=dtypes.float32)
+    else:
+      rate = 0.5
+    with context.device(device):
+
+      def func():
+        return nn_ops.dropout(
+            self._m_2_by_2, rate=rate, noise_shape=noise_shape)
+
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_CPU(self):
+    self._benchmark_tf_dropout_2_by_2(is_rate_tensor=False)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_GPU(self):
+    self._benchmark_tf_dropout_2_by_2(is_rate_tensor=False, device=GPU)
+
+  def benchmark_tf_dropout_2_by_2_CPU(self):
+    self._benchmark_tf_dropout_2_by_2()
+
+  def benchmark_tf_dropout_2_by_2_GPU(self):
+    self._benchmark_tf_dropout_2_by_2(device=GPU)
 
   def _benchmark_transpose(self,
                            m,

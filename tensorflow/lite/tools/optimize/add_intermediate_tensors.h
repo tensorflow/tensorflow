@@ -23,6 +23,8 @@ namespace tflite {
 namespace optimize {
 
 // Going through the model and add intermediates tensors if the ops have any.
+// Returns early if the model has already intermediate tensors. This is to
+// support cases where a model is initialized multiple times.
 TfLiteStatus AddIntemediateTensorsToFusedOp(
     flatbuffers::FlatBufferBuilder* builder, ModelT* input_model);
 

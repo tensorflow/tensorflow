@@ -65,7 +65,7 @@ static bool isZero(Value *v) {
 // avoiding affine map manipulations.
 // The returned ranges correspond to the loop ranges, in the proper order, that
 // are tiled and for which new loops will be created.
-static SmallVector<SubViewOp::Range, 4>
+static SmallVector<mlir::linalg::SubViewOp::Range, 4>
 makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
                     ArrayRef<Value *> allViewSizes,
                     ArrayRef<Value *> allTileSizes, OperationFolder *folder) {
@@ -83,10 +83,10 @@ makeTiledLoopRanges(OpBuilder &b, Location loc, AffineMap map,
   }
 
   // Create a new range with the applied tile sizes.
-  SmallVector<SubViewOp::Range, 4> res;
+  SmallVector<mlir::linalg::SubViewOp::Range, 4> res;
   for (unsigned idx = 0, e = tileSizes.size(); idx < e; ++idx) {
-    res.push_back(SubViewOp::Range{constant_index(folder, 0), viewSizes[idx],
-                                   tileSizes[idx]});
+    res.push_back(mlir::linalg::SubViewOp::Range{
+        constant_index(folder, 0), viewSizes[idx], tileSizes[idx]});
   }
   return res;
 }
@@ -182,13 +182,13 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
     }
 
     // Construct a new subview for the tile.
-    SmallVector<SubViewOp::Range, 4> subViewRangeOperands;
+    SmallVector<mlir::linalg::SubViewOp::Range, 4> subViewRangeOperands;
     subViewRangeOperands.reserve(rank * 3);
     for (unsigned r = 0; r < rank; ++r) {
       if (!isTiled(map.getSubMap({r}), tileSizes)) {
-        subViewRangeOperands.push_back(
-            SubViewOp::Range{constant_index(folder, 0), dim(view, r),
-                             constant_index(folder, 1)});
+        subViewRangeOperands.push_back(mlir::linalg::SubViewOp::Range{
+            constant_index(folder, 0), dim(view, r),
+            constant_index(folder, 1)});
         continue;
       }
 
@@ -198,7 +198,7 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
       // Tiling creates a new slice at the proper index, the slice step is 1
       // (i.e. the slice view does not subsample, stepping occurs in the loop).
       subViewRangeOperands.push_back(
-          SubViewOp::Range{min, max, constant_index(folder, 1)});
+          mlir::linalg::SubViewOp::Range{min, max, constant_index(folder, 1)});
     }
     SmallVector<Value *, 12> subViewOperands;
     subViewOperands.reserve(subViewRangeOperands.size() * 3);
@@ -207,7 +207,8 @@ makeTiledViews(OpBuilder &b, Location loc, LinalgOp linalgOp,
       subViewOperands.push_back(r.max);
       subViewOperands.push_back(r.step);
     }
-    res.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
+    res.push_back(
+        b.create<mlir::linalg::SubViewOp>(loc, view, subViewOperands));
   }
 
   // Traverse the mins/maxes and erase those that don't have uses left.

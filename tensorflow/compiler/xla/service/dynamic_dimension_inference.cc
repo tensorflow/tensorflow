@@ -1199,6 +1199,8 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
       hlo->while_condition(), binding_for_while, parent_));
 
+  // Set the replacement while loop as visited to avoid visiting it again.
+  SetVisited(*hlo);
   return Status::OK();
 }
 

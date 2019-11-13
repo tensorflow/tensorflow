@@ -533,7 +533,8 @@ unsigned LaunchFuncOp::getNumKernelOperands() {
 }
 
 StringRef LaunchFuncOp::getKernelModuleName() {
-  return getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName()).getValue();
+  return getAttrOfType<SymbolRefAttr>(getKernelModuleAttrName())
+      .getRootReference();
 }
 
 Value *LaunchFuncOp::getKernelOperand(unsigned i) {

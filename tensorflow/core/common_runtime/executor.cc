@@ -1659,7 +1659,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         if (step_container_ && step_container_->step_id()) {
           id = step_container_->step_id();
         }
-        return absl::StrCat("ExecutorState::Process#id=", id, "#");
+        return absl::StrCat("ExecutorState::Process#id=", id,
+                            ",iter_num=", tagged_node.input_iter, "#");
       },
       2);
   WithContext wc(context_);
@@ -1851,13 +1852,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         {
           profiler::TraceMe activity(
               [&] {
-                int64 id = step_id_;
-                if (step_container_ && step_container_->step_id()) {
-                  id = step_container_->step_id();
-                }
-                return strings::StrCat(
-                    op_kernel->name(), ":", op_kernel->type_string(),
-                    "#id=", id, ",device=", device->name(), ",async=true#");
+                return strings::StrCat(op_kernel->name(), ":",
+                                       op_kernel->type_string());
               },
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           device->ComputeAsync(async, &state->ctx, done);
@@ -1869,13 +1865,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
 
         if (TF_PREDICT_FALSE(MightTrace(item, event_collector_))) {
           const string& op_name = op_kernel->name();
-          int64 id = step_id_;
-          if (step_container_ && step_container_->step_id()) {
-            id = step_container_->step_id();
-          }
-          const string kernel_label = strings::StrCat(
-              op_name, ":", op_kernel->type_string(), "#id=", id,
-              ",device=", device->name(), ",async=false#");
+          const string kernel_label =
+              strings::StrCat(op_name, ":", op_kernel->type_string());
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
           // 'TraceMe' will trace the OpKernel scheduling time.

@@ -17,14 +17,24 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=0.29.1
+LATEST_BAZEL_VERSION=1.1.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel.sh,
 #   //tensorflow/tools/ci_build/install/install_bazel_from_source.sh)
 
-# LINT.IfChange
+# Run flaky functions with retries.
+# run_with_retry cmd
+function run_with_retry {
+  eval "$1"
+  # If the command fails retry again in 60 seconds.
+  if [[ $? -ne 0 ]]; then
+    sleep 60
+    eval "$1"
+  fi
+}
+
 function die() {
   echo "$@" 1>&2 ; exit 1;
 }
@@ -39,25 +49,12 @@ function readable_run {
   echo "Command completed successfully at $(date)"
   set -x
 }
-# LINT.ThenChange(
-# ) # common_.sh
 
 # LINT.IfChange
 # Redirect bazel output dir b/73748835
 function set_bazel_outdir {
   mkdir -p /tmpfs/bazel_output
   export TEST_TMPDIR=/tmpfs/bazel_output
-}
-
-# Run flaky functions with retries.
-# run_with_retry cmd
-function run_with_retry {
-  eval "$1"
-  # If the command fails retry again in 60 seconds.
-  if [[ $? -ne 0 ]]; then
-    sleep 60
-    eval "$1"
-  fi
 }
 
 # Install the given bazel version on linux
@@ -85,7 +82,6 @@ function update_bazel_linux {
 # LINT.ThenChange(
 #   //tensorflow_estimator/google/kokoro/common.sh)
 
-# LINT.IfChange
 # Install the given bazel version on macos
 function update_bazel_macos {
   if [[ -z "$1" ]]; then
@@ -145,7 +141,8 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install portpicker
   ${SUDO_CMD} ${PIP_CMD} install scipy
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn==0.20.3
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  # TODO(b/144163919): Remove the version pin once the bug is fixed.
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade "tb-nightly==2.1.0a20191106"
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
@@ -182,7 +179,8 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
   "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
-  "${PIP_CMD}" install --user --upgrade tb-nightly
+  # TODO(b/144163919): Remove the version pin once the bug is fixed.
+  "${PIP_CMD}" install --user --upgrade "tb-nightly==2.1.0a20191106"
   # ===================================================================
 }
 
@@ -222,7 +220,7 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install gast==0.2.2
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.8.0
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
-  ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${SUDO_CMD} ${PIP_CMD} install --upgrade "tb-nightly>=2.1.*"
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
@@ -274,5 +272,3 @@ function copy_to_new_project_name {
   popd
   rm -rf "${TMP_DIR}"
 }
-# LINT.ThenChange(
-# ) # common.sh

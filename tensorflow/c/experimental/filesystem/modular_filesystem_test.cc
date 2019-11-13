@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <memory>
 #include <random>
+#include <string>
 
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_internal.h"
@@ -56,6 +58,8 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+using ::tensorflow::error::Code;
+
 // As we need to test multiple URI schemes we need a parameterized test.
 // Furthermore, since each test creates and deletes files, we will use the same
 // fixture to create new directories in `SetUp`. Each directory will reside in
@@ -72,7 +76,7 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
   //
   // We trade in one extra initialization for readability.
   ModularFileSystemTest() {
-    const std::string& test_name = tensorflow::str_util::StringReplace(
+    const std::string test_name = tensorflow::str_util::StringReplace(
         ::testing::UnitTest::GetInstance()->current_test_info()->name(), "/",
         "_", /*replace_all=*/true);
     root_dir_ = tensorflow::io::JoinPath(
@@ -87,11 +91,35 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
     // Windows.
     if (mkdir(root_dir_.c_str(), 0755) != 0) {
       int error_code = errno;
-      VLOG(0) << "Cannot create working directory: "
-              << tensorflow::IOError(root_dir_, error_code)
-              << ". Test will be skipped.";
-      GTEST_SKIP();
+      GTEST_SKIP() << "Cannot create working directory: "
+                   << tensorflow::IOError(root_dir_, error_code);
     }
+  }
+
+  // Converts path reference to URI reference.
+  //
+  // If URI scheme is empty, URI reference is `path` relative to current test
+  // root directory. Otherwise, we need to add the `<scheme>://` in front of
+  // this path.
+  //
+  // TODO(mihaimaruseac): Note that some filesystem might require a different
+  // approach here, for example they might require the root directory path to
+  // be in a special format, etc. When we get there, we might decide to move
+  // this class to `modular_filesystem_test.h` and extend the instantiation to
+  // also take as argument an implementation for this method/a subclass factory
+  // (see
+  // https://github.com/google/googletest/blob/master/googletest/docs/advanced.md#creating-value-parameterized-abstract-tests)
+  std::string GetURIForPath(StringPiece path) {
+    const std::string translated_name =
+        tensorflow::io::JoinPath(root_dir_, path);
+    if (GetParam().empty()) return translated_name;
+
+    return tensorflow::strings::StrCat(GetParam(), "://", translated_name);
+  }
+
+  // Converts absolute paths to paths relative to root_dir_.
+  StringPiece GetRelativePath(StringPiece absolute_path) {
+    return tensorflow::str_util::StripPrefix(absolute_path, root_dir_);
   }
 
   // Initializes the randomness used to ensure test isolation.
@@ -112,7 +140,359 @@ class ModularFileSystemTest : public ::testing::TestWithParam<std::string> {
 
 int ModularFileSystemTest::rng_val_;
 
-// TODO(mihaimaruseac): Tests will come in next CL.
+// As some of the implementations might be missing, the tests should still pass
+// if the returned `Status` signals the unimplemented state.
+bool UninmplementedOrReturnsCode(Status actual_status, Code expected_code) {
+  Code actual_code = actual_status.code();
+  return (actual_code == Code::UNIMPLEMENTED) || (actual_code == expected_code);
+}
+
+TEST_P(ModularFileSystemTest, TestTranslateName) {
+  const std::string generic_path = GetURIForPath("some_path");
+  FileSystem* fs = nullptr;
+  Status s = env_->GetFileSystemForFile(generic_path, &fs);
+  if (fs == nullptr || !s.ok()) GTEST_SKIP() << "No filesystem registered";
+
+  // First, test some interesting corner cases concerning empty URIs
+  if (GetParam().empty()) {
+    EXPECT_EQ(fs->TranslateName(""), "");
+    EXPECT_EQ(fs->TranslateName("/"), "/");
+    EXPECT_EQ(fs->TranslateName("//"), "/");
+    // Empty scheme also allows relative paths
+    EXPECT_EQ(fs->TranslateName("a_file"), "a_file");
+    EXPECT_EQ(fs->TranslateName("a_dir/.."), ".");
+  } else {
+    EXPECT_EQ(fs->TranslateName(tensorflow::strings::StrCat(GetParam(), "://")),
+              "/");
+    EXPECT_EQ(
+        fs->TranslateName(tensorflow::strings::StrCat(GetParam(), ":///")),
+        "/");
+    EXPECT_EQ(
+        fs->TranslateName(tensorflow::strings::StrCat(GetParam(), ":////")),
+        "/");
+  }
+
+  // Now test several paths/URIs
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(GetURIForPath("a_file"))),
+            "/a_file");
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(GetURIForPath("a_dir/a_file"))),
+            "/a_dir/a_file");
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(GetURIForPath("./a_file"))),
+            "/a_file");
+  EXPECT_EQ(GetRelativePath(fs->TranslateName(
+                GetURIForPath("a/convoluted/../path/./to/.//.///a/file"))),
+            "/a/path/to/a/file");
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFileNonExisting) {
+  const std::string filepath = GetURIForPath("dir_not_found/a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFileExistingDir) {
+  const std::string filepath = GetURIForPath("a_file");
+  Status status = env_->CreateDir(filepath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewWritableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateFilePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_file");
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewWritableFile(new_path, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewAppendableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFileNonExisting) {
+  const std::string filepath = GetURIForPath("dir_not_found/a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewAppendableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFileExistingDir) {
+  const std::string filepath = GetURIForPath("a_file");
+  Status status = env_->CreateDir(filepath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewAppendableFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateThenAppendFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  std::unique_ptr<WritableFile> same_file;
+  status = env_->NewAppendableFile(filepath, &same_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendFilePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_file");
+  std::unique_ptr<WritableFile> same_file;
+  status = env_->NewAppendableFile(new_path, &same_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestReadFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<RandomAccessFile> new_file;
+  Status status = env_->NewRandomAccessFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestReadFileNonExisting) {
+  const std::string filepath = GetURIForPath("dir_not_found/a_file");
+  std::unique_ptr<RandomAccessFile> new_file;
+  Status status = env_->NewRandomAccessFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestReadFileExistingDir) {
+  const std::string filepath = GetURIForPath("a_file");
+  Status status = env_->CreateDir(filepath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  std::unique_ptr<RandomAccessFile> new_file;
+  status = env_->NewRandomAccessFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateThenReadFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  std::unique_ptr<RandomAccessFile> same_file;
+  status = env_->NewRandomAccessFile(filepath, &same_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestReadFilePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_file");
+  std::unique_ptr<RandomAccessFile> same_file;
+  status = env_->NewRandomAccessFile(new_path, &same_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDir) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirNoParent) {
+  const std::string dirpath = GetURIForPath("dir_not_found/a_dir");
+  Status status = env_->CreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirWhichIsFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  status = env_->CreateDir(filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirTwice) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  status = env_->CreateDir(dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::ALREADY_EXISTS);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateDirPathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_path = GetURIForPath("a_file/a_dir");
+  status = env_->CreateDir(new_path);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestAppendAndTell) {
+  const std::string filename = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filename, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  int64 position;
+  status = file->Tell(&position);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Tell() not supported";
+  EXPECT_EQ(position, 0);
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Tell(&position);
+  EXPECT_EQ(status.code(), Code::OK);
+  EXPECT_EQ(position, test_data.size());
+}
+
+TEST_P(ModularFileSystemTest, TestClose) {
+  const std::string filename = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filename, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+}
+
+TEST_P(ModularFileSystemTest, TestRoundTrip) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Flush();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  std::unique_ptr<RandomAccessFile> read_file;
+  status = env_->NewRandomAccessFile(filepath, &read_file);
+  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+
+  char scratch[64 /* big enough to accomodate test_data */] = {0};
+  StringPiece result;
+  status = read_file->Read(0, test_data.size(), &result, scratch);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(test_data, result);
+}
+
+TEST_P(ModularFileSystemTest, TestRoundTripWithAppendableFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Flush();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  std::unique_ptr<WritableFile> same_file;
+  status = env_->NewAppendableFile(filepath, &same_file);
+  if (!status.ok()) GTEST_SKIP() << "NewAppendableFile() not supported";
+
+  const std::string more_test_data("qwer");
+  EXPECT_EQ(same_file->Append(more_test_data).code(), Code::OK);
+  EXPECT_EQ(same_file->Flush().code(), Code::OK);
+  EXPECT_EQ(same_file->Close().code(), Code::OK);
+
+  std::unique_ptr<RandomAccessFile> read_file;
+  status = env_->NewRandomAccessFile(filepath, &read_file);
+  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+
+  char scratch[64 /* big enough for test_data and more_test_data */] = {0};
+  StringPiece result;
+  status = read_file->Read(0, test_data.size() + more_test_data.size(), &result,
+                           scratch);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(test_data + more_test_data, result);
+  EXPECT_EQ(
+      read_file->Read(test_data.size(), more_test_data.size(), &result, scratch)
+          .code(),
+      Code::OK);
+  EXPECT_EQ(more_test_data, result);
+}
+
+TEST_P(ModularFileSystemTest, TestReadOutOfRange) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+
+  status = file->Flush();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+
+  status = file->Close();
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  std::unique_ptr<RandomAccessFile> read_file;
+  status = env_->NewRandomAccessFile(filepath, &read_file);
+  if (!status.ok()) GTEST_SKIP() << "NewRandomAccessFile() not supported";
+
+  char scratch[64 /* must be bigger than test_data */] = {0};
+  StringPiece result;
+  // read at least 1 byte more than test_data
+  status = read_file->Read(0, test_data.size() + 1, &result, scratch);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OUT_OF_RANGE);
+}
 
 // The URI schemes that need to be tested are provided by the user via flags
 // (or, if none is supplied, all existing schemes are used). As a scheme can

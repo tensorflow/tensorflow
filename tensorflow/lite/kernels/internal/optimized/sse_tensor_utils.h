@@ -264,10 +264,8 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
 }
 
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch,
-                             float normalization_epsilon) {
-  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
-                                  normalization_epsilon);
+                             int v_size, int n_batch) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 
 }  // namespace tensor_utils

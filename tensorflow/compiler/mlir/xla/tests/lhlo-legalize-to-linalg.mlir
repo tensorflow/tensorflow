@@ -146,7 +146,18 @@ func @iota(%out: memref<7x10xi64>) {
   "xla_lhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xi64>) -> ()
   return
 }
-// CHECK: linalg.indexed_generic {indexing_maps = [#[[RESULT_MAP]]]
-// CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index, %[[RESULT:.*]]: i64):
-// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i64
-// CHECK-NEXT:   linalg.yield %[[INT_CAST]] : i64
+
+// -----
+
+// CHECK-DAG: #[[OPERAND_MAP:.*]] = (d0, d1, d2, d3, d4) -> (d4, d0, 0)
+// CHECK-DAG: #[[RESULT_MAP:.*]] = (d0, d1, d2, d3, d4) -> (d0, d1, d2, d3, d4)
+// CHECK-LABEL: func @broadcast
+func @broadcast(%operand: memref<5x7x1xf32>, %result: memref<7x10x6x4x5xf32>) {
+  "xla_lhlo.broadcast_in_dim"(%operand, %result)
+    {broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>}
+    : (memref<5x7x1xf32>, memref<7x10x6x4x5xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic {indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[OPERAND:.*]]: f32, %[[RESULT:.*]]: f32):
+// CHECK-NEXT:   linalg.yield %[[OPERAND]] : f32

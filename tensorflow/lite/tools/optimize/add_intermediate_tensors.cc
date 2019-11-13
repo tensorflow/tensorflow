@@ -35,16 +35,34 @@ string CreateTensorName(int op_index, int tensor_index) {
   return "intermediate_" + std::to_string(op_index) + "_" +
          std::to_string(tensor_index);
 }
+
+bool IntermediateTensorExists(ModelT* model) {
+  for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       ++subgraph_idx) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+      OperatorT* op = subgraph->operators[op_idx].get();
+      if (!op->intermediates.empty()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
 }  // namespace
 
 TfLiteStatus AddIntemediateTensorsToFusedOp(
     flatbuffers::FlatBufferBuilder* builder, ModelT* model) {
+  // Return early if the model already has intermediate tensors.
+  if (IntermediateTensorExists(model)) {
+    return kTfLiteOk;
+  }
   // Process the model.
   for (int subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
        ++subgraph_idx) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
-      // Find LSTM
+      // Find ops that need additional tensor.
       OperatorT* op = subgraph->operators[op_idx].get();
       operator_property::OperatorProperty property =
           operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);

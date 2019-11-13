@@ -68,13 +68,12 @@ auto* eager_context_created =
 
 }  // namespace
 
-// TODO(b/134094971): Make lazily_copy_function_remote_inputs_ configurable once
-// it's ready to enable.
 EagerContext::EagerContext(
     const SessionOptions& opts,
     ContextDevicePlacementPolicy default_device_placement_policy,
     ContextMirroringPolicy default_mirroring_policy, bool async,
-    const DeviceMgr* device_mgr, bool device_mgr_owned, Rendezvous* rendezvous,
+    const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
+    bool device_mgr_owned, Rendezvous* rendezvous,
     const CustomKernelCreator* custom_kernel_creator,
     DistributedFunctionLibraryRuntime* cluster_flr)
     : default_device_placement_policy_(default_device_placement_policy),
@@ -91,7 +90,7 @@ EagerContext::EagerContext(
       default_executor_(async),
       log_memory_(LogMemory::IsEnabled()),
       env_(opts.env),
-      lazily_copy_function_remote_inputs_(false),
+      lazy_copy_function_remote_inputs_(lazy_copy_function_remote_inputs),
       use_send_tensor_rpc_(false),
       pin_small_ops_to_cpu_(ReadBoolFromEnvVar(
           "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING", false)) {
@@ -130,7 +129,7 @@ void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
                              thread::ThreadPool* thread_pool,
                              DistributedFunctionLibraryRuntime* cluster_flr,
                              const CustomKernelCreator* custom_kernel_creator) {
-  if (lazily_copy_function_remote_inputs_) {
+  if (lazy_copy_function_remote_inputs_) {
     pflr_.reset(new eager::EagerProcessFunctionLibraryRuntime(
         device_mgr, env, config, graph_def_version, lib_def, optimizer_options,
         thread_pool, cluster_flr, custom_kernel_creator));
@@ -164,7 +163,7 @@ void EagerContext::InitDeviceMapAndAsync() {
 
 void EagerContext::ResetClusterFLR(
     DistributedFunctionLibraryRuntime* cluster_flr) {
-  cluster_flr_.Reset(cluster_flr, lazily_copy_function_remote_inputs_);
+  cluster_flr_.Reset(cluster_flr, lazy_copy_function_remote_inputs_);
 }
 
 EagerExecutor& EagerContext::Executor() {
@@ -239,8 +238,8 @@ bool EagerContext::MirrorTensors() const {
   return GetMirroringPolicy() == MIRRORING_ALL;
 }
 
-bool EagerContext::LazilyCopyFunctionRemoteInputs() const {
-  return lazily_copy_function_remote_inputs_;
+bool EagerContext::LazyCopyFunctionRemoteInputs() const {
+  return lazy_copy_function_remote_inputs_;
 }
 
 #if !defined(IS_MOBILE_PLATFORM)

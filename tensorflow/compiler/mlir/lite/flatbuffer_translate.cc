@@ -221,21 +221,13 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
   }
 }
 
-static bool IsInput(Operation* op) {
-  return isa<tfl::InputOp>(op) ||
-         op->getName().getStringRef() == "tf.Placeholder.input";
-}
-
 static bool IsConst(Operation* op) {
   return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
          isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op);
 }
 
-static bool IsConstOrInput(Operation* op) { return IsConst(op) || IsInput(op); }
-
 template <typename T>
-static bool HasValidTFLiteType(Value* value, T& error_handler,
-                               bool add_pseudo_input_nodes) {
+static bool HasValidTFLiteType(Value* value, T& error_handler) {
   // None type is allowed to represent unspecified operands.
   if (value->getType().isa<NoneType>()) return true;
 
@@ -249,15 +241,6 @@ static bool HasValidTFLiteType(Value* value, T& error_handler,
     }
     error_handler.emitError("expected tensor type, got ") << value->getType();
     return false;
-  }
-  if (add_pseudo_input_nodes) {
-    if (auto* inst = value->getDefiningOp()) {
-      if (IsInput(inst) && !type.hasStaticShape()) {
-        return error_handler.emitError("should have static shape, got ")
-                   << type.getShape(),
-               false;
-      }
-    }
   }
 
   Type element_type = type.getElementType();
@@ -276,8 +259,7 @@ static bool HasValidTFLiteType(Value* value, T& error_handler,
 // TODO(hinsu): Now that translation is done by making a single pass over the
 // MLIR module, consider inlining these validation checks at the place where
 // these invariants are assumed instead of checking upfront.
-static bool IsValidTFLiteMlirModule(ModuleOp module,
-                                    bool add_pseudo_input_nodes) {
+static bool IsValidTFLiteMlirModule(ModuleOp module) {
   MLIRContext* context = module.getContext();
 
   // Verify that module has a function named main.
@@ -295,7 +277,7 @@ static bool IsValidTFLiteMlirModule(ModuleOp module,
     auto& bb = fn.getBlocks().front();
 
     for (auto* arg : bb.getArguments()) {
-      if (!HasValidTFLiteType(arg, fn, add_pseudo_input_nodes))
+      if (!HasValidTFLiteType(arg, fn))
         return fn.emitError("invalid TFLite type: ") << arg->getType(), false;
     }
 
@@ -305,30 +287,10 @@ static bool IsValidTFLiteMlirModule(ModuleOp module,
       if (inst.isKnownTerminator()) break;
 
       for (auto* result : inst.getResults()) {
-        if (!HasValidTFLiteType(result, inst, add_pseudo_input_nodes))
+        if (!HasValidTFLiteType(result, inst))
           return fn.emitError("invalid TFLite type: ") << result->getType(),
                  false;
       }
-    }
-  }
-
-  if (!add_pseudo_input_nodes) return true;
-
-  // Verify that main function's arguments have input op as the only user.
-  // Arguments are first passed to a pseudo input operation so that they can
-  // have attributes.
-  //
-  // TODO(hinsu): Remove pseudo input nodes by setting attributes directly on
-  // the arguments.
-  for (auto* arg : main_fn.getArguments()) {
-    if (!arg->hasOneUse()) {
-      return main_fn.emitError("arguments should have exactly one use"), false;
-    }
-    Operation* op = *arg->user_begin();
-    if (!IsInput(op)) {
-      main_fn.emitError("arguments should only be used by input ops. Got ")
-          << op->getName();
-      return false;
     }
   }
 
@@ -361,19 +323,16 @@ class Translator {
   // internal error.
   static Optional<std::string> Translate(
       ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-      bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper,
-      bool add_pseudo_input_nodes);
+      bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper);
 
  private:
   enum class OpType : char { kTfliteBuiltin, kSelectTf, kCustomOp };
   explicit Translator(ModuleOp module, bool emit_builtin_tflite_ops,
                       bool emit_select_tf_ops, bool emit_custom_ops,
-                      OpOrArgNameMapper* op_or_arg_name_mapper,
-                      bool add_pseudo_input_nodes)
+                      OpOrArgNameMapper* op_or_arg_name_mapper)
       : module_(module),
         name_mapper_(*op_or_arg_name_mapper),
-        builder_(kInitialBufferSize),
-        add_pseudo_input_nodes_(add_pseudo_input_nodes) {
+        builder_(kInitialBufferSize) {
     // The first buffer must be empty according to the schema definition.
     empty_buffer_ = tflite::CreateBuffer(builder_);
     buffers_.push_back(empty_buffer_);
@@ -481,8 +440,6 @@ class Translator {
   // The failed ops during legalization.
   std::vector<std::string> failed_flex_ops_;
   std::vector<std::string> failed_custom_ops_;
-
-  bool add_pseudo_input_nodes_ = false;
 };
 
 std::string Translator::UniqueName(mlir::Operation* op) {
@@ -879,7 +836,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
 
   llvm::SmallVector<llvm::StringRef, 2> input_names;
   llvm::SmallVector<llvm::StringRef, 2> output_names;
-  if (auto str = dict_attr.get("inputs").dyn_cast<mlir::StringAttr>()) {
+  if (auto str = dict_attr.get("inputs").dyn_cast_or_null<mlir::StringAttr>()) {
     str.getValue().split(input_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
     if (input_names.size() != fn.getNumArguments()) {
@@ -887,17 +844,13 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
       return;
     }
     for (auto it : llvm::enumerate(fn.getArguments())) {
-      if (add_pseudo_input_nodes_) {
-        name_mapper_.InitOpName(*it.value()->user_begin(),
-                                input_names[it.index()].trim());
-      } else {
-        name_mapper_.InitOpName(it.value(), input_names[it.index()].trim());
-      }
+      name_mapper_.InitOpName(it.value(), input_names[it.index()].trim());
     }
     *has_input_attr = true;
   }
 
-  if (auto str = dict_attr.get("outputs").dyn_cast<mlir::StringAttr>()) {
+  if (auto str =
+          dict_attr.get("outputs").dyn_cast_or_null<mlir::StringAttr>()) {
     str.getValue().split(output_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
     auto term = fn.getBlocks().back().getTerminator();
@@ -939,7 +892,6 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   InitializeNamesFromAttribute(fn, &has_input_attr);
   std::vector<BufferOffset<tflite::Tensor>> tensors;
   llvm::DenseMap<Value*, int> tensor_index_map;
-  bool is_main_fn = fn.getName() == "main";
 
   // Builds tensor and buffer for argument or operation result. Returns false
   // on failure.
@@ -974,14 +926,12 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   // Main function's arguments are first passed to `input` op so they don't
   // have associated tensor and buffer. Build FlatBuffer tensor and buffer for
   // other functions.
-  if (!is_main_fn || !add_pseudo_input_nodes_) {
-    for (unsigned i = 0, e = bb.getNumArguments(); i < e; ++i) {
-      mlir::BlockArgument* arg = bb.getArgument(i);
-      std::string name;
-      if (has_input_attr) name = name_mapper_.GetUniqueName(arg);
-      if (name.empty()) name = absl::StrCat("arg", i);
-      if (!build_tensor_and_buffer(bb.getArgument(i), name)) return llvm::None;
-    }
+  for (unsigned i = 0, e = bb.getNumArguments(); i < e; ++i) {
+    mlir::BlockArgument* arg = bb.getArgument(i);
+    std::string name;
+    if (has_input_attr) name = name_mapper_.GetUniqueName(arg);
+    if (name.empty()) name = absl::StrCat("arg", i);
+    if (!build_tensor_and_buffer(arg, name)) return llvm::None;
   }
 
   bool failed_once = false;
@@ -1000,8 +950,8 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
       }
     }
 
-    // Skip constant and input ops as they don't represent a TFLite operator.
-    if (IsConstOrInput(&inst)) continue;
+    // Skip constant ops as they don't represent a TFLite operator.
+    if (IsConst(&inst)) continue;
 
     // Fetch operand and result tensor indices.
     std::vector<int32_t> operands;
@@ -1029,14 +979,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
   // Get input and output tensor indices for the subgraph.
   std::vector<int32_t> inputs, outputs;
   for (auto* arg : bb.getArguments()) {
-    // Arguments of the main function are first passed to a pseudo input
-    // operation unlike arguments of other functions that are directly used by
-    // the actual ops.
-    if (is_main_fn && add_pseudo_input_nodes_) {
-      inputs.push_back(tensor_index_map[arg->user_begin()->getResult(0)]);
-    } else {
-      inputs.push_back(tensor_index_map[arg]);
-    }
+    inputs.push_back(tensor_index_map[arg]);
   }
   for (auto* result : bb.getTerminator()->getOperands()) {
     outputs.push_back(tensor_index_map[result]);
@@ -1080,13 +1023,10 @@ Translator::CreateMetadataVector() {
 
 Optional<std::string> Translator::Translate(
     ModuleOp module, bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
-    bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper,
-    bool add_pseudo_input_nodes) {
-  if (!IsValidTFLiteMlirModule(module, add_pseudo_input_nodes))
-    return llvm::None;
+    bool emit_custom_ops, OpOrArgNameMapper* op_or_arg_name_mapper) {
+  if (!IsValidTFLiteMlirModule(module)) return llvm::None;
   Translator translator(module, emit_builtin_tflite_ops, emit_select_tf_ops,
-                        emit_custom_ops, op_or_arg_name_mapper,
-                        add_pseudo_input_nodes);
+                        emit_custom_ops, op_or_arg_name_mapper);
   return translator.TranslateInternal();
 }
 
@@ -1185,10 +1125,10 @@ Optional<std::string> Translator::TranslateInternal() {
 bool tflite::MlirToFlatBufferTranslateFunction(
     ModuleOp module, std::string* serialized_flatbuffer,
     bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    OpOrArgNameMapper* op_or_arg_name_mapper, bool add_pseudo_input_nodes) {
-  auto maybe_translated = Translator::Translate(
-      module, emit_builtin_tflite_ops, emit_select_tf_ops, emit_custom_ops,
-      op_or_arg_name_mapper, add_pseudo_input_nodes);
+    OpOrArgNameMapper* op_or_arg_name_mapper) {
+  auto maybe_translated =
+      Translator::Translate(module, emit_builtin_tflite_ops, emit_select_tf_ops,
+                            emit_custom_ops, op_or_arg_name_mapper);
   if (!maybe_translated) return true;
   *serialized_flatbuffer = std::move(*maybe_translated);
   return false;
@@ -1196,13 +1136,12 @@ bool tflite::MlirToFlatBufferTranslateFunction(
 
 bool tflite::MlirToFlatBufferTranslateFunction(
     ModuleOp module, std::string* serialized_flatbuffer,
-    bool emit_builtin_tflite_ops, bool emit_select_tf_ops, bool emit_custom_ops,
-    bool add_pseudo_input_nodes) {
+    bool emit_builtin_tflite_ops, bool emit_select_tf_ops,
+    bool emit_custom_ops) {
   OpOrArgLocNameMapper op_or_arg_name_mapper;
   return MlirToFlatBufferTranslateFunction(
       module, serialized_flatbuffer, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, &op_or_arg_name_mapper,
-      add_pseudo_input_nodes);
+      emit_select_tf_ops, emit_custom_ops, &op_or_arg_name_mapper);
 }
 
 static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
@@ -1217,8 +1156,7 @@ static mlir::LogicalResult MlirToFlatBufferFileTranslateFunction(
   }
   if (tflite::MlirToFlatBufferTranslateFunction(
           module, &serialized_flatbuffer, emit_builtin_tflite_ops,
-          emit_select_tf_ops, emit_custom_ops, op_or_arg_name_mapper.get(),
-          /*add_pseudo_input_nodes=*/false))
+          emit_select_tf_ops, emit_custom_ops, op_or_arg_name_mapper.get()))
     return mlir::failure();
 
   output << serialized_flatbuffer;

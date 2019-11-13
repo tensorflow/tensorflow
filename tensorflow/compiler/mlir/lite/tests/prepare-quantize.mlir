@@ -2,20 +2,13 @@
 
 // CHECK-LABEL: quantize_float_placeholder_only
 func @quantize_float_placeholder_only(%arg0: tensor<f32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xf32>) -> (tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>) {
-  %0 = "tfl.pseudo_input"(%arg0) : (tensor<f32>) -> tensor<f32>
-  %1 = "tfl.pseudo_input"(%arg1) : (tensor<2x3xi32>) -> tensor<2x3xi32>
-  %2 = "tfl.pseudo_input"(%arg2) : (tensor<2x3xf32>) -> tensor<2x3xf32>
+  return %arg0, %arg1, %arg2: tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>
 
-  return %0, %1, %2: tensor<f32>, tensor<2x3xi32>, tensor<2x3xf32>
-
-// CHECK-NEXT: %[[in:.*]] = "tfl.pseudo_input"(%arg0)
-// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%[[in]])
+// CHECK-NEXT: %[[q:.*]] = "tfl.quantize"(%arg0)
 // CHECK-NEXT: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
-// CHECK-NEXT: %[[in_1:.*]] = "tfl.pseudo_input"(%arg1)
-// CHECK-NEXT: %[[in_0:.*]] = "tfl.pseudo_input"(%arg2)
-// CHECK-NEXT: %[[q_0:.*]] = "tfl.quantize"(%[[in_0]])
+// CHECK-NEXT: %[[q_0:.*]] = "tfl.quantize"(%arg2)
 // CHECK-NEXT: %[[dq_0:.*]] = "tfl.dequantize"(%[[q_0]])
-// CHECK-NEXT: %[[dq]], %[[in_1]], %[[dq_0]]
+// CHECK-NEXT: %[[dq]], %arg1, %[[dq_0]]
 }
 
 // CHECK-LABEL: DequantizeAndQuantize

@@ -1463,84 +1463,80 @@ TEST(uKernels, ReductionSumVectorTest) {
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
 }
 
-TEST(uKernels, MeanStddevNormalizationNoneZeroInput) {
+namespace {
+// Parameterized test: mean, difference, tolerance.
+// Input is constructed as [mean-2*diff, mean-diff, mean+diff, mean+2*diff]
+class MeanStddevNormalizationTest
+    : public testing::TestWithParam<std::tuple<float, float, float>> {};
+}  // namespace
+
+TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
+  const float mean = std::get<0>(GetParam());
+  const float diff = std::get<1>(GetParam());
+  const float tolerance = std::get<2>(GetParam());
+
   constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
+  const float input[kVectorSize] = {mean - 2 * diff, mean - diff, mean + diff,
+                                    mean + 2 * diff};
+  float output[kVectorSize];
+  MeanStddevNormalization(input, output, kVectorSize, 1);
+  std::vector<float> expected_output;
+  if (diff == 0.0f) {
+    expected_output.assign({0.0f, 0.0f, 0.0f, 0.0f});
+  } else {
+    const float ksqrt16 = std::sqrt(1.6f);
+    const float ksqrt04 = std::sqrt(0.4f);
+    expected_output.assign({-ksqrt16, -ksqrt04, ksqrt04, ksqrt16});
+  }
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          ArrayFloatNear(expected_output, tolerance)));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    uKernels, MeanStddevNormalizationTest,
+    testing::Values(
+        std::make_tuple(0.0f, 0.0f, 0.0f),         // zero mean, zero variance
+        std::make_tuple(0.0f, 0.01f, 0.0f),        // zero mean, small variance
+        std::make_tuple(0.0f, 100.0f, 1.20e-7f),   // zero mean, large variance
+        std::make_tuple(0.01f, 0.0f, 0.0f),        // small mean, zero variance
+        std::make_tuple(0.01f, 0.01f, 0.0f),       // small mean, small variance
+        std::make_tuple(0.01f, 100.0f, 1.20e-7f),  // small mean, large variance
+        std::make_tuple(100.0f, 0.0f, 0.0f),       // large mean, zero variance
+        std::make_tuple(100.0f, 0.01f, 199.0f),    // large mean, small variance
+        std::make_tuple(100.0f, 100.0f, 1.20e-7f)  // large mean, large variance
+        ));
+
+TEST(uKernels, MeanStddevNormalizationAllBatches) {
+  constexpr int kVectorSize = 4;
+  constexpr int kBatchSize = 8;  // 9, but large mean, small variance fails
 
   // None-zero input.
   static float input[kVectorSize * kBatchSize] = {
-      0.1, 0.2, 0.3, 0.4,  // batch 0
-      0.9, 1.0, 1.1, 1.2,  // batch 1
+      0.0f,     0.0f,    0.0f,    0.0f,     // zero mean, zero variance
+      -0.02f,   -0.01f,  0.01f,   0.02f,    // zero mean, small variance
+      -200.0f,  -100.0f, 100.0f,  200.0f,   // zero mean, large variance
+      0.01f,    0.01f,   0.01f,   0.01f,    // small mean, zero variance
+      -0.01f,   0.0f,    0.02f,   0.03f,    // small mean, small variance
+      -199.99f, -99.99f, 100.01f, 200.01f,  // small mean, large variance
+      100.0f,   100.0f,  100.0f,  100.0f,   // large mean, zero variance
+      -100.0f,  0.0f,    200.0f,  300.0f,   // large mean, large variance
   };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
+  float output[kVectorSize * kBatchSize];
+  MeanStddevNormalization(input, output, kVectorSize, kBatchSize);
+  const float ksqrt16 = std::sqrt(1.6f);
+  const float ksqrt04 = std::sqrt(0.4f);
   const std::vector<float> expected_output = {
-      -1.34164071, -0.447213531, 0.44721365,  1.34164071,  // batch 0
-      -1.34163153, -0.447210163, 0.447211236, 1.3416326,   // batch 1
+      0.0f,     0.0f,     0.0f,    0.0f,     // zero mean, zero variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // zero mean, small variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // zero mean, large variance
+      0.0f,     0.0f,     0.0f,    0.0f,     // small mean, zero variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // small mean, small variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // small mean, large variance
+      0.0f,     0.0f,     0.0f,    0.0f,     // large mean, zero variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
   };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
-}
-
-TEST(uKernels, MeanStddevNormalizationAllZeroInput) {
-  constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
-
-  // Zero input.
-  static float input[kVectorSize * kBatchSize] = {
-      0.0, 0.0, 0.0, 0.0,  // batch 0
-      0.0, 0.0, 0.0, 0.0,  // batch 1
-  };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
-  const std::vector<float> expected_output = {
-      0.0, 0.0, 0.0, 0.0,  // batch 0
-      0.0, 0.0, 0.0, 0.0,  // batch 1
-  };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
-}
-
-TEST(uKernels, MeanStddevNormalizationMixed) {
-  constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
-
-  // Mix of zero and non-zero input.
-  static float input[kVectorSize * kBatchSize] = {
-      0.0, 0.0, 0.0, 0.0,  // batch 0
-      0.1, 0.2, 0.3, 0.4,  // batch 1
-  };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
-  const std::vector<float> expected_output = {
-      0.0,         0.0,          0.0,        0.0,         // batch 0
-      -1.34164071, -0.447213531, 0.44721365, 1.34164071,  // batch 1
-  };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
-}
-
-TEST(uKernels, MeanStddevNormalizationSmallValue) {
-  constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 2;
-  constexpr float kNormalizationEpsilon = 1e-8;
-
-  // Mix of zero and non-zero input.
-  static float input[kVectorSize * kBatchSize] = {
-      3e-5, -7e-6, -9e-5, 1e-6,  // batch 0
-      4e-5, 9e-6,  2e-4,  0.0,   // batch 1
-  };
-  std::vector<float> output(kVectorSize * kBatchSize);
-  MeanStddevNormalization(input, output.data(), kVectorSize, kBatchSize,
-                          kNormalizationEpsilon);
-  const std::vector<float> expected_output = {
-      1.04231524,   0.212946132,  -1.64753067, 0.392269224,   // batch 0
-      -0.275023013, -0.658201098, 1.70267045,  -0.769446373,  // batch 1
-  };
-  EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
+  EXPECT_THAT(output, testing::ElementsAreArray(
+                          ArrayFloatNear(expected_output, 1.2e-07)));
 }
 
 }  // namespace tensor_utils

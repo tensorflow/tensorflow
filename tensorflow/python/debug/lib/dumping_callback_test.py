@@ -219,8 +219,9 @@ class TracingCallbackTest(
       # Session.run() in v1 graph mode, so doesn't get logged to the
       # .execution file.
       executed_op_types, _, _, _, _ = self._readAndCheckExecutionFile()
+      executed_op_types = [op_type for op_type in executed_op_types
+                           if "sin1p_log_sum" in op_type]
       self.assertLen(executed_op_types, 1)
-      self.assertIn("sin1p_log_sum", executed_op_types[0])
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
@@ -601,7 +602,8 @@ class TracingCallbackTest(
       ("NoTensor", "NO_TENSOR"),
       ("FullTensor", "FULL_TENSOR"),
   )
-  def testMultiThreadedExecution(self, tensor_debug_mode):
+  def testMultiThreadedExecutionWithSameSetting(self, tensor_debug_mode):
+    """Dumping from multiple threads using the same setting."""
     writer = dumping_callback.enable_dump_debug_info(
         self.dump_root, tensor_debug_mode=tensor_debug_mode)
     x = variables.Variable(10.0, dtype=dtypes.float32)
@@ -657,6 +659,64 @@ class TracingCallbackTest(
           if op_type == "Mul"
       ]
       self.assertAllClose(mul_values, [6.0, 6.0, 6.0, 6.0])
+
+  def testMultiThreadedDumpingWithDifferentSettings(self):
+    dump_root_1 = os.path.join(self.dump_root, "dump_root_1")
+    dump_root_2 = os.path.join(self.dump_root, "dump_root_2")
+    v1 = variables.Variable(10.0, dtype=dtypes.float32)
+    v2 = variables.Variable(3.0, dtype=dtypes.float32)
+
+    def add_negative_v1_squared_to_itself():
+      writer = dumping_callback.enable_dump_debug_info(
+          dump_root_1, tensor_debug_mode="FULL_TENSOR")
+      # Run in a loop to facilitate interleaving between threads.
+      for _ in range(3):
+        v1.assign_add(-(v1 ** 2.0))
+      writer.FlushNonExecutionFiles()
+      writer.FlushExecutionFiles()
+
+    def add_negative_v2_squared_to_itself():
+      writer = dumping_callback.enable_dump_debug_info(
+          dump_root_2, tensor_debug_mode="FULL_TENSOR")
+      v2_squared = v2 ** 2.0
+      # Since dumping is disabled before the Neg op is called, no tensor data
+      # should be dumped from the op, but this shouldn't affect the dumping of
+      # the tensor data from the Neg op in `add_negative_v1_squared_to_itself`.
+      # Both behavior is checked below.
+      dumping_callback.disable_dump_debug_info()
+      negative_v2_squared = -v2_squared
+      v2.assign_add(negative_v2_squared)
+      writer.FlushNonExecutionFiles()
+      writer.FlushExecutionFiles()
+
+    # v2 is mutated on a sub-thread.
+    sub_thread = threading.Thread(target=add_negative_v2_squared_to_itself)
+    sub_thread.start()
+    add_negative_v1_squared_to_itself()  # v1 is mutated on the main thread.
+    sub_thread.join()
+    # 10 - 10 * 10 = -90.
+    # -90 - (-90 * -90) = -8190.
+    # -8190 - (-8190 * -8190) = -67084290.
+    self.assertAllClose(v1.read_value(), -67084290.0)
+    self.assertAllClose(v2.read_value(), -6.0)
+
+    (executed_op_types, _, _, _,
+     tensor_values) = self._readAndCheckExecutionFile(dump_root=dump_root_1)
+    v1_squared_values = [
+        tensor_values[i] for i, op_type in enumerate(executed_op_types)
+        if op_type == "Pow"]
+    negative_v1_squared_values = [
+        tensor_values[i] for i, op_type in enumerate(executed_op_types)
+        if op_type == "Neg"]
+    self.assertAllClose(v1_squared_values, [[100.0], [8100.0], [67076100.0]])
+    self.assertAllClose(
+        negative_v1_squared_values, [[-100.0], [-8100.0], [-67076100.0]])
+
+    (executed_op_types, _, _, _,
+     tensor_values) = self._readAndCheckExecutionFile(dump_root=dump_root_2)
+    self.assertNotIn("Neg", executed_op_types)
+    v2_squared_values = tensor_values[executed_op_types.index("Pow")]
+    self.assertAllClose(v2_squared_values, [9.0])
 
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),

@@ -376,10 +376,10 @@ void mlir::linalg::SubViewOp::build(Builder *b, OperationState &result,
   result.addAttributes(attrs);
 }
 
-static void print(OpAsmPrinter &p, SubViewOp op) {
+static void print(OpAsmPrinter &p, mlir::linalg::SubViewOp op) {
   p << op.getOperationName() << " " << *op.getOperand(0) << "[";
   auto ranges = op.getRanges();
-  interleaveComma(ranges, p, [&p](const SubViewOp::Range &i) {
+  interleaveComma(ranges, p, [&p](const mlir::linalg::SubViewOp::Range &i) {
     p << *i.min << ", " << *i.max << ", " << *i.step;
   });
   p << "]";
@@ -646,8 +646,9 @@ static LogicalResult verify(ConvOp op) {
   return success();
 }
 
-llvm::raw_ostream &mlir::linalg::operator<<(llvm::raw_ostream &os,
-                                            SubViewOp::Range &range) {
+llvm::raw_ostream &
+mlir::linalg::operator<<(llvm::raw_ostream &os,
+                         mlir::linalg::SubViewOp::Range &range) {
   return os << "range " << *range.min << ":" << *range.max << ":"
             << *range.step;
 }

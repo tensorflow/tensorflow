@@ -78,12 +78,32 @@ StatusOr<bool> HloGetDimensionSizeRewriter::Run(HloModule* module) {
   TF_ASSIGN_OR_RETURN(DynamicDimensionInference inference,
                       DynamicDimensionInference::Run(module));
   *proto.mutable_hlo_module() = module->ToProto();
+  // It's important to replace get-dimension-size first before
+  // set-dimension-size for the case below:
+  //  static_op    dynamic_size
+  //    |             |
+  //  set-dimension-size // Marks the dimension as dynamic
+  //    |
+  //  get-dimension-size
+  //
+  // If we replace set dimension size first, we'd have
+  //
+  //  static_op
+  //    |
+  //  get-dimension-size
+  //
+  // This will get static size of the op, which is incorrect.
   for (auto* computation : module->computations()) {
     for (auto instruction : computation->instructions()) {
       TF_ASSIGN_OR_RETURN(bool replaced_get_size,
                           ReplaceGetSize(instruction, &inference));
+      changed = changed || replaced_get_size;
+    }
+  }
+  for (auto* computation : module->computations()) {
+    for (auto instruction : computation->instructions()) {
       TF_ASSIGN_OR_RETURN(bool replaced_set_size, ReplaceSetSize(instruction));
-      changed = changed || replaced_get_size || replaced_set_size;
+      changed = changed || replaced_set_size;
     }
   }
   return changed;

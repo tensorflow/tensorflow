@@ -12,8 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
+
+#include <string>
+#include <utility>
+
+#include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/strcat.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 // TODO(mihaimaruseac): After all filesystems are converted, all calls to
 // methods from `FileSystem` will have to be replaced to calls to private
@@ -22,25 +29,64 @@ limitations under the License.
 
 namespace tensorflow {
 
+using UniquePtrTo_TF_Status =
+    ::std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)>;
+
 Status ModularFileSystem::NewRandomAccessFile(
     const std::string& fname, std::unique_ptr<RandomAccessFile>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_random_access_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support NewRandomAccessFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto file = tensorflow::MakeUnique<TF_RandomAccessFile>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_random_access_file(filesystem_.get(), translated_name.c_str(),
+                               file.get(), plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = tensorflow::MakeUnique<ModularRandomAccessFile>(
+        translated_name, std::move(file), random_access_file_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewWritableFile(
     const std::string& fname, std::unique_ptr<WritableFile>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_writable_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support NewWritableFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto file = tensorflow::MakeUnique<TF_WritableFile>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_writable_file(filesystem_.get(), translated_name.c_str(),
+                          file.get(), plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = tensorflow::MakeUnique<ModularWritableFile>(
+        translated_name, std::move(file), writable_file_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewAppendableFile(
     const std::string& fname, std::unique_ptr<WritableFile>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->new_appendable_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support NewAppendableFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  auto file = tensorflow::MakeUnique<TF_WritableFile>();
+  std::string translated_name = TranslateName(fname);
+  ops_->new_appendable_file(filesystem_.get(), translated_name.c_str(),
+                            file.get(), plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK)
+    *result = tensorflow::MakeUnique<ModularWritableFile>(
+        translated_name, std::move(file), writable_file_ops_.get());
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::NewReadOnlyMemoryRegionFromFile(
@@ -103,9 +149,15 @@ Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname) {
 }
 
 Status ModularFileSystem::CreateDir(const std::string& dirname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->create_dir == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", dirname, " does not support CreateDir()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  ops_->create_dir(filesystem_.get(), translated_name.c_str(),
+                   plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::Stat(const std::string& fname, FileStatistics* stat) {
@@ -142,8 +194,14 @@ Status ModularFileSystem::CopyFile(const std::string& src,
 }
 
 std::string ModularFileSystem::TranslateName(const std::string& name) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return "Modular filesystem stub not implemented yet";
+  if (ops_->translate_name == nullptr) return FileSystem::TranslateName(name);
+
+  char* p = ops_->translate_name(filesystem_.get(), name.c_str());
+  CHECK(p != nullptr) << "TranslateName(" << name << ") returned nullptr";
+
+  std::string ret(p);
+  free(p);
+  return ret;
 }
 
 void ModularFileSystem::FlushCaches() {
@@ -152,51 +210,71 @@ void ModularFileSystem::FlushCaches() {
 
 Status ModularRandomAccessFile::Read(uint64 offset, size_t n,
                                      StringPiece* result, char* scratch) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->read == nullptr)
+    return errors::Unimplemented(
+        tensorflow::strings::StrCat("Read() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  int64_t read =
+      ops_->read(file_.get(), offset, n, scratch, plugin_status.get());
+  if (read > 0) *result = StringPiece(scratch, read);
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularRandomAccessFile::Name(StringPiece* result) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  *result = filename_;
+  return Status::OK();
 }
 
 Status ModularWritableFile::Append(StringPiece data) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->append == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Append() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->append(file_.get(), data.data(), data.size(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Close() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->close == nullptr)
+    return errors::Unimplemented(
+        tensorflow::strings::StrCat("Close() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->close(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Flush() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->flush == nullptr) return Status::OK();
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->flush(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Sync() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->sync == nullptr) return Flush();
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  ops_->sync(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularWritableFile::Name(StringPiece* result) const {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  *result = filename_;
+  return Status::OK();
 }
 
 Status ModularWritableFile::Tell(int64* position) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->tell == nullptr)
+    return errors::Unimplemented(
+        tensorflow::strings::StrCat("Tell() not implemented for ", filename_));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  *position = ops_->tell(file_.get(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 }  // namespace tensorflow

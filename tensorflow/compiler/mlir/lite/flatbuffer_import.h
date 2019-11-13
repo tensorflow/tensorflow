@@ -32,8 +32,7 @@ namespace tflite {
 mlir::OwningModuleRef FlatBufferToMlir(
     absl::string_view buffer, mlir::MLIRContext* context,
     mlir::Location base_loc,
-    const std::vector<std::string>& ordered_output_arrays,
-    bool add_pseudo_input_nodes = true);
+    const std::vector<std::string>& ordered_output_arrays);
 }  // namespace tflite
 
 #endif  // TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_

@@ -135,24 +135,20 @@ namespace {
 // idx_offset must be a int8x16_t vector containing 64 in each lane.
 inline uint8x16_t aarch64_lookup_vector(const uint8x16x4_t table[4],
                                         uint8x16_t indices) {
-  // Index offset between adjacent table quaters
-  const uint8x16_t idx_offset = vdupq_n_u8(static_cast<uint8_t>(16 * 4));
+  // Look up in 1st quarter of the table: top 2 bits of indices == 00
+  uint8x16_t output1 = vqtbl4q_u8(table[0], indices);
+  // Look up in 2nd quarter of the table: top 2 bits of indices == 01
+  uint8x16_t output2 =
+      vqtbl4q_u8(table[1], veorq_u8(indices, vdupq_n_u8(0x40)));
+  // Look up in 3rd quarter of the table: top 2 bits of indices == 10
+  uint8x16_t output3 =
+      vqtbl4q_u8(table[2], veorq_u8(indices, vdupq_n_u8(0x80)));
+  // Look up in 4th quarter of the table: top 2 bits of indices == 11
+  uint8x16_t output4 =
+      vqtbl4q_u8(table[3], veorq_u8(indices, vdupq_n_u8(0xc0)));
 
-  // Look up in first quarter of the table. (out of range => set to 0)
-  uint8x16_t output = vqtbl4q_u8(table[0], indices);
-
-  // Subtract 16*4 from index
-  indices = vsubq_u8(indices, idx_offset);
-  // Look up in 2nd quater of the table. (out of range => keep value)
-  output = vqtbx4q_u8(output, table[1], indices);
-
-  // Look up in 3rd quater of the table. (out of range => keep value)
-  indices = vsubq_u8(indices, idx_offset);
-  output = vqtbx4q_u8(output, table[2], indices);
-
-  // Look up in 4th quater of the table. (out of range => keep value)
-  indices = vsubq_u8(indices, idx_offset);
-  return vqtbx4q_u8(output, table[3], indices);
+  // Combine result of the 4 lookups.
+  return vorrq_u8(vorrq_u8(output1, output2), vorrq_u8(output3, output4));
 }
 }  // namespace
 #endif
@@ -176,19 +172,6 @@ void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
   table[2] = vld1q_u8_x4(data->table + 16 * 4 * 2);
   table[3] = vld1q_u8_x4(data->table + 16 * 4 * 3);
 
-  // Vectorized loop; process uint8x16x4_t (16*4 = 64 elements) at a time.
-  constexpr int vectorized_16x4_loop_step = 16 * 4;
-  const int vectorized_16x4_loop_end =
-      size / vectorized_16x4_loop_step * vectorized_16x4_loop_step;
-  for (; i < vectorized_16x4_loop_end; i += vectorized_16x4_loop_step) {
-    uint8x16x4_t input = vld1q_u8_x4(input_data + i);
-    uint8x16x4_t output;
-    output.val[0] = aarch64_lookup_vector(table, input.val[0]);
-    output.val[1] = aarch64_lookup_vector(table, input.val[1]);
-    output.val[2] = aarch64_lookup_vector(table, input.val[2]);
-    output.val[3] = aarch64_lookup_vector(table, input.val[3]);
-    vst1q_u8_x4(output_data + i, output);
-  }
   // Vectorized loop; process uint8x16_t (16 elements) at a time.
   constexpr int vectorized_16_loop_step = 16;
   const int vectorized_16_loop_end =

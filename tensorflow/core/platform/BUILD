@@ -29,6 +29,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_android",
     "tf_copts",  # @unused
 )
 load(
@@ -82,17 +83,6 @@ cc_library(
     deps = [":types"],
 )
 
-filegroup(
-    name = "annotation_hdrs",
-    srcs = [
-        "annotation.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
 cc_library(
     name = "annotation",
     srcs = ["annotation.cc"],
@@ -103,6 +93,7 @@ cc_library(
     ],
     deps = [
         ":macros",
+        ":types",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -636,7 +627,6 @@ cc_binary(
         ":png",
         ":prefetch",
         ":protobuf",
-        ":rocm_rocdl_path",
         ":scanner",
         ":setround",
         ":stacktrace",
@@ -653,7 +643,7 @@ cc_binary(
         ":threadpool_options",
         ":tstring",
         ":types",
-    ],
+    ] + if_not_android([":rocm_rocdl_path"]),
 )
 
 # --------------------------------------------------------------------------

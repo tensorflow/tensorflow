@@ -182,21 +182,24 @@ private:
                          builder.getUnitAttr());
     ModuleManager moduleManager(kernelModule);
 
-    llvm::SmallVector<FuncOp, 8> funcsToInsert = {kernelFunc};
-    while (!funcsToInsert.empty()) {
-      FuncOp func = funcsToInsert.pop_back_val();
-      moduleManager.insert(func);
+    moduleManager.insert(kernelFunc);
 
-      // TODO(b/141098412): Support any op with a callable interface.
-      func.walk([&](CallOp call) {
-        auto callee = call.callee();
-        if (moduleManager.lookupSymbol<FuncOp>(callee))
-          return;
+    llvm::SmallVector<Operation *, 8> symbolDefWorklist = {kernelFunc};
+    while (!symbolDefWorklist.empty()) {
+      if (Optional<SymbolTable::UseRange> symbolUses =
+              SymbolTable::getSymbolUses(symbolDefWorklist.pop_back_val())) {
+        for (SymbolTable::SymbolUse symbolUse : *symbolUses) {
+          StringRef symbolName =
+              symbolUse.getSymbolRef().cast<FlatSymbolRefAttr>().getValue();
+          if (moduleManager.lookupSymbol(symbolName))
+            continue;
 
-        auto calleeFromParent =
-            parentModuleManager.lookupSymbol<FuncOp>(callee);
-        funcsToInsert.push_back(calleeFromParent.clone());
-      });
+          Operation *symbolDefClone =
+              parentModuleManager.lookupSymbol(symbolName)->clone();
+          symbolDefWorklist.push_back(symbolDefClone);
+          moduleManager.insert(symbolDefClone);
+        }
+      }
     }
 
     return kernelModule;

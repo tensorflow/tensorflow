@@ -2527,6 +2527,7 @@ tf_proto_library(
         ":error_codes_proto_impl",
         "//tensorflow/core/lib/core:error_codes_proto",
     ],
+    visibility = ["//visibility:private"],
 )
 
 alias(
@@ -4468,11 +4469,18 @@ tf_cc_test(
     srcs = ["framework/run_handler_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":core_cpu",
+        ":direct_session_internal",
         ":framework_internal",
         ":lib",
         ":lib_internal",
+        ":protos_all_cc",
+        ":tensor_testutil",
         ":test",
         ":test_main",
+        ":testlib",
+        "//tensorflow/core/kernels:cwise_op",
+        "//tensorflow/core/kernels:matmul_op",
         "//third_party/eigen3",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
