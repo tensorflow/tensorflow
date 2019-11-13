@@ -390,7 +390,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
-    if kwargs.pop("tpu_embedding_variable_creator", False):
+    if kwargs.pop("skip_mirrored_creator", False):
       return next_creator(*args, **kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
