@@ -2058,6 +2058,26 @@ for dtype in dtype_list:
   let hasCanonicalizer = 1;
 }
 
+def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
+  let summary = "L2 Loss.";
+
+  let description = [{
+Computes half the L2 norm of a tensor without the `sqrt`:
+
+    output = sum(t ** 2) / 2
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$t
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_LRNOp : TF_Op<"LRN", [NoSideEffect]> {
   let summary = "Local Response Normalization.";
 
