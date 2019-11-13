@@ -115,16 +115,6 @@ func @conv_view6(%arg0: memref<?x?x?x?x?x?xf32, offset: ?, strides: [?, ?, ?, ?,
 //       CHECK:  %{{.*}}: memref<?x?x?x?x?x?xf32, #[[strided6D]]>, %{{.*}}: memref<?x?x?x?x?x?xf32, #[[strided6D]]>, %{{.*}}: memref<?x?x?x?x?x?xf32, #[[strided6D]]>) {
 //       CHECK:   linalg.conv(%{{.*}}, %{{.*}}, %{{.*}}) {dilations = [4, 4, 5, 5], strides = [2, 2, 3, 3]} : memref<?x?x?x?x?x?xf32, #[[strided6D]]>, memref<?x?x?x?x?x?xf32, #[[strided6D]]>, memref<?x?x?x?x?x?xf32, #[[strided6D]]>
 
-func @subview(%arg0: memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1]>) {
-  %c0 = constant 0 : index
-  %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : memref<?x?xvector<3x4xi4>, offset: ?, strides: [?, 1]>
-  return
-}
-// CHECK-LABEL: func @subview(
-//       CHECK:  %{{.*}}: memref<?x?xvector<3x4xi4>, #[[strided2D]]>) {
-//       CHECK:   constant 0 : index
-//       CHECK:   linalg.subview %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}] : memref<?x?xvector<3x4xi4>, #[[strided2D]]>
-
 #accesses = [
   (i, j, k) -> (j, i),
   (i, j, k) -> (i, k, i + j)

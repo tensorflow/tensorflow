@@ -33,14 +33,6 @@ func @store_number_of_indices(%v : memref<f32>) {
 
 // -----
 
-func @subview_number_of_indices(%v : memref<?x?xf32, (i, j)[off, M]->(off + M * i + j)>) {
-  // expected-error @+2 {{expected a strided memref followed by 6 indices specifying a range for each dimension}}
-  %c0 = constant 0 : index
-  linalg.subview %v[%c0, %c0] : memref<?x?xf32, (i, j)[off, M]->(off + M * i + j)>
-}
-
-// -----
-
 func @transpose_not_permutation(%v : memref<?x?xf32, (i, j)[off, M]->(off + M * i + j)>) {
   // expected-error @+1 {{expected a permutation map}}
   linalg.transpose %v (i, j) -> (i, i) : memref<?x?xf32, (i, j)[off, M]->(off + M * i + j)>

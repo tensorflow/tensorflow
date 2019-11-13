@@ -344,73 +344,6 @@ static LogicalResult verify(SliceOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// SubViewOp
-//===----------------------------------------------------------------------===//
-static Type getSubViewResultType(MemRefType memRefType) {
-  auto rank = memRefType.getRank();
-  SmallVector<int64_t, 4> sizes(rank, -1);
-  int64_t offset;
-  SmallVector<int64_t, 4> strides;
-  Type elementType = memRefType.getElementType();
-  auto res = getStridesAndOffset(memRefType, strides, offset);
-  assert(succeeded(res) && "SubViewOp expected strided memref type");
-  (void)res;
-  // Assume sizes and offset are fully dynamic for now until canonicalization
-  // occurs on the ranges.
-  // Strides don't change though.
-  // TODO(ntv) for canonicalization it may be better to use a (min, size, step)
-  // instead of a (min, max, step) abstraction.
-  auto stridedLayout = makeStridedLinearLayoutMap(
-      strides, MemRefType::getDynamicStrideOrOffset(), memRefType.getContext());
-  return MemRefType::get(sizes, elementType, stridedLayout,
-                         memRefType.getMemorySpace());
-}
-
-void mlir::linalg::SubViewOp::build(Builder *b, OperationState &result,
-                                    Value *view, ArrayRef<Value *> ranges,
-                                    Type resultType,
-                                    ArrayRef<NamedAttribute> attrs) {
-  if (!resultType)
-    resultType = getSubViewResultType(view->getType().cast<MemRefType>());
-  build(b, result, resultType, view, ranges);
-  result.addAttributes(attrs);
-}
-
-static void print(OpAsmPrinter &p, mlir::linalg::SubViewOp op) {
-  p << op.getOperationName() << " " << *op.getOperand(0) << "[";
-  auto ranges = op.getRanges();
-  interleaveComma(ranges, p, [&p](const mlir::linalg::SubViewOp::Range &i) {
-    p << *i.min << ", " << *i.max << ", " << *i.step;
-  });
-  p << "]";
-  p.printOptionalAttrDict(op.getAttrs());
-  p << " : " << op.getViewType();
-}
-
-static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::OperandType inputView, resultView;
-  MemRefType memRefType;
-  if (parser.parseOperand(inputView))
-    return failure();
-
-  SmallVector<OpAsmParser::OperandType, 12> ops;
-  // TODO(ntv) evolve parsing from
-  //    linalg.subview %0[%1, %2, %3, %4, %5, %6]
-  // to something resembling
-  //    linalg.subview %0[%1:%2:%3][%4:%5:%6]
-  if (parser.parseOperandList(ops, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttrDict(result.attributes) ||
-      parser.parseColonType(memRefType))
-    return failure();
-
-  auto indexTy = parser.getBuilder().getIndexType();
-  return failure(
-      parser.resolveOperand(inputView, memRefType, result.operands) ||
-      parser.resolveOperands(ops, indexTy, result.operands) ||
-      parser.addTypeToList(getSubViewResultType(memRefType), result.types));
-}
-
-//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 void mlir::linalg::TransposeOp::build(Builder *b, OperationState &result,
@@ -644,13 +577,6 @@ static LogicalResult verify(ConvOp op) {
       return failure();
   }
   return success();
-}
-
-llvm::raw_ostream &
-mlir::linalg::operator<<(llvm::raw_ostream &os,
-                         mlir::linalg::SubViewOp::Range &range) {
-  return os << "range " << *range.min << ":" << *range.max << ":"
-            << *range.step;
 }
 
 namespace mlir {

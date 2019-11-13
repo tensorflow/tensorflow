@@ -78,7 +78,7 @@ Value *Aliases::find(Value *v) {
       return it.first->second;
     }
     if (auto view = dyn_cast_or_null<SubViewOp>(v->getDefiningOp())) {
-      v = view.getView();
+      v = view.source();
       continue;
     }
     llvm::errs() << "View alias analysis reduces to: " << *v << "\n";

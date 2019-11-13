@@ -74,9 +74,8 @@ static llvm::cl::list<unsigned> clTileSizes(
 // a subset of the original loop ranges of `op`.
 // This is achieved by applying the `loopToOperandRangesMaps` permutation maps
 // to the `loopRanges` in order to obtain view ranges.
-static LinalgOp
-cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
-                    ArrayRef<mlir::linalg::SubViewOp::Range> loopRanges) {
+static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
+                                    ArrayRef<SubViewOp::Range> loopRanges) {
   auto maps = loopToOperandRangesMaps(op);
   SmallVector<Value *, 8> clonedViews;
   clonedViews.reserve(op.getNumInputsAndOutputs());
@@ -88,8 +87,7 @@ cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
     auto map = maps[idx];
     LLVM_DEBUG(dbgs() << "map: " << map << "\n");
     Value *view = en.value();
-    SmallVector<mlir::linalg::SubViewOp::Range, 8> viewRanges(
-        map.getNumResults());
+    SmallVector<SubViewOp::Range, 4> viewRanges(map.getNumResults());
     for (auto en2 : llvm::enumerate(map.getResults())) {
       unsigned d = en2.index();
       // loopToOperandRangesMaps are permutations-only.
@@ -99,16 +97,19 @@ cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
                         << "\t"
                         << "loopPos: " << loopPos << "\t" << viewRanges[d]);
     }
-    // TODO(ntv): opportunities for folding/CSE here rather than build new IR.
-    SmallVector<Value *, 12> subViewOperands;
-    subViewOperands.reserve(viewRanges.size() * 3);
+    // Construct a new subview for the tile.
+    unsigned rank = viewRanges.size();
+    SmallVector<Value *, 4> offsets, sizes, strides;
+    offsets.reserve(rank);
+    sizes.reserve(rank);
+    strides.reserve(rank);
     for (auto r : viewRanges) {
-      subViewOperands.push_back(r.min);
-      subViewOperands.push_back(r.max);
-      subViewOperands.push_back(r.step);
+      offsets.push_back(r.offset);
+      sizes.push_back(r.size);
+      strides.push_back(r.stride);
     }
     clonedViews.push_back(
-        b.create<mlir::linalg::SubViewOp>(loc, view, subViewOperands));
+        b.create<SubViewOp>(loc, view, offsets, sizes, strides));
   }
   auto operands = getAssumedNonViewOperands(op);
   clonedViews.append(operands.begin(), operands.end());
@@ -153,7 +154,7 @@ static ViewDimension getViewDefiningLoopRange(LinalgOp op, unsigned loopDepth) {
 static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
                      unsigned consumerIdx, unsigned producerIdx,
                      OperationFolder *folder) {
-  auto subView = dyn_cast_or_null<mlir::linalg::SubViewOp>(
+  auto subView = dyn_cast_or_null<SubViewOp>(
       consumer.getInput(consumerIdx)->getDefiningOp());
   auto slice = dyn_cast_or_null<SliceOp>(
       consumer.getInput(consumerIdx)->getDefiningOp());
@@ -172,13 +173,13 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
   unsigned nPar = producer.getNumParallelLoops();
   unsigned nRed = producer.getNumReductionLoops();
   unsigned nWin = producer.getNumWindowLoops();
-  SmallVector<mlir::linalg::SubViewOp::Range, 8> loopRanges(nPar + nRed + nWin);
+  SmallVector<SubViewOp::Range, 8> loopRanges(nPar + nRed + nWin);
 
   // Iterate over dimensions identified by the producer map for `producerIdx`.
   // This defines a subset of the loop ranges that we need to complete later.
   for (auto en : llvm::enumerate(producerMap.getResults())) {
     unsigned posInProducerLoop = en.value().cast<AffineDimExpr>().getPosition();
-    loopRanges[posInProducerLoop] = subView.getRange(en.index());
+    loopRanges[posInProducerLoop] = subView.getRanges()[en.index()];
   }
 
   OpBuilder b(consumer.getOperation());
@@ -187,14 +188,14 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
   // producer map for `producerIdx`, we need to explicitly compute the view that
   // defines the loop ranges using the `producer`.
   for (unsigned i = 0, nLoops = loopRanges.size(); i < nLoops; ++i) {
-    if (loopRanges[i].min)
+    if (loopRanges[i].offset)
       LLVM_DEBUG(llvm::dbgs()
                  << "existing LoopRange: " << loopRanges[i] << "\n");
     else {
       auto viewDim = getViewDefiningLoopRange(producer, i);
-      loopRanges[i] = mlir::linalg::SubViewOp::Range{
-          constant_index(folder, 0), dim(viewDim.view, viewDim.dimension),
-          constant_index(folder, 1)};
+      loopRanges[i] = SubViewOp::Range{constant_index(folder, 0),
+                                       dim(viewDim.view, viewDim.dimension),
+                                       constant_index(folder, 1)};
       LLVM_DEBUG(llvm::dbgs() << "new LoopRange: " << loopRanges[i] << "\n");
     }
   }
@@ -286,8 +287,7 @@ Optional<FusionInfo> mlir::linalg::fuseProducerOf(
 
     // Must be a subview or a slice to guarantee there are loops we can fuse
     // into.
-    auto subView = dyn_cast_or_null<mlir::linalg::SubViewOp>(
-        consumedView->getDefiningOp());
+    auto subView = dyn_cast_or_null<SubViewOp>(consumedView->getDefiningOp());
     auto slice = dyn_cast_or_null<SliceOp>(consumedView->getDefiningOp());
     if (!subView && !slice) {
       LLVM_DEBUG(dbgs() << "\nNot fusable (not a subview or slice)");

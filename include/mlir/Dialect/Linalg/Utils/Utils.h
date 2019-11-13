@@ -20,6 +20,7 @@
 
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Helpers.h"
 
 namespace mlir {
@@ -40,7 +41,7 @@ public:
   /// *only* way to capture the loop induction variable.
   LoopRangeBuilder(ValueHandle *iv, ValueHandle range);
   LoopRangeBuilder(ValueHandle *iv, Value *range);
-  LoopRangeBuilder(ValueHandle *iv, linalg::SubViewOp::Range range);
+  LoopRangeBuilder(ValueHandle *iv, SubViewOp::Range range);
 
   LoopRangeBuilder(const LoopRangeBuilder &) = delete;
   LoopRangeBuilder(LoopRangeBuilder &&) = default;
@@ -64,7 +65,7 @@ public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
                        llvm::ArrayRef<Value *> ranges);
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<linalg::SubViewOp::Range> ranges);
+                       llvm::ArrayRef<SubViewOp::Range> ranges);
   edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:

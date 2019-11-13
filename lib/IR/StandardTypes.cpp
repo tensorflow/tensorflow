@@ -123,6 +123,8 @@ unsigned Type::getIntOrFloatBitWidth() {
 //===----------------------------------------------------------------------===//
 // ShapedType
 //===----------------------------------------------------------------------===//
+constexpr int64_t ShapedType::kDynamicSize;
+constexpr int64_t ShapedType::kDynamicStrideOrOffset;
 
 Type ShapedType::getElementType() const {
   return static_cast<ImplType *>(impl)->elementType;

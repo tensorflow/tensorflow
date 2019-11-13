@@ -186,6 +186,13 @@ public:
   using ImplType = detail::ShapedTypeStorage;
   using Type::Type;
 
+  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // Unfortunately, uses of `-1` have crept deep into the codebase now and are
+  // hard to track.
+  static constexpr int64_t kDynamicSize = -1;
+  static constexpr int64_t kDynamicStrideOrOffset =
+      std::numeric_limits<int64_t>::min();
+
   /// Return the element type.
   Type getElementType() const;
 
@@ -395,8 +402,12 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
+  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // Unfortunately, uses of `-1` have crept deep into the codebase now and are
+  // hard to track.
+  static constexpr int64_t kDynamicSize = -1;
   static int64_t getDynamicStrideOrOffset() {
-    return std::numeric_limits<int64_t>::min();
+    return ShapedType::kDynamicStrideOrOffset;
   }
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
@@ -410,7 +421,6 @@ private:
                             unsigned memorySpace, Optional<Location> location);
   using Base::getImpl;
 };
-
 
 /// Tuple types represent a collection of other types. Note: This type merely
 /// provides a common mechanism for representing tuples in MLIR. It is up to

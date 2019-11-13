@@ -56,36 +56,7 @@ func @dot(%arg0: memref<?xf32, offset: ?, strides: [1]>, %arg1: memref<?xf32, of
 //    CHECK-COUNT-3:   llvm.mlir.constant(1 : index){{.*[[:space:]].*}}llvm.alloca{{.*[[:space:]].*}}llvm.store
 //       CHECK-NEXT:   llvm.call @linalg_dot_viewsxf32_viewsxf32_viewf32(%{{.*}}, %{{.*}}, %{{.*}}) : (!llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, float*, i64, [1 x i64], [1 x i64] }*">, !llvm<"{ float*, float*, i64 }*">) -> ()
 
-func @subview(%arg0: memref<?x?xf32, offset: ?, strides: [?, 1]>) {
-  %c0 = constant 0 : index
-  %0 = linalg.subview %arg0[%c0, %c0, %c0, %c0, %c0, %c0] : memref<?x?xf32, offset: ?, strides: [?, 1]>
-  return
-}
-// CHECK-LABEL: func @subview
-//
-// Subview lowers to range + slice op
-//       CHECK:   llvm.mlir.undef : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   llvm.mlir.undef : !llvm<"{ i64, i64, i64 }">
-//       CHECK:   llvm.mlir.undef : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
-//
-// Select occurs in slice op lowering
-//       CHECK:   llvm.extractvalue %{{.*}}[3, 0] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
-//  CHECK-NEXT:   llvm.icmp "slt" %{{.*}}, %{{.*}} : !llvm.i64
-//  CHECK-NEXT:   llvm.select %{{.*}}, %{{.*}}, %{{.*}} : !llvm.i1, !llvm.i64
-//  CHECK-NEXT:   llvm.sub %{{.*}}, %{{.*}} : !llvm.i64
-//  CHECK-NEXT:   llvm.icmp "slt" %{{.*}}, %{{.*}} : !llvm.i64
-//  CHECK-NEXT:   llvm.select %{{.*}}, %{{.*}}, %{{.*}} : !llvm.i1, !llvm.i64
-//  CHECK-NEXT:   llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
-//
-//       CHECK:   llvm.extractvalue %{{.*}}[3, 1] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
-//  CHECK-NEXT:   llvm.icmp "slt" %{{.*}}, %{{.*}} : !llvm.i64
-//  CHECK-NEXT:   llvm.select %{{.*}}, %{{.*}}, %{{.*}} : !llvm.i1, !llvm.i64
-//  CHECK-NEXT:   llvm.sub %{{.*}}, %{{.*}} : !llvm.i64
-//  CHECK-NEXT:   llvm.icmp "slt" %{{.*}}, %{{.*}} : !llvm.i64
-//  CHECK-NEXT:   llvm.select %{{.*}}, %{{.*}}, %{{.*}} : !llvm.i1, !llvm.i64
-//  CHECK-NEXT:   llvm.mul %{{.*}}, %{{.*}} : !llvm.i64
-
-func @view_with_range_and_index(%arg0: memref<?x?xf64, offset: ?, strides: [?, 1]>) {
+func @slice_with_range_and_index(%arg0: memref<?x?xf64, offset: ?, strides: [?, 1]>) {
   %c0 = constant 0 : index
   %c1 = constant 1 : index
   %R = linalg.range %c0:%c1:%c1 : !linalg.range
@@ -94,7 +65,7 @@ func @view_with_range_and_index(%arg0: memref<?x?xf64, offset: ?, strides: [?, 1
   }
   return
 }
-// CHECK-LABEL: func @view_with_range_and_index
+// CHECK-LABEL: func @slice_with_range_and_index
 // loop-body.
 //       CHECK:   llvm.mlir.undef : !llvm<"{ double*, double*, i64, [1 x i64], [1 x i64] }">
 //       CHECK:   llvm.extractvalue %{{.*}}[4, 0] : !llvm<"{ double*, double*, i64, [2 x i64], [2 x i64] }">
