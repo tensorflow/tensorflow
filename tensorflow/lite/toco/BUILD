@@ -18,12 +18,14 @@ package(
 tf_proto_library_cc(
     name = "types_proto",
     srcs = ["types.proto"],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
 tf_proto_library_cc(
     name = "toco_flags_proto",
     srcs = ["toco_flags.proto"],
+    cc_api_version = 2,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
@@ -31,6 +33,7 @@ tf_proto_library_cc(
 tf_proto_library_cc(
     name = "model_flags_proto",
     srcs = ["model_flags.proto"],
+    cc_api_version = 2,
     protodeps = [":types_proto"],
     visibility = ["//visibility:public"],
 )
