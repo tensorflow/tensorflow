@@ -31,7 +31,6 @@ cc_library(
     copts = tf_copts(),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
-        "//tensorflow/core/profiler/lib:traceme",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
         "//tensorflow/core:gpu_runtime",
@@ -43,6 +42,7 @@ cc_library(
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
+        "//tensorflow/core/profiler/lib:traceme",
     ]),
     alwayslink = 1,
 )
