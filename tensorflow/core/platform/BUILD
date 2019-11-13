@@ -859,3 +859,17 @@ bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["default/cuda_build_defs.bzl"],
 )
+
+exports_files(
+    [
+        "stacktrace.h",
+        "cpu_info.h",
+        "types.h",
+        "macros.h",
+        "abi.h",
+        "logging.h",
+        "platform.h",
+        "byte_order.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
