@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/resize_nearest_neighbor_op.h"
 
 #include <memory>
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/image_resizer_state.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -68,13 +69,13 @@ class ResizeNearestNeighborOp : public OpKernel {
                                                 /*half_pixe_centers=*/true,
                                                 /*align_corners=*/true>()(
             context->eigen_device<Device>(), input_data, st.height_scale,
-            st.width_scale, output_data);
+            st.width_scale, output_data, context);
       } else {
         status = functor::ResizeNearestNeighbor<Device, T,
                                                 /*half_pixe_centers=*/true,
                                                 /*align_corners=*/false>()(
             context->eigen_device<Device>(), input_data, st.height_scale,
-            st.width_scale, output_data);
+            st.width_scale, output_data, context);
       }
     } else {
       if (align_corners_) {
@@ -82,13 +83,13 @@ class ResizeNearestNeighborOp : public OpKernel {
                                                 /*half_pixe_centers=*/false,
                                                 /*align_corners=*/true>()(
             context->eigen_device<Device>(), input_data, st.height_scale,
-            st.width_scale, output_data);
+            st.width_scale, output_data, context);
       } else {
         status = functor::ResizeNearestNeighbor<Device, T,
                                                 /*half_pixe_centers=*/false,
                                                 /*align_corners=*/false>()(
             context->eigen_device<Device>(), input_data, st.height_scale,
-            st.width_scale, output_data);
+            st.width_scale, output_data, context);
       }
     }
     if (!status) {
@@ -130,20 +131,25 @@ struct BoolToScaler<false> {
 namespace functor {
 template <typename T, bool half_pixel_centers, bool align_corners>
 struct ResizeNearestNeighbor<CPUDevice, T, half_pixel_centers, align_corners> {
-  bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
-                  const float height_scale, const float width_scale,
-                  typename TTypes<T, 4>::Tensor output) {
-    typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+  bool ParallelExecute(const CPUDevice& d,
+                       typename TTypes<T, 4>::ConstTensor input,
+                       const float height_scale, const float width_scale,
+                       typename TTypes<T, 4>::Tensor output,
+                       OpKernelContext* c) {
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *(c->device()->tensorflow_cpu_worker_threads());
     const Eigen::Index batch_size = input.dimension(0);
     const Eigen::Index in_height = input.dimension(1);
     const Eigen::Index in_width = input.dimension(2);
     const Eigen::Index channels = input.dimension(3);
-
     const Eigen::Index out_height = output.dimension(1);
     const Eigen::Index out_width = output.dimension(2);
-
-    for (Eigen::Index b = 0; b < batch_size; ++b) {
-      for (Eigen::Index y = 0; y < out_height; ++y) {
+    typename BoolToScaler<half_pixel_centers>::Scaler scaler;
+    auto ParallelResize = [&](Eigen::Index start, Eigen::Index end) {
+      for (Eigen::Index b = start; b < end; ++b) {
+        Eigen::Index x = b % out_width;
+        Eigen::Index y = (b / out_width) % out_height;
+        Eigen::Index bs = (b / out_width) / out_height;
         Eigen::Index in_y = std::min(
             (align_corners)
                 ? static_cast<Eigen::Index>(roundf(scaler(y, height_scale)))
@@ -152,20 +158,29 @@ struct ResizeNearestNeighbor<CPUDevice, T, half_pixel_centers, align_corners> {
         if (half_pixel_centers) {
           in_y = std::max(static_cast<Eigen::Index>(0), in_y);
         }
-        for (Eigen::Index x = 0; x < out_width; ++x) {
-          Eigen::Index in_x = std::min(
-              (align_corners)
-                  ? static_cast<Eigen::Index>(roundf(scaler(x, width_scale)))
-                  : static_cast<Eigen::Index>(floorf(scaler(x, width_scale))),
-              in_width - 1);
-          if (half_pixel_centers) {
-            in_x = std::max(static_cast<Eigen::Index>(0), in_x);
-          }
-          std::copy_n(&input(b, in_y, in_x, 0), channels, &output(b, y, x, 0));
+        Eigen::Index in_x = std::min(
+            (align_corners)
+                ? static_cast<Eigen::Index>(roundf(scaler(x, width_scale)))
+                : static_cast<Eigen::Index>(floorf(scaler(x, width_scale))),
+            in_width - 1);
+        if (half_pixel_centers) {
+          in_x = std::max(static_cast<Eigen::Index>(0), in_x);
         }
+        std::copy_n(&input(bs, in_y, in_x, 0), channels, &output(bs, y, x, 0));
       }
-    }
+    };
+    Eigen::Index N = batch_size * out_height * out_width;
+    Shard(worker_threads.num_threads, worker_threads.workers, N, 1000.0,
+          ParallelResize);  // TODO: Come up with a good cost estimate:
+                            // 3500:26~27fps, 1000:27~28fps.
     return true;
+  }
+  bool operator()(const CPUDevice& d, typename TTypes<T, 4>::ConstTensor input,
+                  const float height_scale, const float width_scale,
+                  typename TTypes<T, 4>::Tensor output,
+                  OpKernelContext* context) {
+    return ParallelExecute(d, input, height_scale, width_scale, output,
+                           context);
   }
 };
 }  // namespace functor

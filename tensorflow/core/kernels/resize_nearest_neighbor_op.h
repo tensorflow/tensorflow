@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_RESIZE_NEAREST_NEIGHBOR_OP_H_
 #define TENSORFLOW_CORE_KERNELS_RESIZE_NEAREST_NEIGHBOR_OP_H_
 
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -27,7 +28,8 @@ template <typename Device, typename T, bool half_pixel_centers,
 struct ResizeNearestNeighbor {
   bool operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
-                  typename TTypes<T, 4>::Tensor output);
+                  typename TTypes<T, 4>::Tensor output,
+                  OpKernelContext* context = NULL);
 };
 
 template <typename Device, typename T, bool half_pixel_centers,
