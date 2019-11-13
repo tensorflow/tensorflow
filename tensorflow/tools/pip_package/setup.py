@@ -55,7 +55,7 @@ REQUIRED_PACKAGES = [
     'backports.weakref >= 1.0rc1;python_version<"3.4"',
     'enum34 >= 1.1.6;python_version<"3.4"',
     'gast == 0.2.2',
-    'google_pasta >= 0.1.6',
+    'google_pasta >= 0.1.8',
     'keras_applications >= 1.0.8',
     'keras_preprocessing >= 1.1.0',
     'numpy >= 1.16.0, < 2.0',
