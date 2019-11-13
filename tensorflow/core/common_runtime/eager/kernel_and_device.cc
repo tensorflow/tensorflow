@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -308,7 +308,7 @@ Status KernelAndDeviceOp::Run(
         [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
         profiler::TraceMeLevel::kInfo);
     // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    tracing::ScopedAnnotation annotation(
+    profiler::ScopedAnnotation annotation(
         [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
     device_->Compute(kernel_.get(), &context);
   }

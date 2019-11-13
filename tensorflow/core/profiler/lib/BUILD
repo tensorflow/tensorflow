@@ -64,6 +64,17 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_annotation",
+    hdrs = ["scoped_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:annotation_stack",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "profiler_utils",
     srcs = ["profiler_utils.cc"],
     hdrs = ["profiler_utils.h"],
@@ -78,6 +89,7 @@ filegroup(
         "profiler_session.h",
         "profiler_utils.cc",
         "profiler_utils.h",
+        "scoped_annotation.h",
         "traceme.cc",
         "traceme.h",
     ],

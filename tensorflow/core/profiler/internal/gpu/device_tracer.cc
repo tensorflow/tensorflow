@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/abi.h"
-#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/internal/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
@@ -224,8 +224,7 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
 class GpuTracer : public profiler::ProfilerInterface {
  public:
   GpuTracer(CuptiTracer* cupti_tracer, CuptiInterface* cupti_interface)
-      : cupti_tracer_(cupti_tracer),
-        trace_collector_(&step_stats_) {
+      : cupti_tracer_(cupti_tracer), trace_collector_(&step_stats_) {
     VLOG(1) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
@@ -321,7 +320,7 @@ Status GpuTracer::DoStart() {
       collector_options, "", num_gpus, start_walltime_ns, start_gputime_ns,
       &trace_collector_);
 
-  tensorflow::tracing::ScopedAnnotation::Enable(true);
+  AnnotationStack::Enable(true);
   cupti_tracer_->Enable(options_, step_stats_cupti_adaptor_.get());
   return Status::OK();
 }
@@ -339,7 +338,7 @@ Status GpuTracer::Start() {
 
 Status GpuTracer::DoStop() {
   cupti_tracer_->Disable();
-  tensorflow::tracing::ScopedAnnotation::Enable(false);
+  AnnotationStack::Enable(false);
   return Status::OK();
 }
 
