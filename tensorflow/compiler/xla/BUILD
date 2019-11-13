@@ -2,6 +2,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
     "tf_proto_library_py",
 )
 
@@ -48,14 +49,15 @@ tf_proto_library_py(
     visibility = ["//visibility:public"],
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xla_proto",
     srcs = ["xla.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
+    cc_api_version = 2,
+    protodeps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(
