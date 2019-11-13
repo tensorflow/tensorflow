@@ -120,7 +120,7 @@ def selu(x):
   and the number of inputs is "large enough"
   (see references for more information).
 
-  https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png
+  ![]https://cdn-images-1.medium.com/max/1600/1*m0e8lZU_Zrkh4ESfQkY2Pw.png
   (Courtesy: Blog on Towards DataScience at
   https://towardsdatascience.com/selu-make-fnns-great-again-snn-8d61526802a9)
 
@@ -380,7 +380,7 @@ def deserialize(name, custom_objects=None):
       x : String
 
   Returns:
-      Tensorflow Activation function denoted by input string.
+      TensorFlow Activation function denoted by input string.
 
   For example:
   >>> tf.keras.activations.deserialize('linear')
