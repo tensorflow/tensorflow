@@ -3004,7 +3004,7 @@ def softmax(logits, axis=None, name=None, dim=None):
       Tensor.
     RuntimeError: If a registered conversion function returns an invalid
       value.
-      
+
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:

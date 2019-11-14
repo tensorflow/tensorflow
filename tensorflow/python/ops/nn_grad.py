@@ -1078,8 +1078,15 @@ def ConditionalRegister(dec, condition):
 
 @ConditionalRegister(ops.RegisterGradient("Dropout"),build_info.is_rocm_build)
 def _DropoutGrad(op, grad):
-  dx =  gen_nn_ops.dropout_grad(
+  dx = 0
+  if op.inputs[0].dtype is dtypes.float32:
+    dx =  gen_nn_ops.dropout_grad(
           grad, op.inputs[1], op.inputs[2], op.inputs[3])
+  else:
+    keep_mask = (op.inputs[0] - op.outputs[0]) < 1e-5
+    keep_mask_val = math_ops.cast(keep_mask, op.inputs[0].dtype)
+    scale = tf.size(op.outputs[0]) / math_ops.reduce_sum(keep_mask_val)
+    dx = grad * scale * keep_mask_val
   return [dx, None, None, None]
 
 @ops.RegisterGradient("TopK")

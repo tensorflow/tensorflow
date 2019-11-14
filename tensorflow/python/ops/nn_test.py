@@ -333,21 +333,6 @@ class DropoutTest(test_lib.TestCase):
       self.assertTrue(rel_error < 0.15)
 
   @test_util.run_deprecated_v1
-  def testDropoutGradFloat16(self):
-    if not test_lib.is_built_with_rocm():
-      self.skipTest("Dropout gradient kernels are enabled only in ROCm platform")
-
-    x_dim = 40
-    y_dim = 30
-    shape = [x_dim, y_dim]
-    t = constant_op.constant(1.0, shape=shape, dtype=dtypes.float16)
-    rate = 0.1
-    value = nn_ops.dropout(t, rate=rate)
-    with self.cached_session():
-      err = gradient_checker.compute_gradient_error(t, shape, value, shape)
-      self.assertLess(err, 0.5)
-
-  @test_util.run_deprecated_v1
   def testDropoutGradFloat32(self):
     if not test_lib.is_built_with_rocm():
       self.skipTest("Dropout gradient kernels are enabled only in ROCm platform")

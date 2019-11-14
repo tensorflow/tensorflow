@@ -60,7 +60,7 @@ class DropoutOp : public OpKernel {
 
     se::dnn::DropoutDescriptor dropout_desc;
     dropout_desc.set_rate(static_cast<float>(in1.scalar<T>()()));
-    dropout_desc.set_seed(in3.scalar<uint64>()());
+    dropout_desc.set_seed(in3.scalar<int64>()());
 
     // Allocate output, and exit early if possible
     Tensor* output;
@@ -135,8 +135,9 @@ class DropoutOp : public OpKernel {
       DropoutOp<GPUDevice, TYPE>);
 
 TF_CALL_float(REGISTER_DROPOUT_GPU);
-TF_CALL_double(REGISTER_DROPOUT_GPU);
-TF_CALL_half(REGISTER_DROPOUT_GPU);
+// TODO Enable when MIOpen supports the following data types
+//TF_CALL_double(REGISTER_DROPOUT_GPU);
+//TF_CALL_half(REGISTER_DROPOUT_GPU);
 
 template <typename Device, typename T>
 class DropoutGradOp : public OpKernel {
@@ -172,7 +173,7 @@ class DropoutGradOp : public OpKernel {
 
     se::dnn::DropoutDescriptor dropout_desc;
     dropout_desc.set_rate(static_cast<float>(in1.scalar<T>()()));
-    dropout_desc.set_seed(in3.scalar<uint64>()());
+    dropout_desc.set_seed(in3.scalar<int64>()());
 
     // Allocate output, and exit early if possible
     Tensor* output;
@@ -248,8 +249,9 @@ class DropoutGradOp : public OpKernel {
       DropoutGradOp<GPUDevice, TYPE>);
 
 TF_CALL_float(REGISTER_DROPOUT_GRAD_GPU);
-TF_CALL_double(REGISTER_DROPOUT_GRAD_GPU);
-TF_CALL_half(REGISTER_DROPOUT_GRAD_GPU);
+// TODO Enable when MIOpen supports the following data types
+//TF_CALL_double(REGISTER_DROPOUT_GRAD_GPU);
+//TF_CALL_half(REGISTER_DROPOUT_GRAD_GPU);
 
 }  // namespace tensorflow
 #endif  // TENSORFLOW_USE_ROCM
