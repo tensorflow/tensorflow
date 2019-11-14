@@ -759,11 +759,6 @@ class ScopedDropoutDescriptor {
                  << ToString(status);
     }
 
-    if (dropout_descriptor.rate() == 0.0f) {
-      // Done constructing 'empty' dropout descriptor.
-      return;
-    }
-
     DeviceMemory<uint8> state_memory;
     if (state_allocator) {
       size_t state_sizes_in_bytes = 0;

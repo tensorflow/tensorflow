@@ -4240,7 +4240,7 @@ def _get_noise_shape(x, noise_shape):
 @deprecation.deprecated_args(None, "Please use `rate` instead of `keep_prob`. "
                              "Rate should be set to `rate = 1 - keep_prob`.",
                              "keep_prob")
-def dropout(x, keep_prob=None, noise_shape=None, seed=0, name=None,
+def dropout(x, keep_prob=None, noise_shape=None, seed=None, name=None,
             rate=None):
   """Computes dropout.
 
@@ -4291,7 +4291,7 @@ def dropout(x, keep_prob=None, noise_shape=None, seed=0, name=None,
 
 
 @tf_export("nn.dropout", v1=[])
-def dropout_v2(x, rate, noise_shape=None, seed=0, name=None):
+def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   """Computes dropout: randomly sets elements to zero to prevent overfitting.
 
   Note: The behavior of dropout has changed between TensorFlow 1.x and 2.x.
@@ -4390,8 +4390,16 @@ def dropout_v2(x, rate, noise_shape=None, seed=0, name=None):
 
     noise_shape = _get_noise_shape(x, noise_shape)
 
-    if build_info.is_rocm_build:
-      return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
+    if seed is None:
+        seed = 0
+
+    # Should there be ROCm support, use it. Otherwise fallback to generic
+    # implementation
+    if build_info.is_rocm_build and isinstance(seed, numbers.Real):
+      try:
+        return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
+      except:
+        pass
 
     # Sample a uniform distribution on [0.0, 1.0) and select values larger than
     # rate.
