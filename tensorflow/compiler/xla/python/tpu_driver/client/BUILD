@@ -1,4 +1,3 @@
-load("//tensorflow/compiler/xla:xla.bzl", "xla_python_default_plugins")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 
 package(
@@ -52,15 +51,15 @@ pybind_extension(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_client",
-        "@pybind11",
-        "//third_party/py/numpy:headers",
-        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "//tensorflow/compiler/xla/python:python_ref_manager",
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-    ] + xla_python_default_plugins(),
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
+        "@pybind11",
+    ],
 )
 
 py_library(

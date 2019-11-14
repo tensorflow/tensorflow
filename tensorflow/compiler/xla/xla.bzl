@@ -4,10 +4,6 @@ load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_cc",
 )
-load(
-    "//tensorflow/core/platform:default/cuda_build_defs.bzl",
-    "if_cuda_is_configured",
-)
 
 # xla_proto_library() is a convenience wrapper around cc_proto_library.
 def xla_proto_library(name, srcs = [], deps = [], visibility = None, testonly = 0, **kwargs):
@@ -35,10 +31,6 @@ def xla_py_grpc_library(**kwargs):
     pass
 
 ORC_JIT_MEMORY_MAPPER_TARGETS = []
-
-# We link the GPU plugin into the XLA Python extension if CUDA is enabled.
-def xla_python_default_plugins():
-    return if_cuda_is_configured(["//tensorflow/compiler/xla/service:gpu_plugin"])
 
 def xla_py_test_deps():
     return []
