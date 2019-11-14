@@ -82,12 +82,6 @@ public:
   Value *promoteOneMemRefDescriptor(Location loc, Value *operand,
                                     OpBuilder &builder);
 
-  static constexpr unsigned kAllocatedPtrPosInMemRefDescriptor = 0;
-  static constexpr unsigned kAlignedPtrPosInMemRefDescriptor = 1;
-  static constexpr unsigned kOffsetPosInMemRefDescriptor = 2;
-  static constexpr unsigned kSizePosInMemRefDescriptor = 3;
-  static constexpr unsigned kStridePosInMemRefDescriptor = 4;
-
 protected:
   /// LLVM IR module used to parse/create types.
   llvm::Module *module;
