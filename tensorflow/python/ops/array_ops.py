@@ -54,6 +54,13 @@ tf_export("newaxis").export_constant(__name__, "newaxis")
 # existing 'slice' for later use in this module.
 _BaseSlice = slice
 
+# LINT.IfChange
+matrix_diag_v3_forward_compat_date = (2019, 12, 6)
+# LINT.ThenChange(
+#   //tensorflow/compiler/tests/matrix_diag_ops_test.py,
+#   //tensorflow/python/kernel_tests/diag_op_test.py,
+#   //tensorflow/python/ops/parallel_for/array_test.py
+# )
 
 @tf_export("reshape", v1=["reshape", "manip.reshape"])
 def reshape(tensor, shape, name=None):  # pylint: disable=redefined-outer-name
@@ -2043,7 +2050,8 @@ def matrix_diag(diagonal,
                 k=0,
                 num_rows=-1,
                 num_cols=-1,
-                padding_value=0):
+                padding_value=0,
+                align="RIGHT_LEFT"):
   """Returns a batched diagonal tensor with given batched diagonal values.
 
   Returns a tensor with the contents in `diagonal` as `k[0]`-th to `k[1]`-th
@@ -2078,7 +2086,17 @@ def matrix_diag(diagonal,
       padding_value                                     ; otherwise
   ```
   where `d = n - m`, `diag_index = k[1] - d`, and
-  `index_in_diag = n - max(d, 0)`.
+  `index_in_diag = n - max(d, 0) + offset`.
+
+  `offset` is zero except when the alignment of the diagonal is to the right.
+  ```
+  offset = max_diag_len - diag_len(d) ; if (`align` in {RIGHT_LEFT, RIGHT_RIGHT}
+                                             and `d >= 0`) or
+                                           (`align` in {LEFT_RIGHT, RIGHT_RIGHT}
+                                             and `d <= 0`)
+           0                          ; otherwise
+  ```
+  where `diag_len(d) = min(cols - max(d, 0), rows + min(d, 0))`.
 
   For example:
 
@@ -2108,17 +2126,34 @@ def matrix_diag(diagonal,
           [0, 0, 0, 6],
           [0, 0, 0, 0]]]
 
-  # A band of diagonals.
-  diagonals = np.array([[[1, 2, 3],  # Input shape: (2, 2, 3)
-                         [4, 5, 0]],
-                        [[6, 7, 9],
-                         [9, 1, 0]]])
-  tf.matrix_diag(diagonals, k = (-1, 0))
-    ==> [[[1, 0, 0],  # Output shape: (2, 3, 3)
-          [4, 2, 0],
+  # A tridiagonal band (per batch).
+  diagonals = np.array([[[8, 9, 0],  # Input shape: (2, 2, 3)
+                         [1, 2, 3],
+                         [0, 4, 5]],
+                        [[2, 3, 0],
+                         [6, 7, 9],
+                         [0, 9, 1]]])
+  tf.matrix_diag(diagonals, k = (-1, 1))
+    ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
+          [4, 2, 9],
           [0, 5, 3]],
-         [[6, 0, 0],
-          [9, 7, 0],
+         [[6, 2, 0],
+          [9, 7, 3],
+          [0, 1, 9]]]
+
+  # RIGHT_LEFT alignment.
+  diagonals = np.array([[[0, 8, 9],  # Input shape: (2, 2, 3)
+                         [1, 2, 3],
+                         [4, 5, 0]],
+                        [[0, 2, 3],
+                         [6, 7, 9],
+                         [9, 1, 0]]])
+  tf.matrix_diag(diagonals, k = (-1, 1), align="RIGHT_LEFT")
+    ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
+          [4, 2, 9],
+          [0, 5, 3]],
+         [[6, 2, 0],
+          [9, 7, 3],
           [0, 1, 9]]]
 
   # Rectangular matrix.
@@ -2150,27 +2185,34 @@ def matrix_diag(diagonal,
       size from `d_lower`, `d_upper`, and the innermost dimension of `diagonal`.
     padding_value: The value to fill the area outside the specified diagonal
       band with. Default is 0.
+    align: Some diagonals are shorter than `max_diag_len` and need to be padded.
+      `align` is a string specifying how superdiagonals and subdiagonals should
+      be aligned, respectively. There are four possible alignments: "RIGHT_LEFT"
+      (default), "LEFT_RIGHT", "LEFT_LEFT", and "RIGHT_RIGHT". "RIGHT_LEFT"
+      aligns superdiagonals to the right (left-pads the row) and subdiagonals to
+      the left (right-pads the row). It is the packing format LAPACK uses.
+      cuSPARSE uses "LEFT_RIGHT", which is the opposite alignment.
 
   Returns:
     A Tensor. Has the same type as `diagonal`.
   """
-  # LINT.IfChange
-  if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
-
+  if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
     if hasattr(diagonal, "dtype") and diagonal.dtype == "bool":
       padding_value = bool(padding_value)
-    return gen_array_ops.matrix_diag_v2(
+
+    return gen_array_ops.matrix_diag_v3(
         diagonal=diagonal,
         k=k,
         num_rows=num_rows,
         num_cols=num_cols,
         padding_value=padding_value,
+        align=align,
         name=name)
 
   # Call v1 to maintain forward compatibility.
+  # (We skip v2 because its alignment conflicts with v3's default alignment.)
   return gen_array_ops.matrix_diag(diagonal=diagonal, name=name)
 
 
@@ -2181,7 +2223,8 @@ def matrix_diag_part(
     input,  # pylint:disable=redefined-builtin
     name="diag_part",
     k=0,
-    padding_value=0):
+    padding_value=0,
+    align="RIGHT_LEFT"):
   """Returns the batched diagonal part of a batched tensor.
 
   Returns a tensor with the `k[0]`-th to `k[1]`-th diagonals of the batched
@@ -2211,7 +2254,17 @@ def matrix_diag_part(
     = input[i, j, ..., l, n+y, n+x] ; if 0 <= n+y < M and 0 <= n+x < N,
       padding_value                 ; otherwise.
   ```
-  where `d = k[1] - m`, `y = max(-d, 0)`, and `x = max(d, 0)`.
+  where `d = k[1] - m`, `y = max(-d, 0) - offset`, and `x = max(d, 0) - offset`.
+
+  `offset` is zero except when the alignment of the diagonal is to the right.
+  ```
+  offset = max_diag_len - diag_len(d) ; if (`align` in {RIGHT_LEFT, RIGHT_RIGHT}
+                                             and `d >= 0`) or
+                                           (`align` in {LEFT_RIGHT, RIGHT_RIGHT}
+                                             and `d <= 0`)
+           0                          ; otherwise
+  ```
+  where `diag_len(d) = min(cols - max(d, 0), rows + min(d, 0))`.
 
   The input must be at least a matrix.
 
@@ -2234,16 +2287,36 @@ def matrix_diag_part(
     ==> [[2, 7, 6],  # Output shape: (2, 3)
          [4, 3, 8]]
 
-  # A tridiagonal band from each batch.
-  tf.matrix_diag_part(input, k = (-1, 1))
-    ==> [[[2, 7, 6],  # Output shape: (2, 3, 3)
+  # A band from each batch.
+  tf.matrix_diag_part(input, k = (-1, 2))
+    ==> [[[3, 8, 0],  # Output shape: (2, 4, 3)
+          [2, 7, 6],
+          [1, 6, 7],
+          [0, 5, 8]],
+         [[3, 4, 0],
+          [4, 3, 8],
+          [5, 2, 7],
+          [0, 1, 6]]]
+
+  # RIGHT_LEFT alignment.
+  tf.matrix_diag_part(input, k = (-1, 2), align="RIGHT_LEFT")
+    ==> [[[0, 3, 8],  # Output shape: (2, 4, 3)
+          [2, 7, 6],
           [1, 6, 7],
           [5, 8, 0]],
-         [[4, 3, 8],
+         [[0, 3, 4],
+          [4, 3, 8],
           [5, 2, 7],
           [1, 6, 0]]]
 
-  # Padding value = 9
+  # max_diag_len can be shorter than the main diagonal.
+  tf.matrix_diag_part(input, k = (-2, -1))
+    ==> [[[5, 8],
+          [0, 9]],
+         [[1, 6],
+          [0, 5]]]
+
+  # padding_value = 9
   tf.matrix_diag_part(input, k = (1, 3), padding_value = 9)
     ==> [[[4, 9, 9],  # Output shape: (2, 3, 3)
           [3, 8, 9],
@@ -2251,6 +2324,7 @@ def matrix_diag_part(
          [[2, 9, 9],
           [3, 4, 9],
           [4, 3, 8]]]
+
   ```
 
   Args:
@@ -2262,23 +2336,28 @@ def matrix_diag_part(
       and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
     padding_value: The value to fill the area outside the specified diagonal
       band with. Default is 0.
+    align: Some diagonals are shorter than `max_diag_len` and need to be padded.
+      `align` is a string specifying how superdiagonals and subdiagonals should
+      be aligned, respectively. There are four possible alignments: "RIGHT_LEFT"
+      (default), "LEFT_RIGHT", "LEFT_LEFT", and "RIGHT_RIGHT". "RIGHT_LEFT"
+      aligns superdiagonals to the right (left-pads the row) and subdiagonals to
+      the left (right-pads the row). It is the packing format LAPACK uses.
+      cuSPARSE uses "LEFT_RIGHT", which is the opposite alignment.
 
   Returns:
     A Tensor containing diagonals of `input`. Has the same type as `input`.
   """
-  # LINT.IfChange
-  if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
-
+  if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
     # Special case to sidestep the tf.constant conversion error:
     # TypeError: Expected bool, got 0 of type 'int' instead.
     if hasattr(input, "dtype") and input.dtype == "bool":
       padding_value = bool(padding_value)
 
-    return gen_array_ops.matrix_diag_part_v2(
-        input=input, k=k, padding_value=padding_value, name=name)
+    return gen_array_ops.matrix_diag_part_v3(
+        input=input, k=k, padding_value=padding_value, align=align, name=name)
 
   # Call v1 to maintain forward compatibility.
+  # (We skip v2 because its alignment conflicts with v3's default alignment.)
   return gen_array_ops.matrix_diag_part(input=input, name=name)
 
 
@@ -2288,7 +2367,8 @@ def matrix_set_diag(
     input,  # pylint:disable=redefined-builtin
     diagonal,
     name="set_diag",
-    k=0):
+    k=0,
+    align="RIGHT_LEFT"):
   """Returns a batched matrix tensor with new batched diagonal values.
 
   Given `input` and `diagonal`, this operation returns a tensor with the
@@ -2319,7 +2399,17 @@ def matrix_set_diag(
       input[i, j, ..., l, m, n]                         ; otherwise
   ```
   where `d = n - m`, `diag_index = k[1] - d`, and
-  `index_in_diag = n - max(d, 0)`.
+  `index_in_diag = n - max(d, 0) + offset`.
+
+  `offset` is zero except when the alignment of the diagonal is to the right.
+  ```
+  offset = max_diag_len - diag_len(d) ; if (`align` in {RIGHT_LEFT, RIGHT_RIGHT}
+                                             and `d >= 0`) or
+                                           (`align` in {LEFT_RIGHT, RIGHT_RIGHT}
+                                             and `d <= 0`)
+           0                          ; otherwise
+  ```
+  where `diag_len(d) = min(cols - max(d, 0), rows + min(d, 0))`.
 
   For example:
 
@@ -2333,15 +2423,16 @@ def matrix_set_diag(
                      [7, 7, 7, 7]]])
   diagonal = np.array([[1, 2, 3],               # Diagonal shape: (2, 3)
                        [4, 5, 6]])
-  tf.matrix_set_diag(diagonal) ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
-                                     [7, 2, 7, 7],
-                                     [7, 7, 3, 7]],
-                                    [[4, 7, 7, 7],
-                                     [7, 5, 7, 7],
-                                     [7, 7, 6, 7]]]
+  tf.matrix_set_diag(input, diagonal)
+    ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+          [7, 2, 7, 7],
+          [7, 7, 3, 7]],
+         [[4, 7, 7, 7],
+          [7, 5, 7, 7],
+          [7, 7, 6, 7]]]
 
   # A superdiagonal (per batch).
-  tf.matrix_set_diag(diagonal, k = 1)
+  tf.matrix_set_diag(input, diagonal, k = 1)
     ==> [[[7, 1, 7, 7],  # Output shape: (2, 3, 4)
           [7, 7, 2, 7],
           [7, 7, 7, 3]],
@@ -2350,17 +2441,38 @@ def matrix_set_diag(
           [7, 7, 7, 6]]]
 
   # A band of diagonals.
-  diagonals = np.array([[[1, 2, 3],  # Diagonal shape: (2, 2, 3)
+  diagonals = np.array([[[9, 1, 0],  # Diagonal shape: (2, 4, 3)
+                         [6, 5, 8],
+                         [1, 2, 3],
+                         [0, 4, 5]],
+                        [[1, 2, 0],
+                         [5, 6, 4],
+                         [6, 1, 2],
+                         [0, 3, 4]]])
+  tf.matrix_set_diag(input, diagonals, k = (-1, 2))
+    ==> [[[1, 6, 9, 7],  # Output shape: (2, 3, 4)
+          [4, 2, 5, 1],
+          [7, 5, 3, 8]],
+         [[6, 5, 1, 7],
+          [3, 1, 6, 2],
+          [7, 4, 2, 4]]]
+
+  # RIGHT_LEFT alignment.
+  diagonals = np.array([[[0, 9, 1],  # Diagonal shape: (2, 4, 3)
+                         [6, 5, 8],
+                         [1, 2, 3],
                          [4, 5, 0]],
-                        [[6, 1, 2],
+                        [[0, 1, 2],
+                         [5, 6, 4],
+                         [6, 1, 2],
                          [3, 4, 0]]])
-  tf.matrix_set_diag(diagonals, k = (-1, 0))
-    ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
-          [4, 2, 7, 7],
-          [0, 5, 3, 7]],
-         [[6, 7, 7, 7],
-          [3, 1, 7, 7],
-          [7, 4, 2, 7]]]
+  tf.matrix_set_diag(input, diagonals, k = (-1, 2), align="RIGHT_LEFT")
+    ==> [[[1, 6, 9, 7],  # Output shape: (2, 3, 4)
+          [4, 2, 5, 1],
+          [7, 5, 3, 8]],
+         [[6, 5, 1, 7],
+          [3, 1, 6, 2],
+          [7, 4, 2, 4]]]
 
   ```
 
@@ -2373,14 +2485,20 @@ def matrix_set_diag(
       main diagonal, and negative value means subdiagonals. `k` can be a single
       integer (for a single diagonal) or a pair of integers specifying the low
       and high ends of a matrix band. `k[0]` must not be larger than `k[1]`.
+    align: Some diagonals are shorter than `max_diag_len` and need to be padded.
+      `align` is a string specifying how superdiagonals and subdiagonals should
+      be aligned, respectively. There are four possible alignments: "RIGHT_LEFT"
+      (default), "LEFT_RIGHT", "LEFT_LEFT", and "RIGHT_RIGHT". "RIGHT_LEFT"
+      aligns superdiagonals to the right (left-pads the row) and subdiagonals to
+      the left (right-pads the row). It is the packing format LAPACK uses.
+      cuSPARSE uses "LEFT_RIGHT", which is the opposite alignment.
   """
-  # LINT.IfChange
-  if compat.forward_compatible(2019, 11, 30):
-    # LINT.ThenChange(//tensorflow/python/kernel_tests/diag_op_test.py)
-    return gen_array_ops.matrix_set_diag_v2(
-        input=input, diagonal=diagonal, k=k, name=name)
+  if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
+    return gen_array_ops.matrix_set_diag_v3(
+        input=input, diagonal=diagonal, k=k, align=align, name=name)
 
   # Call v1 to maintain forward compatibility.
+  # (We skip v2 because its alignment conflicts with v3's default alignment.)
   return gen_array_ops.matrix_set_diag(
       input=input, diagonal=diagonal, name=name)
 

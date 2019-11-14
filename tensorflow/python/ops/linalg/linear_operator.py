@@ -1111,10 +1111,17 @@ def _cholesky(input, name=None):   # pylint:disable=redefined-builtin
 
 
 # The signature has to match with the one in python/op/array_ops.py,
-# so we have k and padding_value even though we don't use them here.
+# so we have k, padding_value, and align even though we don't use them here.
+# pylint:disable=unused-argument
 @dispatch.dispatch_for_types(linalg.diag_part, LinearOperator)
-def _diag_part(input, name="diag_part", k=0, padding_value=0):  # pylint:disable=redefined-builtin, unused-argument
+def _diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name="diag_part",
+    k=0,
+    padding_value=0,
+    align="RIGHT_LEFT"):
   return input.diag_part(name)
+# pylint:enable=unused-argument
 
 
 @dispatch.dispatch_for_types(linalg.det, LinearOperator)
