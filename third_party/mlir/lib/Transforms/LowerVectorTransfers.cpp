@@ -113,12 +113,6 @@ struct VectorTransferRewriter : public RewritePattern {
                            {}, 0);
   }
 
-  /// View of tmpMemRefType as one vector, used in vector load/store to tmp
-  /// buffer.
-  MemRefType vectorMemRefType(VectorTransferOpTy transfer) const {
-    return MemRefType::get({1}, transfer.getVectorType(), {}, 0);
-  }
-
   /// Performs the rewrite.
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override;
@@ -139,7 +133,7 @@ void coalesceCopy(VectorTransferOpTy transfer,
   // the loop order for creating pointwise copies between remote and local
   // memories.
   int coalescedIdx = -1;
-  auto exprs = transfer.getPermutationMap().getResults();
+  auto exprs = transfer.permutation_map().getResults();
   for (auto en : llvm::enumerate(exprs)) {
     auto dim = en.value().template dyn_cast<AffineDimExpr>();
     if (!dim) {
@@ -170,7 +164,7 @@ llvm::SmallVector<edsc::ValueHandle, 8> clip(VectorTransferOpTy transfer,
   using edsc::intrinsics::select;
 
   IndexHandle zero(index_t(0)), one(index_t(1));
-  llvm::SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer.getIndices());
+  llvm::SmallVector<edsc::ValueHandle, 8> memRefAccess(transfer.indices());
   llvm::SmallVector<edsc::ValueHandle, 8> clippedScalarAccessExprs(
       memRefAccess.size(), edsc::IndexHandle());
 
@@ -180,7 +174,7 @@ llvm::SmallVector<edsc::ValueHandle, 8> clip(VectorTransferOpTy transfer,
        ++memRefDim) {
     // Linear search on a small number of entries.
     int loopIndex = -1;
-    auto exprs = transfer.getPermutationMap().getResults();
+    auto exprs = transfer.permutation_map().getResults();
     for (auto en : llvm::enumerate(exprs)) {
       auto expr = en.value();
       auto dim = expr.template dyn_cast<AffineDimExpr>();
@@ -273,9 +267,9 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
 
   // 1. Setup all the captures.
   ScopedContext scope(rewriter, transfer.getLoc());
-  IndexedValue remote(transfer.getMemRef());
-  MemRefView view(transfer.getMemRef());
-  VectorView vectorView(transfer.getVector());
+  IndexedValue remote(transfer.memref());
+  MemRefView view(transfer.memref());
+  VectorView vectorView(transfer.vector());
   SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
   SmallVector<ValueHandle *, 8> pivs =
       makeIndexHandlePointers(MutableArrayRef<IndexHandle>(ivs));
@@ -291,12 +285,12 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
   // 2. Emit alloc-copy-load-dealloc.
   ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
-  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
+  ValueHandle vec = vector_type_cast(tmp);
   LoopNestBuilder(pivs, lbs, ubs, steps)([&] {
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     local(ivs) = remote(clip(transfer, view, ivs));
   });
-  ValueHandle vectorValue = std_load(vec, {constant_index(0)});
+  ValueHandle vectorValue = std_load(vec);
   (dealloc(tmp)); // vexing parse
 
   // 3. Propagate.
@@ -336,10 +330,10 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
 
   // 1. Setup all the captures.
   ScopedContext scope(rewriter, transfer.getLoc());
-  IndexedValue remote(transfer.getMemRef());
-  MemRefView view(transfer.getMemRef());
-  ValueHandle vectorValue(transfer.getVector());
-  VectorView vectorView(transfer.getVector());
+  IndexedValue remote(transfer.memref());
+  MemRefView view(transfer.memref());
+  ValueHandle vectorValue(transfer.vector());
+  VectorView vectorView(transfer.vector());
   SmallVector<IndexHandle, 8> ivs = makeIndexHandles(vectorView.rank());
   SmallVector<ValueHandle *, 8> pivs = makeIndexHandlePointers(ivs);
   coalesceCopy(transfer, &pivs, &vectorView);
@@ -354,8 +348,8 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   // 2. Emit alloc-store-copy-dealloc.
   ValueHandle tmp = alloc(tmpMemRefType(transfer));
   IndexedValue local(tmp);
-  ValueHandle vec = vector_type_cast(tmp, vectorMemRefType(transfer));
-  std_store(vectorValue, vec, {constant_index(0)});
+  ValueHandle vec = vector_type_cast(tmp);
+  std_store(vectorValue, vec);
   LoopNestBuilder(pivs, lbs, ubs, steps)([&] {
     // Computes clippedScalarAccessExprs in the loop nest scope (ivs exist).
     remote(clip(transfer, view, ivs)) = local(ivs);

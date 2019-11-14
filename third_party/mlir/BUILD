@@ -2216,6 +2216,7 @@ filegroup(
     name = "VectorOpsTdFiles",
     srcs = [
         "include/mlir/Dialect/VectorOps/VectorOps.td",
+        ":AffineOpsTdFiles",
         ":OpBaseTdFiles",
     ],
 )
@@ -2231,6 +2232,10 @@ gentbl(
         (
             "-gen-op-defs",
             "include/mlir/Dialect/VectorOps/VectorOps.cpp.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/Vector/VectorOps.md",
         ),
     ],
     tblgen = ":mlir-tblgen",
