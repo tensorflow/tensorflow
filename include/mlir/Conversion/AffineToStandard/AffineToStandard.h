@@ -1,4 +1,4 @@
-//===- LowerAffine.h - Convert Affine to Standard dialect -------*- C++ -*-===//
+//===- AffineToStandard.h - Convert Affine to Standard dialect --*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,11 +15,10 @@
 // limitations under the License.
 // =============================================================================
 
-#ifndef MLIR_TRANSFORMS_LOWERAFFINE_H
-#define MLIR_TRANSFORMS_LOWERAFFINE_H
+#ifndef MLIR_CONVERSION_AFFINETOSTANDARD_AFFINETOSTANDARD_H
+#define MLIR_CONVERSION_AFFINETOSTANDARD_AFFINETOSTANDARD_H
 
 #include "mlir/Support/LLVM.h"
-#include <vector>
 
 namespace mlir {
 class AffineExpr;
@@ -55,4 +54,4 @@ Value *lowerAffineLowerBound(AffineForOp op, OpBuilder &builder);
 Value *lowerAffineUpperBound(AffineForOp op, OpBuilder &builder);
 } // namespace mlir
 
-#endif // MLIR_TRANSFORMS_LOWERAFFINE_H
+#endif // MLIR_CONVERSION_AFFINETOSTANDARD_AFFINETOSTANDARD_H

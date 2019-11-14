@@ -1,4 +1,4 @@
-//===- LowerAffine.cpp - Lower affine constructs to primitives ------------===//
+//===- AffineToStandard.cpp - Lower affine constructs to primitives -------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,7 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Transforms/LowerAffine.h"
+#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
+
 #include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"

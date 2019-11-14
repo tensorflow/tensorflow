@@ -31,6 +31,7 @@ include_directories(${CMAKE_CURRENT_BINARY_DIR}/include/)
 target_link_libraries(toyc-ch6
   PRIVATE
     MLIRAffineOps
+    MLIRAffineToStandard
     MLIRAnalysis
     MLIRExecutionEngine
     MLIRIR
@@ -45,6 +46,7 @@ target_link_libraries(toyc-ch6
     )
 
 whole_archive_link(toyc-ch6
+  MLIRAffineToStandard
   MLIRAffineOps
   MLIRLLVMIR
   MLIRStandardOps
