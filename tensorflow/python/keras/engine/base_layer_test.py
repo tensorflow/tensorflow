@@ -214,6 +214,15 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model.train_on_batch(np.random.random((2, 3)), np.random.random((2, 3)))
     self.assertEqual(model.outputs[0].shape.as_list(), [None, 3])
 
+  def test_input_shape_override_build(self):
+    sample_shape = (None, 5, 5, 1)
+    class SampleLayer(keras.layers.Layer):
+      def build(self, input_shape):
+        self.assertEqual(input_shape, sample_shape)
+
+    sample_instance = SampleLayer()
+    sample_instance.compute_output_shape(sample_shape)
+
   def test_deepcopy(self):
     with context.eager_mode():
       bias_reg = lambda x: 1e-3 * math_ops.reduce_sum(x)
