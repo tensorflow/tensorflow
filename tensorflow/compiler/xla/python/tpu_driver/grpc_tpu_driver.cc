@@ -66,22 +66,29 @@ class GrpcEvent : public Event {
 
 class GrpcBufferHandle : public BufferHandle {
  public:
-  explicit GrpcBufferHandle(EventId id, std::shared_ptr<GrpcEvent> event)
-      : id_(id), stream_(event->stream()), event_(std::move(event)) {}
+  explicit GrpcBufferHandle(EventId id, std::shared_ptr<GrpcEvent> event,
+                            int64_t bytes,
+                            std::optional<xla::ShapeProto> shape = std::nullopt)
+      : id_(id),
+        stream_(event->stream()),
+        event_(std::move(event)),
+        bytes_(bytes),
+        shape_(shape) {}
 
   std::shared_ptr<Event> OnReady() override { return event_; }
-  int64_t size_in_bytes() override {
-    LOG(FATAL) << "Unimplemented.";
-    return 0;
-  }
+  int64_t size_in_bytes() override { return bytes_; }
 
   EventId id() const { return id_; }
   GrpcTpuStream* stream() const { return stream_; }
+
+  std::optional<xla::ShapeProto> shape() override { return shape_; }
 
  private:
   const EventId id_;
   GrpcTpuStream* stream_;
   std::shared_ptr<GrpcEvent> event_;
+  int64_t bytes_;
+  std::optional<xla::ShapeProto> shape_;
 };
 
 class GrpcCompiledProgramHandle : public CompiledProgramHandle {
@@ -160,18 +167,9 @@ class GrpcTpuStream {
   std::unique_ptr<Event> Deallocate(std::unique_ptr<BufferHandle> handle,
                                     absl::Span<Event* const> wait_for);
 
-  std::unique_ptr<Event> TransferToDevice(const void* src, int64_t num_bytes,
-                                          BufferHandle* dst,
-                                          absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> TransferFromDevice(const BufferHandle* src, void* dst,
-                                            int64_t num_bytes,
-                                            absl::Span<Event* const> wait_for);
-
   std::unique_ptr<Event> TransferToDevice(const void* src, BufferHandle* dst,
-                                          const xla::ShapeProto& shape,
                                           absl::Span<Event* const> wait_for);
   std::unique_ptr<Event> TransferFromDevice(const BufferHandle* src, void* dst,
-                                            const xla::ShapeProto& shape,
                                             absl::Span<Event* const> wait_for);
 
   std::unique_ptr<Event> TransferFromDeviceToDevice(
@@ -353,29 +351,16 @@ class GrpcTpuDriver : public TpuDriver {
   }
 
   std::unique_ptr<Event> TransferToDevice(
-      const void* src, int64_t num_bytes, BufferHandle* dst,
+      const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<GrpcBufferHandle*>(dst)->stream();
-    return stream->TransferToDevice(src, num_bytes, dst, wait_for);
+    return stream->TransferToDevice(src, dst, wait_for);
   }
   std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, int64_t num_bytes,
+      const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<const GrpcBufferHandle*>(src)->stream();
-    return stream->TransferFromDevice(src, dst, num_bytes, wait_for);
-  }
-
-  std::unique_ptr<Event> TransferToDevice(
-      const void* src, BufferHandle* dst, const xla::ShapeProto& shape,
-      absl::Span<Event* const> wait_for) override {
-    auto* stream = static_cast<GrpcBufferHandle*>(dst)->stream();
-    return stream->TransferToDevice(src, dst, shape, wait_for);
-  }
-  std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, const xla::ShapeProto& shape,
-      absl::Span<Event* const> wait_for) override {
-    auto* stream = static_cast<const GrpcBufferHandle*>(src)->stream();
-    return stream->TransferFromDevice(src, dst, shape, wait_for);
+    return stream->TransferFromDevice(src, dst, wait_for);
   }
 
   std::unique_ptr<Event> TransferFromDeviceToDevice(
@@ -685,7 +670,8 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   auto event =
       absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
-  return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event));
+  return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event),
+                                             num_bytes);
 }
 
 std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
@@ -700,7 +686,8 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   auto event =
       absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
-  return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event));
+  return absl::make_unique<GrpcBufferHandle>(
+      event->id(), std::move(event), ComputeBytesFromShape(shape), shape);
 }
 
 std::unique_ptr<BufferHandle> GrpcTpuStream::AllocateTuple(
@@ -719,7 +706,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::AllocateTuple(
   auto event =
       absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
-  return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event));
+  return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event), 0);
 }
 
 std::unique_ptr<Event> GrpcTpuStream::Deallocate(
@@ -736,13 +723,12 @@ std::unique_ptr<Event> GrpcTpuStream::Deallocate(
 }
 
 std::unique_ptr<Event> GrpcTpuStream::TransferToDevice(
-    const void* src, int64_t num_bytes, BufferHandle* dst,
-    absl::Span<Event* const> wait_for) {
+    const void* src, BufferHandle* dst, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity(absl::StrCat("GrpcTpuStream::TransferToDevice"));
   req->mutable_transfer_to()->mutable_data()->assign(
-      static_cast<const char*>(src), num_bytes);
+      static_cast<const char*>(src), dst->size_in_bytes());
   req->mutable_transfer_to()->set_target_handle(
       static_cast<GrpcBufferHandle*>(dst)->id().AsInt());
   auto event =
@@ -752,61 +738,16 @@ std::unique_ptr<Event> GrpcTpuStream::TransferToDevice(
 }
 
 std::unique_ptr<Event> GrpcTpuStream::TransferFromDevice(
-    const BufferHandle* src, void* dst, int64_t num_bytes,
-    absl::Span<Event* const> wait_for) {
+    const BufferHandle* src, void* dst, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
   TraceMe activity(absl::StrCat("GrpcTpuStream::TransferFromDevice"));
   req->mutable_transfer_from()->set_source_handle(
       static_cast<const GrpcBufferHandle*>(src)->id().AsInt());
-  req->mutable_transfer_from()->set_length(num_bytes);
   EventId event_id = EventId::FromInt(req->operation_id());
   {
     absl::MutexLock lock(&transfers_mutex_);
-    TransferInfo info(dst, num_bytes);
-    transfers_.insert(std::make_pair(event_id, info));
-  }
-  auto event = absl::make_unique<GrpcEvent>(event_id, this);
-  AddWriteRequest(std::move(req));
-  return event;
-}
-
-std::unique_ptr<Event> GrpcTpuStream::TransferToDevice(
-    const void* src, BufferHandle* dst, const xla::ShapeProto& shape,
-    absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
-  InitializeRequest(req.get(), wait_for);
-
-  TraceMe activity(absl::StrCat("GrpcTpuStream::TransferToDevice(shape)",
-                                req->operation_id()));
-  req->mutable_transfer_to()->mutable_data()->assign(
-      static_cast<const char*>(src), ComputeBytesFromShape(shape));
-  req->mutable_transfer_to()->set_target_handle(
-      static_cast<GrpcBufferHandle*>(dst)->id().AsInt());
-  *req->mutable_transfer_to()->mutable_linearize_shape() = shape;
-  auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
-  AddWriteRequest(std::move(req));
-  return event;
-}
-
-std::unique_ptr<Event> GrpcTpuStream::TransferFromDevice(
-    const BufferHandle* src, void* dst, const xla::ShapeProto& shape,
-    absl::Span<Event* const> wait_for) {
-  auto req = absl::make_unique<StreamRequest::Entry>();
-  InitializeRequest(req.get(), wait_for);
-  TraceMe activity(absl::StrCat("GrpcTpuStream::TransferFromDevice(shape)",
-                                req->operation_id()));
-
-  int bytes_expected = ComputeBytesFromShape(shape);
-  req->mutable_transfer_from()->set_source_handle(
-      static_cast<const GrpcBufferHandle*>(src)->id().AsInt());
-  req->mutable_transfer_from()->set_length(bytes_expected);
-  *req->mutable_transfer_from()->mutable_delinearize_shape() = shape;
-  EventId event_id = EventId::FromInt(req->operation_id());
-  {
-    absl::MutexLock lock(&transfers_mutex_);
-    TransferInfo info(dst, bytes_expected);
+    TransferInfo info(dst, const_cast<BufferHandle*>(src)->size_in_bytes());
     transfers_.insert(std::make_pair(event_id, info));
   }
   auto event = absl::make_unique<GrpcEvent>(event_id, this);

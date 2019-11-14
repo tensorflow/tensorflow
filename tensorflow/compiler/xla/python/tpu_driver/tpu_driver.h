@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -73,6 +74,7 @@ class BufferHandle {
   // automatically add this event as a dependency.
   virtual std::shared_ptr<Event> OnReady() = 0;
   virtual int64_t size_in_bytes() = 0;
+  virtual std::optional<xla::ShapeProto> shape() = 0;
 };
 
 // Represents a compiled program on the host.
@@ -166,6 +168,7 @@ class TpuDriver {
   virtual std::unique_ptr<BufferHandle> Allocate(
       int32_t core_id, MemoryRegion region, const xla::ShapeProto& shape,
       absl::Span<Event* const> wait_for) = 0;
+
   // Allocate a buffer representing a tuple of `children` buffers.
   //
   // The returned tuple buffer handle does not manage the memory of `children`:
@@ -183,13 +186,8 @@ class TpuDriver {
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) = 0;
 
-  virtual std::unique_ptr<Event> TransferToDevice(
-      const void* src, int64_t num_bytes, BufferHandle* dst,
-      absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, int64_t num_bytes,
-      absl::Span<Event* const> wait_for) = 0;
-  /* `src` must be laid out in consecutive row-major format for ingestion, and
+  /* For buffers declared with an xla::ShapeProto rather than a raw size,
+   * `src` must be laid out in consecutive row-major format for ingestion, and
    * each element must take up the number of bytes specified by the type.
    *
    * For example, if you have a [3,3,3] tensor with a Float32 type, then the
@@ -207,10 +205,10 @@ class TpuDriver {
    * `TransferFromDevice` will write out the shape back in this order as well.
    */
   virtual std::unique_ptr<Event> TransferToDevice(
-      const void* src, BufferHandle* dst, const xla::ShapeProto& shape,
+      const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) = 0;
   virtual std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, const xla::ShapeProto& shape,
+      const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) = 0;
 
   virtual std::unique_ptr<Event> TransferFromDeviceToDevice(
