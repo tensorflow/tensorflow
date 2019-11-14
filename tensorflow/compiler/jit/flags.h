@@ -55,7 +55,7 @@ struct MarkForCompilationPassFlags {
   // Maximum number of operators in an XLA compilation.
   int32 tf_xla_max_cluster_size;
 
-  // If non-empty, will limit XLA clustering to the following TF operations.
+  // If non-empty, limit XLA clustering to the following TF operations.
   string tf_xla_supported_ops;
 
   // Dump graphs during XLA compilation.

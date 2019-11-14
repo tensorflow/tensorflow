@@ -1128,7 +1128,7 @@ std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
                         "AvgPool3DGrad", "MaxPoolGradGrad", "MaxPoolGradGradV2",
                         "MaxPool3DGradGrad"});
     }
-    if (s == "REDUCEWINDOPW" || fusible) {
+    if (s == "REDUCEWINDOWPW" || fusible) {
       added = true;
       whitelist->insert({"LRN", "LRNGrad"});
     }
@@ -1237,6 +1237,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   auto vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
+  // Check that user's provided TF operation really exists.
   for (auto s = whitelist->begin(); s != whitelist->end(); ++s) {
     if (!all_ops.contains(string(*s))) {
       return errors::InvalidArgument(
@@ -1284,7 +1285,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
     if (whitelist->size() > 0 && !whitelist->contains(node->def().op())) {
       VLOG(1) << "Rejecting " << node->name()
-              << " as is was not listed in --tf_xla_supported_ops.";
+              << " as it is not listed in --tf_xla_supported_ops.";
       continue;
     }
 

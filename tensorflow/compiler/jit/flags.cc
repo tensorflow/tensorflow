@@ -72,7 +72,7 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "Control compilation of operators into XLA computations on CPU and "
            "GPU devices.  0 = use ConfigProto setting; -1 = off; 1 = on for "
            "things very likely to be improved; 2 = on for everything; "
-           "fusible = only for Tensorflow operation that XLA know how to fuse.  "
+           "fusible = only for Tensorflow operations that XLA knows how to fuse.  "
            "If set to single-gpu(<N>) then this resolves to <N> for single-GPU "
            "graphs (graphs that have at least one node placed on a GPU and no "
            "more than one GPU is in use through the entire graph) and 0 "
@@ -87,14 +87,14 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "Maximum number of operators in an XLA compilation."),
       Flag("tf_xla_supported_ops",
            &mark_for_compilation_flags->tf_xla_supported_ops,
-           "Limit the operations clustered to XLA to those operations. "
-           "If multiple, separate them by comma. Shortcuts: "
+           "Limit the operations clustered by XLA to these operations. "
+           "If multiple, separate them with commas. Shortcuts: "
            " PW: All point-wise operations."
            " RED: All reduction operations."
            " SMALL: Mixed small operations."
            " PWRED: TF operations that get converted to PW+RED operation in XLA."
            " REDUCEWINDOW: TF operations like MaxPool/AvgPool that get converted to ReduceWindow in XLA."
-           " REDUCEWINDOPW: Operation that get converted to ReduceWindow + PW (LRN, LRNGrad)."
+           " REDUCEWINDOWPW: Operation that get converted to ReduceWindow + PW (LRN, LRNGrad)."
            " BN: TF FusedBatchNorm* operations."
            " FUSIBLE: All TF operations that XLA can fuse (All the above). "
            "You can also put any TF operation name."),
