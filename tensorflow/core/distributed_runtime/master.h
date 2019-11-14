@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/master_env.h"
 #include "tensorflow/core/distributed_runtime/master_session.h"
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/macros.h"
@@ -94,6 +95,9 @@ class Master {
   // If a session is not active for this many seconds, it will be
   // closed automatically.
   const double session_gc_seconds_;
+
+  // Used to track ids for incoming requests so we can detect duplicates.
+  RecentRequestIds recent_request_ids_;
 
   // Call CleanupAll on all workers.
   void CleanupWorkers(const ResetRequest& reset);

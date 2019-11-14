@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
@@ -42,7 +43,7 @@ StatusOr<Literal> Client::Transfer(const GlobalData& data,
   TransferToClientRequest request;
   *request.mutable_data() = data.handle();
   if (shape_with_layout != nullptr) {
-    *request.mutable_shape_with_layout() = *shape_with_layout;
+    *request.mutable_shape_with_layout() = shape_with_layout->ToProto();
   }
   TransferToClientResponse response;
 
@@ -123,7 +124,7 @@ StatusOr<Literal> Client::TransferFromOutfeed(
   }
   request.set_replica_id(replica_id);
   if (shape_with_layout != nullptr) {
-    *request.mutable_shape_with_layout() = *shape_with_layout;
+    *request.mutable_shape_with_layout() = shape_with_layout->ToProto();
   }
   TransferFromOutfeedResponse response;
 
@@ -170,11 +171,14 @@ StatusOr<Literal> Client::ExecuteAndTransfer(
       std::unique_ptr<GlobalData> data,
       Execute(computation, arguments, execution_options, execution_profile));
 
-  const Shape* shape_with_output_layout = nullptr;
+  absl::optional<Shape> shape_with_output_layout;
   if (execution_options && execution_options->has_shape_with_output_layout()) {
-    shape_with_output_layout = &execution_options->shape_with_output_layout();
+    shape_with_output_layout =
+        Shape(execution_options->shape_with_output_layout());
   }
-  return Transfer(*data, shape_with_output_layout);
+  return Transfer(*data, shape_with_output_layout.has_value()
+                             ? &(*shape_with_output_layout)
+                             : nullptr);
 }
 
 StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
@@ -182,7 +186,7 @@ StatusOr<Literal> Client::ComputeConstant(const XlaComputation& computation,
   ComputeConstantGraphRequest request;
   *request.mutable_computation() = computation.proto();
   if (output_layout != nullptr) {
-    *request.mutable_output_layout() = *output_layout;
+    *request.mutable_output_layout() = output_layout->ToProto();
   }
 
   ComputeConstantResponse response;
@@ -229,7 +233,7 @@ StatusOr<ExecutionHandle> Client::Compile(
 
   // The argument shapes affect how the computation is compiled.
   for (const auto& arg_shape : argument_shapes) {
-    *request.add_input_shape_with_layout() = arg_shape;
+    *request.add_input_shape_with_layout() = arg_shape.ToProto();
   }
 
   CompileResponse response;
@@ -274,53 +278,51 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     const XlaComputation& computation, absl::Span<GlobalData* const> arguments,
     const ExecutionOptions* execution_options,
     ExecutionProfile* execution_profile) {
-  if (execution_options != nullptr &&
-      execution_options->device_handles_size() > 1) {
-    std::vector<XlaComputationInstance> computation_instances = {
-        XlaComputationInstance{
-            computation,
-            std::vector<GlobalData*>(arguments.begin(), arguments.end()),
-            *execution_options, execution_profile}};
-    TF_ASSIGN_OR_RETURN(auto results, ExecuteParallel(computation_instances));
-    // The result selection is a bit hacky, but better than assuming it is
-    // device 0.
-    //
-    // TODO(b/118493728): Allow Execute to return one result per computation.
-    for (int64 i = 0; i < results.size(); i++) {
-      TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(*results[i]));
-      if (!ShapeUtil::IsEmptyTuple(shape)) {
-        VLOG(3) << "Fetching result from device " << i << ": "
-                << ShapeUtil::HumanString(shape);
-        return std::move(results[i]);
-      }
+  // Create an ExecutionOptions if necessary, or set its DeviceHandles.
+  absl::optional<ExecutionOptions> options_storage;
+  if (!execution_options || execution_options->device_handles().empty()) {
+    if (execution_options) {
+      options_storage.emplace(*execution_options);
+    } else {
+      options_storage.emplace(CreateDefaultExecutionOptions());
     }
-    TF_RET_CHECK(!results.empty());
-    VLOG(1) << "Defaulting to device 0 result";
-    return std::move(results[0]);
+    execution_options = &*options_storage;
+
+    TF_ASSIGN_OR_RETURN(auto device_handles,
+                        GetDeviceHandles(/*device_count=*/1));
+    TF_RET_CHECK(!device_handles.empty());
+    *options_storage->add_device_handles() = std::move(device_handles[0]);
   }
 
-  // The argument shapes affect how the computation is compiled.
-  std::vector<Shape> arg_shapes(arguments.size());
-  for (int i = 0; i < arguments.size(); i++) {
-    TF_ASSIGN_OR_RETURN(arg_shapes[i], GetShape(*arguments[i]));
-  }
+  std::vector<XlaComputationInstance> computation_instances = {
+      XlaComputationInstance{
+          computation,
+          std::vector<GlobalData*>(arguments.begin(), arguments.end()),
+          *execution_options, execution_profile}};
 
-  TF_ASSIGN_OR_RETURN(auto handle,
-                      Compile(computation, arg_shapes, execution_options));
+  // Instead of invoking Compile() and Execute(), invoke
+  // Service::ExecuteParallel() to execute our one computation.  Compile()
+  // caches the executable forever, which isn't what we want.
+  VLOG(1) << "Making ExecuteParallel request: "
+          << execution_options->DebugString();
+  TF_ASSIGN_OR_RETURN(auto results, ExecuteParallel(computation_instances));
+  VLOG(1) << "ExecuteParallel request done.";
 
-  TF_ASSIGN_OR_RETURN(auto result,
-                      Execute(handle, arguments, execution_profile));
-
-  if (execution_profile != nullptr) {
-    if (VLOG_IS_ON(1)) {
-      TF_ASSIGN_OR_RETURN(
-          auto execution_stats,
-          ExecutionStatsAsString(computation, *execution_profile));
-      VLOG(1) << execution_stats;
+  // The result selection is a bit hacky, but better than assuming it is
+  // device 0.
+  //
+  // TODO(b/118493728): Allow Execute to return one result per computation.
+  for (int64 i = 0; i < results.size(); i++) {
+    TF_ASSIGN_OR_RETURN(const Shape& shape, GetShape(*results[i]));
+    if (!ShapeUtil::IsEmptyTuple(shape)) {
+      VLOG(3) << "Fetching result from device " << i << ": "
+              << ShapeUtil::HumanString(shape);
+      return std::move(results[i]);
     }
   }
-
-  return std::move(result);
+  TF_RET_CHECK(!results.empty());
+  VLOG(1) << "Defaulting to device 0 result";
+  return std::move(results[0]);
 }
 
 StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
@@ -458,7 +460,7 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
     return s;
   }
 
-  return response.shape();
+  return Shape(response.shape());
 }
 
 StatusOr<string> Client::ExecutionStatsAsString(

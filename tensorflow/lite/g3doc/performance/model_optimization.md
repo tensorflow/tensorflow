@@ -1,31 +1,14 @@
 # Model optimization
 
-Inference efficiency is a critical issue when deploying machine learning
-models to mobile devices. Where the computational demand for *training*
-grows with the number of models trained on different architectures, the
-computational demand for *inference* grows in proportion to the number of
-users. The *Tensorflow Model Optimization Toolkit* minimizes the complexity
-of inference—the model size, the latency and power consumption.
+Tensorflow Lite and the
+[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization)
+provide tools to minimize the complexity of optimizing inference.
 
-
-## Use cases
-
-Model optimization is useful for:
-
-* Deploying models to edge devices with restrictions on processing, memory, or power-consumption.
-  For example, mobile and Internet of Things (IoT) devices.
-* Reduce the payload size for over-the-air model updates.
-* Execution on hardware constrained by fixed-point operations.
-* Optimize models for special purpose hardware accelerators.
-
-
-## Optimization methods
-
-Model optimization uses multiple techniques:
-
-* Reduced parameter count, for example, pruning and structured pruning.
-* Reduced representational precision, for example, quantization.
-* Update the original model topology to a more efficient one, with reduced parameters or faster execution, for example, tensor decomposition methods and distillation.
+Inference efficiency is particularly important for edge devices, such as mobile
+and Internet of Things (IoT). Such devices have many restrictions on processing,
+memory, power-consumption, and storage for models. Furthermore, model
+optimization unlocks the processing power of fixed-point hardware and next
+generation hardware accelerators.
 
 ## Model quantization
 
@@ -34,19 +17,21 @@ representations of weights and, optionally, activations for both storage and
 computation. Quantization provides several benefits:
 
 * Support on existing CPU platforms.
-* Quantizing activations reduces memory access costs for reading and storing intermediate activations.
+* Quantization of activations reduces memory access costs for reading and storing intermediate activations.
 * Many CPU and hardware accelerator implementations provide SIMD instruction capabilities, which are especially beneficial for quantization.
 
 TensorFlow Lite provides several levels of support for quantization.
 
-[Post-training quantization](post_training_quantization.md) quantizes weights and activations post training and is very easy to use.
-[Quantization-aware training](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/quantize/README.md){:.external} allows for training networks that can be quantized with minimal accuracy drop and is only available
-for a subset of convolutional neural network architectures.
-
+*   Tensorflow Lite [post-training quantization](post_training_quantization.md)
+    quantizes weights and activations post training easily.
+*   [Quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}
+    allows for training of networks that can be quantized with minimal accuracy
+    drop; this is only available for a subset of convolutional neural network
+    architectures.
 
 ### Latency and accuracy results
 
-Below are the results of the latency and accuracy of post-training quantization and
+Below are the latency and accuracy results for post-training quantization and
 quantization-aware training on a few models. All latency numbers are measured on
 Pixel&nbsp;2 devices using a single big core. As the toolkit improves, so will the numbers here:
 
@@ -62,13 +47,12 @@ Pixel&nbsp;2 devices using a single big core. As the toolkit improves, so will t
       <th>Latency (Quantization Aware Training) (ms) </th>
       <th> Size (Original) (MB)</th>
       <th> Size (Optimized) (MB)</th>
-    </tr>
-    <tr><td>Mobilenet-v1-1-224</td><td>0.709</td><td>0.657</td><td>0.70</td>
-      <td>180</td><td>145</td><td>80.2</td><td>16.9</td><td>4.3</td></tr>
+    </tr> <tr><td>Mobilenet-v1-1-224</td><td>0.709</td><td>0.657</td><td>0.70</td>
+      <td>124</td><td>112</td><td>64</td><td>16.9</td><td>4.3</td></tr>
     <tr><td>Mobilenet-v2-1-224</td><td>0.719</td><td>0.637</td><td>0.709</td>
-      <td>117</td><td>121</td><td>80.3</td><td>14</td><td>3.6</td></tr>
+      <td>89</td><td>98</td><td>54</td><td>14</td><td>3.6</td></tr>
    <tr><td>Inception_v3</td><td>0.78</td><td>0.772</td><td>0.775</td>
-      <td>1585</td><td>1187</td><td>637</td><td>95.7</td><td>23.9</td></tr>
+      <td>1130</td><td>845</td><td>543</td><td>95.7</td><td>23.9</td></tr>
    <tr><td>Resnet_v2_101</td><td>0.770</td><td>0.768</td><td>N/A</td>
       <td>3973</td><td>2868</td><td>N/A</td><td>178.3</td><td>44.9</td></tr>
  </table>
@@ -77,12 +61,18 @@ Pixel&nbsp;2 devices using a single big core. As the toolkit improves, so will t
   </figcaption>
 </figure>
 
-## Choice of quantization tool
+## Choice of tool
 
-As a starting point, check if the models in the TensorFlow Lite model repository can work for
-your application. If not, we recommend that users start with the post-training quantization tool
-since this is broadly applicable and does not require training data. For cases where the accuracy
-and latency targets are not met, or hardware accelerator support is important, quantization-aware
-training is the better option.
+As a starting point, check if the models in
+[hosted models](../guide/hosted_models.md) can work for your application. If
+not, we recommend that users start with the
+[post-training quantization tool](post_training_quantization.md) since this is
+broadly applicable and does not require training data.
+
+For cases where the accuracy and latency targets are not met, or hardware
+accelerator support is important,
+[quantization-aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}
+is the better option. See additional optimization techniques under the
+[Tensorflow Model Optimization Toolkit](https://www.tensorflow.org/model_optimization).
 
 Note: Quantization-aware training supports a subset of convolutional neural network architectures.

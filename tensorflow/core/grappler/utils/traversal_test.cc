@@ -15,101 +15,222 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/traversal.h"
 
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace grappler {
+
 namespace {
+using ::tensorflow::test::function::NDef;
 
-class TraversalTest : public ::testing::Test {
- protected:
-  static NodeDef CreateNode(const string& name,
-                            const std::vector<string>& inputs) {
-    return CreateNode(name, "", inputs);
-  }
-  static NodeDef CreateNode(const string& name, const string& op,
-                            const std::vector<string>& inputs) {
-    NodeDef node;
-    node.set_name(name);
-    if (!op.empty()) {
-      node.set_op(op);
-    }
-    for (const string& input : inputs) {
-      node.add_input(input);
-    }
-    return node;
-  }
-};
-
-TEST_F(TraversalTest, ReverseDfsNoLoop) {
-  GraphDef graph;
-  *graph.add_node() = CreateNode("2", {"5"});
-  *graph.add_node() = CreateNode("0", {"5", "4"});
-  *graph.add_node() = CreateNode("1", {"4", "3"});
-  *graph.add_node() = CreateNode("3", {"2"});
-  *graph.add_node() = CreateNode("5", {});
-  *graph.add_node() = CreateNode("4", {});
-
-  std::vector<const NodeDef*> start_nodes = {&graph.node(1), &graph.node(2)};
-  std::vector<string> pre_order;
-  std::vector<string> post_order;
-  bool found_back_edge = false;
-  ReverseDfs(
-      GraphView(&graph), start_nodes,
-      [&pre_order](const NodeDef* n) { pre_order.push_back(n->name()); },
-      [&post_order](const NodeDef* n) { post_order.push_back(n->name()); },
-      [&found_back_edge](const NodeDef*, const NodeDef*) {
-        found_back_edge = true;
-      });
-
-  // Pre/Post order traversals are non deterministic because a node fanin is an
-  // absl::flat_hash_set with non deterministic traversal order.
-  using ValidTraversal = std::pair<std::vector<string>, std::vector<string>>;
-
-  std::set<ValidTraversal> valid_traversals = {
-      // pre_order                     post_order
-      {{"1", "4", "3", "2", "5", "0"}, {"4", "5", "2", "3", "1", "0"}},
-      {{"1", "3", "2", "5", "4", "0"}, {"5", "2", "3", "4", "1", "0"}}};
-
-  EXPECT_EQ(valid_traversals.count({pre_order, post_order}), 1);
-  EXPECT_FALSE(found_back_edge);
+DfsCallbacks MkCallbacks(std::vector<string>* pre_order,
+                         std::vector<string>* post_order,
+                         std::vector<string>* back_edges) {
+  return {[pre_order](const NodeDef* n) { pre_order->push_back(n->name()); },
+          [post_order](const NodeDef* n) { post_order->push_back(n->name()); },
+          [back_edges](const NodeDef* src, const NodeDef* dst) {
+            back_edges->push_back(absl::StrCat(src->name(), "->", dst->name()));
+          }};
 }
 
-TEST_F(TraversalTest, ReverseDfsWithLoop) {
-  GraphDef graph;
-  // Create a loop
-  *graph.add_node() = CreateNode("2", "Merge", {"1", "5"});
-  *graph.add_node() = CreateNode("3", "Switch", {"2"});
-  *graph.add_node() = CreateNode("4", "Identity", {"3"});
-  *graph.add_node() = CreateNode("5", "NextIteration", {"4"});
-  *graph.add_node() = CreateNode("1", "Enter", {});
-  *graph.add_node() = CreateNode("6", "Exit", {"3"});
+TEST(TraversalTest, OutputsDfsNoLoop) {
+  const string op = "OpIsNotImportantInThisTest";
 
-  std::vector<const NodeDef*> start_nodes = {&graph.node(5)};
+  GraphDef graph = ::tensorflow::test::function::GDef(  //
+      {NDef("2", op, {"5"}, {}),                        //
+       NDef("0", op, {"5", "4"}, {}),                   //
+       NDef("1", op, {"4", "3"}, {}),                   //
+       NDef("3", op, {"2"}, {}),                        //
+       NDef("5", op, {}, {}),                           //
+       NDef("4", op, {}, {})},                          //
+      /*funcs=*/{});
+
+  std::vector<const NodeDef*> start_nodes = {&graph.node(4), &graph.node(5)};
+
   std::vector<string> pre_order;
   std::vector<string> post_order;
   std::vector<string> back_edges;
-  ReverseDfs(
-      GraphView(&graph), start_nodes,
-      [&pre_order](const NodeDef* n) { pre_order.push_back(n->name()); },
-      [&post_order](const NodeDef* n) { post_order.push_back(n->name()); },
-      [&back_edges](const NodeDef* src, const NodeDef* dst) {
-        back_edges.push_back(strings::StrCat(src->name(), "->", dst->name()));
-      });
 
-  // Pre/Post order traversals are non deterministic because a node fanin is an
-  // absl::flat_hash_set with non deterministic traversal order.
-  using ValidTraversal = std::pair<std::vector<string>, std::vector<string>>;
+  GraphTopologyView graph_view;
+  TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+  DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
+               MkCallbacks(&pre_order, &post_order, &back_edges));
 
-  std::set<ValidTraversal> valid_traversals = {
-      // pre_order                     post_order
-      {{"6", "3", "2", "4", "5", "1"}, {"5", "4", "1", "2", "3", "6"}},
-      {{"6", "3", "2", "1", "5", "4"}, {"1", "4", "5", "2", "3", "6"}},
-      {{"6", "3", "2", "5", "4", "1"}, {"4", "5", "1", "2", "3", "6"}}};
+  const std::vector<string> expected_pre = {"4", "1", "0", "5", "2", "3"};
+  const std::vector<string> expected_post = {"1", "0", "4", "3", "2", "5"};
 
-  EXPECT_EQ(valid_traversals.count({pre_order, post_order}), 1);
-  EXPECT_EQ(std::vector<string>({"4->3"}), back_edges);
+  EXPECT_EQ(pre_order, expected_pre);
+  EXPECT_EQ(post_order, expected_post);
+  EXPECT_TRUE(back_edges.empty());
+}
+
+TEST(TraversalTest, InputsDfsNoLoop) {
+  const string op = "OpIsNotImportantInThisTest";
+
+  GraphDef graph = ::tensorflow::test::function::GDef(  //
+      {NDef("2", op, {"5"}, {}),                        //
+       NDef("0", op, {"5", "4"}, {}),                   //
+       NDef("1", op, {"4", "3"}, {}),                   //
+       NDef("3", op, {"2"}, {}),                        //
+       NDef("5", op, {}, {}),                           //
+       NDef("4", op, {}, {})},                          //
+      /*funcs=*/{});
+
+  std::vector<const NodeDef*> start_nodes = {&graph.node(1), &graph.node(2)};
+
+  std::vector<string> pre_order;
+  std::vector<string> post_order;
+  std::vector<string> back_edges;
+
+  GraphTopologyView graph_view;
+  TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+  DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowInputs,
+               MkCallbacks(&pre_order, &post_order, &back_edges));
+
+  const std::vector<string> expected_pre = {"1", "4", "3", "2", "5", "0"};
+  const std::vector<string> expected_post = {"4", "5", "2", "3", "1", "0"};
+
+  EXPECT_EQ(pre_order, expected_pre);
+  EXPECT_EQ(post_order, expected_post);
+  EXPECT_TRUE(back_edges.empty());
+}
+
+TEST(TraversalTest, InputsDfsWithLoop) {
+  // Graph with a loop.
+  GraphDef graph = ::tensorflow::test::function::GDef(  //
+      {NDef("2", "Merge", {"1", "5"}, {}),              //
+       NDef("3", "Switch", {"2"}, {}),                  //
+       NDef("4", "Identity", {"3"}, {}),                //
+       NDef("5", "NextIteration", {"4"}, {}),           //
+       NDef("1", "Enter", {}, {}),                      //
+       NDef("6", "Exit", {"3"}, {})},                   //
+      /*funcs=*/{});
+
+  std::vector<const NodeDef*> start_nodes = {&graph.node(5)};
+
+  std::vector<string> pre_order;
+  std::vector<string> post_order;
+  std::vector<string> back_edges;
+
+  GraphTopologyView graph_view;
+  TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+  DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowInputs,
+               MkCallbacks(&pre_order, &post_order, &back_edges));
+
+  const std::vector<string> expected_pre = {"6", "3", "2", "1", "5", "4"};
+  const std::vector<string> expected_post = {"1", "4", "5", "2", "3", "6"};
+  const std::vector<string> expected_edges = {"4->3"};
+
+  EXPECT_EQ(pre_order, expected_pre);
+  EXPECT_EQ(post_order, expected_post);
+  EXPECT_EQ(back_edges, expected_edges);
+}
+
+TEST(TraversalTest, OutputDfsWithLoop) {
+  // Graph with a loop.
+  GraphDef graph = ::tensorflow::test::function::GDef(  //
+      {NDef("2", "Merge", {"1", "5"}, {}),              //
+       NDef("3", "Switch", {"2"}, {}),                  //
+       NDef("4", "Identity", {"3"}, {}),                //
+       NDef("5", "NextIteration", {"4"}, {}),           //
+       NDef("1", "Enter", {}, {}),                      //
+       NDef("6", "Exit", {"3"}, {})},                   //
+      /*funcs=*/{});
+
+  std::vector<const NodeDef*> start_nodes = {&graph.node(0)};
+
+  std::vector<string> pre_order;
+  std::vector<string> post_order;
+  std::vector<string> back_edges;
+
+  GraphTopologyView graph_view;
+  TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+  DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
+               MkCallbacks(&pre_order, &post_order, &back_edges));
+
+  const std::vector<string> expected_pre = {"2", "3", "6", "4", "5"};
+  const std::vector<string> expected_post = {"6", "5", "4", "3", "2"};
+  const std::vector<string> expected_edges = {"5->2"};
+
+  EXPECT_EQ(pre_order, expected_pre);
+  EXPECT_EQ(post_order, expected_post);
+  EXPECT_EQ(back_edges, expected_edges);
+}
+
+TEST(TraversalTest, DfsWithEnterPredicate) {
+  const string op = "OpIsNotImportantInThisTest";
+
+  GraphDef graph = ::tensorflow::test::function::GDef(  //
+      {NDef("1", op, {}, {}),                           //       2 -> 3
+       NDef("2", op, {"1"}, {}),                        // 1 -> /      \ -> 6
+       NDef("3", op, {"2"}, {}),                        //      \      /
+       NDef("4", op, {"1"}, {}),                        //       4 -> 5
+       NDef("5", op, {"4"}, {}),                        //
+       NDef("6", op, {"3", "5"}, {})},                  //
+      /*funcs=*/{});
+
+  // Do not enter the nodes '2' and '3'.
+  const auto enter = [](const NodeDef* node) {
+    return node->name() != "2" && node->name() != "3";
+  };
+
+  std::vector<const NodeDef*> start_nodes = {&graph.node(0)};
+
+  std::vector<string> pre_order;
+  std::vector<string> post_order;
+  std::vector<string> back_edges;
+
+  GraphTopologyView graph_view;
+  TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+  DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
+               DfsPredicates::Enter(enter),
+               MkCallbacks(&pre_order, &post_order, &back_edges));
+
+  const std::vector<string> expected_pre = {"1", "4", "5", "6"};
+  const std::vector<string> expected_post = {"6", "5", "4", "1"};
+
+  EXPECT_EQ(pre_order, expected_pre);
+  EXPECT_EQ(post_order, expected_post);
+  EXPECT_TRUE(back_edges.empty());
+}
+
+TEST(TraversalTest, DfsWithAdvancePredicate) {
+  const string op = "OpIsNotImportantInThisTest";
+
+  GraphDef graph = ::tensorflow::test::function::GDef(  //
+      {NDef("1", op, {}, {}),                           //       2 -> 3
+       NDef("2", op, {"1"}, {}),                        // 1 -> /      \ -> 6
+       NDef("3", op, {"2"}, {}),                        //      \      /
+       NDef("4", op, {"1"}, {}),                        //       4 -> 5
+       NDef("5", op, {"4"}, {}),                        //
+       NDef("6", op, {"3", "5"}, {})},                  //
+      {} /* empty function library*/);
+
+  // Do not advance from the nodes '2' and '3'.
+  const auto advance = [](const NodeDef* node) {
+    return node->name() != "2" && node->name() != "3";
+  };
+
+  std::vector<const NodeDef*> start_nodes = {&graph.node(0)};
+
+  std::vector<string> pre_order;
+  std::vector<string> post_order;
+  std::vector<string> back_edges;
+
+  GraphTopologyView graph_view;
+  TF_CHECK_OK(graph_view.InitializeFromGraph(graph));
+  DfsTraversal(graph_view, start_nodes, TraversalDirection::kFollowOutputs,
+               DfsPredicates::Advance(advance),
+               MkCallbacks(&pre_order, &post_order, &back_edges));
+
+  const std::vector<string> expected_pre = {"1", "4", "5", "6", "2"};
+  const std::vector<string> expected_post = {"6", "5", "4", "2", "1"};
+
+  EXPECT_EQ(pre_order, expected_pre);
+  EXPECT_EQ(post_order, expected_post);
+  EXPECT_TRUE(back_edges.empty());
 }
 
 }  // namespace

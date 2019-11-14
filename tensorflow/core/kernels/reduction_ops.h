@@ -26,11 +26,27 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+template <typename Reducer>
+struct ReducerTraits {
+  enum { IsScalarIdentity = true };
+};
+
 // Dummy class used for template specialization for mean reduction, which is
 // accomplished by SumReducer and on-the-fly division by the reduction factor.
 template <typename Scalar>
 struct MeanReducer {
   Scalar initialize() const { return Scalar(0); }
+};
+
+// Dummy class used for template specialization for l2-norm reduction.
+template <typename Scalar>
+struct EuclideanNormReducer {
+  Scalar initialize() const { return Scalar(0); }
+};
+
+template <typename Scalar>
+struct ReducerTraits<EuclideanNormReducer<Scalar>> {
+  enum { IsScalarIdentity = false };
 };
 
 template <typename Device, typename OUT_T, typename IN_T,
@@ -56,6 +72,39 @@ struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
   }
 };
 
+// TODO(rmlarsen): Refactor this such that taking the sqrt can be optional
+// controlled by an attribute.
+template <typename Device, typename OUT_T, typename IN_T,
+          typename ReductionAxes, typename Scalar>
+struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
+                       functor::EuclideanNormReducer<Scalar>> {
+  void operator()(const Device& d, OUT_T out, IN_T in,
+                  const ReductionAxes& reduction_axes,
+                  const functor::EuclideanNormReducer<Scalar>& reducer) {
+    static_assert(std::is_same<Scalar, typename OUT_T::Scalar>::value, "");
+    Eigen::internal::SumReducer<Scalar> sum_reducer;
+    out.device(d) =
+        (in * in.conjugate()).reduce(reduction_axes, sum_reducer).sqrt();
+  }
+};
+
+template <typename Device, typename OUT_T, typename IN_T,
+          typename ReductionAxes>
+struct ReduceEigenImpl<Device, OUT_T, IN_T, ReductionAxes,
+                       functor::EuclideanNormReducer<bfloat16>> {
+  void operator()(const Device& d, OUT_T out, IN_T in,
+                  const ReductionAxes& reduction_axes,
+                  const functor::EuclideanNormReducer<bfloat16>& reducer) {
+    static_assert(std::is_same<bfloat16, typename OUT_T::Scalar>::value, "");
+    Eigen::internal::SumReducer<float> sum_reducer;
+    auto in_as_float = in.template cast<float>();
+    out.device(d) = (in_as_float * in_as_float.conjugate())
+                        .reduce(reduction_axes, sum_reducer)
+                        .sqrt()
+                        .template cast<bfloat16>();
+  }
+};
+
 // For most reducers, the identity is Reducer::initialize()
 template <typename Reducer>
 struct Identity {
@@ -78,8 +127,6 @@ struct Identity {
 FIX_MEAN_IDENTITY(Eigen::half)
 FIX_MEAN_IDENTITY(float)
 FIX_MEAN_IDENTITY(double)
-FIX_MEAN_IDENTITY(complex64)
-FIX_MEAN_IDENTITY(complex128)
 #undef FIX_MEAN_IDENTITY
 
 template <typename Device, typename OUT_T, typename Reducer>

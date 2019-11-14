@@ -71,14 +71,14 @@ def handle_options(func, x, axis, exclusive, reverse):
 
 class CumsumTest(xla_test.XLATestCase):
 
-  valid_dtypes = [np.float32]
+  valid_dtypes = [np.float32, np.int32]
 
   def axis_dtypes(self):
     return set(self.int_types).intersection([np.int32, np.int64])
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumsum, x, axis, exclusive, reverse)
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       p = array_ops.placeholder(x.dtype)
       tf_out = math_ops.cumsum(p, axis, exclusive, reverse).eval(
           feed_dict={p: x})
@@ -100,7 +100,7 @@ class CumsumTest(xla_test.XLATestCase):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis_dtype in self.axis_dtypes():
-        with self.cached_session(), self.test_scope():
+        with self.session(), self.test_scope():
           p = array_ops.placeholder(x.dtype)
           axis = constant_op.constant(0, axis_dtype)
           math_ops.cumsum(p, axis).eval(feed_dict={p: x})
@@ -131,7 +131,7 @@ class CumsumTest(xla_test.XLATestCase):
 
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       input_tensor = ops.convert_to_tensor(x)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,
@@ -149,14 +149,14 @@ class CumsumTest(xla_test.XLATestCase):
 
 class CumprodTest(xla_test.XLATestCase):
 
-  valid_dtypes = [np.float32]
+  valid_dtypes = [np.float32, np.int32]
 
   def axis_dtypes(self):
     return set(self.int_types).intersection([np.int32, np.int64])
 
   def _compare(self, x, axis, exclusive, reverse):
     np_out = handle_options(np.cumprod, x, axis, exclusive, reverse)
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       p = array_ops.placeholder(x.dtype)
       prod = math_ops.cumprod(p, axis, exclusive, reverse)
       tf_out = prod.eval(feed_dict={p: x})
@@ -178,7 +178,7 @@ class CumprodTest(xla_test.XLATestCase):
     for dtype in self.valid_dtypes:
       x = np.arange(1, 6).reshape([5]).astype(dtype)
       for axis_dtype in self.axis_dtypes():
-        with self.cached_session(), self.test_scope():
+        with self.session(), self.test_scope():
           p = array_ops.placeholder(x.dtype)
           axis = constant_op.constant(0, axis_dtype)
           math_ops.cumprod(x, axis).eval(feed_dict={p: x})
@@ -209,7 +209,7 @@ class CumprodTest(xla_test.XLATestCase):
 
   def testInvalidAxis(self):
     x = np.arange(0, 10).reshape([2, 5]).astype(np.float32)
-    with self.cached_session(), self.test_scope():
+    with self.session(), self.test_scope():
       input_tensor = ops.convert_to_tensor(x)
       with self.assertRaisesWithPredicateMatch(
           errors_impl.InvalidArgumentError,

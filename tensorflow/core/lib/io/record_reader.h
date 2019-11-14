@@ -89,7 +89,7 @@ class RecordReader {
   // Read the record at "*offset" into *record and update *offset to
   // point to the offset of the next record.  Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  Status ReadRecord(uint64* offset, string* record);
+  Status ReadRecord(uint64* offset, tstring* record);
 
   // Return the metadata of the Record file.
   //
@@ -103,7 +103,7 @@ class RecordReader {
   Status GetMetadata(Metadata* md);
 
  private:
-  Status ReadChecksummed(uint64 offset, size_t n, string* result);
+  Status ReadChecksummed(uint64 offset, size_t n, tstring* result);
 
   RecordReaderOptions options_;
   std::unique_ptr<InputStreamInterface> input_stream_;
@@ -129,7 +129,7 @@ class SequentialRecordReader {
 
   // Reads the next record in the file into *record. Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
-  Status ReadRecord(string* record) {
+  Status ReadRecord(tstring* record) {
     return underlying_.ReadRecord(&offset_, record);
   }
 

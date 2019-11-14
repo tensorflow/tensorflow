@@ -24,33 +24,30 @@ import sqlite3
 
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
-from tensorflow.python.framework import dtypes
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class SqlDatasetTestBase(test_base.DatasetTestBase):
   """Base class for setting up and testing SqlDataset."""
 
-  def _createSqlDataset(self, output_types, num_repeats=1):
-    dataset = readers.SqlDataset(self.driver_name, self.data_source_name,
-                                 self.query, output_types).repeat(num_repeats)
-    iterator = dataset.make_initializable_iterator()
-    init_op = iterator.initializer
-    get_next = iterator.get_next()
-    return init_op, get_next
+  def _createSqlDataset(self,
+                        query,
+                        output_types,
+                        driver_name="sqlite",
+                        num_repeats=1):
+    dataset = readers.SqlDataset(driver_name, self.data_source_name, query,
+                                 output_types).repeat(num_repeats)
+    return dataset
 
   def setUp(self):
     self.data_source_name = os.path.join(test.get_temp_dir(), "tftest.sqlite")
-    self.driver_name = array_ops.placeholder_with_default(
-        array_ops.constant("sqlite", dtypes.string), shape=[])
-    self.query = array_ops.placeholder(dtypes.string, shape=[])
 
     conn = sqlite3.connect(self.data_source_name)
     c = conn.cursor()
     c.execute("DROP TABLE IF EXISTS students")
     c.execute("DROP TABLE IF EXISTS people")
     c.execute("DROP TABLE IF EXISTS townspeople")
+    c.execute("DROP TABLE IF EXISTS data")
     c.execute(
         "CREATE TABLE IF NOT EXISTS students (id INTEGER NOT NULL PRIMARY KEY, "
         "first_name VARCHAR(100), last_name VARCHAR(100), motto VARCHAR(100), "
@@ -90,5 +87,7 @@ class SqlDatasetTestBase(test_base.DatasetTestBase):
          ("John", "Adams", -19.95,
           1331241321342132321324589798264627463827647382647382643874.0,
           9007199254740992.0)])
+    c.execute("CREATE TABLE IF NOT EXISTS data (col1 INTEGER)")
+    c.executemany("INSERT INTO DATA VALUES (?)", [(0,), (1,), (2,)])
     conn.commit()
     conn.close()

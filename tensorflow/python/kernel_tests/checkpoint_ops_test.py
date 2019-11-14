@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_checkpoint_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
@@ -48,6 +49,7 @@ class GenerateVocabRemappingTest(test.TestCase):
     with open(self.old_vocab_file, 'w') as f:
       f.write('\n'.join(['knitting', 'eminem', 'MISSING']) + '\n')
 
+  @test_util.run_deprecated_v1
   def test_generate_remapping_with_no_vocab_changes(self):
     """Tests where vocab does not change at all."""
     remapping, num_present = gen_checkpoint_ops.generate_vocab_remapping(
@@ -123,7 +125,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
 
     save = saver.Saver([matrix])
     with self.cached_session() as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.bundle_file = os.path.join(test.get_temp_dir(), 'bundle_checkpoint')
       save.save(sess, self.bundle_file)
 
@@ -228,6 +230,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
           np.reshape(initializing_values, (num_rows, num_cols)),
           self.evaluate(remapped_matrix))
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_invalid_remapping(self):
     """Tests that errors are raised when an ID maps to multiple new IDs.
 
@@ -259,6 +262,7 @@ class LoadAndRemapMatrixTest(test.TestCase):
     with self.cached_session(), self.assertRaises(errors.UnimplementedError):
       self.evaluate(remapped_matrix)
 
+  @test_util.run_deprecated_v1
   def test_load_and_remap_incorrect_initializing_values(self):
     """Tests that errors are raised with incorrect number of init values."""
     remapped_matrix = gen_checkpoint_ops.load_and_remap_matrix(
@@ -310,7 +314,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
     with self.cached_session() as sess:
       ckpt_path = os.path.join(test.get_temp_dir(), 'temp_ckpt')
       save = saver.Saver([matrix])
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       save.save(sess, ckpt_path)
       num_rows, num_cols = np_value.shape
 
@@ -368,6 +372,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
           np.reshape(initializing_values, (new_rows, num_cols)),
           self.evaluate(remapped_matrix))
 
+  @test_util.run_deprecated_v1
   def test_loading_rows_divisible_by_max_rows(self):
     """Tests loading normal var when rows are evenly divisible by max_rows."""
     self._test_loading_variable_with_max_rows(
@@ -376,6 +381,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
         # 9 is evenly divisible by 3.
         max_rows_in_memory=3)
 
+  @test_util.run_deprecated_v1
   def test_loading_rows_not_divisible_by_max_rows(self):
     """Tests loading normal var when rows aren't divisible by max_rows."""
     self._test_loading_variable_with_max_rows(
@@ -384,6 +390,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
         # 9 is not evenly divisible by 4.
         max_rows_in_memory=4)
 
+  @test_util.run_deprecated_v1
   def test_loading_rows_less_than_max_rows(self):
     """Tests loading normal var as a single slice.
 
@@ -395,6 +402,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
         # 10 > 9.
         max_rows_in_memory=10)
 
+  @test_util.run_deprecated_v1
   def test_loading_no_max_rows(self):
     """Tests loading normal var as a single slice with no valid max_rows."""
     self._test_loading_variable_with_max_rows(
@@ -402,6 +410,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
         partitioner=None,
         max_rows_in_memory=-1)
 
+  @test_util.run_deprecated_v1
   def test_loading_partitions_equals_max_rows(self):
     """Tests loading partitioned var sliced on partition boundary."""
     self._test_loading_variable_with_max_rows(
@@ -411,6 +420,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
         # exactly 3 rows.
         max_rows_in_memory=3)
 
+  @test_util.run_deprecated_v1
   def test_loading_partitions_greater_than_max_rows(self):
     """Tests loading partitioned var with more slices than partitions."""
     self._test_loading_variable_with_max_rows(
@@ -420,6 +430,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
         # row at a time.
         max_rows_in_memory=1)
 
+  @test_util.run_deprecated_v1
   def test_loading_partitions_less_than_max_rows(self):
     """Tests loading partitioned var as a single slice.
 
@@ -430,6 +441,7 @@ class LoadAndRemapMatrixWithMaxRowsTest(test.TestCase):
         partitioner=partitioned_variables.fixed_size_partitioner(3),
         max_rows_in_memory=10)
 
+  @test_util.run_deprecated_v1
   def test_loading_partitions_no_max_rows(self):
     """Tests loading partitioned var as single slice with no valid max_rows."""
     self._test_loading_variable_with_max_rows(

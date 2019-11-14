@@ -20,11 +20,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/extract_image_patches_op.h"
 #include <vector>
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
@@ -130,7 +130,8 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
@@ -160,6 +161,6 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER);
 
 #undef REGISTER
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

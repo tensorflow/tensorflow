@@ -17,8 +17,10 @@
 
 #include <vector>
 
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
+// Set TFLITE_USE_GPU_DELEGATE to 1 to use TFLite GPU Delegate.
+#ifndef TFLITE_USE_GPU_DELEGATE
+#define TFLITE_USE_GPU_DELEGATE 0
+#endif
 
 @interface CameraExampleViewController
     : UIViewController<UIGestureRecognizerDelegate, AVCaptureVideoDataOutputSampleBufferDelegate> {
@@ -33,16 +35,11 @@
   AVCaptureSession* session;
 
   std::vector<std::string> labels;
-  std::unique_ptr<tflite::FlatBufferModel> model;
-  tflite::ops::builtin::BuiltinOpResolver resolver;
-  std::unique_ptr<tflite::Interpreter> interpreter;
-
   double total_latency;
   int total_count;
 }
 @property(strong, nonatomic) CATextLayer* predictionTextLayer;
 
 - (IBAction)takePicture:(id)sender;
-- (IBAction)switchCameras:(id)sender;
 
 @end

@@ -31,22 +31,35 @@ IFS='-' read -ra PLATFORM <<< "${TARGET}"
 OS="${PLATFORM[0]}"
 PY_VERSION="${PLATFORM[1]}"
 COMPILER="${PLATFORM[2]}"
-CUDA_VERSION="${PLATFORM[3]}"
+GPU_VERSION="${PLATFORM[3]}"
 CUDNN_VERSION="${PLATFORM[4]}"
-NCCL_VERSION="${PLATFORM[5]}"
+TENSORRT_VERSION="${PLATFORM[5]}"
 
-if [[ "${COMPILER}" == "gcc" ]]; then
-  COMPILER="gcc-nvcc-${CUDA_VERSION}"
+# TODO(klimek): Put this into the name.
+
+if [[ "${GPU_VERSION}" == "rocm" ]]; then
+  COMPILER="${COMPILER}"
+elif [[ -n "${GPU_VERSION}" ]]; then
+  if [[ "${COMPILER}" == gcc* ]]; then
+    COMPILER="${COMPILER}-nvcc-${GPU_VERSION}"
+  fi
+  # Currently we create a special toolchain for clang when compiling with
+  # cuda enabled. We can get rid of this once the default toolchain bazel
+  # provides supports cuda.
+  if [[ "${COMPILER}" == clang* ]]; then
+    COMPILER="${COMPILER}-${GPU_VERSION}"
+  fi
 fi
 
 echo "OS: ${OS}"
 echo "Python: ${PY_VERSION}"
 echo "Compiler: ${COMPILER}"
-echo "CUDA: ${CUDA_VERSION}"
+echo "CUDA/ROCm: ${GPU_VERSION}"
 echo "CUDNN: ${CUDNN_VERSION}"
-echo "NCCL: ${NCCL_VERSION}"
+echo "TensorRT: ${TENSORRT_VERSION}"
 
-bazel build "${PKG}/generate:${TARGET}"
+bazel build --host_force_python=PY2 --define=mount_project="${PWD}" \
+  "${PKG}/generate:${TARGET}"
 cd "${TEMPDIR}"
 tar xvf "${ROOT}/bazel-bin/${PKG}/generate/${TARGET}_outputs.tar"
 
@@ -58,8 +71,8 @@ find . -empty -delete
 # <OS>/
 #   <CUDA>-<CUDNN>/
 #   <COMPILER>/
-#   <NCCL>/
 #   <PYTHON>/
+#   <TENSORRT>/
 
 # Create our toplevel output directory for the OS.
 mkdir "${OS}"
@@ -67,16 +80,28 @@ mkdir "${OS}"
 # Python:
 mv local_config_python "${OS}/${PY_VERSION}"
 
-# NCCL:
-mv local_config_nccl "${OS}/${NCCL_VERSION}"
+if [[ "${GPU_VERSION}" == "rocm" ]]; then
+  # Compiler:
+  mv local_config_rocm/crosstool "${OS}/${COMPILER}-${GPU_VERSION}"
 
-# Compiler:
-mv local_config_cuda/crosstool "${OS}/${COMPILER}"
+  # ROCm:
+  mv local_config_rocm "${OS}/${GPU_VERSION}"
+elif [[ -n "${GPU_VERSION}" ]]; then
+  # Compiler:
+  mv local_config_cuda/crosstool "${OS}/${COMPILER}"
 
-# CUDA:
-mv local_config_cuda "${OS}/${CUDA_VERSION}-${CUDNN_VERSION}"
+  # CUDA:
+  mv local_config_cuda "${OS}/${GPU_VERSION}-${CUDNN_VERSION}"
+
+  # TensorRT:
+  mv local_config_tensorrt "${OS}/${TENSORRT_VERSION}"
+else
+  # Compiler:
+  mv local_config_cc "${OS}/${COMPILER}"
+fi
 
 # Cleanup for copybara.
+find "${OS}" -name '*.h' |xargs clang-format -i
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs buildifier
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs -I {} mv {} {}.oss
 

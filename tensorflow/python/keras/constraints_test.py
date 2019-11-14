@@ -18,9 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import math
+
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -35,6 +38,13 @@ def get_example_array():
   return example_array
 
 
+def get_example_kernel(width):
+  np.random.seed(3537)
+  example_array = np.random.rand(width, width, 2, 2)
+  return example_array
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class KerasConstraintsTest(test.TestCase):
 
   def test_serialization(self):
@@ -49,54 +59,57 @@ class KerasConstraintsTest(test.TestCase):
       assert fn.__class__ == ref_fn.__class__
 
   def test_max_norm(self):
-    with self.cached_session():
-      array = get_example_array()
-      for m in get_test_values():
-        norm_instance = keras.constraints.max_norm(m)
-        normed = norm_instance(keras.backend.variable(array))
-        assert np.all(keras.backend.eval(normed) < m)
+    array = get_example_array()
+    for m in get_test_values():
+      norm_instance = keras.constraints.max_norm(m)
+      normed = norm_instance(keras.backend.variable(array))
+      assert np.all(keras.backend.eval(normed) < m)
 
-      # a more explicit example
-      norm_instance = keras.constraints.max_norm(2.0)
-      x = np.array([[0, 0, 0], [1.0, 0, 0], [3, 0, 0], [3, 3, 3]]).T
-      x_normed_target = np.array([[0, 0, 0], [1.0, 0, 0],
-                                  [2.0, 0, 0],
-                                  [2. / np.sqrt(3),
-                                   2. / np.sqrt(3),
-                                   2. / np.sqrt(3)]]).T
-      x_normed_actual = keras.backend.eval(
-          norm_instance(keras.backend.variable(x)))
-      self.assertAllClose(x_normed_actual, x_normed_target, rtol=1e-05)
+    # a more explicit example
+    norm_instance = keras.constraints.max_norm(2.0)
+    x = np.array([[0, 0, 0], [1.0, 0, 0], [3, 0, 0], [3, 3, 3]]).T
+    x_normed_target = np.array(
+        [[0, 0, 0], [1.0, 0, 0], [2.0, 0, 0],
+         [2. / np.sqrt(3), 2. / np.sqrt(3), 2. / np.sqrt(3)]]).T
+    x_normed_actual = keras.backend.eval(
+        norm_instance(keras.backend.variable(x)))
+    self.assertAllClose(x_normed_actual, x_normed_target, rtol=1e-05)
 
   def test_non_neg(self):
-    with self.cached_session():
-      non_neg_instance = keras.constraints.non_neg()
-      normed = non_neg_instance(keras.backend.variable(get_example_array()))
-      assert np.all(np.min(keras.backend.eval(normed), axis=1) == 0.)
+    non_neg_instance = keras.constraints.non_neg()
+    normed = non_neg_instance(keras.backend.variable(get_example_array()))
+    assert np.all(np.min(keras.backend.eval(normed), axis=1) == 0.)
 
   def test_unit_norm(self):
-    with self.cached_session():
-      unit_norm_instance = keras.constraints.unit_norm()
-      normalized = unit_norm_instance(
-          keras.backend.variable(get_example_array()))
-      norm_of_normalized = np.sqrt(
-          np.sum(keras.backend.eval(normalized) ** 2, axis=0))
-      # In the unit norm constraint, it should be equal to 1.
-      difference = norm_of_normalized - 1.
-      largest_difference = np.max(np.abs(difference))
-      assert np.abs(largest_difference) < 10e-5
+    unit_norm_instance = keras.constraints.unit_norm()
+    normalized = unit_norm_instance(keras.backend.variable(get_example_array()))
+    norm_of_normalized = np.sqrt(
+        np.sum(keras.backend.eval(normalized)**2, axis=0))
+    # In the unit norm constraint, it should be equal to 1.
+    difference = norm_of_normalized - 1.
+    largest_difference = np.max(np.abs(difference))
+    assert np.abs(largest_difference) < 10e-5
 
   def test_min_max_norm(self):
-    with self.cached_session():
-      array = get_example_array()
-      for m in get_test_values():
-        norm_instance = keras.constraints.min_max_norm(min_value=m,
-                                                       max_value=m * 2)
-        normed = norm_instance(keras.backend.variable(array))
-        value = keras.backend.eval(normed)
-        l2 = np.sqrt(np.sum(np.square(value), axis=0))
-        assert not l2[l2 < m]
-        assert not l2[l2 > m * 2 + 1e-5]
+    array = get_example_array()
+    for m in get_test_values():
+      norm_instance = keras.constraints.min_max_norm(
+          min_value=m, max_value=m * 2)
+      normed = norm_instance(keras.backend.variable(array))
+      value = keras.backend.eval(normed)
+      l2 = np.sqrt(np.sum(np.square(value), axis=0))
+      assert not l2[l2 < m]
+      assert not l2[l2 > m * 2 + 1e-5]
+
+  def test_conv2d_radial_constraint(self):
+    for width in (3, 4, 5, 6):
+      array = get_example_kernel(width)
+      norm_instance = keras.constraints.radial_constraint()
+      normed = norm_instance(keras.backend.variable(array))
+      value = keras.backend.eval(normed)
+      assert np.all(value.shape == array.shape)
+      assert np.all(value[0:, 0, 0, 0] == value[-1:, 0, 0, 0])
+      assert len(set(value[..., 0, 0].flatten())) == math.ceil(float(width) / 2)
 
 
 if __name__ == '__main__':

@@ -31,7 +31,7 @@ namespace tensorflow {
 class TestWorkerInterface : public WorkerInterface {
  public:
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
     done(errors::Unimplemented("GetStatusAsync"));
   }
@@ -152,7 +152,7 @@ class TestWorkerCache : public WorkerCacheInterface {
     }
   }
 
-  WorkerInterface* CreateWorker(const string& target) override {
+  WorkerInterface* GetOrCreateWorker(const string& target) override {
     auto it = workers_.find(target);
     if (it != workers_.end()) {
       return it->second;
@@ -161,6 +161,11 @@ class TestWorkerCache : public WorkerCacheInterface {
   }
 
   void ReleaseWorker(const string& target, WorkerInterface* worker) override {}
+
+  Status GetEagerClientCache(
+      std::unique_ptr<eager::EagerClientCache>* eager_client_cache) override {
+    return errors::Unimplemented("Unimplemented.");
+  }
 
   bool GetDeviceLocalityNonBlocking(const string& device,
                                     DeviceLocality* locality) override {

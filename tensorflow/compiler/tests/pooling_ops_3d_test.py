@@ -62,7 +62,7 @@ class Pooling3DTest(xla_test.XLATestCase):
     # numbers from 1.
     x = np.arange(1.0, total_size + 1, dtype=np.float32)
     x = x.reshape(input_sizes)
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       inputs = array_ops.placeholder(dtypes.float32)
       t = pool_func(
           inputs,
@@ -210,7 +210,7 @@ class Pooling3DTest(xla_test.XLATestCase):
     strides = [1] + strides + [1]
     total_size = np.prod(input_sizes)
     x = np.arange(1, total_size + 1, dtype=np.float32).reshape(input_sizes)
-    with self.cached_session() as sess:
+    with self.session() as sess:
       # Use the forward pool function to compute some corresponding outputs
       # (needed for the CPU device, and we need the shape in both cases).
       with ops.device("CPU"):

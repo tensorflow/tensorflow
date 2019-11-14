@@ -34,16 +34,53 @@ namespace tensorflow {
 
 namespace {
 
+// Use environment setting if specified (init once)
+int32 GetEnvNumInterOpThreads() {
+  static int32 env_num_threads = NumInterOpThreadsFromEnvironment();
+  return env_num_threads;
+}
+
+int32 DefaultNumInterOpThreads() {
+#ifndef __ANDROID__
+  int32 env_num_threads = GetEnvNumInterOpThreads();
+  if (env_num_threads > 0) {
+    return env_num_threads;
+  }
+
+  // Default to the maximum parallelism for the current process.
+  return port::MaxParallelism();
+#else
+  // Historically, -D__ANDROID__ resulted in the inter-op threadpool not being
+  // used (regardless of what was chosen here); instead, all work was done on
+  // the thread(s) calling Session::Run. That's no longer the case, but we'd
+  // like to avoid suddenly higher concurrency and peak resource usage (for the
+  // same device shape, graph, and options) versus prior versions - as best we
+  // can:
+  //
+  //   - Single Session::Run (none concurrent), and default options:
+  //     Behavior is mostly the same as before.
+  //
+  //   - Concurrent Session::Runs, and default options:
+  //     Reduced concurrency versus before.
+  //
+  //   - Thread-pool size set explicitly (>1):
+  //     Increased concurrency versus before.
+  //
+  // (We assume the first case is the most common)
+  return 1;
+#endif
+}
+
 static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
   int32 inter_op_parallelism_threads =
       options.config.inter_op_parallelism_threads();
   if (inter_op_parallelism_threads == 0) {
-    // Default to using the number of cores available in the process.
-    inter_op_parallelism_threads = port::NumSchedulableCPUs();
+    inter_op_parallelism_threads = DefaultNumInterOpThreads();
   }
-
-  return new thread::ThreadPool(Env::Default(), "Compute",
-                                inter_op_parallelism_threads);
+  return new thread::ThreadPool(
+      Env::Default(), ThreadOptions(), "Compute", inter_op_parallelism_threads,
+      !options.config.experimental().disable_thread_spinning(),
+      /*allocator=*/nullptr);
 }
 
 }  // namespace
@@ -53,21 +90,60 @@ thread::ThreadPool* ComputePool(const SessionOptions& options) {
   return compute_pool;
 }
 
+int32 NumInterOpThreadsFromEnvironment() {
+  int32 num;
+  const char* val = std::getenv("TF_NUM_INTEROP_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+}
+
+int32 NumIntraOpThreadsFromEnvironment() {
+  int32 num;
+  const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+}
+
+#ifdef INTEL_MKL
+int32 OMPThreadsFromEnvironment() {
+  // 1) std::getenv is thread-safe (as long as no other function modifies the
+  // host env) from C++11 onward. 2) Most of TF code (except tests and
+  // experimental code) doesn't call setenv and unsetenv
+  int32 num;
+  const char* val = std::getenv("OMP_NUM_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+}
+
+int32 DefaultNumIntraOpThreads() {
+  // Use environment setting if specified (init once)
+  static int env_num_threads = NumIntraOpThreadsFromEnvironment();
+  if (env_num_threads > 0) {
+    return env_num_threads;
+  }
+
+  // Default to the maximum parallelism for the current process.
+  return port::MaxParallelism();
+}
+#endif  // INTEL_MKL
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
-  if (inter_op != 0) return inter_op;
+  if (inter_op > 0) return inter_op;
+  const int32 env_inter_op = GetEnvNumInterOpThreads();
+  if (env_inter_op > 0) return env_inter_op;
+
 #ifdef INTEL_MKL
   if (!DisableMKL()) {
-    // MKL library executes ops in parallel using OMP threads
-    // Set inter_op conservatively to avoid thread oversubscription that could
-    // lead to severe perf degradations and OMP resource exhaustion
-    int mkl_intra_op = 1;
-#ifdef _OPENMP
-    mkl_intra_op = omp_get_max_threads();
-#endif  // _OPENMP
+    // MKL library executes ops in parallel using OMP threads.
+    // Setting inter_op conservatively to avoid thread oversubscription that
+    // could lead to severe perf degradations and OMP resource exhaustion.
+    // Inter ops are set such that mkl_inter_op * mkl_intra_op <= NumCores.
+    const int32 intra_op = options.config.intra_op_parallelism_threads();
+    const int32 omp_max_threads = OMPThreadsFromEnvironment();
+    const int32 mkl_intra_op =
+        (omp_max_threads > 0)
+            ? omp_max_threads
+            : (intra_op > 0) ? intra_op : DefaultNumIntraOpThreads();
     DCHECK_GE(mkl_intra_op, 1);
     const int32 mkl_inter_op = std::max(
-        (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
+        (DefaultNumInterOpThreads() + mkl_intra_op - 1) / mkl_intra_op, 2);
     VLOG(0)
         << "Creating new thread pool with default inter op setting: "
         << mkl_inter_op
@@ -75,15 +151,17 @@ int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
     return mkl_inter_op;
   }
 #endif  // INTEL_MKL
-  // Default to using the number of cores available in the process.
-  return port::NumSchedulableCPUs();
+  return DefaultNumInterOpThreads();
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(
     const SessionOptions& options) {
   const int32 num_threads = NumInterOpThreadsFromSessionOptions(options);
   VLOG(1) << "Direct session inter op parallelism threads: " << num_threads;
-  return new thread::ThreadPool(options.env, "Compute", num_threads);
+  return new thread::ThreadPool(
+      options.env, ThreadOptions(), "Compute", num_threads,
+      !options.config.experimental().disable_thread_spinning(),
+      /*allocator=*/nullptr);
 }
 
 void SchedClosure(std::function<void()> closure) {
@@ -93,12 +171,10 @@ void SchedClosure(std::function<void()> closure) {
   uint64 id = tracing::GetUniqueArg();
   tracing::RecordEvent(tracing::EventCategory::kScheduleClosure, id);
 
-  Env::Default()->SchedClosure(std::bind(
-      [id](std::function<void()> closure) {
-        tracing::ScopedRegion region(tracing::EventCategory::kRunClosure, id);
-        closure();
-      },
-      std::move(closure)));
+  Env::Default()->SchedClosure([id, closure = std::move(closure)]() {
+    tracing::ScopedRegion region(tracing::EventCategory::kRunClosure, id);
+    closure();
+  });
 }
 
 void SchedNonBlockingClosureAfter(int64 micros, std::function<void()> closure) {

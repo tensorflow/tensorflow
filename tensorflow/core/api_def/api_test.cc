@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace {

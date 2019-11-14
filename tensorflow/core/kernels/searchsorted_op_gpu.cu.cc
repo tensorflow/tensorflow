@@ -13,44 +13,45 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
-
-#include "tensorflow/core/kernels/searchsorted_op.h"
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/searchsorted_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 namespace {
 template <typename T, typename OutType>
-__global__ void UpperBoundKernel(const T* sorted_inputs, int batch_size,
-                                 int sorted_inputs_size, int values_size,
-                                 const T* values, OutType* outputs) {
-  CUDA_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
+__global__ void UpperBoundKernel(const T* __restrict__ sorted_inputs,
+                                 int batch_size, int sorted_inputs_size,
+                                 int values_size, const T* __restrict__ values,
+                                 OutType* __restrict__ outputs) {
+  GPU_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
     int bid = work_unit_id / values_size;
     T value = values[work_unit_id];
-    outputs[work_unit_id] = cuda_helper::upper_bound<T, OutType>(
+    outputs[work_unit_id] = gpu_helper::upper_bound<T, OutType>(
         sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
   }
 }
 
 template <typename T, typename OutType>
-__global__ void LowerBoundKernel(const T* sorted_inputs, int batch_size,
-                                 int sorted_inputs_size, int values_size,
-                                 const T* values, OutType* outputs) {
-  CUDA_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
+__global__ void LowerBoundKernel(const T* __restrict__ sorted_inputs,
+                                 int batch_size, int sorted_inputs_size,
+                                 int values_size, const T* __restrict__ values,
+                                 OutType* __restrict__ outputs) {
+  GPU_1D_KERNEL_LOOP(work_unit_id, values_size * batch_size) {
     int bid = work_unit_id / values_size;
     T value = values[work_unit_id];
-    outputs[work_unit_id] = cuda_helper::lower_bound<T, OutType>(
+    outputs[work_unit_id] = gpu_helper::lower_bound<T, OutType>(
         sorted_inputs + bid * sorted_inputs_size, sorted_inputs_size, value);
   }
 }
@@ -64,14 +65,13 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    const cudaStream_t& stream = GetCudaStream(context);
-    CudaLaunchConfig config =
-        GetCudaLaunchConfig(values.size(), context->eigen_gpu_device());
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
+    GpuLaunchConfig config = GetGpuLaunchConfig(values.size(), device);
 
-    UpperBoundKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, stream>>>(
-            sorted_inputs.data(), batch_size, num_inputs, num_values,
-            values.data(), output->data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        UpperBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
+        batch_size, num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }
@@ -84,14 +84,13 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
                         const typename TTypes<T, 1>::ConstTensor& values,
                         int batch_size, int num_inputs, int num_values,
                         typename TTypes<OutType, 1>::Tensor* output) {
-    const cudaStream_t& stream = GetCudaStream(context);
-    CudaLaunchConfig config =
-        GetCudaLaunchConfig(values.size(), context->eigen_gpu_device());
+    const GPUDevice& device = context->eigen_device<GPUDevice>();
+    GpuLaunchConfig config = GetGpuLaunchConfig(values.size(), device);
 
-    LowerBoundKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, stream>>>(
-            sorted_inputs.data(), batch_size, num_inputs, num_values,
-            values.data(), output->data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        LowerBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, device.stream(), sorted_inputs.data(),
+        batch_size, num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }
@@ -123,4 +122,4 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_GPU_SPEC);
 #undef REGISTER_GPU_SPEC
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

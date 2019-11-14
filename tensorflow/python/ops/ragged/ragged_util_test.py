@@ -41,7 +41,9 @@ TENSOR_4D = [[[[('%d%d%d%d' % (i, j, k, l)).encode('utf-8')
              for i in range(4)]
 
 
-class RaggedRepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
+@test_util.run_all_in_graph_and_eager_modes
+class RaggedUtilTest(test_util.TensorFlowTestCase,
+                     parameterized.TestCase):
 
   @parameterized.parameters([
       # Docstring examples
@@ -89,8 +91,7 @@ class RaggedRepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   ])
   def testRepeat(self, data, repeats, expected, axis=None):
     result = ragged_util.repeat(data, repeats, axis)
-    with self.test_session():
-      self.assertEqual(result.eval().tolist(), expected)
+    self.assertAllEqual(result, expected)
 
   @parameterized.parameters([
       dict(mode=mode, **args)
@@ -155,8 +156,7 @@ class RaggedRepeatTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       repeats = array_ops.placeholder_with_default(repeats, None)
 
     result = ragged_util.repeat(data, repeats, axis)
-    with self.test_session():
-      self.assertEqual(result.eval().tolist(), expected.tolist())
+    self.assertAllEqual(result, expected)
 
   @parameterized.parameters([
       dict(

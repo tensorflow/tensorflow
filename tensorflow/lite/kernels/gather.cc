@@ -57,8 +57,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteFloat32:
     case kTfLiteUInt8:
+    case kTfLiteInt8:
     case kTfLiteInt64:
     case kTfLiteInt32:
+    case kTfLiteBool:
       break;
     case kTfLiteString: {
       // Only 1D input is supported.
@@ -118,7 +120,7 @@ TfLiteStatus GatherStrings(TfLiteContext* context, const TfLiteTensor* input,
     const auto string_ref = GetString(input, pos);
     buffer.AddString(string_ref.str, string_ref.len);
   }
-  buffer.WriteToTensor(output);
+  buffer.WriteToTensorAsVector(output);
   return kTfLiteOk;
 }
 
@@ -135,10 +137,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return Gather<float, int32_t>(*params, input, positions, output);
       case kTfLiteUInt8:
         return Gather<uint8_t, int32_t>(*params, input, positions, output);
+      case kTfLiteInt8:
+        return Gather<int8_t, int32_t>(*params, input, positions, output);
       case kTfLiteInt32:
         return Gather<int32_t, int32_t>(*params, input, positions, output);
       case kTfLiteInt64:
         return Gather<int64_t, int32_t>(*params, input, positions, output);
+      case kTfLiteBool:
+        return Gather<bool, int32_t>(*params, input, positions, output);
       case kTfLiteString:
         return GatherStrings<int32_t>(context, input, positions, output);
       default:
@@ -153,10 +159,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         return Gather<float, int64_t>(*params, input, positions, output);
       case kTfLiteUInt8:
         return Gather<uint8_t, int64_t>(*params, input, positions, output);
+      case kTfLiteInt8:
+        return Gather<int8_t, int64_t>(*params, input, positions, output);
       case kTfLiteInt32:
         return Gather<int32_t, int64_t>(*params, input, positions, output);
       case kTfLiteInt64:
         return Gather<int64_t, int64_t>(*params, input, positions, output);
+      case kTfLiteBool:
+        return Gather<bool, int64_t>(*params, input, positions, output);
       case kTfLiteString:
         return GatherStrings<int64_t>(context, input, positions, output);
       default:

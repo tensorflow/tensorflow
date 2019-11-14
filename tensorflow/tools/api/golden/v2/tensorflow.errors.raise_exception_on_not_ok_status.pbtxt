@@ -1,8 +1,0 @@
-path: "tensorflow.errors.raise_exception_on_not_ok_status"
-tf_class {
-  is_instance: "<class \'tensorflow.python.framework.errors_impl.raise_exception_on_not_ok_status\'>"
-  is_instance: "<type \'object\'>"
-  member_method {
-    name: "__init__"
-  }
-}

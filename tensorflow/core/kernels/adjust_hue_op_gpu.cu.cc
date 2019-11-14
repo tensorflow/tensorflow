@@ -12,31 +12,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/adjust_hsv_gpu.cu.h"
 #include "tensorflow/core/kernels/adjust_hue_op.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
 namespace functor {
 
-void AdjustHueGPU::operator()(GPUDevice* device, const int64 number_of_elements,
-                              const float* const input,
-                              const float* const delta, float* const output) {
+template <typename T>
+void AdjustHueGPU<T>::operator()(GPUDevice* device,
+                                 const int64 number_of_elements,
+                                 const T* const input, const float* const delta,
+                                 T* const output) {
   const auto stream = device->stream();
-  const CudaLaunchConfig config =
-      GetCudaLaunchConfig(number_of_elements, *device);
+  const GpuLaunchConfig config =
+      GetGpuLaunchConfig(number_of_elements, *device);
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  internal::adjust_hsv_nhwc<true, false, false>
-      <<<block_count, threads_per_block, 0, stream>>>(
-          number_of_elements, input, output, delta, nullptr, nullptr);
+  TF_CHECK_OK(GpuLaunchKernel(internal::adjust_hsv_nhwc<true, false, false, T>,
+                              block_count, threads_per_block, 0, stream,
+                              number_of_elements, input, output, delta, nullptr,
+                              nullptr));
 }
+
+template struct AdjustHueGPU<float>;
+template struct AdjustHueGPU<Eigen::half>;
+
 }  // namespace functor
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -299,13 +298,19 @@ Status FoldConstants(const GraphDef& input_graph_def,
   cf_opts.shape_map = &shape_map;
 
   // Exclude specified nodes from constant folding.
+  std::set<string> excluded_ops, excluded_nodes;
   if (context.params.count("exclude_op") > 0) {
-    const auto& excluded_nodes = context.params.at("exclude_op");
-    const std::set<string> excluded_nodes_set(excluded_nodes.begin(),
-                                              excluded_nodes.end());
-    cf_opts.consider = [excluded_nodes_set](const Node* n) {
-      return excluded_nodes_set.find(n->op_def().name()) ==
-             excluded_nodes_set.end();
+    const auto& ops = context.params.at("exclude_op");
+    excluded_ops = std::set<string>(ops.begin(), ops.end());
+  }
+  if (context.params.count("exclude_node") > 0) {
+    const auto& nodes = context.params.at("exclude_node");
+    excluded_nodes = std::set<string>(nodes.begin(), nodes.end());
+  }
+  if (!excluded_ops.empty() || !excluded_nodes.empty()) {
+    cf_opts.consider = [excluded_ops, excluded_nodes](const Node* n) {
+      return excluded_ops.find(n->op_def().name()) == excluded_ops.end() &&
+             excluded_nodes.find(n->name()) == excluded_nodes.end();
     };
   }
 

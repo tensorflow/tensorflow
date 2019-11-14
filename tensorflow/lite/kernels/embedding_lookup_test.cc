@@ -21,6 +21,7 @@ License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -28,16 +29,19 @@ License.
 namespace tflite {
 namespace {
 
+float kTestTolerance = 7.41e-03;
+
 using ::testing::ElementsAreArray;
 
 class BaseEmbeddingLookupOpModel : public SingleOpModel {
  public:
   BaseEmbeddingLookupOpModel(std::initializer_list<int> index_shape,
                              std::initializer_list<int> weight_shape,
-                             TensorType weight_type = TensorType_FLOAT32) {
+                             TensorType weight_type = TensorType_FLOAT32,
+                             TensorType output_type = TensorType_FLOAT32) {
     input_ = AddInput(TensorType_INT32);
     weight_ = AddInput(weight_type);
-    output_ = AddOutput(TensorType_FLOAT32);
+    output_ = AddOutput(output_type);
     SetBuiltinOp(BuiltinOperator_EMBEDDING_LOOKUP, BuiltinOptions_NONE, 0);
     BuildInterpreter({index_shape, weight_shape});
   }
@@ -46,7 +50,10 @@ class BaseEmbeddingLookupOpModel : public SingleOpModel {
     PopulateTensor(input_, data);
   }
 
-  std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
+  template <typename T>
+  std::vector<T> GetOutput() {
+    return ExtractVector<T>(output_);
+  }
 
  protected:
   int input_;
@@ -58,15 +65,17 @@ class EmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
  public:
   using BaseEmbeddingLookupOpModel::BaseEmbeddingLookupOpModel;
 
-  void Set3DWeightMatrix(const std::function<float(int, int, int)>& function) {
+  template <typename T>
+  void Set3DWeightMatrix(const std::function<T(int, int, int)>& function) {
     TfLiteTensor* tensor = interpreter_->tensor(weight_);
     int rows = tensor->dims->data[0];
     int columns = tensor->dims->data[1];
     int features = tensor->dims->data[2];
+    T* data = GetTensorData<T>(tensor);
     for (int i = 0; i < rows; i++) {
       for (int j = 0; j < columns; j++) {
         for (int k = 0; k < features; k++) {
-          tensor->data.f[(i * columns + j) * features + k] = function(i, j, k);
+          data[(i * columns + j) * features + k] = function(i, j, k);
         }
       }
     }
@@ -76,12 +85,16 @@ class EmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
 class HybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
  public:
   HybridEmbeddingLookupOpModel(std::initializer_list<int> index_shape,
-                               std::initializer_list<int> weight_shape)
-      : BaseEmbeddingLookupOpModel(index_shape, weight_shape,
-                                   TensorType_UINT8) {}
+                               std::initializer_list<int> weight_shape,
+                               TensorType type)
+      : BaseEmbeddingLookupOpModel(index_shape, weight_shape, type) {}
 
   void SetWeight(std::initializer_list<float> data) {
     SymmetricQuantizeAndPopulate(weight_, data);
+  }
+
+  void SetSignedWeight(std::initializer_list<float> data) {
+    SignedSymmetricQuantizeAndPopulate(weight_, data);
   }
 };
 
@@ -90,12 +103,12 @@ class HybridEmbeddingLookupOpModel : public BaseEmbeddingLookupOpModel {
 TEST(EmbeddingLookupOpTest, SimpleTest) {
   EmbeddingLookupOpModel m({3}, {3, 2, 4});
   m.SetInput({1, 0, 2});
-  m.Set3DWeightMatrix(
-      [](int i, int j, int k) { return i + j / 10.0f + k / 100.0f; });
+  m.Set3DWeightMatrix<float>(
+      [](int i, int j, int k) -> float { return i + j / 10.0f + k / 100.0f; });
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({
                   1.00, 1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                   0.00, 0.01, 0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
@@ -103,8 +116,8 @@ TEST(EmbeddingLookupOpTest, SimpleTest) {
               })));
 }
 
-TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTest) {
-  HybridEmbeddingLookupOpModel m({3}, {3, 8});
+TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestUint8) {
+  HybridEmbeddingLookupOpModel m({3}, {3, 8}, TensorType_UINT8);
   m.SetInput({1, 0, 2});
   m.SetWeight({
       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
@@ -114,18 +127,18 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTest) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
-                  7.41e-03)));
+                  kTestTolerance)));
 }
 
-TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTest) {
-  HybridEmbeddingLookupOpModel m({3}, {3, 2, 4});
+TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTestUint8) {
+  HybridEmbeddingLookupOpModel m({3}, {3, 2, 4}, TensorType_UINT8);
   m.SetInput({1, 0, 2});
   m.SetWeight({
       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
@@ -135,18 +148,18 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTest) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
-                  7.41e-03)));
+                  kTestTolerance)));
 }
 
-TEST(HybridEmbeddingLookupHybridOpTest, Simple4DTest) {
-  HybridEmbeddingLookupOpModel m({3}, {3, 2, 2, 2});
+TEST(HybridEmbeddingLookupHybridOpTest, Simple4DTestUint8) {
+  HybridEmbeddingLookupOpModel m({3}, {3, 2, 2, 2}, TensorType_UINT8);
   m.SetInput({1, 0, 2});
   m.SetWeight({
       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
@@ -156,21 +169,94 @@ TEST(HybridEmbeddingLookupHybridOpTest, Simple4DTest) {
 
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutput(),
+  EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear(
                   {
                       1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
                       0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
                       2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
                   },
-                  7.41e-03)));
+                  kTestTolerance)));
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, Simple2DTestInt8) {
+  HybridEmbeddingLookupOpModel m({3}, {3, 8}, TensorType_INT8);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+                      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  },
+                  kTestTolerance)));
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, Simple3DTestInt8) {
+  HybridEmbeddingLookupOpModel m({3}, {3, 2, 4}, TensorType_INT8);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+                      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  },
+                  kTestTolerance)));
+}
+
+TEST(HybridEmbeddingLookupHybridOpTest, Simple4DTestInt8) {
+  HybridEmbeddingLookupOpModel m({3}, {3, 2, 2, 2}, TensorType_INT8);
+  m.SetInput({1, 0, 2});
+  m.SetSignedWeight({
+      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+  });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      1.00, -1.01, 1.02, 1.03, 1.10, 1.11, 1.12, 1.13,  // Row 1
+                      0.00, 0.01,  0.02, 0.03, 0.10, 0.11, 0.12, 0.13,  // Row 0
+                      2.00, 2.01,  2.02, 2.03, 2.10, 2.11, 2.12, 2.13,  // Row 2
+                  },
+                  kTestTolerance)));
+}
+
+TEST(EmbeddingLookupHybridOpTest, Simple3DTestQuantized) {
+  EmbeddingLookupOpModel m({3}, {3, 2, 4}, TensorType_UINT8, TensorType_INT8);
+  m.SetInput({1, 0, 2});
+  m.Set3DWeightMatrix<uint8_t>(
+      [](int i, int j, int k) -> uint8_t { return 100 * i + 10 * j + k; });
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({
+                  100, 101, 102, 103, 110, 111, 112, 113,  // Row 1
+                  0,   1,   2,   3,   10,  11,  12,  13,   // Row 0
+                  200, 201, 202, 203, 210, 211, 212, 213,  // Row 2
+              }));
 }
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

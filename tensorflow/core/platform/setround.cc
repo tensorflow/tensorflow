@@ -15,8 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/platform/setround.h"
 
+#include "tensorflow/core/platform/logging.h"
+
 namespace tensorflow {
 namespace port {
+
+#if defined(TF_BROKEN_CFENV)
+
+ScopedSetRound::ScopedSetRound(const int mode) : original_mode_(mode) {
+  // If cfenv usage is broken, assume support only for TONEAREST.
+  DCHECK_EQ(mode, FE_TONEAREST);
+}
+
+ScopedSetRound::~ScopedSetRound() {}
+
+#else
 
 ScopedSetRound::ScopedSetRound(const int mode) {
   original_mode_ = std::fegetround();
@@ -28,6 +41,8 @@ ScopedSetRound::ScopedSetRound(const int mode) {
 }
 
 ScopedSetRound::~ScopedSetRound() { std::fesetround(original_mode_); }
+
+#endif  // TF_BROKEN_CFENV
 
 }  // namespace port
 }  // namespace tensorflow

@@ -27,7 +27,8 @@ CostAnalyzer::CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
                            const string& suffix)
     : item_(&item),
       measure_estimator_(cluster, 10, 0),
-      analytical_estimator_(cluster, false),
+      analytical_estimator_(cluster, /*use_static_shapes=*/false,
+                            /*use_aggressive_shape_inference=*/true),
       suffix_(suffix) {}
 
 Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
@@ -42,9 +43,13 @@ Status CostAnalyzer::GenerateReport(std::ostream& os, bool per_node_report,
 void CostAnalyzer::PredictCosts(CostEstimator* cost_estimator,
                                 CostGraphDef* cost_graph, int64* total_time) {
   TF_CHECK_OK(cost_estimator->Initialize(*item_));
+  RunMetadata run_metadata;
   Costs costs;
   const Status status =
-      cost_estimator->PredictCosts(item_->graph, cost_graph, &costs);
+      cost_estimator->PredictCosts(item_->graph, &run_metadata, &costs);
+  if (cost_graph) {
+    cost_graph->Swap(run_metadata.mutable_cost_graph());
+  }
   *total_time = costs.execution_time.count();
   if (!status.ok()) {
     LOG(ERROR) << "Could not estimate the cost for item " << item_->id << ": "
@@ -120,7 +125,6 @@ void CostAnalyzer::PreprocessCosts() {
     }
   }
 }
-
 
 void CostAnalyzer::SortOpsByTime(std::map<string, OpPerfSummary> ops) {
   for (const auto& op : ops) {

@@ -112,11 +112,56 @@ TEST_F(ParallelTaskAssignmentTest, InfeedOutfeedOperationNotParallelized) {
   const string hlo_string = R"(
     HloModule TestTaskParallel_infeed_outfeed
     ENTRY InfeedOutfeed {
-      token = token[] after-all()
-      infeed0 = (u32[12345678,2]{1,0}, token[]) infeed(token)
+      token0 = token[] after-all()
+      infeed0 = (u32[12345678,2]{1,0}, token[]) infeed(token0)
       infeed0.data = u32[12345678,2]{1,0} get-tuple-element((u32[12345678,2]{1,0}, token[]) infeed0), index=0
-      ROOT outfeed0 = token[] outfeed(infeed0.data, token)
+      ROOT outfeed0 = token[] outfeed(infeed0.data, token0)
     }
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed, RunParallelTaskAssigner(m.get()));
+  EXPECT_FALSE(changed);
+}
+
+TEST_F(ParallelTaskAssignmentTest, InPlaceDynamicUpdateSliceNotParallelized) {
+  // A dynamic-update-slice within a while loop.  This construction is an easy
+  // way to make a DUS which can be run "in-place" (i.e. the input and output
+  // are the same buffer, and running the DUS only writes to the updated
+  // elements).
+  const string hlo_string = R"(
+  HloModule test
+
+  body {
+    zero = s32[] constant(0)
+    one = s32[] constant(1)
+    ten = s32[] constant(10)
+    loop_carry = (s32[], u32[1,100], u32[10000,100]) parameter(0)
+    i = s32[] get-tuple-element(loop_carry), index=0
+    i_plus_ten = s32[] add(i, ten)
+    update = u32[1,100] get-tuple-element(loop_carry), index=1
+    data = u32[10000,100] get-tuple-element(loop_carry), index=2
+    new_data = u32[10000,100] dynamic-update-slice(data, update, i_plus_ten, zero)
+    new_i = s32[] add(i, one)
+    ROOT tuple = (s32[], u32[1,100], u32[10000,100]) tuple(new_i, update, new_data)
+  }
+
+  cond {
+    loop_carry = (s32[], u32[1,100], u32[10000,100]) parameter(0)
+    two = s32[] constant(2)
+    i = s32[] get-tuple-element(loop_carry), index=0
+    ROOT less-than = pred[] compare(i, two), direction=LT
+  }
+
+  ENTRY test {
+    zero = s32[] constant(0)
+    initial_i = s32[] parameter(0)
+    update = u32[1,100] parameter(1)
+    data = u32[10000,100] parameter(2)
+    tuple = (s32[], u32[1,100], u32[10000,100]) tuple(initial_i, update, data)
+    ROOT while = (s32[], u32[1,100], u32[10000,100]) while(tuple), condition=cond, body=body
+  }
   )";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> m,

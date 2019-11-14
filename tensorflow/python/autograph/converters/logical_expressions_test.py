@@ -21,11 +21,13 @@ from __future__ import print_function
 from tensorflow.python.autograph.converters import logical_expressions
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 class LogicalExpressionTest(converter_testing.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_equals(self):
 
     def test_fn(a, b):
@@ -36,6 +38,7 @@ class LogicalExpressionTest(converter_testing.TestCase):
         self.assertTrue(sess.run(result.test_fn(constant_op.constant(1), 1)))
         self.assertFalse(sess.run(result.test_fn(constant_op.constant(1), 2)))
 
+  @test_util.run_deprecated_v1
   def test_bool_ops(self):
 
     def test_fn(a, b, c):
@@ -48,6 +51,7 @@ class LogicalExpressionTest(converter_testing.TestCase):
         self.assertFalse(
             sess.run(result.test_fn(constant_op.constant(True), False, True)))
 
+  @test_util.run_deprecated_v1
   def test_comparison(self):
 
     def test_fn(a, b, c, d):
@@ -72,6 +76,13 @@ class LogicalExpressionTest(converter_testing.TestCase):
 
     with self.converted(test_fn, logical_expressions, {}) as result:
       self.assertTrue(result.test_fn('a', ('a',)))
+
+  def test_unary_ops(self):
+    def test_fn(a):
+      return ~a, -a, +a
+
+    with self.converted(test_fn, logical_expressions, {}) as result:
+      self.assertEqual(result.test_fn(1), (-2, -1, 1))
 
 
 if __name__ == '__main__':

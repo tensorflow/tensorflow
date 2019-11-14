@@ -33,8 +33,7 @@ namespace tflite {
 //   ... build interpreter ...
 //
 //   if (delegate) {
-//     interpreter->ModifyGraphWithDelegate(
-//         delegate.get(), /*allow_dynamic_tensors=*/true);
+//     interpreter->ModifyGraphWithDelegate(delegate.get());
 //   }
 //   ... run inference ...
 //   ... destroy interpreter ...
@@ -49,9 +48,9 @@ class FlexDelegate : public TfLiteDelegate {
   ~FlexDelegate();
 
  private:
-  explicit FlexDelegate(std::unique_ptr<flex::DelegateData> delegate_data);
+  FlexDelegate();
 
-  std::unique_ptr<flex::DelegateData> delegate_data_;
+  flex::DelegateData delegate_data_;
 };
 
 }  // namespace tflite

@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/pool_allocator.h"
 
-#include "tensorflow/core/common_runtime/gpu/cuda_host_allocator.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -29,7 +29,7 @@ TEST(PoolAllocatorTest, ZeroSizeBuffers) {
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
-      new CUDAHostAllocator(
+      new GpuHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -48,7 +48,7 @@ TEST(PoolAllocatorTest, ZeroSizePool) {
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
-      new CUDAHostAllocator(
+      new GpuHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -82,7 +82,7 @@ TEST(PoolAllocatorTest, Alignment) {
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       0 /*pool_size_limit*/, false /*auto_resize*/,
-      new CUDAHostAllocator(
+      new GpuHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),
@@ -142,7 +142,7 @@ TEST(PoolAllocatorTest, CudaHostAllocator) {
       };
   se::Platform* platform =
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
-  CUDAHostAllocator* sub_allocator = new CUDAHostAllocator(
+  GpuHostAllocator* sub_allocator = new GpuHostAllocator(
       platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
           .ValueOrDie(),
       0 /*numa_node*/, {alloc_visitor}, {free_visitor});
@@ -247,7 +247,7 @@ TEST(PoolAllocatorTest, Name) {
       se::MultiPlatformManager::PlatformWithName("cuda").ValueOrDie();
   PoolAllocator pool(
       2 /*pool_size_limit*/, false /*auto_resize*/,
-      new CUDAHostAllocator(
+      new GpuHostAllocator(
           platform->GetExecutor(se::StreamExecutorConfig(/*ordinal=*/0))
               .ValueOrDie(),
           0 /*numa_node*/, {}, {}),

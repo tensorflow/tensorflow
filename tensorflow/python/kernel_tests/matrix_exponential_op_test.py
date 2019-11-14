@@ -89,7 +89,10 @@ class ExponentialOpTest(test.TestCase):
     # A multidimensional batch of 2x2 matrices
     self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_deprecated_v1
   def testNonsymmetricComplex(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[1., 2.], [3., 4.]])
     matrix2 = np.array([[1., 3.], [3., 5.]])
     matrix1 = matrix1.astype(np.complex64)
@@ -111,6 +114,8 @@ class ExponentialOpTest(test.TestCase):
     self._verifyExponentialReal(self._makeBatch(matrix1, matrix2))
 
   def testSymmetricPositiveDefiniteComplex(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix1 = np.array([[2., 1.], [1., 2.]])
     matrix2 = np.array([[3., -1.], [-1., 3.]])
     matrix1 = matrix1.astype(np.complex64)
@@ -122,12 +127,14 @@ class ExponentialOpTest(test.TestCase):
     # Complex batch
     self._verifyExponentialComplex(self._makeBatch(matrix1, matrix2))
 
+  @test_util.run_deprecated_v1
   def testNonSquareMatrix(self):
     # When the exponential of a non-square matrix is attempted we should return
     # an error
     with self.assertRaises(ValueError):
       linalg_impl.matrix_exponential(np.array([[1., 2., 3.], [3., 4., 5.]]))
 
+  @test_util.run_deprecated_v1
   def testWrongDimensions(self):
     # The input to the exponential should be at least a 2-dimensional tensor.
     tensor3 = constant_op.constant([1., 2.])
@@ -138,6 +145,7 @@ class ExponentialOpTest(test.TestCase):
     self._verifyExponentialReal(np.empty([0, 2, 2]))
     self._verifyExponentialReal(np.empty([2, 0, 0]))
 
+  @test_util.run_deprecated_v1
   def testDynamic(self):
     with self.session(use_gpu=True) as sess:
       inp = array_ops.placeholder(ops.dtypes.float32)
@@ -145,13 +153,14 @@ class ExponentialOpTest(test.TestCase):
       matrix = np.array([[1., 2.], [3., 4.]])
       sess.run(expm, feed_dict={inp: matrix})
 
+  @test_util.run_deprecated_v1
   def testConcurrentExecutesWithoutError(self):
     with self.session(use_gpu=True) as sess:
       matrix1 = random_ops.random_normal([5, 5], seed=42)
       matrix2 = random_ops.random_normal([5, 5], seed=42)
       expm1 = linalg_impl.matrix_exponential(matrix1)
       expm2 = linalg_impl.matrix_exponential(matrix2)
-      expm = sess.run([expm1, expm2])
+      expm = self.evaluate([expm1, expm2])
       self.assertAllEqual(expm[0], expm[1])
 
 

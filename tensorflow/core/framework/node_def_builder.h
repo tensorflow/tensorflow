@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -63,7 +64,10 @@ class NodeDefBuilder {
   // specified by calling the methods below.
   // REQUIRES: The OpDef must satisfy ValidateOpDef().
   NodeDefBuilder(StringPiece name, StringPiece op_name,
-                 const OpRegistryInterface* op_registry = OpRegistry::Global());
+                 const OpRegistryInterface* op_registry = OpRegistry::Global(),
+                 const NodeDebugInfo* debug = nullptr);
+  NodeDefBuilder(StringPiece name, StringPiece op_name,
+                 const NodeDebugInfo& debug);
   // REQUIRES: in addition, *op_def must outlive *this.
   NodeDefBuilder(StringPiece name, const OpDef* op_def);
 
@@ -89,6 +93,7 @@ class NodeDefBuilder {
   // Sets the attr, if not already set.  If already set with a different
   // value, an error will be returned from Finalize().
   NodeDefBuilder& Attr(StringPiece name, const AttrValue& value);
+  NodeDefBuilder& Attr(StringPiece name, AttrValue&& value);
   NodeDefBuilder& Attr(StringPiece name, StringPiece value);
   NodeDefBuilder& Attr(StringPiece name, const char* value);
   NodeDefBuilder& Attr(StringPiece name, int32 value);
@@ -125,9 +130,11 @@ class NodeDefBuilder {
 
   // Finish building the NodeDef, returning any errors or setting
   // *node_def if none.
+  // If `consume` is true, the builder state will be moved into `node_def`,
+  // and the builder will be left in an undefined state.
   // WARNING: Not all problems are detected!  The resulting NodeDef may
   // not be valid!  Call ValidateNodeDef() from node_def_utils to be sure.
-  Status Finalize(NodeDef* node_def) const;
+  Status Finalize(NodeDef* node_def, bool consume = false);
 
   // Accessors for the values set in the constructor.
   const string& node_name() const { return node_def_.name(); }
@@ -165,6 +172,11 @@ class NodeDefBuilder {
   DataType MaybeAddRef(const OpDef::ArgDef* input_arg, DataType dt) {
     return input_arg->is_ref() ? MakeRefType(dt) : dt;
   }
+
+  // Returns true if an attr named `name` is already present in the node_def_.
+  // If such an attr is already present and `value` is not equal to the present
+  // value, an error is generated.
+  bool AttrValueAlreadyPresent(StringPiece name, const AttrValue& value);
 
   const OpDef* op_def_;
   NodeDef node_def_;

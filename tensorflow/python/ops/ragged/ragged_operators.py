@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops.ragged import ragged_elementwise_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_getitem
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import tf_decorator
@@ -33,40 +33,39 @@ def _right(operator):
 ragged_tensor.RaggedTensor.__getitem__ = ragged_getitem.ragged_tensor_getitem
 
 # Ordering operators
-ragged_tensor.RaggedTensor.__ge__ = ragged_elementwise_ops.greater_equal
-ragged_tensor.RaggedTensor.__gt__ = ragged_elementwise_ops.greater
-ragged_tensor.RaggedTensor.__le__ = ragged_elementwise_ops.less_equal
-ragged_tensor.RaggedTensor.__lt__ = ragged_elementwise_ops.less
+ragged_tensor.RaggedTensor.__ge__ = math_ops.greater_equal
+ragged_tensor.RaggedTensor.__gt__ = math_ops.greater
+ragged_tensor.RaggedTensor.__le__ = math_ops.less_equal
+ragged_tensor.RaggedTensor.__lt__ = math_ops.less
 
 # Logical operators
-ragged_tensor.RaggedTensor.__and__ = ragged_elementwise_ops.logical_and
-ragged_tensor.RaggedTensor.__rand__ = _right(ragged_elementwise_ops.logical_and)
-ragged_tensor.RaggedTensor.__invert__ = ragged_elementwise_ops.logical_not
-ragged_tensor.RaggedTensor.__ror__ = _right(ragged_elementwise_ops.logical_or)
-ragged_tensor.RaggedTensor.__or__ = ragged_elementwise_ops.logical_or
-ragged_tensor.RaggedTensor.__xor__ = ragged_elementwise_ops.logical_xor
-ragged_tensor.RaggedTensor.__rxor__ = _right(ragged_elementwise_ops.logical_xor)
+ragged_tensor.RaggedTensor.__and__ = math_ops.logical_and
+ragged_tensor.RaggedTensor.__rand__ = _right(math_ops.logical_and)
+ragged_tensor.RaggedTensor.__invert__ = math_ops.logical_not
+ragged_tensor.RaggedTensor.__ror__ = _right(math_ops.logical_or)
+ragged_tensor.RaggedTensor.__or__ = math_ops.logical_or
+ragged_tensor.RaggedTensor.__xor__ = math_ops.logical_xor
+ragged_tensor.RaggedTensor.__rxor__ = _right(math_ops.logical_xor)
 
 # Arithmetic operators
-ragged_tensor.RaggedTensor.__abs__ = ragged_elementwise_ops.abs
-ragged_tensor.RaggedTensor.__add__ = ragged_elementwise_ops.add
-ragged_tensor.RaggedTensor.__radd__ = _right(ragged_elementwise_ops.add)
-ragged_tensor.RaggedTensor.__div__ = ragged_elementwise_ops.div
-ragged_tensor.RaggedTensor.__rdiv__ = _right(ragged_elementwise_ops.div)
-ragged_tensor.RaggedTensor.__floordiv__ = ragged_elementwise_ops.floordiv
-ragged_tensor.RaggedTensor.__rfloordiv__ = _right(
-    ragged_elementwise_ops.floordiv)
-ragged_tensor.RaggedTensor.__mod__ = ragged_elementwise_ops.floormod
-ragged_tensor.RaggedTensor.__rmod__ = _right(ragged_elementwise_ops.floormod)
-ragged_tensor.RaggedTensor.__mul__ = ragged_elementwise_ops.multiply
-ragged_tensor.RaggedTensor.__rmul__ = _right(ragged_elementwise_ops.multiply)
-ragged_tensor.RaggedTensor.__neg__ = ragged_elementwise_ops.negative
-ragged_tensor.RaggedTensor.__pow__ = ragged_elementwise_ops.pow
-ragged_tensor.RaggedTensor.__rpow__ = _right(ragged_elementwise_ops.pow)
-ragged_tensor.RaggedTensor.__sub__ = ragged_elementwise_ops.subtract
-ragged_tensor.RaggedTensor.__rsub__ = _right(ragged_elementwise_ops.subtract)
-ragged_tensor.RaggedTensor.__truediv__ = ragged_elementwise_ops.truediv
-ragged_tensor.RaggedTensor.__rtruediv__ = _right(ragged_elementwise_ops.truediv)
+ragged_tensor.RaggedTensor.__abs__ = math_ops.abs
+ragged_tensor.RaggedTensor.__add__ = math_ops.add
+ragged_tensor.RaggedTensor.__radd__ = _right(math_ops.add)
+ragged_tensor.RaggedTensor.__div__ = math_ops.div
+ragged_tensor.RaggedTensor.__rdiv__ = _right(math_ops.div)
+ragged_tensor.RaggedTensor.__floordiv__ = math_ops.floordiv
+ragged_tensor.RaggedTensor.__rfloordiv__ = _right(math_ops.floordiv)
+ragged_tensor.RaggedTensor.__mod__ = math_ops.floormod
+ragged_tensor.RaggedTensor.__rmod__ = _right(math_ops.floormod)
+ragged_tensor.RaggedTensor.__mul__ = math_ops.multiply
+ragged_tensor.RaggedTensor.__rmul__ = _right(math_ops.multiply)
+ragged_tensor.RaggedTensor.__neg__ = math_ops.negative
+ragged_tensor.RaggedTensor.__pow__ = math_ops.pow
+ragged_tensor.RaggedTensor.__rpow__ = _right(math_ops.pow)
+ragged_tensor.RaggedTensor.__sub__ = math_ops.subtract
+ragged_tensor.RaggedTensor.__rsub__ = _right(math_ops.subtract)
+ragged_tensor.RaggedTensor.__truediv__ = math_ops.truediv
+ragged_tensor.RaggedTensor.__rtruediv__ = _right(math_ops.truediv)
 
 
 # Dummy methods

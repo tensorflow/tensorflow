@@ -4,4 +4,8 @@ tf_module {
     name: "function_executor_type"
     argspec: "args=[\'executor_type\'], varargs=None, keywords=None, defaults=None"
   }
+  member_method {
+    name: "output_all_intermediates"
+    argspec: "args=[\'state\'], varargs=None, keywords=None, defaults=None"
+  }
 }

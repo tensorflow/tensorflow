@@ -57,6 +57,9 @@ class LaunchDimensions {
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims);
 
+// Returns the maximum number of threads per block allowed by the device.
+int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc);
+
 LaunchDimensions CalculateLaunchDimensions(
     const Shape& shape, const se::DeviceDescription& device_desc,
     int unroll_factor = 1);

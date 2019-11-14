@@ -19,13 +19,11 @@ from __future__ import print_function
 
 import glob
 import os
-import shutil
 import tempfile
 import threading
 
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
-from tensorflow.python.debug.lib import stepper
 from tensorflow.python.debug.wrappers import dumping_wrapper
 from tensorflow.python.debug.wrappers import framework
 from tensorflow.python.debug.wrappers import hooks
@@ -33,6 +31,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -41,6 +40,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import monitored_session
 
 
+@test_util.run_v1_only("b/120545219")
 class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -61,7 +61,7 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
   def tearDown(self):
     ops.reset_default_graph()
     if os.path.isdir(self.session_root):
-      shutil.rmtree(self.session_root)
+      file_io.delete_recursively(self.session_root)
 
   def _assert_correct_run_subdir_naming(self, run_subdir):
     self.assertStartsWith(run_subdir, "run_")
@@ -378,16 +378,6 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
     dump = debug_data.DebugDumpDir(dump_dirs[0])
     self.assertEqual(1, dump.size)
     self.assertEqual("delta", dump.dumped_tensor_data[0].node_name)
-
-  def testCallingInvokeNodeStepperOnDumpingWrapperRaisesException(self):
-    sess = dumping_wrapper.DumpingDebugWrapperSession(
-        self.sess, session_root=self.session_root, log_usage=False)
-    node_stepper = stepper.NodeStepper(self.sess, self.inc_v)
-    with self.assertRaisesRegexp(
-        NotImplementedError,
-        r"NonInteractiveDebugWrapperSession does not support node-stepper "
-        r"mode\."):
-      sess.invoke_node_stepper(node_stepper)
 
   def testDumpingWrapperWithEmptyFetchWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(

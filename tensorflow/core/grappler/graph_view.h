@@ -111,40 +111,52 @@ class GraphViewInternal {
 
   GraphDefT* graph() const { return graph_; }
 
-  // Find a node by name or return `nullptr` if it's not in a graph view.
+  // Finds a node by name or return `nullptr` if it's not in the graph view.
   NodeDefT* GetNode(absl::string_view node_name) const {
     return gtl::FindWithDefault(nodes_, node_name, nullptr);
   }
 
-  // Get the specified input port. Note that the special '-1' port_id can be
+  // Checks if a node by name is in the graph view.
+  bool HasNode(absl::string_view node_name) const {
+    return GetNode(node_name) != nullptr;
+  }
+
+  // Gets the specified input port. Note that the special '-1' port_id can be
   // used to access the controlling nodes (i.e. the nodes connected to node_name
   // through an incoming control dependency).
   InputPort GetInputPort(absl::string_view node_name, int port_id) const {
     return InputPort(GetNode(node_name), port_id);
   }
 
-  // Get the specified output port. Note that the special '-1' port_id can be
+  // Gets the specified output port. Note that the special '-1' port_id can be
   // used to access the controlled nodes (i.e. the nodes connected to node_name
   // through an outgoing control dependency).
   OutputPort GetOutputPort(absl::string_view node_name, int port_id) const {
     return OutputPort(GetNode(node_name), port_id);
   }
 
-  // Get the input (resp. output) port(s) in the immediate fanout (resp. fanin)
-  // of an output (resp. input) port.
+  // Gets the input port(s) in the immediate fanout of an output port.
   const absl::flat_hash_set<InputPort>& GetFanout(
       const OutputPort& port) const {
     return gtl::FindWithDefault(fanouts_, port, fanout_not_found_value_);
   }
 
+  // Gets the output port(s) in the immediate fanin of an input port.
   absl::flat_hash_set<OutputPort> GetFanin(const InputPort& port) const {
-    if (port.port_id >= 0) return {GetRegularFanin(port)};
+    if (port.port_id >= 0) {
+      OutputPort regular_fanin = GetRegularFanin(port);
+      if (regular_fanin.node == nullptr) {
+        return {};
+      }
+      return {regular_fanin};
+    }
 
     // Collect fanin for the control input.
     absl::flat_hash_set<OutputPort> result;
-    for (int i = port.node->input_size() - 1; i >= 0; --i) {
+    const int first_control_port =
+        gtl::FindWithDefault(max_regular_input_port_, port.node, -1) + 1;
+    for (int i = first_control_port; i < port.node->input_size(); ++i) {
       TensorId tensor_id = ParseTensorName(port.node->input(i));
-      if (tensor_id.index() >= 0) break;  // we reached regular inputs
 
       auto it = nodes_.find(tensor_id.node());
       if (it != nodes_.end()) result.emplace(it->second, tensor_id.index());
@@ -153,27 +165,53 @@ class GraphViewInternal {
   }
 
   // Special case: regular (i.e. non-control) input ports can only have one
-  // fanin.
+  // fanin. If port.port_id is out of range or is a control dependency, then an
+  // empty OutputPort is returned.
   const OutputPort GetRegularFanin(const InputPort& port) const {
-    DCHECK_GE(port.port_id, 0);
-    if (port.port_id < 0) return OutputPort();
+    if (port.port_id < 0 ||
+        port.port_id >
+            gtl::FindWithDefault(max_regular_input_port_, port.node, -1)) {
+      return OutputPort();
+    }
 
     TensorId tensor_id = ParseTensorName(port.node->input(port.port_id));
     return GetOutputPort(tensor_id.node(), tensor_id.index());
   }
 
-  // Get all the input (resp. output) ports in the immediate fanout (resp
-  // fanin) of a node. Include the controlling nodes iff
-  // include_controlling_nodes is true.
+  // Checks if a tensor id is a fanin of the node.
+  bool HasFanin(const NodeDefT& node, const TensorId& fanin) const {
+    int end = node.input_size();
+    if (end == 0 || fanin.index() < -1) {
+      return false;
+    }
+
+    const int num_regular_fanins =
+        gtl::FindWithDefault(max_regular_input_port_, &node, -1) + 1;
+    int start = 0;
+    if (fanin.index() > -1) {
+      end = num_regular_fanins;
+    } else {
+      start = num_regular_fanins;
+    }
+    for (int i = start; i < end; ++i) {
+      if (ParseTensorName(node.input(i)) == fanin) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // Gets all the input ports in the immediate fanout of a node. Include the
+  // controlled nodes iff include_controlled_nodes is true.
   absl::flat_hash_set<InputPort> GetFanouts(
-      const NodeDef& node, bool include_controlled_nodes) const {
+      const NodeDefT& node, bool include_controlled_nodes) const {
     absl::flat_hash_set<InputPort> result;
 
     OutputPort port;
     port.node = const_cast<NodeDefT*>(&node);
     const int first_port_id = include_controlled_nodes ? -1 : 0;
     const int last_port_id =
-        gtl::FindWithDefault(max_regular_output_port_, port.node, -1);
+        gtl::FindWithDefault(max_regular_output_port_, &node, -1);
 
     for (int i = first_port_id; i <= last_port_id; ++i) {
       port.port_id = i;
@@ -185,12 +223,17 @@ class GraphViewInternal {
     return result;
   }
 
+  // Gets all the output ports in the immediate fanin of a node. Include the
+  // controlling nodes iff include_controlling_nodes is true.
   absl::flat_hash_set<OutputPort> GetFanins(
-      const NodeDef& node, bool include_controlling_nodes) const {
+      const NodeDefT& node, bool include_controlling_nodes) const {
     absl::flat_hash_set<OutputPort> result;
-    for (int i = 0; i < node.input_size(); ++i) {
+    const int max_input_port =
+        include_controlling_nodes
+            ? node.input_size() - 1
+            : gtl::FindWithDefault(max_regular_input_port_, &node, -1);
+    for (int i = 0; i <= max_input_port; ++i) {
       TensorId tensor_id = ParseTensorName(node.input(i));
-      if (tensor_id.index() < 0 && !include_controlling_nodes) break;
 
       auto it = nodes_.find(tensor_id.node());
       if (it != nodes_.end()) result.emplace(it->second, tensor_id.index());
@@ -198,29 +241,25 @@ class GraphViewInternal {
     return result;
   }
 
-  // Get the number of ports in the immediate fanin of a node. Count the
+  // Gets the number of ports in the immediate fanin of a node. Count the
   // controlling nodes iff include_controlling_nodes is true.
-  int NumFanins(const NodeDef& node, bool include_controlling_nodes) const {
-    int count = 0;
-    for (const string& input : node.input()) {
-      if (!include_controlling_nodes && IsControlInput(input)) {
-        break;
-      }
-      count += 1;
+  int NumFanins(const NodeDefT& node, bool include_controlling_nodes) const {
+    if (include_controlling_nodes) {
+      return node.input_size();
     }
-    return count;
+    return gtl::FindWithDefault(max_regular_input_port_, &node, -1) + 1;
   }
 
-  // Get the number of ports in the immediate fanout of a node. Count the
-  // controlling nodes iff include_controlling_nodes is true.
-  int NumFanouts(const NodeDef& node, bool include_controlling_nodes) const {
+  // Gets the number of ports in the immediate fanout of a node. Count the
+  // controlled nodes iff include_controlled_nodes is true.
+  int NumFanouts(const NodeDefT& node, bool include_controlled_nodes) const {
     int count = 0;
 
     OutputPort port;
     port.node = const_cast<NodeDefT*>(&node);
-    const int first_port_id = include_controlling_nodes ? -1 : 0;
+    const int first_port_id = include_controlled_nodes ? -1 : 0;
     const int last_port_id =
-        gtl::FindWithDefault(max_regular_output_port_, port.node, -1);
+        gtl::FindWithDefault(max_regular_output_port_, &node, -1);
 
     for (int i = first_port_id; i <= last_port_id; ++i) {
       port.port_id = i;
@@ -231,10 +270,10 @@ class GraphViewInternal {
     return count;
   }
 
-  // Get all the edges in the immediate fanout (resp fanin) of a node.
-  // Include the control edges iff include_controlling_edges is true.
+  // Gets all the edges in the immediate fanout of a node. Include the
+  // controlled edges iff include_controlled_edges is true.
   absl::flat_hash_set<Edge> GetFanoutEdges(
-      const NodeDef& node, bool include_controlled_edges) const {
+      const NodeDefT& node, bool include_controlled_edges) const {
     absl::flat_hash_set<Edge> result;
 
     OutputPort port;
@@ -248,25 +287,29 @@ class GraphViewInternal {
       auto it = fanouts_.find(port);
       if (it != fanouts_.end()) {
         for (auto itr = it->second.begin(); itr != it->second.end(); ++itr) {
-          result.emplace(/*src*/ OutputPort(const_cast<NodeDefT*>(&node), i),
-                         /*dst*/ *itr);
+          result.emplace(/*src=*/port, /*dst=*/*itr);
         }
       }
     }
     return result;
   }
 
+  // Gets all the edges in the immediate fanin of a node. Include the
+  // controlling edges iff include_controlling_edges is true.
   absl::flat_hash_set<Edge> GetFaninEdges(
-      const NodeDef& node, bool include_controlling_edges) const {
+      const NodeDefT& node, bool include_controlling_edges) const {
     absl::flat_hash_set<Edge> result;
-    for (int i = 0; i < node.input_size(); ++i) {
+    const int max_input_port =
+        include_controlling_edges
+            ? node.input_size() - 1
+            : gtl::FindWithDefault(max_regular_input_port_, &node, -1);
+    for (int i = 0; i <= max_input_port; ++i) {
       TensorId tensor_id = ParseTensorName(node.input(i));
-      if (tensor_id.index() < 0 && !include_controlling_edges) break;
 
       auto it = nodes_.find(tensor_id.node());
       if (it != nodes_.end()) {
-        result.emplace(/*src*/ OutputPort(it->second, tensor_id.index()),
-                       /*dst*/ InputPort(const_cast<NodeDefT*>(&node), i));
+        result.emplace(/*src=*/OutputPort(it->second, tensor_id.index()),
+                       /*dst=*/InputPort(const_cast<NodeDefT*>(&node), i));
       }
     }
     return result;
@@ -275,14 +318,24 @@ class GraphViewInternal {
  protected:
   explicit GraphViewInternal(GraphDefT* graph) : graph_(graph) {}
 
-  void AddUniqueNodeOrDie(NodeDefT* node) {
-    auto result = nodes_.emplace(node->name(), node);
-    // TODO(ezhulenev): Replace CHECK with factory method returning
-    // absl::StatusOr (when available).
-    CHECK(result.second) << "Non unique node name detected: " << node->name();
+  Status AddUniqueNode(NodeDefT* node) {
+    auto inserted = nodes_.emplace(node->name(), node);
+    return inserted.second
+               ? Status::OK()
+               : errors::InvalidArgument("Non unique node name detected: ",
+                                         node->name());
   }
 
+  // TODO(ezhulenev): Remove this function.
+  void AddUniqueNodeOrDie(NodeDefT* node) {
+    Status st = AddUniqueNode(node);
+    CHECK(st.ok()) << st.error_message();
+  }
+
+  // TODO(lyandy): Checks for self loops, Switch control dependencies, fanins
+  // exist, and all regular fanins come before controlling fanins.
   void AddFanouts(NodeDefT* node) {
+    int max_input_port = -1;
     for (int i = 0; i < node->input_size(); ++i) {
       TensorId tensor_id = ParseTensorName(node->input(i));
       OutputPort output(nodes_[tensor_id.node()], tensor_id.index());
@@ -290,10 +343,14 @@ class GraphViewInternal {
       if (output.port_id < 0) {
         fanouts_[output].emplace(node, -1);
       } else {
+        max_input_port = i;
         max_regular_output_port_[output.node] =
             std::max(max_regular_output_port_[output.node], output.port_id);
         fanouts_[output].emplace(node, i);
       }
+    }
+    if (max_input_port > -1) {
+      max_regular_input_port_[node] = max_input_port;
     }
   }
 
@@ -304,7 +361,11 @@ class GraphViewInternal {
     return fanouts_;
   }
 
-  absl::flat_hash_map<const NodeDef*, int>& max_regular_output_port() {
+  absl::flat_hash_map<const NodeDefT*, int>& max_regular_input_port() {
+    return max_regular_input_port_;
+  }
+
+  absl::flat_hash_map<const NodeDefT*, int>& max_regular_output_port() {
     return max_regular_output_port_;
   }
 
@@ -317,10 +378,13 @@ class GraphViewInternal {
   // A mapping from the output port to all inputs that read from it.
   absl::flat_hash_map<OutputPort, absl::flat_hash_set<InputPort>> fanouts_;
 
+  // Keep a maximum index of input tensors of the node.
+  absl::flat_hash_map<const NodeDefT*, int> max_regular_input_port_;
+
   // Keep a maximum index of tensor fetched from the node. It doesn't guarantee
   // that all tensors in the [0, max_regular_output_port] range are actually
   // fetched by other nodes.
-  absl::flat_hash_map<const NodeDef*, int> max_regular_output_port_;
+  absl::flat_hash_map<const NodeDefT*, int> max_regular_output_port_;
 
   // If the node has no fanouts at given output port (output tensor consumers)
   // we return a reference to this set from `GetFanout` (we can't construct new
@@ -348,10 +412,12 @@ bool HasSingleFanoutNode(const GraphView& graph_view, const NodeDef* node,
 
 // Returns true if node has at least one fanout node at given output port.
 bool HasFanouts(const GraphView& graph_view, const NodeDef* node, int port = 0);
-
-bool NoControlFanin(const GraphView& graph_view, const NodeDef* node);
-bool NoControlFanout(const GraphView& graph_view, const NodeDef* node);
-bool NoControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node);
+// Returns true if the node has at least one input control dependency.
+bool HasControlFanin(const GraphView& graph_view, const NodeDef* node);
+// Returns true if the node has at least one output control dependency.
+bool HasControlFanout(const GraphView& graph_view, const NodeDef* node);
+// Returns true if the node has at least one input or output control dependency.
+bool HasControlFaninOrFanout(const GraphView& graph_view, const NodeDef* node);
 
 }  // end namespace grappler
 }  // end namespace tensorflow

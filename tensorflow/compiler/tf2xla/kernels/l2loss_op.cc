@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
 namespace {
@@ -37,12 +36,11 @@ class L2LossOp : public XlaOpKernel {
 
     //  output = sum(t ** 2) / 2
     const DataType accumulation_type = XlaHelpers::SumAccumulationType(dtype);
-    auto t =
-        XlaHelpers::ConvertElementType(b, ctx->Input(0), accumulation_type);
+    auto t = XlaHelpers::ConvertElementType(ctx->Input(0), accumulation_type);
     auto square = xla::Mul(t, t);
     auto reduce = xla::Reduce(square, XlaHelpers::Zero(b, accumulation_type),
                               *ctx->GetOrCreateAdd(accumulation_type), dims);
-    auto deconverted = XlaHelpers::ConvertElementType(b, reduce, dtype);
+    auto deconverted = XlaHelpers::ConvertElementType(reduce, dtype);
     auto two = XlaHelpers::IntegerLiteral(b, dtype, 2);
     ctx->SetOutput(0, xla::Div(deconverted, two));
   }

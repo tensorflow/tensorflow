@@ -46,7 +46,7 @@ TEST(TfDriverTest, ReadingAndWrintingValues) {
   TestDriver driver;
   ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_FLOAT, {1, 2, 2},
                                     "0.10,0.20,0.30,0.40"),
-            "0.1,0.2,0.3,0.4");
+            "0.100000001,0.200000003,0.300000012,0.400000006");
   ASSERT_EQ(driver.WriteAndReadBack(tensorflow::DT_INT32, {1, 2, 2},
                                     "10,40,100,-100"),
             "10,40,100,-100");
@@ -93,7 +93,7 @@ TEST(TfDriverTest, SimpleTest) {
                    {"1,8,8,3", "1,8,8,3", "1,8,8,3", "1,8,8,3"}, {"x", "y"}));
 
   runner->LoadModel(
-      "third_party/tensorflow/lite/testdata/multi_add.pb");
+      "tensorflow/lite/testdata/multi_add.pb");
   EXPECT_TRUE(runner->IsValid()) << runner->GetErrorMessage();
 
   ASSERT_THAT(runner->GetInputs(), ElementsAre(0, 1, 2, 3));
@@ -111,8 +111,10 @@ TEST(TfDriverTest, SimpleTest) {
   runner->ResetTensor(2);
   runner->Invoke();
 
-  ASSERT_EQ(runner->ReadOutput(0), "0.101,0.202,0.303,0.404");
-  ASSERT_EQ(runner->ReadOutput(1), "0.011,0.022,0.033,0.044");
+  ASSERT_EQ(runner->ReadOutput(0),
+            "0.101000004,0.202000007,0.303000003,0.404000014");
+  ASSERT_EQ(runner->ReadOutput(1),
+            "0.0109999999,0.0219999999,0.0329999998,0.0439999998");
 }
 
 }  // namespace

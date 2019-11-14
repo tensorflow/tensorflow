@@ -38,43 +38,9 @@ xla::XlaOp PrependZerosInMajorDims(xla::XlaOp x,
 xla::XlaOp IntegerLiteral(xla::XlaBuilder* builder, xla::PrimitiveType type,
                           int64 value);
 
-// Builds a vector of zeros of length rank(x) with the last values being
-// those in `starts`.
-xla::XlaOp PrependZerosInMajorDims(xla::XlaOp x,
-                                   absl::Span<const xla::XlaOp> starts);
-
-// Performs a slice in the minor dimensions of a Tensor.
-xla::XlaOp SliceInMinorDims(xla::XlaOp x, absl::Span<const int64> start,
-                            absl::Span<const int64> end);
-
 // Returns the concatenation of `xs` and `ys`.
 std::vector<int64> ConcatVectors(absl::Span<const int64> xs,
                                  absl::Span<const int64> ys);
-
-// Performs a dynamic slice in the minor dimensions of a Tensor.
-xla::XlaOp DynamicSliceInMinorDims(xla::XlaOp x,
-                                   absl::Span<const xla::XlaOp> starts,
-                                   absl::Span<const int64> sizes);
-
-// Updates a slice of 'x', i.e.,
-// x[start[0], ..., start[n]] = update
-xla::XlaOp UpdateSlice(xla::XlaOp x, xla::XlaOp update,
-                       absl::Span<const int64> start);
-
-// Updates a slice of 'x', where 'start' contains a list of minor dimensions:
-// x[..., start[0], ..., start[n]] = update
-xla::XlaOp UpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
-                                  absl::Span<const int64> start);
-
-xla::XlaOp DynamicUpdateSliceInMinorDims(xla::XlaOp x, xla::XlaOp update,
-                                         absl::Span<const xla::XlaOp> starts);
-
-// Transposes a stack of matrices `x` by swapping the last two dimensions.
-xla::XlaOp TransposeInMinorDims(xla::XlaOp x);
-
-// Applies a complex conjugation operation if `a` is complex and `conjugate_a`
-// is true, otherwise returns its argument.
-xla::XlaOp MaybeConjugate(xla::XlaOp x, bool conjugate);
 
 }  // namespace tensorflow
 

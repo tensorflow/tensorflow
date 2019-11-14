@@ -17,11 +17,11 @@ limitations under the License.
 
 #include "tensorflow/core/kernels/searchsorted_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -179,7 +179,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_KERNELS(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("UpperBound")                      \
@@ -201,7 +201,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_KERNELS(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("LowerBound")                      \
@@ -223,7 +223,7 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_KERNELS(type)                                    \
   REGISTER_KERNEL_BUILDER(Name("LowerBound")                      \
@@ -245,5 +245,5 @@ TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

@@ -22,6 +22,7 @@ from tensorflow.python.autograph.operators import data_structures
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
@@ -59,6 +60,7 @@ class ListTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertAllEqual(self.evaluate(t), [3, 4, 5])
 
+  @test_util.run_deprecated_v1
   def test_tf_tensor_list_new_illegal_input(self):
     with self.assertRaises(ValueError):
       data_structures.tf_tensor_list_new([3, 4.0])
@@ -104,13 +106,14 @@ class ListTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertAllEqual(self.evaluate(t), [[1, 2, 3]])
 
+  @test_util.run_v1_only("b/117943489")
   def test_append_tensorarray(self):
     l = tensor_array_ops.TensorArray(dtypes.int32, size=0, dynamic_size=True)
     l1 = data_structures.list_append(l, 1)
     l2 = data_structures.list_append(l1, 2)
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(l1.stack()), [1])
-      self.assertAllEqual(sess.run(l2.stack()), [1, 2])
+      self.assertAllEqual(self.evaluate(l1.stack()), [1])
+      self.assertAllEqual(self.evaluate(l2.stack()), [1, 2])
 
   def test_append_python(self):
     l = []
@@ -152,8 +155,9 @@ class ListTest(test.TestCase):
 
     with self.cached_session() as sess:
       t = data_structures.list_stack(l, opts)
-      self.assertAllEqual(sess.run(t), self.evaluate(initial_list))
+      self.assertAllEqual(self.evaluate(t), self.evaluate(initial_list))
 
+  @test_util.run_deprecated_v1
   def test_stack_tensor_list_empty(self):
     l = list_ops.empty_tensor_list(
         element_shape=None, element_dtype=dtypes.variant)

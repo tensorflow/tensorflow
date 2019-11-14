@@ -1,12 +1,11 @@
 path: "tensorflow.keras.initializers.TruncatedNormal"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.initializers.TruncatedNormal\'>"
-  is_instance: "<class \'tensorflow.python.ops.init_ops.TruncatedNormal\'>"
-  is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.TruncatedNormal\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'mean\', \'stddev\', \'seed\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0.0\', \'0.05\', \'None\', \"<dtype: \'float32\'>\"], "
+    argspec: "args=[\'self\', \'mean\', \'stddev\', \'seed\'], varargs=None, keywords=None, defaults=[\'0.0\', \'0.05\', \'None\'], "
   }
   member_method {
     name: "from_config"

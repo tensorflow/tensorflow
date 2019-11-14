@@ -1,12 +1,11 @@
 # Tests of TensorFlow kernels written using the Python API.
 
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 cuda_py_test(
     name = "bijector_test",
@@ -217,7 +216,14 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
     ],
-    tags = ["nomsan"],  # disable to avoid false positives from scipy.
+    tags = [
+        # TODO(b/121223043): Re-enable this test after fixing "mean not defined"
+        # errors.
+        "no_mac",
+        "no_oss",
+        # disable to avoid false positives from scipy.
+        "nomsan",
+    ],
 )
 
 cuda_py_test(

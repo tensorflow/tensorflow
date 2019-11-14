@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/common_runtime/executor.h"
+
 #include <algorithm>
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
-#include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
@@ -53,25 +54,31 @@ class ExecutorTest : public ::testing::Test {
     // when the test completes.
     CHECK(rendez_->Unref());
     delete exec_;
-    delete device_;
   }
 
   // Resets executor_ with a new executor based on a graph 'gdef'.
   void Create(std::unique_ptr<const Graph> graph) {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
-    params.device = device_;
+    params.device = device_.get();
     params.create_kernel = [this, version](const NodeDef& ndef,
                                            OpKernel** kernel) {
-      return CreateNonCachedKernel(device_, nullptr, ndef, version, kernel);
+      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
+                                   kernel);
     };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
     };
-    delete exec_;
-    TF_CHECK_OK(NewLocalExecutor(params, std::move(graph), &exec_));
-    runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
     rendez_ = NewLocalRendezvous();
+    params.rendezvous_factory = [this](const int64, const DeviceMgr*,
+                                       Rendezvous** r) {
+      *r = rendez_;
+      rendez_->Ref();
+      return Status::OK();
+    };
+    delete exec_;
+    TF_CHECK_OK(NewLocalExecutor(params, *graph, &exec_));
+    runner_ = [this](std::function<void()> fn) { thread_pool_->Schedule(fn); };
   }
 
   Status Run(Rendezvous* rendez) {
@@ -83,7 +90,7 @@ class ExecutorTest : public ::testing::Test {
   }
 
   thread::ThreadPool* thread_pool_ = nullptr;
-  Device* device_ = nullptr;
+  std::unique_ptr<Device> device_;
   Executor* exec_ = nullptr;
   StepStatsCollector step_stats_collector_;
   StepStats step_stats_;
@@ -144,7 +151,7 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Recv(g.get(), "b", "float", ALICE, 1, BOB);
   auto tmp = test::graph::Add(g.get(), in0, in1);
@@ -172,7 +179,7 @@ TEST_F(ExecutorTest, SelfAdd) {
   //
   // b <- v10
   // All nodes are executed by one thread.
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto v = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   const int N = 10;
   for (int i = 1; i <= N; ++i) {
@@ -229,7 +236,7 @@ void BuildTree(int N, Graph* g) {
 }
 
 TEST_F(ExecutorTest, RandomTree) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   BuildTree(4096, g.get());
   Create(std::move(g));
   Rendezvous::Args args;
@@ -262,7 +269,7 @@ void BuildConcurrentAddAssign(Graph* g) {
 
 #ifndef THREAD_SANITIZER
 TEST_F(ExecutorTest, ConcurrentAddAssign) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   BuildConcurrentAddAssign(g.get());
   Create(std::move(g));
   for (int iters = 0; iters < 16; ++iters) {
@@ -281,7 +288,7 @@ TEST_F(ExecutorTest, ConcurrentAddAssign) {
 #endif
 
 TEST_F(ExecutorTest, SimpleSwitchLive) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Constant(g.get(), VB(false));
   auto tmp = test::graph::Switch(g.get(), in0, in1);
@@ -300,7 +307,7 @@ TEST_F(ExecutorTest, SimpleSwitchLive) {
 }
 
 TEST_F(ExecutorTest, SimpleSwitchDead) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Constant(g.get(), VB(true));
   auto tmp = test::graph::Switch(g.get(), in0, in1);
@@ -319,7 +326,7 @@ TEST_F(ExecutorTest, SimpleSwitchDead) {
 
 TEST_F(ExecutorTest, Abort) {
   // e = a + b + c + d
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Recv(g.get(), "a", "float", ALICE, 1, BOB);
   auto in1 = test::graph::Recv(g.get(), "b", "float", ALICE, 1, BOB);
   auto in2 = test::graph::Recv(g.get(), "c", "float", ALICE, 1, BOB);
@@ -366,12 +373,12 @@ TEST_F(ExecutorTest, Abort) {
   // At this point there can still be pending (albeit Aborted) Send
   // closures holding Refs on rendez_.  We need to wait for them, or
   // else there can be a memory leak at termination.
-  while (!rendez_->RefCountIsOne())
-    ;
+  while (!rendez_->RefCountIsOne()) {
+  }
 }
 
 TEST_F(ExecutorTest, RecvInvalidDtype) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   // An input vector of type float of size 1.
   auto one = test::graph::Recv(g.get(), "one", "float", ALICE, 1, BOB);
   // A floating point variable vector of size 1.
@@ -396,7 +403,7 @@ TEST_F(ExecutorTest, RecvInvalidDtype) {
 }
 
 TEST_F(ExecutorTest, RecvInvalidRefDtype) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  auto g = absl::make_unique<Graph>(OpRegistry::Global());
   // A var that always produces as invalid dtype.
   auto var = test::graph::InvalidRefType(g.get(), DT_FLOAT, DT_DOUBLE);
   test::graph::Send(g.get(), var, "out", BOB, 1, ALICE);
@@ -427,8 +434,10 @@ static void BM_executor(int iters, int width, int depth) {
     ready_nodes.push_back(test::graph::NoOp(g, {}));
     ++cur;
   }
+  std::random_device random_device;
+  std::mt19937 rng(random_device());
   for (int i = 0; i < depth; ++i) {
-    std::random_shuffle(ready_nodes.begin(), ready_nodes.end());
+    std::shuffle(ready_nodes.begin(), ready_nodes.end(), rng);
     r = 1 + rand.Rand32() % (ready_nodes.size());
     std::vector<Node*> control_inputs;
     for (int j = 0; j < r; ++j) {
@@ -470,12 +479,18 @@ static void BM_FeedInputFetchOutput(int iters) {
   Node* y = test::graph::Recv(g, "y", "float", ALICE, 1, BOB);
   Node* sum = test::graph::Add(g, x, y);
   Node* z = test::graph::Send(g, sum, "z", BOB, 1, ALICE);
+
+  string x_key = test::GetRendezvousKey(x);
+  string y_key = test::GetRendezvousKey(y);
+  string z_key = test::GetRendezvousKey(z);
+
   Tensor val(DT_FLOAT, TensorShape({}));
   val.scalar<float>()() = 3.14;
 #ifdef PLATFORM_GOOGLE
   SetBenchmarkItemsProcessed(static_cast<int64>(iters));
 #endif  // PLATFORM_GOOGLE
-  test::Benchmark("cpu", g).RunWithArgs({{x, val}, {y, val}}, {z}, iters);
+  test::Benchmark("cpu", g).RunWithRendezvousArgs({{x_key, val}, {y_key, val}},
+                                                  {z_key}, iters);
 }
 BENCHMARK(BM_FeedInputFetchOutput);
 

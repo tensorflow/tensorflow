@@ -20,12 +20,14 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops.losses import util
 from tensorflow.python.platform import test
 
 
 class LossesUtilTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGetRegularizationLoss(self):
     # Empty regularization collection should evaluate to 0.0.
     with self.cached_session():

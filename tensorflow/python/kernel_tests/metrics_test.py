@@ -29,6 +29,7 @@ from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import math_ops
@@ -175,22 +176,26 @@ class MeanTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean(array_ops.ones([4, 3]))
     _assert_metric_variables(self, ('mean/count:0', 'mean/total:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.mean(
         array_ops.ones([4, 3]), metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean(
         array_ops.ones([4, 3]), updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
@@ -208,6 +213,7 @@ class MeanTest(test.TestCase):
         self.evaluate(update_op)
       self.assertAlmostEqual(1.65, self.evaluate(mean), 5)
 
+  @test_util.run_deprecated_v1
   def testUpdateOpsReturnsCurrentValue(self):
     with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
@@ -229,6 +235,7 @@ class MeanTest(test.TestCase):
 
       self.assertAlmostEqual(1.65, self.evaluate(mean), 5)
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     values = _test_values((3, 2, 4, 1))
     mean_results = (
@@ -271,37 +278,44 @@ class MeanTest(test.TestCase):
       self.assertAlmostEqual(expected, update_op.eval(), places=5)
       self.assertAlmostEqual(expected, mean.eval(), places=5)
 
+  @test_util.run_deprecated_v1
   def test1x1x1Weighted(self):
     self._test_3d_weighted(
         _test_values((3, 2, 4)),
         weights=np.asarray((5,)).reshape((1, 1, 1)))
 
+  @test_util.run_deprecated_v1
   def test1x1xNWeighted(self):
     self._test_3d_weighted(
         _test_values((3, 2, 4)),
         weights=np.asarray((5, 7, 11, 3)).reshape((1, 1, 4)))
 
+  @test_util.run_deprecated_v1
   def test1xNx1Weighted(self):
     self._test_3d_weighted(
         _test_values((3, 2, 4)),
         weights=np.asarray((5, 11)).reshape((1, 2, 1)))
 
+  @test_util.run_deprecated_v1
   def test1xNxNWeighted(self):
     self._test_3d_weighted(
         _test_values((3, 2, 4)),
         weights=np.asarray((5, 7, 11, 3, 2, 13, 7, 5)).reshape((1, 2, 4)))
 
+  @test_util.run_deprecated_v1
   def testNx1x1Weighted(self):
     self._test_3d_weighted(
         _test_values((3, 2, 4)),
         weights=np.asarray((5, 7, 11)).reshape((3, 1, 1)))
 
+  @test_util.run_deprecated_v1
   def testNx1xNWeighted(self):
     self._test_3d_weighted(
         _test_values((3, 2, 4)),
         weights=np.asarray((
             5, 7, 11, 3, 2, 12, 7, 5, 2, 17, 11, 3)).reshape((3, 1, 4)))
 
+  @test_util.run_deprecated_v1
   def testNxNxNWeighted(self):
     self._test_3d_weighted(
         _test_values((3, 2, 4)),
@@ -309,6 +323,7 @@ class MeanTest(test.TestCase):
             5, 7, 11, 3, 2, 12, 7, 5, 2, 17, 11, 3,
             2, 17, 11, 3, 5, 7, 11, 3, 2, 12, 7, 5)).reshape((3, 2, 4)))
 
+  @test_util.run_deprecated_v1
   def testInvalidWeights(self):
     values_placeholder = array_ops.placeholder(dtype=dtypes_lib.float32)
     values = _test_values((3, 2, 4, 1))
@@ -341,23 +356,27 @@ class MeanTensorTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean_tensor(array_ops.ones([4, 3]))
     _assert_metric_variables(self,
                              ('mean/total_tensor:0', 'mean/count_tensor:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.mean_tensor(
         array_ops.ones([4, 3]), metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean_tensor(
         array_ops.ones([4, 3]), updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
@@ -375,6 +394,7 @@ class MeanTensorTest(test.TestCase):
         self.evaluate(update_op)
       self.assertAllClose([[-0.9 / 4., 3.525]], self.evaluate(mean))
 
+  @test_util.run_deprecated_v1
   def testMultiDimensional(self):
     with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
@@ -397,6 +417,7 @@ class MeanTensorTest(test.TestCase):
       self.assertAllClose([[[1, 2], [1, 2]], [[2, 3], [5, 6]]],
                           self.evaluate(mean))
 
+  @test_util.run_deprecated_v1
   def testUpdateOpsReturnsCurrentValue(self):
     with self.cached_session() as sess:
       values_queue = data_flow_ops.FIFOQueue(
@@ -418,6 +439,7 @@ class MeanTensorTest(test.TestCase):
 
       self.assertAllClose([[-0.9 / 4., 3.525]], self.evaluate(mean), 5)
 
+  @test_util.run_deprecated_v1
   def testBinaryWeighted1d(self):
     with self.cached_session() as sess:
       # Create the queue that populates the values.
@@ -445,6 +467,7 @@ class MeanTensorTest(test.TestCase):
         self.evaluate(update_op)
       self.assertAllClose([[3.25, 0.5]], self.evaluate(mean), 5)
 
+  @test_util.run_deprecated_v1
   def testWeighted1d(self):
     with self.cached_session() as sess:
       # Create the queue that populates the values.
@@ -472,6 +495,7 @@ class MeanTensorTest(test.TestCase):
         self.evaluate(update_op)
       self.assertAllClose([[0.8, 3.52]], self.evaluate(mean), 5)
 
+  @test_util.run_deprecated_v1
   def testWeighted2d_1(self):
     with self.cached_session() as sess:
       # Create the queue that populates the values.
@@ -499,6 +523,7 @@ class MeanTensorTest(test.TestCase):
         self.evaluate(update_op)
       self.assertAllClose([[-2.1, 0.5]], self.evaluate(mean), 5)
 
+  @test_util.run_deprecated_v1
   def testWeighted2d_2(self):
     with self.cached_session() as sess:
       # Create the queue that populates the values.
@@ -532,6 +557,7 @@ class AccuracyTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.accuracy(
         predictions=array_ops.ones((10, 1)),
@@ -540,6 +566,7 @@ class AccuracyTest(test.TestCase):
     _assert_metric_variables(self,
                              ('my_accuracy/count:0', 'my_accuracy/total:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.accuracy(
@@ -548,6 +575,7 @@ class AccuracyTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.accuracy(
@@ -556,12 +584,14 @@ class AccuracyTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testPredictionsAndLabelsOfDifferentSizeRaisesValueError(self):
     predictions = array_ops.ones((10, 3))
     labels = array_ops.ones((10, 4))
     with self.assertRaises(ValueError):
       metrics.accuracy(labels, predictions)
 
+  @test_util.run_deprecated_v1
   def testPredictionsAndWeightsOfDifferentSizeRaisesValueError(self):
     predictions = array_ops.ones((10, 3))
     labels = array_ops.ones((10, 3))
@@ -569,6 +599,7 @@ class AccuracyTest(test.TestCase):
     with self.assertRaises(ValueError):
       metrics.accuracy(labels, predictions, weights)
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=1)
@@ -576,7 +607,7 @@ class AccuracyTest(test.TestCase):
         (10, 3), maxval=3, dtype=dtypes_lib.int64, seed=1)
     accuracy, update_op = metrics.accuracy(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -588,6 +619,7 @@ class AccuracyTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_accuracy, accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testMultipleUpdates(self):
     with self.cached_session() as sess:
       # Create the queue that populates the predictions.
@@ -616,26 +648,29 @@ class AccuracyTest(test.TestCase):
       self.assertEqual(0.5, self.evaluate(update_op))
       self.assertEqual(0.5, accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testEffectivelyEquivalentSizes(self):
     predictions = array_ops.ones((40, 1))
     labels = array_ops.ones((40,))
-    with self.cached_session() as sess:
+    with self.cached_session():
       accuracy, update_op = metrics.accuracy(labels, predictions)
 
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testEffectivelyEquivalentSizesWithScalarWeight(self):
     predictions = array_ops.ones((40, 1))
     labels = array_ops.ones((40,))
-    with self.cached_session() as sess:
+    with self.cached_session():
       accuracy, update_op = metrics.accuracy(labels, predictions, weights=2.0)
 
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.0, update_op.eval())
       self.assertEqual(1.0, accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testEffectivelyEquivalentSizesWithStaticShapedWeight(self):
     predictions = ops.convert_to_tensor([1, 1, 1])  # shape 3,
     labels = array_ops.expand_dims(ops.convert_to_tensor([1, 0, 0]),
@@ -643,7 +678,7 @@ class AccuracyTest(test.TestCase):
     weights = array_ops.expand_dims(ops.convert_to_tensor([100, 1, 1]),
                                     1)  # shape 3, 1
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       accuracy, update_op = metrics.accuracy(labels, predictions, weights)
 
       self.evaluate(variables.local_variables_initializer())
@@ -653,6 +688,7 @@ class AccuracyTest(test.TestCase):
       self.assertGreater(update_op.eval(), .95)
       self.assertGreater(accuracy.eval(), .95)
 
+  @test_util.run_deprecated_v1
   def testEffectivelyEquivalentSizesWithDynamicallyShapedWeight(self):
     predictions = ops.convert_to_tensor([1, 1, 1])  # shape 3,
     labels = array_ops.expand_dims(ops.convert_to_tensor([1, 0, 0]),
@@ -663,7 +699,7 @@ class AccuracyTest(test.TestCase):
         dtype=dtypes_lib.int32, name='weights')
     feed_dict = {weights_placeholder: weights}
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       accuracy, update_op = metrics.accuracy(labels, predictions,
                                              weights_placeholder)
 
@@ -674,6 +710,7 @@ class AccuracyTest(test.TestCase):
       self.assertGreater(update_op.eval(feed_dict=feed_dict), .95)
       self.assertGreater(accuracy.eval(feed_dict=feed_dict), .95)
 
+  @test_util.run_deprecated_v1
   def testMultipleUpdatesWithWeightedValues(self):
     with self.cached_session() as sess:
       # Create the queue that populates the predictions.
@@ -718,12 +755,14 @@ class PrecisionTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.precision(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
     _assert_metric_variables(self, ('precision/false_positives/count:0',
                                     'precision/true_positives/count:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.precision(
@@ -732,6 +771,7 @@ class PrecisionTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.precision(
@@ -740,6 +780,7 @@ class PrecisionTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
@@ -747,7 +788,7 @@ class PrecisionTest(test.TestCase):
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -759,6 +800,7 @@ class PrecisionTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_precision, precision.eval())
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
@@ -766,11 +808,12 @@ class PrecisionTest(test.TestCase):
     labels = constant_op.constant(inputs)
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, self.evaluate(update_op))
-      self.assertAlmostEqual(1, precision.eval())
+      self.assertAlmostEqual(1.0, self.evaluate(update_op), 6)
+      self.assertAlmostEqual(1.0, precision.eval(), 6)
 
+  @test_util.run_deprecated_v1
   def testSomeCorrect_multipleInputDtypes(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
       predictions = math_ops.cast(
@@ -779,11 +822,12 @@ class PrecisionTest(test.TestCase):
           constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
       precision, update_op = metrics.precision(labels, predictions)
 
-      with self.cached_session() as sess:
+      with self.cached_session():
         self.evaluate(variables.local_variables_initializer())
         self.assertAlmostEqual(0.5, update_op.eval())
         self.assertAlmostEqual(0.5, precision.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted1d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
     labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
@@ -798,6 +842,7 @@ class PrecisionTest(test.TestCase):
       self.assertAlmostEqual(expected_precision, update_op.eval())
       self.assertAlmostEqual(expected_precision, precision.eval())
 
+  @test_util.run_deprecated_v1
   def testWeightedScalar_placeholders(self):
     predictions = array_ops.placeholder(dtype=dtypes_lib.float32)
     labels = array_ops.placeholder(dtype=dtypes_lib.float32)
@@ -817,6 +862,7 @@ class PrecisionTest(test.TestCase):
       self.assertAlmostEqual(
           expected_precision, precision.eval(feed_dict=feed_dict))
 
+  @test_util.run_deprecated_v1
   def testWeighted1d_placeholders(self):
     predictions = array_ops.placeholder(dtype=dtypes_lib.float32)
     labels = array_ops.placeholder(dtype=dtypes_lib.float32)
@@ -837,6 +883,7 @@ class PrecisionTest(test.TestCase):
       self.assertAlmostEqual(
           expected_precision, precision.eval(feed_dict=feed_dict))
 
+  @test_util.run_deprecated_v1
   def testWeighted2d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [1, 0, 1, 0]])
     labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
@@ -853,6 +900,7 @@ class PrecisionTest(test.TestCase):
       self.assertAlmostEqual(expected_precision, update_op.eval())
       self.assertAlmostEqual(expected_precision, precision.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted2d_placeholders(self):
     predictions = array_ops.placeholder(dtype=dtypes_lib.float32)
     labels = array_ops.placeholder(dtype=dtypes_lib.float32)
@@ -875,6 +923,7 @@ class PrecisionTest(test.TestCase):
       self.assertAlmostEqual(
           expected_precision, precision.eval(feed_dict=feed_dict))
 
+  @test_util.run_deprecated_v1
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
@@ -882,17 +931,18 @@ class PrecisionTest(test.TestCase):
     labels = constant_op.constant(1 - inputs)
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.evaluate(update_op)
       self.assertAlmostEqual(0, precision.eval())
 
+  @test_util.run_deprecated_v1
   def testZeroTrueAndFalsePositivesGivesZeroPrecision(self):
     predictions = constant_op.constant([0, 0, 0, 0])
     labels = constant_op.constant([0, 0, 0, 0])
     precision, update_op = metrics.precision(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.evaluate(update_op)
       self.assertEqual(0.0, precision.eval())
@@ -904,6 +954,7 @@ class RecallTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.recall(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
@@ -911,6 +962,7 @@ class RecallTest(test.TestCase):
         self,
         ('recall/false_negatives/count:0', 'recall/true_positives/count:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.recall(
@@ -919,6 +971,7 @@ class RecallTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.recall(
@@ -927,6 +980,7 @@ class RecallTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
@@ -934,7 +988,7 @@ class RecallTest(test.TestCase):
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -946,6 +1000,7 @@ class RecallTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_recall, recall.eval())
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     np_inputs = np.random.randint(0, 2, size=(100, 1))
 
@@ -953,11 +1008,12 @@ class RecallTest(test.TestCase):
     labels = constant_op.constant(np_inputs)
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.evaluate(update_op)
-      self.assertEqual(1, recall.eval())
+      self.assertAlmostEqual(1.0, recall.eval(), 6)
 
+  @test_util.run_deprecated_v1
   def testSomeCorrect_multipleInputDtypes(self):
     for dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
       predictions = math_ops.cast(
@@ -966,18 +1022,19 @@ class RecallTest(test.TestCase):
           constant_op.constant([0, 1, 1, 0], shape=(1, 4)), dtype=dtype)
       recall, update_op = metrics.recall(labels, predictions)
 
-      with self.cached_session() as sess:
+      with self.cached_session():
         self.evaluate(variables.local_variables_initializer())
         self.assertAlmostEqual(0.5, update_op.eval())
         self.assertAlmostEqual(0.5, recall.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted1d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
     labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
     weights = constant_op.constant([[2], [5]])
     recall, update_op = metrics.recall(labels, predictions, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       weighted_tp = 2.0 + 5.0
       weighted_t = (2.0 + 2.0) + (5.0 + 5.0)
@@ -985,13 +1042,14 @@ class RecallTest(test.TestCase):
       self.assertAlmostEqual(expected_precision, update_op.eval())
       self.assertAlmostEqual(expected_precision, recall.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted2d(self):
     predictions = constant_op.constant([[1, 0, 1, 0], [0, 1, 0, 1]])
     labels = constant_op.constant([[0, 1, 1, 0], [1, 0, 0, 1]])
     weights = constant_op.constant([[1, 2, 3, 4], [4, 3, 2, 1]])
     recall, update_op = metrics.recall(labels, predictions, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       weighted_tp = 3.0 + 1.0
       weighted_t = (2.0 + 3.0) + (4.0 + 1.0)
@@ -999,6 +1057,7 @@ class RecallTest(test.TestCase):
       self.assertAlmostEqual(expected_precision, update_op.eval())
       self.assertAlmostEqual(expected_precision, recall.eval())
 
+  @test_util.run_deprecated_v1
   def testAllIncorrect(self):
     np_inputs = np.random.randint(0, 2, size=(100, 1))
 
@@ -1006,17 +1065,18 @@ class RecallTest(test.TestCase):
     labels = constant_op.constant(1 - np_inputs)
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.evaluate(update_op)
       self.assertEqual(0, recall.eval())
 
+  @test_util.run_deprecated_v1
   def testZeroTruePositivesAndFalseNegativesGivesZeroRecall(self):
     predictions = array_ops.zeros((1, 4))
     labels = array_ops.zeros((1, 4))
     recall, update_op = metrics.recall(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.evaluate(update_op)
       self.assertEqual(0, recall.eval())
@@ -1028,6 +1088,7 @@ class AUCTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.auc(predictions=array_ops.ones((10, 1)),
                 labels=array_ops.ones((10, 1)))
@@ -1035,6 +1096,7 @@ class AUCTest(test.TestCase):
                              ('auc/true_positives:0', 'auc/false_negatives:0',
                               'auc/false_positives:0', 'auc/true_negatives:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.auc(predictions=array_ops.ones((10, 1)),
@@ -1042,6 +1104,7 @@ class AUCTest(test.TestCase):
                           metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.auc(predictions=array_ops.ones((10, 1)),
@@ -1049,6 +1112,7 @@ class AUCTest(test.TestCase):
                                updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
@@ -1056,7 +1120,7 @@ class AUCTest(test.TestCase):
         (10, 3), maxval=1, dtype=dtypes_lib.int64, seed=1)
     auc, update_op = metrics.auc(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -1068,13 +1132,14 @@ class AUCTest(test.TestCase):
       for _ in range(10):
         self.assertAlmostEqual(initial_auc, auc.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     self.allCorrectAsExpected('ROC')
 
   def allCorrectAsExpected(self, curve):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(inputs)
       auc, update_op = metrics.auc(labels, predictions, curve=curve)
@@ -1084,8 +1149,9 @@ class AUCTest(test.TestCase):
 
       self.assertEqual(1, auc.eval())
 
+  @test_util.run_deprecated_v1
   def testSomeCorrect_multipleLabelDtypes(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       for label_dtype in (
           dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
         predictions = constant_op.constant(
@@ -1099,8 +1165,9 @@ class AUCTest(test.TestCase):
 
         self.assertAlmostEqual(0.5, auc.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted1d(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
@@ -1112,8 +1179,9 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0.5, auc.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testWeighted2d(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
@@ -1125,10 +1193,39 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0.7, auc.eval(), 5)
 
+  @test_util.run_deprecated_v1
+  def testManualThresholds(self):
+    with self.cached_session():
+      # Verifies that thresholds passed in to the `thresholds` parameter are
+      # used correctly.
+      # The default thresholds do not split the second and third predictions.
+      # Thus, when we provide manual thresholds which correctly split it, we get
+      # an accurate AUC value.
+      predictions = constant_op.constant(
+          [0.12, 0.3001, 0.3003, 0.72], shape=(1, 4), dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 1, 0, 1], shape=(1, 4))
+      weights = constant_op.constant([1, 1, 1, 1], shape=(1, 4))
+      thresholds = [0.0, 0.2, 0.3002, 0.6, 1.0]
+      default_auc, default_update_op = metrics.auc(labels,
+                                                   predictions,
+                                                   weights=weights)
+      manual_auc, manual_update_op = metrics.auc(labels,
+                                                 predictions,
+                                                 weights=weights,
+                                                 thresholds=thresholds)
+
+      self.evaluate(variables.local_variables_initializer())
+      self.assertAlmostEqual(0.875, self.evaluate(default_update_op), 3)
+      self.assertAlmostEqual(0.875, default_auc.eval(), 3)
+
+      self.assertAlmostEqual(0.75, self.evaluate(manual_update_op), 3)
+      self.assertAlmostEqual(0.75, manual_auc.eval(), 3)
+
   # Regarding the AUC-PR tests: note that the preferred method when
   # calculating AUC-PR is summation_method='careful_interpolation'.
+  @test_util.run_deprecated_v1
   def testCorrectAUCPRSpecialCase(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
@@ -1141,8 +1238,9 @@ class AUCTest(test.TestCase):
       self.assertAlmostEqual(expected, self.evaluate(update_op), delta=1e-3)
       self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
+  @test_util.run_deprecated_v1
   def testCorrectAnotherAUCPRSpecialCase(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
           shape=(1, 7),
@@ -1157,8 +1255,9 @@ class AUCTest(test.TestCase):
       self.assertAlmostEqual(expected, self.evaluate(update_op), delta=1e-3)
       self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
+  @test_util.run_deprecated_v1
   def testThirdCorrectAUCPRSpecialCase(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
           shape=(1, 7),
@@ -1173,8 +1272,9 @@ class AUCTest(test.TestCase):
       self.assertAlmostEqual(expected, self.evaluate(update_op), delta=1e-3)
       self.assertAlmostEqual(expected, auc.eval(), delta=1e-3)
 
+  @test_util.run_deprecated_v1
   def testIncorrectAUCPRSpecialCase(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 0, 1, 1], shape=(1, 4))
@@ -1186,8 +1286,9 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
 
+  @test_util.run_deprecated_v1
   def testAnotherIncorrectAUCPRSpecialCase(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81],
           shape=(1, 7),
@@ -1201,8 +1302,9 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
 
+  @test_util.run_deprecated_v1
   def testThirdIncorrectAUCPRSpecialCase(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
           shape=(1, 7),
@@ -1216,10 +1318,11 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-3)
 
+  @test_util.run_deprecated_v1
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(1 - inputs, dtype=dtypes_lib.float32)
       auc, update_op = metrics.auc(labels, predictions)
@@ -1229,8 +1332,9 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(0, auc.eval())
 
+  @test_util.run_deprecated_v1
   def testZeroTruePositivesAndFalseNegativesGivesOneAUC(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = array_ops.zeros([4], dtype=dtypes_lib.float32)
       labels = array_ops.zeros([4])
       auc, update_op = metrics.auc(labels, predictions)
@@ -1240,8 +1344,9 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(1, auc.eval(), 6)
 
+  @test_util.run_deprecated_v1
   def testRecallOneAndPrecisionOneGivesOnePRAUC(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = array_ops.ones([4], dtype=dtypes_lib.float32)
       labels = array_ops.ones([4])
       auc, update_op = metrics.auc(labels, predictions, curve='PR')
@@ -1278,6 +1383,7 @@ class AUCTest(test.TestCase):
     tp = np.cumsum(sorted_weights * is_positive) / num_positives
     return np.sum((sorted_weights * tp)[~is_positive]) / num_negatives
 
+  @test_util.run_deprecated_v1
   def testWithMultipleUpdates(self):
     num_samples = 1000
     batch_size = 10
@@ -1334,6 +1440,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.specificity_at_sensitivity(
         predictions=array_ops.ones((10, 1)),
@@ -1345,6 +1452,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
                               'specificity_at_sensitivity/false_positives:0',
                               'specificity_at_sensitivity/true_negatives:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.specificity_at_sensitivity(
@@ -1354,6 +1462,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.specificity_at_sensitivity(
@@ -1363,6 +1472,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
@@ -1371,7 +1481,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.7)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -1383,6 +1493,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
       for _ in range(10):
         self.assertAlmostEqual(initial_specificity, specificity.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
@@ -1391,11 +1502,12 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.7)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1, self.evaluate(update_op))
       self.assertEqual(1, specificity.eval())
 
+  @test_util.run_deprecated_v1
   def testSomeCorrectHighSensitivity(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.45, 0.5, 0.8, 0.9]
     labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
@@ -1406,11 +1518,12 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.8)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAlmostEqual(1.0, self.evaluate(update_op))
       self.assertAlmostEqual(1.0, specificity.eval())
 
+  @test_util.run_deprecated_v1
   def testSomeCorrectLowSensitivity(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
     labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
@@ -1421,12 +1534,13 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, sensitivity=0.4)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       self.assertAlmostEqual(0.6, self.evaluate(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted1d_multipleLabelDtypes(self):
     for label_dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
       predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
@@ -1440,12 +1554,13 @@ class SpecificityAtSensitivityTest(test.TestCase):
       specificity, update_op = metrics.specificity_at_sensitivity(
           labels, predictions, weights=weights, sensitivity=0.4)
 
-      with self.cached_session() as sess:
+      with self.cached_session():
         self.evaluate(variables.local_variables_initializer())
 
         self.assertAlmostEqual(0.6, self.evaluate(update_op))
         self.assertAlmostEqual(0.6, specificity.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted2d(self):
     predictions_values = [0.1, 0.2, 0.4, 0.3, 0.0, 0.1, 0.2, 0.2, 0.26, 0.26]
     labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
@@ -1458,7 +1573,7 @@ class SpecificityAtSensitivityTest(test.TestCase):
     specificity, update_op = metrics.specificity_at_sensitivity(
         labels, predictions, weights=weights, sensitivity=0.4)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       self.assertAlmostEqual(8.0 / 15.0, self.evaluate(update_op))
@@ -1471,6 +1586,7 @@ class SensitivityAtSpecificityTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.sensitivity_at_specificity(
         predictions=array_ops.ones((10, 1)),
@@ -1482,6 +1598,7 @@ class SensitivityAtSpecificityTest(test.TestCase):
                               'sensitivity_at_specificity/false_positives:0',
                               'sensitivity_at_specificity/true_negatives:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.sensitivity_at_specificity(
@@ -1491,6 +1608,7 @@ class SensitivityAtSpecificityTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.sensitivity_at_specificity(
@@ -1500,6 +1618,7 @@ class SensitivityAtSpecificityTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
@@ -1508,7 +1627,7 @@ class SensitivityAtSpecificityTest(test.TestCase):
     sensitivity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.7)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -1520,6 +1639,7 @@ class SensitivityAtSpecificityTest(test.TestCase):
       for _ in range(10):
         self.assertAlmostEqual(initial_sensitivity, sensitivity.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
@@ -1528,11 +1648,12 @@ class SensitivityAtSpecificityTest(test.TestCase):
     specificity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.7)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
-      self.assertEqual(1, self.evaluate(update_op))
-      self.assertEqual(1, specificity.eval())
+      self.assertAlmostEqual(1.0, self.evaluate(update_op), 6)
+      self.assertAlmostEqual(1.0, specificity.eval(), 6)
 
+  @test_util.run_deprecated_v1
   def testSomeCorrectHighSpecificity(self):
     predictions_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.1, 0.45, 0.5, 0.8, 0.9]
     labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
@@ -1543,11 +1664,12 @@ class SensitivityAtSpecificityTest(test.TestCase):
     specificity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.8)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAlmostEqual(0.8, self.evaluate(update_op))
       self.assertAlmostEqual(0.8, specificity.eval())
 
+  @test_util.run_deprecated_v1
   def testSomeCorrectLowSpecificity(self):
     predictions_values = [0.0, 0.1, 0.2, 0.3, 0.4, 0.01, 0.02, 0.25, 0.26, 0.26]
     labels_values = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1]
@@ -1558,11 +1680,12 @@ class SensitivityAtSpecificityTest(test.TestCase):
     specificity, update_op = metrics.sensitivity_at_specificity(
         labels, predictions, specificity=0.4)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAlmostEqual(0.6, self.evaluate(update_op))
       self.assertAlmostEqual(0.6, specificity.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted_multipleLabelDtypes(self):
     for label_dtype in (dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
       predictions_values = [
@@ -1577,7 +1700,7 @@ class SensitivityAtSpecificityTest(test.TestCase):
       specificity, update_op = metrics.sensitivity_at_specificity(
           labels, predictions, weights=weights, specificity=0.4)
 
-      with self.cached_session() as sess:
+      with self.cached_session():
         self.evaluate(variables.local_variables_initializer())
         self.assertAlmostEqual(0.675, self.evaluate(update_op))
         self.assertAlmostEqual(0.675, specificity.eval())
@@ -1590,6 +1713,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.precision_at_thresholds(
         predictions=array_ops.ones((10, 1)),
@@ -1600,6 +1724,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
         'precision_at_thresholds/false_positives:0',
     ))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     prec, _ = metrics.precision_at_thresholds(
@@ -1614,6 +1739,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [prec, rec])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, precision_op = metrics.precision_at_thresholds(
@@ -1629,6 +1755,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
     self.assertListEqual(
         ops.get_collection(my_collection_name), [precision_op, recall_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_uniform(
         (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
@@ -1639,23 +1766,24 @@ class PrecisionRecallThresholdsTest(test.TestCase):
                                                     thresholds)
     rec, rec_op = metrics.recall_at_thresholds(labels, predictions, thresholds)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates, then verify idempotency.
-      sess.run([prec_op, rec_op])
+      self.evaluate([prec_op, rec_op])
       initial_prec = prec.eval()
       initial_rec = rec.eval()
       for _ in range(10):
-        sess.run([prec_op, rec_op])
+        self.evaluate([prec_op, rec_op])
         self.assertAllClose(initial_prec, prec.eval())
         self.assertAllClose(initial_rec, rec.eval())
 
   # TODO(nsilberman): fix tests (passing but incorrect).
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(inputs)
       thresholds = [0.5]
@@ -1665,13 +1793,14 @@ class PrecisionRecallThresholdsTest(test.TestCase):
                                                  thresholds)
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+      self.evaluate([prec_op, rec_op])
 
       self.assertEqual(1, prec.eval())
       self.assertEqual(1, rec.eval())
 
+  @test_util.run_deprecated_v1
   def testSomeCorrect_multipleLabelDtypes(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       for label_dtype in (
           dtypes_lib.bool, dtypes_lib.int32, dtypes_lib.float32):
         predictions = constant_op.constant(
@@ -1685,15 +1814,16 @@ class PrecisionRecallThresholdsTest(test.TestCase):
                                                    thresholds)
 
         self.evaluate(variables.local_variables_initializer())
-        sess.run([prec_op, rec_op])
+        self.evaluate([prec_op, rec_op])
 
         self.assertAlmostEqual(0.5, prec.eval())
         self.assertAlmostEqual(0.5, rec.eval())
 
+  @test_util.run_deprecated_v1
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
       labels = constant_op.constant(1 - inputs, dtype=dtypes_lib.float32)
       thresholds = [0.5]
@@ -1703,13 +1833,14 @@ class PrecisionRecallThresholdsTest(test.TestCase):
                                                  thresholds)
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+      self.evaluate([prec_op, rec_op])
 
       self.assertAlmostEqual(0, prec.eval())
       self.assertAlmostEqual(0, rec.eval())
 
+  @test_util.run_deprecated_v1
   def testWeights1d(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
       labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
@@ -1731,15 +1862,16 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec_high = array_ops.reshape(rec_high, shape=())
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+      self.evaluate([prec_op, rec_op])
 
       self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
       self.assertAlmostEqual(0.0, prec_high.eval(), places=5)
       self.assertAlmostEqual(1.0, rec_low.eval(), places=5)
       self.assertAlmostEqual(0.0, rec_high.eval(), places=5)
 
+  @test_util.run_deprecated_v1
   def testWeights2d(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes_lib.float32)
       labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
@@ -1761,15 +1893,16 @@ class PrecisionRecallThresholdsTest(test.TestCase):
       rec_high = array_ops.reshape(rec_high, shape=())
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+      self.evaluate([prec_op, rec_op])
 
       self.assertAlmostEqual(1.0, prec_low.eval(), places=5)
       self.assertAlmostEqual(0.0, prec_high.eval(), places=5)
       self.assertAlmostEqual(1.0, rec_low.eval(), places=5)
       self.assertAlmostEqual(0.0, rec_high.eval(), places=5)
 
+  @test_util.run_deprecated_v1
   def testExtremeThresholds(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [1, 0, 1, 0], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant([0, 1, 1, 1], shape=(1, 4))
@@ -1785,15 +1918,16 @@ class PrecisionRecallThresholdsTest(test.TestCase):
           value=rec, num_or_size_splits=2, axis=0)
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+      self.evaluate([prec_op, rec_op])
 
       self.assertAlmostEqual(0.75, prec_low.eval())
       self.assertAlmostEqual(0.0, prec_high.eval())
       self.assertAlmostEqual(1.0, rec_low.eval())
       self.assertAlmostEqual(0.0, rec_high.eval())
 
+  @test_util.run_deprecated_v1
   def testZeroLabelsPredictions(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = array_ops.zeros([4], dtype=dtypes_lib.float32)
       labels = array_ops.zeros([4])
       thresholds = [0.5]
@@ -1803,11 +1937,12 @@ class PrecisionRecallThresholdsTest(test.TestCase):
                                                  thresholds)
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([prec_op, rec_op])
+      self.evaluate([prec_op, rec_op])
 
       self.assertAlmostEqual(0, prec.eval(), 6)
       self.assertAlmostEqual(0, rec.eval(), 6)
 
+  @test_util.run_deprecated_v1
   def testWithMultipleUpdates(self):
     num_samples = 1000
     batch_size = 10
@@ -1872,7 +2007,7 @@ class PrecisionRecallThresholdsTest(test.TestCase):
 
       self.evaluate(variables.local_variables_initializer())
       for _ in range(int(num_samples / batch_size)):
-        sess.run([prec_op, rec_op])
+        self.evaluate([prec_op, rec_op])
       # Since this is only approximate, we can't expect a 6 digits match.
       # Although with higher number of samples/thresholds we should see the
       # accuracy improving
@@ -1990,6 +2125,7 @@ class SingleLabelPrecisionAtKTest(test.TestCase):
     self._test_average_precision_at_k = functools.partial(
         _test_average_precision_at_k, test_case=self)
 
+  @test_util.run_deprecated_v1
   def test_at_k1_nan(self):
     for labels in self._labels:
       # Classes 0,1,2 have 0 predictions, classes -1 and 4 are out of range.
@@ -1999,6 +2135,7 @@ class SingleLabelPrecisionAtKTest(test.TestCase):
         self._test_precision_at_top_k(
             self._predictions_idx, labels, k=1, expected=NAN, class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_at_k1(self):
     for labels in self._labels:
       # Class 3: 1 label, 2 predictions, 1 correct.
@@ -2026,6 +2163,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
     self._test_average_precision_at_k = functools.partial(
         _test_average_precision_at_k, test_case=self)
 
+  @test_util.run_deprecated_v1
   def test_average_precision(self):
     # Example 1.
     # Matches example here:
@@ -2101,6 +2239,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
           expected=streaming_average_precision[i],
           weights=weights)
 
+  @test_util.run_deprecated_v1
   def test_average_precision_some_labels_out_of_range(self):
     """Tests that labels outside the [0, n_classes) range are ignored."""
     labels_ex1 = (-1, 0, 1, 2, 3, 4, 7)
@@ -2120,6 +2259,33 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
       self._test_average_precision_at_k(
           predictions, labels, k, expected=avg_precision_ex1[i])
 
+  @test_util.run_deprecated_v1
+  def test_average_precision_different_num_labels(self):
+    """Tests the case where the numbers of labels differ across examples."""
+    predictions = [[0.4, 0.3, 0.2, 0.1], [0.1, 0.2, 0.3, 0.4]]
+    sparse_labels = _binary_2d_label_to_2d_sparse_value(
+        [[0, 0, 1, 1], [0, 0, 0, 1]])
+    dense_labels = np.array([[2, 3], [3, -1]], dtype=np.int64)
+    predictions_idx_ex1 = np.array(((0, 1, 2, 3), (3, 2, 1, 0)))
+    precision_ex1 = ((0.0 / 1, 0.0 / 2, 1.0 / 3, 2.0 / 4),
+                     (1.0 / 1, 1.0 / 2, 1.0 / 3, 1.0 / 4))
+    mean_precision_ex1 = np.mean(precision_ex1, axis=0)
+    avg_precision_ex1 = (
+        (0.0 / 1, 0.0 / 2, 1.0 / 3 / 2, (1.0 / 3 + 2.0 / 4) / 2),
+        (1.0 / 1, 1.0 / 1, 1.0 / 1, 1.0 / 1))
+    mean_avg_precision_ex1 = np.mean(avg_precision_ex1, axis=0)
+    for labels in (sparse_labels, dense_labels):
+      for i in xrange(4):
+        k = i + 1
+        self._test_precision_at_k(
+            predictions, labels, k, expected=mean_precision_ex1[i])
+        self._test_precision_at_top_k(
+            predictions_idx_ex1[:, :k], labels, k=k,
+            expected=mean_precision_ex1[i])
+        self._test_average_precision_at_k(
+            predictions, labels, k, expected=mean_avg_precision_ex1[i])
+
+  @test_util.run_deprecated_v1
   def test_three_labels_at_k5_no_predictions(self):
     predictions = [[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
                    [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]]
@@ -2136,6 +2302,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
         self._test_precision_at_top_k(
             predictions_idx, labels, k=5, expected=NAN, class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_three_labels_at_k5_no_labels(self):
     predictions = [[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
                    [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]]
@@ -2152,6 +2319,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
         self._test_precision_at_top_k(
             predictions_idx, labels, k=5, expected=0.0, class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_three_labels_at_k5(self):
     predictions = [[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
                    [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]]
@@ -2185,6 +2353,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=3.0 / 10)
 
+  @test_util.run_deprecated_v1
   def test_three_labels_at_k5_some_out_of_range(self):
     """Tests that labels outside the [0, n_classes) range are ignored."""
     predictions = [[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
@@ -2221,6 +2390,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
     self._test_precision_at_top_k(
         predictions_idx, sp_labels, k=5, expected=3.0 / 10)
 
+  @test_util.run_deprecated_v1
   def test_3d_nan(self):
     predictions = [[[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
                     [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]],
@@ -2239,6 +2409,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=NAN, class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_3d_no_labels(self):
     predictions = [[[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
                     [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]],
@@ -2257,6 +2428,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
       self._test_precision_at_top_k(
           predictions_idx, labels, k=5, expected=0.0, class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_3d(self):
     predictions = [[[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
                     [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]],
@@ -2292,6 +2464,7 @@ class MultiLabelPrecisionAtKTest(test.TestCase):
     self._test_precision_at_top_k(
         predictions_idx, labels, k=5, expected=7.0 / 20)
 
+  @test_util.run_deprecated_v1
   def test_3d_ignore_some(self):
     predictions = [[[0.5, 0.1, 0.6, 0.3, 0.8, 0.0, 0.7, 0.2, 0.4, 0.9],
                     [0.3, 0.0, 0.7, 0.2, 0.4, 0.9, 0.5, 0.8, 0.1, 0.6]],
@@ -2433,6 +2606,7 @@ class SingleLabelRecallAtKTest(test.TestCase):
     self._test_recall_at_top_k = functools.partial(
         _test_recall_at_top_k, test_case=self)
 
+  @test_util.run_deprecated_v1
   def test_at_k1_nan(self):
     # Classes 0,1 have 0 labels, 0 predictions, classes -1 and 4 are out of
     # range.
@@ -2443,6 +2617,7 @@ class SingleLabelRecallAtKTest(test.TestCase):
         self._test_recall_at_top_k(
             self._predictions_idx, labels, k=1, expected=NAN, class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_at_k1_no_predictions(self):
     for labels in self._labels:
       # Class 2: 0 predictions.
@@ -2451,6 +2626,7 @@ class SingleLabelRecallAtKTest(test.TestCase):
       self._test_recall_at_top_k(
           self._predictions_idx, labels, k=1, expected=0.0, class_id=2)
 
+  @test_util.run_deprecated_v1
   def test_one_label_at_k1(self):
     for labels in self._labels:
       # Class 3: 1 label, 2 predictions, 1 correct.
@@ -2464,6 +2640,7 @@ class SingleLabelRecallAtKTest(test.TestCase):
       self._test_recall_at_top_k(
           self._predictions_idx, labels, k=1, expected=1.0 / 2)
 
+  @test_util.run_deprecated_v1
   def test_one_label_at_k1_weighted_class_id3(self):
     predictions = self._predictions
     predictions_idx = self._predictions_idx
@@ -2505,6 +2682,7 @@ class SingleLabelRecallAtKTest(test.TestCase):
           predictions_idx, labels, k=1, expected=2.0 / 2, class_id=3,
           weights=(2.0, 3.0))
 
+  @test_util.run_deprecated_v1
   def test_one_label_at_k1_weighted(self):
     predictions = self._predictions
     predictions_idx = self._predictions_idx
@@ -2554,6 +2732,7 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
     self._test_recall_at_top_k = functools.partial(
         _test_recall_at_top_k, test_case=self)
 
+  @test_util.run_deprecated_v1
   def test_at_k5_nan(self):
     for labels in self._labels:
       # Classes 0,3,4,6,9 have 0 labels, class 10 is out of range.
@@ -2563,6 +2742,7 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
         self._test_recall_at_top_k(
             self._predictions_idx, labels, k=5, expected=NAN, class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_at_k5_no_predictions(self):
     for labels in self._labels:
       # Class 8: 1 label, no predictions.
@@ -2571,6 +2751,7 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
       self._test_recall_at_top_k(
           self._predictions_idx, labels, k=5, expected=0.0 / 1, class_id=8)
 
+  @test_util.run_deprecated_v1
   def test_at_k5(self):
     for labels in self._labels:
       # Class 2: 2 labels, both correct.
@@ -2596,6 +2777,7 @@ class MultiLabel2dRecallAtKTest(test.TestCase):
       self._test_recall_at_top_k(
           self._predictions_idx, labels, k=5, expected=3.0 / 6)
 
+  @test_util.run_deprecated_v1
   def test_at_k5_some_out_of_range(self):
     """Tests that labels outside the [0, n_classes) count in denominator."""
     labels = sparse_tensor.SparseTensorValue(
@@ -2648,6 +2830,7 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
     self._test_recall_at_top_k = functools.partial(
         _test_recall_at_top_k, test_case=self)
 
+  @test_util.run_deprecated_v1
   def test_3d_nan(self):
     # Classes 0,3,4,6,9 have 0 labels, class 10 is out of range.
     for class_id in (0, 3, 4, 6, 9, 10):
@@ -2657,6 +2840,7 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
           self._predictions_idx, self._labels, k=5, expected=NAN,
           class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_3d_no_predictions(self):
     # Classes 1,8 have 0 predictions, >=1 label.
     for class_id in (1, 8):
@@ -2666,6 +2850,7 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
           self._predictions_idx, self._labels, k=5, expected=0.0,
           class_id=class_id)
 
+  @test_util.run_deprecated_v1
   def test_3d(self):
     # Class 2: 4 labels, all correct.
     self._test_recall_at_k(
@@ -2694,6 +2879,7 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
     self._test_recall_at_top_k(
         self._predictions_idx, self._labels, k=5, expected=7.0 / 12)
 
+  @test_util.run_deprecated_v1
   def test_3d_ignore_all(self):
     for class_id in xrange(10):
       self._test_recall_at_k(
@@ -2720,6 +2906,7 @@ class MultiLabel3dRecallAtKTest(test.TestCase):
         self._predictions_idx, self._labels, k=5, expected=NAN,
         weights=[[0, 0], [0, 0]])
 
+  @test_util.run_deprecated_v1
   def test_3d_ignore_some(self):
     # Class 2: 2 labels, both correct.
     self._test_recall_at_k(
@@ -2775,12 +2962,14 @@ class MeanAbsoluteErrorTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean_absolute_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
     _assert_metric_variables(
         self, ('mean_absolute_error/count:0', 'mean_absolute_error/total:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.mean_absolute_error(
@@ -2789,6 +2978,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean_absolute_error(
@@ -2797,12 +2987,13 @@ class MeanAbsoluteErrorTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_normal((10, 3), seed=1)
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.mean_absolute_error(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -2814,6 +3005,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_error, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithErrorAndWeights(self):
     predictions = constant_op.constant(
         [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
@@ -2823,7 +3015,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
     error, update_op = metrics.mean_absolute_error(labels, predictions, weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(3, self.evaluate(update_op))
       self.assertEqual(3, error.eval())
@@ -2834,6 +3026,7 @@ class MeanRelativeErrorTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean_relative_error(
         predictions=array_ops.ones((10, 1)),
@@ -2842,6 +3035,7 @@ class MeanRelativeErrorTest(test.TestCase):
     _assert_metric_variables(
         self, ('mean_relative_error/count:0', 'mean_relative_error/total:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.mean_relative_error(
@@ -2851,6 +3045,7 @@ class MeanRelativeErrorTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean_relative_error(
@@ -2860,6 +3055,7 @@ class MeanRelativeErrorTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_normal((10, 3), seed=1)
     labels = random_ops.random_normal((10, 3), seed=2)
@@ -2867,7 +3063,7 @@ class MeanRelativeErrorTest(test.TestCase):
     error, update_op = metrics.mean_relative_error(labels, predictions,
                                                    normalizer)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -2879,6 +3075,7 @@ class MeanRelativeErrorTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_error, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateNormalizedByLabels(self):
     np_predictions = np.asarray([2, 4, 6, 8], dtype=np.float32)
     np_labels = np.asarray([1, 3, 2, 3], dtype=np.float32)
@@ -2892,11 +3089,12 @@ class MeanRelativeErrorTest(test.TestCase):
     error, update_op = metrics.mean_relative_error(
         labels, predictions, normalizer=labels)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(expected_error, self.evaluate(update_op))
       self.assertEqual(expected_error, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateNormalizedByZeros(self):
     np_predictions = np.asarray([2, 4, 6, 8], dtype=np.float32)
 
@@ -2908,7 +3106,7 @@ class MeanRelativeErrorTest(test.TestCase):
     error, update_op = metrics.mean_relative_error(
         labels, predictions, normalizer=array_ops.zeros_like(labels))
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(0.0, self.evaluate(update_op))
       self.assertEqual(0.0, error.eval())
@@ -2919,12 +3117,14 @@ class MeanSquaredErrorTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean_squared_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
     _assert_metric_variables(
         self, ('mean_squared_error/count:0', 'mean_squared_error/total:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.mean_squared_error(
@@ -2933,6 +3133,7 @@ class MeanSquaredErrorTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean_squared_error(
@@ -2941,12 +3142,13 @@ class MeanSquaredErrorTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_normal((10, 3), seed=1)
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.mean_squared_error(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -2958,17 +3160,19 @@ class MeanSquaredErrorTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_error, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateZeroError(self):
     predictions = array_ops.zeros((1, 3), dtype=dtypes_lib.float32)
     labels = array_ops.zeros((1, 3), dtype=dtypes_lib.float32)
 
     error, update_op = metrics.mean_squared_error(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(0, self.evaluate(update_op))
       self.assertEqual(0, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithError(self):
     predictions = constant_op.constant(
         [2, 4, 6], shape=(1, 3), dtype=dtypes_lib.float32)
@@ -2977,11 +3181,12 @@ class MeanSquaredErrorTest(test.TestCase):
 
     error, update_op = metrics.mean_squared_error(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(6, self.evaluate(update_op))
       self.assertEqual(6, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithErrorAndWeights(self):
     predictions = constant_op.constant(
         [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
@@ -2991,11 +3196,12 @@ class MeanSquaredErrorTest(test.TestCase):
 
     error, update_op = metrics.mean_squared_error(labels, predictions, weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(13, self.evaluate(update_op))
       self.assertEqual(13, error.eval())
 
+  @test_util.run_deprecated_v1
   def testMultipleBatchesOfSizeOne(self):
     with self.cached_session() as sess:
       # Create the queue that populates the predictions.
@@ -3020,6 +3226,7 @@ class MeanSquaredErrorTest(test.TestCase):
 
       self.assertAlmostEqual(208.0 / 6, error.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testMetricsComputedConcurrently(self):
     with self.cached_session() as sess:
       # Create the queue that populates one set of predictions.
@@ -3056,13 +3263,14 @@ class MeanSquaredErrorTest(test.TestCase):
           labels1, predictions1, name='msd1')
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([update_op0, update_op1])
-      sess.run([update_op0, update_op1])
+      self.evaluate([update_op0, update_op1])
+      self.evaluate([update_op0, update_op1])
 
-      mse0, mse1 = sess.run([mse0, mse1])
+      mse0, mse1 = self.evaluate([mse0, mse1])
       self.assertAlmostEqual(208.0 / 6, mse0, 5)
       self.assertAlmostEqual(79.0 / 6, mse1, 5)
 
+  @test_util.run_deprecated_v1
   def testMultipleMetricsOnMultipleBatchesOfSizeOne(self):
     with self.cached_session() as sess:
       # Create the queue that populates the predictions.
@@ -3083,8 +3291,8 @@ class MeanSquaredErrorTest(test.TestCase):
       mse, ms_update_op = metrics.mean_squared_error(labels, predictions)
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([ma_update_op, ms_update_op])
-      sess.run([ma_update_op, ms_update_op])
+      self.evaluate([ma_update_op, ms_update_op])
+      self.evaluate([ma_update_op, ms_update_op])
 
       self.assertAlmostEqual(32.0 / 6, mae.eval(), 5)
       self.assertAlmostEqual(208.0 / 6, mse.eval(), 5)
@@ -3095,6 +3303,7 @@ class RootMeanSquaredErrorTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.root_mean_squared_error(
         predictions=array_ops.ones((10, 1)), labels=array_ops.ones((10, 1)))
@@ -3102,6 +3311,7 @@ class RootMeanSquaredErrorTest(test.TestCase):
         self,
         ('root_mean_squared_error/count:0', 'root_mean_squared_error/total:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.root_mean_squared_error(
@@ -3110,6 +3320,7 @@ class RootMeanSquaredErrorTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.root_mean_squared_error(
@@ -3118,12 +3329,13 @@ class RootMeanSquaredErrorTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_normal((10, 3), seed=1)
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.root_mean_squared_error(labels, predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -3135,8 +3347,9 @@ class RootMeanSquaredErrorTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_error, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateZeroError(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           0.0, shape=(1, 3), dtype=dtypes_lib.float32)
       labels = constant_op.constant(0.0, shape=(1, 3), dtype=dtypes_lib.float32)
@@ -3148,8 +3361,9 @@ class RootMeanSquaredErrorTest(test.TestCase):
 
       self.assertEqual(0, rmse.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithError(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [2, 4, 6], shape=(1, 3), dtype=dtypes_lib.float32)
       labels = constant_op.constant(
@@ -3161,8 +3375,9 @@ class RootMeanSquaredErrorTest(test.TestCase):
       self.assertAlmostEqual(math.sqrt(6), update_op.eval(), 5)
       self.assertAlmostEqual(math.sqrt(6), rmse.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithErrorAndWeights(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       predictions = constant_op.constant(
           [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
       labels = constant_op.constant(
@@ -3188,6 +3403,7 @@ class MeanCosineDistanceTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean_cosine_distance(
         predictions=array_ops.ones((10, 3)),
@@ -3198,6 +3414,7 @@ class MeanCosineDistanceTest(test.TestCase):
         'mean_cosine_distance/total:0',
     ))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.mean_cosine_distance(
@@ -3207,6 +3424,7 @@ class MeanCosineDistanceTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean_cosine_distance(
@@ -3216,12 +3434,13 @@ class MeanCosineDistanceTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     predictions = random_ops.random_normal((10, 3), seed=1)
     labels = random_ops.random_normal((10, 3), seed=2)
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=1)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -3233,6 +3452,7 @@ class MeanCosineDistanceTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_error, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateZeroError(self):
     np_labels = np.matrix(('1 0 0;' '0 0 1;' '0 1 0'))
 
@@ -3243,11 +3463,12 @@ class MeanCosineDistanceTest(test.TestCase):
 
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=2)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(0, self.evaluate(update_op))
       self.assertEqual(0, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithError1(self):
     np_labels = np.matrix(('1 0 0;' '0 0 1;' '0 1 0'))
     np_predictions = np.matrix(('1 0 0;' '0 0 -1;' '1 0 0'))
@@ -3259,11 +3480,12 @@ class MeanCosineDistanceTest(test.TestCase):
 
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=2)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAlmostEqual(1, self.evaluate(update_op), 5)
       self.assertAlmostEqual(1, error.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithError2(self):
     np_predictions = np.matrix(
         ('0.819031913261206 0.567041924552012 0.087465312324590;'
@@ -3280,11 +3502,12 @@ class MeanCosineDistanceTest(test.TestCase):
         np_labels, shape=(3, 1, 3), dtype=dtypes_lib.float32)
     error, update_op = metrics.mean_cosine_distance(labels, predictions, dim=2)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAlmostEqual(1.0, self.evaluate(update_op), 5)
       self.assertAlmostEqual(1.0, error.eval(), 5)
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithErrorAndWeights1(self):
     np_predictions = np.matrix(('1 0 0;' '0 0 -1;' '1 0 0'))
     np_labels = np.matrix(('1 0 0;' '0 0 1;' '0 1 0'))
@@ -3299,11 +3522,12 @@ class MeanCosineDistanceTest(test.TestCase):
     error, update_op = metrics.mean_cosine_distance(
         labels, predictions, dim=2, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(0, self.evaluate(update_op))
       self.assertEqual(0, error.eval())
 
+  @test_util.run_deprecated_v1
   def testSingleUpdateWithErrorAndWeights2(self):
     np_predictions = np.matrix(('1 0 0;' '0 0 -1;' '1 0 0'))
     np_labels = np.matrix(('1 0 0;' '0 0 1;' '0 1 0'))
@@ -3318,7 +3542,7 @@ class MeanCosineDistanceTest(test.TestCase):
     error, update_op = metrics.mean_cosine_distance(
         labels, predictions, dim=2, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.5, update_op.eval())
       self.assertEqual(1.5, error.eval())
@@ -3329,6 +3553,7 @@ class PcntBelowThreshTest(test.TestCase):
   def setUp(self):
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.percentage_below(values=array_ops.ones((10,)), threshold=2)
     _assert_metric_variables(self, (
@@ -3336,6 +3561,7 @@ class PcntBelowThreshTest(test.TestCase):
         'percentage_below_threshold/total:0',
     ))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollection(self):
     my_collection_name = '__metrics__'
     mean, _ = metrics.percentage_below(
@@ -3344,6 +3570,7 @@ class PcntBelowThreshTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.percentage_below(
@@ -3352,8 +3579,9 @@ class PcntBelowThreshTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testOneUpdate(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       values = constant_op.constant(
           [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
 
@@ -3362,15 +3590,16 @@ class PcntBelowThreshTest(test.TestCase):
       pcnt2, update_op2 = metrics.percentage_below(values, 1, name='low')
 
       self.evaluate(variables.local_variables_initializer())
-      sess.run([update_op0, update_op1, update_op2])
+      self.evaluate([update_op0, update_op1, update_op2])
 
-      pcnt0, pcnt1, pcnt2 = sess.run([pcnt0, pcnt1, pcnt2])
+      pcnt0, pcnt1, pcnt2 = self.evaluate([pcnt0, pcnt1, pcnt2])
       self.assertAlmostEqual(1.0, pcnt0, 5)
       self.assertAlmostEqual(0.75, pcnt1, 5)
       self.assertAlmostEqual(0.0, pcnt2, 5)
 
+  @test_util.run_deprecated_v1
   def testSomePresentOneUpdate(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       values = constant_op.constant(
           [2, 4, 6, 8], shape=(1, 4), dtype=dtypes_lib.float32)
       weights = constant_op.constant(
@@ -3385,9 +3614,9 @@ class PcntBelowThreshTest(test.TestCase):
 
       self.evaluate(variables.local_variables_initializer())
       self.assertListEqual([1.0, 0.5, 0.0],
-                           sess.run([update_op0, update_op1, update_op2]))
+                           self.evaluate([update_op0, update_op1, update_op2]))
 
-      pcnt0, pcnt1, pcnt2 = sess.run([pcnt0, pcnt1, pcnt2])
+      pcnt0, pcnt1, pcnt2 = self.evaluate([pcnt0, pcnt1, pcnt2])
       self.assertAlmostEqual(1.0, pcnt0, 5)
       self.assertAlmostEqual(0.5, pcnt1, 5)
       self.assertAlmostEqual(0.0, pcnt2, 5)
@@ -3399,6 +3628,7 @@ class MeanIOUTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean_iou(
         predictions=array_ops.ones([10, 1]),
@@ -3406,6 +3636,7 @@ class MeanIOUTest(test.TestCase):
         num_classes=2)
     _assert_metric_variables(self, ('mean_iou/total_confusion_matrix:0',))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
     mean_iou, _ = metrics.mean_iou(
@@ -3415,6 +3646,7 @@ class MeanIOUTest(test.TestCase):
         metrics_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [mean_iou])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean_iou(
@@ -3424,12 +3656,14 @@ class MeanIOUTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testPredictionsAndLabelsOfDifferentSizeRaisesValueError(self):
     predictions = array_ops.ones([10, 3])
     labels = array_ops.ones([10, 4])
     with self.assertRaises(ValueError):
       metrics.mean_iou(labels, predictions, num_classes=2)
 
+  @test_util.run_deprecated_v1
   def testLabelsAndWeightsOfDifferentSizeRaisesValueError(self):
     predictions = array_ops.ones([10])
     labels = array_ops.ones([10])
@@ -3437,6 +3671,7 @@ class MeanIOUTest(test.TestCase):
     with self.assertRaises(ValueError):
       metrics.mean_iou(labels, predictions, num_classes=2, weights=weights)
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     num_classes = 3
     predictions = random_ops.random_uniform(
@@ -3446,7 +3681,7 @@ class MeanIOUTest(test.TestCase):
     mean_iou, update_op = metrics.mean_iou(
         labels, predictions, num_classes=num_classes)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -3458,6 +3693,7 @@ class MeanIOUTest(test.TestCase):
       for _ in range(10):
         self.assertEqual(initial_mean_iou, mean_iou.eval())
 
+  @test_util.run_deprecated_v1
   def testMultipleUpdates(self):
     num_classes = 3
     with self.cached_session() as sess:
@@ -3489,6 +3725,7 @@ class MeanIOUTest(test.TestCase):
       desired_output = np.mean([1.0 / 2.0, 1.0 / 4.0, 0.])
       self.assertEqual(desired_output, miou.eval())
 
+  @test_util.run_deprecated_v1
   def testMultipleUpdatesWithWeights(self):
     num_classes = 2
     with self.cached_session() as sess:
@@ -3534,6 +3771,7 @@ class MeanIOUTest(test.TestCase):
       desired_output = np.mean([2.0 / 3.0, 1.0 / 2.0])
       self.assertAlmostEqual(desired_output, mean_iou.eval())
 
+  @test_util.run_deprecated_v1
   def testMultipleUpdatesWithMissingClass(self):
     # Test the case where there are no predicions and labels for
     # one class, and thus there is one row and one column with
@@ -3570,6 +3808,7 @@ class MeanIOUTest(test.TestCase):
       desired_output = np.mean([1.0 / 3.0, 2.0 / 4.0])
       self.assertAlmostEqual(desired_output, miou.eval())
 
+  @test_util.run_deprecated_v1
   def testUpdateOpEvalIsAccumulatedConfusionMatrix(self):
     predictions = array_ops.concat(
         [
@@ -3586,7 +3825,7 @@ class MeanIOUTest(test.TestCase):
         ],
         0)
     num_classes = 2
-    with self.cached_session() as sess:
+    with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       confusion_matrix = update_op.eval()
@@ -3594,26 +3833,29 @@ class MeanIOUTest(test.TestCase):
       desired_miou = np.mean([3. / 5., 5. / 7.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     predictions = array_ops.zeros([40])
     labels = array_ops.zeros([40])
     num_classes = 1
-    with self.cached_session() as sess:
+    with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(40, update_op.eval()[0])
       self.assertEqual(1.0, miou.eval())
 
+  @test_util.run_deprecated_v1
   def testAllWrong(self):
     predictions = array_ops.zeros([40])
     labels = array_ops.ones([40])
     num_classes = 2
-    with self.cached_session() as sess:
+    with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[0, 0], [40, 0]], update_op.eval())
       self.assertEqual(0., miou.eval())
 
+  @test_util.run_deprecated_v1
   def testResultsWithSomeMissing(self):
     predictions = array_ops.concat(
         [
@@ -3638,7 +3880,7 @@ class MeanIOUTest(test.TestCase):
                         0, shape=[1])
         ],
         0)
-    with self.cached_session() as sess:
+    with self.cached_session():
       miou, update_op = metrics.mean_iou(
           labels, predictions, num_classes, weights=weights)
       self.evaluate(variables.local_variables_initializer())
@@ -3646,6 +3888,7 @@ class MeanIOUTest(test.TestCase):
       desired_miou = np.mean([2. / 4., 4. / 6.])
       self.assertAlmostEqual(desired_miou, miou.eval())
 
+  @test_util.run_deprecated_v1
   def testMissingClassInLabels(self):
     labels = constant_op.constant([
         [[0, 0, 1, 1, 0, 0],
@@ -3658,7 +3901,7 @@ class MeanIOUTest(test.TestCase):
         [[0, 0, 2, 1, 1, 1],
          [1, 1, 2, 0, 0, 0]]])
     num_classes = 3
-    with self.cached_session() as sess:
+    with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[7, 4, 3], [3, 5, 2], [0, 0, 0]], update_op.eval())
@@ -3666,16 +3909,18 @@ class MeanIOUTest(test.TestCase):
           1 / 3 * (7 / (7 + 3 + 7) + 5 / (5 + 4 + 5) + 0 / (0 + 5 + 0)),
           miou.eval())
 
+  @test_util.run_deprecated_v1
   def testMissingClassOverallSmall(self):
     labels = constant_op.constant([0])
     predictions = constant_op.constant([0])
     num_classes = 2
-    with self.cached_session() as sess:
+    with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[1, 0], [0, 0]], update_op.eval())
       self.assertAlmostEqual(1, miou.eval())
 
+  @test_util.run_deprecated_v1
   def testMissingClassOverallLarge(self):
     labels = constant_op.constant([
         [[0, 0, 1, 1, 0, 0],
@@ -3688,7 +3933,7 @@ class MeanIOUTest(test.TestCase):
         [[0, 0, 0, 1, 1, 1],
          [1, 1, 1, 0, 0, 0]]])
     num_classes = 3
-    with self.cached_session() as sess:
+    with self.cached_session():
       miou, update_op = metrics.mean_iou(labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([[9, 5, 0], [3, 7, 0], [0, 0, 0]], update_op.eval())
@@ -3702,6 +3947,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.mean_per_class_accuracy(
         predictions=array_ops.ones([10, 1]),
@@ -3710,6 +3956,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
     _assert_metric_variables(self, ('mean_accuracy/count:0',
                                     'mean_accuracy/total:0'))
 
+  @test_util.run_deprecated_v1
   def testMetricsCollections(self):
     my_collection_name = '__metrics__'
     mean_accuracy, _ = metrics.mean_per_class_accuracy(
@@ -3720,6 +3967,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
     self.assertListEqual(
         ops.get_collection(my_collection_name), [mean_accuracy])
 
+  @test_util.run_deprecated_v1
   def testUpdatesCollection(self):
     my_collection_name = '__updates__'
     _, update_op = metrics.mean_per_class_accuracy(
@@ -3729,12 +3977,14 @@ class MeanPerClassAccuracyTest(test.TestCase):
         updates_collections=[my_collection_name])
     self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
 
+  @test_util.run_deprecated_v1
   def testPredictionsAndLabelsOfDifferentSizeRaisesValueError(self):
     predictions = array_ops.ones([10, 3])
     labels = array_ops.ones([10, 4])
     with self.assertRaises(ValueError):
       metrics.mean_per_class_accuracy(labels, predictions, num_classes=2)
 
+  @test_util.run_deprecated_v1
   def testLabelsAndWeightsOfDifferentSizeRaisesValueError(self):
     predictions = array_ops.ones([10])
     labels = array_ops.ones([10])
@@ -3743,6 +3993,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       metrics.mean_per_class_accuracy(
           labels, predictions, num_classes=2, weights=weights)
 
+  @test_util.run_deprecated_v1
   def testValueTensorIsIdempotent(self):
     num_classes = 3
     predictions = random_ops.random_uniform(
@@ -3752,7 +4003,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
     mean_accuracy, update_op = metrics.mean_per_class_accuracy(
         labels, predictions, num_classes=num_classes)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
 
       # Run several updates.
@@ -3795,6 +4046,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       desired_output = np.mean([1.0, 1.0 / 3.0, 0.0])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testMultipleUpdatesWithWeights(self):
     num_classes = 2
     with self.cached_session() as sess:
@@ -3840,6 +4092,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
       desired_output = np.mean([2.0 / 2.0, 0.5 / 1.5])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testMultipleUpdatesWithMissingClass(self):
     # Test the case where there are no predicions and labels for
     # one class, and thus there is one row and one column with
@@ -3877,28 +4130,31 @@ class MeanPerClassAccuracyTest(test.TestCase):
       desired_output = np.mean([1.0 / 2.0, 2.0 / 3.0, 0.])
       self.assertAlmostEqual(desired_output, mean_accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testAllCorrect(self):
     predictions = array_ops.zeros([40])
     labels = array_ops.zeros([40])
     num_classes = 1
-    with self.cached_session() as sess:
+    with self.cached_session():
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       self.assertEqual(1.0, update_op.eval()[0])
       self.assertEqual(1.0, mean_accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testAllWrong(self):
     predictions = array_ops.zeros([40])
     labels = array_ops.ones([40])
     num_classes = 2
-    with self.cached_session() as sess:
+    with self.cached_session():
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes)
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual([0.0, 0.0], update_op.eval())
       self.assertEqual(0., mean_accuracy.eval())
 
+  @test_util.run_deprecated_v1
   def testResultsWithSomeMissing(self):
     predictions = array_ops.concat([
         constant_op.constant(0, shape=[5]), constant_op.constant(1, shape=[5])
@@ -3911,7 +4167,7 @@ class MeanPerClassAccuracyTest(test.TestCase):
         constant_op.constant(0, shape=[1]), constant_op.constant(1, shape=[8]),
         constant_op.constant(0, shape=[1])
     ], 0)
-    with self.cached_session() as sess:
+    with self.cached_session():
       mean_accuracy, update_op = metrics.mean_per_class_accuracy(
           labels, predictions, num_classes, weights=weights)
       self.evaluate(variables.local_variables_initializer())
@@ -3927,12 +4183,14 @@ class FalseNegativesTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.false_negatives(
         labels=(0, 1, 0, 1),
         predictions=(0, 0, 1, 1))
     _assert_metric_variables(self, ('false_negatives/count:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -3945,12 +4203,13 @@ class FalseNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.false_negatives(
         labels=labels, predictions=predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(3., tn_update_op.eval())
       self.assertAllClose(3., tn.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -3964,7 +4223,7 @@ class FalseNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.false_negatives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(5., tn_update_op.eval())
@@ -3977,6 +4236,7 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.false_negatives_at_thresholds(
         predictions=array_ops.ones((10, 1)),
@@ -3984,6 +4244,7 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
         thresholds=[0.15, 0.5, 0.85])
     _assert_metric_variables(self, ('false_negatives/false_negatives:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -3994,12 +4255,13 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
     fn, fn_update_op = metrics.false_negatives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), fn.eval())
       self.assertAllEqual((0, 2, 3), fn_update_op.eval())
       self.assertAllEqual((0, 2, 3), fn.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -4013,7 +4275,7 @@ class FalseNegativesAtThresholdsTest(test.TestCase):
         weights=((3.0,), (5.0,), (7.0,)),
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), fn.eval())
       self.assertAllEqual((0.0, 8.0, 11.0), fn_update_op.eval())
@@ -4026,12 +4288,14 @@ class FalsePositivesTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.false_positives(
         labels=(0, 1, 0, 1),
         predictions=(0, 0, 1, 1))
     _assert_metric_variables(self, ('false_positives/count:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -4044,12 +4308,13 @@ class FalsePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.false_positives(
         labels=labels, predictions=predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(7., tn_update_op.eval())
       self.assertAllClose(7., tn.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -4063,7 +4328,7 @@ class FalsePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.false_positives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(14., tn_update_op.eval())
@@ -4076,6 +4341,7 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.false_positives_at_thresholds(
         predictions=array_ops.ones((10, 1)),
@@ -4083,6 +4349,7 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
         thresholds=[0.15, 0.5, 0.85])
     _assert_metric_variables(self, ('false_positives/false_positives:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -4093,12 +4360,13 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
     fp, fp_update_op = metrics.false_positives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), fp.eval())
       self.assertAllEqual((7, 4, 2), fp_update_op.eval())
       self.assertAllEqual((7, 4, 2), fp.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -4114,7 +4382,7 @@ class FalsePositivesAtThresholdsTest(test.TestCase):
                  (19.0, 23.0, 29.0, 31.0)),
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), fp.eval())
       self.assertAllEqual((125.0, 42.0, 12.0), fp_update_op.eval())
@@ -4127,12 +4395,14 @@ class TrueNegativesTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.true_negatives(
         labels=(0, 1, 0, 1),
         predictions=(0, 0, 1, 1))
     _assert_metric_variables(self, ('true_negatives/count:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -4145,12 +4415,13 @@ class TrueNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.true_negatives(
         labels=labels, predictions=predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(3., tn_update_op.eval())
       self.assertAllClose(3., tn.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -4164,7 +4435,7 @@ class TrueNegativesTest(test.TestCase):
     tn, tn_update_op = metrics.true_negatives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(4., tn_update_op.eval())
@@ -4177,6 +4448,7 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.true_negatives_at_thresholds(
         predictions=array_ops.ones((10, 1)),
@@ -4184,6 +4456,7 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
         thresholds=[0.15, 0.5, 0.85])
     _assert_metric_variables(self, ('true_negatives/true_negatives:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -4194,12 +4467,13 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
     tn, tn_update_op = metrics.true_negatives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), tn.eval())
       self.assertAllEqual((2, 5, 7), tn_update_op.eval())
       self.assertAllEqual((2, 5, 7), tn.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -4213,7 +4487,7 @@ class TrueNegativesAtThresholdsTest(test.TestCase):
         weights=((0.0, 2.0, 3.0, 5.0),),
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), tn.eval())
       self.assertAllEqual((5.0, 15.0, 23.0), tn_update_op.eval())
@@ -4226,12 +4500,14 @@ class TruePositivesTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.true_positives(
         labels=(0, 1, 0, 1),
         predictions=(0, 0, 1, 1))
     _assert_metric_variables(self, ('true_positives/count:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -4244,12 +4520,13 @@ class TruePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.true_positives(
         labels=labels, predictions=predictions)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(7., tn_update_op.eval())
       self.assertAllClose(7., tn.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     labels = constant_op.constant(((0, 1, 0, 1, 0),
                                    (0, 0, 1, 1, 1),
@@ -4263,7 +4540,7 @@ class TruePositivesTest(test.TestCase):
     tn, tn_update_op = metrics.true_positives(
         labels=labels, predictions=predictions, weights=weights)
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllClose(0., tn.eval())
       self.assertAllClose(12., tn_update_op.eval())
@@ -4276,6 +4553,7 @@ class TruePositivesAtThresholdsTest(test.TestCase):
     np.random.seed(1)
     ops.reset_default_graph()
 
+  @test_util.run_deprecated_v1
   def testVars(self):
     metrics.true_positives_at_thresholds(
         predictions=array_ops.ones((10, 1)),
@@ -4283,6 +4561,7 @@ class TruePositivesAtThresholdsTest(test.TestCase):
         thresholds=[0.15, 0.5, 0.85])
     _assert_metric_variables(self, ('true_positives/true_positives:0',))
 
+  @test_util.run_deprecated_v1
   def testUnweighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -4293,12 +4572,13 @@ class TruePositivesAtThresholdsTest(test.TestCase):
     tp, tp_update_op = metrics.true_positives_at_thresholds(
         predictions=predictions, labels=labels, thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0, 0, 0), tp.eval())
       self.assertAllEqual((3, 1, 0), tp_update_op.eval())
       self.assertAllEqual((3, 1, 0), tp.eval())
 
+  @test_util.run_deprecated_v1
   def testWeighted(self):
     predictions = constant_op.constant(((0.9, 0.2, 0.8, 0.1),
                                         (0.2, 0.9, 0.7, 0.6),
@@ -4310,7 +4590,7 @@ class TruePositivesAtThresholdsTest(test.TestCase):
         predictions=predictions, labels=labels, weights=37.0,
         thresholds=[0.15, 0.5, 0.85])
 
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.evaluate(variables.local_variables_initializer())
       self.assertAllEqual((0.0, 0.0, 0.0), tp.eval())
       self.assertAllEqual((111.0, 37.0, 0.0), tp_update_op.eval())

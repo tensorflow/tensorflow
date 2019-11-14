@@ -84,9 +84,9 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchNodesIntoOne) {
       graph_utils::ContainsGraphNodeWithName(map_node->name(), output));
   EXPECT_FALSE(
       graph_utils::ContainsGraphNodeWithName(batch_node->name(), output));
-  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("MapAndBatchDatasetV2", output));
+  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("MapAndBatchDataset", output));
   NodeDef map_and_batch_node = output.node(
-      graph_utils::FindGraphNodeWithOp("MapAndBatchDatasetV2", output));
+      graph_utils::FindGraphNodeWithOp("MapAndBatchDataset", output));
   EXPECT_EQ(map_and_batch_node.input_size(), 5);
   EXPECT_EQ(map_and_batch_node.input(0), map_node->input(0));
   EXPECT_EQ(map_and_batch_node.input(1), map_node->input(1));
@@ -169,9 +169,9 @@ TEST(MapAndBatchFusionTest, FuseMapAndBatchV2NodesIntoOne) {
       graph_utils::ContainsGraphNodeWithName(map_node->name(), output));
   EXPECT_FALSE(
       graph_utils::ContainsGraphNodeWithName(batch_node->name(), output));
-  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("MapAndBatchDatasetV2", output));
+  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("MapAndBatchDataset", output));
   NodeDef map_and_batch_node = output.node(
-      graph_utils::FindGraphNodeWithOp("MapAndBatchDatasetV2", output));
+      graph_utils::FindGraphNodeWithOp("MapAndBatchDataset", output));
   EXPECT_EQ(map_and_batch_node.input_size(), 5);
   EXPECT_EQ(map_and_batch_node.input(0), map_node->input(0));
   EXPECT_EQ(map_and_batch_node.input(1), map_node->input(1));
@@ -252,9 +252,9 @@ TEST(MapAndBatchFusionTest, FuseParallelMapAndBatchNodesIntoOne) {
       graph_utils::ContainsGraphNodeWithName(map_node->name(), output));
   EXPECT_FALSE(
       graph_utils::ContainsGraphNodeWithName(batch_node->name(), output));
-  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("MapAndBatchDatasetV2", output));
+  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("MapAndBatchDataset", output));
   NodeDef map_and_batch_node = output.node(
-      graph_utils::FindGraphNodeWithOp("MapAndBatchDatasetV2", output));
+      graph_utils::FindGraphNodeWithOp("MapAndBatchDataset", output));
   EXPECT_EQ(map_and_batch_node.input_size(), 5);
   EXPECT_EQ(map_and_batch_node.input(0), map_node->input(0));
   EXPECT_EQ(map_and_batch_node.input(1), map_node->input(1));

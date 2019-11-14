@@ -16,22 +16,32 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_WHERE_OP_GPU_CU_H_
 #define TENSORFLOW_CORE_KERNELS_WHERE_OP_GPU_CU_H_
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#if GOOGLE_CUDA
 #include "third_party/cub/device/device_reduce.cuh"
 #include "third_party/cub/device/device_select.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hipcub/hipcub.hpp"
+#endif
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/where_op.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
+
+#if GOOGLE_CUDA
+namespace gpuprim = ::cub;
+#elif TENSORFLOW_USE_ROCM
+namespace gpuprim = ::hipcub;
+#endif
 
 namespace tensorflow {
 
@@ -42,11 +52,11 @@ namespace functor {
 template <int NDIM, typename TIndex>
 __global__ void PropagateWhereIndicesKernel(
     const TIndex output_rows, const typename Eigen::array<TIndex, NDIM> strides,
-    int64* output) {
+    int64* __restrict__ output) {
   // TODO(ebrevdo): Use a multi-dimensional loop, increasing the
   // dimensions of individual indices manually, instead of relying on
   // a scalar loop variable and using integer division.
-  CUDA_1D_KERNEL_LOOP(i, output_rows) {
+  GPU_1D_KERNEL_LOOP(i, output_rows) {
     TIndex index_value = ldg(output + NDIM * i);
 #pragma unroll
     for (int c = 0; c < NDIM; ++c) {
@@ -69,27 +79,28 @@ struct IsNonzero {
 
 template <typename T, typename TIndex>
 struct CubDeviceReduceCount {
-  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
-                         const T* d_in, TIndex* d_out, int num_items,
-                         cudaStream_t stream = 0,
-                         bool debug_synchronous = false) {
+  gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                        const T* d_in, TIndex* d_out, int num_items,
+                        gpuStream_t stream = 0,
+                        bool debug_synchronous = false) {
     IsNonzero<T> is_nonzero;
-    cub::TransformInputIterator<bool, IsNonzero<T>, const T*> is_nonzero_iter(
-        d_in, is_nonzero);
-    return cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes,
-                                  is_nonzero_iter, d_out, num_items, stream,
-                                  debug_synchronous);
+    gpuprim::TransformInputIterator<bool, IsNonzero<T>, const T*>
+        is_nonzero_iter(d_in, is_nonzero);
+    return gpuprim::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes,
+                                      is_nonzero_iter, d_out, num_items, stream,
+                                      debug_synchronous);
   }
 };
 
 template <typename TIndex>
 struct CubDeviceReduceCount<bool, TIndex> {
-  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
-                         const bool* d_in, TIndex* d_out, int num_items,
-                         cudaStream_t stream = 0,
-                         bool debug_synchronous = false) {
-    return cub::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in,
-                                  d_out, num_items, stream, debug_synchronous);
+  gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                        const bool* d_in, TIndex* d_out, int num_items,
+                        gpuStream_t stream = 0,
+                        bool debug_synchronous = false) {
+    return gpuprim::DeviceReduce::Sum(d_temp_storage, temp_storage_bytes, d_in,
+                                      d_out, num_items, stream,
+                                      debug_synchronous);
   }
 };
 
@@ -100,16 +111,16 @@ struct CubDeviceSelectFlaggedCounter;
 template <typename T, typename TIndex, typename OutputIterator>
 struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
                                      false /*IsConvertibleToBool*/> {
-  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
-                         const T* d_flags, OutputIterator d_out,
-                         TIndex* d_num_selected_out, int num_items,
-                         cudaStream_t stream = 0,
-                         bool debug_synchronous = false) {
-    cub::CountingInputIterator<TIndex> select_counter(0);
+  gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                        const T* d_flags, OutputIterator d_out,
+                        TIndex* d_num_selected_out, int num_items,
+                        gpuStream_t stream = 0,
+                        bool debug_synchronous = false) {
+    gpuprim::CountingInputIterator<TIndex> select_counter(0);
     IsNonzero<T> is_nonzero;
-    cub::TransformInputIterator<bool, IsNonzero<T>, const T*> is_nonzero_iter(
-        d_flags, is_nonzero);
-    return cub::DeviceSelect::Flagged(
+    gpuprim::TransformInputIterator<bool, IsNonzero<T>, const T*>
+        is_nonzero_iter(d_flags, is_nonzero);
+    return gpuprim::DeviceSelect::Flagged(
         d_temp_storage, temp_storage_bytes, select_counter /*d_in*/,
         is_nonzero_iter /*d_flags*/, d_out, d_num_selected_out, num_items,
         stream, debug_synchronous);
@@ -119,13 +130,13 @@ struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
 template <typename T, typename TIndex, typename OutputIterator>
 struct CubDeviceSelectFlaggedCounter<T, TIndex, OutputIterator,
                                      true /*IsConvertibleToBool*/> {
-  cudaError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
-                         const T* d_flags, OutputIterator d_out,
-                         TIndex* d_num_selected_out, int num_items,
-                         cudaStream_t stream = 0,
-                         bool debug_synchronous = false) {
-    cub::CountingInputIterator<TIndex> select_counter(0);
-    return cub::DeviceSelect::Flagged(
+  gpuError_t operator()(void* d_temp_storage, size_t& temp_storage_bytes,
+                        const T* d_flags, OutputIterator d_out,
+                        TIndex* d_num_selected_out, int num_items,
+                        gpuStream_t stream = 0,
+                        bool debug_synchronous = false) {
+    gpuprim::CountingInputIterator<TIndex> select_counter(0);
+    return gpuprim::DeviceSelect::Flagged(
         d_temp_storage, temp_storage_bytes, select_counter /*d_in*/, d_flags,
         d_out, d_num_selected_out, num_items, stream, debug_synchronous);
   }
@@ -139,7 +150,7 @@ struct NumTrue<GPUDevice, T, TIndex> {
       OpKernelContext* ctx, const GPUDevice& d,
       typename TTypes<T>::ConstFlat input,
       typename TTypes<TIndex>::Scalar num_true) {
-    const cudaStream_t& cu_stream = GetCudaStream(ctx);
+    const auto& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
     const T* input_data = input.data();
@@ -154,11 +165,11 @@ struct NumTrue<GPUDevice, T, TIndex> {
                                  /*num_items*/ input.size(),
                                  /*stream*/ cu_stream);
 
-    if (first_success != cudaSuccess) {
+    if (first_success != gpuSuccess) {
       return errors::Internal(
-          "WhereOp: Could not launch cub::DeviceReduce::Sum to calculate "
+          "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to calculate "
           "temp_storage_bytes, status: ",
-          cudaGetErrorString(first_success));
+          GpuGetErrorString(first_success));
     }
 
     Tensor temp_storage;
@@ -173,11 +184,11 @@ struct NumTrue<GPUDevice, T, TIndex> {
         /*num_items*/ input.size(),
         /*stream*/ cu_stream);
 
-    if (second_success != cudaSuccess) {
+    if (second_success != gpuSuccess) {
       return errors::Internal(
-          "WhereOp: Could not launch cub::DeviceReduce::Sum to count "
+          "WhereOp: Could not launch gpuprim::DeviceReduce::Sum to count "
           "number of true / nonzero indices.  temp_storage_bytes: ",
-          temp_storage_bytes, ", status: ", cudaGetErrorString(second_success));
+          temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
     }
 
     return Status::OK();
@@ -266,7 +277,7 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
       return Status::OK();
     }
 
-    const cudaStream_t& cu_stream = GetCudaStream(ctx);
+    const auto& cu_stream = GetGpuStream(ctx);
 
     std::size_t temp_storage_bytes = 0;
 
@@ -290,11 +301,12 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
                                  /*d_num_selected_out*/ found_true_device,
                                  /*num_items*/ input.size(),
                                  /*stream*/ cu_stream);
-    if (first_success != cudaSuccess) {
+    if (first_success != gpuSuccess) {
       return errors::Internal(
-          "WhereOp: Could not launch cub::DeviceSelect::Flagged to calculate "
+          "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to "
+          "calculate "
           "temp_storage_bytes, status: ",
-          cudaGetErrorString(first_success));
+          GpuGetErrorString(first_success));
     }
 
     Tensor temp_storage;
@@ -310,11 +322,11 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
         /*num_items*/ input.size(),
         /*stream*/ cu_stream);
 
-    if (second_success != cudaSuccess) {
+    if (second_success != gpuSuccess) {
       return errors::Internal(
-          "WhereOp: Could not launch cub::DeviceSelect::Flagged to copy "
+          "WhereOp: Could not launch gpuprim::DeviceSelect::Flagged to copy "
           "indices out, status: ",
-          cudaGetErrorString(second_success));
+          GpuGetErrorString(second_success));
     }
 
     // TODO(ebrevdo): Find a way to synchronously copy back data from
@@ -323,10 +335,11 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
     const Eigen::array<TIndex, NDIM> strides =
         CalculateStrides<TIndex, T, NDIM>(input);
     const TIndex output_rows = output.dimension(0);
-    CudaLaunchConfig config = GetCudaLaunchConfig(output_rows, d);
-    PropagateWhereIndicesKernel<NDIM, TIndex>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            output_rows, strides, output.data());
+    GpuLaunchConfig config = GetGpuLaunchConfig(output_rows, d);
+    TF_CHECK_OK(GpuLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), output_rows, strides,
+                                output.data()));
 
     return Status::OK();
   }
@@ -348,6 +361,6 @@ TF_CALL_WHERE_GPU_TYPES(DECLARE_GPU_SPEC);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_WHERE_OP_GPU_CU_H_

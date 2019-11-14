@@ -35,7 +35,7 @@ limitations under the License.
 //   buf.AddString("AB", 2);
 //   # Write content of DynamicBuffer to tensor in format of string tensor
 //   # described above.
-//   buf.WriteToTensor(tensor)
+//   buf.WriteToTensor(tensor, nullptr)
 
 #ifndef TENSORFLOW_LITE_STRING_UTIL_H_
 #define TENSORFLOW_LITE_STRING_UTIL_H_
@@ -43,7 +43,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -74,12 +74,14 @@ class DynamicBuffer {
   // The function allocates space for the buffer but does NOT take ownership.
   int WriteToBuffer(char** buffer);
 
-  // Fill content into a string tensor, with the given new_shape. The new
-  // shape must match the number of strings in this object.
+  // Fill content into a string tensor, with the given new_shape. The new shape
+  // must match the number of strings in this object. Caller relinquishes
+  // ownership of new_shape. If 'new_shape' is nullptr, keep the tensor's
+  // existing shape.
   void WriteToTensor(TfLiteTensor* tensor, TfLiteIntArray* new_shape);
 
   // Fill content into a string tensor. Set shape to {num_strings}.
-  void WriteToTensor(TfLiteTensor* tensor);
+  void WriteToTensorAsVector(TfLiteTensor* tensor);
 
  private:
   // Data buffer to store contents of strings, not including headers.
@@ -89,12 +91,12 @@ class DynamicBuffer {
 };
 
 // Return num of strings in a String tensor.
-int GetStringCount(const char* raw_buffer);
+int GetStringCount(const void* raw_buffer);
 int GetStringCount(const TfLiteTensor* tensor);
 
 // Get String pointer and length of index-th string in tensor.
 // NOTE: This will not create a copy of string data.
-StringRef GetString(const char* raw_buffer, int string_index);
+StringRef GetString(const void* raw_buffer, int string_index);
 StringRef GetString(const TfLiteTensor* tensor, int string_index);
 }  // namespace tflite
 

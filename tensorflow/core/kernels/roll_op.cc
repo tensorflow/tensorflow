@@ -13,21 +13,103 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/kernels/roll_op.h"
+
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/register_types_traits.h"
 #include "tensorflow/core/framework/shape_inference.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
 
-#define EIGEN_USE_THREADS
-using CPUDevice = Eigen::ThreadPoolDevice;
+typedef Eigen::ThreadPoolDevice CPUDevice;
+typedef Eigen::GpuDevice GPUDevice;
+
+template <typename Device, typename T, typename Tshift, typename Taxis>
+class RollOp : public OpKernel {
+ public:
+  explicit RollOp(OpKernelConstruction* context) : OpKernel(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    // Grab the input tensor
+    const Tensor& input = context->input(0);
+    const Tensor& shift = context->input(1);
+    const Tensor& axis = context->input(2);
+
+    auto shift_flat = shift.flat<Tshift>();
+    auto axis_flat = axis.flat<Taxis>();
+
+    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(input.shape()),
+                errors::InvalidArgument("input must be 1-D or higher"));
+    OP_REQUIRES(context, shift.shape().dims() <= 1,
+                errors::InvalidArgument(
+                    "shift must be a scalar or a 1-D vector. Found: ",
+                    shift.shape().DebugString()));
+    OP_REQUIRES(context, axis.shape().dims() <= 1,
+                errors::InvalidArgument(
+                    "axis must be a scalar or a 1-D vector. Found: ",
+                    axis.shape().DebugString()));
+    OP_REQUIRES(
+        context, shift.shape() == axis.shape(),
+        errors::InvalidArgument("shift and axis must have the same size"));
+    const int64 num_elements = input.NumElements();
+    const int num_shifts = static_cast<int>(shift_flat.size());
+    const int num_dims = input.dims();
+
+    // if there are any duplicate axes, shift_mod_sum will have the
+    // total modulo sum of shifts for each dimension
+    gtl::InlinedVector<int32, 4> shift_mod_sum(num_dims, 0);
+    for (int i = 0; i < num_shifts; i++) {
+      int axis = axis_flat(i);
+      if (axis < 0) {
+        axis += num_dims;
+      }
+      OP_REQUIRES(context, FastBoundsCheck(axis, num_dims),
+                  errors::InvalidArgument("axis ", axis, " is out of range"));
+      const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
+      const int sum = shift_mod_sum[axis] + static_cast<int>(shift_flat(i));
+      // modulo that works with negatives: ((x % y) + y) % y
+      shift_mod_sum[axis] = (sum % ds + ds) % ds;
+    }
+    // the size of each dimension
+    gtl::InlinedVector<int32, 4> dim_size(num_dims);
+    // threshold[i] is the index that the roll starts to wrap back to the front
+    gtl::InlinedVector<int32, 4> threshold(num_dims);
+    // dim_range is the number of indices over in the flattened tensor
+    // you need to skip in order to make it over from one side of a dimension
+    // to the other. Used to make the shifts wrap around after a threshold.
+    gtl::InlinedVector<int64, 4> dim_range(num_dims);
+    int64 dim_size_prod = 1;  // dimension size product
+    // inner shift dimension (inner most shifted dimension)
+    int64 isd = 0;
+    for (int i = num_dims - 1; i >= 0; i--) {
+      if (isd == 0 && shift_mod_sum[i] != 0) isd = i;
+      const int ds = std::max<int>(static_cast<int>(input.dim_size(i)), 1);
+      dim_size[i] = ds;
+      threshold[i] = (ds - shift_mod_sum[i]) % ds;
+      dim_size_prod *= static_cast<int64>(input.dim_size(i));
+      dim_range[i] = dim_size_prod;
+    }
+
+    Tensor* output = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(0, input.shape(), &output));
+    auto input_flat = input.flat<T>().data();
+    auto output_flat = output->flat<T>().data();
+
+    functor::Roll<Device, T>()(context, num_elements, num_dims, dim_size,
+                               input_flat, output_flat, threshold, dim_range,
+                               isd);
+  }
+};
+
+namespace functor {
 
 // dim_size - the size of each dimension
 // dim_range - the number of indices over in the flattened tensor
@@ -36,9 +118,9 @@ using CPUDevice = Eigen::ThreadPoolDevice;
 // threshold - the index for each dimension that the roll starts to wrap
 //    back to the front
 template <typename T>
-void DoRoll(OpKernelContext* context, const int64 num_elements,
-            const int num_dims, const gtl::ArraySlice<int>& dim_size,
-            const T* input, T* output, const gtl::ArraySlice<int>& threshold,
+void DoRoll(const OpKernelContext* context, const int64 num_elements,
+            const int num_dims, const gtl::ArraySlice<int32>& dim_size,
+            const T* input, T* output, const gtl::ArraySlice<int32>& threshold,
             const gtl::ArraySlice<int64>& dim_range) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range](
                   int64 start, int64 end) {
@@ -99,10 +181,10 @@ void DoRoll(OpKernelContext* context, const int64 num_elements,
 // isd - inner shift dimension
 template <typename T>
 // Use memcpy to copy memory in groups when the data type supports memcpy
-void DoRollWithMemcpy(OpKernelContext* context, const int64 num_elements,
-                      const int num_dims, const gtl::ArraySlice<int>& dim_size,
-                      const T* input, T* output,
-                      const gtl::ArraySlice<int>& threshold,
+void DoRollWithMemcpy(const OpKernelContext* context, const int64 num_elements,
+                      const int num_dims,
+                      const gtl::ArraySlice<int32>& dim_size, const T* input,
+                      T* output, const gtl::ArraySlice<int32>& threshold,
                       const gtl::ArraySlice<int64>& dim_range,
                       const int64 isd) {
   auto work = [input, output, num_dims, &dim_size, &threshold, &dim_range, isd](
@@ -220,91 +302,25 @@ void DoRollWithMemcpy(OpKernelContext* context, const int64 num_elements,
         cost_per_group, std::move(work));
 }
 
-template <typename Device, typename T, typename Tshift, typename Taxis>
-class RollOp : public OpKernel {
- public:
-  explicit RollOp(OpKernelConstruction* context) : OpKernel(context) {}
-
-  void Compute(OpKernelContext* context) override {
-    // Grab the input tensor
-    const Tensor& input = context->input(0);
-    const Tensor& shift = context->input(1);
-    const Tensor& axis = context->input(2);
-
-    auto shift_flat = shift.flat<Tshift>();
-    auto axis_flat = axis.flat<Taxis>();
-
-    OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(input.shape()),
-                errors::InvalidArgument("input must be 1-D or higher"));
-    OP_REQUIRES(context, shift.shape().dims() <= 1,
-                errors::InvalidArgument(
-                    "shift must be a scalar or a 1-D vector. Found: ",
-                    shift.shape().DebugString()));
-    OP_REQUIRES(context, axis.shape().dims() <= 1,
-                errors::InvalidArgument(
-                    "axis must be a scalar or a 1-D vector. Found: ",
-                    axis.shape().DebugString()));
-    OP_REQUIRES(
-        context, shift.shape() == axis.shape(),
-        errors::InvalidArgument("shift and axis must have the same size"));
-    const int64 num_elements = input.NumElements();
-    const int num_shifts = static_cast<int>(shift_flat.size());
-    const int num_dims = input.dims();
-
-    // if there are any duplicate axes, shift_mod_sum will have the
-    // total modulo sum of shifts for each dimension
-    gtl::InlinedVector<int, 4> shift_mod_sum(num_dims, 0);
-    for (int i = 0; i < num_shifts; i++) {
-      int axis = axis_flat(i);
-      if (axis < 0) {
-        axis += num_dims;
-      }
-      OP_REQUIRES(context, FastBoundsCheck(axis, num_dims),
-                  errors::InvalidArgument("axis ", axis, " is out of range"));
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(axis)), 1);
-      const int sum = shift_mod_sum[axis] + static_cast<int>(shift_flat(i));
-      // modulo that works with negatives: ((x % y) + y) % y
-      shift_mod_sum[axis] = (sum % ds + ds) % ds;
+template <typename T>
+struct Roll<CPUDevice, T> {
+  void operator()(const OpKernelContext* context, const int64 num_elements,
+                  const int num_dims, const gtl::ArraySlice<int32> dim_size,
+                  const T* input, T* output,
+                  const gtl::ArraySlice<int32> threshold,
+                  const gtl::ArraySlice<int64> dim_range, const int64 isd) {
+    if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
+      // V2 copies memory in groups instead of element by element
+      DoRollWithMemcpy<T>(context, num_elements, num_dims, dim_size, input,
+                          output, threshold, dim_range, isd);
+    } else {
+      // incase memcpy does not work for current data type
+      DoRoll<T>(context, num_elements, num_dims, dim_size, input, output,
+                threshold, dim_range);
     }
-    // the size of each dimension
-    gtl::InlinedVector<int, 4> dim_size(num_dims);
-    // threshold[i] is the index that the roll starts to wrap back to the front
-    gtl::InlinedVector<int, 4> threshold(num_dims);
-    // dim_range is the number of indices over in the flattened tensor
-    // you need to skip in order to make it over from one side of a dimension
-    // to the other. Used to make the shifts wrap around after a threshold.
-    gtl::InlinedVector<int64, 4> dim_range(num_dims);
-    int64 dim_size_prod = 1;  // dimension size product
-    // inner shift dimension (inner most shifted dimension)
-    int64 isd = 0;
-    for (int i = num_dims - 1; i >= 0; i--) {
-      if (isd == 0 && shift_mod_sum[i] != 0) isd = i;
-      const int ds = std::max<int>(static_cast<int>(input.dim_size(i)), 1);
-      dim_size[i] = ds;
-      threshold[i] = (ds - shift_mod_sum[i]) % ds;
-      dim_size_prod *= static_cast<int64>(input.dim_size(i));
-      dim_range[i] = dim_size_prod;
-    }
-
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK(context,
-                   context->allocate_output(0, input.shape(), &output));
-    auto input_flat = input.flat<T>().data();
-    auto output_flat = output->flat<T>().data();
-
-    if (std::is_same<Device, CPUDevice>::value) {
-      if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-        // V2 copies memory in groups instead of element by element
-        DoRollWithMemcpy<T>(context, num_elements, num_dims, dim_size,
-                            input_flat, output_flat, threshold, dim_range, isd);
-      } else {
-        // incase memcpy does not work for current data type
-        DoRoll<T>(context, num_elements, num_dims, dim_size, input_flat,
-                  output_flat, threshold, dim_range);
-      }
-    }
-  }
+  };
 };
+}  // namespace functor
 
 // Register the CPU kernels.
 #define REGISTER_CPU(type)                                       \
@@ -312,27 +328,79 @@ class RollOp : public OpKernel {
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int32>("Taxis"),   \
+                              .TypeConstraint<int32>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int32, int32>) \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int32>("Taxis"),   \
+                              .TypeConstraint<int32>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int64, int32>) \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int32>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis"),   \
+                              .TypeConstraint<int64>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int32, int64>) \
   REGISTER_KERNEL_BUILDER(Name("Roll")                           \
                               .Device(DEVICE_CPU)                \
                               .TypeConstraint<type>("T")         \
                               .TypeConstraint<int64>("Tshift")   \
-                              .TypeConstraint<int64>("Taxis"),   \
+                              .TypeConstraint<int64>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
                           RollOp<CPUDevice, type, int64, int64>)
 
 TF_CALL_ALL_TYPES(REGISTER_CPU);
 #undef REGISTER_CPU
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define REGISTER_KERNEL(type)                                    \
+  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("Tshift")   \
+                              .TypeConstraint<int32>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
+                          RollOp<GPUDevice, type, int32, int32>) \
+  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int64>("Tshift")   \
+                              .TypeConstraint<int32>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
+                          RollOp<GPUDevice, type, int64, int32>) \
+  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int32>("Tshift")   \
+                              .TypeConstraint<int64>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
+                          RollOp<GPUDevice, type, int32, int64>) \
+  REGISTER_KERNEL_BUILDER(Name("Roll")                           \
+                              .Device(DEVICE_GPU)                \
+                              .TypeConstraint<type>("T")         \
+                              .TypeConstraint<int64>("Tshift")   \
+                              .TypeConstraint<int64>("Taxis")    \
+                              .HostMemory("shift")               \
+                              .HostMemory("axis"),               \
+                          RollOp<GPUDevice, type, int64, int64>)
+
+TF_CALL_int32(REGISTER_KERNEL);
+TF_CALL_int64(REGISTER_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
+TF_CALL_complex64(REGISTER_KERNEL);
+TF_CALL_complex128(REGISTER_KERNEL);
+
+#undef REGISTER_KERNEL
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 }  // namespace tensorflow

@@ -15,34 +15,13 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
-#include <time.h>
-
 #include <iostream>
 #include <sstream>
 
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
 #include "tensorflow/lite/tools/benchmark/logging.h"
-
-namespace {
-void SleepForSeconds(double sleep_seconds) {
-  if (sleep_seconds <= 0.0) {
-    return;
-  }
-  // Convert the run_delay string into a timespec.
-  timespec req;
-  req.tv_sec = static_cast<time_t>(sleep_seconds);
-  req.tv_nsec = (sleep_seconds - req.tv_sec) * 1000000000;
-  // If requested, sleep between runs for an arbitrary amount of time.
-  // This can be helpful to determine the effect of mobile processor
-  // scaling and thermal throttling.
-#ifdef PLATFORM_WINDOWS
-  Sleep(sleep_seconds * 1000);
-#else
-  nanosleep(&req, nullptr);
-#endif
-}
-
-}  // namespace
 
 namespace tflite {
 namespace benchmark {
@@ -51,17 +30,20 @@ using tensorflow::Stat;
 BenchmarkParams BenchmarkModel::DefaultParams() {
   BenchmarkParams params;
   params.AddParam("num_runs", BenchmarkParam::Create<int32_t>(50));
+  params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
+  params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
   params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
   params.AddParam("warmup_runs", BenchmarkParam::Create<int32_t>(1));
+  params.AddParam("warmup_min_secs", BenchmarkParam::Create<float>(0.5f));
   return params;
 }
 
 BenchmarkModel::BenchmarkModel() : params_(DefaultParams()) {}
 
-void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults &results) {
+void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
   auto inference_us = results.inference_time_us();
   auto init_us = results.startup_latency_us();
   auto warmup_us = results.warmup_time_us();
@@ -73,19 +55,43 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults &results) {
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
   return {
-      CreateFlag<int32_t>("num_runs", &params_, "number of runs"),
+      CreateFlag<int32_t>(
+          "num_runs", &params_,
+          "expected number of runs, see also min_secs, max_secs"),
+      CreateFlag<float>(
+          "min_secs", &params_,
+          "minimum number of seconds to rerun for, potentially making the "
+          "actual number of runs to be greater than num_runs"),
+      CreateFlag<float>(
+          "max_secs", &params_,
+          "maximum number of seconds to rerun for, potentially making the "
+          "actual number of runs to be less than num_runs. Note if --max-secs "
+          "is exceeded in the middle of a run, the benchmark will continue to "
+          "the end of the run but will not start the next run."),
       CreateFlag<float>("run_delay", &params_, "delay between runs in seconds"),
       CreateFlag<int32_t>("num_threads", &params_, "number of threads"),
       CreateFlag<std::string>("benchmark_name", &params_, "benchmark name"),
       CreateFlag<std::string>("output_prefix", &params_,
                               "benchmark output prefix"),
-      CreateFlag<int32_t>("warmup_runs", &params_,
-                          "how many runs to initialize model"),
+      CreateFlag<int32_t>(
+          "warmup_runs", &params_,
+          "minimum number of runs performed on initialization, to "
+          "allow performance characteristics to settle, see also "
+          "warmup_min_secs"),
+      CreateFlag<float>(
+          "warmup_min_secs", &params_,
+          "minimum number of seconds to rerun for, potentially making the "
+          "actual number of warm-up runs to be greater than warmup_runs"),
   };
 }
 
 void BenchmarkModel::LogParams() {
-  TFLITE_LOG(INFO) << "Num runs: [" << params_.Get<int32_t>("num_runs") << "]";
+  TFLITE_LOG(INFO) << "Min num runs: [" << params_.Get<int32_t>("num_runs")
+                   << "]";
+  TFLITE_LOG(INFO) << "Min runs duration (seconds): ["
+                   << params_.Get<float>("min_secs") << "]";
+  TFLITE_LOG(INFO) << "Max runs duration (seconds): ["
+                   << params_.Get<float>("max_secs") << "]";
   TFLITE_LOG(INFO) << "Inter-run delay (seconds): ["
                    << params_.Get<float>("run_delay") << "]";
   TFLITE_LOG(INFO) << "Num threads: [" << params_.Get<int32_t>("num_threads")
@@ -94,25 +100,45 @@ void BenchmarkModel::LogParams() {
                    << params_.Get<std::string>("benchmark_name") << "]";
   TFLITE_LOG(INFO) << "Output prefix: ["
                    << params_.Get<std::string>("output_prefix") << "]";
-  TFLITE_LOG(INFO) << "Warmup runs: [" << params_.Get<int32_t>("warmup_runs")
-                   << "]";
+  TFLITE_LOG(INFO) << "Min warmup runs: ["
+                   << params_.Get<int32_t>("warmup_runs") << "]";
+  TFLITE_LOG(INFO) << "Min warmup runs duration (seconds): ["
+                   << params_.Get<float>("warmup_min_secs") << "]";
 }
 
-void BenchmarkModel::PrepareInputsAndOutputs() {}
+TfLiteStatus BenchmarkModel::PrepareInputData() { return kTfLiteOk; }
 
-Stat<int64_t> BenchmarkModel::Run(int num_times, RunType run_type) {
+TfLiteStatus BenchmarkModel::ResetInputsAndOutputs() { return kTfLiteOk; }
+
+Stat<int64_t> BenchmarkModel::Run(int min_num_times, float min_secs,
+                                  float max_secs, RunType run_type,
+                                  TfLiteStatus* invoke_status) {
   Stat<int64_t> run_stats;
-  TFLITE_LOG(INFO) << "Running benchmark for " << num_times << " iterations ";
-  for (int run = 0; run < num_times; run++) {
-    PrepareInputsAndOutputs();
+  TFLITE_LOG(INFO) << "Running benchmark for at least " << min_num_times
+                   << " iterations and at least " << min_secs << " seconds but"
+                   << " terminate if exceeding " << max_secs << " seconds.";
+  int64_t now_us = profiling::time::NowMicros();
+  int64_t min_finish_us = now_us + static_cast<int64_t>(min_secs * 1.e6f);
+  int64_t max_finish_us = now_us + static_cast<int64_t>(max_secs * 1.e6f);
+
+  *invoke_status = kTfLiteOk;
+  for (int run = 0; (run < min_num_times || now_us < min_finish_us) &&
+                    now_us <= max_finish_us;
+       run++) {
+    ResetInputsAndOutputs();
     listeners_.OnSingleRunStart(run_type);
     int64_t start_us = profiling::time::NowMicros();
-    RunImpl();
+    TfLiteStatus status = RunImpl();
     int64_t end_us = profiling::time::NowMicros();
     listeners_.OnSingleRunEnd();
 
     run_stats.UpdateStat(end_us - start_us);
-    SleepForSeconds(params_.Get<float>("run_delay"));
+    util::SleepForSeconds(params_.Get<float>("run_delay"));
+    now_us = profiling::time::NowMicros();
+
+    if (status != kTfLiteOk) {
+      *invoke_status = status;
+    }
   }
 
   std::stringstream stream;
@@ -122,46 +148,66 @@ Stat<int64_t> BenchmarkModel::Run(int num_times, RunType run_type) {
   return run_stats;
 }
 
-bool BenchmarkModel::ValidateParams() { return true; }
+TfLiteStatus BenchmarkModel::ValidateParams() { return kTfLiteOk; }
 
-void BenchmarkModel::Run(int argc, char **argv) {
-  if (!ParseFlags(argc, argv)) {
-    return;
-  }
-  Run();
+TfLiteStatus BenchmarkModel::Run(int argc, char** argv) {
+  TF_LITE_ENSURE_STATUS(ParseFlags(argc, argv));
+  return Run();
 }
 
-void BenchmarkModel::Run() {
-  ValidateParams();
+TfLiteStatus BenchmarkModel::Run() {
+  TF_LITE_ENSURE_STATUS(ValidateParams());
+
   LogParams();
 
-  listeners_.OnBenchmarkStart(params_);
+  const auto start_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_start_us = profiling::time::NowMicros();
-  Init();
+  TF_LITE_ENSURE_STATUS(Init());
+  const auto init_end_mem_usage = profiling::memory::GetMemoryUsage();
   int64_t initialization_end_us = profiling::time::NowMicros();
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
+  const auto init_mem_usage = init_end_mem_usage - start_mem_usage;
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
-                   << "ms";
+                   << "ms.";
 
+  TF_LITE_ENSURE_STATUS(PrepareInputData());
+
+  TfLiteStatus status = kTfLiteOk;
   uint64_t input_bytes = ComputeInputBytes();
+  listeners_.OnBenchmarkStart(params_);
   Stat<int64_t> warmup_time_us =
-      Run(params_.Get<int32_t>("warmup_runs"), WARMUP);
+      Run(params_.Get<int32_t>("warmup_runs"),
+          params_.Get<float>("warmup_min_secs"), params_.Get<float>("max_secs"),
+          WARMUP, &status);
+  if (status != kTfLiteOk) {
+    return status;
+  }
+
   Stat<int64_t> inference_time_us =
-      Run(params_.Get<int32_t>("num_runs"), REGULAR);
-  listeners_.OnBenchmarkEnd(
-      {startup_latency_us, input_bytes, warmup_time_us, inference_time_us});
+      Run(params_.Get<int32_t>("num_runs"), params_.Get<float>("min_secs"),
+          params_.Get<float>("max_secs"), REGULAR, &status);
+  const auto overall_mem_usage =
+      profiling::memory::GetMemoryUsage() - start_mem_usage;
+  listeners_.OnBenchmarkEnd({startup_latency_us, input_bytes, warmup_time_us,
+                             inference_time_us, init_mem_usage,
+                             overall_mem_usage});
+
+  TFLITE_LOG(INFO) << "Init " << init_mem_usage << std::endl
+                   << "Overall " << overall_mem_usage;
+
+  return status;
 }
 
-bool BenchmarkModel::ParseFlags(int argc, char **argv) {
+TfLiteStatus BenchmarkModel::ParseFlags(int* argc, char** argv) {
   auto flag_list = GetFlags();
   const bool parse_result =
-      Flags::Parse(&argc, const_cast<const char **>(argv), flag_list);
+      Flags::Parse(argc, const_cast<const char**>(argv), flag_list);
   if (!parse_result) {
     std::string usage = Flags::Usage(argv[0], flag_list);
     TFLITE_LOG(ERROR) << usage;
-    return false;
+    return kTfLiteError;
   }
-  return true;
+  return kTfLiteOk;
 }
 
 }  // namespace benchmark

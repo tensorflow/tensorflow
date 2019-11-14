@@ -1,0 +1,22 @@
+op {
+  name: "DeleteMultiDeviceIterator"
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "iterators"
+    type: DT_RESOURCE
+    number_attr: "N"
+  }
+  input_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  attr {
+    name: "N"
+    type: "int"
+    has_minimum: true
+  }
+  is_stateful: true
+}

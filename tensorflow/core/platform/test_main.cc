@@ -26,7 +26,7 @@ limitations under the License.
 
 #include <iostream>
 
-#include "tensorflow/core/lib/strings/str_util.h"
+#include "absl/strings/match.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -37,7 +37,7 @@ GTEST_API_ int main(int argc, char** argv) {
   tensorflow::testing::InstallStacktraceHandler();
   testing::InitGoogleTest(&argc, argv);
   for (int i = 1; i < argc; i++) {
-    if (tensorflow::str_util::StartsWith(argv[i], "--benchmarks=")) {
+    if (absl::StartsWith(argv[i], "--benchmarks=")) {
       const char* pattern = argv[i] + strlen("--benchmarks=");
       tensorflow::testing::Benchmark::Run(pattern);
       return 0;

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_COMPILATION_CACHE_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -63,11 +64,11 @@ class XlaCompilationCache : public ResourceBase {
   // and `out_executable`.  If `compile_mode` is `kStrict` then the compilation
   // cache always attempts the compilation on a cache miss.
   //
-  // The result of compilation is written to `*compilation_result`, which must
-  // be non-null. If `executable` is non-null, also builds an
-  // xla::LocalExecutable and sets `executable` to point to it. The resulting
-  // executable pointer may be null if the computation has no non-constant
-  // outputs.
+  // The result of compilation is written to `*out_compilation_result`, which
+  // must be non-null. If `out_executable` is non-null, also builds an
+  // xla::LocalExecutable and sets `out_executable` to point to it. The
+  // resulting executable pointer may be null if the computation has no
+  // non-constant outputs.
   Status Compile(const XlaCompiler::Options& options,
                  const NameAttrList& function,
                  absl::Span<const XlaCompiler::Argument> args,
@@ -88,18 +89,21 @@ class XlaCompilationCache : public ResourceBase {
   xla::LocalClient* client() const { return client_; }
   const DeviceType& device_type() const { return device_type_; }
 
-  string DebugString() override;
+  string DebugString() const override;
 
   // Describes the types, shapes and any compile-time constant arguments
   // to a kernel. Key that uniquely identifies a compilation output.
   struct Signature {
     string name;
 
-    std::vector<std::pair<DataType, TensorShape>> arg_types;
+    // List of Tensor types & shapes for compile-time constant arguments to the
+    // compilation, ordered by argument number.
+    absl::InlinedVector<std::pair<DataType, absl::InlinedVector<int64, 4>>, 4>
+        arg_shapes;
 
     // List of Tensor values for compile-time constant arguments to the
     // compilation, ordered by argument number. Tensors must be in host memory.
-    std::vector<Tensor> arg_values;
+    absl::InlinedVector<Tensor, 4> arg_values;
 
     bool operator==(const Signature& other) const;
 

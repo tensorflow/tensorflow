@@ -137,7 +137,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
   }
   if (output->type == kTfLiteString) {
-    buf.WriteToTensor(output);
+    buf.WriteToTensorAsVector(output);
   }
 
   return kTfLiteOk;

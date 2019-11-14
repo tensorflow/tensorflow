@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/utils/grappler_test.h"
+
 #include <memory>
+
+#include "absl/algorithm/container.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
@@ -22,6 +26,49 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
+namespace {
+void CompareGraphNodes(protobuf::RepeatedPtrField<NodeDef>* want,
+                       protobuf::RepeatedPtrField<NodeDef>* got) {
+  auto comparator = [](const NodeDef& n1, const NodeDef& n2) -> bool {
+    return n1.name() < n2.name();
+  };
+
+  std::sort(want->begin(), want->end(), comparator);
+  std::sort(got->begin(), got->end(), comparator);
+
+  ASSERT_EQ(want->size(), got->size());
+
+  for (int i = 0; i < want->size(); ++i) {
+    NodeDef& want_node = (*want)[i];
+    NodeDef& got_node = (*got)[i];
+
+    EXPECT_EQ(want_node.op(), got_node.op());
+    EXPECT_EQ(want_node.name(), got_node.name());
+    EXPECT_EQ(want_node.device(), got_node.device());
+    ASSERT_EQ(want_node.input_size(), got_node.input_size())
+        << "want_node =\n"
+        << want_node.DebugString() << "\ngot_node =\n"
+        << got_node.DebugString();
+
+    // Order of control dependencies doesn't matter, so we sort them first.
+    const auto is_control = [](const string& input) -> bool {
+      return ParseTensorName(input).index() < 0;
+    };
+
+    auto want_inputs = want_node.mutable_input();
+    auto got_inputs = got_node.mutable_input();
+    std::sort(absl::c_find_if(*want_inputs, is_control), want_inputs->end());
+    std::sort(absl::c_find_if(*got_inputs, is_control), got_inputs->end());
+
+    for (int j = 0; j < want_node.input_size(); ++j) {
+      const TensorId want_tensor = ParseTensorName(want_node.input(j));
+      const TensorId got_tensor = ParseTensorName(got_node.input(j));
+      EXPECT_EQ(want_tensor.ToString(), got_tensor.ToString());
+    }
+  }
+}
+}  // namespace
 
 GrapplerTest::GrapplerTest() {
   // Turn off all the automatic optimizations to ensure that we run the graph
@@ -37,9 +84,11 @@ GrapplerTest::GrapplerTest() {
   cfg->set_debug_stripper(RewriterConfig::OFF);
   cfg->set_dependency_optimization(RewriterConfig::OFF);
   cfg->set_function_optimization(RewriterConfig::OFF);
+  cfg->set_implementation_selector(RewriterConfig::OFF);
   cfg->set_layout_optimizer(RewriterConfig::OFF);
   cfg->set_loop_optimization(RewriterConfig::OFF);
   cfg->set_pin_to_host_optimization(RewriterConfig::OFF);
+  cfg->set_remapping(RewriterConfig::OFF);
 }
 
 std::vector<Tensor> GrapplerTest::EvaluateNodes(
@@ -94,30 +143,35 @@ NodeDef* GrapplerTest::AddNode(
 }
 
 void GrapplerTest::CompareGraphs(GraphDef want, GraphDef got) const {
-  auto comparator = [](const NodeDef& n1, const NodeDef& n2) -> bool {
-    return n1.name() < n2.name();
+  CompareGraphNodes(want.mutable_node(), got.mutable_node());
+}
+
+void GrapplerTest::CompareFunctions(FunctionDef want, FunctionDef got) const {
+  CompareGraphNodes(want.mutable_node_def(), got.mutable_node_def());
+}
+
+void GrapplerTest::CompareNodes(const NodeDef& want, const NodeDef& got) const {
+  EXPECT_EQ(want.name(), got.name());
+  EXPECT_EQ(want.op(), got.op());
+
+  std::vector<string> want_inputs(want.input().begin(), want.input().end());
+  std::vector<string> got_inputs(got.input().begin(), got.input().end());
+  EXPECT_EQ(want_inputs, got_inputs);
+
+  const auto attr_name = [](const std::pair<const string, AttrValue>& attr) {
+    return attr.first;
   };
-  std::sort(want.mutable_node()->begin(), want.mutable_node()->end(),
-            comparator);
-  std::sort(got.mutable_node()->begin(), got.mutable_node()->end(), comparator);
 
-  for (int i = 0; i < want.node_size(); ++i) {
-    std::sort(want.mutable_node(i)->mutable_input()->begin(),
-              want.mutable_node(i)->mutable_input()->end());
-  }
-  for (int i = 0; i < got.node_size(); ++i) {
-    std::sort(got.mutable_node(i)->mutable_input()->begin(),
-              got.mutable_node(i)->mutable_input()->end());
-  }
+  std::vector<string> want_attrs;
+  std::vector<string> got_attrs;
+  absl::c_transform(want.attr(), std::back_inserter(want_attrs), attr_name);
+  absl::c_transform(got.attr(), std::back_inserter(got_attrs), attr_name);
+  absl::c_sort(want_attrs);
+  absl::c_sort(got_attrs);
+  EXPECT_EQ(want_attrs, got_attrs);
 
-  ASSERT_EQ(want.node_size(), got.node_size());
-  for (int i = 0; i < want.node_size(); ++i) {
-    EXPECT_EQ(want.node(i).op(), got.node(i).op());
-    EXPECT_EQ(want.node(i).name(), got.node(i).name());
-    ASSERT_EQ(want.node(i).input_size(), got.node(i).input_size());
-    for (int j = 0; j < want.node(i).input_size(); ++j) {
-      EXPECT_TRUE(IsSameInput(want.node(i).input(j), got.node(i).input(j)));
-    }
+  for (const string& attr : want_attrs) {
+    EXPECT_TRUE(AreAttrValuesEqual(want.attr().at(attr), got.attr().at(attr)));
   }
 }
 

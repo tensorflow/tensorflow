@@ -99,9 +99,7 @@ class ClusterTest(test.TestCase):
           type='GPU',
           frequency=1000,
           num_cores=60,
-          environment={
-              'architecture': '7'
-          })
+          environment={'architecture': '7'})
       named_device = device_properties_pb2.NamedDevice(
           properties=device_properties, name='/device:GPU:0')
       grappler_cluster = cluster.Cluster(

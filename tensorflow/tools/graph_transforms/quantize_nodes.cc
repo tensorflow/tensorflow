@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/quantization_utils.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/public/session.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -710,7 +709,12 @@ Status QuantizeNodes(const GraphDef& input_graph_def,
           if (op_info.unquantized_inputs.count(i)) {
             continue;
           }
-          if (input_types[i] != DT_FLOAT) {
+          if (i >= input_types.size()) {
+            LOG(ERROR) << "input_types has incorrect size "
+                       << input_types.size() << " <= " << i
+                       << ". Assuming everything else is floats.";
+          }
+          if (i < input_types.size() && input_types[i] != DT_FLOAT) {
             are_all_float = false;
           }
         }

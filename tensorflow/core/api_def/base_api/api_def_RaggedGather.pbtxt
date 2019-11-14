@@ -11,8 +11,8 @@ END
   in_arg {
     name: "params_dense_values"
     description: <<END
-The `inner_values` for the `params` RaggedTensor. There was a terminology change
-at the python level from dense_values to inner_values, so dense_values is the
+The `flat_values` for the `params` RaggedTensor. There was a terminology change
+at the python level from dense_values to flat_values, so dense_values is the
 deprecated name.
 END
   }
@@ -32,7 +32,7 @@ END
   }
   out_arg {
     name: "output_dense_values"
-    description: "The `inner_values` for the returned RaggedTensor."
+    description: "The `flat_values` for the returned RaggedTensor."
   }
   attr {
     name: "PARAMS_RAGGED_RANK"

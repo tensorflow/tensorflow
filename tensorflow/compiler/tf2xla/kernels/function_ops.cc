@@ -51,62 +51,35 @@ class PassOn : public XlaOpKernel {
 REGISTER_XLA_OP(Name("_ListToArray"), PassOn);
 REGISTER_XLA_OP(Name("_ArrayToList"), PassOn);
 
-// TODO(phawkins): this is an almost exact copy of the SymbolicGradientOp
-// implementation from regular Tensorflow. Once XLA has been open sourced
-// merge the two implementations. (Note: this implementation propagates the
-// step_resource_manager).
-class SymbolicGradientOp : public AsyncOpKernel {
+class AlwaysFailOp : public OpKernel {
  public:
-  explicit SymbolicGradientOp(OpKernelConstruction* ctx)
-      : AsyncOpKernel(ctx), handle_(-1) {}
+  explicit AlwaysFailOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
 
-  ~SymbolicGradientOp() override {}
+  ~AlwaysFailOp() override {}
 
-  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
-    FunctionLibraryRuntime* lib = ctx->function_library();
-    OP_REQUIRES_ASYNC(ctx, lib != nullptr,
-                      errors::Internal("No function library is provided."),
-                      done);
-
-    OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(kGradientOp, AttrSlice(&def().attr()), &handle_),
-        done);
-
-    FunctionLibraryRuntime::Options opts;
-    opts.step_id = ctx->step_id();
-    opts.runner = ctx->runner();
-    opts.step_container = ctx->step_container();
-    std::vector<Tensor> args;
-    args.reserve(ctx->num_inputs());
-    for (int i = 0; i < ctx->num_inputs(); ++i) {
-      args.push_back(ctx->input(i));
-    }
-    std::vector<Tensor>* rets = new std::vector<Tensor>;
-    lib->Run(
-        opts, handle_, args, rets, [ctx, done, rets](const Status& status) {
-          if (!status.ok()) {
-            ctx->SetStatus(status);
-          } else if (rets->size() != ctx->num_outputs()) {
-            ctx->SetStatus(errors::InvalidArgument(
-                "SymGrad expects to return ", ctx->num_outputs(),
-                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
-          } else {
-            for (size_t i = 0; i < rets->size(); ++i) {
-              ctx->set_output(i, (*rets)[i]);
-            }
-          }
-          delete rets;
-          done();
-        });
+  void Compute(OpKernelContext* ctx) override {
+    ctx->CtxFailure(errors::FailedPrecondition(
+        "Unexpected attempt to compile ", name(), " which is a ", type_string(),
+        ".  These nodes should always be handled by the graph compiler"));
   }
-
- private:
-  FunctionLibraryRuntime::Handle handle_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(SymbolicGradientOp);
 };
 
-REGISTER_XLA_OP(Name(kGradientOp), SymbolicGradientOp);
+// These operations are handled specially in the TF/XLA bridge so their
+// OpKernel's should never be called.  We still register a dummy kernel so that
+// they show up as "supported" when we are deciding whether a graph containing
+// them is compilable with XLA.
+
+REGISTER_XLA_OP(Name(kGradientOp), AlwaysFailOp);
+REGISTER_XLA_OP(Name("PartitionedCall")
+                    .AllowResourceTypes()
+                    .AllowVariantTypes()
+                    .AllowStringType(),
+                AlwaysFailOp);
+REGISTER_XLA_OP(Name("StatefulPartitionedCall")
+                    .AllowResourceTypes()
+                    .AllowVariantTypes()
+                    .AllowStringType(),
+                AlwaysFailOp);
 
 }  // namespace
 }  // namespace tensorflow

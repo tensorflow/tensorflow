@@ -43,7 +43,7 @@ class SparseTensorsMap : public ResourceBase {
  public:
   explicit SparseTensorsMap(const string& name) : name_(name), counter_(0) {}
 
-  string DebugString() override { return "A SparseTensorsMap"; }
+  string DebugString() const override { return "A SparseTensorsMap"; }
 
   typedef struct {
     PersistentTensor indices;

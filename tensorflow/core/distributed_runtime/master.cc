@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Master implements the service MasterSerivce.
+// Master implements the service MasterService.
 //
 // A Master maintains the state of live graph computation
 // sessions, each session orchestrates both local and remote devices
@@ -65,7 +65,8 @@ Master::Master(MasterEnv* env, double session_gc_seconds)
     : env_(env),
       last_1000_steps_(1000),
       step_count_(0),
-      session_gc_seconds_(session_gc_seconds) {
+      session_gc_seconds_(session_gc_seconds),
+      recent_request_ids_(10000) {
   // Right now, a master service must be co-located with a device.
   // Otherwise, fetches do not work.
   CHECK(!env->local_devices.empty());
@@ -475,7 +476,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
     GraphDef* gdef =
         const_cast<CreateSessionRequest*>(req)->mutable_graph_def();
 
-    status = session->Create(gdef, worker_cache_factory_options);
+    status = session->Create(std::move(*gdef), worker_cache_factory_options);
     if (!status.ok()) {
       session->Close().IgnoreError();
       session->Unref();
@@ -510,6 +511,12 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
 
 void Master::PartialRunSetup(const PartialRunSetupRequest* req,
                              PartialRunSetupResponse* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "PartialRunSetup (Master)", *req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
@@ -525,6 +532,12 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
                      MutableRunStepResponseWrapper* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "RunStep (Master)", req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto start_time = env_->env->NowMicros();
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
@@ -616,7 +629,7 @@ void Master::CleanupWorkers(const ResetRequest& reset) {
     int c = 0;
     for (int i = 0; i < num_workers; ++i) {
       const string& worker_name = worker_names[i];
-      auto worker = env_->worker_cache->CreateWorker(worker_name);
+      auto worker = env_->worker_cache->GetOrCreateWorker(worker_name);
       if (worker) {
         worker->CleanupAllAsync(
             &req, &resp[i], [this, &n, worker_name, worker, c](Status s) {
@@ -664,36 +677,44 @@ void Master::Reset(const ResetRequest* req, ResetResponse* resp,
 
 void Master::MakeCallable(const MakeCallableRequest* req,
                           MakeCallableResponse* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "MakeCallable (Master)", *req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, req, resp](MyClosure done) {
-        Status s = session->MakeCallable(*req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, req, resp, done = std::move(done)]() {
+    Status s = session->MakeCallable(*req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 void Master::RunCallable(CallOptions* opts, const RunCallableRequest* req,
                          RunCallableResponse* resp, MyClosure done) {
+  Status s = recent_request_ids_.TrackUnique(req->request_id(),
+                                             "RunCallable (Master)", *req);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
   auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, opts, req, resp](MyClosure done) {
-        Status s = session->RunCallable(opts, *req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, opts, req, resp, done = std::move(done)]() {
+    Status s = session->RunCallable(opts, *req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 void Master::ReleaseCallable(const ReleaseCallableRequest* req,
@@ -704,13 +725,11 @@ void Master::ReleaseCallable(const ReleaseCallableRequest* req,
     return;
   }
 
-  SchedClosure(std::bind(
-      [session, req, resp](MyClosure done) {
-        Status s = session->ReleaseCallable(*req, resp);
-        session->Unref();
-        done(s);
-      },
-      std::move(done)));
+  SchedClosure([session, req, resp, done = std::move(done)]() {
+    Status s = session->ReleaseCallable(*req, resp);
+    session->Unref();
+    done(s);
+  });
 }
 
 }  // end namespace tensorflow

@@ -18,7 +18,7 @@ tf_module {
   }
   member_method {
     name: "assert_equal_graph_def"
-    argspec: "args=[\'actual\', \'expected\', \'checkpoint_v2\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'actual\', \'expected\', \'checkpoint_v2\', \'hash_table_shared_name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
   }
   member_method {
     name: "benchmark_config"
@@ -46,6 +46,14 @@ tf_module {
   }
   member_method {
     name: "is_built_with_cuda"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_built_with_gpu_support"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_built_with_rocm"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {

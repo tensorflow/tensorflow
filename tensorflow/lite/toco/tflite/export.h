@@ -23,11 +23,14 @@ namespace toco {
 
 namespace tflite {
 
+enum class QuantizedBufferType { NONE, INT8, FLOAT16 };
+
 // The parameters for exporting a TFLite model.
 struct ExportParams {
   bool allow_custom_ops = false;
+  bool allow_dynamic_tensors = true;
   bool enable_select_tf_ops = false;
-  bool quantize_weights = false;
+  QuantizedBufferType quantize_weights = QuantizedBufferType::NONE;
 };
 
 // Transform the given tf.mini model into a TF Lite flatbuffer and deposit the
@@ -47,7 +50,8 @@ inline void Export(const Model& model, bool allow_custom_ops,
                    bool quantize_weights, string* output_file_contents) {
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
-  params.quantize_weights = quantize_weights;
+  params.quantize_weights =
+      quantize_weights ? QuantizedBufferType::INT8 : QuantizedBufferType::NONE;
   auto status = Export(model, output_file_contents, params);
   if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
@@ -60,7 +64,8 @@ inline void Export(
     const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type) {
   ExportParams params;
   params.allow_custom_ops = allow_custom_ops;
-  params.quantize_weights = quantize_weights;
+  params.quantize_weights =
+      quantize_weights ? QuantizedBufferType::INT8 : QuantizedBufferType::NONE;
   auto status = Export(model, output_file_contents, params, ops_by_type);
   if (!status.ok()) LOG(QFATAL) << status.error_message();
 }
@@ -76,7 +81,7 @@ inline void Export(const Model& model, string* output_file_contents) {
 
 namespace details {
 
-// A maps from tensor name to its final position in the TF Lite buffer.
+// A map from tensor name to its final position in the TF Lite buffer.
 using TensorsMap = std::unordered_map<string, int>;
 
 // A key to identify an operator.
@@ -88,7 +93,7 @@ class OperatorKey {
 
   // Construct OperatorKey by Toco op.
   OperatorKey(
-      const ::toco::Operator& op,
+      const ::toco::OperatorSignature& op_signature,
       const std::map<OperatorType, std::unique_ptr<BaseOperator>>& ops_by_type,
       bool enable_select_tf_ops);
 
@@ -158,7 +163,7 @@ class OperatorKey {
   std::string flex_tensorflow_op_;
 };
 
-// A maps from operator type to its final position in the TF Lite buffer.
+// A map from OperatorKey to its final position in the TF Lite buffer.
 using OperatorsMap = std::unordered_map<OperatorKey, int, OperatorKey::Hash>;
 
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map);

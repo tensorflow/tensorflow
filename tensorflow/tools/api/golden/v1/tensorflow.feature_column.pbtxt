@@ -49,6 +49,26 @@ tf_module {
     argspec: "args=[\'key\', \'shape\', \'default_value\', \'dtype\', \'normalizer_fn\'], varargs=None, keywords=None, defaults=[\'(1,)\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
   }
   member_method {
+    name: "sequence_categorical_column_with_hash_bucket"
+    argspec: "args=[\'key\', \'hash_bucket_size\', \'dtype\'], varargs=None, keywords=None, defaults=[\"<dtype: \'string\'>\"], "
+  }
+  member_method {
+    name: "sequence_categorical_column_with_identity"
+    argspec: "args=[\'key\', \'num_buckets\', \'default_value\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "sequence_categorical_column_with_vocabulary_file"
+    argspec: "args=[\'key\', \'vocabulary_file\', \'vocabulary_size\', \'num_oov_buckets\', \'default_value\', \'dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'None\', \"<dtype: \'string\'>\"], "
+  }
+  member_method {
+    name: "sequence_categorical_column_with_vocabulary_list"
+    argspec: "args=[\'key\', \'vocabulary_list\', \'dtype\', \'default_value\', \'num_oov_buckets\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\', \'0\'], "
+  }
+  member_method {
+    name: "sequence_numeric_column"
+    argspec: "args=[\'key\', \'shape\', \'default_value\', \'dtype\', \'normalizer_fn\'], varargs=None, keywords=None, defaults=[\'(1,)\', \'0.0\', \"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
     name: "shared_embedding_columns"
     argspec: "args=[\'categorical_columns\', \'dimension\', \'combiner\', \'initializer\', \'shared_embedding_collection_name\', \'ckpt_to_load_from\', \'tensor_name_in_ckpt\', \'max_norm\', \'trainable\'], varargs=None, keywords=None, defaults=[\'mean\', \'None\', \'None\', \'None\', \'None\', \'None\', \'True\'], "
   }

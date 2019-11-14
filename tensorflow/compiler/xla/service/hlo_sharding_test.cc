@@ -84,7 +84,7 @@ TEST_F(HloShardingTest, Tile) {
   }
 
   {
-    // Test should fail because of more devices used then `num_device`.
+    // Test should fail because of more devices used than `num_device`.
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
     EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
                                        /*num_devices=*/2));
@@ -132,7 +132,7 @@ TEST_F(HloShardingTest, NestedTuple) {
 
   HloSharding tiled_sharding = HloSharding::Tile(Array<int64>({{0, 1}}));
   OpSharding proto;
-  proto.set_type(OpSharding::Type::OpSharding_Type_TUPLE);
+  proto.set_type(OpSharding::TUPLE);
   *proto.add_tuple_shardings() = HloSharding::Replicate().ToProto();
   *proto.add_tuple_shardings() = HloSharding::AssignDevice(0).ToProto();
   *proto.add_tuple_shardings() = tiled_sharding.ToProto();

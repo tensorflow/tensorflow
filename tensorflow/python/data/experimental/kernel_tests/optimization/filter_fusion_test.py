@@ -71,7 +71,8 @@ class FilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset.cache()
     options = dataset_ops.Options()
-    options.experimental_filter_fusion = True
+    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.filter_fusion = True
     dataset = dataset.with_options(options)
     expected_output = []
     for x in range(5):

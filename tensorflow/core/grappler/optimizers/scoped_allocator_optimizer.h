@@ -15,15 +15,20 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_SCOPED_ALLOCATOR_OPTIMIZER_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_SCOPED_ALLOCATOR_OPTIMIZER_H_
 
-#include <unordered_map>
+#include <atomic>
 #include <unordered_set>
 #include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
-namespace grappler {
 class Graph;
+
+namespace grappler {
 class GraphProperties;
 class NodeMap;
 class ScopedAllocatorOptimizer;
@@ -38,6 +43,8 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
 
   string name() const override { return "scoped_allocator_optimizer"; }
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
@@ -45,10 +52,10 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override {}
 
   // Map from an Op name to a vector of Nodes with that Op.
-  typedef std::unordered_map<string, std::vector<NodeDef*>> DevOpOccurrences;
+  typedef absl::flat_hash_map<string, std::vector<NodeDef*>> DevOpOccurrences;
   // Map from a device name to a DevOpOccurrences map.
-  typedef std::unordered_map<string, DevOpOccurrences> GraphOpOccurrences;
-  typedef std::unordered_set<string> OpNameSet;
+  typedef absl::flat_hash_map<string, DevOpOccurrences> GraphOpOccurrences;
+  typedef absl::flat_hash_set<string> OpNameSet;
 
   Status ProcessGraphDef(GraphDef* graph,
                          const GraphProperties& graph_properties);
@@ -62,7 +69,15 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
   // will allocate num_fields (> 0) separate tensors.
   int NewScopedAllocatorId(int num_fields);
 
+  // Returns a new, unused id to be assigned to an IdentityOp used in this graph
+  // rewrite.
+  Status NewIdentityId(int* id);
+
   NodeMap* node_map() { return node_map_.get(); }
+
+  const absl::flat_hash_set<string>& repeated_outputs() {
+    return repeated_outputs_;
+  }
 
   // Appends values to the attr value under name in node_def, if present.
   // If not present does an assignment.
@@ -75,7 +90,8 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
    public:
     virtual ~Rewriter() {}
 
-    virtual Status Rewrite(ScopedAllocatorOptimizer* paopti, GraphDef* graph,
+    virtual Status Rewrite(ScopedAllocatorOptimizer* paopti,
+                           int64 invocation_count, GraphDef* graph,
                            const string& op_name,
                            const std::vector<NodeDef*>& nodes,
                            bool* applied) = 0;
@@ -97,10 +113,15 @@ class ScopedAllocatorOptimizer : public GraphOptimizer {
   RewriterConfig::Toggle opt_level_;
   std::unordered_set<string> nodes_to_preserve_;
   OpNameSet op_name_set_;
-  std::unordered_map<string, Rewriter*> rewriters_;
+  absl::flat_hash_map<string, Rewriter*> rewriters_;
   std::vector<Rewriter*> to_delete_;
   int next_sa_id_ = 1;
+  int next_identity_id_ = 1;
   std::unique_ptr<NodeMap> node_map_;
+  // Keeps track of outputs, i.e. a node and an output index, that are inputs to
+  // more than one op groups that are candidates for scoped allocator
+  // optimization.
+  absl::flat_hash_set<string> repeated_outputs_;
 };
 
 }  // namespace grappler

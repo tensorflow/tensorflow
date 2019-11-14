@@ -1,0 +1,23 @@
+op {
+  graph_op_name: "ExperimentalSqlDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "driver_name"
+    description: <<END
+The database type. Currently, the only supported type is 'sqlite'.
+END
+  }
+  in_arg {
+    name: "data_source_name"
+    description: <<END
+A connection string to connect to the database.
+END
+  }
+  in_arg {
+    name: "query"
+    description: <<END
+A SQL query to execute.
+END
+  }
+  summary: "Creates a dataset that executes a SQL query and emits rows of the result set."
+}

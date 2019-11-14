@@ -26,6 +26,7 @@ from __future__ import print_function
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary
@@ -60,6 +61,7 @@ class SummaryV1OpsTest(test.TestCase):
       value { tag: "c2" simple_value: 20.0 }
       """, self._AsSummary(value))
 
+  @test_util.run_deprecated_v1
   def testMergeSummary(self):
     with self.cached_session() as sess:
       const = constant_op.constant(10.0)

@@ -76,9 +76,10 @@ void TestOneResizeBilinear(int batch, int depth, int input_width,
 }
 
 TEST(ResizeBilinear, TestResizeBilinear8Bit) {
-  const int kTestsToRun = 100 * 1000;
+  RandomEngine().seed(38291);
+  const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+    const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
     const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
@@ -91,9 +92,10 @@ TEST(ResizeBilinear, TestResizeBilinear8Bit) {
 }
 
 TEST(ResizeBilinear2x2, TestResizeBilinear8Bit) {
-  const int kTestsToRun = 100 * 1000;
+  RandomEngine().seed(38291);
+  const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+    const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
     const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
@@ -106,9 +108,10 @@ TEST(ResizeBilinear2x2, TestResizeBilinear8Bit) {
 }
 
 TEST(ResizeBilinear, TestResizeBilinear) {
-  const int kTestsToRun = 100 * 1000;
+  RandomEngine().seed(38291);
+  const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+    const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
     const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);
@@ -121,9 +124,10 @@ TEST(ResizeBilinear, TestResizeBilinear) {
 }
 
 TEST(ResizeBilinear2x2, TestResizeBilinear) {
-  const int kTestsToRun = 100 * 1000;
+  RandomEngine().seed(38291);
+  const int kTestsToRun = 1000;
   for (int i = 0; i < kTestsToRun; i++) {
-    const int batch = ExponentialRandomPositiveInt(0.9f, 3, 20);
+    const int batch = UniformRandomInt(1, 2);
     const int depth = ExponentialRandomPositiveInt(0.9f, 6, 50);
     const int input_width = ExponentialRandomPositiveInt(0.9f, 20, 200);
     const int input_height = ExponentialRandomPositiveInt(0.9f, 20, 200);

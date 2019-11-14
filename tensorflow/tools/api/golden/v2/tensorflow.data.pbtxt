@@ -5,11 +5,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "FixedLengthRecordDataset"
+    name: "DatasetSpec"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "Iterator"
+    name: "FixedLengthRecordDataset"
     mtype: "<type \'type\'>"
   }
   member {

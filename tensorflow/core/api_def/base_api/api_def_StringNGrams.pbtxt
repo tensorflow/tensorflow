@@ -1,0 +1,69 @@
+op {
+  graph_op_name: "StringNGrams"
+  in_arg {
+    name: "data"
+    description: <<END
+The values tensor of the ragged string tensor to make ngrams out of. Must be a
+1D string tensor.
+END
+  }
+  in_arg {
+    name: "data_splits"
+    description: <<END
+The splits tensor of the ragged string tensor to make ngrams out of.
+END
+  }
+  out_arg {
+    name: "ngrams"
+    description: <<END
+The values tensor of the output ngrams ragged tensor.
+END
+  }
+  out_arg {
+    name: "ngrams_splits"
+    description: <<END
+The splits tensor of the output ngrams ragged tensor.
+END
+  }
+  attr {
+    name: "separator"
+    description: <<END
+The string to append between elements of the token. Use "" for no separator.
+END
+  }
+  attr {
+    name: "ngram_widths"
+    description: <<END
+The sizes of the ngrams to create.
+END
+  }
+  attr {
+    name: "left_pad"
+    description: <<END
+The string to use to pad the left side of the ngram sequence. Only used if
+pad_width != 0.
+END
+  }
+  attr {
+    name: "right_pad"
+    description: <<END
+The string to use to pad the right side of the ngram sequence. Only used if
+pad_width != 0.
+END
+}
+  attr {
+    name: "pad_width"
+    description: <<END
+The number of padding elements to add to each side of each
+sequence. Note that padding will never be greater than 'ngram_widths'-1
+regardless of this value. If `pad_width=-1`, then add `max(ngram_widths)-1`
+elements.
+END
+  }
+  summary: "Creates ngrams from ragged string data."
+  description: <<END
+This op accepts a ragged tensor with 1 ragged dimension containing only
+strings and outputs a ragged tensor with 1 ragged dimension containing ngrams
+of that string, joined along the innermost axis.
+END
+}

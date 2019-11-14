@@ -17,12 +17,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
 class StringJoinOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testStringJoin(self):
     input0 = ["a", "b"]
     input1 = "a"

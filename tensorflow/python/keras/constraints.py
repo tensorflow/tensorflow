@@ -21,14 +21,17 @@ from __future__ import print_function
 
 import six
 
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.constraints.Constraint')
+@keras_export('keras.constraints.Constraint')
 class Constraint(object):
 
   def __call__(self, w):
@@ -38,7 +41,7 @@ class Constraint(object):
     return {}
 
 
-@tf_export('keras.constraints.MaxNorm', 'keras.constraints.max_norm')
+@keras_export('keras.constraints.MaxNorm', 'keras.constraints.max_norm')
 class MaxNorm(Constraint):
   """MaxNorm weight constraint.
 
@@ -75,7 +78,7 @@ class MaxNorm(Constraint):
     return {'max_value': self.max_value, 'axis': self.axis}
 
 
-@tf_export('keras.constraints.NonNeg', 'keras.constraints.non_neg')
+@keras_export('keras.constraints.NonNeg', 'keras.constraints.non_neg')
 class NonNeg(Constraint):
   """Constrains the weights to be non-negative.
   """
@@ -84,7 +87,7 @@ class NonNeg(Constraint):
     return w * math_ops.cast(math_ops.greater_equal(w, 0.), K.floatx())
 
 
-@tf_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
+@keras_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
 class UnitNorm(Constraint):
   """Constrains the weights incident to each hidden unit to have unit norm.
 
@@ -115,7 +118,7 @@ class UnitNorm(Constraint):
     return {'axis': self.axis}
 
 
-@tf_export('keras.constraints.MinMaxNorm', 'keras.constraints.min_max_norm')
+@keras_export('keras.constraints.MinMaxNorm', 'keras.constraints.min_max_norm')
 class MinMaxNorm(Constraint):
   """MinMaxNorm weight constraint.
 
@@ -168,12 +171,91 @@ class MinMaxNorm(Constraint):
     }
 
 
+@keras_export('keras.constraints.RadialConstraint',
+              'keras.constraints.radial_constraint')
+class RadialConstraint(Constraint):
+  """Constrains `Conv2D` kernel weights to be the same for each radius.
+
+  For example, the desired output for the following 4-by-4 kernel::
+
+  ```
+      kernel = [[v_00, v_01, v_02, v_03],
+                [v_10, v_11, v_12, v_13],
+                [v_20, v_21, v_22, v_23],
+                [v_30, v_31, v_32, v_33]]
+  ```
+
+  is this::
+
+  ```
+      kernel = [[v_11, v_11, v_11, v_11],
+                [v_11, v_33, v_33, v_11],
+                [v_11, v_33, v_33, v_11],
+                [v_11, v_11, v_11, v_11]]
+  ```
+
+  This constraint can be applied to any `Conv2D` layer version, including
+  `Conv2DTranspose` and `SeparableConv2D`, and with either `"channels_last"` or
+  `"channels_first"` data format. The method assumes the weight tensor is of
+  shape `(rows, cols, input_depth, output_depth)`.
+  """
+
+  def __call__(self, w):
+    w_shape = w.shape
+    if w_shape.rank is None or w_shape.rank != 4:
+      raise ValueError(
+          'The weight tensor must be of rank 4, but is of shape: %s' % w_shape)
+
+    height, width, channels, kernels = w_shape
+    w = K.reshape(w, (height, width, channels * kernels))
+    # TODO(cpeter): Switch map_fn for a faster tf.vectorized_map once K.switch
+    # is supported.
+    w = K.map_fn(
+        self._kernel_constraint,
+        K.stack(array_ops.unstack(w, axis=-1), axis=0))
+    return K.reshape(K.stack(array_ops.unstack(w, axis=0), axis=-1),
+                     (height, width, channels, kernels))
+
+  def _kernel_constraint(self, kernel):
+    """Radially constraints a kernel with shape (height, width, channels)."""
+    padding = K.constant([[1, 1], [1, 1]], dtype='int32')
+
+    kernel_shape = K.shape(kernel)[0]
+    start = K.cast(kernel_shape / 2, 'int32')
+
+    kernel_new = K.switch(
+        K.cast(math_ops.floormod(kernel_shape, 2), 'bool'),
+        lambda: kernel[start - 1:start, start - 1:start],
+        lambda: kernel[start - 1:start, start - 1:start] + K.zeros(  # pylint: disable=g-long-lambda
+            (2, 2), dtype=kernel.dtype))
+    index = K.switch(
+        K.cast(math_ops.floormod(kernel_shape, 2), 'bool'),
+        lambda: K.constant(0, dtype='int32'),
+        lambda: K.constant(1, dtype='int32'))
+    while_condition = lambda index, *args: K.less(index, start)
+
+    def body_fn(i, array):
+      return i + 1, array_ops.pad(
+          array,
+          padding,
+          constant_values=kernel[start + i, start + i])
+
+    _, kernel_new = control_flow_ops.while_loop(
+        while_condition,
+        body_fn,
+        [index, kernel_new],
+        shape_invariants=[index.get_shape(),
+                          tensor_shape.TensorShape([None, None])])
+    return kernel_new
+
+
 # Aliases.
 
 max_norm = MaxNorm
 non_neg = NonNeg
 unit_norm = UnitNorm
 min_max_norm = MinMaxNorm
+radial_constraint = RadialConstraint
 
 # Legacy aliases.
 maxnorm = max_norm
@@ -181,12 +263,12 @@ nonneg = non_neg
 unitnorm = unit_norm
 
 
-@tf_export('keras.constraints.serialize')
+@keras_export('keras.constraints.serialize')
 def serialize(constraint):
   return serialize_keras_object(constraint)
 
 
-@tf_export('keras.constraints.deserialize')
+@keras_export('keras.constraints.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -195,7 +277,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='constraint')
 
 
-@tf_export('keras.constraints.get')
+@keras_export('keras.constraints.get')
 def get(identifier):
   if identifier is None:
     return None

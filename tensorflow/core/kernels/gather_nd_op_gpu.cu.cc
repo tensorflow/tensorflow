@@ -13,14 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/util/cuda_kernel_helper.h"
+#include "tensorflow/core/util/gpu_kernel_helper.h"
 
 namespace tensorflow {
 
@@ -28,13 +28,13 @@ typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T, typename Index, int IXDIM>
 __global__ void GatherSliceOpKernel(
-    const T* params, const Index* indices, T* out,
-    const Eigen::array<int64, IXDIM> batch_strides,
+    const T* __restrict__ params, const Index* __restrict__ indices,
+    T* __restrict__ out, const Eigen::array<int64, IXDIM> batch_strides,
     const Eigen::array<int64, IXDIM> batch_indices, const int64 indices_size,
     const int64 slice_size, const int64 out_size) {
   // TODO(ebrevdo): reduce inner loop into two loops:
   // one over the number of locs, and one over the offsets inside the locs.
-  CUDA_1D_KERNEL_LOOP(i, out_size) {
+  GPU_1D_KERNEL_LOOP(i, out_size) {
     const Index loc = i / slice_size;
     const auto indices_i = indices + IXDIM * loc;
     bool out_of_bounds = false;
@@ -84,14 +84,13 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
       batch_indices[i - 1] = Tparams.dimension(i - 1);
       batch_strides[i - 1] = batch_strides[i] * Tparams.dimension(i);
     }
-    CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
+    GpuLaunchConfig config = GetGpuLaunchConfig(out_size, d);
 
-    // clang-format off
-    GatherSliceOpKernel<T, Index, IXDIM>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            Tparams.data(), Tindices.data(), Tout.data(), batch_strides,
-            batch_indices, indices_size, s_size, out_size);
-    // clang-format on
+    TF_CHECK_OK(GpuLaunchKernel(GatherSliceOpKernel<T, Index, IXDIM>,
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), Tparams.data(), Tindices.data(),
+                                Tout.data(), batch_strides, batch_indices,
+                                indices_size, s_size, out_size));
 
     // TODO(ebrevdo): enable indices validation on GPU.
     // Right now checking for indices out of bound in the kernel would
@@ -130,4 +129,4 @@ TF_CALL_complex128(DEFINE_GPU_SPECS);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

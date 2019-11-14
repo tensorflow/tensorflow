@@ -69,8 +69,13 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_ParallelForkJoin(
   CHECK_EQ(params, nullptr);
   CHECK_GT(num_partitions, 1);
   CHECK_GT(num_partitioned_dims, 0);
+  CHECK_NE(function_ptr, nullptr);
+  CHECK_NE(partitions, nullptr);
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+  CHECK_NE(run_options, nullptr);
+  CHECK_NE(run_options->intra_op_thread_pool(), nullptr);
+
   ComputeFunctionType function =
       reinterpret_cast<ComputeFunctionType>(function_ptr);
   // Compute partition stride in 'partitions' array.

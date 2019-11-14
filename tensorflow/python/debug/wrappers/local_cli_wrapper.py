@@ -19,26 +19,27 @@ from __future__ import print_function
 
 import argparse
 import os
-import shutil
 import sys
 import tempfile
 
 # Google-internal import(s).
 from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.cli import profile_analyzer_cli
-from tensorflow.python.debug.cli import stepper_cli
 from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import framework
+from tensorflow.python.lib.io import file_io
 
 
 _DUMP_ROOT_PREFIX = "tfdbg_"
 
 
+# TODO(donglin) Remove use_random_config_path after b/137652456 is fixed.
 class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
   """Concrete subclass of BaseDebugWrapperSession implementing a local CLI.
 
@@ -52,7 +53,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
                dump_root=None,
                log_usage=True,
                ui_type="curses",
-               thread_name_filter=None):
+               thread_name_filter=None,
+               config_file_path=False):
     """Constructor of LocalCLIDebugWrapperSession.
 
     Args:
@@ -67,6 +69,8 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         (curses | readline)
       thread_name_filter: Regular-expression white list for thread name. See
         the doc of `BaseDebugWrapperSession` for details.
+      config_file_path: Optional override to the default configuration file
+        path, which is at `${HOME}/.tfdbg_config`.
 
     Raises:
       ValueError: If dump_root is an existing and non-empty directory or if
@@ -121,8 +125,10 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._skip_debug = False
     self._run_start_response = None
     self._is_run_start = True
-
     self._ui_type = ui_type
+    self._config = None
+    if config_file_path:
+      self._config = cli_config.CLIConfig(config_file_path=config_file_path)
 
   def _is_disk_usage_reset_each_run(self):
     # The dumped tensors are all cleaned up after every Session.run
@@ -193,11 +199,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
     self._argparsers["run"] = ap
 
     ap = argparse.ArgumentParser(
-        description="Invoke stepper (cont, step, breakpoint, etc.)",
-        usage=argparse.SUPPRESS)
-    self._argparsers["invoke_stepper"] = ap
-
-    ap = argparse.ArgumentParser(
         description="Display information about this Session.run() call.",
         usage=argparse.SUPPRESS)
     self._argparsers["run_info"] = ap
@@ -231,9 +232,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
   def on_run_start(self, request):
     """Overrides on-run-start callback.
-
-    Invoke the CLI to let user choose what action to take:
-      `run` / `invoke_stepper`.
 
     Args:
       request: An instance of `OnRunStartRequest`.
@@ -288,8 +286,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
   def _prep_cli_for_run_start(self):
     """Prepare (but not launch) the CLI for run-start."""
-
-    self._run_cli = ui_factory.get_ui(self._ui_type)
+    self._run_cli = ui_factory.get_ui(self._ui_type, config=self._config)
 
     help_intro = debugger_cli_common.RichTextLines([])
     if self._run_call_count == 1:
@@ -378,7 +375,7 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
 
   def _remove_dump_root(self):
     if os.path.isdir(self._dump_root):
-      shutil.rmtree(self._dump_root)
+      file_io.delete_recursively(self._dump_root)
 
   def _prep_debug_cli_for_run_end(self,
                                   debug_dump,
@@ -418,8 +415,11 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._title_color = "red_on_white"
 
     self._run_cli = analyzer_cli.create_analyzer_ui(
-        debug_dump, self._tensor_filters, ui_type=self._ui_type,
-        on_ui_exit=self._remove_dump_root)
+        debug_dump,
+        self._tensor_filters,
+        ui_type=self._ui_type,
+        on_ui_exit=self._remove_dump_root,
+        config=self._config)
 
     # Get names of all dumped tensors.
     dumped_tensor_names = []
@@ -582,11 +582,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         self._argparsers["run"].format_help(),
         prefix_aliases=["r"])
     curses_cli.register_command_handler(
-        "invoke_stepper",
-        self._on_run_start_step_handler,
-        self._argparsers["invoke_stepper"].format_help(),
-        prefix_aliases=["s"])
-    curses_cli.register_command_handler(
         "run_info",
         self._run_info_handler,
         self._argparsers["run_info"].format_help(),
@@ -606,19 +601,6 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
       feed_keys = [common.get_graph_element_name(key)
                    for key in self._feed_dict.keys()]
       curses_cli.register_tab_comp_context(["print_feed", "pf"], feed_keys)
-
-  def _on_run_start_step_handler(self, args, screen_info=None):
-    """Command handler for "invoke_stepper" command during on-run-start."""
-
-    _ = screen_info  # Currently unused.
-
-    # No parsing is currently necessary for invoke_stepper. This may change
-    # in the future when the command has arguments.
-
-    # Raise CommandLineExit exception to cause the CLI to exit.
-    raise debugger_cli_common.CommandLineExit(
-        exit_token=framework.OnRunStartResponse(
-            framework.OnRunStartAction.INVOKE_STEPPER, []))
 
   def _get_run_debug_urls(self):
     """Get the debug_urls value for the current run() call.
@@ -663,72 +645,3 @@ class LocalCLIDebugWrapperSession(framework.BaseDebugWrapperSession):
         feed_dict,
         self._tensor_filters,
         is_callable_runner=is_callable_runner)
-
-  def invoke_node_stepper(self,
-                          node_stepper,
-                          restore_variable_values_on_exit=True):
-    """Overrides method in base class to implement interactive node stepper.
-
-    Args:
-      node_stepper: (`stepper.NodeStepper`) The underlying NodeStepper API
-        object.
-      restore_variable_values_on_exit: (`bool`) Whether any variables whose
-        values have been altered during this node-stepper invocation should be
-        restored to their old values when this invocation ends.
-
-    Returns:
-      The same return values as the `Session.run()` call on the same fetches as
-        the NodeStepper.
-    """
-
-    stepper = stepper_cli.NodeStepperCLI(node_stepper)
-
-    # On exiting the node-stepper CLI, the finalize method of the node_stepper
-    # object will be called, ensuring that the state of the graph will be the
-    # same as if the stepping did not happen.
-    # TODO(cais): Perhaps some users will want the effect of the interactive
-    # stepping and value injection to persist. When that happens, make the call
-    # to finalize optional.
-    stepper_ui = ui_factory.get_ui(
-        self._ui_type,
-        on_ui_exit=(node_stepper.restore_variable_values if
-                    restore_variable_values_on_exit else None))
-
-    stepper_ui.register_command_handler(
-        "list_sorted_nodes",
-        stepper.list_sorted_nodes,
-        stepper.arg_parsers["list_sorted_nodes"].format_help(),
-        prefix_aliases=["lt", "lsn"])
-    stepper_ui.register_command_handler(
-        "cont",
-        stepper.cont,
-        stepper.arg_parsers["cont"].format_help(),
-        prefix_aliases=["ct", "c"])
-    stepper_ui.register_command_handler(
-        "step",
-        stepper.step,
-        stepper.arg_parsers["step"].format_help(),
-        prefix_aliases=["st", "s"])
-    stepper_ui.register_command_handler(
-        "print_tensor",
-        stepper.print_tensor,
-        stepper.arg_parsers["print_tensor"].format_help(),
-        prefix_aliases=["pt"])
-    stepper_ui.register_command_handler(
-        "inject_value",
-        stepper.inject_value,
-        stepper.arg_parsers["inject_value"].format_help(),
-        prefix_aliases=["inject", "override_value", "override"])
-
-    # Register tab completion candidates.
-    stepper_ui.register_tab_comp_context([
-        "cont", "ct", "c", "pt", "inject_value", "inject", "override_value",
-        "override"
-    ], [str(elem) for elem in node_stepper.sorted_nodes()])
-    # TODO(cais): Tie up register_tab_comp_context to a single alias to shorten
-    # calls like this.
-
-    return stepper_ui.run_ui(
-        init_command="lt",
-        title="Node Stepper: " + self._run_description,
-        title_color="blue_on_white")

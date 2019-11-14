@@ -17,11 +17,11 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 
@@ -236,7 +236,8 @@ class UniqueOp : public OpKernel {
                               .TypeConstraint<int64>("out_idx"), \
                           UniqueOp<type, int64>)
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_UNIQUE);
-REGISTER_UNIQUE(string)
+REGISTER_UNIQUE(tstring)
+REGISTER_UNIQUE(bool)
 #undef REGISTER_UNIQUE
 
 // Fake integer GPU kernels so that the use of Unique in optimizers (to

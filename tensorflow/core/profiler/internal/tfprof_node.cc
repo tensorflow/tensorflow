@@ -151,7 +151,7 @@ void ExecStep::AddMemoryStats(const string& dev,
   }
 
   // TODO(xpan): Make this more accurate:
-  // High level: Memory tracking is suspicous and requires large scale
+  // High level: Memory tracking is suspicious and requires large scale
   // clean up.
   // Investigte the memory usage difference between CPU/GPU with OpViewTest.
   //
@@ -194,7 +194,7 @@ void ExecStep::AddMemoryStats(const string& dev,
 
 void TFGraphNode::AddStepStat(int64 step, const string& device,
                               const NodeExecStats& step_stat) {
-  string dev = str_util::Lowercase(device);
+  string dev = absl::AsciiStrToLower(device);
 
   // TODO(xpan): Make this more robust?
   // See run_metadata_test.py

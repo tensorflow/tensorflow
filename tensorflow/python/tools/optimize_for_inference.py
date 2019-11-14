@@ -92,7 +92,7 @@ def main(unused_args):
       FLAGS.toco_compatible)
 
   if FLAGS.frozen_graph:
-    f = gfile.FastGFile(FLAGS.output, "w")
+    f = gfile.GFile(FLAGS.output, "w")
     f.write(output_graph_def.SerializeToString())
   else:
     graph_io.write_graph(output_graph_def,

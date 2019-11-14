@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the gradient of `tf.sparse_tensor_dense_matmul()`."""
+"""Tests for the gradient of `tf.sparse.sparse_dense_matmul()`."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import sparse_ops
 import tensorflow.python.ops.sparse_grad  # pylint: disable=unused-import
@@ -89,6 +90,7 @@ class SparseTensorDenseMatMulGradientTest(test.TestCase):
         self._testGradients(adjoint_a, adjoint_b, name, values_dtype,
                             indices_dtype)
 
+  @test_util.run_deprecated_v1
   def testGradients(self):
     np.random.seed(5)  # Fix seed to avoid flakiness
     self._testGradientsType(np.float32, np.int64)

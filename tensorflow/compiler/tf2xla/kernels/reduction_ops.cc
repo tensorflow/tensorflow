@@ -125,10 +125,9 @@ class MeanOp : public XlaReductionOp {
       auto size = xla::GetDimensionSize(input, dimensions_to_reduce[i]);
       divisor = xla::Mul(divisor, size);
     }
-    xla::PrimitiveType type;
-    TF_CHECK_OK(DataTypeToPrimitiveType(input_type(0), &type));
-    divisor = xla::ConvertElementType(divisor, type);
-    return reduce_output / divisor;
+    divisor = xla::ConvertElementType(divisor, xla_reduction_type_);
+    return XlaHelpers::ConvertElementType(reduce_output / divisor,
+                                          input_type(0));
   }
 };
 

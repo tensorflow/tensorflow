@@ -33,6 +33,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import warm_starting_util as ws_util
+from tensorflow.python.training.tracking import util as tracking_util
 
 ones = init_ops.ones_initializer
 norms = init_ops.truncated_normal_initializer
@@ -70,7 +71,7 @@ class WarmStartingUtilTest(test.TestCase):
         if partitioner:
           self.assertTrue(isinstance(var, variables.PartitionedVariable))
           var = var._get_variable_list()
-        return var, sess.run(var)
+        return var, self.evaluate(var)
 
   def _create_prev_run_vars(self,
                             var_names,
@@ -86,7 +87,7 @@ class WarmStartingUtilTest(test.TestCase):
               shape=shape,
               initializer=initializer))
         self._write_checkpoint(sess)
-        return [sess.run(var) for var in all_vars]
+        return [self.evaluate(var) for var in all_vars]
 
   def _create_dummy_inputs(self):
     return {
@@ -1214,6 +1215,26 @@ class WarmStartingUtilTest(test.TestCase):
         ws_util.warm_start,
         self.get_temp_dir(),
         var_name_to_prev_var_name={"y": "y2"})
+
+  def testWarmStartFromObjectBasedCheckpoint(self):
+    prev_val = [[0.5], [1.], [1.5], [2.]]
+    with ops.Graph().as_default() as g:
+      with self.session(graph=g):
+        prev_var = variable_scope.get_variable(
+            "fruit_weights",
+            initializer=prev_val)
+        self.evaluate(variables.global_variables_initializer())
+        # Save object-based checkpoint.
+        tracking_util.Checkpoint(v=prev_var).save(
+            os.path.join(self.get_temp_dir(), "checkpoint"))
+
+    with ops.Graph().as_default() as g:
+      with self.session(graph=g):
+        fruit_weights = variable_scope.get_variable(
+            "fruit_weights", initializer=[[0.], [0.], [0.], [0.]])
+        ws_util.warm_start(self.get_temp_dir())
+        self.evaluate(variables.global_variables_initializer())
+        self.assertAllClose(prev_val, self.evaluate(fruit_weights))
 
 
 if __name__ == "__main__":

@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -30,6 +31,7 @@ class SparseJobTest(test.TestCase):
   # TODO(b/34465411): Starting multiple servers with different configurations
   # in the same test is flaky. Move this test case back into
   # "server_lib_test.py" when this is no longer the case.
+  @test_util.run_deprecated_v1
   def testSparseJob(self):
     server = server_lib.Server({"local": {37: "localhost:0"}})
     with ops.device("/job:local/task:37"):

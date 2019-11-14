@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -36,11 +37,11 @@ namespace xla {
 namespace {
 
 using Worklist = std::deque<const HloInstruction*>;
-using Workset = std::unordered_set<const HloInstruction*>;
+using Workset = absl::flat_hash_set<const HloInstruction*>;
 
 void AddToWorklist(const HloInstruction* instruction, Worklist* worklist,
                    Workset* workset) {
-  if (workset->count(instruction) == 0) {
+  if (!workset->contains(instruction)) {
     worklist->push_back(instruction);
     workset->insert(instruction);
     VLOG(3) << "ADD instruction: " << instruction->name();

@@ -206,16 +206,7 @@ void SetMinMaxForConcatenedArray(GraphTransformation* transformation,
       LOG(FATAL) << "ArrayDataType not supported";
   }
 
-  // Remove all the resolved arrays.
-  for (const string& input_name : concat_op->inputs) {
-    // Check to prevent removal of shared tensors.
-    if (CountOpsWithInput(*model, input_name) == 1) {
-      model->EraseArray(input_name);
-    }
-  }
-
-  // Remove concatenate operator.
-  model->operators.erase(concat_it);
+  DeleteOpAndArrays(model, concat_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

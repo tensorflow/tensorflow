@@ -21,7 +21,9 @@ limitations under the License.
 
 namespace xla {
 
-// Pass to replace a kGetDimensionSize instruction with a constant instruction.
+// Pass to replace a kGetDimensionSize instruction with a hlo instruction
+// representing the dynamic size if the dimension is dynamic, otherwise a
+// constant instruction representing the static size.
 class HloGetDimensionSizeRewriter : public HloModulePass {
  public:
   absl::string_view name() const override {

@@ -1,11 +1,12 @@
-package(default_visibility = ["//tensorflow:internal"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
 load("//tensorflow:tensorflow.bzl", "py_test")  # @unused
+
+package(
+    default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+exports_files(["LICENSE"])
 
 py_library(
     name = "test_util",
@@ -13,6 +14,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
+        "//tensorflow/lite/python:interpreter",
+        "//tensorflow/lite/python:lite",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python:training",
     ],
@@ -26,9 +29,9 @@ cuda_py_tests(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
+    tags = ["no_rocm"],
 )
 
 cuda_py_tests(
@@ -40,11 +43,13 @@ cuda_py_tests(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
-    shard_count = 4,
-    tags = ["optonly"],
+    shard_count = 8,
+    tags = [
+        "no_rocm",
+        "optonly",
+    ],
 )
 
 cuda_py_tests(
@@ -62,20 +67,22 @@ cuda_py_tests(
     name = "mfcc_ops_test",
     srcs = ["mfcc_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/ops/signal",
-        "//tensorflow/python:spectral_ops_test_util",
     ],
+    tags = ["no_rocm"],
 )
 
 cuda_py_tests(
     name = "reconstruction_ops_test",
     srcs = ["reconstruction_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
@@ -111,6 +118,7 @@ cuda_py_tests(
     size = "large",
     srcs = ["spectral_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:gradients",
@@ -121,10 +129,12 @@ cuda_py_tests(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/ops/signal",
     ],
-    tags = ["nomac"],
+    tags = [
+        "no_rocm",
+        "nomac",
+    ],
 )
 
 cuda_py_tests(
@@ -139,5 +149,9 @@ cuda_py_tests(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/ops/signal",
         "//tensorflow/python:platform_test",
+    ],
+    shard_count = 4,
+    tags = [
+        "no_windows_gpu",
     ],
 )

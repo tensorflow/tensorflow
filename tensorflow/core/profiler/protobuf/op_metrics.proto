@@ -1,0 +1,76 @@
+syntax = "proto3";
+
+package tensorflow.profiler;
+
+// What the dimension represents, e.g. spatial, feature or batch.
+enum LayoutDimensionSemantics {
+  UNKNOWN_SEMANTICS = 0;
+  FEATURE = 1;
+  BATCH = 2;
+  SPATIAL = 3;
+}
+
+// Data layout of an op.
+message LayoutAnalysis {
+  // Physical data layout in each tensor dimension.
+  message Dimension {
+    // Size of the data in this dimension.
+    int32 size = 1;
+    // Data must be padded to a multiple of alignment.
+    int32 alignment = 2;
+    // What the dimension represents.
+    LayoutDimensionSemantics semantics = 3;
+  }
+  // The physical data layout, from most-minor to most-major dimensions.
+  repeated Dimension dimensions = 1;
+}
+
+// Metrics for an operation (accumulated over all occurrences).
+// Next ID: 17
+message OpMetrics {
+  // HLO module id. 0 for TF ops.
+  uint64 hlo_module_id = 13;
+  // Name of this op.
+  string name = 6;
+  // Category of this op.
+  string category = 11;
+  // Provenance of this op (e.g., if HLO op, original TF op).
+  string provenance = 12;
+  // Number of executions.
+  uint32 occurrences = 3;
+  // Total time (self + children) in picoseconds.
+  uint64 time_ps = 7;
+  // Total self time in picoseconds.
+  uint64 self_time_ps = 1;
+  // Total FLOPs.
+  uint64 flops = 2;
+  // Total bytes accessed.
+  uint64 bytes_accessed = 5;
+  // Total dma stall time in picoseconds.
+  uint64 dma_stall_ps = 10;
+  // The data layout for this op. Only set for convolution ops for now.
+  LayoutAnalysis layout = 14;
+  // Deduplicated HLO name for this op. Not set for TF ops.
+  string deduplicated_name = 15;
+  // Children of the op. e.g. fused ops if this op is fusion.
+  OpMetricsDb children = 16;
+
+  reserved 4, 8, 9;
+}
+
+// A database for OpMetrics.
+// Next ID: 13
+message OpMetricsDb {
+  // A bunch of OpMetrics.
+  repeated OpMetrics metrics_db = 10;
+  // The total host infeed-enqueue duration in picoseconds.
+  uint64 total_host_infeed_enq_duration_ps = 2;
+  // The total of the difference between the start times of two
+  // consecutive infeed-enqueues (per host) in picoseconds.
+  uint64 total_host_infeed_enq_start_timestamp_ps_diff = 3;
+  // The total time in picoseconds.
+  uint64 total_time_ps = 11;
+  // The total time incurred by OPs in picoseconds.
+  uint64 total_op_time_ps = 12;
+  reserved 1, 4, 5, 6, 7, 8, 9;
+}

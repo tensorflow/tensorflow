@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/register_types_traits.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -230,7 +230,7 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
 
 // Dimension 0 only instantiates some functors. So we only need
 // to prevent ones defined by PREVENT_INSTANTIATE_DIM0_ONLY
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if STRIDED_SLICE_INSTANTIATE_DIM == 0
 #define PREVENT_INSTANTIATE(T, NDIM) PREVENT_INSTANTIATE_DIM0_ONLY(T, NDIM)
 #else
@@ -276,7 +276,7 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
 #define DECLARE_FOR_N_GPU(T) \
   INSTANTIATE(GPUDevice, T, STRIDED_SLICE_INSTANTIATE_DIM)
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 TF_CALL_GPU_PROXY_TYPES(PREVENT_FOR_N_GPU);
 TF_CALL_complex64(PREVENT_FOR_N_GPU);
 TF_CALL_complex128(PREVENT_FOR_N_GPU);
@@ -288,9 +288,11 @@ TF_CALL_bool(DECLARE_FOR_N_GPU);
 TF_CALL_int8(DECLARE_FOR_N_GPU);
 DECLARE_FOR_N_GPU(int32);
 DECLARE_FOR_N_GPU(int64);
-#endif  // END GOOGLE_CUDA
+#endif  // END GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 TF_CALL_ALL_TYPES(DECLARE_FOR_N_CPU);
+TF_CALL_uint32(DECLARE_FOR_N_CPU);
+TF_CALL_uint64(DECLARE_FOR_N_CPU);
 
 #ifdef TENSORFLOW_USE_SYCL
 #define PREVENT_FOR_N_SYCL(T) \

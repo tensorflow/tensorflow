@@ -60,6 +60,8 @@ class XlaOpKernelContext {
  public:
   explicit XlaOpKernelContext(OpKernelContext* context);
 
+  XlaContext* xla_context() const;
+
   // Returns the XLA XlaBuilder containing the output of compilation.
   xla::XlaBuilder* builder() const;
 
@@ -78,6 +80,11 @@ class XlaOpKernelContext {
   // is not representable as an XLA type, sets an error status and returns
   // xla::PRIMITIVE_TYPE_INVALID.
   xla::PrimitiveType input_xla_type(int index);
+
+  // Returns the type of input `name` as an xla::PrimitiveType. If the type
+  // is not representable as an XLA type, sets an error status and returns
+  // xla::PRIMITIVE_TYPE_INVALID.
+  xla::PrimitiveType InputXlaType(absl::string_view name);
 
   // Returns the shape of input `index`.
   TensorShape InputShape(int index);
@@ -136,6 +143,10 @@ class XlaOpKernelContext {
   // Converts a constant 1D int32 or int64 tensor into a TensorShape.
   Status ConstantInputAsShape(int index, TensorShape* shape);
 
+  // Converts a constant 1D int32 or int64 tensor, or a scalar with value -1
+  // into a PartialTensorShape.
+  Status ConstantInputAsPartialShape(int index, PartialTensorShape* shape);
+
   // Returns the named list-valued immutable input in "list", as
   // defined in the OpDef.  If the named output is not list-valued,
   // returns a one-element list.
@@ -153,6 +164,11 @@ class XlaOpKernelContext {
     return context_->expected_output_dtype(index);
   }
 
+  // Returns the type of output `index` as an xla::PrimitiveType. If the type
+  // is not representable as an XLA type, sets an error status and returns
+  // xla::PRIMITIVE_TYPE_INVALID.
+  xla::PrimitiveType output_xla_type(int index);
+
   // Sets output `index` to the XlaOp `handle`.
   // All outputs should be set using SetOutput and SetConstantOutput, not
   // via the underlying OpKernelContext.
@@ -165,6 +181,9 @@ class XlaOpKernelContext {
 
   // Returns an XlaExpression describing the value of 'index'.
   void SetOutputExpression(int index, const XlaExpression& expression);
+
+  // Sets output `index` to the Tensor List `handle`.
+  void SetTensorListOutput(int index, const xla::XlaOp& handle);
 
   // Status handling.
   void SetStatus(const Status& status) { context_->SetStatus(status); }
@@ -182,6 +201,17 @@ class XlaOpKernelContext {
   // value.
   Status GetVariableTypeAndShape(int index, DataType* type,
                                  TensorShape* shape) const;
+
+  // When dynamic_dimension_is_minus_one is set, querying a dynamic dimension
+  // returns "-1", this is useful when the underlying ops expect explicit
+  // dynamic index like reshape.
+  void set_dynamic_dimension_is_minus_one(bool value) {
+    dynamic_dimension_is_minus_one_ = value;
+  }
+
+  bool dynamic_dimension_is_minus_one() const {
+    return dynamic_dimension_is_minus_one_;
+  }
 
   // Reads the current value of the resouce variable referred to by input
   // `index`. If `shape` is not nullptr, sets `*shape` to the shape of the
@@ -261,6 +291,7 @@ class XlaOpKernelContext {
                                xla::Literal* constant_literal);
 
   OpKernelContext* const context_;
+  bool dynamic_dimension_is_minus_one_;
 };
 
 }  // namespace tensorflow

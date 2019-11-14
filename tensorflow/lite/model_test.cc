@@ -87,20 +87,21 @@ TEST(BasicFlatBufferModel, TestEmptyModelsAndNullDestination) {
 
 // Make sure currently unsupported # of subgraphs are checked
 // TODO(aselle): Replace this test when multiple subgraphs are supported.
-TEST(BasicFlatBufferModel, TestZeroAndMultipleSubgraphs) {
-  auto m1 = FlatBufferModel::BuildFromFile(
+TEST(BasicFlatBufferModel, TestZeroSubgraphs) {
+  auto m = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/0_subgraphs.bin");
-  ASSERT_TRUE(m1);
-  std::unique_ptr<Interpreter> interpreter1;
-  ASSERT_NE(InterpreterBuilder(*m1, TrivialResolver())(&interpreter1),
-            kTfLiteOk);
+  ASSERT_TRUE(m);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_NE(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
+}
 
-  auto m2 = FlatBufferModel::BuildFromFile(
+TEST(BasicFlatBufferModel, TestMultipleSubgraphs) {
+  auto m = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/2_subgraphs.bin");
-  ASSERT_TRUE(m2);
-  std::unique_ptr<Interpreter> interpreter2;
-  ASSERT_NE(InterpreterBuilder(*m2, TrivialResolver())(&interpreter2),
-            kTfLiteOk);
+  ASSERT_TRUE(m);
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(InterpreterBuilder(*m, TrivialResolver())(&interpreter), kTfLiteOk);
+  EXPECT_EQ(interpreter->subgraphs_size(), 2);
 }
 
 // Test what happens if we cannot bind any of the ops.
@@ -115,7 +116,7 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
   ASSERT_EQ(interpreter, nullptr);
 }
 
-// Make sure model is read to interpreter propelrly
+// Make sure model is read to interpreter properly
 TEST(BasicFlatBufferModel, TestModelInInterpreter) {
   auto model = FlatBufferModel::BuildFromFile(
       "tensorflow/lite/testdata/test_model.bin");
@@ -312,6 +313,22 @@ TEST(BasicFlatBufferModel, TestBuildFromModel) {
       InterpreterBuilder(*model, TrivialResolver(&dummy_reg))(&interpreter),
       kTfLiteOk);
   ASSERT_NE(interpreter, nullptr);
+}
+
+// Test reading the minimum runtime string from metadata in a Model flatbuffer.
+TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
+  // First read a model that doesn't have the runtime string.
+  auto model1 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin");
+  ASSERT_TRUE(model1);
+  ASSERT_EQ(model1->GetMinimumRuntime(), "");
+
+  // Read a model that has minimum runtime string populated.
+  auto model2 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_min_runtime.bin");
+  ASSERT_TRUE(model2);
+  // Check that we have read the runtime string correctly.
+  ASSERT_EQ(model2->GetMinimumRuntime(), "1.10.0");
 }
 
 // TODO(aselle): Add tests for serialization of builtin op data types.

@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/no_features_data.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/yes_features_data.h"
-#include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h"
+#include "tensorflow/lite/experimental/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
+#include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
@@ -32,7 +33,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model = ::tflite::GetModel(g_tiny_conv_model_data);
+  const tflite::Model* model =
+      ::tflite::GetModel(g_tiny_conv_micro_features_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
@@ -40,18 +42,32 @@ TF_LITE_MICRO_TEST(TestInvoke) {
         model->version(), TFLITE_SCHEMA_VERSION);
   }
 
-  // This pulls in all the operation implementations we need.
-  tflite::ops::micro::AllOpsResolver resolver;
+  // Pull in only the operation implementations we need.
+  // This relies on a complete list of all the ops needed by this graph.
+  // An easier approach is to just use the AllOpsResolver, but this will
+  // incur some penalty in code space for op implementations that are not
+  // needed by this graph.
+  //
+  // tflite::ops::micro::AllOpsResolver resolver;
+  tflite::MicroMutableOpResolver micro_mutable_op_resolver;
+  micro_mutable_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
+      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
+  micro_mutable_op_resolver.AddBuiltin(
+      tflite::BuiltinOperator_FULLY_CONNECTED,
+      tflite::ops::micro::Register_FULLY_CONNECTED());
+  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
+                                       tflite::ops::micro::Register_SOFTMAX());
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   const int tensor_arena_size = 10 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
-  tflite::SimpleTensorAllocator tensor_allocator(tensor_arena,
-                                                 tensor_arena_size);
 
   // Build an interpreter to run the model with.
-  tflite::MicroInterpreter interpreter(model, resolver, &tensor_allocator,
+  tflite::MicroInterpreter interpreter(model, micro_mutable_op_resolver,
+                                       tensor_arena, tensor_arena_size,
                                        error_reporter);
+  interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.
   TfLiteTensor* input = interpreter.input(0);
@@ -61,12 +77,13 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_EQ(4, input->dims->size);
   TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[0]);
   TF_LITE_MICRO_EXPECT_EQ(49, input->dims->data[1]);
-  TF_LITE_MICRO_EXPECT_EQ(43, input->dims->data[2]);
+  TF_LITE_MICRO_EXPECT_EQ(40, input->dims->data[2]);
+  TF_LITE_MICRO_EXPECT_EQ(1, input->dims->data[3]);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteUInt8, input->type);
 
   // Copy a spectrogram created from a .wav audio file of someone saying "Yes",
   // into the memory area used for the input.
-  const uint8_t* yes_features_data = g_yes_f2e59fea_nohash_1_data;
+  const uint8_t* yes_features_data = g_yes_micro_f2e59fea_nohash_1_data;
   for (int i = 0; i < input->bytes; ++i) {
     input->data.uint8[i] = yes_features_data[i];
   }
@@ -102,7 +119,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_GT(yes_score, no_score);
 
   // Now test with a different input, from a recording of "No".
-  const uint8_t* no_features_data = g_no_f9643d42_nohash_4_data;
+  const uint8_t* no_features_data = g_no_micro_f9643d42_nohash_4_data;
   for (int i = 0; i < input->bytes; ++i) {
     input->data.uint8[i] = no_features_data[i];
   }

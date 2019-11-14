@@ -39,11 +39,11 @@ class GPUDebugAllocator : public Allocator {
   string Name() override { return "gpu_debug"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  bool TracksAllocationSizes() override;
-  size_t RequestedSize(const void* ptr) override;
-  size_t AllocatedSize(const void* ptr) override;
-  int64 AllocationId(const void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  bool TracksAllocationSizes() const override;
+  size_t RequestedSize(const void* ptr) const override;
+  size_t AllocatedSize(const void* ptr) const override;
+  int64 AllocationId(const void* ptr) const override;
+  absl::optional<AllocatorStats> GetStats() override;
   void ClearStats() override;
 
   // For testing.
@@ -69,9 +69,9 @@ class GPUNanResetAllocator : public Allocator {
   string Name() override { return "gpu_nan_reset"; }
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  size_t RequestedSize(const void* ptr) override;
-  size_t AllocatedSize(const void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  size_t RequestedSize(const void* ptr) const override;
+  size_t AllocatedSize(const void* ptr) const override;
+  absl::optional<AllocatorStats> GetStats() override;
   void ClearStats() override;
 
  private:

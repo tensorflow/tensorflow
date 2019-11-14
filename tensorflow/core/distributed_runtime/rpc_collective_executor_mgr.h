@@ -56,7 +56,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
   void RetireStepId(int64 graph_key, int64 step_id) override;
 
  protected:
-  CollectiveExecutor* Create(int64 step_id) override;
+  virtual CollectiveExecutor* Create(int64 step_id) override;
 
   WorkerCacheInterface* const worker_cache_;  // Not owned.
   const string task_name_;

@@ -21,12 +21,14 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class IdentityNOpTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testInt32String_6(self):
     with self.cached_session() as sess:
       [value0, value1] = sess.run(
@@ -36,6 +38,7 @@ class IdentityNOpTest(test.TestCase):
     self.assertAllEqual(
         np.array([b"a", b"b", b"C", b"d", b"E", b"f", b"g"]), value1)
 
+  @test_util.run_deprecated_v1
   def testInt32_shapes(self):
     with self.cached_session() as sess:
       inp0 = constant_op.constant([10, 20, 30, 40, 50, 60], shape=[2, 3])
@@ -50,6 +53,7 @@ class IdentityNOpTest(test.TestCase):
         np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9], [10, 11, 12], [13, 14, 15]]),
         value2)
 
+  @test_util.run_deprecated_v1
   def testString(self):
     source = [b"A", b"b", b"C", b"d", b"E", b"f"]
     with self.cached_session() as sess:

@@ -20,13 +20,9 @@ limitations under the License.
 
 namespace tensorflow {
 
-VariantTensorData::VariantTensorData() {}
-
 VariantTensorData::VariantTensorData(VariantTensorDataProto proto) {
   FromProto(std::move(proto));
 }
-
-VariantTensorData::~VariantTensorData() {}
 
 int VariantTensorData::tensors_size() const { return tensors_.size(); }
 
@@ -41,6 +37,12 @@ const std::vector<Tensor>& VariantTensorData::tensors() const {
 Tensor* VariantTensorData::add_tensors() {
   tensors_.emplace_back();
   return &(tensors_[tensors_.size() - 1]);
+}
+
+template <typename... TensorConstructorArgs>
+Tensor* VariantTensorData::add_tensor(TensorConstructorArgs&&... args) {
+  tensors_.emplace_back(std::forward<TensorConstructorArgs>(args)...);
+  return &tensors_.back();
 }
 
 void VariantTensorData::ToProto(VariantTensorDataProto* proto) const {

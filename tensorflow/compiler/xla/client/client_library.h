@@ -23,13 +23,14 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/compile_only_service.h"
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/local_service.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -37,15 +38,17 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 
 // Options to configure the local client when it is created.
 class LocalClientOptions {
  public:
-  LocalClientOptions(se::Platform* platform = nullptr,
-                     int number_of_replicas = 1,
-                     int intra_op_parallelism_threads = -1);
+  LocalClientOptions(
+      se::Platform* platform = nullptr, int number_of_replicas = 1,
+      int intra_op_parallelism_threads = -1,
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
 
   // Set the platform backing the service, or nullptr for the default platform.
   LocalClientOptions& set_platform(se::Platform* platform);
@@ -60,10 +63,17 @@ class LocalClientOptions {
   LocalClientOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
+  // Sets the allowed_devices set for selectively constructing stream executors
+  // on the platform.
+  LocalClientOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
+  const absl::optional<std::set<int>>& allowed_devices() const;
+
  private:
   se::Platform* platform_;
   int number_of_replicas_;
   int intra_op_parallelism_threads_;
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 class ClientLibrary {
@@ -73,8 +83,11 @@ class ClientLibrary {
   //
   //   platform : The platform the underlying XLA service should target. If
   //     null then default platform is used.
+  //   device_set: Set of device IDs for which the stream executor will be
+  //   created, for the given platform.
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
-      se::Platform* platform = nullptr);
+      se::Platform* platform = nullptr,
+      const absl::optional<std::set<int>>& allowed_devices = absl::nullopt);
   static StatusOr<LocalClient*> GetOrCreateLocalClient(
       const LocalClientOptions& options);
 

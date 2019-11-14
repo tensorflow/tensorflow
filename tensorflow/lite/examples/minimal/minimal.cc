@@ -37,7 +37,7 @@ using namespace tflite;
   }
 
 int main(int argc, char* argv[]) {
-  if(argc != 2) {
+  if (argc != 2) {
     fprintf(stderr, "minimal <tflite model>\n");
     return 1;
   }
@@ -50,7 +50,7 @@ int main(int argc, char* argv[]) {
 
   // Build the interpreter
   tflite::ops::builtin::BuiltinOpResolver resolver;
-  InterpreterBuilder builder(*model.get(), resolver);
+  InterpreterBuilder builder(*model, resolver);
   std::unique_ptr<Interpreter> interpreter;
   builder(&interpreter);
   TFLITE_MINIMAL_CHECK(interpreter != nullptr);

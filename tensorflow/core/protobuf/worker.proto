@@ -16,22 +16,24 @@ limitations under the License.
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "WorkerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
+
 option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "google/protobuf/any.proto";
 import "tensorflow/core/framework/cost_graph.proto";
-import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/framework/device_attributes.proto";
 import "tensorflow/core/framework/graph.proto";
+import "tensorflow/core/framework/step_stats.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
-import "tensorflow/core/lib/core/error_codes.proto";
 import "tensorflow/core/protobuf/config.proto";
 import "tensorflow/core/protobuf/debug.proto";
+import "tensorflow/core/protobuf/error_codes.proto";
 import "tensorflow/core/protobuf/named_tensor.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
@@ -41,8 +43,7 @@ import "tensorflow/core/protobuf/tensorflow_server.proto";
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-message GetStatusRequest {
-}
+message GetStatusRequest {}
 
 message GetStatusResponse {
   repeated DeviceAttributes device_attributes = 1;
@@ -66,10 +67,12 @@ message CreateWorkerSessionRequest {
   // If true, any resources such as Variables used in the session will not be
   // shared with other sessions.
   bool isolate_session_state = 3;
+
+  // The device attributes of all the devices in the cluster.
+  repeated DeviceAttributes cluster_device_attributes = 4;
 }
 
-message CreateWorkerSessionResponse {
-}
+message CreateWorkerSessionResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -84,8 +87,7 @@ message DeleteWorkerSessionRequest {
   string session_handle = 1;
 }
 
-message DeleteWorkerSessionResponse {
-}
+message DeleteWorkerSessionResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -130,6 +132,11 @@ message RegisterGraphRequest {
   // concurrently so that BufRendezvous entries will make the correct
   // values accessible.
   int64 collective_graph_key = 7;
+
+  // ConfigProto from the session in which this graph was created.
+  // Contains additional parameters beyond graph_options, including
+  // the name of the requested executor.
+  ConfigProto config_proto = 8;
 }
 
 message RegisterGraphResponse {
@@ -186,8 +193,7 @@ message CleanupAllRequest {
   repeated string container = 1;
 }
 
-message CleanupAllResponse {
-}
+message CleanupAllResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -207,7 +213,7 @@ message ExecutorOpts {
   bool record_timeline = 3;
   bool record_partition_graphs = 4;
   bool report_tensor_allocations_upon_oom = 5;
-};
+}
 
 message RunGraphRequest {
   // session_handle is the master-generated unique id for this session.
@@ -253,7 +259,17 @@ message RunGraphRequest {
   // truncate long metadata messages.
   bool store_errors_in_response_body = 9;
 
-  // Next: 11
+  // Unique identifier for this request. Every RunGraphRequest must have a
+  // unique request_id, and retried RunGraphRequests must have the same
+  // request_id. If request_id is zero, retry detection is disabled.
+  //
+  // Retried RunGraphRequests are problematic because they may issue a
+  // RecvTensor that will have no corresponding sender and will wait forever.
+  // Workers use request_ids to reject retried RunGraph requests instead of
+  // waiting forever.
+  int64 request_id = 11;
+
+  // Next: 12
 }
 
 message RunGraphResponse {
@@ -295,8 +311,7 @@ message CleanupGraphRequest {
   int64 step_id = 1;
 }
 
-message CleanupGraphResponse {
-}
+message CleanupGraphResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -332,7 +347,8 @@ message RecvTensorRequest {
 
   // Unique identifier for this request. Every RecvTensorRequest must have a
   // unique request_id, and retried RecvTensorRequests must have the same
-  // request_id. If request_id is zero, retry detection is disabled.
+  // request_id. If request_id is zero, retry detection and response cache
+  // are disabled.
   //
   // Retried RecvTensorRequests are problematic because a RecvTensor with no
   // corresponding sender will wait forever, and the tensor may have been
@@ -355,7 +371,19 @@ message RecvTensorResponse {
   // Optional additional information about how to receive the tensor,
   // e.g. in the event that `RecvTensorRequest.dma_ok` was true.
   google.protobuf.Any transport_options = 4;
+
+  // Whether the receiver should send a MarkRecvFinishedRequest to the sender
+  // to ack the message.
+  bool require_ack = 5;
 }
+
+// Message for managing the response cache maintained on the sender side.
+// Currently only used by the gRPC worker service.
+message MarkRecvFinishedRequest {
+  int64 request_id = 1;
+}
+
+message MarkRecvFinishedResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -424,8 +452,7 @@ message TracingRequest {
   TraceOpts options = 1;
 }
 
-message TracingResponse {
-}
+message TracingResponse {}
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -463,14 +490,18 @@ message RecvBufRequest {
 
   // Optional, implementation-specific data.
   google.protobuf.Any transport_options = 7;
-  // Optional, for annotating the timeline.
+  // For annotating timeline and device incarnation check.
   string src_device = 8;
+  // Optional, for annotating the timeline.
   string dst_device = 9;
 
   // Depending on the RPC system in use, it may be necessary to set this
   // id to detect resends of RPCs where the server is not aware that
   // the prior RPC failed.
   int64 request_id = 10;
+
+  // Incarnation number of the source device, used to detect worker failures.
+  uint64 src_incarnation = 11;
 }
 
 message RecvBufResponse {
@@ -484,6 +515,10 @@ message RecvBufResponse {
   google.protobuf.Any transport_options = 4;
   // Optional, for timeline.
   int64 send_start_micros = 5;
+
+  // Whether the receiver should send a MarkRecvFinishedRequest to the sender
+  // to ack the message.
+  bool require_ack = 6;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -500,6 +535,7 @@ message CompleteGroupRequest {
   int32 group_size = 2;
   string device_type = 3;
   repeated string device_name = 4;
+  int32 collective_type = 5;
 }
 
 // Gives the complete membership of the group identified by group_key.
@@ -510,6 +546,7 @@ message CompleteGroupResponse {
   int32 num_tasks = 4;  // number of distinct tasks hosting the devices
   repeated string device_name = 5;
   repeated string task_name = 6;  // task name prefixes of device_names
+  bytes communicator_key = 7;
 }
 
 // Supplies data about one collective op belonging to the instance identified
@@ -535,6 +572,7 @@ message CompleteInstanceRequest {
 message CompleteInstanceResponse {
   int32 instance_key = 1;
   int32 source_rank = 2;
+  reserved 3;
 }
 
 // Request for next agreed-upon step_id for the specified graph_keys.

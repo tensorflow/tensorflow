@@ -471,6 +471,6 @@ FunctionDef* FuseFunctions(
   return fused_function;
 }
 
-}  // end namespace fusion_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace fusion_utils
+}  // namespace grappler
+}  // namespace tensorflow

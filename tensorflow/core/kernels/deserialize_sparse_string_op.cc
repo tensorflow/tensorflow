@@ -75,7 +75,7 @@ class DeserializeSparseOp : public OpKernel {
     if (num_sparse_tensors == 1 && ndims == 1) {
       // Special case with a single sparse tensor. We can avoid data
       // motion in the Concat and Reshape.
-      const auto& serialized_sparse_t = serialized_sparse.vec<string>();
+      const auto& serialized_sparse_t = serialized_sparse.vec<tstring>();
 
       Tensor output_indices;
       Tensor output_values;
@@ -98,7 +98,7 @@ class DeserializeSparseOp : public OpKernel {
     values.reserve(num_sparse_tensors);
 
     const auto& serialized_sparse_t =
-        serialized_sparse.flat_inner_dims<string, 2>();
+        serialized_sparse.flat_inner_dims<tstring, 2>();
     for (int i = 0; i < num_sparse_tensors; ++i) {
       Tensor output_indices;
       Tensor output_values;
@@ -204,8 +204,6 @@ class DeserializeSparseOp : public OpKernel {
       target_shape.vec<int64>()(i + ndims - 1) = output.shape().data()[i + 1];
     }
 
-    Tensor output_indices;
-    Tensor output_shape;
     Reshape(context, output.indices(), input_shape, target_shape,
             0 /* output indices index */, 2 /* output shape index */);
     context->set_output(1, output.values());
@@ -285,7 +283,7 @@ class DeserializeSparseOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DeserializeSparse")
                             .Device(DEVICE_CPU)
-                            .TypeConstraint<string>("Tserialized"),
+                            .TypeConstraint<tstring>("Tserialized"),
                         DeserializeSparseOp)
 
 REGISTER_KERNEL_BUILDER(Name("DeserializeManySparse").Device(DEVICE_CPU),

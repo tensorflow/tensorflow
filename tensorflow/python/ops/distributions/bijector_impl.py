@@ -34,6 +34,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import object_identity
 
 
 __all__ = [
@@ -64,12 +65,14 @@ class _Mapping(collections.namedtuple(
   @property
   def x_key(self):
     """Returns key used for caching Y=g(X)."""
-    return (self.x,) + self._deep_tuple(tuple(sorted(self.kwargs.items())))
+    return ((object_identity.Reference(self.x),) +
+            self._deep_tuple(tuple(sorted(self.kwargs.items()))))
 
   @property
   def y_key(self):
     """Returns key used for caching X=g^{-1}(Y)."""
-    return (self.y,) + self._deep_tuple(tuple(sorted(self.kwargs.items())))
+    return ((object_identity.Reference(self.y),) +
+            self._deep_tuple(tuple(sorted(self.kwargs.items()))))
 
   def merge(self, x=None, y=None, ildj_map=None, kwargs=None, mapping=None):
     """Returns new _Mapping with args merged with self.
@@ -104,11 +107,11 @@ class _Mapping(collections.namedtuple(
 
   def _merge_dicts(self, old=None, new=None):
     """Helper to merge two dictionaries."""
-    old = dict() if old is None else old
-    new = dict() if new is None else new
+    old = {} if old is None else old
+    new = {} if new is None else new
     for k, v in six.iteritems(new):
       val = old.get(k, None)
-      if val is not None and val != v:
+      if val is not None and val is not v:
         raise ValueError("Found different value for existing key "
                          "(key:{} old_value:{} new_value:{}".format(
                              k, old[k], v))
@@ -119,7 +122,7 @@ class _Mapping(collections.namedtuple(
     """Helper to merge which handles merging one value."""
     if old is None:
       return new
-    elif new is not None and old != new:
+    elif new is not None and old is not new:
       raise ValueError("Incompatible values: %s != %s" % (old, new))
     return old
 
@@ -462,7 +465,7 @@ class Bijector(object):
 
 
   ```python
-  abs = tf.contrib.distributions.bijectors.AbsoluteValue()
+  abs = tfp.distributions.bijectors.AbsoluteValue()
 
   abs.forward(-1.)
   ==> 1.
@@ -567,6 +570,7 @@ class Bijector(object):
     self._constant_ildj_map = {}
     self._validate_args = validate_args
     self._dtype = dtype
+    # These dicts can only be accessed using _Mapping.x_key or _Mapping.y_key
     self._from_y = {}
     self._from_x = {}
     if name:

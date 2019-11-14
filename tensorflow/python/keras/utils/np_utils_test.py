@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python import keras
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 
 
@@ -29,14 +29,12 @@ class TestNPUtils(test.TestCase):
   def test_to_categorical(self):
     num_classes = 5
     shapes = [(1,), (3,), (4, 3), (5, 4, 3), (3, 1), (3, 2, 1)]
-    expected_shapes = [(1, num_classes),
-                       (3, num_classes),
-                       (4, 3, num_classes),
-                       (5, 4, 3, num_classes),
-                       (3, num_classes)]
+    expected_shapes = [(1, num_classes), (3, num_classes), (4, 3, num_classes),
+                       (5, 4, 3, num_classes), (3, num_classes),
+                       (3, 2, num_classes)]
     labels = [np.random.randint(0, num_classes, shape) for shape in shapes]
     one_hots = [
-        keras.utils.to_categorical(label, num_classes) for label in labels]
+        np_utils.to_categorical(label, num_classes) for label in labels]
     for label, one_hot, expected_shape in zip(labels,
                                               one_hots,
                                               expected_shapes):

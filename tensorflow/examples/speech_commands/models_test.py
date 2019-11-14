@@ -21,6 +21,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.examples.speech_commands import models
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -47,6 +48,7 @@ class ModelsTest(test.TestCase):
             feature_bin_count=40,
             preprocess="mfcc"))
 
+  @test_util.run_deprecated_v1
   def testCreateModelConvTraining(self):
     model_settings = self._modelSettings()
     with self.cached_session() as sess:
@@ -58,6 +60,7 @@ class ModelsTest(test.TestCase):
       self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
       self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_prob.name))
 
+  @test_util.run_deprecated_v1
   def testCreateModelConvInference(self):
     model_settings = self._modelSettings()
     with self.cached_session() as sess:
@@ -67,6 +70,7 @@ class ModelsTest(test.TestCase):
       self.assertIsNotNone(logits)
       self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
 
+  @test_util.run_deprecated_v1
   def testCreateModelLowLatencyConvTraining(self):
     model_settings = self._modelSettings()
     with self.cached_session() as sess:
@@ -78,6 +82,7 @@ class ModelsTest(test.TestCase):
       self.assertIsNotNone(sess.graph.get_tensor_by_name(logits.name))
       self.assertIsNotNone(sess.graph.get_tensor_by_name(dropout_prob.name))
 
+  @test_util.run_deprecated_v1
   def testCreateModelFullyConnectedTraining(self):
     model_settings = self._modelSettings()
     with self.cached_session() as sess:
@@ -98,6 +103,7 @@ class ModelsTest(test.TestCase):
                             "bad_architecture", True)
       self.assertTrue("not recognized" in str(e.exception))
 
+  @test_util.run_deprecated_v1
   def testCreateModelTinyConvTraining(self):
     model_settings = self._modelSettings()
     with self.cached_session() as sess:

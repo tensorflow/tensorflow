@@ -70,9 +70,11 @@ TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
   Output c = ops::Shape(s.WithOpName("c"), a);
   Output d = ops::Const(s.WithOpName("d"), 0, {1});
   Output e = ops::ReduceProd(s.WithOpName("e"), c, d);
+  int num_int32 = 4;
+  Output f = ops::Const(s.WithOpName("f"), {"test"});
 
   GrapplerItem item;
-  item.fetch = {"a", "c", "d", "e"};
+  item.fetch = {"a", "c", "d", "e", "f"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
@@ -84,19 +86,60 @@ TEST_F(PinToHostOptimizerTest, OptimizeSmallOpsToHost) {
   auto tensors = EvaluateNodes(item.graph, item.fetch);
   EXPECT_EQ(tensors_expected.size(), tensors.size());
   for (int i = 0; i < tensors.size(); ++i) {
-    test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+    if (i < num_int32) {
+      test::ExpectTensorEqual<int32>(tensors[i], tensors_expected[i]);
+    } else {
+      test::ExpectTensorEqual<tstring>(tensors[i], tensors_expected[i]);
+    }
   }
 
   int found = 0;
   for (const NodeDef& node : output.node()) {
     if (node.name() == "a" || node.name() == "c") {
       EXPECT_TRUE(node.device().empty());
-    } else if (node.name() == "d" || node.name() == "e") {
+    } else if (node.name() == "d" || node.name() == "e" || node.name() == "f") {
       EXPECT_EQ(node.device(), "/device:CPU:0");
     }
     ++found;
   }
-  EXPECT_EQ(found, 4);
+  EXPECT_EQ(found, 5);
+}
+
+TEST_F(PinToHostOptimizerTest, OptimizeSmallFloatOpsToHost) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {1024, 1024});
+  Output input_min = ops::Const(s.WithOpName("input_min"), 0.0f);
+  Output input_max = ops::Const(s.WithOpName("input_max"), 6.0f);
+  Output b =
+      ops::QuantizeAndDequantizeV2(s.WithOpName("b"), a, input_min, input_max);
+
+  GrapplerItem item;
+  item.fetch = {"b"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+
+  GraphDef output;
+  PinToHostOptimizer optimizer(RewriterConfig::ON);
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  auto tensors = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(tensors_expected.size(), tensors.size());
+  for (int i = 0; i < tensors.size(); ++i) {
+    test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
+  }
+
+  // QuantizeAndDequantizeV2 requires input_min and input_max on CPU, so
+  // pin_to_host_optimizer should pin them to host.
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "input_min" || node.name() == "input_max") {
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+      EXPECT_EQ(node.device(), "/device:CPU:0");
+#else
+      EXPECT_TRUE(node.device().empty());
+#endif
+    }
+  }
 }
 
 TEST_F(PinToHostOptimizerTest, TopologicalSort) {
@@ -197,7 +240,7 @@ TEST_F(PinToHostOptimizerTest, Identity) {
       // If CUDA, then there is a GPU kernel registration that is pinned to Host
       // memory. Consequently, `b` will be mapped to Host correct if there is
       // a GPU kernel registered.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
       EXPECT_EQ(node.device(), "/device:CPU:0");
 #else
       EXPECT_TRUE(node.device().empty());

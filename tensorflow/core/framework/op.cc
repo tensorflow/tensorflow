@@ -60,6 +60,21 @@ void OpRegistry::Register(const OpRegistrationDataFactory& op_data_factory) {
 
 Status OpRegistry::LookUp(const string& op_type_name,
                           const OpRegistrationData** op_reg_data) const {
+  {
+    tf_shared_lock l(mu_);
+    if (initialized_) {
+      if (const OpRegistrationData* res =
+              gtl::FindWithDefault(registry_, op_type_name, nullptr)) {
+        *op_reg_data = res;
+        return Status::OK();
+      }
+    }
+  }
+  return LookUpSlow(op_type_name, op_reg_data);
+}
+
+Status OpRegistry::LookUpSlow(const string& op_type_name,
+                              const OpRegistrationData** op_reg_data) const {
   *op_reg_data = nullptr;
   const OpRegistrationData* res = nullptr;
 
@@ -147,7 +162,7 @@ void OpRegistry::Export(bool include_internal, OpList* ops) const {
   out->Reserve(sorted.size());
 
   for (const auto& item : sorted) {
-    if (include_internal || !str_util::StartsWith(item.first, "_")) {
+    if (include_internal || !absl::StartsWith(item.first, "_")) {
       *out->Add() = item.second->op_def;
     }
   }

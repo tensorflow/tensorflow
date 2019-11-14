@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DenseToDenseSetOperation"
+  endpoint {
+    name: "sparse.DenseToDenseSetOperation"
+  }
+}

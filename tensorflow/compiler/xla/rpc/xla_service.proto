@@ -43,7 +43,6 @@ limitations under the License.
 syntax = "proto3";
 
 import "tensorflow/compiler/xla/xla.proto";
-import "tensorflow/compiler/xla/xla_data.proto";
 
 package xla;
 

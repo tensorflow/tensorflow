@@ -18,8 +18,8 @@ package org.tensorflow.op;
 /**
  * A marker interface for all operation wrappers.
  *
- * <p>Operation wrappers provide strongly typed interfaces for building operations and linking them
- * into a graph without the use of literals and indexes required by the core classes.
+ * <p>Operation wrappers provide strongly typed interfaces for building and execution operations
+ * without the use of literals and indexes, as required in the core classes.
  *
  * <p>This interface allows keeping references to any operation wrapper using a common type.
  *

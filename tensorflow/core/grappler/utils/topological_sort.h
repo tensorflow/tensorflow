@@ -16,22 +16,40 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
 #define TENSORFLOW_CORE_GRAPPLER_UTILS_TOPOLOGICAL_SORT_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace grappler {
 
-// Compute a topological ordering for the graph nodes.
-Status ComputeTopologicalOrder(
-    const GraphDef& graph, std::unordered_map<const NodeDef*, int>* topo_order,
-    const std::vector<std::pair<const NodeDef*, const NodeDef*>>*
-        extra_dependencies);
+// TODO(ezhulenev, b/121379902): We should be consistent with GraphTopologyView
+// and use `GraphView::Edge` to pass extra dependencies.
+struct TopologicalDependency {
+  TopologicalDependency(const NodeDef* from, const NodeDef* to)
+      : from(from), to(to) {}
+  const NodeDef* from;
+  const NodeDef* to;
+};
 
-// Sort a graph in topological order.
+// Computes a topological ordering for the graph nodes and outputs nodes in the
+// topological order to the `topo_order` output argument.
+//
+// It's possible to pass additional edges that do not exists in a graph, but
+// must be respected when computing graph topological order. Example: Tensorflow
+// runtime allows concurrent execution of dequeue/enqueue ops from the same
+// queue resource, but we might want to enforce ordering between them.
+Status ComputeTopologicalOrder(
+    const GraphDef& graph,
+    absl::Span<const TopologicalDependency> extra_dependencies,
+    std::vector<const NodeDef*>* topo_order);
+Status ComputeTopologicalOrder(const GraphDef& graph,
+                               std::vector<const NodeDef*>* topo_order);
+
+// Sorts a graph in topological order.
 Status TopologicalSort(GraphDef* graph);
 
-// Sort a graph in topological order and reverse it.
+// Sorts a graph in topological order and reverse it.
 Status ReversedTopologicalSort(GraphDef* graph);
 
 }  // namespace grappler

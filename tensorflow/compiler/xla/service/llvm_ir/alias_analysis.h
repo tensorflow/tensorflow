@@ -76,14 +76,13 @@ class AliasAnalysis {
   // A map from a buffer slice to metadata corresponding to its alias.scope
   // metadata.  The index kParameterAliasSet is used to hold aliasing
   // information for parameters.
-  absl::flat_hash_map<BufferAllocation::Slice, llvm::MDNode*,
-                      BufferAllocation::Slice::Hasher>
+  absl::flat_hash_map<BufferAllocation::Slice, llvm::MDNode*>
       alias_scope_metadata_;
 
-  // A map from a buffer slice to metadata corresponding to its noalias
-  // metadata.
-  absl::flat_hash_map<BufferAllocation::Slice, llvm::MDNode*,
-                      BufferAllocation::Slice::Hasher>
+  // A map from a buffer slice and producer to metadata corresponding to its
+  // noalias metadata.
+  absl::flat_hash_map<std::pair<BufferAllocation::Slice, const HloInstruction*>,
+                      llvm::MDNode*>
       noalias_metadata_;
 };
 

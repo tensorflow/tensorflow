@@ -57,7 +57,7 @@ struct MetadataResult {
   std::vector<string> header_variable_decls;
 
   // program_shape_access_shim is a C++ expression that constructs the
-  // xla::ProgramShape instance for the CompileResult passed to
+  // xla::ProgramShapeProto instance for the CompileResult passed to
   // GenerateMetadata.
   string program_shape_access_shim;
 

@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
+#include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
@@ -64,6 +65,24 @@ Status ReadProtoFile(const string& fname, protobuf::Message* proto) {
 }
 
 Status Main(const MainFlags& flags) {
+  // Initialize all LLVM targets so we can cross compile.
+  LLVMInitializeAArch64Target();
+  LLVMInitializeAArch64TargetInfo();
+  LLVMInitializeAArch64TargetMC();
+  LLVMInitializeAArch64AsmPrinter();
+  LLVMInitializeARMTarget();
+  LLVMInitializeARMTargetInfo();
+  LLVMInitializeARMTargetMC();
+  LLVMInitializeARMAsmPrinter();
+  LLVMInitializePowerPCTarget();
+  LLVMInitializePowerPCTargetInfo();
+  LLVMInitializePowerPCTargetMC();
+  LLVMInitializePowerPCAsmPrinter();
+  LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
+  LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmPrinter();
+
   // Process config.
   tf2xla::Config config;
   if (flags.config.empty()) {
@@ -136,6 +155,10 @@ int main(int argc, char** argv) {
 
   tensorflow::string usage = tensorflow::tfcompile::kUsageHeader;
   usage += tensorflow::Flags::Usage(argv[0], flag_list);
+  if (argc > 1 && absl::string_view(argv[1]) == "--help") {
+    std::cerr << usage << "\n";
+    return 0;
+  }
   bool parsed_flags_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
   QCHECK(parsed_flags_ok) << "\n" << usage;
 

@@ -250,7 +250,8 @@ class AudioMicrofrontendOp : public OpKernel {
 
       if (output.values != nullptr) {
         frame_buffer[frame_index].reserve(output.size);
-        for (int i = 0; i < output.size; ++i) {
+        int i;
+        for (i = 0; i < output.size; ++i) {
           frame_buffer[frame_index].push_back(static_cast<T>(output.values[i]) /
                                               out_scale_);
         }
@@ -261,9 +262,10 @@ class AudioMicrofrontendOp : public OpKernel {
 
     int index = 0;
     std::vector<T> pad(config_.filterbank.num_channels, 0);
-    for (int anchor = 0; anchor < frame_buffer.size();
-         anchor += frame_stride_) {
-      for (int frame = anchor - left_context_; frame <= anchor + right_context_;
+    int anchor;
+    for (anchor = 0; anchor < frame_buffer.size(); anchor += frame_stride_) {
+      int frame;
+      for (frame = anchor - left_context_; frame <= anchor + right_context_;
            ++frame) {
         std::vector<T>* feature;
         if (zero_padding_ && (frame < 0 || frame >= frame_buffer.size())) {

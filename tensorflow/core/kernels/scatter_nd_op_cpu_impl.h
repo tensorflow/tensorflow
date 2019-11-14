@@ -24,11 +24,11 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -160,7 +160,7 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB);
 
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_ND_UPDATE);
-REGISTER_SCATTER_ND_INDEX(string, scatter_nd_op::UpdateOp::ADD);
+REGISTER_SCATTER_ND_INDEX(tstring, scatter_nd_op::UpdateOp::ADD);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
 TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 #undef REGISTER_SCATTER_ND_MATH

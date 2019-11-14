@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #ifndef TF_LITE_STATIC_MEMORY
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #endif  // TF_LITE_STATIC_MEMORY
@@ -25,13 +24,14 @@ int TfLiteIntArrayGetSizeInBytes(int size) {
   return sizeof(dummy) + sizeof(dummy.data[0]) * size;
 }
 
-int TfLiteIntArrayEqual(TfLiteIntArray* a, TfLiteIntArray* b) {
+int TfLiteIntArrayEqual(const TfLiteIntArray* a, const TfLiteIntArray* b) {
   if (a == b) return 1;
   if (a == NULL || b == NULL) return 0;
   return TfLiteIntArrayEqualsArray(a, b->size, b->data);
 }
 
-int TfLiteIntArrayEqualsArray(TfLiteIntArray* a, int b_size, int b_data[]) {
+int TfLiteIntArrayEqualsArray(const TfLiteIntArray* a, int b_size,
+                              const int b_data[]) {
   if (a == NULL) return (b_size == 0);
   if (a->size != b_size) return 0;
   int i = 0;
@@ -49,17 +49,7 @@ TfLiteIntArray* TfLiteIntArrayCreate(int size) {
   return ret;
 }
 
-void TfLiteIntArrayPrint(const char* s, TfLiteIntArray* a) {
-  printf("%s: length=%d [", s, a->size);
-  if (a->size) printf("%d", a->data[0]);
-  int i = 1;
-  for (; i < a->size; i++) {
-    printf(" %d", a->data[i]);
-  }
-  printf("]\n");
-}
-
-TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src) {
+TfLiteIntArray* TfLiteIntArrayCopy(const TfLiteIntArray* src) {
   if (!src) return NULL;
   TfLiteIntArray* ret = TfLiteIntArrayCreate(src->size);
   if (ret) {
@@ -70,17 +60,55 @@ TfLiteIntArray* TfLiteIntArrayCopy(TfLiteIntArray* src) {
 
 void TfLiteIntArrayFree(TfLiteIntArray* a) { free(a); }
 
+#endif  // TF_LITE_STATIC_MEMORY
+
+int TfLiteFloatArrayGetSizeInBytes(int size) {
+  static TfLiteFloatArray dummy;
+  return sizeof(dummy) + sizeof(dummy.data[0]) * size;
+}
+
+#ifndef TF_LITE_STATIC_MEMORY
+
+TfLiteFloatArray* TfLiteFloatArrayCreate(int size) {
+  TfLiteFloatArray* ret =
+      (TfLiteFloatArray*)malloc(TfLiteFloatArrayGetSizeInBytes(size));
+  ret->size = size;
+  return ret;
+}
+
+void TfLiteFloatArrayFree(TfLiteFloatArray* a) { free(a); }
+
 void TfLiteTensorDataFree(TfLiteTensor* t) {
-  if (t->allocation_type == kTfLiteDynamic && t->data.raw) {
+  if (t->allocation_type == kTfLiteDynamic) {
     free(t->data.raw);
   }
   t->data.raw = NULL;
+}
+
+void TfLiteQuantizationFree(TfLiteQuantization* quantization) {
+  if (quantization->type == kTfLiteAffineQuantization) {
+    TfLiteAffineQuantization* q_params =
+        (TfLiteAffineQuantization*)(quantization->params);
+    if (q_params->scale) {
+      TfLiteFloatArrayFree(q_params->scale);
+      q_params->scale = NULL;
+    }
+    if (q_params->zero_point) {
+      TfLiteIntArrayFree(q_params->zero_point);
+      q_params->zero_point = NULL;
+    }
+    free(q_params);
+  }
+  quantization->params = NULL;
+  quantization->type = kTfLiteNoQuantization;
 }
 
 void TfLiteTensorFree(TfLiteTensor* t) {
   TfLiteTensorDataFree(t);
   if (t->dims) TfLiteIntArrayFree(t->dims);
   t->dims = NULL;
+
+  TfLiteQuantizationFree(&t->quantization);
 }
 
 void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
@@ -98,6 +126,9 @@ void TfLiteTensorReset(TfLiteType type, const char* name, TfLiteIntArray* dims,
   tensor->allocation_type = allocation_type;
   tensor->allocation = allocation;
   tensor->is_variable = is_variable;
+
+  tensor->quantization.type = kTfLiteNoQuantization;
+  tensor->quantization.params = NULL;
 }
 
 void TfLiteTensorRealloc(size_t num_bytes, TfLiteTensor* tensor) {
@@ -135,7 +166,20 @@ const char* TfLiteTypeGetName(TfLiteType type) {
       return "COMPLEX64";
     case kTfLiteString:
       return "STRING";
+    case kTfLiteFloat16:
+      return "FLOAT16";
   }
   return "Unknown type";
 }
 
+TfLiteDelegate TfLiteDelegateCreate() {
+  TfLiteDelegate d = {
+      .data_ = NULL,
+      .Prepare = NULL,
+      .CopyFromBufferHandle = NULL,
+      .CopyToBufferHandle = NULL,
+      .FreeBufferHandle = NULL,
+      .flags = kTfLiteDelegateFlagsNone,
+  };
+  return d;
+}

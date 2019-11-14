@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ThreadUnsafeUnigramCandidateSampler"
+  endpoint {
+    name: "random.ThreadUnsafeUnigramCandidateSampler"
+  }
+}

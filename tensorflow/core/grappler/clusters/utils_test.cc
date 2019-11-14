@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
@@ -39,6 +40,18 @@ TEST(UtilsTest, GetLocalGPUInfo) {
   properties = GetLocalGPUInfo(PlatformGpuId(0));
   EXPECT_EQ("GPU", properties.type());
   EXPECT_EQ("NVIDIA", properties.vendor());
+#elif TENSORFLOW_USE_ROCM
+  LOG(INFO) << "ROCm is enabled.";
+  DeviceProperties properties;
+
+  // Invalid platform GPU ID.
+  properties = GetLocalGPUInfo(PlatformGpuId(100));
+  EXPECT_EQ("UNKNOWN", properties.type());
+
+  // Succeed when a valid platform GPU id was inserted.
+  properties = GetLocalGPUInfo(PlatformGpuId(0));
+  EXPECT_EQ("GPU", properties.type());
+  EXPECT_EQ("Advanced Micro Devices, Inc", properties.vendor());
 #else
   LOG(INFO) << "CUDA is not enabled.";
   DeviceProperties properties;
@@ -72,6 +85,8 @@ TEST(UtilsTest, GetDeviceInfo) {
   EXPECT_EQ("GPU", properties.type());
 #if GOOGLE_CUDA
   EXPECT_EQ("NVIDIA", properties.vendor());
+#elif TENSORFLOW_USE_ROCM
+  EXPECT_EQ("Advanced Micro Devices, Inc", properties.vendor());
 #endif
 
   // TF to platform GPU id mapping entry doesn't exist.
@@ -80,18 +95,24 @@ TEST(UtilsTest, GetDeviceInfo) {
   properties = GetDeviceInfo(device);
   EXPECT_EQ("UNKNOWN", properties.type());
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
   // Invalid platform GPU id.
-  GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(0), PlatformGpuId(100));
+  TF_ASSERT_OK(
+      GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(0), PlatformGpuId(100)));
   properties = GetDeviceInfo(device);
   EXPECT_EQ("UNKNOWN", properties.type());
 
   // Valid platform GPU id.
-  GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(1), PlatformGpuId(0));
+  TF_ASSERT_OK(
+      GpuIdManager::InsertTfPlatformGpuIdPair(TfGpuId(1), PlatformGpuId(0)));
   device.id = 1;
   properties = GetDeviceInfo(device);
   EXPECT_EQ("GPU", properties.type());
+#if GOOGLE_CUDA
   EXPECT_EQ("NVIDIA", properties.vendor());
+#elif TENSORFLOW_USE_ROCM
+  EXPECT_EQ("Advanced Micro Devices, Inc", properties.vendor());
+#endif
 #endif
 }
 

@@ -25,6 +25,11 @@ using ::testing::ElementsAreArray;
 
 constexpr int kAxisIsATensor = -1000;
 
+enum class TestType {
+  CONST = 0,
+  DYNAMIC = 1,
+};
+
 class SplitOpModel : public SingleOpModel {
  public:
   SplitOpModel(const TensorData& input, int num_splits,
@@ -47,13 +52,15 @@ class SplitOpModel : public SingleOpModel {
     }
   }
 
-  void SetInput(std::initializer_list<float> data) {
+  template <typename T>
+  void SetInput(std::initializer_list<T> data) {
     PopulateTensor(input_, data);
   }
   void SetAxis(int axis) { PopulateTensor(axis_, {axis}); }
 
-  std::vector<float> GetOutput(int i) {
-    return ExtractVector<float>(outputs_[i]);
+  template <typename T>
+  std::vector<T> GetOutput(int i) {
+    return ExtractVector<T>(outputs_[i]);
   }
   std::vector<int> GetOutputShape(int i) { return GetTensorShape(outputs_[i]); }
 
@@ -63,85 +70,164 @@ class SplitOpModel : public SingleOpModel {
   std::vector<int> outputs_;
 };
 
-using TensorValues = std::initializer_list<float>;
-
-void Check(int axis, int num_splits, std::initializer_list<int> input_shape,
+template <typename T>
+void Check(TestType test_type, int axis, int num_splits,
+           std::initializer_list<int> input_shape,
            std::initializer_list<int> output_shape,
-           const TensorValues& input_data,
-           const std::vector<TensorValues>& output_data) {
+           const std::initializer_list<T>& input_data,
+           const std::vector<std::initializer_list<T>>& output_data,
+           const TensorType& type = TensorType_FLOAT32) {
   auto debug = [&](int i) {
     std::stringstream ss;
     ss << "for output tensor " << i << " axis=" << axis
        << " and num_splits=" << num_splits;
     return ss.str();
   };
-  SplitOpModel m({TensorType_FLOAT32, input_shape}, num_splits);
-  m.SetInput(input_data);
-  m.SetAxis(axis);
-  m.Invoke();
-  for (int i = 0; i < num_splits; ++i) {
-    EXPECT_THAT(m.GetOutput(i), ElementsAreArray(output_data[i])) << debug(i);
-    EXPECT_THAT(m.GetOutputShape(i), ElementsAreArray(output_shape))
-        << debug(i);
+  if (test_type == TestType::DYNAMIC) {
+    SplitOpModel m({type, input_shape}, num_splits);
+    m.SetInput(input_data);
+    m.SetAxis(axis);
+    m.Invoke();
+    for (int i = 0; i < num_splits; ++i) {
+      EXPECT_THAT(m.GetOutput<T>(i), ElementsAreArray(output_data[i]))
+          << debug(i);
+      EXPECT_THAT(m.GetOutputShape(i), ElementsAreArray(output_shape))
+          << debug(i);
+    }
+  } else {
+    SplitOpModel const_m({type, input_shape}, num_splits, axis);
+    const_m.SetInput(input_data);
+    const_m.Invoke();
+    for (int i = 0; i < num_splits; ++i) {
+      EXPECT_THAT(const_m.GetOutput<T>(i), ElementsAreArray(output_data[i]))
+          << debug(i);
+      EXPECT_THAT(const_m.GetOutputShape(i), ElementsAreArray(output_shape))
+          << debug(i);
+    }
   }
-
-  SplitOpModel const_m({TensorType_FLOAT32, input_shape}, num_splits, axis);
-  const_m.SetInput(input_data);
-  const_m.Invoke();
-  for (int i = 0; i < num_splits; ++i) {
-    EXPECT_THAT(const_m.GetOutput(i), ElementsAreArray(output_data[i]))
-        << debug(i);
-    EXPECT_THAT(const_m.GetOutputShape(i), ElementsAreArray(output_shape))
-        << debug(i);
-  }
 }
 
-TEST(SplitOpTest, FourDimensional) {
-  Check(/*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {
-            {1, 2, 3, 4, 5, 6, 7, 8},
-            {9, 10, 11, 12, 13, 14, 15, 16},
-        });
-  Check(/*axis=*/1, /*num_splits=*/2, {2, 2, 2, 2}, {2, 1, 2, 2},
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {
-            {1, 2, 3, 4, 9, 10, 11, 12},
-            {5, 6, 7, 8, 13, 14, 15, 16},
-        });
-  Check(/*axis=*/2, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 1, 2},
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {
-            {1, 2, 5, 6, 9, 10, 13, 14},
-            {3, 4, 7, 8, 11, 12, 15, 16},
-        });
-  Check(/*axis=*/3, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 2, 1},
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {
-            {1, 3, 5, 7, 9, 11, 13, 15},
-            {2, 4, 6, 8, 10, 12, 14, 16},
-        });
+class SplitOpTest : public ::testing::TestWithParam<TestType> {};
+
+TEST_P(SplitOpTest, FourDimensional) {
+  Check<float>(/*axis_as_tensor*/ GetParam(),
+               /*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
+               {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+               {
+                   {1, 2, 3, 4, 5, 6, 7, 8},
+                   {9, 10, 11, 12, 13, 14, 15, 16},
+               });
+  Check<float>(/*axis_as_tensor*/ GetParam(),
+               /*axis=*/1, /*num_splits=*/2, {2, 2, 2, 2}, {2, 1, 2, 2},
+               {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+               {
+                   {1, 2, 3, 4, 9, 10, 11, 12},
+                   {5, 6, 7, 8, 13, 14, 15, 16},
+               });
+  Check<float>(/*axis_as_tensor*/ GetParam(),
+               /*axis=*/2, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 1, 2},
+               {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+               {
+                   {1, 2, 5, 6, 9, 10, 13, 14},
+                   {3, 4, 7, 8, 11, 12, 15, 16},
+               });
+  Check<float>(/*axis_as_tensor*/ GetParam(),
+               /*axis=*/3, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 2, 1},
+               {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+               {
+                   {1, 3, 5, 7, 9, 11, 13, 15},
+                   {2, 4, 6, 8, 10, 12, 14, 16},
+               });
 }
 
-TEST(SplitOpTest, OneDimensional) {
-  Check(/*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
-        {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
+TEST_P(SplitOpTest, FourDimensionalInt8) {
+  Check<int8_t>(/*axis_as_tensor*/ GetParam(),
+                /*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
+                {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                {
+                    {1, 2, 3, 4, 5, 6, 7, 8},
+                    {9, 10, 11, 12, 13, 14, 15, 16},
+                },
+                TensorType_INT8);
+  Check<int8_t>(/*axis_as_tensor*/ GetParam(),
+                /*axis=*/1, /*num_splits=*/2, {2, 2, 2, 2}, {2, 1, 2, 2},
+                {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                {
+                    {1, 2, 3, 4, 9, 10, 11, 12},
+                    {5, 6, 7, 8, 13, 14, 15, 16},
+                },
+                TensorType_INT8);
+  Check<int8_t>(/*axis_as_tensor*/ GetParam(),
+                /*axis=*/2, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 1, 2},
+                {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                {
+                    {1, 2, 5, 6, 9, 10, 13, 14},
+                    {3, 4, 7, 8, 11, 12, 15, 16},
+                },
+                TensorType_INT8);
+  Check<int8_t>(/*axis_as_tensor*/ GetParam(),
+                /*axis=*/3, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 2, 1},
+                {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                {
+                    {1, 3, 5, 7, 9, 11, 13, 15},
+                    {2, 4, 6, 8, 10, 12, 14, 16},
+                },
+                TensorType_INT8);
 }
 
-TEST(SplitOpTest, NegativeAxis) {
-  Check(/*axis=*/-4, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
-        {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
-        {
-            {1, 2, 3, 4, 5, 6, 7, 8},
-            {9, 10, 11, 12, 13, 14, 15, 16},
-        });
+TEST_P(SplitOpTest, FourDimensionalInt32) {
+  Check<int32_t>(/*axis_as_tensor*/ GetParam(),
+                 /*axis=*/0, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                 {
+                     {1, 2, 3, 4, 5, 6, 7, 8},
+                     {9, 10, 11, 12, 13, 14, 15, 16},
+                 },
+                 TensorType_INT32);
+  Check<int32_t>(/*axis_as_tensor*/ GetParam(),
+                 /*axis=*/1, /*num_splits=*/2, {2, 2, 2, 2}, {2, 1, 2, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                 {
+                     {1, 2, 3, 4, 9, 10, 11, 12},
+                     {5, 6, 7, 8, 13, 14, 15, 16},
+                 },
+                 TensorType_INT32);
+  Check<int32_t>(/*axis_as_tensor*/ GetParam(),
+                 /*axis=*/2, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 1, 2},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                 {
+                     {1, 2, 5, 6, 9, 10, 13, 14},
+                     {3, 4, 7, 8, 11, 12, 15, 16},
+                 },
+                 TensorType_INT32);
+  Check<int32_t>(/*axis_as_tensor*/ GetParam(),
+                 /*axis=*/3, /*num_splits=*/2, {2, 2, 2, 2}, {2, 2, 2, 1},
+                 {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+                 {
+                     {1, 3, 5, 7, 9, 11, 13, 15},
+                     {2, 4, 6, 8, 10, 12, 14, 16},
+                 },
+                 TensorType_INT32);
 }
+
+TEST_P(SplitOpTest, OneDimensional) {
+  Check<float>(/*axis_as_tensor*/ GetParam(),
+               /*axis=*/0, /*num_splits=*/8, {8}, {1}, {1, 2, 3, 4, 5, 6, 7, 8},
+               {{1}, {2}, {3}, {4}, {5}, {6}, {7}, {8}});
+}
+
+TEST_P(SplitOpTest, NegativeAxis) {
+  Check<float>(/*axis_as_tensor*/ GetParam(),
+               /*axis=*/-4, /*num_splits=*/2, {2, 2, 2, 2}, {1, 2, 2, 2},
+               {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16},
+               {
+                   {1, 2, 3, 4, 5, 6, 7, 8},
+                   {9, 10, 11, 12, 13, 14, 15, 16},
+               });
+}
+
+INSTANTIATE_TEST_SUITE_P(SplitOpTest, SplitOpTest,
+                         testing::Values(TestType::CONST, TestType::DYNAMIC));
 
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

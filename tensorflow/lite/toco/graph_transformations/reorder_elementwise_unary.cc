@@ -30,12 +30,14 @@ namespace {
 bool IsElementwiseOperator(OperatorType optype) {
   switch (optype) {
     case OperatorType::kCast:
+    case OperatorType::kCeil:
     case OperatorType::kExp:
     case OperatorType::kFloor:
     case OperatorType::kNeg:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
+    case OperatorType::kRound:
     case OperatorType::kTanh:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:
@@ -120,7 +122,7 @@ bool IsMoveOperator(OperatorType optype) {
 
     element_op->inputs[0] = input_name;
     element_op->outputs[0] = new_intermediate_name;
-    model->EraseArray(intermediate_name);
+    DeleteArrayIfUnused(intermediate_name, model);
     move_op->inputs[0] = new_intermediate_name;
     move_op->outputs[0] = output_name;
   } else {

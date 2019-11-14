@@ -21,11 +21,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/array4d.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -176,6 +179,55 @@ TEST_F(ConstantsTest, Token) {
   // TODO(b/80000000): tokens cannot be returned from computations.
   Tuple(&builder, {});
   TF_ASSERT_OK(Execute(&builder, {}).status());
+}
+
+TEST_F(ConstantsTest, FullLike) {
+  XlaBuilder b(TestName());
+  auto val1 = Iota(&b, F32, 3);
+  auto val2 = FullLike(val1, 10);
+  val1 + val2;
+  ComputeAndCompareR1<float>(&b, {10, 11, 12}, {}, error_spec_);
+}
+
+TEST_F(ConstantsTest, IllegalFullLikeOnTuple) {
+  XlaBuilder b(TestName());
+  auto tuple = Tuple(&b, {Iota(&b, F32, 3), Iota(&b, F32, 1)});
+  FullLike(tuple, 10);  // Illegal; can't do FullLike on a tuple.
+  EXPECT_FALSE(b.Build().ok());
+}
+
+TEST_F(ConstantsTest, FullLikeScalar) {
+  XlaBuilder b(TestName());
+  auto scalar1 = ConstantR0WithType(&b, F32, 1);
+  auto scalar2 = FullLike(scalar1, 2);
+  scalar1 - scalar2;
+  ComputeAndCompareR0<float>(&b, -1, {}, error_spec_);
+}
+
+class ConstantsHloTest : public HloTestBase {};
+
+// TODO(b/121147351): Fails on GPU. Not clear if this is expected behavior.
+XLA_TEST_F(ConstantsHloTest, DISABLED_ON_GPU(BitcastOfConstant)) {
+  const char* testcase = R"(
+    HloModule module, is_scheduled=true
+
+    func {
+      lhs = s32[] parameter(0)
+      rhs = s32[] parameter(1)
+      ROOT mul = s32[] add(lhs, rhs)
+    }
+
+    ENTRY test {
+      constant.0 = s32[1]{0} constant({0})
+      parameter.0 = s32[] parameter(0)
+      constant-as-scalar = s32[] bitcast(constant.0)
+      ROOT result = s32[] call(parameter.0, constant-as-scalar), to_apply=func
+    }
+  )";
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto param = LiteralUtil::CreateR0<int32>(1);
+  auto result = ExecuteNoHloPasses(std::move(module), {&param});
+  EXPECT_TRUE(LiteralTestUtil::Equal(param, result));
 }
 
 }  // namespace

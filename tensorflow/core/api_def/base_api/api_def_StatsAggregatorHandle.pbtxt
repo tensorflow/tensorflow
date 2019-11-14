@@ -1,4 +1,5 @@
 op {
   graph_op_name: "StatsAggregatorHandle"
+  visibility: HIDDEN
   summary: "Creates a statistics manager resource."
 }

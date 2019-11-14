@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/human_readable_profile_builder.h"
 
@@ -34,11 +35,10 @@ string PrintHloProfile(const HloProfilePrinterData& hlo_profile_printer_data,
   for (const HloComputationInfo& computation_info :
        hlo_profile_printer_data.computation_infos()) {
     const auto& instruction_infos = computation_info.instruction_infos();
-    bool any_instruction_profiled =
-        std::any_of(instruction_infos.begin(), instruction_infos.end(),
-                    [&](const HloInstructionInfo& instruction_info) {
-                      return counters[instruction_info.profile_index()] != 0;
-                    });
+    bool any_instruction_profiled = absl::c_any_of(
+        instruction_infos, [&](const HloInstructionInfo& instruction_info) {
+          return counters[instruction_info.profile_index()] != 0;
+        });
 
     if (!any_instruction_profiled) {
       continue;

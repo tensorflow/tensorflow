@@ -1,21 +1,18 @@
-package(
-    # To suppress build cleaner error about inclusion of schema_generate.h.
-    features = ["-layering_check"],
-)
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+)
+
+package(
+    # To suppress build cleaner error about inclusion of schema_generate.h.
+    features = ["-layering_check"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
     name = "operator",
     srcs = [
         "operator.cc",
-        "whitelisted_flex_ops.cc",
-        "whitelisted_flex_ops.h",
     ],
     hdrs = [
         "builtin_operator.h",
@@ -23,14 +20,19 @@ cc_library(
         "operator.h",
         "simple_operator.h",
     ],
+    visibility = [
+        "//tensorflow/lite/toco:__subpackages__",
+    ],
     deps = [
         ":types",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:ptr_util",
+        "//tensorflow/lite/delegates/flex:whitelisted_flex_ops_lib",
         "//tensorflow/lite/schema:schema_fbs",
         "//tensorflow/lite/toco:graph_transformations",
         "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/tools/versioning:op_version",
         "@com_google_absl//absl/memory",
         "@flatbuffers",
     ],
@@ -41,7 +43,6 @@ tf_cc_test(
     srcs = [
         "operator_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":operator",
         "//tensorflow/core:ops",
@@ -72,7 +73,6 @@ tf_cc_test(
     srcs = [
         "types_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":types",
         "//tensorflow/core:ops",
@@ -90,6 +90,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":op_version",
         ":operator",
         ":types",
         "//tensorflow/lite:schema_fbs_version",
@@ -107,12 +108,13 @@ tf_cc_test(
     srcs = [
         "export_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":export",
+        ":operator",
         "//tensorflow/core:ops",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
+        "@flatbuffers",
     ],
 )
 
@@ -137,12 +139,33 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "op_version",
+    srcs = ["op_version.cc"],
+    hdrs = ["op_version.h"],
+    deps = [
+        ":operator",
+        "//tensorflow/lite/toco:model",
+        "//tensorflow/lite/toco:tooling_util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "op_version_test",
+    srcs = ["op_version_test.cc"],
+    deps = [
+        ":op_version",
+        "//tensorflow/lite/toco:model",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "import_test",
     srcs = [
         "import_test.cc",
     ],
-    tags = ["no_oss"],
     deps = [
         ":import",
         "//tensorflow/core:ops",

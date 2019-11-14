@@ -22,6 +22,7 @@ from tensorflow.python.data.util import convert
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -30,47 +31,53 @@ class ConvertTest(test.TestCase):
 
   def testInteger(self):
     resp = convert.optional_param_to_tensor("foo", 3)
-    with self.cached_session() as sess:
-      self.assertEqual(3, self.evaluate(resp))
+    self.assertEqual(3, self.evaluate(resp))
 
   def testIntegerDefault(self):
     resp = convert.optional_param_to_tensor("foo", None)
-    with self.cached_session() as sess:
-      self.assertEqual(0, self.evaluate(resp))
+    self.assertEqual(0, self.evaluate(resp))
 
   def testStringDefault(self):
     resp = convert.optional_param_to_tensor("bar", None, "default",
                                             dtypes.string)
-    with self.cached_session() as sess:
-      self.assertEqual(compat.as_bytes("default"), self.evaluate(resp))
+    self.assertEqual(compat.as_bytes("default"), self.evaluate(resp))
 
   def testString(self):
     resp = convert.optional_param_to_tensor("bar", "value", "default",
                                             dtypes.string)
-    with self.cached_session() as sess:
-      self.assertEqual(compat.as_bytes("value"), self.evaluate(resp))
+    self.assertEqual(compat.as_bytes("value"), self.evaluate(resp))
 
   def testPartialShapeToTensorKnownDimension(self):
-    with self.cached_session() as sess:
-      self.assertAllEqual([1], sess.run(convert.partial_shape_to_tensor(
-          tensor_shape.TensorShape([1]))))
-      self.assertAllEqual([1], sess.run(convert.partial_shape_to_tensor((1,))))
-      self.assertAllEqual([1], sess.run(convert.partial_shape_to_tensor([1])))
-      self.assertAllEqual([1], sess.run(convert.partial_shape_to_tensor(
-          constant_op.constant([1], dtype=dtypes.int64))))
+    self.assertAllEqual([1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                tensor_shape.TensorShape([1]))))
+    self.assertAllEqual([1], self.evaluate(
+        convert.partial_shape_to_tensor((1,))))
+    self.assertAllEqual([1], self.evaluate(
+        convert.partial_shape_to_tensor([1])))
+    self.assertAllEqual([1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                constant_op.constant([1], dtype=dtypes.int64))))
 
+  @test_util.run_deprecated_v1
   def testPartialShapeToTensorUnknownDimension(self):
-    with self.cached_session() as sess:
-      self.assertAllEqual([-1], sess.run(convert.partial_shape_to_tensor(
-          tensor_shape.TensorShape([None]))))
-      self.assertAllEqual([-1], sess.run(convert.partial_shape_to_tensor(
-          (None,))))
-      self.assertAllEqual([-1], sess.run(convert.partial_shape_to_tensor(
-          [None])))
-      self.assertAllEqual([-1], sess.run(convert.partial_shape_to_tensor(
-          [-1])))
-      self.assertAllEqual([-1], sess.run(convert.partial_shape_to_tensor(
-          constant_op.constant([-1], dtype=dtypes.int64))))
+    self.assertAllEqual([-1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                tensor_shape.TensorShape([None]))))
+    self.assertAllEqual([-1],
+                        self.evaluate(convert.partial_shape_to_tensor((None,))))
+    self.assertAllEqual([-1],
+                        self.evaluate(convert.partial_shape_to_tensor([None])))
+    self.assertAllEqual([-1],
+                        self.evaluate(convert.partial_shape_to_tensor([-1])))
+    self.assertAllEqual([-1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                constant_op.constant([-1],
+                                                     dtype=dtypes.int64))))
 
     with self.assertRaisesRegexp(
         ValueError, r"The given shape .* must be a 1-D tensor of tf.int64 "
@@ -84,42 +91,63 @@ class ConvertTest(test.TestCase):
       convert.partial_shape_to_tensor(constant_op.constant([1., 1.]))
 
   def testPartialShapeToTensorMultipleDimensions(self):
-    with self.cached_session() as sess:
-      self.assertAllEqual([3, 6], sess.run(convert.partial_shape_to_tensor(
-          tensor_shape.TensorShape([3, 6]))))
-      self.assertAllEqual([3, 6], sess.run(convert.partial_shape_to_tensor(
-          (3, 6))))
-      self.assertAllEqual([3, 6], sess.run(convert.partial_shape_to_tensor(
-          [3, 6])))
-      self.assertAllEqual([3, 6], sess.run(convert.partial_shape_to_tensor(
-          constant_op.constant([3, 6], dtype=dtypes.int64))))
+    self.assertAllEqual([3, 6],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                tensor_shape.TensorShape([3, 6]))))
+    self.assertAllEqual([3, 6],
+                        self.evaluate(convert.partial_shape_to_tensor((3, 6))))
+    self.assertAllEqual([3, 6],
+                        self.evaluate(convert.partial_shape_to_tensor([3, 6])))
+    self.assertAllEqual([3, 6],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                constant_op.constant([3, 6],
+                                                     dtype=dtypes.int64))))
 
-      self.assertAllEqual([3, -1], sess.run(convert.partial_shape_to_tensor(
-          tensor_shape.TensorShape([3, None]))))
-      self.assertAllEqual([3, -1], sess.run(convert.partial_shape_to_tensor(
-          (3, None))))
-      self.assertAllEqual([3, -1], sess.run(convert.partial_shape_to_tensor(
-          [3, None])))
-      self.assertAllEqual([3, -1], sess.run(convert.partial_shape_to_tensor(
-          constant_op.constant([3, -1], dtype=dtypes.int64))))
+    self.assertAllEqual([3, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                tensor_shape.TensorShape([3, None]))))
+    self.assertAllEqual([3, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor((3, None))))
+    self.assertAllEqual([3, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor([3, None])))
+    self.assertAllEqual([3, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                constant_op.constant([3, -1],
+                                                     dtype=dtypes.int64))))
 
-      self.assertAllEqual([-1, -1], sess.run(convert.partial_shape_to_tensor(
-          tensor_shape.TensorShape([None, None]))))
-      self.assertAllEqual([-1, -1], sess.run(convert.partial_shape_to_tensor(
-          (None, None))))
-      self.assertAllEqual([-1, -1], sess.run(convert.partial_shape_to_tensor(
-          [None, None])))
-      self.assertAllEqual([-1, -1], sess.run(convert.partial_shape_to_tensor(
-          constant_op.constant([-1, -1], dtype=dtypes.int64))))
+    self.assertAllEqual([-1, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                tensor_shape.TensorShape([None, None]))))
+    self.assertAllEqual([-1, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor((None, None))))
+    self.assertAllEqual([-1, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor([None, None])))
+    self.assertAllEqual([-1, -1],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                constant_op.constant([-1, -1],
+                                                     dtype=dtypes.int64))))
 
   def testPartialShapeToTensorScalar(self):
-    with self.cached_session() as sess:
-      self.assertAllEqual([], sess.run(convert.partial_shape_to_tensor(
-          tensor_shape.TensorShape([]))))
-      self.assertAllEqual([], sess.run(convert.partial_shape_to_tensor(())))
-      self.assertAllEqual([], sess.run(convert.partial_shape_to_tensor([])))
-      self.assertAllEqual([], sess.run(convert.partial_shape_to_tensor(
-          constant_op.constant([], dtype=dtypes.int64))))
+    self.assertAllEqual([],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                tensor_shape.TensorShape([]))))
+    self.assertAllEqual([], self.evaluate(convert.partial_shape_to_tensor(())))
+    self.assertAllEqual([], self.evaluate(convert.partial_shape_to_tensor([])))
+    self.assertAllEqual([],
+                        self.evaluate(
+                            convert.partial_shape_to_tensor(
+                                constant_op.constant([], dtype=dtypes.int64))))
 
 
 if __name__ == "__main__":

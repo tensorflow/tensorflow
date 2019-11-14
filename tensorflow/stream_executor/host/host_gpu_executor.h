@@ -50,19 +50,19 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return port::Status::OK();
   }
 
-  bool GetKernel(const MultiKernelLoaderSpec &spec,
-                 KernelBase *kernel) override {
-    return false;
+  port::Status GetKernel(const MultiKernelLoaderSpec &spec,
+                         KernelBase *kernel) override {
+    return port::UnimplementedError("Not Implemented");
   }
-  bool Launch(Stream *stream, const ThreadDim &thread_dims,
-              const BlockDim &block_dims, const KernelBase &kernel,
-              const KernelArgsArrayBase &args) override {
-    return false;
+  port::Status Launch(Stream *stream, const ThreadDim &thread_dims,
+                      const BlockDim &block_dims, const KernelBase &kernel,
+                      const KernelArgsArrayBase &args) override {
+    return port::UnimplementedError("Not Implemented");
   }
 
-  void *Allocate(uint64 size) override;
-  void *AllocateSubBuffer(DeviceMemoryBase *mem, uint64 offset_bytes,
-                          uint64 size_bytes) override;
+  DeviceMemoryBase Allocate(uint64 size, int64 memory_space) override;
+  void *GetSubBuffer(DeviceMemoryBase *parent, uint64 offset_bytes,
+                     uint64 size_bytes) override;
   void Deallocate(DeviceMemoryBase *mem) override;
 
   void *HostMemoryAllocate(uint64 size) override { return new char[size]; }
@@ -77,22 +77,23 @@ class HostExecutor : public internal::StreamExecutorInterface {
   bool Memcpy(Stream *stream, DeviceMemoryBase *gpu_dst, const void *host_src,
               uint64 size) override;
   bool MemcpyDeviceToDevice(Stream *stream, DeviceMemoryBase *gpu_dst,
-                            const DeviceMemoryBase &host_src,
+                            const DeviceMemoryBase &gpu_src,
                             uint64 size) override;
 
-  bool MemZero(Stream *stream, DeviceMemoryBase *location,
-               uint64 size) override;
-  bool Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
-              uint64 size) override;
-  bool Memset32(Stream *stream, DeviceMemoryBase *location, uint32 pattern,
-                uint64 size) override;
+  port::Status MemZero(Stream *stream, DeviceMemoryBase *location,
+                       uint64 size) override;
+  port::Status Memset(Stream *stream, DeviceMemoryBase *location, uint8 pattern,
+                      uint64 size) override;
+  port::Status Memset32(Stream *stream, DeviceMemoryBase *location,
+                        uint32 pattern, uint64 size) override;
 
   // No "synchronize all activity" implemented for this platform at the moment.
   bool SynchronizeAllActivity() override { return true; }
-  bool SynchronousMemZero(DeviceMemoryBase *location, uint64 size) override;
+  port::Status SynchronousMemZero(DeviceMemoryBase *location,
+                                  uint64 size) override;
 
-  bool SynchronousMemSet(DeviceMemoryBase *location, int value,
-                         uint64 size) override;
+  port::Status SynchronousMemSet(DeviceMemoryBase *location, int value,
+                                 uint64 size) override;
 
   port::Status SynchronousMemcpy(DeviceMemoryBase *gpu_dst,
                                  const void *host_src, uint64 size) override;
@@ -103,27 +104,14 @@ class HostExecutor : public internal::StreamExecutorInterface {
                                                const DeviceMemoryBase &gpu_src,
                                                uint64 size) override;
 
-  bool HostCallback(Stream *stream, std::function<void()> callback) override;
+  bool HostCallback(Stream *stream,
+                    std::function<port::Status()> callback) override;
 
-  port::Status AllocateEvent(Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  port::Status DeallocateEvent(Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  port::Status RecordEvent(Stream *stream, Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  port::Status WaitForEvent(Stream *stream, Event *event) override {
-    return port::Status(port::error::UNIMPLEMENTED, "");
-  }
-
-  Event::Status PollForEventStatus(Event *event) override {
-    return Event::Status::kError;
-  }
+  port::Status AllocateEvent(Event *event) override;
+  port::Status DeallocateEvent(Event *event) override;
+  port::Status RecordEvent(Stream *stream, Event *event) override;
+  port::Status WaitForEvent(Stream *stream, Event *event) override;
+  Event::Status PollForEventStatus(Event *event) override;
 
   bool AllocateStream(Stream *stream) override;
   void DeallocateStream(Stream *stream) override;
@@ -146,7 +134,13 @@ class HostExecutor : public internal::StreamExecutorInterface {
     return false;
   }
 
-  DeviceDescription *PopulateDeviceDescription() const override;
+  port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
+      const override {
+    return CreateDeviceDescription(0);
+  }
+
+  static port::StatusOr<std::unique_ptr<DeviceDescription>>
+  CreateDeviceDescription(int device_ordinal);
 
   port::Status EnablePeerAccessTo(StreamExecutorInterface *other) override {
     return port::Status::OK();
@@ -183,10 +177,7 @@ class HostExecutor : public internal::StreamExecutorInterface {
   rng::RngSupport *CreateRng() override;
 
   std::unique_ptr<internal::EventInterface> CreateEventImplementation()
-      override {
-    LOG(WARNING) << "Events not currently supported by HostExecutor.";
-    return nullptr;
-  }
+      override;
 
   std::unique_ptr<internal::KernelInterface> CreateKernelImplementation()
       override {

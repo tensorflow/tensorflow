@@ -21,6 +21,7 @@ namespace tflite {
 namespace profiling {
 namespace time {
 uint64_t NowMicros();
+void SleepForMicros(uint64_t micros);
 }  // namespace time
 }  // namespace profiling
 }  // namespace tflite

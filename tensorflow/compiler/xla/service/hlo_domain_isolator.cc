@@ -27,8 +27,6 @@ namespace {
 
 StatusOr<bool> RunInternal(HloModule* module,
                            HloDomainIsolator::DomainCreator* creator) {
-  hlo_graph_dumper::MaybeDumpHloModule(*module, "Before Domain Isolator");
-
   int64 added_domains = 0;
   for (HloComputation* computation : module->computations()) {
     // Walk in post order and place all the required kDomain instructions.
@@ -49,16 +47,17 @@ StatusOr<bool> RunInternal(HloModule* module,
         HloInstruction* domain = (*creator)(instruction, root, operand);
         if (domain != nullptr) {
           VLOG(4) << "New domain: " << domain->ToString();
-          TF_RETURN_IF_ERROR(operand->ReplaceUseWith(instruction, domain));
+          // Call ReplaceUseWithDifferentShape even though the shapes are
+          // expected to match to avoid an expensive shape check between the
+          // original and the new instruction.
+          TF_RETURN_IF_ERROR(
+              operand->ReplaceUseWithDifferentShape(instruction, domain));
           ++added_domains;
         }
       }
     }
   }
   VLOG(3) << "Added " << added_domains << " kDomain instructions";
-  if (added_domains > 0) {
-    hlo_graph_dumper::MaybeDumpHloModule(*module, "After Domain Isolator");
-  }
   return added_domains > 0;
 }
 

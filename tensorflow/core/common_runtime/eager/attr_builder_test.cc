@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/cc/client/client_session.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/framework/scope.h"
@@ -41,8 +42,10 @@ TEST(AttrTypeMap, Lookup) {
   Status s = AttrTypeMapForOp("SomeFunctionName", &m, &is_function);
   EXPECT_TRUE(s.ok());
   EXPECT_TRUE(is_function);
+  ASSERT_NE(m->end(), m->find("executor_type"));
   EXPECT_EQ(TF_ATTR_STRING, m->find("executor_type")->second);
-  EXPECT_EQ(TF_ATTR_STRING, m->find("config")->second);
+  ASSERT_NE(m->end(), m->find("config_proto"));
+  EXPECT_EQ(TF_ATTR_STRING, m->find("config_proto")->second);
 
   is_function = true;
   s = AttrTypeMapForOp("MatMul", &m, &is_function);
@@ -65,6 +68,52 @@ TEST(AttrTypeMap, Lookup) {
   ASSERT_TRUE(s.ok()) << s;
   EXPECT_EQ(TF_ATTR_INT, t);
   EXPECT_NE(is_list, 0);
+}
+
+TEST(AttrTypeMap, CacheKey) {
+  AttrBuilder a("op_name");
+  a.NumInputs(2);
+  a.Set("T", TF_FLOAT);
+  tensorflow::Fprint128 cache_key = a.CacheKey("cpu:0");
+
+  ASSERT_FALSE(cache_key == a.CacheKey("cpu:1"));
+  ASSERT_TRUE(cache_key == a.CacheKey("cpu:0"));
+
+  a.Set("x", 1.0);
+  ASSERT_FALSE(cache_key == a.CacheKey("cpu:0"));
+}
+
+string ToString(const AttrValueMap& m) {
+  std::vector<string> strs;
+  for (const auto& e : m) {
+    strs.push_back(absl::StrCat(e.first, " -> ", e.second.DebugString()));
+  }
+  return absl::StrJoin(strs, "\n");
+}
+
+TEST(AttrBuilder, FillAttrValueMapWithoutDefaults_MatMul) {
+  AttrBuilder a("MatMul");
+  a.Set("transpose_a", true);
+  a.Set("transpose_b", false);
+
+  AttrValueMap m;
+  a.FillAttrValueMapWithoutDefaults(&m);
+  // Only non-default value must end up in the map
+  ASSERT_EQ(1, m.size()) << ToString(m);
+  ASSERT_EQ(true, m["transpose_a"].b()) << ToString(m);
+}
+
+TEST(AttrBuilder, FillAttrValueMapWithoutDefaults_UnknownOp) {
+  AttrBuilder a("SomeUnknownOp");
+  a.Set("transpose_a", true);
+  a.Set("transpose_b", false);
+
+  AttrValueMap m;
+  a.FillAttrValueMapWithoutDefaults(&m);
+  // Only non-default value must end up in the map
+  ASSERT_EQ(2, m.size()) << ToString(m);
+  ASSERT_EQ(true, m["transpose_a"].b()) << ToString(m);
+  ASSERT_EQ(false, m["transpose_b"].b()) << ToString(m);
 }
 
 }  // namespace

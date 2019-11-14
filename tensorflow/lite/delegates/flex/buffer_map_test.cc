@@ -44,6 +44,7 @@ UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
   tensor->data.raw = nullptr;
   tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(T), tensor.get());
   memcpy(tensor->data.raw, data.data(), data.size() * sizeof(T));
   return tensor;
@@ -62,6 +63,7 @@ UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
   tensor->data.raw = nullptr;
   tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(string), tensor.get());
 
   DynamicBuffer b;
@@ -126,7 +128,7 @@ TEST(BufferMapTest, SetFromTfLiteString) {
   buffer_map.SetFromTfLite(0, t.get());
   ASSERT_TRUE(buffer_map.HasTensor(0));
 
-  EXPECT_THAT(GetTensorData<string>(buffer_map.GetTensor(0)),
+  EXPECT_THAT(GetTensorData<tensorflow::tstring>(buffer_map.GetTensor(0)),
               ElementsAre("", "", "", "str1", "", ""));
 
   // Also check details of the tensor.
@@ -160,7 +162,7 @@ TEST(BufferMapTest, SetFromTfLiteStringTwice) {
   buffer_map.SetFromTfLite(0, t1.get());
   buffer_map.SetFromTfLite(0, t2.get());
 
-  EXPECT_THAT(GetTensorData<string>(buffer_map.GetTensor(0)),
+  EXPECT_THAT(GetTensorData<tensorflow::tstring>(buffer_map.GetTensor(0)),
               ElementsAre("", "", "", "s3", "", "", "s1", "s2"));
 }
 

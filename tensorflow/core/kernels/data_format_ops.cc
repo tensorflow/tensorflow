@@ -156,7 +156,27 @@ TF_CALL_int32(REGISTER_KERNEL);
 TF_CALL_int64(REGISTER_KERNEL);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#define REGISTER_KERNEL(T)                             \
+  REGISTER_KERNEL_BUILDER(Name("DataFormatDimMap")     \
+                              .Device(DEVICE_CPU)      \
+                              .Label("host")           \
+                              .TypeConstraint<T>("T"), \
+                          DataFormatDimMapOp<CPUDevice, T>);
+TF_CALL_int32(REGISTER_KERNEL);
+TF_CALL_int64(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+
+#define REGISTER_KERNEL(T)                             \
+  REGISTER_KERNEL_BUILDER(Name("DataFormatVecPermute") \
+                              .Device(DEVICE_CPU)      \
+                              .Label("host")           \
+                              .TypeConstraint<T>("T"), \
+                          DataFormatVecPermuteOp<CPUDevice, T>);
+TF_CALL_int32(REGISTER_KERNEL);
+TF_CALL_int64(REGISTER_KERNEL);
+#undef REGISTER_KERNEL
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                    \
@@ -187,7 +207,14 @@ TF_CALL_int64(DECLARE_GPU_SPECS);
 #define REGISTER_GPU_KERNEL(T)                                            \
   REGISTER_KERNEL_BUILDER(                                                \
       Name("DataFormatDimMap").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
-      DataFormatDimMapOp<GPUDevice, T>);
+      DataFormatDimMapOp<GPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(Name("DataFormatDimMap")                        \
+                              .Device(DEVICE_GPU)                         \
+                              .HostMemory("x")                            \
+                              .HostMemory("y")                            \
+                              .Label("host")                              \
+                              .TypeConstraint<T>("T"),                    \
+                          DataFormatDimMapOp<CPUDevice, T>);
 TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
@@ -206,6 +233,6 @@ TF_CALL_int64(REGISTER_GPU_KERNEL);
 TF_CALL_int32(REGISTER_GPU_KERNEL);
 TF_CALL_int64(REGISTER_GPU_KERNEL);
 #undef REGISTER_GPU_KERNEL
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

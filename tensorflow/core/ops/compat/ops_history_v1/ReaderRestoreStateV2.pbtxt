@@ -1,0 +1,12 @@
+op {
+  name: "ReaderRestoreStateV2"
+  input_arg {
+    name: "reader_handle"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "state"
+    type: DT_STRING
+  }
+  is_stateful: true
+}

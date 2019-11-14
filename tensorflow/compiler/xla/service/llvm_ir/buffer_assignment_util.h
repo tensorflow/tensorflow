@@ -20,6 +20,10 @@ limitations under the License.
 
 namespace xla {
 namespace llvm_ir {
+// Sanitizes the HLO constant instruction name so that it can be used for the
+// name of the corresponding constant buffer. In particular, it replaces . and
+// - with _.
+string SanitizeConstantName(const HloInstruction& instr);
 // In XLA:GPU we map constant buffer allocations to globals in the generated
 // LLVM IR.  This function gives us the name of the global variable a constant
 // buffer is mapped to.  Not used on XLA:CPU.

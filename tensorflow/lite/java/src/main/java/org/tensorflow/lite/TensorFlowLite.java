@@ -18,42 +18,39 @@ package org.tensorflow.lite;
 /** Static utility methods loading the TensorFlowLite runtime. */
 public final class TensorFlowLite {
 
-  private static final String PRIMARY_LIBNAME = "tensorflowlite_jni";
-  private static final String FALLBACK_LIBNAME = "tensorflowlite_flex_jni";
+  private static final String LIBNAME = "tensorflowlite_jni";
 
   private TensorFlowLite() {}
 
-  /** Returns the version of the underlying TensorFlowLite runtime. */
-  public static native String version();
-
   /**
-   * Initialize tensorflow's libraries. This will throw an exception if used when TensorFlow isn't
-   * linked in.
+   * Returns the version of the underlying TensorFlowLite model schema.
+   *
+   * @deprecated Prefer using {@link #runtimeVersion() or #schemaVersion()}.
    */
-  static native void initTensorFlow();
+  @Deprecated
+  public static String version() {
+    return schemaVersion();
+  }
+
+  /** Returns the version of the underlying TensorFlowLite runtime. */
+  public static native String runtimeVersion();
+
+  /** Returns the version of the underlying TensorFlowLite model schema. */
+  public static native String schemaVersion();
 
   /**
    * Load the TensorFlowLite runtime C library.
+   *
+   * @hide
    */
-  static boolean init() {
-    Throwable primaryLibException;
+  public static boolean init() {
     try {
-      System.loadLibrary(PRIMARY_LIBNAME);
+      System.loadLibrary(LIBNAME);
       return true;
     } catch (UnsatisfiedLinkError e) {
-      primaryLibException = e;
+      System.err.println("TensorFlowLite: failed to load native library: " + e);
+      return false;
     }
-
-    try {
-      System.loadLibrary(FALLBACK_LIBNAME);
-      return true;
-    } catch (UnsatisfiedLinkError e) {
-      // If the fallback fails, log the error for the primary load instead.
-      System.err.println(
-          "TensorFlowLite: failed to load native library: " + primaryLibException.getMessage());
-    }
-
-    return false;
   }
 
   static {

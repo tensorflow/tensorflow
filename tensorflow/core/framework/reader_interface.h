@@ -48,7 +48,7 @@ class ReaderInterface : public ResourceBase {
   // *context with an OutOfRange Status if the current work is
   // complete and the queue is done (closed and empty).
   // This method may block.
-  virtual void Read(QueueInterface* queue, string* key, string* value,
+  virtual void Read(QueueInterface* queue, tstring* key, tstring* value,
                     OpKernelContext* context) = 0;
 
   // Read up to num_records records into keys / values. May get more work from
@@ -60,7 +60,8 @@ class ReaderInterface : public ResourceBase {
   // structures (that have most likely been reserve(num_records)).
   // Returns how many records were actually read.
   virtual int64 ReadUpTo(const int64 num_records, QueueInterface* queue,
-                         std::vector<string>* keys, std::vector<string>* value,
+                         std::vector<tstring>* keys,
+                         std::vector<tstring>* value,
                          OpKernelContext* context) = 0;
 
   // Restore this reader to its newly-constructed state.
@@ -72,11 +73,11 @@ class ReaderInterface : public ResourceBase {
 
   // -- Serialization/Restoration support --
   // Not all readers will support saving and restoring state.
-  virtual Status SerializeState(string* state) = 0;
+  virtual Status SerializeState(tstring* state) = 0;
   // Note: Must Reset on error.
-  virtual Status RestoreState(const string& state) = 0;
+  virtual Status RestoreState(const tstring& state) = 0;
 
-  string DebugString() override { return "a reader"; }
+  string DebugString() const override { return "a reader"; }
 
  protected:
   virtual ~ReaderInterface() {}

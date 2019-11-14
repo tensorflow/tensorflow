@@ -30,6 +30,9 @@ Eigen::PaddingType BrainPadding2EigenPadding(Padding padding) {
       return Eigen::PADDING_VALID;
     case Padding::SAME:
       return Eigen::PADDING_SAME;
+    case Padding::EXPLICIT:
+      LOG(FATAL) << "Eigen does not have explicit padding enum "  // Crash OK
+                    "value";
   }
   return Eigen::PADDING_SAME;  // Prevent compiler warning about missing return
 }

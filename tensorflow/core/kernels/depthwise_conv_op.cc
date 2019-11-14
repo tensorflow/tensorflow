@@ -19,6 +19,7 @@ limitations under the License.
 #include <cmath>
 #include <type_traits>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -26,7 +27,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_ops.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -38,10 +38,14 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #if GOOGLE_CUDA
-#include "cuda/include/cudnn.h"
+#include "third_party/gpus/cudnn/cudnn.h"
+#endif
+
 #include "tensorflow/core/platform/stream_executor.h"
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace tensorflow {
 
@@ -246,7 +250,7 @@ extern template struct LaunchConv2DOp<CPUDevice, Eigen::half>;
 extern template struct LaunchConv2DOp<CPUDevice, float>;
 extern template struct LaunchConv2DOp<CPUDevice, double>;
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Extern template instantiated in conv_ops.cc.
 extern template struct LaunchConv2DOp<GPUDevice, Eigen::half>;
@@ -404,7 +408,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       // conv is supported.
       launcher_(context, use_cudnn_, cudnn_use_autotune_, input,
                 reshaped_filter, /*row_dilation=*/1, /*col_dilation=*/1,
-                stride_, stride_, padding_, output, data_format_);
+                stride_, stride_, padding_, /*explicit_paddings=*/{}, output,
+                data_format_);
       return;
     }
 
@@ -460,7 +465,7 @@ TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU_KERNEL(T)                                                 \
   REGISTER_KERNEL_BUILDER(                                                     \
@@ -493,6 +498,6 @@ TF_CALL_half(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_float(REGISTER_GROUPED_CONV_KERNEL);
 TF_CALL_double(REGISTER_GROUPED_CONV_KERNEL);
 #endif  // CUDNN_VERSION
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

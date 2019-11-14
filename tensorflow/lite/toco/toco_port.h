@@ -55,6 +55,10 @@ double round(double x);
 namespace toco {
 namespace port {
 
+// Things like tests use other initialization routines that need control
+// of flags. However, for testing we still want to use toco_port.h facilities.
+// This function sets initialized flag trivially.
+void InitGoogleWasDoneElsewhere();
 void InitGoogle(const char* usage, int* argc, char*** argv, bool remove_flags);
 void CheckInitGoogleIsDone(const char* message);
 

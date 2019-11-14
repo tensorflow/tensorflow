@@ -69,10 +69,18 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
   For example:
 
   ```python
-  pcm = tf.placeholder(tf.float32, [None, 9152])
-  frames = tf.signal.frame(pcm, 512, 180)
-  magspec = tf.abs(tf.signal.rfft(frames, [512]))
-  image = tf.expand_dims(magspec, 3)
+  # A batch size 3 tensor of 9152 audio samples.
+  audio = tf.random.normal([3, 9152])
+
+  # Compute overlapping frames of length 512 with a step of 180 (frames overlap
+  # by 332 samples). By default, only 50 frames are generated since the last
+  # 152 samples do not form a full frame.
+  frames = tf.signal.frame(audio, 512, 180)
+  frames.shape.assert_is_compatible_with([3, 50, 512])
+
+  # When pad_end is enabled, the final frame is kept (padded with zeros).
+  frames = tf.signal.frame(audio, 512, 180, pad_end=True)
+  frames.shape.assert_is_compatible_with([3, 51, 512])
   ```
 
   Args:

@@ -30,6 +30,8 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfsplits.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
 #include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
@@ -81,7 +83,8 @@ TEST(TFCompileTest, Add) {
 // Run tests that use set_argN_data separately, to avoid accidentally re-using
 // non-existent buffers.
 TEST(TFCompileTest, Add_SetArg) {
-  AddComp add(AddComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+  AddComp add(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
 
   int32 arg_x = 10;
   int32 arg_y = 32;
@@ -294,7 +297,7 @@ TEST(TFCompileTest, MatMul2_SetArg) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   foo::bar::MatMulComp matmul(
-      foo::bar::MatMulComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
   matmul.set_thread_pool(&device);
 
   // Test using the set_argN_data() methods.
@@ -319,7 +322,7 @@ TEST(TFCompileTest, MatMulAndAdd1) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
-  MatMulAndAddComp muladd;
+  ::foo::bar::MatMulAndAddComp muladd;
   muladd.set_thread_pool(&device);
   EXPECT_EQ(muladd.arg0_data(), muladd.arg_data(0));
   EXPECT_EQ(muladd.arg1_data(), muladd.arg_data(1));
@@ -342,7 +345,7 @@ TEST(TFCompileTest, MatMulAndAdd1) {
     EXPECT_EQ(muladd.result0_data(), muladd.results()[0]);
     EXPECT_EQ(muladd.result1_data(), muladd.results()[1]);
 
-    const MatMulAndAddComp& muladd_const = muladd;
+    const ::foo::bar::MatMulAndAddComp& muladd_const = muladd;
     EXPECT_EQ(muladd_const.error_msg(), "");
     for (int i = 0; i < 4; ++i) {
       EXPECT_EQ(muladd_const.arg0(i / 2, i % 2), args[i]);
@@ -383,7 +386,7 @@ TEST(TFCompileTest, MatMulAndAdd1) {
     EXPECT_EQ(muladd.result_x_y_sum_data(), muladd.results()[1]);
 
     // Test const methods.
-    const MatMulAndAddComp& muladd_const = muladd;
+    const ::foo::bar::MatMulAndAddComp& muladd_const = muladd;
     EXPECT_EQ(muladd_const.error_msg(), "");
     for (int i = 0; i < 4; ++i) {
       EXPECT_EQ(muladd_const.arg_x(i / 2, i % 2), args[i]);
@@ -473,6 +476,79 @@ TEST(TFCompileTest, TopK) {
   EXPECT_EQ(expected_indices[1], fn.result1(1));
 }
 
+TEST(TFCompileTest, Variable) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  VariableComp fn;
+  float x = 23;
+  fn.set_var_x_data(&x);
+
+  fn.set_thread_pool(&device);
+  fn.Run();
+  EXPECT_EQ(fn.result0(0, 0), 23);
+  EXPECT_EQ(fn.result0(1, 0), 65);
+  EXPECT_EQ(fn.var_x(), 65);
+
+  EXPECT_EQ(fn.var_x_data(), &x);
+  EXPECT_EQ(x, 65);
+  fn.Run();
+  EXPECT_EQ(fn.result0(0, 0), 65);
+  EXPECT_EQ(fn.result0(1, 0), 107);
+  EXPECT_EQ(fn.var_x(), 107);
+}
+
+TEST(TFCompileTest, VariableSequentialUpdates) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  // This implements the recursion:
+  // x[0] = 2.0
+  // x[n+1] = x[n] - 0.1*(x[n-1] + y)
+  VariableSequentialUpdatesComp fn;
+  fn.var_x() = 2;
+  *const_cast<float*>(fn.var_y_data()) = 1;
+
+  fn.set_thread_pool(&device);
+  // First calculate x[3]
+  fn.Run();
+  EXPECT_NEAR(fn.var_x(), 1.187f, 1e-6);
+
+  const float y = 1;
+  fn.set_var_y_data(&y);
+
+  // Now const_cast<float*>(fn.var_y_data()) is not longer legal since we've set
+  // the buffer to point to a constant location.
+
+  // Then calculate x[6]
+  fn.Run();
+  EXPECT_NEAR(fn.var_x(), 0.594322f, 1e-6);
+}
+
+TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  // This implements the recursion:
+  // x[0] = 2.0
+  // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
+  VariableSequentialUpdatesComp fn(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+  float x = 2;
+  float y = 1;
+  fn.set_var_x_data(&x);
+  fn.set_var_y_data(&y);
+
+  fn.set_thread_pool(&device);
+  // First calculate x[3]
+  fn.Run();
+  EXPECT_NEAR(x, 1.187f, 1e-6);
+
+  // Then calculate x[6]
+  fn.Run();
+  EXPECT_NEAR(x, 0.594322f, 1e-6);
+}
+
 TEST(TFCompileTest, AssertEqAndReturnDiff) {
   // Assert is converted into a no-op in XLA, so there is no failure even if the
   // two args are different.
@@ -496,7 +572,7 @@ TEST(TFCompileTest, LookupNameIndex) {
   EXPECT_FALSE(add.HasNameIndices());
 
   // muladd has names defined for all feeds and fetches.
-  MatMulAndAddComp muladd;
+  ::foo::bar::MatMulAndAddComp muladd;
   EXPECT_TRUE(muladd.HasNameIndices());
 
   EXPECT_EQ(muladd.LookupArgIndex("x"), 0);
@@ -525,14 +601,16 @@ TEST(TFCompileTest, ProgramShape) {
   ASSERT_TRUE(add.ProgramShape() == nullptr);
 
   // muladd has the program shape defined.
-  MatMulAndAddComp muladd;
-  const xla::ProgramShape* muladd_shape = muladd.ProgramShape();
+  ::foo::bar::MatMulAndAddComp muladd;
+  const xla::ProgramShapeProto* muladd_shape = muladd.ProgramShape();
   ASSERT_TRUE(muladd_shape != nullptr);
   ASSERT_EQ(muladd_shape->parameters_size(), 2);
-  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(0), f32_2x2));
-  EXPECT_TRUE(ShapeUtil::Compatible(muladd_shape->parameters(1), f32_2x2));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(0)), f32_2x2));
+  EXPECT_TRUE(
+      ShapeUtil::Compatible(xla::Shape(muladd_shape->parameters(1)), f32_2x2));
 
-  const xla::Shape& muladd_result = muladd_shape->result();
+  const xla::Shape muladd_result(muladd_shape->result());
   ASSERT_EQ(muladd_result.element_type(), xla::TUPLE);
   ASSERT_EQ(ShapeUtil::TupleElementCount(muladd_result), 2);
   const xla::Shape& muladd_result0 =

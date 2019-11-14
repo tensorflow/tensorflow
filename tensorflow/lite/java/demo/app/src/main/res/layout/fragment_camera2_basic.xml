@@ -57,22 +57,30 @@
             android:textStyle="bold" />
 
     </LinearLayout>
-    <LinearLayout
-        android:orientation="horizontal"
-        android:background="#aa7700"
-        android:layout_alignParentBottom="true"
 
-        android:layout_width="match_parent"
+    <LinearLayout
         android:id="@+id/bottom_info_view"
+        android:layout_width="match_parent"
+        android:layout_height="200dp"
+
+        android:layout_alignParentBottom="true"
         android:layout_marginBottom="10dp"
-        android:layout_height="50dp">
-        <TextView
+        android:background="#513400"
+        android:orientation="horizontal">
+
+      <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="match_parent"
-            android:textColor="@android:color/white"
-            android:textAlignment="center"
+            android:orientation="vertical">
+
+        <TextView
+            android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
             android:gravity="center"
-            android:text="@string/threads" />
+                android:text="Threads"
+            android:textAlignment="center"
+            android:textColor="@android:color/white" />
+
         <NumberPicker
             android:id="@+id/np"
             android:layout_width="wrap_content"
@@ -80,15 +88,51 @@
             android:layout_marginLeft="10dp"
             android:theme="@style/AppTheme.Picker"
             android:visibility="visible" />
-        <ToggleButton
-            android:id="@+id/button"
-            android:textOff="@string/tflite"
-            android:textOn="@string/nnapi"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginLeft="10dp"
-            android:background="#0000000f"
-            android:textColor="@android:color/white" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/modelLayout"
+            android:layout_width="150dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textView"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:text="@string/modelLabel"
+                android:textAlignment="center"
+                android:textColor="@android:color/white" />
+
+            <ListView
+                android:id="@+id/model"
+                android:layout_width="match_parent"
+                android:layout_height="180dp">
+
+            </ListView>
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/deviceLayout"
+            android:layout_width="140dp"
+            android:layout_height="match_parent"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/textView2"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:text="@string/deviceLabel"
+                android:textAlignment="center"
+                android:textColor="@android:color/white" />
+
+            <ListView
+                android:id="@+id/device"
+                android:layout_width="match_parent"
+                android:layout_height="180dp" />
+
+        </LinearLayout>
 
     </LinearLayout>
 </RelativeLayout>

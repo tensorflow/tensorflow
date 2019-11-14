@@ -100,13 +100,6 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
     self.assertEqual({'alpha', 'beta'},
                      set(fn_op.graph.structured_outputs.keys()))
 
-    with self.assertRaisesRegexp(ValueError, "two arguments named 'z'"):
-      fn.get_concrete_function(
-          z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32),
-             tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32)),
-          y=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32,
-                                   name='custom'),
-          x=4.)
     fn_op2 = fn.get_concrete_function(
         z=(tensor_spec.TensorSpec(shape=(None,), dtype=dtypes.float32,
                                   name='z_first'),
@@ -220,10 +213,10 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
         z=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32),
         zz=tensor_spec.TensorSpec(shape=(), dtype=dtypes.float32, name='cust'))
     self.assertEqual(
-        ['x', 'y', 'args', 'second_variadic', 'z', 'cust'],
+        ['x', 'y', 'args_1', 'second_variadic', 'z', 'cust'],
         [inp.op.name for inp in variadic_op.inputs])
     self.assertEqual(
-        [b'x', b'y', b'args', b'second_variadic', b'z', b'cust'],
+        [b'x', b'y', b'args_1', b'second_variadic', b'z', b'cust'],
         [inp.op.get_attr('_user_specified_name')
          for inp in variadic_op.inputs])
 
@@ -244,10 +237,10 @@ class ArgumentNamingTests(test.TestCase, parameterized.TestCase):
     variadic_op = variadic_fn.get_concrete_function()
     self.assertIn(b'variadic_fn', variadic_op.name)
     self.assertEqual(
-        ['x', 'y', 'args', 'z'],
+        ['x', 'y', 'args_1', 'z'],
         [inp.op.name for inp in variadic_op.inputs])
     self.assertEqual(
-        [b'x', b'y', b'args', b'z'],
+        [b'x', b'y', b'args_1', b'z'],
         [inp.op.get_attr('_user_specified_name')
          for inp in variadic_op.inputs])
 

@@ -89,6 +89,7 @@ class RMSPropOptimizerTest(test.TestCase):
       var_t[gindex] = var[gindex] - mom_t[gindex]
     return var_t, mg_t, rms_t, mom_t
 
+  @test_util.run_deprecated_v1
   def testDense(self):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay, momentum,
@@ -164,6 +165,7 @@ class RMSPropOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -187,6 +189,7 @@ class RMSPropOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariableCentered(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -210,6 +213,7 @@ class RMSPropOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
+  @test_util.run_deprecated_v1
   def testSparse(self):
     # TODO(yori): Use ParameterizedTest when available
     for (dtype, learning_rate, decay,
@@ -286,6 +290,7 @@ class RMSPropOptimizerTest(test.TestCase):
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testWithoutMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with test_util.use_gpu():
@@ -354,6 +359,7 @@ class RMSPropOptimizerTest(test.TestCase):
                 (0.01 * 2.0 / math.sqrt(0.90001 * 0.9 + 1e-5 + 1.0))
             ]), self.evaluate(var1))
 
+  @test_util.run_deprecated_v1
   def testWithMomentum(self):
     for dtype in [dtypes.half, dtypes.float32]:
       with test_util.use_gpu():

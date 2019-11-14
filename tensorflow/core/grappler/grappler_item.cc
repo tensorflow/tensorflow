@@ -19,27 +19,34 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/transitive_fanin.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
 
-GrapplerItem::GrapplerItem(const GrapplerItem& other, GraphDef* graph_def) {
-  id = other.id;
-  feed = other.feed;
-  fetch = other.fetch;
-  init_ops = other.init_ops;
-  keep_ops = other.keep_ops;
-  expected_init_time = other.expected_init_time;
-  save_op = other.save_op;
-  restore_op = other.restore_op;
-  save_restore_loc_tensor = other.save_restore_loc_tensor;
-  queue_runners = other.queue_runners;
-  allowed_optimizations = other.allowed_optimizations;
-  graph.Swap(graph_def);
+GrapplerItem GrapplerItem::WithGraph(GraphDef&& graph_def) const {
+  GrapplerItem item;
+  item.id = id;
+  item.feed = feed;
+  item.fetch = fetch;
+  item.init_ops = init_ops;
+  item.keep_ops = keep_ops;
+  item.expected_init_time = expected_init_time;
+  item.save_op = save_op;
+  item.restore_op = restore_op;
+  item.save_restore_loc_tensor = save_restore_loc_tensor;
+  item.queue_runners = queue_runners;
+  item.devices_ = devices_;
+  item.optimization_options_ = optimization_options_;
+  item.graph.Swap(&graph_def);
+  return item;
 }
 
 std::vector<const NodeDef*> GrapplerItem::MainOpsFanin() const {
@@ -108,7 +115,89 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
       result.insert(NodeName(queue_runner.cancel_op_name()));
     }
   }
+
+  absl::optional<FunctionLibraryDefinition> fn_library;
+  if (!optimization_options_.allow_pruning_stateful_and_dataset_ops) {
+    fn_library.emplace(OpRegistry::Global(), graph.library());
+  }
+  for (const NodeDef& node : graph.node()) {
+    const auto attrs = AttrSlice(&node.attr());
+
+    // Tensorflow functions do not prune stateful or dataset-output ops from
+    // the function body (see PruneFunctionBody in common_runtime/function.cc).
+    if (!optimization_options_.allow_pruning_stateful_and_dataset_ops &&
+        (IsStateful(node, &*fn_library) || IsDataset(node))) {
+      result.insert(node.name());
+    }
+
+    // Do not remove ops with attribute _grappler_do_not_remove. This is useful
+    // for debugging.
+    bool do_not_remove;
+    if (TryGetNodeAttr(attrs, "_grappler_do_not_remove", &do_not_remove) &&
+        do_not_remove) {
+      result.insert(node.name());
+    }
+  }
+
   return result;
+}
+
+const std::unordered_set<string>& GrapplerItem::devices() const {
+  return devices_;
+}
+
+Status GrapplerItem::AddDevice(const string& device) {
+  DeviceNameUtils::ParsedName name;
+
+  if (!DeviceNameUtils::ParseFullName(device, &name)) {
+    return errors::InvalidArgument("Invalid device name: device=", device);
+
+  } else if (!name.has_job || !name.has_replica || !name.has_task ||
+             !name.has_type || !name.has_id) {
+    return errors::InvalidArgument("Not a fully defined device name: device=",
+                                   device);
+  }
+
+  devices_.insert(DeviceNameUtils::ParsedNameToString(name));
+  return Status::OK();
+}
+
+Status GrapplerItem::AddDevices(const GrapplerItem& other) {
+  std::vector<absl::string_view> invalid_devices;
+  for (const string& device : other.devices()) {
+    Status added = AddDevice(device);
+    if (!added.ok()) invalid_devices.emplace_back(device);
+  }
+  return invalid_devices.empty()
+             ? Status::OK()
+             : errors::InvalidArgument("Skipped invalid devices: [",
+                                       absl::StrJoin(invalid_devices, ", "),
+                                       "]");
+}
+
+Status GrapplerItem::InferDevicesFromGraph() {
+  absl::flat_hash_set<absl::string_view> invalid_devices;
+  for (const NodeDef& node : graph.node()) {
+    Status added = AddDevice(node.device());
+    if (!added.ok()) invalid_devices.insert(node.device());
+  }
+  VLOG(2) << "Inferred device set: [" << absl::StrJoin(devices_, ", ") << "]";
+  return invalid_devices.empty()
+             ? Status::OK()
+             : errors::InvalidArgument("Skipped invalid devices: [",
+                                       absl::StrJoin(invalid_devices, ", "),
+                                       "]");
+}
+
+void GrapplerItem::ClearDevices() { devices_.clear(); }
+
+const GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options()
+    const {
+  return optimization_options_;
+}
+
+GrapplerItem::OptimizationOptions& GrapplerItem::optimization_options() {
+  return optimization_options_;
 }
 
 std::vector<const NodeDef*> ComputeTransitiveFanin(
@@ -123,59 +212,9 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
     bool* ill_formed) {
-  *ill_formed = false;
-  std::unordered_map<string, const NodeDef*> name_to_node;
-  std::unordered_map<string, const NodeDef*> name_to_send;
-  for (const auto& node : graph.node()) {
-    name_to_node[node.name()] = &node;
-    if (node.op() == "_Send") {
-      const auto& attr = node.attr();
-      name_to_send[attr.at("tensor_name").s()] = &node;
-    }
-  }
-
-  std::vector<const NodeDef*> queue;
-  for (const string& root : terminal_nodes) {
-    const NodeDef* node = name_to_node[NodeName(root)];
-    if (!node) {
-      *ill_formed = true;
-      VLOG(2) << "ComputeTransitiveFanin: problem with root node: " << root;
-      return {};
-    }
-    queue.push_back(node);
-  }
-
-  std::vector<const NodeDef*> result;
-  std::unordered_set<const NodeDef*> visited;
-
-  while (!queue.empty()) {
-    const NodeDef* node = queue.back();
-    queue.pop_back();
-    if (!visited.insert(node).second) {
-      // The node has already been visited.
-      continue;
-    }
-    result.push_back(node);
-    for (const string& input : node->input()) {
-      const NodeDef* in = name_to_node[NodeName(input)];
-      if (!in) {
-        VLOG(2) << "ComputeTransitiveFanin: problem with node: " << input;
-        *ill_formed = true;
-        return {};
-      }
-      queue.push_back(in);
-    }
-    if (node->op() == "_Recv") {
-      const auto& attr = node->attr();
-      const NodeDef* send = name_to_send[attr.at("tensor_name").s()];
-      if (send) {
-        queue.push_back(send);
-      }
-      // Subgraph after partitioning may have either _Send or _Recv, not both.
-      // So, we do not set ill_formed for missing _Send.
-    }
-  }
-  return result;
+  std::unordered_map<string, const NodeDef*> name_to_fanin_node;
+  return ComputeTransitiveFanin(graph, terminal_nodes, &name_to_fanin_node,
+                                ill_formed);
 }
 
 }  // end namespace grappler

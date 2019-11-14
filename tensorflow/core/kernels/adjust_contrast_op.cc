@@ -99,7 +99,8 @@ REGISTER_KERNEL(float);
 REGISTER_KERNEL(double);
 #undef REGISTER_KERNEL
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
 namespace functor {
@@ -136,7 +137,7 @@ REGISTER_GPU_KERNEL(float);
 REGISTER_GPU_KERNEL(double);
 #undef REGISTER_GPU_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 class AdjustContrastOpV2Base : public OpKernel {
  protected:
@@ -189,11 +190,11 @@ class AdjustContrastOpV2Base : public OpKernel {
                          const ComputeOptions& options) = 0;
 };
 
-template <typename Device>
+template <typename Device, typename T>
 class AdjustContrastOpv2;
 
 template <>
-class AdjustContrastOpv2<CPUDevice> : public AdjustContrastOpV2Base {
+class AdjustContrastOpv2<CPUDevice, float> : public AdjustContrastOpV2Base {
  public:
   explicit AdjustContrastOpv2(OpKernelConstruction* context)
       : AdjustContrastOpV2Base(context) {}
@@ -320,13 +321,14 @@ class AdjustContrastOpv2<CPUDevice> : public AdjustContrastOpV2Base {
     int64 batch = outputs.dimension(0);
     int64 image_size = outputs.dimension(1);
     int64 channels = outputs.dimension(2);
-    // Similar to the reduction case, a straighforward implementation of this
+    // Similar to the reduction case, a straightforward implementation of this
     // does not utilize vectorization well because of the small channel size.
     // This algorithm repeatedly increases the area to be copied, and leads to
     // much better vectorinizations in the copy.
     for (int64 i = 0; i < batch; i++) {
       // Copy over the inputs into outputs in this batch. Effectively:
-      // outputs(i, :, k) = inputs(i, k). An example of how this algorith works:
+      // outputs(i, :, k) = inputs(i, k). An example of how this algorithm
+      // works:
       //
       //    x = float[1, 3], y = float[2048, 3]
       //    round 0
@@ -377,23 +379,33 @@ class AdjustContrastOpv2<CPUDevice> : public AdjustContrastOpV2Base {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustContrastv2").Device(DEVICE_CPU),
-                        AdjustContrastOpv2<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("AdjustContrastv2").Device(DEVICE_CPU).TypeConstraint<float>("T"),
+    AdjustContrastOpv2<CPUDevice, float>);
 
-#if GOOGLE_CUDA
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
 namespace functor {
-template <>
-void AdjustContrastv2<GPUDevice>::operator()(
-    const GPUDevice& d, typename TTypes<float, 4>::ConstTensor input,
-    typename TTypes<float>::ConstScalar contrast_factor,
-    typename TTypes<float, 4>::Tensor output);
-extern template struct AdjustContrastv2<GPUDevice>;
+
+#define DECLARE_GPU_SPEC(T)                                         \
+  template <>                                                       \
+  void AdjustContrastv2<GPUDevice, T>::operator()(                  \
+      const GPUDevice& d, typename TTypes<T, 4>::ConstTensor input, \
+      typename TTypes<float>::ConstScalar contrast_factor,          \
+      typename TTypes<T, 4>::Tensor output);                        \
+  extern template struct AdjustContrastv2<GPUDevice, T>;
+
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(Eigen::half);
+
+#undef DECLARE_GPU_SPEC
+
 }  // namespace functor
 
-template <>
-class AdjustContrastOpv2<GPUDevice> : public AdjustContrastOpV2Base {
+template <typename T>
+class AdjustContrastOpv2<GPUDevice, T> : public AdjustContrastOpV2Base {
  public:
   explicit AdjustContrastOpv2(OpKernelConstruction* context)
       : AdjustContrastOpV2Base(context) {}
@@ -402,20 +414,27 @@ class AdjustContrastOpv2<GPUDevice> : public AdjustContrastOpV2Base {
                  const ComputeOptions& options) override {
     const int64 shape[4] = {options.batch, options.height, options.width,
                             options.channels};
-    functor::AdjustContrastv2<GPUDevice>()(
-        context->eigen_device<GPUDevice>(),
-        options.input->shaped<float, 4>(shape), options.factor->scalar<float>(),
-        options.output->shaped<float, 4>(shape));
+    functor::AdjustContrastv2<GPUDevice, T>()(
+        context->eigen_device<GPUDevice>(), options.input->shaped<T, 4>(shape),
+        options.factor->scalar<float>(), options.output->shaped<T, 4>(shape));
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("AdjustContrastv2").Device(DEVICE_GPU),
-                        AdjustContrastOpv2<GPUDevice>);
-#endif  // GOOGLE_CUDA
+#define REGISTER_GPU(T)                                                   \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("AdjustContrastv2").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      AdjustContrastOpv2<GPUDevice, T>);
+
+REGISTER_GPU(float)
+REGISTER_GPU(Eigen::half)
+
+#undef REGISTER_GPU
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 template <>
-class AdjustContrastOpv2<SYCLDevice> : public AdjustContrastOpV2Base {
+class AdjustContrastOpv2<SYCLDevice, float> : public AdjustContrastOpV2Base {
  public:
   explicit AdjustContrastOpv2(OpKernelConstruction* context)
       : AdjustContrastOpV2Base(context) {}
@@ -430,8 +449,9 @@ class AdjustContrastOpv2<SYCLDevice> : public AdjustContrastOpV2Base {
         options.output->shaped<float, 4>(shape));
   }
 };
-REGISTER_KERNEL_BUILDER(Name("AdjustContrastv2").Device(DEVICE_SYCL),
-                        AdjustContrastOpv2<SYCLDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("AdjustContrastv2").Device(DEVICE_SYCL).TypeConstraint<float>("T"),
+    AdjustContrastOpv2<SYCLDevice, float>);
 #endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

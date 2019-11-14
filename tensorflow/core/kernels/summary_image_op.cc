@@ -61,7 +61,7 @@ class SummaryImageOp : public OpKernel {
                 errors::InvalidArgument(
                     "Tensor must be 4-D with last dim 1, 3, or 4, not ",
                     tensor.shape().DebugString()));
-    const string& base_tag = tags.scalar<string>()();
+    const string& base_tag = tags.scalar<tstring>()();
 
     OP_REQUIRES(c,
                 tensor.dim_size(0) < (1LL << 31) &&
@@ -77,6 +77,11 @@ class SummaryImageOp : public OpKernel {
     const int w = static_cast<int>(tensor.dim_size(2));
     const int hw = h * w;  // Compact these two dims for simplicity
     const int depth = static_cast<int>(tensor.dim_size(3));
+
+    OP_REQUIRES(c, hw > 0 && depth > 0,
+                errors::InvalidArgument(
+                    "input tensor must have non-zero dims. Found: [",
+                    batch_size, ", ", h, ", ", w, ", ", depth, "]."));
 
     Summary s;
     if (tensor.dtype() == DT_UINT8) {
@@ -101,7 +106,7 @@ class SummaryImageOp : public OpKernel {
 
     Tensor* summary_tensor = nullptr;
     OP_REQUIRES_OK(c, c->allocate_output(0, TensorShape({}), &summary_tensor));
-    CHECK(s.SerializeToString(&summary_tensor->scalar<string>()()));
+    CHECK(SerializeToTString(s, &summary_tensor->scalar<tstring>()()));
   }
 
   template <class T>

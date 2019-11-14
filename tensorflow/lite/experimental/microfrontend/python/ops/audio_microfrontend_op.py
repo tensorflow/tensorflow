@@ -18,16 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
-
 from tensorflow.lite.experimental.microfrontend.ops import gen_audio_microfrontend_op
-from tensorflow.contrib.util import loader
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import load_library
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.util.tf_export import tf_export
 
-_audio_microfrontend_op = loader.load_op_library(
+_audio_microfrontend_op = load_library.load_op_library(
     resource_loader.get_path_to_datafile("_audio_microfrontend_op.so"))
 
 
+@tf_export("lite.experimental.microfrontend.python.ops.audio_microfrontend")
 def audio_microfrontend(audio,
                         sample_rate=16000,
                         window_size=25,
@@ -50,7 +53,7 @@ def audio_microfrontend(audio,
                         frame_stride=1,
                         zero_padding=False,
                         out_scale=1,
-                        out_type=tf.uint16):
+                        out_type=dtypes.uint16):
   """Audio Microfrontend Op.
 
   This Op converts a sequence of audio data into one or more
@@ -96,11 +99,11 @@ def audio_microfrontend(audio,
   Raises:
     ValueError: If the audio tensor is not explicitly a vector.
   """
-  audio_shape = audio.get_shape()
+  audio_shape = audio.shape
   if audio_shape.ndims is None:
     raise ValueError("Input to `AudioMicrofrontend` should have known rank.")
   if len(audio_shape) > 1:
-    audio = tf.reshape(audio, [-1])
+    audio = array_ops.reshape(audio, [-1])
 
   return gen_audio_microfrontend_op.audio_microfrontend(
       audio, sample_rate, window_size, window_step, num_channels,
@@ -110,4 +113,4 @@ def audio_microfrontend(audio,
       right_context, frame_stride, zero_padding, out_scale, out_type)
 
 
-tf.NotDifferentiable("AudioMicrofrontend")
+ops.NotDifferentiable("AudioMicrofrontend")

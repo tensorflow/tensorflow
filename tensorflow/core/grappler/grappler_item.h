@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -35,11 +36,14 @@ namespace grappler {
 // nodes, and potentially a set of nodes to feed.
 struct GrapplerItem {
   GrapplerItem() = default;
-  GrapplerItem(const GrapplerItem& other, GraphDef&& graph_def)
-      : GrapplerItem(other, &graph_def) {}
-  // Swaps *graph_def with an empty GraphDef.
-  GrapplerItem(const GrapplerItem& other, GraphDef* graph_def);
+  GrapplerItem(const GrapplerItem& other) = default;
+  GrapplerItem(GrapplerItem&& other) = default;
+  GrapplerItem& operator=(const GrapplerItem& other) = default;
+  GrapplerItem& operator=(GrapplerItem&& other) = default;
   virtual ~GrapplerItem() = default;
+
+  // Create a copy of this GrapplerItem with graph swapped with the argument.
+  GrapplerItem WithGraph(GraphDef&& graph) const;
 
   string id;  // A unique id for this item
 
@@ -78,14 +82,55 @@ struct GrapplerItem {
   // fetch nodes, keep_ops, init_ops.
   std::unordered_set<string> NodesToPreserve() const;
 
-  // Restrict types of optimizations that are allowed for this GrapplerItem.
-  struct AllowedOptimizations {
+  struct OptimizationOptions {
     // Is it allowed to add nodes to the graph that do not have registered
     // gradient function.
-    bool non_differentiable_rewrites = true;
+    bool allow_non_differentiable_rewrites = true;
+
+    // Tensorflow function execution semantics is slightly different from the
+    // main Tensorflow graph, and we need to make sure that we do not change it
+    // by running Grappler optimizer passes. One main difference is that
+    // functions do not prune ops with side-effects and dataset-output ops (see
+    // PruneFunctionBody in common_runtime/function.cc).
+    bool allow_pruning_stateful_and_dataset_ops = true;
+
+    // If true Grappler will optimize the main graph, and also all functions in
+    // the graph function library (function can't be polymorphic, it can't have
+    // undefined type parameters in the function signature, or placeholder
+    // attributes in the function body).
+    bool optimize_function_library = true;
+
+    // Mark the grapper optimization run in eager mode or not.
+    bool is_eager_mode = false;
   };
 
-  AllowedOptimizations allowed_optimizations;
+  const std::unordered_set<string>& devices() const;
+  // Adds a device to a set of available devices, only if it's a valid fully
+  // defined device name. Returns `Status::OK()` if successfully added a device,
+  // and an error otherwise.
+  Status AddDevice(const string& device);
+  // Adds all valid devices from the other Grappler item to the device set.
+  Status AddDevices(const GrapplerItem& other);
+  // Adds all valid devices from the nodes of the graph to the device set.
+  // Returns `Status::OK()` if all device annotations found in a graph are valid
+  // fully defined device names, and an error otherwise.
+  Status InferDevicesFromGraph();
+  // Clears a set of available devices.
+  void ClearDevices();
+
+  const OptimizationOptions& optimization_options() const;
+  OptimizationOptions& optimization_options();
+
+ private:
+  // TODO(ezhulenev) Make GrapplerItem a class and hide all public data members.
+  // TODO(ezhulenev): Migrate all unordered collections to absl.
+
+  // A set of fully defined device names that can be used to place the nodes of
+  // the `graph`.
+  // Example of a fully defined name: "/job:work/replica:1/task:1/device:CPU:0"
+  std::unordered_set<string> devices_;
+
+  OptimizationOptions optimization_options_;
 };
 
 // Return the transitive fanin of a set of terminal nodes.
@@ -97,6 +142,14 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
 // exist.
 std::vector<const NodeDef*> ComputeTransitiveFanin(
     const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    bool* ill_formed);
+
+// Return the transitive fanin of a set of terminal nodes. Sets 'ill_formed' to
+// true if one of the node is missing in the graph, or some node inputs don't
+// exist. Sets name_to_fanin_node for name to fanin nodes map.
+std::vector<const NodeDef*> ComputeTransitiveFanin(
+    const GraphDef& graph, const std::vector<string>& terminal_nodes,
+    std::unordered_map<string, const NodeDef*>* name_to_fanin_node,
     bool* ill_formed);
 
 }  // end namespace grappler

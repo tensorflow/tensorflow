@@ -7,7 +7,7 @@ op {
   }
   in_arg {
     name: "rt_dense_values"
-    description: "The `inner_values` for the `RaggedTensor`."
+    description: "The `flat_values` for the `RaggedTensor`."
   }
   out_arg {
     name: "sparse_indices"

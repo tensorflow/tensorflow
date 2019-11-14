@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'function_name\', \'unique_function_id\', \'node_name_prefix\', \'attr_name\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'function_name\', \'unique_function_id\', \'node_name_prefix\', \'attr_name\', \'level\', \'children_inputs_mappings\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
   }
   member_method {
     name: "add"

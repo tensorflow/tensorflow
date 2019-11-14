@@ -33,7 +33,7 @@ enum ShapeSpecificationType {
   // Const node, which is guaranteed not to change once inference starts. The
   // shape is also hardcoded as in kAsReshapeOption.
   kAsConstantTensor,
-  // The output shape is specifed as an input tensor that can change based on
+  // The output shape is specified as an input tensor that can change based on
   // external input. That is, the shape is not know before the inference
   // starts. The shape is also hardcoded as in kAsReshapeOption.
   kAsTensor,
@@ -127,37 +127,34 @@ TEST_P(ReshapeOpTest, MismatchedDimensions) {
   if (GetParam() == kAsTensor) {
     ReshapeOpModel<float> m({1, 2, 4, 1}, {2}, {2, 1}, GetParam());
     m.SetInput({3});
-    EXPECT_DEATH(m.Invoke(), "num_input_elements != num_output_elements");
+    EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk)
+        << "num_input_elements != num_output_elements";
   } else {
+#ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(ReshapeOpModel<float>({1, 2, 4, 1}, {2}, {2, 1}, GetParam()),
                  "num_input_elements != num_output_elements");
+#endif
   }
 }
 
 TEST_P(ReshapeOpTest, TooManyDimensions) {
-  if (GetParam() == kAsReshapeOption) {
+#ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(ReshapeOpModel<float>({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
                                        {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam()),
                  "Found too many dimensions");
-  } else {
-    ReshapeOpModel<float> m({1, 1, 2, 1, 1, 1, 1, 1, 1}, {9},
-                            {1, 1, 1, 1, 1, 1, 1, 1, 2}, GetParam());
-    m.SetInput({3, 4});
-    m.Invoke();
-    EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 4}));
-    EXPECT_THAT(m.GetOutputShape(),
-                ElementsAreArray({1, 1, 1, 1, 1, 1, 1, 1, 2}));
-  }
+#endif
 }
 
 TEST_P(ReshapeOpTest, TooManySpecialDimensions) {
   if (GetParam() != kAsTensor) {
+#ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(
         ReshapeOpModel<float>({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam()),
         "stretch_dim != -1");
+#endif
   } else {
     ReshapeOpModel<float> m({1, 2, 4, 1}, {4}, {-1, -1, 2, 4}, GetParam());
-    EXPECT_DEATH(m.Invoke(), "stretch_dim != -1");
+    EXPECT_NE(m.InvokeUnchecked(), kTfLiteOk) << "stretch_dim != -1";
   }
 }
 
@@ -202,12 +199,15 @@ TEST_P(ReshapeOpTest, ScalarOutput) {
 // and output are scalars.
 TEST_P(ReshapeOpTest, LegacyScalarOutput) {
   if (GetParam() == kAsConstantTensor) {
+#ifdef GTEST_HAS_DEATH_TEST
     EXPECT_DEATH(ReshapeOpModel<float>({1}, {1}, {0}, GetParam()),
                  "num_input_elements != num_output_elements");
+#endif
   } else if (GetParam() == kAsTensor) {
     ReshapeOpModel<float> m({1}, {1}, {0}, GetParam());
     m.SetInput({3});
-    EXPECT_DEATH(m.Invoke(), "num_input_elements != num_output_elements");
+    ASSERT_NE(m.InvokeUnchecked(), kTfLiteOk)
+        << "num_input_elements != num_output_elements";
   } else {
     ReshapeOpModel<float> m({1}, {1}, {0}, GetParam());
     m.SetInput({3});
@@ -226,14 +226,8 @@ TEST_P(ReshapeOpTest, Strings) {
               ElementsAreArray({"1", "2", "3", "4", "5", "6", "7", "8"}));
 }
 
-INSTANTIATE_TEST_CASE_P(VariedShapeSpec, ReshapeOpTest,
-                        ::testing::Values(kAsReshapeOption, kAsConstantTensor,
-                                          kAsTensor));
+INSTANTIATE_TEST_SUITE_P(VariedShapeSpec, ReshapeOpTest,
+                         ::testing::Values(kAsReshapeOption, kAsConstantTensor,
+                                           kAsTensor));
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

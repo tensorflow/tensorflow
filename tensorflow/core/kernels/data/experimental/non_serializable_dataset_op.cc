@@ -20,6 +20,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
+namespace experimental {
 namespace {
 
 class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
@@ -53,8 +54,8 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::NonSerializable")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::NonSerializable")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -68,12 +69,19 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
       return "NonSerializableDatasetOp::Dataset";
     }
 
+    Status CheckExternalState() const override {
+      return input_->CheckExternalState();
+    }
+
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,
                               DatasetGraphDefBuilder* b,
                               Node** output) const override {
-      return errors::Unimplemented(DebugString(), "::AsGraphDefInternal");
+      return errors::Unimplemented(DebugString(),
+                                   " does not support serialization.");
     }
+
+    int64 Cardinality() const override { return input_->Cardinality(); }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -121,10 +129,13 @@ class NonSerializableDatasetOp : public UnaryDatasetOpKernel {
   std::vector<PartialTensorShape> output_shapes_;
 };
 
+REGISTER_KERNEL_BUILDER(Name("NonSerializableDataset").Device(DEVICE_CPU),
+                        NonSerializableDatasetOp);
 REGISTER_KERNEL_BUILDER(
     Name("ExperimentalNonSerializableDataset").Device(DEVICE_CPU),
     NonSerializableDatasetOp);
 
 }  // namespace
+}  // namespace experimental
 }  // namespace data
 }  // namespace tensorflow

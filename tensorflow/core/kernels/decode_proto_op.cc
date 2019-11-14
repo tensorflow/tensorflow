@@ -31,6 +31,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -162,7 +163,6 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
     case WireFormatLite::TYPE_UINT64:
       return InitDefaultValue(dtype, field_desc->default_value_uint64(),
                               result);
-    case WireFormatLite::TYPE_ENUM:
     case WireFormatLite::TYPE_INT32:
     case WireFormatLite::TYPE_SINT32:
     case WireFormatLite::TYPE_SFIXED32:
@@ -173,6 +173,9 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
                               result);
     case WireFormatLite::TYPE_BOOL:
       return InitDefaultValue(dtype, field_desc->default_value_bool(), result);
+    case WireFormatLite::TYPE_ENUM:
+      return InitDefaultValue(dtype, field_desc->default_value_enum()->number(),
+                              result);
     case WireFormatLite::TYPE_BYTES:
     case WireFormatLite::TYPE_STRING:
       // Manipulating default string values as C-style pointers should be OK
@@ -551,7 +554,7 @@ class DenseCollector {
       case DataType::DT_INT64:
         return FillDefault<int64>(default_value_.value.v_int64);
       case DataType::DT_STRING:
-        return FillDefault<string>(default_value_.value.v_string);
+        return FillDefault<tstring>(default_value_.value.v_string);
       case DataType::DT_UINT8:
         return FillDefault<uint8>(default_value_.value.v_uint8);
       case DataType::DT_UINT32:
@@ -625,8 +628,37 @@ class DecodeProtoOp : public OpKernel {
     // Gather the field descriptors and check that requested output types match.
     int field_index = 0;
     std::vector<const FieldDescriptor*> field_descs;
+    std::vector<const FieldDescriptor*> exts;
+    absl::flat_hash_map<string, const FieldDescriptor*> ext_name_to_field;
+    std::vector<const FieldDescriptor*>::iterator ext_it = exts.begin();
     for (const string& name : field_names) {
       auto fd = message_desc->FindFieldByName(name);
+      if (fd == nullptr) {
+        // If field can't be found in original message, try to find a matching
+        // extension (by its full_name). First check a hashmap for a matching
+        // extension, and if not found, then iterate through available
+        // extensions to find a match (updating the hashmap while iterating.)
+        auto lookup_result = ext_name_to_field.find(name);
+        if (lookup_result != ext_name_to_field.end()) {
+          fd = lookup_result->second;
+        } else {
+          if (ext_it == exts.begin()) {
+            desc_pool->FindAllExtensions(message_desc, &exts);
+            ext_it = exts.begin();
+          }
+          while (ext_it != exts.end()) {
+            auto ext_name = (*ext_it)->full_name();
+            auto ext_field = *ext_it;
+            ++ext_it;
+
+            ext_name_to_field.insert({ext_name, ext_field});
+            if (ext_name == name) {
+              fd = ext_field;
+              break;
+            }
+          }
+        }
+      }
       OP_REQUIRES(context, fd != nullptr,
                   errors::InvalidArgument("Unknown field: ", name,
                                           " in message type ", message_type));
@@ -708,24 +740,24 @@ class DecodeProtoOp : public OpKernel {
 
     // This is used to allocate binary bufs if used. It serves only to define
     // memory ownership.
-    std::vector<string> tmp_binary_bufs(message_count);
+    std::vector<tstring> tmp_binary_bufs(message_count);
 
     // These are the actual buffers to use, which may be in tmp_binary_bufs
     // or may be pointers into the buf_tensor. Either way they are not owned
     // here.
-    std::vector<const string*> bufs;
+    std::vector<const tstring*> bufs;
 
     if (is_binary_ && !sanitize_) {
       // Fast path.
       for (int mi = 0; mi < message_count; ++mi) {
-        const string* buf = &buf_tensor.flat<string>()(mi);
+        const tstring* buf = &buf_tensor.flat<tstring>()(mi);
         bufs.push_back(buf);
       }
     } else {
       // We will have to allocate a copy, either to convert from text to binary
       // or to sanitize a binary proto.
       for (int mi = 0; mi < message_count; ++mi) {
-        ReserializeMessage(ctx, buf_tensor.flat<string>()(mi),
+        ReserializeMessage(ctx, buf_tensor.flat<tstring>()(mi),
                            &tmp_binary_bufs[mi]);
         if (!ctx->status().ok()) {
           return;
@@ -778,7 +810,7 @@ class DecodeProtoOp : public OpKernel {
  private:
   // Copy a serialized message to binary, e.g. to handle text proto inputs.
   void ReserializeMessage(OpKernelContext* ctx, const string& buf,
-                          string* binary_buf) {
+                          tstring* binary_buf) {
     // Handle text protos by translating them to binary.
     std::unique_ptr<Message> message(message_prototype_->New());
     OP_REQUIRES(ctx, message, errors::DataLoss("Initializing message failed"));
@@ -793,7 +825,7 @@ class DecodeProtoOp : public OpKernel {
                   errors::DataLoss("Unable to parse text protobuf"));
     }
 
-    OP_REQUIRES(ctx, message->SerializeToString(binary_buf),
+    OP_REQUIRES(ctx, SerializeToTString(*message, binary_buf),
                 errors::DataLoss("Unable to reserialize text proto as binary"));
   }
 
@@ -845,7 +877,7 @@ class DecodeProtoOp : public OpKernel {
 
   // Parse fields from a serialized message into preallocated tensors.
   void AccumulateFields(OpKernelContext* ctx,
-                        const std::vector<const string*>& bufs,
+                        const std::vector<const tstring*>& bufs,
                         std::vector<Tensor*> outputs) {
     struct TensorInfo {
       explicit TensorInfo(Tensor* tensor) {
@@ -865,8 +897,8 @@ class DecodeProtoOp : public OpKernel {
           data = tensor->bit_casted_shaped<uint8, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.
-          stride = last_dim_size * sizeof(string);
-          data = reinterpret_cast<uint8*>(tensor->flat<string>().data());
+          stride = last_dim_size * sizeof(tstring);
+          data = reinterpret_cast<uint8*>(tensor->flat<tstring>().data());
         }
       }
 
@@ -885,7 +917,7 @@ class DecodeProtoOp : public OpKernel {
     }
 
     for (int message_index = 0; message_index < bufs.size(); ++message_index) {
-      const string& buf = *bufs[message_index];
+      const tstring& buf = *bufs[message_index];
 
       std::vector<DenseCollector> collectors;
       collectors.reserve(field_count);

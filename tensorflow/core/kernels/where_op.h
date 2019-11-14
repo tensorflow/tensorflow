@@ -27,7 +27,6 @@ namespace tensorflow {
 #define TF_CALL_WHERE_GPU_TYPES(m) \
   TF_CALL_int8(m);                 \
   TF_CALL_uint8(m);                \
-  TF_CALL_int32(m);                \
   TF_CALL_int64(m);                \
   TF_CALL_float(m);                \
   TF_CALL_double(m);               \

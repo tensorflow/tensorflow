@@ -18,7 +18,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_inversion
 from tensorflow.python.ops.linalg import linear_operator_test_util
@@ -29,6 +31,7 @@ linalg = linalg_lib
 LinearOperatorInversion = linear_operator_inversion.LinearOperatorInversion  # pylint: disable=invalid-name
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorInversionTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -37,11 +40,11 @@ class LinearOperatorInversionTest(
     self._atol[dtypes.complex64] = 1e-5
     self._rtol[dtypes.complex64] = 1e-5
 
-  def _operator_and_matrix(self,
-                           build_info,
-                           dtype,
-                           use_placeholder,
-                           ensure_self_adjoint_and_pd=False):
+  def operator_and_matrix(self,
+                          build_info,
+                          dtype,
+                          use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
 
     if ensure_self_adjoint_and_pd:
@@ -125,6 +128,12 @@ class LinearOperatorInversionTest(
 
     self.assertEqual("my_operator_inv", operator.name)
 
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[1., 2.], [3., 4.]])
+    operator = LinearOperatorInversion(linalg.LinearOperatorFullMatrix(matrix))
+    self.check_tape_safe(operator)
+
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorInversionTest)
   test.main()

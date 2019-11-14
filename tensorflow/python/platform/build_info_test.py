@@ -25,6 +25,7 @@ from tensorflow.python.platform import test
 class BuildInfoTest(test.TestCase):
 
   def testBuildInfo(self):
+    self.assertEqual(build_info.is_rocm_build, test.is_built_with_rocm())
     self.assertEqual(build_info.is_cuda_build, test.is_built_with_cuda())
 
 

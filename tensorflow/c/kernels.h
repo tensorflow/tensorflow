@@ -16,11 +16,35 @@ limitations under the License.
 #ifndef TENSORFLOW_C_KERNELS_H_
 #define TENSORFLOW_C_KERNELS_H_
 
-#include "tensorflow/c/c_api.h"
+#include <stdint.h>
+
+#include "tensorflow/c/tf_datatype.h"
+#include "tensorflow/c/tf_status.h"
+
+// Macro to control visibility of exported symbols in the shared library (.so,
+// .dylib, .dll).
+// This duplicates the TF_EXPORT macro definition in
+// tensorflow/core/platform/macros.h in order to keep this .h file independent
+// of any other includes.
+#ifdef SWIG
+#define TF_CAPI_EXPORT
+#else
+#if defined(_WIN32)
+#ifdef TF_COMPILE_LIBRARY
+#define TF_CAPI_EXPORT __declspec(dllexport)
+#else
+#define TF_CAPI_EXPORT __declspec(dllimport)
+#endif  // TF_COMPILE_LIBRARY
+#else
+#define TF_CAPI_EXPORT __attribute__((visibility("default")))
+#endif  // _WIN32
+#endif  // SWIG
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+typedef struct TF_Tensor TF_Tensor;
 
 // --------------------------------------------------------------------------
 // C API for TensorFlow Kernels.
@@ -35,9 +59,9 @@ extern "C" {
 // `TF_RegisterKernelBuilder`, which will allow TF to construct user-provided
 // kernels when necessary.
 
-struct TF_KernelBuilder;
-struct TF_OpKernelConstruction;
-struct TF_OpKernelContext;
+typedef struct TF_KernelBuilder TF_KernelBuilder;
+typedef struct TF_OpKernelConstruction TF_OpKernelConstruction;
+typedef struct TF_OpKernelContext TF_OpKernelContext;
 
 // Allocates a new kernel builder and returns a pointer to it.
 //
@@ -73,6 +97,16 @@ TF_CAPI_EXPORT extern TF_KernelBuilder* TF_NewKernelBuilder(
     void (*compute_func)(void*, TF_OpKernelContext*),
     void (*delete_func)(void*));
 
+// Specifies that this kernel's attribute only supports the given type.
+TF_CAPI_EXPORT extern void TF_KernelBuilder_TypeConstraint(
+    TF_KernelBuilder* kernel_builder, const char* attr_name,
+    const TF_DataType type, TF_Status* status);
+
+// Specify that this kernel requires/provides an input/output arg
+// in host memory (instead of the default, device memory).
+TF_CAPI_EXPORT extern void TF_KernelBuilder_HostMemory(
+    TF_KernelBuilder* kernel_builder, const char* arg_name);
+
 // Register the given kernel builder with the TensorFlow runtime. If
 // registration fails, the given status will be populated.
 //
@@ -84,6 +118,77 @@ TF_CAPI_EXPORT extern void TF_RegisterKernelBuilder(const char* kernel_name,
 // Deletes the given TF_KernelBuilder. This should be called only if the kernel
 // builder is not registered with TensorFlow via TF_RegisterKernelBuilder.
 TF_CAPI_EXPORT extern void TF_DeleteKernelBuilder(TF_KernelBuilder* builder);
+
+// --------------------------------------------------------------------------
+// OpKernelContext routines
+
+// TF_NumInputs returns the number of inputs available in ctx.
+TF_CAPI_EXPORT extern int TF_NumInputs(TF_OpKernelContext* ctx);
+
+// TF_NumOutputs returns the number of outputs to be placed in *ctx by the
+// kernel.
+TF_CAPI_EXPORT extern int TF_NumOutputs(TF_OpKernelContext* ctx);
+
+// Retrieves the ith input from ctx. If TF_GetCode(status) is TF_OK, *tensor is
+// populated and its ownership is passed to the caller. In any other case,
+// *tensor is not modified.
+//
+// If i < 0 or i >= TF_NumInputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_GetInput(TF_OpKernelContext* ctx, int i,
+                                       TF_Tensor** tensor, TF_Status* status);
+
+// Sets the ith output of ctx to tensor. If TF_GetCode(status) is anything but
+// TF_OK, ctx is left unmodified.
+//
+// If i < 0 or i >= TF_NumOutputs(ctx), *status is set to TF_OUT_OF_RANGE.
+TF_CAPI_EXPORT extern void TF_SetOutput(TF_OpKernelContext* ctx, int i,
+                                        const TF_Tensor* tensor,
+                                        TF_Status* status);
+
+// Notifies the given OpKernelConstruction that kernel construction has failed.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_Failure(
+    TF_OpKernelConstruction* ctx, TF_Status* status);
+
+// Notifies the given OpKernelContext that the kernel's compute function has
+// failed.
+TF_CAPI_EXPORT extern void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx,
+                                                      TF_Status* status);
+
+// Returns the expected output data type of the ith output. If i < 0 or
+// i >= TF_NumOutputs(ctx), the program aborts.
+TF_CAPI_EXPORT extern TF_DataType TF_ExpectedOutputDataType(
+    TF_OpKernelContext* ctx, int i);
+
+// Returns the step ID of the given context.
+TF_CAPI_EXPORT extern int64_t TF_StepId(TF_OpKernelContext* ctx);
+
+// Interprets the named kernel construction attribute as a TF_DataType and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// TF_DataType, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrType(
+    TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* val,
+    TF_Status* status);
+
+// Interprets the named kernel construction attribute as int32_t and
+// places it into *val. *status is set to TF_OK.
+//
+// If the attribute could not be found or could not be interpreted as
+// int32, *status is populated with an error.
+TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
+    TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
+    TF_Status* status);
+
+// Allocates Tensor for output at given index. Caller takes ownership of
+// returned TF_Tensor and should deallocate it using TF_DeleteTensor(tensor).
+//
+// This function should be used to allocate outputs inside kernel
+// compute function.
+TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
+                                            int index, TF_DataType dtype,
+                                            int64_t* dims, int num_dims,
+                                            size_t len, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

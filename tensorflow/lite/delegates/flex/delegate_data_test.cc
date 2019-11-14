@@ -24,18 +24,20 @@ namespace flex {
 namespace {
 
 TEST(DelegateDataTest, Basic) {
-  std::unique_ptr<DelegateData> data;
+  DelegateData data;
   // We only check for success because it is hard to make initialization fail.
   // It only happens if we manage to not link the CPU device factory into the
   // binary.
-  EXPECT_TRUE(DelegateData::Create(&data).ok());
+  tensorflow::SessionOptions session_options;
+  session_options.config.set_intra_op_parallelism_threads(2);
+  EXPECT_TRUE(data.Prepare(session_options).ok());
 
   TfLiteContext dummy_context1 = {};
   TfLiteContext dummy_context2 = {};
-  EXPECT_NE(data->GetEagerContext(), nullptr);
-  EXPECT_NE(data->GetBufferMap(&dummy_context1), nullptr);
-  EXPECT_NE(data->GetBufferMap(&dummy_context1),
-            data->GetBufferMap(&dummy_context2));
+  EXPECT_NE(data.GetEagerContext(), nullptr);
+  EXPECT_NE(data.GetBufferMap(&dummy_context1), nullptr);
+  EXPECT_NE(data.GetBufferMap(&dummy_context1),
+            data.GetBufferMap(&dummy_context2));
 }
 
 }  // namespace

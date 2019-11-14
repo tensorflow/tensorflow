@@ -178,7 +178,7 @@ class SigNode {
   // computed.
   size_t GetTopoHash(int distance) const;
 
-  // The the hash value for the highest computed distance. It must be previously
+  // The hash value for the highest computed distance. It must be previously
   // computed.
   size_t GetHighTopoHash() const {
     CHECK(!topo_hash_.empty());

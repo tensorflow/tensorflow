@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/filter_fusion.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -57,14 +58,16 @@ NodeDef MakeFusedFilterNode(const NodeDef& first_filter_node,
 
 }  // namespace
 
-Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
-                              GraphDef* output) {
+Status FilterFusion::OptimizeAndCollectStats(Cluster* cluster,
+                                             const GrapplerItem& item,
+                                             GraphDef* output,
+                                             OptimizationStats* stats) {
   GraphDef sorted_old_graph = item.graph;
   TF_RETURN_IF_ERROR(TopologicalSort(&sorted_old_graph));
   *output = sorted_old_graph;
 
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
                                              output->library());
 
@@ -109,7 +112,8 @@ Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     const auto* fused_filter_node = graph.AddNode(MakeFusedFilterNode(
         *first_filter_node, *second_filter_node, *fused_predicate, &graph));
 
-    graph.UpdateFanouts(second_filter_node->name(), fused_filter_node->name());
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(second_filter_node->name(),
+                                           fused_filter_node->name()));
 
     // TODO(prazek): we should run some optimizations on the fused filter
     // functions, or make sure that optimization passes run after filter
@@ -119,9 +123,10 @@ Status FilterFusion::Optimize(Cluster* cluster, const GrapplerItem& item,
     // they are not used anymore.
     nodes_to_delete.insert(first_filter_node->name());
     nodes_to_delete.insert(second_filter_node->name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -132,5 +137,5 @@ void FilterFusion::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(FilterFusion, "filter_fusion");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

@@ -66,6 +66,14 @@ enum ConvolutionMode {
   CONVOLUTION = 1;
 }
 
+enum ConvolutionKind {
+  INVALID = 0;
+  FORWARD = 1;
+  BACKWARD_FILTER = 2;
+  BACKWARD_DATA = 3;
+  FORWARD_BIAS_ACTIVATION = 4;
+}
+
 // Generic tensor representation.
 message TensorDescriptorProto {
   repeated int64 dimensions = 1;
@@ -100,4 +108,6 @@ message ConvolutionDescriptorProto {
   // See cuDNN's group count.
   int32 group_count = 5;
   ConvolutionMode convolution_mode = 6;
+  // Tensorflow node name, same as in NodeDef, for debugging purposes.
+  string name = 7;
 }

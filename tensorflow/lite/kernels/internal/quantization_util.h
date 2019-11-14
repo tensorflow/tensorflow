@@ -252,7 +252,8 @@ void PreprocessLogSoftmaxScalingExp(double beta, double input_scale,
 // it must not overflow before we reduce the value by multiplication by the
 // input multiplier.  The negative radius is used as the minimum difference in
 // Softmax.
-int CalculateInputRadius(int input_integer_bits, int input_left_shift);
+int CalculateInputRadius(int input_integer_bits, int input_left_shift,
+                         int total_signed_bits = 31);
 
 // Nudges a min/max quantization range to ensure zero is zero.
 // Gymnastics with nudged zero point is to ensure that real zero maps to
@@ -274,6 +275,17 @@ void FakeQuantizeArray(const float nudged_scale, const float nudged_min,
 // exponent), stores that exponent (i.e. log2(x)) in *log2_result, otherwise
 // returns false.
 bool CheckedLog2(const float x, int* log2_result);
+
+// Decomposes an array of double multipliers into a Q0.31 int32 representation
+// of its significand, and shift representation of its exponent.
+//
+// Handles an arbitrary multiplier. The 'shift' output-value is
+// basically the 'floating-point exponent' of the multiplier:
+// Negative for a right-shift (when the multiplier is <1), positive for a
+// left-shift (when the multiplier is >1)
+void QuantizeMultiplierArray(const double* effective_scales, size_t size,
+                             int32_t* effective_scale_significand,
+                             int* effective_shift);
 
 }  // namespace tflite
 

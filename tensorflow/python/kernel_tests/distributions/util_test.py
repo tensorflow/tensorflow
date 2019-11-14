@@ -59,6 +59,7 @@ def _logit(x):
 
 class AssertCloseTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testAssertIntegerForm(self):
     # This should only be detected as an integer.
     x = array_ops.placeholder(dtypes.float32)
@@ -112,6 +113,7 @@ class MaybeGetStaticTest(test.TestCase):
     self.assertAllClose(
         np.array(2.), du.maybe_get_static_value(x, dtype=np.float64))
 
+  @test_util.run_deprecated_v1
   def testGetStaticPlaceholder(self):
     x = array_ops.placeholder(dtype=dtypes.int32, shape=[1])
     self.assertEqual(None, du.maybe_get_static_value(x))
@@ -235,6 +237,7 @@ class GetLogitsAndProbsTest(test.TestCase):
         probs=p4, multidimensional=True, validate_args=False)
     self.evaluate(prob)
 
+  @test_util.run_deprecated_v1
   def testProbsMultidimShape(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
@@ -249,6 +252,7 @@ class GetLogitsAndProbsTest(test.TestCase):
             probs=p, multidimensional=True, validate_args=True)
         prob.eval(feed_dict={p: np.ones([int(2**11+1)])})
 
+  @test_util.run_deprecated_v1
   def testLogitsMultidimShape(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
@@ -266,6 +270,7 @@ class GetLogitsAndProbsTest(test.TestCase):
 
 class EmbedCheckCategoricalEventShapeTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testTooSmall(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
@@ -280,6 +285,7 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
             param)
         checked_param.eval(feed_dict={param: np.ones([1])})
 
+  @test_util.run_deprecated_v1
   def testTooLarge(self):
     with self.cached_session():
       with self.assertRaises(ValueError):
@@ -305,6 +311,7 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
 
 class EmbedCheckIntegerCastingClosedTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCorrectlyAssertsNonnegative(self):
     with self.cached_session():
       with self.assertRaisesOpError("Elements must be non-negative"):
@@ -313,6 +320,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
             x, target_dtype=dtypes.int16)
         x_checked.eval(feed_dict={x: np.array([1, -1], dtype=np.float16)})
 
+  @test_util.run_deprecated_v1
   def testCorrectlyAssersIntegerForm(self):
     with self.cached_session():
       with self.assertRaisesOpError("Elements must be int16-equivalent."):
@@ -321,6 +329,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
             x, target_dtype=dtypes.int16)
         x_checked.eval(feed_dict={x: np.array([1, 1.5], dtype=np.float16)})
 
+  @test_util.run_deprecated_v1
   def testCorrectlyAssertsLargestPossibleInteger(self):
     with self.cached_session():
       with self.assertRaisesOpError("Elements cannot exceed 32767."):
@@ -329,6 +338,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
             x, target_dtype=dtypes.int16)
         x_checked.eval(feed_dict={x: np.array([1, 2**15], dtype=np.int32)})
 
+  @test_util.run_deprecated_v1
   def testCorrectlyAssertsSmallestPossibleInteger(self):
     with self.cached_session():
       with self.assertRaisesOpError("Elements cannot be smaller than 0."):
@@ -369,6 +379,7 @@ class LogCombinationsTest(test.TestCase):
 
 class DynamicShapeTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testSameDynamicShape(self):
     with self.cached_session():
       scalar = constant_op.constant(2.0)
@@ -493,6 +504,7 @@ class RotateTransposeTest(test.TestCase):
             self._np_rotate_transpose(x, shift), self.evaluate(y))
         self.assertAllEqual(np.roll(x.shape, shift), y.get_shape().as_list())
 
+  @test_util.run_deprecated_v1
   def testRollDynamic(self):
     with self.cached_session() as sess:
       x = array_ops.placeholder(dtypes.float32)
@@ -511,6 +523,7 @@ class RotateTransposeTest(test.TestCase):
 
 class PickVectorTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testCorrectlyPicksVector(self):
     with self.cached_session():
       x = np.arange(10, 12)
@@ -529,36 +542,42 @@ class PickVectorTest(test.TestCase):
 
 class PreferStaticRankTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testNonEmptyConstantTensor(self):
     x = array_ops.zeros((2, 3, 4))
     rank = du.prefer_static_rank(x)
     self.assertIsInstance(rank, np.ndarray)
     self.assertEqual(3, rank)
 
+  @test_util.run_deprecated_v1
   def testEmptyConstantTensor(self):
     x = constant_op.constant([])
     rank = du.prefer_static_rank(x)
     self.assertIsInstance(rank, np.ndarray)
     self.assertEqual(1, rank)
 
+  @test_util.run_deprecated_v1
   def testScalarTensor(self):
     x = constant_op.constant(1.)
     rank = du.prefer_static_rank(x)
     self.assertIsInstance(rank, np.ndarray)
     self.assertEqual(0, rank)
 
+  @test_util.run_deprecated_v1
   def testDynamicRankEndsUpBeingNonEmpty(self):
     x = array_ops.placeholder(np.float64, shape=None)
     rank = du.prefer_static_rank(x)
     with self.cached_session():
       self.assertAllEqual(2, rank.eval(feed_dict={x: np.zeros((2, 3))}))
 
+  @test_util.run_deprecated_v1
   def testDynamicRankEndsUpBeingEmpty(self):
     x = array_ops.placeholder(np.int32, shape=None)
     rank = du.prefer_static_rank(x)
     with self.cached_session():
       self.assertAllEqual(1, rank.eval(feed_dict={x: []}))
 
+  @test_util.run_deprecated_v1
   def testDynamicRankEndsUpBeingScalar(self):
     x = array_ops.placeholder(np.int32, shape=None)
     rank = du.prefer_static_rank(x)
@@ -568,36 +587,42 @@ class PreferStaticRankTest(test.TestCase):
 
 class PreferStaticShapeTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testNonEmptyConstantTensor(self):
     x = array_ops.zeros((2, 3, 4))
     shape = du.prefer_static_shape(x)
     self.assertIsInstance(shape, np.ndarray)
     self.assertAllEqual(np.array([2, 3, 4]), shape)
 
+  @test_util.run_deprecated_v1
   def testEmptyConstantTensor(self):
     x = constant_op.constant([])
     shape = du.prefer_static_shape(x)
     self.assertIsInstance(shape, np.ndarray)
     self.assertAllEqual(np.array([0]), shape)
 
+  @test_util.run_deprecated_v1
   def testScalarTensor(self):
     x = constant_op.constant(1.)
     shape = du.prefer_static_shape(x)
     self.assertIsInstance(shape, np.ndarray)
     self.assertAllEqual(np.array([]), shape)
 
+  @test_util.run_deprecated_v1
   def testDynamicShapeEndsUpBeingNonEmpty(self):
     x = array_ops.placeholder(np.float64, shape=None)
     shape = du.prefer_static_shape(x)
     with self.cached_session():
       self.assertAllEqual((2, 3), shape.eval(feed_dict={x: np.zeros((2, 3))}))
 
+  @test_util.run_deprecated_v1
   def testDynamicShapeEndsUpBeingEmpty(self):
     x = array_ops.placeholder(np.int32, shape=None)
     shape = du.prefer_static_shape(x)
     with self.cached_session():
       self.assertAllEqual(np.array([0]), shape.eval(feed_dict={x: []}))
 
+  @test_util.run_deprecated_v1
   def testDynamicShapeEndsUpBeingScalar(self):
     x = array_ops.placeholder(np.int32, shape=None)
     shape = du.prefer_static_shape(x)
@@ -607,24 +632,28 @@ class PreferStaticShapeTest(test.TestCase):
 
 class PreferStaticValueTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testNonEmptyConstantTensor(self):
     x = array_ops.zeros((2, 3, 4))
     value = du.prefer_static_value(x)
     self.assertIsInstance(value, np.ndarray)
     self.assertAllEqual(np.zeros((2, 3, 4)), value)
 
+  @test_util.run_deprecated_v1
   def testEmptyConstantTensor(self):
     x = constant_op.constant([])
     value = du.prefer_static_value(x)
     self.assertIsInstance(value, np.ndarray)
     self.assertAllEqual(np.array([]), value)
 
+  @test_util.run_deprecated_v1
   def testScalarTensor(self):
     x = constant_op.constant(1.)
     value = du.prefer_static_value(x)
     self.assertIsInstance(value, np.ndarray)
     self.assertAllEqual(np.array(1.), value)
 
+  @test_util.run_deprecated_v1
   def testDynamicValueEndsUpBeingNonEmpty(self):
     x = array_ops.placeholder(np.float64, shape=None)
     value = du.prefer_static_value(x)
@@ -632,12 +661,14 @@ class PreferStaticValueTest(test.TestCase):
       self.assertAllEqual(np.zeros((2, 3)),
                           value.eval(feed_dict={x: np.zeros((2, 3))}))
 
+  @test_util.run_deprecated_v1
   def testDynamicValueEndsUpBeingEmpty(self):
     x = array_ops.placeholder(np.int32, shape=None)
     value = du.prefer_static_value(x)
     with self.cached_session():
       self.assertAllEqual(np.array([]), value.eval(feed_dict={x: []}))
 
+  @test_util.run_deprecated_v1
   def testDynamicValueEndsUpBeingScalar(self):
     x = array_ops.placeholder(np.int32, shape=None)
     value = du.prefer_static_value(x)
@@ -698,43 +729,55 @@ class FillTriangularTest(test.TestCase):
     self.assertAllClose(expected, actual_, rtol=1e-8, atol=1e-9)
     self.assertAllClose(x_, grad_actual_, rtol=1e-8, atol=1e-9)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakes1x1TriLower(self):
     self._run_test(self._rng.randn(3, int(1*2/2)))
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesNoBatchTriLower(self):
     self._run_test(self._rng.randn(int(4*5/2)))
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatchTriLower(self):
     self._run_test(self._rng.randn(2, 3, int(3*4/2)))
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatchTriLowerUnknownShape(self):
     self._run_test(self._rng.randn(2, 3, int(3*4/2)), use_deferred_shape=True)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatch7x7TriLowerUnknownShape(self):
     self._run_test(self._rng.randn(2, 3, int(7*8/2)), use_deferred_shape=True)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatch7x7TriLower(self):
     self._run_test(self._rng.randn(2, 3, int(7*8/2)))
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakes1x1TriUpper(self):
     self._run_test(self._rng.randn(3, int(1*2/2)), upper=True)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesNoBatchTriUpper(self):
     self._run_test(self._rng.randn(int(4*5/2)), upper=True)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatchTriUpper(self):
     self._run_test(self._rng.randn(2, 2, int(3*4/2)), upper=True)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatchTriUpperUnknownShape(self):
     self._run_test(self._rng.randn(2, 2, int(3*4/2)),
                    use_deferred_shape=True,
                    upper=True)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatch7x7TriUpperUnknownShape(self):
     self._run_test(self._rng.randn(2, 3, int(7*8/2)),
                    use_deferred_shape=True,
                    upper=True)
 
+  @test_util.run_deprecated_v1
   def testCorrectlyMakesBatch7x7TriUpper(self):
     self._run_test(self._rng.randn(2, 3, int(7*8/2)), upper=True)
 
@@ -773,6 +816,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
       m = np.squeeze(m, axis=axis)
     return m + np.log(sgn * sum_), sgn
 
+  @test_util.run_deprecated_v1
   def testNoWeights(self):
     logx_ = np.array([[0., -1, 1000.],
                       [0, 1, -1000.],
@@ -805,7 +849,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
       w = constant_op.constant(w_)
       actual, actual_sgn = du.reduce_weighted_logsumexp(
           logx, w, axis=-1, return_sign=True)
-      [actual_, actual_sgn_] = sess.run([actual, actual_sgn])
+      [actual_, actual_sgn_] = self.evaluate([actual, actual_sgn])
     self.assertAllEqual(expected, actual_)
     self.assertAllEqual([-1., -1, 1], actual_sgn_)
 
@@ -823,7 +867,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
       w = constant_op.constant(w_)
       actual, actual_sgn = du.reduce_weighted_logsumexp(
           logx, w, axis=-1, return_sign=True, keep_dims=True)
-      [actual_, actual_sgn_] = sess.run([actual, actual_sgn])
+      [actual_, actual_sgn_] = self.evaluate([actual, actual_sgn])
     self.assertAllEqual(expected, actual_)
     self.assertAllEqual([[-1.], [-1], [1]], actual_sgn_)
 
@@ -903,6 +947,7 @@ class SoftplusTest(test.TestCase):
     self.assertAllEqual(np.ones_like(tf_softplus_inverse).astype(np.bool),
                         np.isfinite(tf_softplus_inverse))
 
+  @test_util.run_deprecated_v1
   def testNumbers(self):
     for t in [np.float16, np.float32, np.float64]:
       lower = {np.float16: -15, np.float32: -50, np.float64: -50}.get(t, -100)
@@ -933,6 +978,7 @@ class SoftplusTest(test.TestCase):
           ],
           use_gpu=True)
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session():
       x = constant_op.constant(
@@ -949,6 +995,7 @@ class SoftplusTest(test.TestCase):
     tf_logging.vlog(2, "softplus (float) gradient err = ", err)
     self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testInverseSoftplusGradientNeverNan(self):
     with self.cached_session():
       # Note that this range contains both zero and inf.
@@ -958,6 +1005,7 @@ class SoftplusTest(test.TestCase):
       # Equivalent to `assertAllFalse` (if it existed).
       self.assertAllEqual(np.zeros_like(grads).astype(np.bool), np.isnan(grads))
 
+  @test_util.run_deprecated_v1
   def testInverseSoftplusGradientFinite(self):
     with self.cached_session():
       # This range of x is all finite, and so is 1 / x.  So the

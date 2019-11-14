@@ -42,6 +42,9 @@ typedef int64 CancellationToken;
 // comment for CancellationManager::RegisterCallback.
 typedef std::function<void()> CancelCallback;
 
+// This class should never simultaneously be used as the cancellation manager
+// for two separate sets of executions (i.e two separate steps, or two separate
+// function executions).
 class CancellationManager {
  public:
   // A value that won't be returned by get_cancellation_token().

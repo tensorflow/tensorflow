@@ -1,8 +1,8 @@
 path: "tensorflow.train.Checkpoint"
 tf_class {
-  is_instance: "<class \'tensorflow.python.training.checkpointable.util.Checkpoint\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.tracking.Checkpointable\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.CheckpointableBase\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.util.Checkpoint\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "save_counter"
@@ -18,10 +18,10 @@ tf_class {
   }
   member_method {
     name: "save"
-    argspec: "args=[\'self\', \'file_prefix\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'file_prefix\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "write"
-    argspec: "args=[\'self\', \'file_prefix\', \'session\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'file_prefix\'], varargs=None, keywords=None, defaults=None"
   }
 }

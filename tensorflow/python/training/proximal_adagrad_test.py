@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -48,7 +49,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([0.0, 0.0], v0_val)
       self.assertAllClose([0.0, 0.0], v1_val)
 
@@ -56,7 +57,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       for _ in range(3):
         update.run()
 
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose(np.array([-2.60260963, -4.29698515]), v0_val)
       self.assertAllClose(np.array([-0.28432083, -0.56694895]), v1_val)
       opt_vars = opt.variables()
@@ -64,12 +65,15 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       self.assertStartsWith(opt_vars[1].name, var1._shared_name)
       self.assertEqual(2, len(opt_vars))
 
+  @test_util.run_deprecated_v1
   def testProximalAdagradwithoutRegularization(self):
     self.doTestProximalAdagradwithoutRegularization(use_resource=False)
 
+  @test_util.run_deprecated_v1
   def testResourceProximalAdagradwithoutRegularization(self):
     self.doTestProximalAdagradwithoutRegularization(use_resource=True)
 
+  @test_util.run_deprecated_v1
   def testProximalAdagradwithoutRegularization2(self):
     with self.cached_session() as sess:
       var0 = variables.Variable([1.0, 2.0])
@@ -85,17 +89,18 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([1.0, 2.0], v0_val)
       self.assertAllClose([4.0, 3.0], v1_val)
 
       # Run 3 steps Proximal Adagrad.
       for _ in range(3):
         update.run()
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose(np.array([-1.60261, -2.296985]), v0_val)
       self.assertAllClose(np.array([3.715679, 2.433051]), v1_val)
 
+  @test_util.run_deprecated_v1
   def testMinimizeSparseResourceVariable(self):
     for dtype in [dtypes.float32, dtypes.float64]:
       with self.cached_session():
@@ -114,6 +119,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
                                            self.evaluate(var0),
                                            atol=0.01)
 
+  @test_util.run_deprecated_v1
   def testProximalAdagradWithL1(self):
     with self.cached_session() as sess:
       var0 = variables.Variable([1.0, 2.0])
@@ -129,17 +135,18 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([1.0, 2.0], v0_val)
       self.assertAllClose([4.0, 3.0], v1_val)
 
       # Run 10 steps Proximal Adagrad
       for _ in range(10):
         update.run()
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose(np.array([-6.663634, -9.190331]), v0_val)
       self.assertAllClose(np.array([2.959304, 1.029232]), v1_val)
 
+  @test_util.run_deprecated_v1
   def testProximalAdagradWithL1_L2(self):
     with self.cached_session() as sess:
       var0 = variables.Variable([1.0, 2.0])
@@ -155,7 +162,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose([1.0, 2.0], v0_val)
       self.assertAllClose([4.0, 3.0], v1_val)
 
@@ -163,7 +170,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
       for _ in range(10):
         update.run()
 
-      v0_val, v1_val = sess.run([var0, var1])
+      v0_val, v1_val = self.evaluate([var0, var1])
       self.assertAllClose(np.array([-0.0495, -0.0995]), v0_val)
       self.assertAllClose(np.array([-0.0045, -0.0095]), v1_val)
 
@@ -191,7 +198,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
     variables.global_variables_initializer().run()
 
     sess = ops.get_default_session()
-    v0_val, v1_val = sess.run([var0, var1])
+    v0_val, v1_val = self.evaluate([var0, var1])
     if is_sparse:
       self.assertAllClose([[1.0], [2.0]], v0_val)
       self.assertAllClose([[3.0], [4.0]], v1_val)
@@ -203,9 +210,10 @@ class ProximalAdagradOptimizerTest(test.TestCase):
     for _ in range(steps):
       update.run()
 
-    v0_val, v1_val = sess.run([var0, var1])
+    v0_val, v1_val = self.evaluate([var0, var1])
     return v0_val, v1_val
 
+  @test_util.run_deprecated_v1
   def testEquivAdagradwithoutRegularization(self):
     with self.cached_session():
       val0, val1 = self.applyOptimizer(
@@ -223,6 +231,7 @@ class ProximalAdagradOptimizerTest(test.TestCase):
     self.assertAllClose(val0, val2)
     self.assertAllClose(val1, val3)
 
+  @test_util.run_deprecated_v1
   def testEquivSparseAdagradwithoutRegularization(self):
     with self.cached_session():
       val0, val1 = self.applyOptimizer(

@@ -372,6 +372,14 @@ struct bfloat16 {
     return x;
   }
 
+  static bfloat16 min_positive_normal() {
+    bfloat16 x;
+    x.value = 0x0080;  // 0x1p-126
+    return x;
+  }
+
+  bool IsZero() const { return (value & 0x7FFF) == ZERO_VALUE; }
+
   uint16_t value;
 
   // A value that represents "not a number".
@@ -486,7 +494,13 @@ inline bool isnan(const bfloat16& a) { return std::isnan(float(a)); }
 inline bool isfinite(const bfloat16& a) { return std::isfinite(float(a)); }
 inline bfloat16 abs(const bfloat16& a) { return bfloat16(std::abs(float(a))); }
 inline bfloat16 exp(const bfloat16& a) { return bfloat16(std::exp(float(a))); }
+inline bfloat16 expm1(const bfloat16& a) {
+  return bfloat16(std::expm1(float(a)));
+}
 inline bfloat16 log(const bfloat16& a) { return bfloat16(std::log(float(a))); }
+inline bfloat16 log1p(const bfloat16& a) {
+  return bfloat16(std::log1p(float(a)));
+}
 inline bfloat16 log10(const bfloat16& a) {
   return bfloat16(std::log10(float(a)));
 }

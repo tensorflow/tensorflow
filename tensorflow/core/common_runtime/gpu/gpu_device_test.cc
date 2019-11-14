@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -54,7 +54,7 @@ Status GetComputeCapability(PlatformGpuId gpu_id, int* cc_major,
 }
 
 void ExpectErrorMessageSubstr(const Status& s, StringPiece substr) {
-  EXPECT_TRUE(str_util::StrContains(s.ToString(), substr))
+  EXPECT_TRUE(absl::StrContains(s.ToString(), substr))
       << s << ", expected substring " << substr;
 }
 }  // namespace
@@ -84,11 +84,41 @@ class GPUDeviceTest : public ::testing::Test {
     }
     return options;
   }
+
+  void InitCPUTensor(Tensor* cpu_tensor, int num_elements, float value) {
+    auto tensor = cpu_tensor->tensor<float, 1>();
+    for (int i = 0; i < num_elements; ++i) {
+      tensor(i) = value;
+    }
+  }
+
+  void CopyCPUToGPU(Tensor* cpu_tensor, Tensor* gpu_tensor, Device* device,
+                    DeviceContext* device_context) {
+    Notification note;
+    device_context->CopyCPUTensorToDevice(cpu_tensor, device, gpu_tensor,
+                                          [&note](const Status& s) {
+                                            TF_ASSERT_OK(s);
+                                            note.Notify();
+                                          });
+    note.WaitForNotification();
+  }
+
+  void CopyGPUToCPU(Tensor* gpu_tensor, Tensor* cpu_tensor, Device* device,
+                    DeviceContext* device_context) {
+    Notification note;
+    device_context->CopyDeviceTensorToCPU(gpu_tensor, /*tensor_name=*/"",
+                                          device, cpu_tensor,
+                                          [&note](const Status& s) {
+                                            TF_ASSERT_OK(s);
+                                            note.Notify();
+                                          });
+    note.WaitForNotification();
+  }
 };
 
 TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,abc");
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -97,7 +127,7 @@ TEST_F(GPUDeviceTest, FailedToParseVisibleDeviceList) {
 
 TEST_F(GPUDeviceTest, InvalidGpuId) {
   SessionOptions opts = MakeSessionOptions("100");
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -107,7 +137,7 @@ TEST_F(GPUDeviceTest, InvalidGpuId) {
 
 TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
   SessionOptions opts = MakeSessionOptions("0,0");
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -117,7 +147,7 @@ TEST_F(GPUDeviceTest, DuplicateEntryInVisibleDeviceList) {
 
 TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithMemoryFractionSettings) {
   SessionOptions opts = MakeSessionOptions("0", 0.1, 1, {{}});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -129,7 +159,7 @@ TEST_F(GPUDeviceTest, GpuDeviceCountTooSmall) {
   // device_count is 0, but with one entry in visible_device_list and one
   // (empty) VirtualDevices messages.
   SessionOptions opts = MakeSessionOptions("0", 0, 0, {{}});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
@@ -141,7 +171,7 @@ TEST_F(GPUDeviceTest, NotEnoughGpuInVisibleDeviceList) {
   // Single entry in visible_device_list with two (empty) VirtualDevices
   // messages.
   SessionOptions opts = MakeSessionOptions("0", 0, 8, {{}, {}});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::UNKNOWN);
@@ -155,7 +185,7 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
   // Three entries in visible_device_list with two (empty) VirtualDevices
   // messages.
   SessionOptions opts = MakeSessionOptions("0,1", 0, 8, {{}});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INVALID_ARGUMENT);
@@ -169,39 +199,36 @@ TEST_F(GPUDeviceTest, VirtualDeviceConfigConflictsWithVisibleDeviceList) {
 TEST_F(GPUDeviceTest, EmptyVirtualDeviceConfig) {
   // It'll create single virtual device when the virtual device config is empty.
   SessionOptions opts = MakeSessionOptions("0");
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
-  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithNoMemoryLimit) {
   // It'll create single virtual device for the gpu in question when
   // memory_limit_mb is unset.
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{}});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_GE(devices[0]->attributes().memory_limit(), 0);
-  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, SingleVirtualDeviceWithMemoryLimit) {
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123}});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(1, devices.size());
   EXPECT_EQ(123 << 20, devices[0]->attributes().memory_limit());
-  gtl::STLDeleteElements(&devices);
 }
 
 TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
   SessionOptions opts = MakeSessionOptions("0", 0, 1, {{123, 456}});
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   TF_CHECK_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   EXPECT_EQ(2, devices.size());
@@ -219,7 +246,6 @@ TEST_F(GPUDeviceTest, MultipleVirtualDevices) {
             devices[1]->attributes().locality().links().link(0).type());
   EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
             devices[1]->attributes().locality().links().link(0).strength());
-  gtl::STLDeleteElements(&devices);
 }
 
 // Enabling unified memory on pre-Pascal GPUs results in an initialization
@@ -236,7 +262,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryUnavailableOnPrePascalGpus) {
   opts.config.mutable_gpu_options()
       ->mutable_experimental()
       ->set_use_unified_memory(true);
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   Status status = DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices);
   EXPECT_EQ(status.code(), error::INTERNAL);
@@ -259,7 +285,7 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
   }
 
   SessionOptions opts = MakeSessionOptions("0", kGpuMemoryFraction);
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<Device>> devices;
   TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
       opts, kDeviceNamePrefix, &devices));
   ASSERT_EQ(1, devices.size());
@@ -278,8 +304,120 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
                                      (memory_limit >> 20) << 20);
   EXPECT_NE(ptr, nullptr);
   allocator->DeallocateRaw(ptr);
+}
 
-  gtl::STLDeleteElements(&devices);
+TEST_F(GPUDeviceTest, CopyTensorInSameDevice) {
+  SessionOptions opts = MakeSessionOptions("0");
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_ASSERT_OK(DeviceFactory::GetFactory("GPU")->CreateDevices(
+      opts, kDeviceNamePrefix, &devices));
+  Device* device = devices[0].get();
+  auto* device_info = device->tensorflow_gpu_device_info();
+  CHECK(device_info);
+  DeviceContext* device_context = device_info->default_context;
+  Allocator* allocator = device->GetAllocator(AllocatorAttributes());
+
+  constexpr int kNumElements = 4;
+  Tensor input_tensor(allocator, DT_FLOAT, TensorShape({kNumElements}));
+  Tensor output_tensor(allocator, DT_FLOAT, TensorShape({kNumElements}));
+  Tensor cpu_tensor(cpu_allocator(), DT_FLOAT, TensorShape({kNumElements}));
+  // Initialize input as {1, 1, 1, 1} and output as {0, 0, 0, 0}.  After copy,
+  // both should become {1, 1, 1, 1}.
+  InitCPUTensor(&cpu_tensor, kNumElements, 0);
+  CopyCPUToGPU(&cpu_tensor, &output_tensor, device, device_context);
+  InitCPUTensor(&cpu_tensor, kNumElements, 1);
+  CopyCPUToGPU(&cpu_tensor, &input_tensor, device, device_context);
+  Notification note;
+  device->CopyTensorInSameDevice(&input_tensor, &output_tensor, device_context,
+                                 [&note](const Status& s) {
+                                   TF_ASSERT_OK(s);
+                                   note.Notify();
+                                 });
+  note.WaitForNotification();
+
+  Tensor output_cpu_tensor(cpu_allocator(), DT_FLOAT,
+                           TensorShape({kNumElements}));
+  CopyGPUToCPU(&output_tensor, &output_cpu_tensor, device, device_context);
+  auto input = cpu_tensor.tensor<float, 1>();
+  auto output = output_cpu_tensor.tensor<float, 1>();
+  for (int i = 0; i < kNumElements; ++i) {
+    EXPECT_EQ(input(i), output(i)) << " for index " << i;
+  }
+}
+
+class GPUKernelTrackerTest : public ::testing::Test {
+ protected:
+  void Init(const GPUKernelTracker::Params& params) {
+    timing_counter_.reset(new SharedCounter);
+    kernel_tracker_.reset(new GPUKernelTracker(params, Env::Default(), nullptr,
+                                               timing_counter_.get(), nullptr,
+                                               nullptr));
+  }
+
+  void RecordQueued(uint64 v) {
+    mutex_lock l(kernel_tracker_->mu_);
+    kernel_tracker_->RecordQueued(v, 1);
+  }
+
+  std::unique_ptr<GPUKernelTracker> kernel_tracker_;
+  std::unique_ptr<SharedCounter> timing_counter_;
+};
+
+TEST_F(GPUKernelTrackerTest, CappingOnly) {
+  Init({0 /*max_interval*/, 0 /*max_bytes*/, 32 /*max_pending*/});
+  EXPECT_EQ(0, kernel_tracker_->NumPending());
+  // 1 is the expected value when no kernels have yet terminated.
+  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount(0));
+
+  std::deque<int64> queued_counts;
+  for (int i = 0; i < 32; ++i) {
+    uint64 queued_count = timing_counter_->next();
+    queued_counts.push_back(queued_count);
+    RecordQueued(queued_count);
+  }
+  EXPECT_EQ(32, kernel_tracker_->NumPending());
+  EXPECT_EQ(1, kernel_tracker_->LastTerminatedCount(0));
+
+  // Mature the kernels in order until empty.
+  while (!queued_counts.empty()) {
+    int64 x = queued_counts.front();
+    queued_counts.pop_front();
+    kernel_tracker_->RecordTerminated(x);
+    EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());
+    EXPECT_EQ(x, kernel_tracker_->LastTerminatedCount(0));
+  }
+  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount(0));
+
+  // Next inject so many kernel events that the ring buffer needs
+  // to grow a couple of times, while maturing a few in random order
+  // to introduce gaps between last_completed_ and first_available_.
+  int64 lower_bound = timing_counter_->get();
+  for (int i = 0; i < 1111; ++i) {
+    uint64 queued_count = timing_counter_->next();
+    queued_counts.push_back(queued_count);
+    RecordQueued(queued_count);
+    int64 upper_bound = timing_counter_->get();
+    if (0 == (i % 16)) {
+      size_t index = (random::New64() % queued_counts.size());
+      kernel_tracker_->RecordTerminated(queued_counts[index]);
+      queued_counts.erase(queued_counts.begin() + index);
+      EXPECT_LE(lower_bound, kernel_tracker_->LastTerminatedCount(0));
+      EXPECT_GE(upper_bound, kernel_tracker_->LastTerminatedCount(0));
+    }
+  }
+
+  // Next mature the remaining kernels in order until empty.
+  while (!queued_counts.empty()) {
+    int64 x = queued_counts.front();
+    queued_counts.pop_front();
+    kernel_tracker_->RecordTerminated(x);
+    EXPECT_EQ(queued_counts.size(), kernel_tracker_->NumPending());
+    // There may be a gap here where we find a kernel that got terminated
+    // out of order, earlier, so the LastTerminatedCount can actually
+    // jump past x.
+    EXPECT_LE(x, kernel_tracker_->LastTerminatedCount(0));
+  }
+  EXPECT_EQ(timing_counter_->get(), kernel_tracker_->LastTerminatedCount(0));
 }
 
 }  // namespace tensorflow

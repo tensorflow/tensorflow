@@ -34,44 +34,95 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   template <class RequestMessage, class ResponseMessage>
   using EagerCall = Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,
                          RequestMessage, ResponseMessage>;
+  template <class RequestMessage, class ResponseMessage>
+  using StreamingCall =
+      ServerBidirectionalStreamingCall<GrpcEagerServiceImpl,
+                                       grpc::EagerService::AsyncService,
+                                       RequestMessage, ResponseMessage>;
 
   GrpcEagerServiceImpl(const WorkerEnv* env,
                        ::grpc::ServerBuilder* server_builder);
   virtual ~GrpcEagerServiceImpl() {}
 
+  // Create a master context in eager service.
+  Status CreateMasterContext(const tensorflow::uint64 context_id,
+                             EagerContext* context);
+
   void HandleRPCsLoop() override;
   void Shutdown() override;
 
  private:
-#define HANDLER(method)                                                        \
-  void method##Handler(EagerCall<method##Request, method##Response>* call) {   \
-    env_->compute_pool->Schedule([this, call]() {                              \
-      call->SendResponse(                                                      \
-          ToGrpcStatus(local_impl_.method(&call->request, &call->response)));  \
-    });                                                                        \
-    Call<GrpcEagerServiceImpl,                                                 \
-         tensorflow::eager::grpc::EagerService::AsyncService, method##Request, \
-         method##Response>::                                                   \
-        EnqueueRequest(&service_, cq_.get(),                                   \
-                       &grpc::EagerService::AsyncService::Request##method,     \
-                       &GrpcEagerServiceImpl::method##Handler, false);         \
+#define HANDLER(method)                                                       \
+  void method##Handler(EagerCall<method##Request, method##Response>* call) {  \
+    env_->compute_pool->Schedule([this, call]() {                             \
+      call->SendResponse(                                                     \
+          ToGrpcStatus(local_impl_.method(&call->request, &call->response))); \
+    });                                                                       \
+    Call<GrpcEagerServiceImpl, grpc::EagerService::AsyncService,              \
+         method##Request, method##Response>::                                 \
+        EnqueueRequest(&service_, cq_.get(),                                  \
+                       &grpc::EagerService::AsyncService::Request##method,    \
+                       &GrpcEagerServiceImpl::method##Handler, false);        \
   }
   HANDLER(CreateContext);
+  HANDLER(UpdateContext);
   HANDLER(Enqueue);
   HANDLER(WaitQueueDone);
   HANDLER(KeepAlive);
   HANDLER(CloseContext);
-  HANDLER(RegisterFunction);
-  HANDLER(SendTensor);
 #undef HANDLER
+
+  // Called when a new request has been received as part of a StreamingEnqueue
+  // call.
+  // StreamingEnqueueHandler gets the request from the `call` and fills the
+  // response (also found in `call`) by invoking the local EagerServiceImpl.
+  // The local EagerServiceImpl is invoked in a single-threaded thread pool. We
+  // do this to preserve request order. The local service can parallelize based
+  // on context_id in request if necessary. Remote contexts are created in async
+  // mode by default, so the local service impl just puts the request on eager
+  // executor queue.
+  void StreamingEnqueueHandler(
+      StreamingCall<EnqueueRequest, EnqueueResponse>* call) {
+    call->Ref();
+    enqueue_streaming_thread_.Schedule([this, call]() {
+      if (call->RefCountIsOne()) {
+        // This StreamingCall has already been shutdown. Don't need to anything.
+        call->Unref();
+        return;
+      }
+      // NOTE(fishx): Use the address of StreamingCall as the stream_id since we
+      // reuse the same StreamingCall for multiple requests in the same
+      // streaming connection.
+      Status status = local_impl_.Enqueue(
+          &call->request(), call->mutable_response(),
+          reinterpret_cast<uint64>(static_cast<void*>(call)));
+
+      if (status.ok()) {
+        VLOG(1) << "local_impl_.Enqueue completed successfully";
+        call->SendResponse();
+      } else {
+        VLOG(1) << "local_impl_.Enqueue failed with " << status.ToString()
+                << " on request " << call->request().DebugString();
+        call->Finish(ToGrpcStatus(status));
+      }
+      call->Unref();
+
+      // We do not tell gRPC to accept a new StreamingEnqueue request because
+      // this method can be called multiple times for a given streaming call.
+      // The StreamingCall does this per call instead, after a call has been
+      // opened.
+    });
+  }
 
   const WorkerEnv* const env_;  // Not owned.
   EagerServiceImpl local_impl_;
 
+  // A single-threaded thread pool to handle streaming enqueue rpc request.
+  thread::ThreadPool enqueue_streaming_thread_;
   std::unique_ptr<::grpc::Alarm> shutdown_alarm_;
 
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
-  tensorflow::eager::grpc::EagerService::AsyncService service_;
+  grpc::EagerService::AsyncService service_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcEagerServiceImpl);
 };

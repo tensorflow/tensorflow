@@ -397,7 +397,7 @@ class ImportGraphDefTest(test.TestCase):
       # Run the imported graph.
       # TODO(b/76173421): make this work (currently DCHECKS)
       # with self.cached_session() as sess:
-      #   sess.run(imported_init)
+      #   self.evaluate(imported_init)
       #   self.assertEqual(self.evaluate(imported_var), 1.0)
       #   self.assertEqual(self.evaluate(imported_assign), 2.0)
       #   self.assertEqual(list(self.evaluate(imported_shape)), [])

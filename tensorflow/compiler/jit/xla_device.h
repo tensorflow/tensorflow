@@ -24,7 +24,9 @@ limitations under the License.
 
 #ifndef TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
 #define TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_
+#include <set>
 
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/xla_device_context.h"
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -123,6 +125,11 @@ class XlaDevice : public LocalDevice {
     // If padded_shape_fn is empty, a default implementation that returns
     // the logical on-device shape without padding is used.
     PaddedShapeFn padded_shape_fn;
+
+    // Set of devices to use. This controls which of the devices on the given
+    // platform will have resources allocated. For GPUs this will be
+    // filled from visible_gpu_devices list from session configuration.
+    absl::optional<std::set<int>> allowed_devices;
   };
 
   // Creates a new XLA Device.
@@ -137,13 +144,19 @@ class XlaDevice : public LocalDevice {
   Status Sync() override;
   void Sync(const DoneCallback& done) override;
 
-  Status FillContextMap(const Graph* graph,
-                        DeviceContextMap* device_context_map) override
+  Status TryGetDeviceContext(DeviceContext** out_context) override
       LOCKS_EXCLUDED(mu_);
 
   Status MakeTensorFromProto(const TensorProto& tensor_proto,
                              const AllocatorAttributes alloc_attrs,
                              Tensor* tensor) override LOCKS_EXCLUDED(mu_);
+
+  // Allocate tensor on fast memory space. This is only applied to the new TPU
+  // hardware which has faster read/write memory. If the hardware doesn't
+  // have such memory space, we fallback to the ordinary memory space.
+  Status MakeFastMemTensorFromProto(const TensorProto& tensor_proto,
+                                    const AllocatorAttributes alloc_attrs,
+                                    Tensor* tensor) LOCKS_EXCLUDED(mu_);
 
   const Metadata& metadata() { return xla_metadata_; }
 
@@ -160,47 +173,38 @@ class XlaDevice : public LocalDevice {
   Status UseGpuDeviceInfo() LOCKS_EXCLUDED(mu_);
 
   // Instructs this XlaDevice to return 'sync_on_completion' for
-  // RequiresSyncOnCompletion().
-  void SetRequiresSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
+  // AllowsSyncOnCompletion().
+  void SetAllowsSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
+  bool AllowsSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
 
-  bool RequiresSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
+  // Installs an error handling callback when RefreshStatus sees !status.ok().
+  void SetHandleDeviceErrorCallback(std::function<Status()> callback);
 
-  // A simple RAII handle. On construction the device's
-  // outstanding_asynchronous_operations_ field is incremented; on destruction
-  // it is decremented.
-  class AsynchronousOperationHandle {
-   public:
-    AsynchronousOperationHandle(XlaDevice* device);
-    ~AsynchronousOperationHandle();
-    AsynchronousOperationHandle(const AsynchronousOperationHandle& other);
-    AsynchronousOperationHandle(AsynchronousOperationHandle&& other);
-    AsynchronousOperationHandle& operator=(
-        const AsynchronousOperationHandle& other);
-    AsynchronousOperationHandle& operator=(AsynchronousOperationHandle&& other);
-
-   private:
-    XlaDevice* device_ = nullptr;
-  };
-
-  AsynchronousOperationHandle CreateAsynchronousOperationHandle() {
-    return AsynchronousOperationHandle(this);
-  }
+  Status RefreshStatus() override LOCKS_EXCLUDED(mu_);
 
  private:
-  friend class AsynchronousOperationHandle;
-
-  xla::LocalClient* client() const;
+  xla::StatusOr<xla::LocalClient*> GetOrCreateClient() const;
   Allocator* GetAllocatorLocked(AllocatorAttributes attr)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureStreamOkLocked(xla::Backend* backend, const string& name,
                               std::shared_ptr<se::Stream>* stream,
                               bool* stream_was_changed)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  xla::StatusOr<XlaDeviceContext*> GetDeviceContextLocked()
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+
+  // Return a pair of device context, the second one is fast_mem device context.
+  xla::StatusOr<std::pair<XlaDeviceContext*, XlaDeviceContext*>>
+  GetDeviceContextLocked() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   static Status GetMetadataFromDevice(DeviceBase* device,
                                       const XlaDevice::Metadata** metadata);
+
+  Status MakeTensorFromProto(XlaDeviceContext* device_context,
+                             const TensorProto& tensor_proto,
+                             const AllocatorAttributes alloc_attrs,
+                             Tensor* tensor);
+
+  // Handles error when RefreshStatus sees !status.ok().
+  Status HandleDeviceError();
 
   mutable mutex mu_;
   // The metadata of this XlaDevice.
@@ -211,6 +215,8 @@ class XlaDevice : public LocalDevice {
   const DeviceType jit_device_name_;
   // The platform for this device.
   se::Platform* const platform_;  // Not owned.
+  // Intra-op threads to spawn (from SessionOptions).
+  const int intra_op_parallelism_threads_;
   // Memory allocator associated with this device.
   Allocator* xla_allocator_ GUARDED_BY(mu_) = nullptr;  // Not owned.
 
@@ -221,14 +227,12 @@ class XlaDevice : public LocalDevice {
   std::shared_ptr<se::Stream> stream_ GUARDED_BY(mu_);
   // If false, only stream_ is valid and all computation and transfers use
   // stream_. If true, computation is performed by stream_ and transfers are
-  // performed by host_to_device/device_to_host_stream.
+  // performed by host_to_device/device_to_device stream or borrowing a stream
+  // for each device to host transfer.
   const bool use_multiple_streams_;
   // If use_multiple_streams_, host to device transfers are performed using this
   // stream.
   std::shared_ptr<se::Stream> host_to_device_stream_ GUARDED_BY(mu_);
-  // If use_multiple_streams_, device to host transfers are performed using this
-  // stream.
-  std::shared_ptr<se::Stream> device_to_host_stream_ GUARDED_BY(mu_);
   // If use_multiple_streams_, transfers between different devices are performed
   // using these streams.
   std::vector<std::shared_ptr<se::Stream>> device_to_device_streams_
@@ -241,6 +245,10 @@ class XlaDevice : public LocalDevice {
   // also filled in to that struct. XlaDeviceContext is a ref-counted object.
   XlaDeviceContext* device_context_ GUARDED_BY(mu_) = nullptr;
 
+  // The device context will allocate memory on fast memory space on TPU.
+  // XlaDeviceContext is a ref-counted object.
+  XlaDeviceContext* fast_mem_device_context_ GUARDED_BY(mu_) = nullptr;
+
   // Holds extra information for GPU and TPU devices, e.g. the device context.
   bool use_gpu_device_info_ GUARDED_BY(mu_) = false;
   std::unique_ptr<GpuDeviceInfo> gpu_device_info_ GUARDED_BY(mu_);
@@ -248,14 +256,17 @@ class XlaDevice : public LocalDevice {
   // Thread pool used for running closures
   std::unique_ptr<thread::ThreadPool> thread_pool_;
 
-  // True if the device requires XlaDevice::Sync to be called on completion
+  // True if the device allows XlaDevice::Sync to be called on completion
   // regardless of status.
-  bool sync_on_completion_ GUARDED_BY(mu_) = false;
+  bool sync_on_completion_ GUARDED_BY(mu_) = true;
 
-  // Count of outstanding asynchronous operations which must be zero on Sync()
-  // completion.
-  int64 outstanding_asynchronous_operations_ GUARDED_BY(mu_) = 0;
-  condition_variable outstanding_asynchronous_operations_cv_;
+  // A callback that will be invoked when RefreshStatus sees a status error.
+  std::function<Status()> device_error_callback_ GUARDED_BY(mu_);
+
+  // Set of devices to use. This controls which of the devices on the given
+  // platform will have resources allocated. For GPUs this will be
+  // filled from visible_gpu_devices list from session configuration.
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // Builds OpKernel registrations on 'device' for the JIT operators

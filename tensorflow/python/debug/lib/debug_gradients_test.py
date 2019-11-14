@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import shutil
 import tempfile
 
 from tensorflow.core.protobuf import config_pb2
@@ -29,6 +28,7 @@ from tensorflow.python.debug.lib import debug_gradients
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
@@ -36,6 +36,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import gradient_descent
 
 
+@test_util.run_deprecated_v1
 class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -376,7 +377,7 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
       debug_gradients.gradient_values_from_dump(grad_debugger, self.v, dump)
 
     # Cleanup.
-    shutil.rmtree(dump_dir)
+    file_io.delete_recursively(dump_dir)
 
 
 if __name__ == "__main__":

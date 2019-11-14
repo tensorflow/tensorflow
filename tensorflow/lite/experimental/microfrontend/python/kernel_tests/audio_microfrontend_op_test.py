@@ -21,6 +21,7 @@ from __future__ import print_function
 import tensorflow as tf
 
 from tensorflow.lite.experimental.microfrontend.python.ops import audio_microfrontend_op as frontend_op
+from tensorflow.python.framework import ops
 
 SAMPLE_RATE = 1000
 WINDOW_SIZE = 25
@@ -32,6 +33,10 @@ SMOOTHING_BITS = 10
 
 
 class AudioFeatureGenerationTest(tf.test.TestCase):
+
+  def setUp(self):
+    super(AudioFeatureGenerationTest, self).setUp()
+    ops.disable_eager_execution()
 
   def testSimple(self):
     with self.test_session():
