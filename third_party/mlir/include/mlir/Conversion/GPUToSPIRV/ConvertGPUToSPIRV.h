@@ -1,4 +1,4 @@
-//===- ConvertStandardToSPIRV.h - Convert to SPIR-V dialect -----*- C++ -*-===//
+//===- ConvertGPUToSPIRV.h - GPU Ops to SPIR-V dialect patterns ----C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,23 +15,22 @@
 // limitations under the License.
 // =============================================================================
 //
-// Provides patterns to lower StandardOps to SPIR-V dialect.
+// Provides patterns for lowering GPU Ops to SPIR-V dialect.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_CONVERSION_STANDARDTOSPIRV_CONVERTSTANDARDTOSPIRV_H
-#define MLIR_CONVERSION_STANDARDTOSPIRV_CONVERTSTANDARDTOSPIRV_H
+#ifndef MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRV_H
+#define MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRV_H
 
 #include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 class SPIRVTypeConverter;
-/// Appends to a pattern list additional patterns for translating StandardOps to
+/// Appends to a pattern list additional patterns for translating GPU Ops to
 /// SPIR-V ops.
-void populateStandardToSPIRVPatterns(MLIRContext *context,
-                                     SPIRVTypeConverter &typeConverter,
-                                     OwningRewritePatternList &patterns);
-
+void populateGPUToSPIRVPatterns(MLIRContext *context,
+                                SPIRVTypeConverter &typeConverter,
+                                OwningRewritePatternList &patterns);
 } // namespace mlir
 
-#endif // MLIR_CONVERSION_STANDARDTOSPIRV_CONVERTSTANDARDTOSPIRV_H
+#endif // MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRV_H

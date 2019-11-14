@@ -722,7 +722,12 @@ cc_library(
 cc_library(
     name = "GPUToSPIRVTransforms",
     srcs = [
-        "lib/Conversion/GPUToSPIRV/GPUToSPIRV.cpp",
+        "lib/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.cpp",
+        "lib/Conversion/GPUToSPIRV/ConvertGPUToSPIRVPass.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.h",
+        "include/mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRVPass.h",
     ],
     includes = ["include"],
     deps = [
@@ -731,8 +736,10 @@ cc_library(
         ":LoopOps",
         ":Pass",
         ":SPIRVDialect",
+        ":SPIRVLowering",
         ":StandardOps",
         ":StandardToSPIRVConversions",
+        ":Transforms",
     ],
     alwayslink = 1,
 )
@@ -1061,6 +1068,27 @@ cc_library(
 )
 
 cc_library(
+    name = "SPIRVLowering",
+    srcs = [
+        "lib/Dialect/SPIRV/SPIRVLowering.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
+    ],
+    includes = [
+        "include",
+    ],
+    deps = [
+        ":IR",
+        ":SPIRVDialect",
+        ":Support",
+        ":Transforms",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "StandardToSPIRVConversions",
     srcs = [
         "lib/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.cpp",
@@ -1068,7 +1096,7 @@ cc_library(
     ],
     hdrs = [
         "include/mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h",
-        "include/mlir/Dialect/SPIRV/Passes.h",
+        "include/mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h",
     ],
     includes = [
         "include",
@@ -1078,6 +1106,7 @@ cc_library(
         ":IR",
         ":Pass",
         ":SPIRVDialect",
+        ":SPIRVLowering",
         ":StandardOps",
         ":StandardToSPIRVGen",
         ":Support",

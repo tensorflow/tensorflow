@@ -1,4 +1,4 @@
-//===- ConvertStandardToSPIRV.h - Convert to SPIR-V dialect -----*- C++ -*-===//
+//===- ConvertGPUToSPIRVPass.h - GPU to SPIR-V conversion pass --*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,23 +15,22 @@
 // limitations under the License.
 // =============================================================================
 //
-// Provides patterns to lower StandardOps to SPIR-V dialect.
+// Provides a pass to convert GPU ops to SPIRV ops.
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_CONVERSION_STANDARDTOSPIRV_CONVERTSTANDARDTOSPIRV_H
-#define MLIR_CONVERSION_STANDARDTOSPIRV_CONVERTSTANDARDTOSPIRV_H
+#ifndef MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRVPASS_H
+#define MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRVPASS_H
 
-#include "mlir/Transforms/DialectConversion.h"
+#include <memory>
 
 namespace mlir {
-class SPIRVTypeConverter;
-/// Appends to a pattern list additional patterns for translating StandardOps to
-/// SPIR-V ops.
-void populateStandardToSPIRVPatterns(MLIRContext *context,
-                                     SPIRVTypeConverter &typeConverter,
-                                     OwningRewritePatternList &patterns);
+
+class ModuleOp;
+template <typename T> class OpPassBase;
+
+/// Pass to convert GPU Ops to SPIR-V ops.
+std::unique_ptr<OpPassBase<ModuleOp>> createConvertGPUToSPIRVPass();
 
 } // namespace mlir
-
-#endif // MLIR_CONVERSION_STANDARDTOSPIRV_CONVERTSTANDARDTOSPIRV_H
+#endif // MLIR_CONVERSION_GPUTOSPIRV_CONVERTGPUTOSPIRVPASS_H
