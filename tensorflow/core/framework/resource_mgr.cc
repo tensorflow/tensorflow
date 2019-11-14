@@ -99,6 +99,28 @@ const char* ResourceMgr::DebugTypeName(uint64 hash_code) const {
   }
 }
 
+ResourceMgr::ResourceAndName::ResourceAndName()
+    : resource(nullptr), name(nullptr) {}
+
+ResourceMgr::ResourceAndName::ResourceAndName(ResourceBase* resource,
+                                              string name)
+    : resource(resource), name(std::make_unique<string>(std::move(name))) {}
+
+ResourceMgr::ResourceAndName::ResourceAndName(
+    ResourceAndName&& other) noexcept {
+  resource = std::move(other.resource);
+  name = std::move(other.name);
+}
+
+ResourceMgr::ResourceAndName::~ResourceAndName() {}
+
+ResourceMgr::ResourceAndName& ResourceMgr::ResourceAndName::operator=(
+    ResourceAndName&& other) noexcept {
+  resource = std::move(other.resource);
+  name = std::move(other.name);
+  return *this;
+}
+
 ResourceMgr::ResourceMgr() : default_container_("localhost") {}
 
 ResourceMgr::ResourceMgr(const string& default_container)
@@ -115,9 +137,6 @@ void ResourceMgr::Clear() {
     tmp_containers = std::move(containers_);
   }
   for (const auto& p : tmp_containers) {
-    for (const auto& q : *p.second) {
-      q.second->Unref();
-    }
     delete p.second;
   }
   tmp_containers.clear();
@@ -137,9 +156,8 @@ string ResourceMgr::DebugString() const {
     for (const auto& q : *p.second) {
       const Key& key = q.first;
       const char* type = DebugTypeName(key.first);
-      const string& resource = key.second;
-      Line l{&container, port::Demangle(type), &resource,
-             q.second->DebugString()};
+      Line l{&container, port::Demangle(type), q.second.name.get(),
+             q.second.resource->DebugString()};
       lines.push_back(l);
     }
   }
@@ -160,11 +178,18 @@ Status ResourceMgr::DoCreate(const string& container, TypeIndex type,
   if (*b == nullptr) {
     *b = new Container;
   }
-  if ((*b)->insert({{type.hash_code(), name}, resource}).second) {
+
+  // NOTE: Separating out the construction of the map key and value so that the
+  // key can contain a StringPiece that borrows from the string in the value.
+  ResourceAndName resource_and_name(resource, name);
+  StringPiece borrowed_name(*resource_and_name.name);
+  Container::value_type key_and_value(Key(type.hash_code(), borrowed_name),
+                                      std::move(resource_and_name));
+
+  if ((*b)->insert(std::move(key_and_value)).second) {
     TF_RETURN_IF_ERROR(InsertDebugTypeName(type.hash_code(), type.name()));
     return Status::OK();
   }
-  resource->Unref();
   return errors::AlreadyExists("Resource ", container, "/", name, "/",
                                type.name());
 }
@@ -178,12 +203,12 @@ Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
                             " does not exist. (Could not find resource: ",
                             container, "/", name, ")");
   }
-  auto r = gtl::FindPtrOrNull(*b, {type.hash_code(), name});
-  if (r == nullptr) {
+  auto iter = b->find({type.hash_code(), name});
+  if (iter == b->end()) {
     return errors::NotFound("Resource ", container, "/", name, "/", type.name(),
                             " does not exist.");
   }
-  *resource = const_cast<ResourceBase*>(r);
+  *resource = const_cast<ResourceBase*>(iter->second.resource.get());
   (*resource)->Ref();
   return Status::OK();
 }
@@ -191,7 +216,7 @@ Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
 Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
                              const string& resource_name,
                              const string& type_name) {
-  ResourceBase* base = nullptr;
+  ResourceAndName resource_and_name;
   {
     mutex_lock l(mu_);
     Container* b = gtl::FindPtrOrNull(containers_, container);
@@ -203,11 +228,10 @@ Status ResourceMgr::DoDelete(const string& container, uint64 type_hash_code,
       return errors::NotFound("Resource ", container, "/", resource_name, "/",
                               type_name, " does not exist.");
     }
-    base = iter->second;
+    std::swap(resource_and_name, iter->second);
     b->erase(iter);
   }
-  CHECK(base != nullptr);
-  base->Unref();
+  DCHECK(resource_and_name.resource != nullptr);
   return Status::OK();
 }
 
@@ -241,9 +265,6 @@ Status ResourceMgr::Cleanup(const string& container) {
     containers_.erase(iter);
   }
   CHECK(b != nullptr);
-  for (const auto& p : *b) {
-    p.second->Unref();
-  }
   delete b;
   return Status::OK();
 }
