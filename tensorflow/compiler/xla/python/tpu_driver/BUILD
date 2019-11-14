@@ -2,8 +2,8 @@ load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library_cc
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
-    "go_proto_library",
     "go_grpc_library",
+    "go_proto_library",
 )
 
 licenses(["notice"])  # Apache 2.0
