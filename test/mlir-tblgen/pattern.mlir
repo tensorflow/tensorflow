@@ -71,6 +71,18 @@ func @verifyAllAttrConstraintOf() -> (i32, i32, i32) {
   return %0, %1, %2: i32, i32, i32
 }
 
+// CHECK-LABEL: verifyManyArgs
+// CHECK-SAME: (%[[ARG:.*]]: i32)
+func @verifyManyArgs(%arg: i32) {
+  // CHECK: "test.many_arguments"(%[[ARG]], %[[ARG]], %[[ARG]], %[[ARG]], %[[ARG]], %[[ARG]], %[[ARG]], %[[ARG]], %[[ARG]])
+  // CHECK-SAME: {attr1 = 24 : i64, attr2 = 42 : i64, attr3 = 42 : i64, attr4 = 42 : i64, attr5 = 42 : i64, attr6 = 42 : i64, attr7 = 42 : i64, attr8 = 42 : i64, attr9 = 42 : i64}
+  "test.many_arguments"(%arg, %arg, %arg, %arg, %arg, %arg, %arg, %arg, %arg) {
+    attr1 = 42, attr2 = 42, attr3 = 42, attr4 = 42, attr5 = 42,
+    attr6 = 42, attr7 = 42, attr8 = 42, attr9 = 42
+  } : (i32, i32, i32, i32, i32, i32, i32, i32, i32) -> ()
+  return
+}
+
 //===----------------------------------------------------------------------===//
 // Test Symbol Binding
 //===----------------------------------------------------------------------===//
