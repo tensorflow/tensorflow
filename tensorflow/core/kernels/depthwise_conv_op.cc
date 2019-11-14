@@ -297,13 +297,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
     dtype_ = DataTypeToEnum<T>::value;
-#if CUDNN_VERSION >= 7603
     // Use CuDNN grouped conv only when input/output is NCHW and float16(half).
-    // See cudnn release note 7.6.3.
-    use_cudnn_grouped_conv_ = dtype_ == DT_HALF && data_format_ == FORMAT_NCHW;
-#else
-    use_cudnn_grouped_conv_ = false;
-#endif
+    // See cudnn release note 7.6.3. (https://docs.nvidia.com/deeplearning/sdk/c
+    // udnn-release-notes/rel_763.html#rel_763)
+    use_cudnn_grouped_conv_ = CUDNN_VERSION >= 7603 && dtype_ == DT_HALF &&
+        data_format_ == FORMAT_NCHW;
   }
 
   void Compute(OpKernelContext* context) override {
