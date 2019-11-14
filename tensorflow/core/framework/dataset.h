@@ -839,11 +839,11 @@ class DatasetBaseIterator : public IteratorBase {
 
   explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
-    VLOG(3) << prefix() << " constructor";
+    VLOG(2) << prefix() << " constructor";
   }
 
   ~DatasetBaseIterator() override {
-    VLOG(3) << prefix() << " destructor";
+    VLOG(2) << prefix() << " destructor";
     params_.dataset->Unref();
   }
 

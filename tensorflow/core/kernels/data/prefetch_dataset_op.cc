@@ -192,8 +192,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         if (cancelled_) {
-          return errors::Cancelled(
-              "PrefetchDatasetOp::Dataset::Iterator::GetNext");
+          return errors::Cancelled("Iterator was cancelled");
         }
 
         if (!buffer_.empty()) {

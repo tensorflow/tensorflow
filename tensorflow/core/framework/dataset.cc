@@ -403,7 +403,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                                     bool* end_of_sequence) {
   profiler::TraceMe activity([&] { return BuildTraceMeName(); },
                              profiler::TraceMeLevel::kInfo);
-  VLOG(3) << prefix() << " GetNext";
+  DVLOG(3) << prefix() << " GetNext enter";
   RecordStart(ctx, /*stop_output=*/true);
   Status s = GetNextInternal(ctx, out_tensors, end_of_sequence);
   if (s.ok() && !*end_of_sequence) RecordElement(ctx);
@@ -416,6 +416,7 @@ Status DatasetBaseIterator::GetNext(IteratorContext* ctx,
                          s.error_message());
     LOG(ERROR) << s;
   }
+  DVLOG(3) << prefix() << " GetNext exit";
   return s;
 }
 
