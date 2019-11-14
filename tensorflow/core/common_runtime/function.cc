@@ -1545,6 +1545,7 @@ class DefaultFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   absl::optional<string> OutputNodeDevice(int output_index) const override {
     return absl::nullopt;
   }
+  bool ColocateOutputIdentity() const override { return false; }
   absl::optional<string> ControlNodeDevice() const override {
     return absl::nullopt;
   }
@@ -1568,6 +1569,7 @@ class SingleDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   absl::optional<string> OutputNodeDevice(int output_index) const override {
     return caller_device_;
   }
+  bool ColocateOutputIdentity() const override { return false; }
   absl::optional<string> ControlNodeDevice() const override {
     return caller_device_;
   }
@@ -1598,6 +1600,7 @@ class MultiDeviceFunctionBodyPlacer : public InlinedFunctionBodyPlacer {
   absl::optional<string> OutputNodeDevice(int output_index) const override {
     return absl::nullopt;
   }
+  bool ColocateOutputIdentity() const override { return true; }
   absl::optional<string> ControlNodeDevice() const override {
     return caller_device_;
   }
@@ -1914,6 +1917,12 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     Node* node = AddIdentity(absl::StrCat(caller->name(), "/", name), g, input);
     const absl::optional<string> device = placer->OutputNodeDevice(index);
     if (device.has_value()) node->set_requested_device(*device);
+    bool colocate_identity = placer->ColocateOutputIdentity();
+    if (colocate_identity) {
+      node->AddAttr(kColocationAttrName,
+                    std::vector<string>{absl::StrCat(kColocationGroupPrefix,
+                                                     input.node->name())});
+    }
     return node;
   };
 

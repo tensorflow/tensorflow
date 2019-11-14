@@ -644,14 +644,20 @@ Status ColocationGraph::ColocateAllNodes() {
     bool found_spec = false;
     const AttrValue* attr_value =
         node->attrs().Find(kColocationAttrNameStringPiece);
-    if (attr_value != nullptr && attr_value->has_list()) {
-      for (const string& class_spec : attr_value->list().s()) {
-        StringPiece spec(class_spec);
-        if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
-          found_spec = true;
-          TF_RETURN_IF_ERROR(
-              ColocateNodeToGroup(&colocation_group_root, node, spec));
+    if (attr_value != nullptr) {
+      if (attr_value->has_list()) {
+        for (const string& class_spec : attr_value->list().s()) {
+          StringPiece spec(class_spec);
+          if (absl::ConsumePrefix(&spec, kColocationGroupPrefixStringPiece)) {
+            found_spec = true;
+            TF_RETURN_IF_ERROR(
+                ColocateNodeToGroup(&colocation_group_root, node, spec));
+          }
         }
+      } else if (!attr_value->s().empty()) {
+        LOG(ERROR) << "The value for colocation attribute '_class' must be a "
+                      "list of strings, not a single string: "
+                   << node->DebugString();
       }
     }
 

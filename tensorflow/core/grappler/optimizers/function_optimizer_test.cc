@@ -782,7 +782,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithDevicePlacement) {
        NDef(input_x, "Identity", {"a"}, {{"T", DT_FLOAT}}, cpu0),
        NDef(input_y, "Identity", {"b"}, {{"T", DT_FLOAT}}, cpu1),
        NDef("c/mul", "Mul", {input_x, input_y}, {{"T", DT_FLOAT}}, cpu1),
-       NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, cpu0),
+       NDef(output_z, "Identity", {"c/mul"}, {{"T", DT_FLOAT}}, cpu1),
 
        NDef("d", "Identity", {output_z}, {{"T", DT_FLOAT}}, cpu0)},
       // Function library.
