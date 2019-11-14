@@ -1222,12 +1222,17 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
 
     The SubView operation supports the following arguments:
     *) Memref: the "base" memref on which to create a "view" memref.
-    *) Offsets: memref-rank number of dynamic offsets into the "base" memref at
-                which to create the "view" memref.
-    *) Sizes: memref-rank dynamic size operands which specify the dynamic sizes
-              of the result "view" memref type.
-    *) Strides: memref-rank number of dynamic strides which are applied
+    *) Offsets: zero or memref-rank number of dynamic offsets into the "base"
+                memref at which to create the "view" memref.
+    *) Sizes: zero or memref-rank dynamic size operands which specify the
+              dynamic sizes of the result "view" memref type.
+    *) Strides: zero or memref-rank number of dynamic strides which are applied
                 multiplicatively to the base memref strides in each dimension.
+    Note on the number of operands for offsets, sizes and strides: either
+    memref-rank number of operands must be set for each of offsets, sizes and
+    strides, or zero operands must be specified for offsets, sizes and strides
+    (in which case the base and subview memrefs must all have constant offset
+     sizes and strides).
 
     Example 1:
 
@@ -1254,6 +1259,15 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
         : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
           memref<?x?x?xf32,
             (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
+
+    Example 3:
+
+      %0 = alloc() : memref<8x16x4xf32, (d0, d1, d1) -> (d0 * 64 + d1 * 4 + d2)>
+
+      // Subview with constant offsets, sizes and strides.
+      %1 = subview %0[][][]
+        : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+          memref<4x4x4xf32, (d0, d1, d2) -> (d0 * 16 + d1 * 4 + d2 + 8)>
     }
   }];
 
@@ -1265,34 +1279,31 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
     "Builder *b, OperationState &result, Value *source, "
     "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
     "ArrayRef<Value *> strides, Type resultType = Type(), "
-    "ArrayRef<NamedAttribute> attrs = {}">];
+    "ArrayRef<NamedAttribute> attrs = {}">,
+    OpBuilder<
+    "Builder *builder, OperationState &result, Type resultType, Value *source",
+    [{
+      result.addOperands(source);
+      result.addTypes(resultType);
+    }]>];
 
   let extraClassDeclaration = [{
+    /// Returns the type of the base memref operand.
+    MemRefType getBaseMemRefType() {
+      return source()->getType().cast<MemRefType>();
+    }
+
     /// The result of a subview is always a memref.
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
     /// Returns the dynamic offsets for this subview operation.
-    operand_range getDynamicOffsets() {
-      return {operand_begin() + 1, operand_begin() + 1 + getType().getRank()};
-    }
-
-    /// Returns the operand starting position of the size operands.
-    unsigned getSizeOperandsStart() { return 1 + getType().getRank(); }
+    operand_range getDynamicOffsets();
 
     /// Returns the dynamic sizes for this subview operation if specified.
-    operand_range getDynamicSizes() {
-      return {operand_begin() + getSizeOperandsStart(),
-              operand_begin() + getSizeOperandsStart() + getType().getRank()};
-    }
-
-    /// Returns the operand starting position of the size operands.
-    unsigned getStrideOperandsStart() { return 1 + 2 * getType().getRank(); }
+    operand_range getDynamicSizes();
 
     /// Returns the dynamic strides for this subview operation if specified.
-    operand_range getDynamicStrides() {
-      return {operand_begin() + getStrideOperandsStart(),
-              operand_begin() + getStrideOperandsStart() + getType().getRank()};
-    }
+    operand_range getDynamicStrides();
 
     // Auxiliary range data structure and helper function that unpacks the
     // offset, size and stride operands of the SubViewOp into a list of triples.
@@ -1303,7 +1314,7 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
     SmallVector<Range, 8> getRanges();
   }];
 
-  // TODO(andydavis) Add canonicalizer.
+  let hasCanonicalizer = 1;
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {
