@@ -1107,6 +1107,7 @@ REGISTER_KERNEL(tstring, double);
 REGISTER_KERNEL(tstring, float);
 REGISTER_KERNEL(tstring, int32);
 REGISTER_KERNEL(tstring, int64);
+REGISTER_KERNEL(tstring, ResourceHandle);
 
 #undef REGISTER_KERNEL
 
