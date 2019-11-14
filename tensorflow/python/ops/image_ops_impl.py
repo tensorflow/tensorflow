@@ -407,7 +407,8 @@ def _random_flip(image, flip_index, seed, scope_name):
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
       of shape `[height, width, channels]`.
-    flip_index: Dimension along which to flip the image. Vertical: 0, Horizontal: 1
+    flip_index: Dimension along which to flip the image.
+      Vertical: 0, Horizontal: 1
     seed: A Python integer. Used to create a random seed. See
       `tf.compat.v1.set_random_seed` for behavior.
     scope_name: Name of the scope in which the ops are added.
@@ -1635,7 +1636,7 @@ def adjust_brightness(image, delta):
 
   Returns:
     A brightness-adjusted tensor of the same shape and type as `image`.
-  
+
   Usage Example:
     ```python
     import tensorflow as tf
@@ -1684,7 +1685,7 @@ def adjust_contrast(images, contrast_factor):
 
   Returns:
     The contrast-adjusted image or images.
-    
+
   Usage Example:
     ```python
     import tensorflow as tf
@@ -1953,9 +1954,10 @@ def adjust_hue(image, delta, name=None):
   """Adjust hue of RGB images.
 
   This is a convenience method that converts an RGB image to float
-  representation, converts it to HSV, adds an offset to the hue channel, converts
-  back to RGB and then back to the original data type. If several adjustments
-  are chained it is advisable to minimize the number of redundant conversions.
+  representation, converts it to HSV, adds an offset to the
+  hue channel, converts back to RGB and then back to the original
+  data type. If several adjustments are chained it is advisable to minimize
+  the number of redundant conversions.
 
   `image` is an RGB image.  The image hue is adjusted by converting the
   image(s) to HSV and rotating the hue channel (H) by
@@ -2112,10 +2114,10 @@ def adjust_saturation(image, saturation_factor, name=None):
   """Adjust saturation of RGB images.
 
   This is a convenience method that converts RGB images to float
-  representation, converts them to HSV, adds an offset to the saturation channel,
-  converts back to RGB and then back to the original data type. If several
-  adjustments are chained it is advisable to minimize the number of redundant
-  conversions.
+  representation, converts them to HSV, adds an offset to the
+  saturation channel, converts back to RGB and then back to the original
+  data type. If several adjustments are chained it is advisable to minimize
+  the number of redundant conversions.
 
   `image` is an RGB image or images.  The image saturation is adjusted by
   converting the images to HSV and multiplying the saturation (S) channel by
@@ -2128,14 +2130,14 @@ def adjust_saturation(image, saturation_factor, name=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
-    
+
   Usage Example:
     ```python
     >> import tensorflow as tf
     >> x = tf.random.normal(shape=(256, 256, 3))
     >> tf.image.adjust_saturation(x, 0.5)
     ```
-    
+
   Raises:
     InvalidArgumentError: input must have 3 channels
   """
@@ -3453,15 +3455,15 @@ def image_gradients(image):
   Returns:
     Pair of tensors (dy, dx) holding the vertical and horizontal image
     gradients (1-step finite difference).
-    
+
   Usage Example:
     ```python
     BATCH_SIZE = 1
     IMAGE_HEIGHT = 5
     IMAGE_WIDTH = 5
     CHANNELS = 1
-    image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS, 
-      delta=1, dtype=tf.float32), 
+    image = tf.reshape(tf.range(IMAGE_HEIGHT * IMAGE_WIDTH * CHANNELS,
+      delta=1, dtype=tf.float32),
       shape=(BATCH_SIZE, IMAGE_HEIGHT, IMAGE_WIDTH, CHANNELS))
     dx, dy = tf.image.image_gradients(image)
     print(image[0, :,:,0])
@@ -3477,7 +3479,7 @@ def image_gradients(image):
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
       [5. 5. 5. 5. 5.]
-      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)    
+      [0. 0. 0. 0. 0.]], shape=(5, 5), dtype=float32)
     print(dy[0, :,:,0])
     tf.Tensor(
       [[1. 1. 1. 1. 0.]
@@ -3486,7 +3488,7 @@ def image_gradients(image):
       [1. 1. 1. 1. 0.]
       [1. 1. 1. 1. 0.]], shape=(5, 5), dtype=float32)
     ```
-    
+
   Raises:
     ValueError: If `image` is not a 4D tensor.
   """
@@ -3920,8 +3922,8 @@ def combined_non_max_suppression(boxes,
       representing a single score corresponding to each box (each row of boxes).
     max_output_size_per_class: A scalar integer `Tensor` representing the
       maximum number of boxes to be selected by non-max suppression per class
-    max_total_size: A scalar representing the maximum number of boxes retained over
-      all classes.
+    max_total_size: A scalar representing the maximum number of boxes retained
+    over all classes.
     iou_threshold: A float representing the threshold for deciding whether boxes
       overlap too much with respect to IOU.
     score_threshold: A float representing the threshold for deciding when to
