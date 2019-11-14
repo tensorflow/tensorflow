@@ -99,7 +99,19 @@ class AlgebraicSimplifierOptions {
 
   int64 very_small_gather_size() const { return very_small_gather_size_; }
 
+  void set_cudnn_batchnorm_forward_training_metadata(const string& c) {
+    metadata_.cudnn_batchnorm_forward_training_metadata = c;
+  }
+
+  const string& get_cudnn_batchnorm_forward_training_metadata() const {
+    return metadata_.cudnn_batchnorm_forward_training_metadata;
+  }
+
  private:
+  struct Metadata {
+    string cudnn_batchnorm_forward_training_metadata{""};
+    Metadata() {}
+  };
   ReshapeIsBitcastCallback reshape_is_bitcast_callback_;
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
@@ -107,6 +119,7 @@ class AlgebraicSimplifierOptions {
   bool enable_conv_simplification_{true};
   bool enable_window_reduce_to_reduce_replacement_{true};
   int64 very_small_gather_size_{4};
+  Metadata metadata_;
 };
 
 // A pass which performs algebraic simplifications.

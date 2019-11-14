@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 
 #include <memory>
 #include <utility>
@@ -5807,6 +5808,141 @@ TEST_F(AlgebraicSimplifierTest, SliceOfConcat) {
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Parameter(1)));
+}
+
+TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %p0 = f32[32]{0} parameter(0)
+      %multiply = f32[32]{0} multiply(f32[32]{0} %p0, f32[32]{0} %p0)
+      ROOT %sqrt = f32[32]{0} sqrt(f32[32]{0} %multiply)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Abs(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %p0 = f32[32]{0} parameter(0)
+      %constant = f32[] constant(-2)
+      %broadcast = f32[32]{0} broadcast(f32[] %constant), dimensions={}
+      %power = f32[32]{0} power(f32[32]{0} %p0, f32[32]{0} %broadcast)
+      ROOT %rsqrt = f32[32]{0} rsqrt(f32[32]{0} %power)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Abs(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, RsqrtDivide) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %p0 = f32[32]{0} parameter(0)
+      %constant.1 = f32[] constant(1)
+      %broadcast.1 = f32[32]{0} broadcast(f32[] %constant.1), dimensions={}
+      %divide = f32[32]{0} divide(f32[32]{0} %broadcast.1, f32[32]{0} %p0)
+      ROOT %rsqrt.1 = f32[32]{0} rsqrt(f32[32]{0} %divide)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Sqrt(m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %p0 = f32[32]{0} parameter(0)
+      %rsqrt = f32[32]{0} rsqrt(f32[32]{0} %p0)
+      ROOT %multiply = f32[32]{0} multiply(f32[32]{0} %rsqrt, f32[32]{0} %rsqrt)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(
+      m->entry_computation()->root_instruction(),
+      GmockMatch(m::Divide(m::Broadcast(m::Constant()), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsElimination_batchnorm_training) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      %p1 = f32[32]{0} parameter(1)
+      %p2 = f32[32]{0} parameter(2)
+      %constant = f32[] constant(0.001)
+      %constant.1 = s64[] constant(1)
+      %custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(f32[128,32,2,112]{3,2,1,0} %p0, f32[32]{0} %p1, f32[32]{0} %p2, f32[] %constant, s64[] %constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      %get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=0
+      %get-tuple-element.2 = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=1
+      %get-tuple-element = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=2
+      %abs = f32[32]{0} abs(f32[32]{0} %get-tuple-element)
+      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(f32[128,32,2,112]{3,2,1,0} %get-tuple-element.1, f32[32]{0} %get-tuple-element.2, f32[32]{0} %abs)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForwardTraining");
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  // Verify that the graph build do not have abs node.
+  auto computation = m->entry_computation();
+  auto root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  bool found_abs = false;
+  for (HloInstruction* inst : computation->instructions()) {
+    if (inst->opcode() == HloOpcode::kAbs) {
+      found_abs = true;
+      break;
+    }
+  }
+  EXPECT_EQ(found_abs, false);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kGetTupleElement);
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsElimination_multiply) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %p = f32[32]{0} parameter(0)
+      %multiply = f32[32]{0} multiply(f32[32]{0} %p, f32[32]{0} %p)
+      ROOT %abs = f32[32]{0} abs(f32[32]{0} %multiply)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsElimination_power_2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      %p0 = f32[32]{0} parameter(0)
+      %constant = f32[] constant(2)
+      %broadcast = f32[32]{0} broadcast(f32[] %constant), dimensions={}
+      %power = f32[32]{0} power(f32[32]{0} %p0, f32[32]{0} %broadcast)
+      ROOT %abs = f32[32]{0} abs(f32[32]{0} %power)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  // Pow(A, 2) gets transformed to A*A, hence the final pattern transform is
+  // Abs(Power(A, 2)) => A*A.
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
 }  // namespace
