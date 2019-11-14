@@ -16,7 +16,7 @@ echo on
 
 :: #############################################################################
 :: IF YOU'RE MODIFYING THIS FILE, PLEASE UPDATE:
-::   `common_windows.bat`
+::   `//learning/brain/testing/kokoro/common_windows.bat`
 :: #############################################################################
 
 @REM
