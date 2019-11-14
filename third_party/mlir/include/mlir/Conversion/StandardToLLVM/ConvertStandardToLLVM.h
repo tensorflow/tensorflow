@@ -172,6 +172,9 @@ public:
   /// Builds IR inserting the pos-th stride into the descriptor
   void setStride(OpBuilder &builder, Location loc, unsigned pos, Value *stride);
 
+  /// Returns the (LLVM) type this descriptor points to.
+  LLVM::LLVMType getElementType();
+
   /*implicit*/ operator Value *() { return value; }
 
 private:

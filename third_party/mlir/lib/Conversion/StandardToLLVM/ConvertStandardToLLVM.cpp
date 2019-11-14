@@ -344,6 +344,11 @@ void MemRefDescriptor::setPtr(OpBuilder &builder, Location loc, unsigned pos,
                                               builder.getI64ArrayAttr(pos));
 }
 
+LLVM::LLVMType MemRefDescriptor::getElementType() {
+  return value->getType().cast<LLVM::LLVMType>().getStructElementType(
+      LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor);
+}
+
 namespace {
 // Base class for Standard to LLVM IR op conversions.  Matches the Op type
 // provided as template argument.  Carries a reference to the LLVM dialect in
