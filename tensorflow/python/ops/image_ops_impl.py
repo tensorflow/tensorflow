@@ -308,7 +308,7 @@ def fix_image_flip_shape(image, result):
     result: flipped or transformed image
 
   Returns:
-    An image whose shape is at least None, None, None.
+    An image whose shape is at least (None, None, None).
   """
 
   image_shape = image.get_shape()
@@ -3104,7 +3104,7 @@ def _ssim_helper(x, y, reducer, max_val, compensation=1.0, k1=0.01, k2=0.03):
     compensation: Compensation factor. See above.
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we took the values in the range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0 < K2 < 0.4).
 
   Returns:
     A pair containing the luminance measure, and the contrast-structure measure.
