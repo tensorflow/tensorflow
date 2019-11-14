@@ -877,12 +877,6 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
 
 Status MemorySpaceAssignment::Allocation::Process(
     MemorySpaceAssignment* memory_space_assignment) {
-  // For non-copy allocations, all we need to do is to update the output memory
-  // space if placed in the alternate memory.
-  if (memory_space_ == MemorySpace::kAlternate) {
-    memory_space_assignment->AddPositionInAlternateMemorySpace(
-        defining_position());
-  }
   return Status::OK();
 }
 
@@ -1000,10 +994,6 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
         /*operand_num=*/0, copy_done_));
   }
 
-  if (memory_space_ == MemorySpace::kAlternate) {
-    memory_space_assignment->AddPositionInAlternateMemorySpace({copy_done_});
-  }
-
   return Status::OK();
 }
 
@@ -1045,7 +1035,9 @@ Status MemorySpaceAssignment::Process() {
 
   // Color the pending positions and all of their aliased buffers.
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module_));
-  for (HloPosition defining_position : pending_positions_in_alternate_mem_) {
+  for (const auto& defining_position_and_chunk :
+       preset_assignments_->chunks()) {
+    const HloPosition& defining_position = defining_position_and_chunk.first;
     for (auto& buffer : alias_analysis->ComputeBuffersAt(
              defining_position.instruction, defining_position.index)) {
       for (auto& value : buffer->values()) {
@@ -1135,11 +1127,6 @@ void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
   VLOG(4) << "inserting: " << new_instruction->ToShortString();
   new_sequence->push_back(new_instruction);
   inserted_instructions->insert(new_instruction);
-}
-
-void MemorySpaceAssignment::AddPositionInAlternateMemorySpace(
-    HloPosition position) {
-  pending_positions_in_alternate_mem_.push_back(position);
 }
 
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {

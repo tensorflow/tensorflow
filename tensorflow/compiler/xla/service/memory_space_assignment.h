@@ -453,10 +453,6 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
-  // Add the position to the pending positions that will be colored as alternate
-  // memory.
-  void AddPositionInAlternateMemorySpace(HloPosition position);
-
   HloModule* module_;
   int64 alternate_memory_space_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;
@@ -468,7 +464,6 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_before_;
-  std::vector<HloPosition> pending_positions_in_alternate_mem_;
 };
 
 // This struct contains mandatory memory assignments at a given time. E.g., an
