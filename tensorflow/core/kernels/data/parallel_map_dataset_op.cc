@@ -318,6 +318,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
         cond_var_->wait(l);
         RecordStart(ctx);
       }
+      if (cancelled_) {
+        return errors::Cancelled("Iterator was cancelled");
+      }
     }
     RecordStop(ctx);
     result->notification.WaitForNotification();
@@ -555,6 +558,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
   // false, `result` will point to the result.
   bool ShouldWait(std::shared_ptr<InvocationResult>* result)
       EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    if (cancelled_) {
+      return false;
+    }
     if (sloppy_) {
       for (auto it = invocation_results_.begin();
            it != invocation_results_.end(); ++it) {
