@@ -4047,4 +4047,4 @@ def generate_bounding_box_proposals(scores,
       pre_nms_topn=pre_nms_topn,
       min_size=min_size,
       post_nms_topn=post_nms_topn,
-      name=Name)
+      name=name)
