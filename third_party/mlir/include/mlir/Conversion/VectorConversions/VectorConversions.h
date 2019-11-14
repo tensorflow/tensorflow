@@ -1,4 +1,4 @@
-//===- VectorToLLVM.h - Pass converting vector to LLVM dialect --*- C++ -*-===//
+//===- VectorConversions.h - Utils to convert from the vector dialect -----===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -19,10 +19,17 @@
 
 namespace mlir {
 class LLVMTypeConverter;
+class MLIRContext;
 class ModuleOp;
+template <typename T> class OpPassBase;
 class OwningRewritePatternList;
 
-template <typename T> class OpPassBase;
+/// Collect a set of patterns to convert from the Vector dialect to affine loops
+/// surrounding ops in different dialects (vector, std etc).
+/// This is the general place where we want to implement Vector -> Vector and
+/// Vector -> Std legalizations.
+void populateVectorToAffineLoopsConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList &patterns);
 
 /// Collect a set of patterns to convert from the Vector dialect to LLVM.
 void populateVectorToLLVMConversionPatterns(LLVMTypeConverter &converter,
@@ -30,6 +37,7 @@ void populateVectorToLLVMConversionPatterns(LLVMTypeConverter &converter,
 
 /// Create a pass to convert vector operations to the LLVMIR dialect.
 OpPassBase<ModuleOp> *createLowerVectorToLLVMPass();
+
 } // namespace mlir
 
 #endif // MLIR_CONVERSION_VECTORTOLLVM_VECTORTOLLVM_H_

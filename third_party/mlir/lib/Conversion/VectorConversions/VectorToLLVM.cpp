@@ -1,4 +1,4 @@
-//===- LowerToLLVMDialect.cpp - conversion from Linalg to LLVM dialect ----===//
+//===- VectorToLLVM.cpp - Conversion from Vector to the LLVM dialect ------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Conversion/VectorToLLVM/VectorToLLVM.h"
+#include "mlir/Conversion/VectorConversions/VectorConversions.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"

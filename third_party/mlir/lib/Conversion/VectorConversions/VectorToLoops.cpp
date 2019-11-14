@@ -1,4 +1,4 @@
-//===- LowerVectorTransfers.cpp - LowerVectorTransfers Pass Impl ----------===//
+//===- VectorToLoops.cpp - Conversion from Vector to mix of Loops and Std -===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -21,12 +21,7 @@
 
 #include <type_traits>
 
-#include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/NestedMatcher.h"
-#include "mlir/Analysis/Utils.h"
-#include "mlir/Analysis/VectorAnalysis.h"
-#include "mlir/Dialect/LoopOps/LoopOps.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/Conversion/VectorConversions/VectorConversions.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/EDSC/Builders.h"
 #include "mlir/EDSC/Helpers.h"
@@ -39,9 +34,12 @@
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Support/Functional.h"
-#include "mlir/Transforms/Passes.h"
+
+using namespace mlir;
+using vector::VectorTransferReadOp;
+using vector::VectorTransferWriteOp;
+
+namespace {
 
 /// Implements lowering of VectorTransferReadOp and VectorTransferWriteOp to a
 /// proper abstraction for the hardware.
@@ -58,7 +56,7 @@
 ///    loop.for %i0 = 0 to %0 {
 ///      loop.for %i1 = 0 to %1 step %c256 {
 ///        loop.for %i2 = 0 to %2 step %c32 {
-///          %v = vector.transfer_read %A[%i0, %i1, %i2], (%f0)
+///          %v = vector.transfer_read %A[%i0, %i1, %i2], %f0
 ///               {permutation_map: (d0, d1, d2) -> (d2, d1)} :
 ///               memref<?x?x?xf32>, vector<32x256xf32>
 ///    }}}
@@ -81,17 +79,16 @@
 /// which creates individual indexing expressions of the form:
 ///
 /// ```mlir-dsc
-///    SELECT(i + ii < zero, zero, SELECT(i + ii < N, i + ii, N - one))
+///    auto condMax = i + ii < N;
+///    auto max = select(condMax, i + ii, N - one)
+///    auto cond = i + ii < zero;
+///    select(cond, zero, max);
 /// ```
-
-using namespace mlir;
-using vector::VectorTransferReadOp;
-using vector::VectorTransferWriteOp;
-
-#define DEBUG_TYPE "affine-lower-vector-transfers"
-
-namespace {
-
+///
+/// In the future, clipping should not be the only way and instead we should
+/// load vectors + mask them. Similarly on the write side, load/mask/store for
+/// implementing RMW behavior.
+///
 /// Lowers VectorTransferOp into a combination of:
 ///   1. local memory allocation;
 ///   2. perfect loop nest over:
@@ -359,26 +356,12 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   rewriter.eraseOp(op);
   return matchSuccess();
 }
+} // namespace
 
-struct LowerVectorTransfersPass
-    : public FunctionPass<LowerVectorTransfersPass> {
-  void runOnFunction() override {
-    OwningRewritePatternList patterns;
-    auto *context = &getContext();
-    patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
-                    VectorTransferRewriter<vector::VectorTransferWriteOp>>(
-        context);
-    applyPatternsGreedily(getFunction(), patterns);
-  }
-};
-
-} // end anonymous namespace
-
-std::unique_ptr<OpPassBase<FuncOp>> mlir::createLowerVectorTransfersPass() {
-  return std::make_unique<LowerVectorTransfersPass>();
+/// Populate the given list with patterns that convert from Vector to LLVM.
+void mlir::populateVectorToAffineLoopsConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList &patterns) {
+  patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
+                  VectorTransferRewriter<vector::VectorTransferWriteOp>>(
+      context);
 }
-
-static PassRegistration<LowerVectorTransfersPass>
-    pass("affine-lower-vector-transfers",
-         "Materializes vector transfer ops to a "
-         "proper abstraction for the hardware");

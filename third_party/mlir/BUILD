@@ -1215,7 +1215,6 @@ cc_library(
         "lib/Transforms/LoopTiling.cpp",
         "lib/Transforms/LoopUnroll.cpp",
         "lib/Transforms/LoopUnrollAndJam.cpp",
-        "lib/Transforms/LowerVectorTransfers.cpp",
         "lib/Transforms/MaterializeVectors.cpp",
         "lib/Transforms/MemRefDataFlowOpt.cpp",
         "lib/Transforms/PipelineDataTransfer.cpp",
@@ -1607,7 +1606,7 @@ cc_library(
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
-        ":VectorToLLVMTransforms",
+        ":VectorConversions",
         ":ViewOpGraph",
         ":ViewRegionGraph",
         "@llvm//:support",
@@ -2151,7 +2150,7 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":Transforms",
-        ":VectorToLLVMTransforms",
+        ":VectorConversions",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -2255,13 +2254,17 @@ gentbl(
 )
 
 cc_library(
-    name = "VectorToLLVMTransforms",
-    srcs = ["lib/Conversion/VectorToLLVM/VectorToLLVM.cpp"],
+    name = "VectorConversions",
+    srcs = [
+        "lib/Conversion/VectorConversions/VectorToLLVM.cpp",
+        "lib/Conversion/VectorConversions/VectorToLoops.cpp",
+    ],
     hdrs = [
-        "include/mlir/Conversion/VectorToLLVM/VectorToLLVM.h",
+        "include/mlir/Conversion/VectorConversions/VectorConversions.h",
     ],
     includes = ["include"],
     deps = [
+        ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
