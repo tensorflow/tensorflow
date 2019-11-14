@@ -10,7 +10,7 @@ func @vec2d(%A : memref<?x?x?xf32>) {
    // CHECK: affine.for %{{.*}} = 0 to %{{.*}} step 32
    // CHECK:   affine.for %{{.*}} = 0 to %{{.*}} {
    // CHECK:     affine.for %{{.*}} = 0 to %{{.*}} step 256
-   // CHECK:       {{.*}} = vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}] {permutation_map = #[[map_proj_d0d1d2_d0d2]]} : memref<?x?x?xf32>,  vector<32x256xf32>
+   // CHECK:       {{.*}} = vector.transfer_read %{{.*}}[%{{.*}}, %{{.*}}, %{{.*}}], %{{.*}} {permutation_map = #[[map_proj_d0d1d2_d0d2]]} : memref<?x?x?xf32>,  vector<32x256xf32>
    affine.for %i0 = 0 to %M {
      affine.for %i1 = 0 to %N {
        affine.for %i2 = 0 to %P {

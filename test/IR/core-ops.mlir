@@ -7,9 +7,6 @@
 // CHECK: #map0 = (d0) -> (d0 + 1)
 
 // CHECK: #map1 = ()[s0] -> (s0 + 1)
-// CHECK-DAG: #[[map_proj_d0d1_d0:map[0-9]+]] = (d0, d1) -> (d0)
-// CHECK-DAG: #[[map_proj_d0d1_d1:map[0-9]+]] = (d0, d1) -> (d1)
-// CHECK-DAG: #[[map_proj_d0d1_d1d0:map[0-9]+]] = (d0, d1) -> (d1, d0)
 
 // CHECK-DAG: #[[VIEW_MAP1:map[0-9]+]] = (d0, d1) -> (d0 * 4 + d1)
 // CHECK-DAG: #[[VIEW_MAP2:map[0-9]+]] = (d0, d1)[s0, s1] -> (d0 * s1 + d1 + s0)
@@ -561,26 +558,6 @@ func @test_splat_op(%s : f32) {
   // CHECK: splat [[S]] : tensor<8xf32>
   %u = "std.splat"(%s) : (f32) -> vector<4xf32>
   // CHECK: splat [[S]] : vector<4xf32>
-  return
-}
-
-// CHECK-LABEL: func @test_vector.transfer_ops(%arg0
-func @test_vector.transfer_ops(%arg0: memref<?x?xf32>) {
-  %c3 = constant 3 : index
-  %cst = constant 3.0 : f32
-  // CHECK: %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d0]]} : memref<?x?xf32>, vector<128xf32>
-  %0 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0)} : memref<?x?xf32>, vector<128xf32>
-  // CHECK: %1 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d1d0]]} : memref<?x?xf32>, vector<3x7xf32>
-  %1 = vector.transfer_read %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d1, d0)} : memref<?x?xf32>, vector<3x7xf32>
-  // CHECK: %2 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = #[[map_proj_d0d1_d0]]} : memref<?x?xf32>,  vector<128xf32>
-  %2 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = (d0, d1)->(d0)} : memref<?x?xf32>,  vector<128xf32>
-  // CHECK: %3 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = #[[map_proj_d0d1_d1]]} : memref<?x?xf32>,  vector<128xf32>
-  %3 = vector.transfer_read %arg0[%c3, %c3], (%cst) {permutation_map = (d0, d1)->(d1)} : memref<?x?xf32>,  vector<128xf32>
-  //
-  // CHECK: vector.transfer_write %0, %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d0]]} : vector<128xf32>, memref<?x?xf32>
-  vector.transfer_write %0, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0)} : vector<128xf32>, memref<?x?xf32>
-  // CHECK: vector.transfer_write %1, %arg0[%c3, %c3] {permutation_map = #[[map_proj_d0d1_d1d0]]} : vector<3x7xf32>, memref<?x?xf32>
-  vector.transfer_write %1, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d1, d0)} : vector<3x7xf32>, memref<?x?xf32>
   return
 }
 

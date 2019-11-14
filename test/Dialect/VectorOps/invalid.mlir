@@ -96,3 +96,146 @@ func @outerproduct_operand_3_result_type_generic(%arg0: vector<4xf32>, %arg1: ve
   // expected-error@+1 {{expected operand #3 of same type as result type}}
   %1 = "vector.outerproduct" (%arg0, %arg1, %arg2) : (vector<4xf32>, vector<8xf32>, vector<4x16xf32>) -> (vector<4x8xf32>)
 }
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{two types required}}
+  %0 = vector.transfer_read %arg0[%c3, %c3], %cst { permutation_map = ()->(0) } : memref<?x?xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires 2 indices}}
+  %0 = vector.transfer_read %arg0[%c3, %c3, %c3], %cst { permutation_map = ()->(0) } : memref<?x?xf32>, vector<128xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires attribute 'permutation_map'}}
+  %0 = vector.transfer_read %arg0[%c3, %c3], %cst {perm = (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
+  %0 = vector.transfer_read %arg0[%c3, %c3], %cst {permutation_map = (d0)->(d0)} : memref<?x?xf32>, vector<128xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
+  %0 = vector.transfer_read %arg0[%c3, %c3], %cst {permutation_map = (d0, d1)->(d0, d1)} : memref<?x?xf32>, vector<128xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
+  %0 = vector.transfer_read %arg0[%c3, %c3], %cst {permutation_map = (d0, d1)->(d0 + d1)} : memref<?x?xf32>, vector<128xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
+  %0 = vector.transfer_read %arg0[%c3, %c3], %cst {permutation_map = (d0, d1)->(d0 + 1)} : memref<?x?xf32>, vector<128xf32>
+}
+
+// -----
+
+func @test_vector.transfer_read(%arg0: memref<?x?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant 3.0 : f32
+  // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
+  %0 = vector.transfer_read %arg0[%c3, %c3, %c3], %cst {permutation_map = (d0, d1, d2)->(d0, d0)} : memref<?x?x?xf32>, vector<3x7xf32>
+}
+
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<128 x f32>
+  // expected-error@+1 {{expected 5 operand types but had 4}}
+  %0 = "vector.transfer_write"(%cst, %arg0, %c3, %c3, %c3) {permutation_map = ()->(0)} : (vector<128xf32>, memref<?x?xf32>, index, index) -> ()
+}
+
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<128 x f32>
+  // expected-error@+1 {{requires 2 indices}}
+  vector.transfer_write %cst, %arg0[%c3, %c3, %c3] {permutation_map = ()->(0)} : vector<128xf32>, memref<?x?xf32>
+}
+
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<128 x f32>
+  // expected-error@+1 {{requires attribute 'permutation_map'}}
+  vector.transfer_write %cst, %arg0[%c3, %c3] {perm = (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
+}
+
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<128 x f32>
+  // expected-error@+1 {{requires a permutation_map with input dims of the same rank as the memref type}}
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0)->(d0)} : vector<128xf32>, memref<?x?xf32>
+}
+
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<128 x f32>
+  // expected-error@+1 {{requires a permutation_map with result dims of the same rank as the vector type}}
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0, d1)} : vector<128xf32>, memref<?x?xf32>
+}
+
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<128 x f32>
+  // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0 + d1)} : vector<128xf32>, memref<?x?xf32>
+}
+
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<128 x f32>
+  // expected-error@+1 {{requires a projected permutation_map (at most one dim or the zero constant can appear in each result)}}
+  vector.transfer_write %cst, %arg0[%c3, %c3] {permutation_map = (d0, d1)->(d0 + 1)} : vector<128xf32>, memref<?x?xf32>
+}
+// -----
+
+func @test_vector.transfer_write(%arg0: memref<?x?x?xf32>) {
+  %c3 = constant 3 : index
+  %cst = constant dense<3.0> : vector<3 x 7 x f32>
+  // expected-error@+1 {{requires a permutation_map that is a permutation (found one dim used more than once)}}
+  vector.transfer_write %cst, %arg0[%c3, %c3, %c3] {permutation_map = (d0, d1, d2)->(d0, d0)} : vector<3x7xf32>, memref<?x?x?xf32>
+}

@@ -48,22 +48,18 @@ func @extract_element_from_vec_3d(%arg0: vector<4x3x16xf32>) -> f32 {
 //       CHECK:   llvm.extractelement %{{.*}}, %{{.*}} : !llvm<"<16 x float>">
 //       CHECK:   llvm.return %{{.*}} : !llvm.float
 
-func @vector_type_cast(%arg0: memref<8x8x8xf32>) -> memref<1xvector<8x8x8xf32>> {
-  %0 = vector.type_cast %arg0: memref<8x8x8xf32>, memref<1xvector<8x8x8xf32>>
-  return %0 : memref<1xvector<8x8x8xf32>>
+func @vector_type_cast(%arg0: memref<8x8x8xf32>) -> memref<vector<8x8x8xf32>> {
+  %0 = vector.type_cast %arg0: memref<8x8x8xf32> to memref<vector<8x8x8xf32>>
+  return %0 : memref<vector<8x8x8xf32>>
 }
 // CHECK-LABEL: vector_type_cast
-//       CHECK:   llvm.mlir.undef : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64, [1 x i64], [1 x i64] }">
+//       CHECK:   llvm.mlir.undef : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64 }">
 //       CHECK:   %[[allocated:.*]] = llvm.extractvalue {{.*}}[0 : index] : !llvm<"{ float*, float*, i64, [3 x i64], [3 x i64] }">
 //       CHECK:   %[[allocatedBit:.*]] = llvm.bitcast %[[allocated]] : !llvm<"float*"> to !llvm<"[8 x [8 x <8 x float>]]*">
-//       CHECK:   llvm.insertvalue %[[allocatedBit]], {{.*}}[0 : index] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64, [1 x i64], [1 x i64] }">
+//       CHECK:   llvm.insertvalue %[[allocatedBit]], {{.*}}[0 : index] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64 }">
 //       CHECK:   %[[aligned:.*]] = llvm.extractvalue {{.*}}[1 : index] : !llvm<"{ float*, float*, i64, [3 x i64], [3 x i64] }">
 //       CHECK:   %[[alignedBit:.*]] = llvm.bitcast %[[aligned]] : !llvm<"float*"> to !llvm<"[8 x [8 x <8 x float>]]*">
-//       CHECK:   llvm.insertvalue %[[alignedBit]], {{.*}}[1 : index] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64, [1 x i64], [1 x i64] }">
+//       CHECK:   llvm.insertvalue %[[alignedBit]], {{.*}}[1 : index] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64 }">
 //       CHECK:   llvm.mlir.constant(0 : index
-//       CHECK:   llvm.insertvalue {{.*}}[2 : index] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64, [1 x i64], [1 x i64] }">
-//       CHECK:   llvm.mlir.constant(1 : index
-//       CHECK:   llvm.insertvalue {{.*}}[3, 0] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64, [1 x i64], [1 x i64] }">
-//       CHECK:   llvm.mlir.constant(1 : index
-//       CHECK:   llvm.insertvalue {{.*}}[4, 0] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64, [1 x i64], [1 x i64] }">
+//       CHECK:   llvm.insertvalue {{.*}}[2 : index] : !llvm<"{ [8 x [8 x <8 x float>]]*, [8 x [8 x <8 x float>]]*, i64 }">
 

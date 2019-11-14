@@ -196,10 +196,10 @@ public:
     int64_t offset;
     SmallVector<int64_t, 4> strides;
     auto successStrides =
-        getStridesAndOffset(targetMemRefType, strides, offset);
+        getStridesAndOffset(sourceMemRefType, strides, offset);
     bool isContiguous = (strides.back() == 1);
     if (isContiguous) {
-      auto sizes = targetMemRefType.getShape();
+      auto sizes = sourceMemRefType.getShape();
       for (int index = 0, e = strides.size() - 2; index < e; ++index) {
         if (strides[index] != strides[index + 1] * sizes[index + 1]) {
           isContiguous = false;
@@ -207,7 +207,7 @@ public:
         }
       }
     }
-    // Only contiguous tensors supported atm.
+    // Only contiguous source tensors supported atm.
     if (failed(successStrides) || !isContiguous)
       return matchFailure();
 
