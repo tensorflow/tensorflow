@@ -25,7 +25,7 @@ cc_library(
         "//tensorflow/compiler/xla/python:semaphore",
         "//tensorflow/compiler/xla/python/tpu_driver",
         "//tensorflow/compiler/xla/python/tpu_driver:grpc_tpu_driver",
-        "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto",
+        "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:allocator",
