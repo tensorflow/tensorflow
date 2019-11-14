@@ -246,18 +246,6 @@ def cc_proto_library(
         **kargs
     )
 
-    # Temporarily also add an alias with the 'protolib_name'. So far we relied
-    # on copybara to switch dependencies to the _cc dependencies. Now that these
-    # copybara rules are removed, we need to first change the internal BUILD
-    # files to depend on the correct targets instead, then this can be removed.
-    # TODO(b/143648532): Remove this once all reverse dependencies are migrated.
-    if protolib_name != name:
-        native.alias(
-            name = protolib_name,
-            actual = name,
-            visibility = kargs["visibility"],
-        )
-
 # Re-defined protocol buffer rule to bring in the change introduced in commit
 # https://github.com/google/protobuf/commit/294b5758c373cbab4b72f35f4cb62dc1d8332b68
 # which was not part of a stable protobuf release in 04/2018.
@@ -373,18 +361,6 @@ def tf_proto_library_cc(
             deps = [s + "_genproto" for s in protolib_deps],
         )
 
-        # Temporarily also add an alias with 'name'. So far we relied on
-        # copybara to switch dependencies to the _cc dependencies. Now that these
-        # copybara rules are removed, we need to change the internal BUILD files to
-        # depend on the correct targets instead.
-        # TODO(b/143648532): Remove this once all reverse dependencies are
-        # migrated.
-        native.alias(
-            name = name,
-            actual = cc_name,
-            testonly = testonly,
-            visibility = visibility,
-        )
         native.cc_library(
             name = cc_name,
             deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_static([name + "_cc_impl"]),
