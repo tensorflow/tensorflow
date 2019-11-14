@@ -101,7 +101,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="CMSIS" micro_speech_bin
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="cmsis-nn" micro_speech_bin
 ```
 
 The binary will be created in the following location:
