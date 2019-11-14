@@ -3179,7 +3179,7 @@ def _ssim_per_channel(img1,
     filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we took the values in the range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0 < K2 < 0.4).
 
   Returns:
     A pair of tensors containing and channel-wise SSIM and contrast-structure
@@ -3286,7 +3286,7 @@ def ssim(img1,
     filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we took the values in the range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0 < K2 < 0.4).
 
   Returns:
     A tensor containing an SSIM value for each image in batch.  Returned SSIM
@@ -3349,7 +3349,7 @@ def ssim_multiscale(img1,
     filter_sigma: Default value 1.5 (width of gaussian filter).
     k1: Default value 0.01
     k2: Default value 0.03 (SSIM is less sensitivity to K2 for lower values, so
-      it would be better if we took the values in the range of 0< K2 <0.4).
+      it would be better if we took the values in the range of 0 < K2 < 0.4).
 
   Returns:
     A tensor containing an MS-SSIM value for each image in batch.  The values
