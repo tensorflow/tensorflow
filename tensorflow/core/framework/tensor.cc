@@ -133,7 +133,6 @@ class Buffer : public BufferBase {
   size_t size() const override { return sizeof(T) * elem_; }
 
  private:
-  T* data_;
   int64 elem_;
 
   ~Buffer() override;
