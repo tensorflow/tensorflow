@@ -407,10 +407,7 @@ cc_library(
 cc_library(
     name = "LoopDialectRegistration",
     srcs = ["lib/Dialect/LoopOps/DialectRegistration.cpp"],
-    deps = [
-        ":IR",
-        ":LoopOps",
-    ],
+    deps = [":LoopOps"],
     alwayslink = 1,
 )
 
@@ -438,10 +435,7 @@ cc_library(
 cc_library(
     name = "StandardDialectRegistration",
     srcs = ["lib/Dialect/StandardOps/DialectRegistration.cpp"],
-    deps = [
-        ":IR",
-        ":StandardOps",
-    ],
+    deps = [":StandardOps"],
     alwayslink = 1,
 )
 
@@ -458,17 +452,13 @@ cc_library(
         ":IR",
         ":Support",
         ":VectorOpsIncGen",
-        "@llvm//:support",
     ],
 )
 
 cc_library(
     name = "VectorDialectRegistration",
     srcs = ["lib/Dialect/VectorOps/DialectRegistration.cpp"],
-    deps = [
-        ":IR",
-        ":VectorOps",
-    ],
+    deps = [":VectorOps"],
     alwayslink = 1,
 )
 
@@ -587,7 +577,6 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":StandardOps",
-        ":Support",
     ],
 )
 
@@ -608,7 +597,6 @@ cc_library(
     deps = [
         ":GPUDialect",
         ":IR",
-        ":LoopOps",
         ":Pass",
         ":StandardOps",
         ":Transforms",
@@ -732,12 +720,10 @@ cc_library(
     includes = ["include"],
     deps = [
         ":GPUDialect",
-        ":IR",
         ":LoopOps",
         ":Pass",
         ":SPIRVDialect",
         ":SPIRVLowering",
-        ":StandardOps",
         ":StandardToSPIRVConversions",
         ":Transforms",
     ],
@@ -1057,12 +1043,9 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
-        ":IR",
         ":Pass",
         ":SPIRVDialect",
-        ":Support",
         ":Transforms",
-        "@llvm//:support",
     ],
     alwayslink = 1,
 )
@@ -1326,8 +1309,6 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":Transforms",
-        "@llvm//:core",
-        "@llvm//:support",
     ],
     alwayslink = 1,
 )
@@ -1775,10 +1756,7 @@ cc_binary(
     name = "mlir-cpu-runner",
     srcs = ["tools/mlir-cpu-runner/mlir-cpu-runner.cpp"],
     linkopts = ["-ldl"],
-    deps = [
-        ":MlirJitRunner",
-        "@llvm//:support",
-    ],
+    deps = [":MlirJitRunner"],
 )
 
 cc_binary(
@@ -1974,11 +1952,7 @@ cc_library(
 cc_library(
     name = "QuantOpsDialectRegistration",
     srcs = ["lib/Dialect/QuantOps/IR/DialectRegistration.cpp"],
-    deps = [
-        ":IR",
-        ":QuantOps",
-        "@llvm//:support",
-    ],
+    deps = [":QuantOps"],
     alwayslink = 1,
 )
 
@@ -2045,11 +2019,7 @@ cc_library(
 cc_library(
     name = "FxpMathOpsDialectRegistration",
     srcs = ["lib/Dialect/FxpMathOps/IR/DialectRegistration.cpp"],
-    deps = [
-        ":FxpMathOps",
-        ":IR",
-        "@llvm//:support",
-    ],
+    deps = [":FxpMathOps"],
     alwayslink = 1,
 )
 
@@ -2191,11 +2161,7 @@ cc_library(
 cc_library(
     name = "LinalgDialectRegistration",
     srcs = ["lib/Dialect/Linalg/LinalgRegistration.cpp"],
-    deps = [
-        ":IR",
-        ":Linalg",
-        "@llvm//:support",
-    ],
+    deps = [":Linalg"],
     alwayslink = 1,
 )
 
