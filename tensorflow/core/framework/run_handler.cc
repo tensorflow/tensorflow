@@ -887,8 +887,16 @@ class RunHandlerPool::Impl {
     RunHandler::Impl* handler_impl;
     {
       mutex_lock l(mu_);
-      while (free_handlers_.empty()) {
-        one_handler_free_.wait(l);
+      if (free_handlers_.empty()) {
+        profiler::TraceMe activity(
+            [&] {
+              return strings::StrCat("WaitingForHandler#step_id=", step_id,
+                                     "#");
+            },
+            profiler::TraceMeLevel::kInfo);
+        while (free_handlers_.empty()) {
+          one_handler_free_.wait(l);
+        }
       }
       // Remove the last entry from free_handlers_ and add to the end of
       // sorted_active_handlers_.
