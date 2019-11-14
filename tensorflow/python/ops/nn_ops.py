@@ -38,6 +38,7 @@ from tensorflow.python.ops import check_ops
 # TODO(b/138808492): Remove code inside copybara
 from tensorflow.python.ops import control_flow_ops
 # copybara:strip_end
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -4357,10 +4358,6 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    if not x.dtype.is_floating:
-      raise ValueError("x has to be a floating point tensor since it's going to"
-                       " be scaled. Got a %s tensor instead." % x.dtype)
     if isinstance(rate, numbers.Real):
       if not (rate >= 0 and rate < 1):
         raise ValueError("rate must be a scalar tensor or a float in the "
@@ -4370,22 +4367,35 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
             logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
             "2.x, dropout() uses dropout rate instead of keep_prob. "
             "Please ensure that this is intended.", 5, rate)
-
-    # Early return if nothing needs to be dropped.
-    if isinstance(rate, numbers.Real) and rate == 0:
-      return x
-    if context.executing_eagerly():
-      if isinstance(rate, ops.EagerTensor):
-        if rate.numpy() == 0:
+    if not tensor_util.is_tensor(x):
+      x = ops.convert_to_tensor(x, name="x")
+    x_dtype = x.dtype
+    if not x_dtype.is_floating:
+      raise ValueError("x has to be a floating point tensor since it's going to"
+                       " be scaled. Got a %s tensor instead." % x_dtype)
+    if not tensor_util.is_tensor(rate):
+      if isinstance(rate, numbers.Real):
+        # Early return if nothing needs to be dropped.
+        if rate == 0:
           return x
+        else:
+          keep_prob = 1 - rate
+          scale = 1 / keep_prob
+          scale = ops.convert_to_tensor(scale, dtype=x_dtype)
+      else:
+        raise ValueError("rate is neither scalar, nor scalar tensor %r" % rate)
     else:
-      rate = ops.convert_to_tensor(
-          rate, dtype=x.dtype, name="rate")
       rate.get_shape().assert_has_rank(0)
-
-      # Do nothing if we know rate == 0
-      if tensor_util.constant_value(rate) == 0:
-        return x
+      rate_dtype = rate.dtype
+      if rate_dtype != x_dtype:
+        if not rate_dtype.is_compatible_with(x_dtype):
+          raise ValueError(
+              "Tensor dtype %s is incomptaible with Tensor dtype %s: %r"
+              % (x_dtype.name, rate_dtype.name, rate))
+        rate = gen_math_ops.cast(rate, x_dtype)
+      one_tensor = array_ops.constant(1, dtype=x_dtype)
+      scale = gen_math_ops.real_div(one_tensor,
+                                    gen_math_ops.sub(one_tensor, rate))
 
     noise_shape = _get_noise_shape(x, noise_shape)
     # Sample a uniform distribution on [0.0, 1.0) and select values larger than
@@ -4394,13 +4404,12 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
     # NOTE: Random uniform actually can only generate 2^23 floats on [1.0, 2.0)
     # and subtract 1.0.
     random_tensor = random_ops.random_uniform(
-        noise_shape, seed=seed, dtype=x.dtype)
-    keep_prob = 1 - rate
-    scale = 1 / keep_prob
+        noise_shape, seed=seed, dtype=x_dtype)
     # NOTE: if (1.0 + rate) - 1 is equal to rate, then we want to consider that
     # float to be selected, hence we use a >= comparison.
     keep_mask = random_tensor >= rate
-    ret = x * scale * math_ops.cast(keep_mask, x.dtype)
+    ret = gen_math_ops.mul(
+        scale, gen_math_ops.cast(keep_mask, x_dtype), name="mul") * x
     if not context.executing_eagerly():
       ret.set_shape(x.get_shape())
     return ret
