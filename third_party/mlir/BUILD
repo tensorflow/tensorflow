@@ -337,11 +337,25 @@ cc_library(
 cc_library(
     name = "AffineDialectRegistration",
     srcs = ["lib/Dialect/AffineOps/DialectRegistration.cpp"],
+    deps = [":AffineOps"],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "AffineToStandardTransforms",
+    srcs = ["lib/Conversion/AffineToStandard/AffineToStandard.cpp"],
+    hdrs = ["include/mlir/Conversion/AffineToStandard/AffineToStandard.h"],
+    includes = ["include"],
     deps = [
         ":AffineOps",
         ":IR",
+        ":LoopOps",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
     ],
-    alwayslink = 1,
+    alwayslink = 1,  # contains pass registration
 )
 
 # SDBM dialect only contains attribute components that can be constructed given
@@ -1189,7 +1203,6 @@ cc_library(
         "lib/Transforms/LoopTiling.cpp",
         "lib/Transforms/LoopUnroll.cpp",
         "lib/Transforms/LoopUnrollAndJam.cpp",
-        "lib/Transforms/LowerAffine.cpp",
         "lib/Transforms/LowerVectorTransfers.cpp",
         "lib/Transforms/MaterializeVectors.cpp",
         "lib/Transforms/MemRefDataFlowOpt.cpp",
@@ -1200,7 +1213,6 @@ cc_library(
     ],
     hdrs = [
         "include/mlir/Transforms/DialectConversion.h",
-        "include/mlir/Transforms/LowerAffine.h",
         "include/mlir/Transforms/Passes.h",
         "include/mlir/Transforms/SideEffectsInterface.h",
     ],
@@ -1233,6 +1245,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":AffineToStandardTransforms",
         ":GPUDialect",
         ":IR",
         ":Linalg",
@@ -2123,6 +2136,7 @@ cc_library(
     includes = ["include"],
     deps = [
         ":AffineOps",
+        ":AffineToStandardTransforms",
         ":Analysis",
         ":CFGTransforms",
         ":EDSC",
