@@ -10,6 +10,10 @@
 // CHECK-DAG: #[[VIEW_MAP3:map[0-9]+]] = (d0, d1, d2)[s0] -> (d0 * s0 + d1 * 7 + d2)
 // CHECK-DAG: #[[VIEW_MAP4:map[0-9]+]] = (d0, d1) -> (d0 * 4 + d1 + 15)
 
+// CHECK-DAG: #[[BASE_MAP0:map[0-9]+]] = (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)
+// CHECK-DAG: #[[SUBVIEW_MAP0:map[0-9]+]] = (d0, d1, d2) -> (d0 * 165 + d1 * 15 + d2)
+// CHECK-DAG: #[[SUBVIEW_MAP1:map[0-9]+]] = (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)
+
 // CHECK-LABEL: func @test_subi_zero
 func @test_subi_zero(%arg0: i32) -> i32 {
   // CHECK-NEXT: %c0_i32 = constant 0 : i32
@@ -670,6 +674,42 @@ func @view(%arg0 : index) {
   // CHECK: std.view %0[][] : memref<2048xi8> to memref<7x4xf32, #[[VIEW_MAP4]]>
   %5 = view %0[%c15][%c7]
     : memref<2048xi8> to memref<?x4xf32, #TEST_VIEW_MAP2>
+
+  return
+}
+
+
+// CHECK-LABEL: func @subview
+func @subview(%arg0 : index) {
+  %c0 = constant 0 : index
+  %c1 = constant 1 : index
+  %c7 = constant 7 : index
+  %c11 = constant 11 : index
+  %c15 = constant 15 : index
+
+  %0 = alloc() : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+
+  // Test: subview with constant base memref and constant operands is folded.
+  // CHECK: std.subview %0[][][] : memref<8x16x4xf32, #[[BASE_MAP0]]> to memref<7x11x15xf32, #[[SUBVIEW_MAP0]]>
+  %1 = subview %0[%c0, %c0, %c0][%c7, %c11, %c15][%c1, %c1, %c1]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+      memref<?x?x?xf32,
+       (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
+
+  // Test: subview with one dynamic operand should not be folded.
+  // CHECK: std.subview %0[%c0, %arg0, %c0][%c7, %c11, %c15][%c1, %c1, %c1] : memref<8x16x4xf32, #[[BASE_MAP0]]> to memref<?x?x?xf32, #[[SUBVIEW_MAP1]]> 
+  %2 = subview %0[%c0, %arg0, %c0][%c7, %c11, %c15][%c1, %c1, %c1]
+    : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+      memref<?x?x?xf32,
+       (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
+
+  // Test: subview with constant operands but dynamic base memref is not folded.
+  %3 = alloc(%arg0) : memref<?x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+  // CHECK: std.subview %3[%c0, %c0, %c0][%c7, %c11, %c15][%c1, %c1, %c1] : memref<?x16x4xf32, #[[BASE_MAP0]]> to memref<?x?x?xf32, #[[SUBVIEW_MAP1]]> 
+  %4 = subview %3[%c0, %c0, %c0][%c7, %c11, %c15][%c1, %c1, %c1]
+    : memref<?x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+      memref<?x?x?xf32,
+       (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
 
   return
 }
