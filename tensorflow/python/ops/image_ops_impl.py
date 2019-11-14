@@ -40,14 +40,14 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable('RandomCrop')
-# TODO(b/31222613): This op maybe differentiable, and there maybe
+# TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
 ops.NotDifferentiable('HSVToRGB')
 ops.NotDifferentiable('DrawBoundingBoxes')
 ops.NotDifferentiable('SampleDistortedBoundingBox')
 ops.NotDifferentiable('SampleDistortedBoundingBoxV2')
 # TODO(bsteiner): Implement the gradient function for extract_glimpse
-# TODO(b/31222613): This op maybe differentiable, and there maybe
+# TODO(b/31222613): This op may be differentiable, and there may be
 # latent bugs here.
 ops.NotDifferentiable('ExtractGlimpse')
 ops.NotDifferentiable('NonMaxSuppression')
@@ -1271,7 +1271,7 @@ def resize_images_v2(images,
     For synthetic images (especially those lacking proper prefiltering), less
     ringing than Keys cubic kernel but less sharp.
 
-  Note that near image edges the filtering kernel maybe partially outside the
+  Note that near image edges the filtering kernel may be partially outside the
   image boundaries. For these pixels, only input pixels inside the image will be
   included in the filter sum, and the output value will be appropriately
   normalized.
@@ -2162,7 +2162,7 @@ def is_jpeg(contents, name=None):
     name: A name for the operation (optional)
 
   Returns:
-     A scalar boolean tensor indicating if 'contents' maybe a JPEG image.
+     A scalar boolean tensor indicating if 'contents' may be a JPEG image.
      is_jpeg is susceptible to false positives.
   """
   # Normal JPEGs start with \xff\xd8\xff\xe0
@@ -2181,7 +2181,7 @@ def _is_png(contents, name=None):
     name: A name for the operation (optional)
 
   Returns:
-     A scalar boolean tensor indicating if 'contents' maybe a PNG image.
+     A scalar boolean tensor indicating if 'contents' may be a PNG image.
      is_png is susceptible to false positives.
   """
   with ops.name_scope(name, 'is_png'):
@@ -2434,10 +2434,10 @@ def sample_distorted_bounding_box_v2(image_size,
   localization of an object, i.e. bounding box, given an `image_size`,
   `bounding_boxes` and a series of constraints.
 
-  The output of this Op is a single bounding box that maybe used to crop the
+  The output of this Op is a single bounding box that may be used to crop the
   original image. The output is returned as 3 tensors: `begin`, `size` and
   `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
-  image. The latter maybe supplied to `tf.image.draw_bounding_boxes` to
+  image. The latter may be supplied to `tf.image.draw_bounding_boxes` to
   visualize what the bounding box looks like.
 
   Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
@@ -2538,10 +2538,10 @@ def sample_distorted_bounding_box(image_size,
   localization of an object, i.e. bounding box, given an `image_size`,
   `bounding_boxes` and a series of constraints.
 
-  The output of this Op is a single bounding box that maybe used to crop the
+  The output of this Op is a single bounding box that may be used to crop the
   original image. The output is returned as 3 tensors: `begin`, `size` and
   `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
-  image. The latter maybe supplied to `tf.image.draw_bounding_boxes` to
+  image. The latter may be supplied to `tf.image.draw_bounding_boxes` to
   visualize what the bounding box looks like.
 
   Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`.
