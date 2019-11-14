@@ -907,8 +907,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       ValueError: If attempting to capture an external tensor not in the forward
         graph with `whitelisted` set to False.
     """
-    if (not whitelisted and tensor.graph is not self and
-        tensor.graph != self._forward_graph):
+    if not whitelisted and (isinstance(tensor, ops.EagerTensor) or
+                            (tensor.graph is not self and
+                             tensor.graph != self._forward_graph)):
       with self._forward_cond_graph.as_default():
         self._forward_cond_graph.capture(tensor)
       with self._forward_graph.as_default():
