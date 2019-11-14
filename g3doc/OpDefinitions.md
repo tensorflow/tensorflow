@@ -939,6 +939,37 @@ between the internal storage and the helper method. Derived attributes are a
 special class of attributes that do not have storage but are instead calculated
 based on the operation and its attributes.
 
+## Debugging Tips
+
+### Run `mlir-tblgen` to see the generated content
+
+TableGen syntax sometimes can be obscure; reading the generated content can be
+a very helpful way to understand and debug issues. To build `mlir-tblgen`, run
+`cmake --build . --target mlir-tblgen` in your build directory and find the
+`mlir-tblgen` binary in the `bin/` subdirectory. All the supported generators
+can be found via `mlir-tblgen --help`. For example, `--gen-op-decls` and
+`--gen-op-defs` as explained in [Generated C++ code](#generated-c++-code).
+
+To see the generated code, invoke `mlir-tblgen` with a specific generator by
+providing include paths via `-I`. For example,
+
+```sh
+# To see op C++ class declaration
+mlir-tblgen --gen-op-decls -I /path/to/mlir/include /path/to/input/td/file
+# To see op C++ class definition
+mlir-tblgen --gen-op-defs -I /path/to/mlir/include /path/to/input/td/file
+# To see op documentation
+mlir-tblgen --gen-op-doc -I /path/to/mlir/include /path/to/input/td/file
+
+# To see op interface C++ class declaration
+mlir-tblgen --gen-op-interface-decls -I /path/to/mlir/include /path/to/input/td/file
+# To see op interface C++ class definition
+mlir-tblgen --gen-op-interface-defs -I /path/to/mlir/include /path/to/input/td/file
+# To see op interface documentation
+mlir-tblgen --gen-op-interface-doc -I /path/to/mlir/include /path/to/input/td/file
+```
+
+
 ## Appendix
 
 ### Requirements and existing mechanisms analysis
