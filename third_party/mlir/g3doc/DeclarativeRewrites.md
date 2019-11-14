@@ -640,5 +640,23 @@ pattern's benefit. Just supply `(addBenefit N)` to add `N` to the benefit value.
 
 [TODO]
 
+## Debugging Tips
+
+### Run `mlir-tblgen` to see the generated content
+
+TableGen syntax sometimes can be obscure; reading the generated content can be
+a very helpful way to understand and debug issues. To build `mlir-tblgen`, run
+`cmake --build . --target mlir-tblgen` in your build directory and find the
+`mlir-tblgen` binary in the `bin/` subdirectory. All the supported generators
+can be found via `mlir-tblgen --help`.
+
+To see the generated code, invoke `mlir-tblgen` with a specific generator by
+providing include paths via `-I`. For example,
+
+```sh
+# To see all the C++ pattern rewrite classes
+mlir-tblgen --gen-rewriters -I /path/to/mlir/include /path/to/input/td/file
+```
+
 [TableGen]: https://llvm.org/docs/TableGen/index.html
 [OpBase]: https://github.com/tensorflow/mlir/blob/master/include/mlir/IR/OpBase.td
