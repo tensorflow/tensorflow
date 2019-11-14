@@ -21,9 +21,16 @@ from __future__ import print_function
 import sys
 from absl import app
 
-from tensorflow import enable_v2_behavior
 import tensorflow as tf # TF2
-enable_v2_behavior()
+# Try to enable TensorFlow V2 behavior.
+try:
+  from tensorflow import enable_v2_behavior  # pylint: disable=g-import-not-at-top
+  enable_v2_behavior()
+except ImportError:
+  # `enable_v2_behavior` is not available in pip build.
+  # Ignore if the symbole isn't found. This should work in
+  # TensorFlow 2 nightly pip.
+  pass
 
 
 def suppress_exception(f):
