@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_ADD_INTERMEDIATE_TENSORS_H_
-#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_ADD_INTERMEDIATE_TENSORS_H_
+#ifndef TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_WRAPPER_UTILS_H_
+#define TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_WRAPPER_UTILS_H_
 
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/model.h"
@@ -22,13 +22,20 @@ limitations under the License.
 namespace tflite {
 namespace optimize {
 
+// Load a tflite model from path.
+TfLiteStatus LoadModel(const string& path, ModelT* model);
+
 // Going through the model and add intermediates tensors if the ops have any.
 // Returns early if the model has already intermediate tensors. This is to
 // support cases where a model is initialized multiple times.
 TfLiteStatus AddIntemediateTensorsToFusedOp(
-    flatbuffers::FlatBufferBuilder* builder, ModelT* input_model);
+    flatbuffers::FlatBufferBuilder* builder, ModelT* model);
+
+// Write model to a given location.
+bool WriteFile(const std::string& out_file, const uint8_t* bytes,
+               size_t num_bytes);
 
 }  // namespace optimize
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_ADD_INTERMEDIATE_TENSORS_H_
+#endif  // TENSORFLOW_LITE_TOOLS_OPTIMIZE_QUANTIZATION_WRAPPER_UTILS_H_

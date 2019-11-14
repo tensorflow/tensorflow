@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/add_intermediate_tensors.h"
+#include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
