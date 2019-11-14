@@ -262,9 +262,11 @@ Status ReadMetadataFile(const string& hash_dir,
 Status DumpDatasetGraph(const std::string& path, uint64 hash,
                         const GraphDef& graph) {
   std::unique_ptr<WritableFile> file;
-  std::string graph_file = absl::StrCat(path, "/graph-", hash, ".pbtxt");
+  std::string hash_hex =
+      strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+  std::string graph_file = absl::StrCat(path, "/", hash_hex, "-graph.pbtxt");
 
-  LOG(INFO) << "Graph hash is " << hash << ", writing to " << graph_file;
+  LOG(INFO) << "Graph hash is " << hash_hex << ", writing to " << graph_file;
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
   return WriteTextProto(Env::Default(), graph_file, graph);
 }
