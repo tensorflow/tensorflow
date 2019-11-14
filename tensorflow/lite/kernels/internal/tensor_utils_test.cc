@@ -1496,10 +1496,10 @@ INSTANTIATE_TEST_SUITE_P(
     uKernels, MeanStddevNormalizationTest,
     testing::Values(
         std::make_tuple(0.0f, 0.0f, 0.0f),         // zero mean, zero variance
-        std::make_tuple(0.0f, 0.01f, 0.0f),        // zero mean, small variance
+        std::make_tuple(0.0f, 0.01f, 2.53e-5f),    // zero mean, small variance
         std::make_tuple(0.0f, 100.0f, 1.20e-7f),   // zero mean, large variance
         std::make_tuple(0.01f, 0.0f, 0.0f),        // small mean, zero variance
-        std::make_tuple(0.01f, 0.01f, 0.0f),       // small mean, small variance
+        std::make_tuple(0.01f, 0.01f, 2.53e-5f),   // small mean, small variance
         std::make_tuple(0.01f, 100.0f, 1.20e-7f),  // small mean, large variance
         std::make_tuple(100.0f, 0.0f, 0.0f),       // large mean, zero variance
         std::make_tuple(100.0f, 0.01f, 199.0f),    // large mean, small variance
@@ -1536,7 +1536,7 @@ TEST(uKernels, MeanStddevNormalizationAllBatches) {
       -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
   };
   EXPECT_THAT(output, testing::ElementsAreArray(
-                          ArrayFloatNear(expected_output, 1.2e-07)));
+                          ArrayFloatNear(expected_output, 2.6e-5f)));
 }
 
 }  // namespace tensor_utils
