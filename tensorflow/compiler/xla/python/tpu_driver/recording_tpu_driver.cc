@@ -77,6 +77,7 @@ class RecordingBufferHandle : public BufferHandle {
         event_(std::make_shared<RecordingEvent>(handle_->OnReady(), id_)) {}
   std::shared_ptr<Event> OnReady() override { return event_; }
   int64_t size_in_bytes() override { return handle_->size_in_bytes(); }
+  std::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
 
  private:
   std::unique_ptr<BufferHandle> handle_;
@@ -257,24 +258,29 @@ class RecordingTpuDriver : public TpuDriver {
   }
 
   std::unique_ptr<Event> TransferToDevice(
-      const void* src, int64_t num_bytes, BufferHandle* dst,
+      const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
+    int64_t num_bytes = dst->size_in_bytes();
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
 
     auto thread_id = GetCurrentThreadId();
-    int64_t recording_handle_id = static_cast<RecordingBufferHandle*>(dst)->id_;
+    auto recording_handle = static_cast<RecordingBufferHandle*>(dst);
+    int64_t recording_handle_id = recording_handle->id_;
     auto recording_event =
         std::make_unique<RecordingEvent>(driver_->TransferToDevice(
-            src, num_bytes,
-            static_cast<RecordingBufferHandle*>(dst)->handle_.get(),
+            src, static_cast<RecordingBufferHandle*>(dst)->handle_.get(),
             unwrapped_wait_for));
     int64_t event_id = recording_event->id_;
 
     {
       StreamRequest::Entry r;
       r.mutable_transfer_to()->set_target_handle(recording_handle_id);
-      r.mutable_transfer_to()->mutable_data()->assign(
-          static_cast<const char*>(src), num_bytes);
+      if (num_bytes > 0) {
+        r.mutable_transfer_to()->mutable_data()->assign(
+            static_cast<const char*>(src), num_bytes);
+      } else {
+        *r.mutable_transfer_to()->mutable_data() = "";
+      }
       PopulateAndSaveEntry(&r, wait_for, event_id, thread_id);
     }
 
@@ -282,7 +288,7 @@ class RecordingTpuDriver : public TpuDriver {
   }
 
   std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, int64_t num_bytes,
+      const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
 
@@ -291,64 +297,12 @@ class RecordingTpuDriver : public TpuDriver {
     auto recording_event =
         std::make_unique<RecordingEvent>(driver_->TransferFromDevice(
             static_cast<const RecordingBufferHandle*>(src)->handle_.get(), dst,
-            num_bytes, unwrapped_wait_for));
-    auto event_id = recording_event->id_;
-
-    {
-      StreamRequest::Entry r;
-      r.mutable_transfer_from()->set_source_handle(src_handle_id);
-      r.mutable_transfer_from()->set_length(num_bytes);
-      PopulateAndSaveEntry(&r, wait_for, event_id, thread_id);
-    }
-
-    return recording_event;
-  }
-
-  std::unique_ptr<Event> TransferToDevice(
-      const void* src, BufferHandle* dst, const xla::ShapeProto& shape,
-      absl::Span<Event* const> wait_for) override {
-    auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
-
-    int64_t shape_num_bytes = ComputeBytesFromShape(shape);
-
-    auto thread_id = GetCurrentThreadId();
-    int64_t recording_handle_id = static_cast<RecordingBufferHandle*>(dst)->id_;
-    auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferToDevice(
-            src, static_cast<RecordingBufferHandle*>(dst)->handle_.get(), shape,
             unwrapped_wait_for));
-    int64_t handle_id = recording_event->id_;
-
-    {
-      StreamRequest::Entry r;
-      r.mutable_transfer_to()->set_target_handle(recording_handle_id);
-      *r.mutable_transfer_to()->mutable_linearize_shape() = shape;
-      r.mutable_transfer_to()->mutable_data()->assign(
-          static_cast<const char*>(src), shape_num_bytes);
-      PopulateAndSaveEntry(&r, wait_for, handle_id, thread_id);
-    }
-
-    return recording_event;
-  }
-
-  std::unique_ptr<Event> TransferFromDevice(
-      const BufferHandle* src, void* dst, const xla::ShapeProto& shape,
-      absl::Span<Event* const> wait_for) override {
-    auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
-
-    auto thread_id = GetCurrentThreadId();
-    auto src_handle_id = static_cast<const RecordingBufferHandle*>(src)->id_;
-    auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferFromDevice(
-            static_cast<const RecordingBufferHandle*>(src)->handle_.get(), dst,
-            shape, unwrapped_wait_for));
     auto event_id = recording_event->id_;
 
     {
       StreamRequest::Entry r;
       r.mutable_transfer_from()->set_source_handle(src_handle_id);
-      r.mutable_transfer_from()->set_length(-1);
-      *r.mutable_transfer_from()->mutable_delinearize_shape() = shape;
       PopulateAndSaveEntry(&r, wait_for, event_id, thread_id);
     }
 

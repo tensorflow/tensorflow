@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -369,11 +369,8 @@ cc_library(
     srcs = ["traceme_recorder.cc"],
     hdrs = ["traceme_recorder.h"],
     visibility = [
-        "//perftools/accelerators/xprof/xprofilez/cpu:__pkg__",  # host_tracer
-        "//perftools/accelerators/xprof/xprofilez/integration_tests:__pkg__",  # traceme_test
-        "//tensorflow/core:__pkg__",  # executor.cc
-        "//tensorflow/core/profiler/internal/cpu:__pkg__",  # host_tracer
-        "//tensorflow/core/profiler/lib:__pkg__",  # traceme
+        "//perftools/accelerators/xprof/xprofilez:__subpackages__",
+        "//tensorflow/core/profiler:__subpackages__",
     ],
     deps = [
         "//tensorflow/core:lib",
@@ -392,17 +389,14 @@ tf_cc_test(
     ],
 )
 
-tf_cuda_library(
+cc_library(
     name = "profiler_interface",
-    srcs = [
-        "profiler_interface.cc",
-    ],
-    hdrs = [
-        "profiler_interface.h",
-    ],
+    srcs = ["profiler_interface.cc"],
+    hdrs = ["profiler_interface.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/core:status",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -410,6 +404,8 @@ tf_cuda_library(
 filegroup(
     name = "mobile_srcs",
     srcs = [
+        "annotation_stack.cc",
+        "annotation_stack.h",
         "profiler_interface.cc",
         "profiler_interface.h",
         "traceme_recorder.cc",
@@ -418,11 +414,26 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "annotation_stack",
+    srcs = ["annotation_stack.cc"],
+    hdrs = ["annotation_stack.h"],
+    visibility = [
+        "//perftools/accelerators/xprof/xprofilez:__subpackages__",
+        "//tensorflow/core/profiler:__subpackages__",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "scoped_annotation_test",
     size = "small",
     srcs = ["scoped_annotation_test.cc"],
     deps = [
+        ":annotation_stack",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -432,7 +443,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/platform:annotation",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -442,7 +453,6 @@ cc_library(
     hdrs = ["python_traceme.h"],
     visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
-        ":traceme_recorder",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/types:optional",
     ],
@@ -453,7 +463,7 @@ cc_library(
     hdrs = ["python_scoped_annotation.h"],
     visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],

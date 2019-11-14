@@ -12,66 +12,21 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_PLATFORM_ANNOTATION_H_
-#define TENSORFLOW_CORE_PLATFORM_ANNOTATION_H_
+#ifndef TENSORFLOW_CORE_PROFILER_LIB_SCOPED_ANNOTATION_H_
+#define TENSORFLOW_CORE_PROFILER_LIB_SCOPED_ANNOTATION_H_
 
 #include <stddef.h>
 
 #include <atomic>
 
-#include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/internal/annotation_stack.h"
 
 namespace tensorflow {
+namespace profiler {
 
-// Backend for ScopedAnnotation.
-class Annotation {
- public:
-  // Appends name to the annotation for the current thread and returns the
-  // original length of the annotation.
-  // Append name to the current annotation, separated by "::".
-  // The choice of separator "::" is based on characters not used by
-  // TensorFlow for its TensorOps.
-  static size_t PushAnnotation(absl::string_view name) {
-    string* annotation = ThreadAnnotation();
-    size_t old_length = annotation->size();
-    if (old_length != 0) {
-      absl::StrAppend(annotation, "::", name);
-    } else {
-      *annotation = string(name);
-    }
-    return old_length;
-  }
-
-  static size_t PushAnnotation(string&& name) {
-    string* annotation = ThreadAnnotation();
-    size_t old_length = annotation->size();
-    if (old_length != 0) {
-      absl::StrAppend(annotation, "::", name);
-    } else {
-      *annotation = std::move(name);
-    }
-    return old_length;
-  }
-
-  // Returns the annotation for the current thread.
-  static const string& CurrentAnnotation() { return *ThreadAnnotation(); }
-
-  // Resizes the annotation for the current thread to its old length.
-  static void PopAnnotation(size_t old_length) {
-    ThreadAnnotation()->resize(old_length);
-  }
-
- private:
-  Annotation(const Annotation&) = delete;  // Unconstructible.
-
-  // Returns a reference to the annotation for the current thread.
-  static string* ThreadAnnotation();
-};
-
-namespace tracing {
 // Adds an annotation to all activities for the duration of the instance
 // lifetime through the currently registered TraceCollector.
 //
@@ -84,8 +39,8 @@ namespace tracing {
 class ScopedAnnotation {
  public:
   explicit ScopedAnnotation(absl::string_view name) {
-    if (TF_PREDICT_FALSE(IsEnabled())) {
-      old_length_ = Annotation::PushAnnotation(name);
+    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+      old_length_ = AnnotationStack::PushAnnotation(name);
     }
   }
 
@@ -93,21 +48,21 @@ class ScopedAnnotation {
       : ScopedAnnotation(absl::string_view(name)) {}
 
   explicit ScopedAnnotation(const string& name) {
-    if (TF_PREDICT_FALSE(IsEnabled())) {
-      old_length_ = Annotation::PushAnnotation(name);
+    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+      old_length_ = AnnotationStack::PushAnnotation(name);
     }
   }
 
   explicit ScopedAnnotation(string&& name) {
-    if (TF_PREDICT_FALSE(IsEnabled())) {
-      old_length_ = Annotation::PushAnnotation(std::move(name));
+    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+      old_length_ = AnnotationStack::PushAnnotation(std::move(name));
     }
   }
 
   template <typename NameGeneratorT>
   explicit ScopedAnnotation(NameGeneratorT name_generator) {
-    if (TF_PREDICT_FALSE(IsEnabled())) {
-      old_length_ = Annotation::PushAnnotation(name_generator());
+    if (TF_PREDICT_FALSE(AnnotationStack::IsEnabled())) {
+      old_length_ = AnnotationStack::PushAnnotation(name_generator());
     }
   }
 
@@ -117,20 +72,22 @@ class ScopedAnnotation {
     // fail probably due to compiler in that presubmit config.
     std::atomic_thread_fence(std::memory_order_acquire);
     if (TF_PREDICT_FALSE(old_length_ != kInvalidLength)) {
-      Annotation::PopAnnotation(old_length_);
+      AnnotationStack::PopAnnotation(old_length_);
     }
   }
 
-  static void Enable(bool enable);
-  static const bool IsEnabled();
+  static bool IsEnabled() { return AnnotationStack::IsEnabled(); }
 
  private:
   // signals that annotation is disabled at the constructor.
   static constexpr size_t kInvalidLength = static_cast<size_t>(-1);
+
+  TF_DISALLOW_COPY_AND_ASSIGN(ScopedAnnotation);
+
   size_t old_length_ = kInvalidLength;
 };
 
-}  // namespace tracing
+}  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_PLATFORM_ANNOTATION_H_
+#endif  // TENSORFLOW_CORE_PROFILER_LIB_SCOPED_ANNOTATION_H_

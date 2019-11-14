@@ -314,6 +314,77 @@ TEST_P(ModularFileSystemTest, TestReadFilePathIsInvalid) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
+TEST_P(ModularFileSystemTest, TestCreateMemoryRegion) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<ReadOnlyMemoryRegion> region;
+  Status status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateMemoryRegionNonExisting) {
+  const std::string filepath = GetURIForPath("dir_not_found/a_file");
+  std::unique_ptr<ReadOnlyMemoryRegion> region;
+  Status status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateMemoryRegionExistingDir) {
+  const std::string filepath = GetURIForPath("a_file");
+  Status status = env_->CreateDir(filepath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  std::unique_ptr<ReadOnlyMemoryRegion> new_file;
+  status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &new_file);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateMemoryRegionFromEmptyFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  std::unique_ptr<ReadOnlyMemoryRegion> region;
+  status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::INVALID_ARGUMENT);
+}
+
+TEST_P(ModularFileSystemTest, TestCreateMemoryRegionFromFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = new_file->Append(test_data);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  status = new_file->Flush();
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  status = new_file->Close();
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  std::unique_ptr<ReadOnlyMemoryRegion> region;
+  status = env_->NewReadOnlyMemoryRegionFromFile(filepath, &region);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok())
+    GTEST_SKIP() << "NewReadOnlyMemoryRegionFromFile() not supported";
+  EXPECT_EQ(region->length(), test_data.size());
+  EXPECT_STREQ(reinterpret_cast<const char*>(region->data()),
+               test_data.c_str());
+}
+
+TEST_P(ModularFileSystemTest, TestCreateMemoryRegionFromFilePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  std::string new_path = GetURIForPath("a_file/a_file");
+  std::unique_ptr<ReadOnlyMemoryRegion> region;
+  status = env_->NewReadOnlyMemoryRegionFromFile(new_path, &region);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
 TEST_P(ModularFileSystemTest, TestCreateDir) {
   const std::string dirpath = GetURIForPath("a_dir");
   Status status = env_->CreateDir(dirpath);

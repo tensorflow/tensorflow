@@ -13,11 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/annotation.h"
+#include "tensorflow/core/profiler/internal/annotation_stack.h"
 
 namespace tensorflow {
-/*static*/ std::string* Annotation::ThreadAnnotation() {
-  static thread_local std::string annotation;
-  return &annotation;
+namespace profiler {
+namespace internal {
+
+std::atomic<bool> g_annotation_enabled;
+
+}  // namespace internal
+
+/*static*/ string* AnnotationStack::ThreadAnnotationStack() {
+  static thread_local string annotation_stack;
+  return &annotation_stack;
 }
+
+}  // namespace profiler
 }  // namespace tensorflow

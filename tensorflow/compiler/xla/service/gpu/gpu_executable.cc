@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -44,7 +44,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::tracing::ScopedAnnotation;
+using tensorflow::profiler::ScopedAnnotation;
 
 }  // namespace
 

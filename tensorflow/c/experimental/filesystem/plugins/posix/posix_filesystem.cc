@@ -17,6 +17,7 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -27,8 +28,6 @@ limitations under the License.
 
 // Implementation of a filesystem for POSIX environments.
 // This filesystem will support `file://` and empty (local) URI schemes.
-
-// TODO(mihaimaruseac): More implementations to follow in subsequent changes.
 
 // SECTION 1. Implementation for `TF_RandomAccessFile`
 // ----------------------------------------------------------------------------
@@ -150,7 +149,34 @@ static void Close(const TF_WritableFile* file, TF_Status* status) {
 
 }  // namespace tf_writable_file
 
-// SECTION 3. Implementation for `TF_Filesystem`, the actual filesystem
+// SECTION 3. Implementation for `TF_ReadOnlyMemoryRegion`
+// ----------------------------------------------------------------------------
+namespace tf_read_only_memory_region {
+
+typedef struct PosixMemoryRegion {
+  const void* const address;
+  const uint64_t length;
+} PosixMemoryRegion;
+
+static void Cleanup(TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<PosixMemoryRegion*>(region->plugin_memory_region);
+  munmap(const_cast<void*>(r->address), r->length);
+  delete r;
+}
+
+static const void* Data(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<PosixMemoryRegion*>(region->plugin_memory_region);
+  return r->address;
+}
+
+static uint64_t Length(const TF_ReadOnlyMemoryRegion* region) {
+  auto r = static_cast<PosixMemoryRegion*>(region->plugin_memory_region);
+  return r->length;
+}
+
+}  // namespace tf_read_only_memory_region
+
+// SECTION 4. Implementation for `TF_Filesystem`, the actual filesystem
 // ----------------------------------------------------------------------------
 namespace tf_posix_filesystem {
 
@@ -205,6 +231,36 @@ static void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
+static void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
+                                            const char* path,
+                                            TF_ReadOnlyMemoryRegion* region,
+                                            TF_Status* status) {
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    TF_SetStatusFromIOError(status, errno, path);
+    return;
+  }
+
+  struct stat st;
+  fstat(fd, &st);
+  if (S_ISDIR(st.st_mode)) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION, "path is a directory");
+  } else {
+    const void* address =
+        mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (address == MAP_FAILED) {
+      TF_SetStatusFromIOError(status, errno, path);
+    } else {
+      region->plugin_memory_region =
+          new tf_read_only_memory_region::PosixMemoryRegion{
+              address, static_cast<uint64_t>(st.st_size)};
+      TF_SetStatus(status, TF_OK, "");
+    }
+  }
+
+  close(fd);
+}
+
 static void CreateDir(const TF_Filesystem* filesystem, const char* path,
                       TF_Status* status) {
   if (strlen(path) == 0)
@@ -214,6 +270,8 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
   else
     TF_SetStatus(status, TF_OK, "");
 }
+
+// TODO(mihaimaruseac): More implementations to follow in subsequent changes.
 
 }  // namespace tf_posix_filesystem
 
@@ -227,19 +285,24 @@ void TF_InitPlugin(TF_Status* status) {
       tf_writable_file::Tell,    tf_writable_file::Flush,
       tf_writable_file::Sync,    tf_writable_file::Close,
   };
+  TF_ReadOnlyMemoryRegionOps read_only_memory_region_ops = {
+      tf_read_only_memory_region::Cleanup,
+      tf_read_only_memory_region::Data,
+      tf_read_only_memory_region::Length,
+  };
   TF_FilesystemOps filesystem_ops = {
       tf_posix_filesystem::Init,
       tf_posix_filesystem::Cleanup,
       tf_posix_filesystem::NewRandomAccessFile,
       tf_posix_filesystem::NewWritableFile,
       tf_posix_filesystem::NewAppendableFile,
-      /*new_read_only_memory_region_from_file=*/nullptr,
+      tf_posix_filesystem::NewReadOnlyMemoryRegionFromFile,
       tf_posix_filesystem::CreateDir,
       nullptr,
   };
 
   for (const char* scheme : {"", "file"})
-    TF_REGISTER_FILESYSTEM_PLUGIN(
-        scheme, &filesystem_ops, &random_access_file_ops, &writable_file_ops,
-        /*pluginReadOnlyMemoryRegionOps=*/nullptr, status);
+    TF_REGISTER_FILESYSTEM_PLUGIN(scheme, &filesystem_ops,
+                                  &random_access_file_ops, &writable_file_ops,
+                                  &read_only_memory_region_ops, status);
 }

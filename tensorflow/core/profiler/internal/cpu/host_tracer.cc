@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/env_var.h"
 
@@ -46,6 +47,8 @@ class HostTracer : public ProfilerInterface {
   // Populates user traces and thread names in response.
   // The user traces and thread names are in no particular order.
   Status CollectData(RunMetadata* run_metadata) override;
+
+  Status CollectData(XSpace* space) override;
 
   profiler::DeviceType GetDeviceType() override {
     return profiler::DeviceType::kCpu;
@@ -142,6 +145,11 @@ Status HostTracer::CollectData(RunMetadata* run_metadata) {
   step_stats_collector.Finalize();
   return Status::OK();
 }
+
+Status HostTracer::CollectData(XSpace* space) {
+  return errors::Unimplemented("Collect data into XSpace not yet implemented");
+}
+
 }  // namespace
 
 // Not in anonymous namespace for testing purposes.

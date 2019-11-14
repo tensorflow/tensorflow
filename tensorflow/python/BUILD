@@ -608,7 +608,7 @@ tf_python_pybind_extension(
         ":pybind11_status",
         "//tensorflow/core:lib",
         "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/util/tensor_bundle:tensor_bundle_headers_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",

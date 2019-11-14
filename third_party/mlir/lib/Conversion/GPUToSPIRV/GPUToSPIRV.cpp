@@ -98,8 +98,8 @@ ForOpConversion::matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
   TypeConverter::SignatureConversion signatureConverter(
       body->getNumArguments());
   signatureConverter.remapInput(0, newIndVar);
-  rewriter.applySignatureConversion(&forOp.getOperation()->getRegion(0),
-                                    signatureConverter);
+  body = rewriter.applySignatureConversion(&forOp.getLoopBody(),
+                                           signatureConverter);
 
   // Delete the loop terminator.
   rewriter.eraseOp(body->getTerminator());

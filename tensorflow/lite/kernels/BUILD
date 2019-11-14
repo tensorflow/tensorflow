@@ -331,6 +331,7 @@ cc_library(
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "//tensorflow/lite/experimental/ruy",
+        "//tensorflow/lite/experimental/ruy:path",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
@@ -358,6 +359,7 @@ cc_library(
     hdrs = [
         "activation_functor.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
     ],
@@ -368,6 +370,7 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
+    copts = tflite_copts(),
 )
 
 cc_library(
@@ -378,6 +381,7 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:quantization_util",
@@ -412,6 +416,7 @@ cc_library(
     name = "padding",
     srcs = [],
     hdrs = ["padding.h"],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
     ],
@@ -551,6 +556,7 @@ cc_library(
         "assign_variable.cc",
         "read_variable.cc",
     ],
+    copts = tflite_copts(),
     deps = [
         ":kernel_util",
         ":op_macros",
@@ -580,6 +586,7 @@ cc_library(
     name = "custom_ops",
     srcs = ["rfft2d.cc"],
     hdrs = ["custom_ops_register.h"],
+    copts = tflite_copts(),
     deps = [
         ":kernel_util",
         ":op_macros",
@@ -597,6 +604,7 @@ cc_library(
     name = "lstm_eval",
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
+    copts = tflite_copts(),
     deps = [
         ":cpu_backend_context",
         ":op_macros",
@@ -618,6 +626,7 @@ cc_library(
         "fully_connected.h",
         "register.h",
     ],
+    copts = tflite_copts(),
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
@@ -633,6 +642,7 @@ cc_library(
     name = "reference_ops",
     srcs = ["register_ref.cc"],
     hdrs = ["register_ref.h"],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",

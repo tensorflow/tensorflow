@@ -28,12 +28,13 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-
 namespace internal {
+
 // Current trace level.
 // Static atomic so TraceMeRecorder::Active can be fast and non-blocking.
 // Modified by TraceMeRecorder singleton when tracing starts/stops.
 extern std::atomic<int> g_trace_level;
+
 }  // namespace internal
 
 // TraceMeRecorder is a singleton repository of TraceMe events.
@@ -78,8 +79,7 @@ class TraceMeRecorder {
 
   // Returns whether we're currently recording. Racy, but cheap!
   static inline bool Active(int level = 1) {
-    return TF_PREDICT_FALSE(
-        internal::g_trace_level.load(std::memory_order_acquire) >= level);
+    return internal::g_trace_level.load(std::memory_order_acquire) >= level;
   }
 
   // Default value for trace_level_ when tracing is disabled
@@ -96,9 +96,7 @@ class TraceMeRecorder {
 
   TraceMeRecorder() = default;
 
-  // No copy and assignment
-  TraceMeRecorder(const TraceMeRecorder&) = delete;
-  TraceMeRecorder& operator=(const TraceMeRecorder&) = delete;
+  TF_DISALLOW_COPY_AND_ASSIGN(TraceMeRecorder);
 
   void RegisterThread(int32 tid, ThreadLocalRecorder* thread);
   void UnregisterThread(ThreadEvents&& events);

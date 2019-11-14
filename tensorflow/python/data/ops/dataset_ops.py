@@ -3145,7 +3145,7 @@ class StructuredFunctionWrapper(object):
       resource_tracker = tracking.ResourceTracker()
       with tracking.resource_tracker_scope(resource_tracker):
         # TODO(b/141462134): Switch to using garbage collection.
-        self._function = wrapper_fn._get_concrete_function_internal()
+        self._function = wrapper_fn.get_concrete_function()
 
         if add_to_graph:
           self._function.add_to_graph(ops.get_default_graph())

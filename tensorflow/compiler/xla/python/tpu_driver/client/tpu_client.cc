@@ -165,8 +165,8 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::FromLiterals(
         tuple_shape,
         [driver, &leaves, &tuple_shape,
          leaves_references](tpu_driver::BufferHandle* handle) {
-          auto event = driver->TransferToDevice(
-              leaves[0].untyped_data(), handle, tuple_shape.ToProto(), {});
+          auto event =
+              driver->TransferToDevice(leaves[0].untyped_data(), handle, {});
           event->AddCallback([leaves_references](Status) {});
           return event;
         },
@@ -188,9 +188,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::FromLiterals(
         CreateBuffer(
             indexed_shape.shape,
             [driver, &leaf, &indexed_shape](tpu_driver::BufferHandle* handle) {
-              return driver->TransferToDevice(leaf.untyped_data(), handle,
-                                              indexed_shape.shape.ToProto(),
-                                              {});
+              return driver->TransferToDevice(leaf.untyped_data(), handle, {});
             },
             client, device_ordinal));
     child_buffer_ptrs.push_back(child_buffer.get());
@@ -290,14 +288,13 @@ Status PyTpuBuffer::CopyToHostAsync() {
       CHECK(child_buffers_.empty());
       transfer_events.push_back(client_->driver()->TransferFromDevice(
           device_buffer_->handle.get(), host_value->value->untyped_data(),
-          host_value->value->shape().ToProto(), events));
+          events));
     } else {
       for (int i = 0; i < child_buffers_.size(); ++i) {
         auto& c = child_buffers_[i];
         transfer_events.push_back(client_->driver()->TransferFromDevice(
             c->handle.get(),
-            host_value->value->untyped_data(xla::ShapeIndex({i})),
-            host_value->value->shape().tuple_shapes(i).ToProto(), events));
+            host_value->value->untyped_data(xla::ShapeIndex({i})), events));
       }
     }
   }

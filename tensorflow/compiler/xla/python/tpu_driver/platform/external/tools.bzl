@@ -16,15 +16,6 @@
 Build dependencies and utilities for the TPU driver interface.
 """
 
-load(
-    "//tensorflow/core/platform:default/build_config.bzl",
-    _tf_proto_library_cc = "tf_proto_library_cc",
-)
-
-def tf_proto_library_cc(**kwargs):
-    kwargs["use_grpc_namespace"] = True
-    _tf_proto_library_cc(**kwargs)
-
 def go_proto_library(**kwargs):
     # A dummy macro placeholder for compatibility reason.
     pass
@@ -43,14 +34,4 @@ def external_deps():
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:span",
         "//tensorflow:grpc++",
-    ]
-
-def tpu_proto_deps():
-    return [
-        ":tpu_driver_proto",
-    ]
-
-def tpu_grpc_proto_deps():
-    return [
-        ":tpu_service_proto",
     ]

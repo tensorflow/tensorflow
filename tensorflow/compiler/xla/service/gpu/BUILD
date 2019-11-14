@@ -550,6 +550,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:blas",
         "//tensorflow/stream_executor:device_memory",

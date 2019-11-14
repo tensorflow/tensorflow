@@ -61,6 +61,12 @@ class InterpreterCustomOpsTest(test_util.TensorFlowTestCase):
 
 class InterpreterTest(test_util.TensorFlowTestCase):
 
+  def assertQuantizationParamsEqual(self, scales, zero_points,
+                                    quantized_dimension, params):
+    self.assertAllEqual(scales, params['scales'])
+    self.assertAllEqual(zero_points, params['zero_points'])
+    self.assertEqual(quantized_dimension, params['quantized_dimension'])
+
   def testFloat(self):
     interpreter = interpreter_wrapper.Interpreter(
         model_path=resource_loader.get_path_to_datafile(
@@ -73,6 +79,8 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, input_details[0]['dtype'])
     self.assertTrue(([1, 4] == input_details[0]['shape']).all())
     self.assertEqual((0.0, 0), input_details[0]['quantization'])
+    self.assertQuantizationParamsEqual(
+        [], [], 0, input_details[0]['quantization_parameters'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
@@ -80,6 +88,8 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.float32, output_details[0]['dtype'])
     self.assertTrue(([1, 4] == output_details[0]['shape']).all())
     self.assertEqual((0.0, 0), output_details[0]['quantization'])
+    self.assertQuantizationParamsEqual(
+        [], [], 0, output_details[0]['quantization_parameters'])
 
     test_input = np.array([[1.0, 2.0, 3.0, 4.0]], dtype=np.float32)
     expected_output = np.array([[4.0, 3.0, 2.0, 1.0]], dtype=np.float32)
@@ -104,6 +114,8 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.uint8, input_details[0]['dtype'])
     self.assertTrue(([1, 4] == input_details[0]['shape']).all())
     self.assertEqual((1.0, 0), input_details[0]['quantization'])
+    self.assertQuantizationParamsEqual(
+        [1.0], [0], 0, input_details[0]['quantization_parameters'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
@@ -111,6 +123,8 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.uint8, output_details[0]['dtype'])
     self.assertTrue(([1, 4] == output_details[0]['shape']).all())
     self.assertEqual((1.0, 0), output_details[0]['quantization'])
+    self.assertQuantizationParamsEqual(
+        [1.0], [0], 0, output_details[0]['quantization_parameters'])
 
     test_input = np.array([[1, 2, 3, 4]], dtype=np.uint8)
     expected_output = np.array([[4, 3, 2, 1]], dtype=np.uint8)
@@ -135,10 +149,14 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.string_, input_details[0]['dtype'])
     self.assertTrue(([10] == input_details[0]['shape']).all())
     self.assertEqual((0.0, 0), input_details[0]['quantization'])
+    self.assertQuantizationParamsEqual(
+        [], [], 0, input_details[0]['quantization_parameters'])
     self.assertEqual('indices', input_details[1]['name'])
     self.assertEqual(np.int64, input_details[1]['dtype'])
     self.assertTrue(([3] == input_details[1]['shape']).all())
     self.assertEqual((0.0, 0), input_details[1]['quantization'])
+    self.assertQuantizationParamsEqual(
+        [], [], 0, input_details[1]['quantization_parameters'])
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
@@ -146,6 +164,8 @@ class InterpreterTest(test_util.TensorFlowTestCase):
     self.assertEqual(np.string_, output_details[0]['dtype'])
     self.assertTrue(([3] == output_details[0]['shape']).all())
     self.assertEqual((0.0, 0), output_details[0]['quantization'])
+    self.assertQuantizationParamsEqual(
+        [], [], 0, output_details[0]['quantization_parameters'])
 
     test_input = np.array([1, 2, 3], dtype=np.int64)
     interpreter.set_tensor(input_details[1]['index'], test_input)
@@ -157,6 +177,17 @@ class InterpreterTest(test_util.TensorFlowTestCase):
 
     output_data = interpreter.get_tensor(output_details[0]['index'])
     self.assertTrue((expected_output == output_data).all())
+
+  def testPerChannelParams(self):
+    interpreter = interpreter_wrapper.Interpreter(
+        model_path=resource_loader.get_path_to_datafile('testdata/pc_conv.bin'))
+    interpreter.allocate_tensors()
+
+    # Tensor index 1 is the weight.
+    weight_details = interpreter.get_tensor_details()[1]
+    qparams = weight_details['quantization_parameters']
+    # Ensure that we retrieve per channel quantization params correctly.
+    self.assertEqual(len(qparams['scales']), 128)
 
 
 class InterpreterTestErrorPropagation(test_util.TensorFlowTestCase):

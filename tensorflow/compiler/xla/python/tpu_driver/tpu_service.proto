@@ -47,16 +47,11 @@ message DeallocateRequest {
 
 message TransferToDeviceRequest {
   required int64 target_handle = 1;
-  required bytes data = 9;
-
-  optional xla.ShapeProto linearize_shape = 10;
+  required bytes data = 2;
 }
 
 message TransferFromDeviceRequest {
   required int64 source_handle = 1;
-  required int64 length = 3;
-
-  optional xla.ShapeProto delinearize_shape = 4;
 }
 
 message TransferFromDeviceResponse {

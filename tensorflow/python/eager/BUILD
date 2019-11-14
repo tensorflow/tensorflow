@@ -156,7 +156,10 @@ py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_agents:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tensorflow",

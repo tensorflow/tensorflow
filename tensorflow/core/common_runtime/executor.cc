@@ -65,7 +65,7 @@ limitations under the License.
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -1637,7 +1637,7 @@ bool MightTrace(const NodeItem& item,
                 const tracing::EventCollector* event_collector) {
   // Tracing will only be enabled if either `event_collector` is non null,
   // or `trace_collector` is non-null and enabled for this particular kernel.
-  // Although `profiler::TraceMe`, `tracing::ScopedAnnotation`, and
+  // Although `profiler::TraceMe`, `profiler::ScopedAnnotation`, and
   // `tracing::ScopedRegion` check subsets of these properties internally in
   // their constructors, the cost of passing the necessary arguments to them can
   // be significant, so we avoid constructing them in the common case (when we
@@ -1646,9 +1646,9 @@ bool MightTrace(const NodeItem& item,
     return true;
   }
 
-  if (tracing::ScopedAnnotation::IsEnabled()) return true;
+  if (profiler::ScopedAnnotation::IsEnabled()) return true;
 
-  return profiler::TraceMeRecorder::Active(
+  return profiler::TraceMe::Active(
       profiler::GetTFTraceMeLevel(item.kernel->IsExpensive()));
 }
 
@@ -1874,7 +1874,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
               absl::string_view(kernel_label),
               profiler::GetTFTraceMeLevel(op_kernel->IsExpensive()));
           // 'ScopedAnnotation' will trace the OpKernel execution time.
-          tracing::ScopedAnnotation annotation(kernel_label);
+          profiler::ScopedAnnotation annotation(kernel_label);
           device->Compute(op_kernel, &ctx);
         } else {
           // In the common case, avoid creating any tracing objects.

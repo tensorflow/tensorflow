@@ -549,7 +549,7 @@ Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
 
   DVLOG(3) << "SetTensor on TensorHandle: " << this;
 
-  if (tensor.dtype() == DT_RESOURCE) {
+  if (tensor.dtype() == DT_RESOURCE && tensor.NumElements() > 0) {
     auto& resource_handle = tensor.flat<class ResourceHandle>()(0);
     handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
   }

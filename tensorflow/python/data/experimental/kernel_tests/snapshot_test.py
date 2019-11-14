@@ -62,7 +62,7 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
 
     # Ignore the graphdef pbtxts we write for debugging purposes.
     for i in range(len(dirlist_raw)):
-      if not dirlist_raw[i].startswith("graph-"):
+      if not dirlist_raw[i].endswith("-graph.pbtxt"):
         dirlist.append(dirlist_raw[i])
 
     self.assertLen(dirlist, num_fingerprints)

@@ -20,10 +20,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/profiler/internal/annotation_stack.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -1030,7 +1030,7 @@ class CuptiDriverApiHookWithCudaEvent : public CuptiDriverApiHook {
         std::vector<uint32> record_indices;
         record_indices.reserve(params->numDevices);
         *cbdata->correlationData = -1;  // Invalid value.
-        auto &annotation = tensorflow::Annotation::CurrentAnnotation();
+        const auto &annotation = AnnotationStack::Get();
         for (int i = 0; i < params->numDevices; ++i) {
           CUstream stream = params->launchParamsList[i].hStream;
           ScopedCudaContext scoped_cuda_context(stream);
@@ -1531,7 +1531,7 @@ Status CuptiTracer::HandleCallback(CUpti_CallbackDomain domain,
         device_id, domain, cbid, cbdata));
   } else if (cbdata->callbackSite == CUPTI_API_EXIT) {
     // Set up the map from correlation id to annotation string.
-    const std::string &annotation = tensorflow::Annotation::CurrentAnnotation();
+    const auto &annotation = AnnotationStack::Get();
     if (!annotation.empty()) {
       annotation_map_->Add(device_id, cbdata->correlationId, annotation);
     }

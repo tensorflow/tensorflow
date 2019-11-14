@@ -16,11 +16,3 @@
      visibility = ["//visibility:public"],
      deps = [":civil_time"],
  )
---- ./absl/time/BUILD.bazel	2019-11-06 14:47:19.534845941 +0100
-+++ ./absl/time/BUILD.bazel.fixed	2019-11-06 14:46:52.682912347 +0100
-@@ -53,6 +53,7 @@
-         "//absl/time/internal/cctz:civil_time",
-         "//absl/time/internal/cctz:time_zone",
-     ],
-+    alwayslink = 1,
- )

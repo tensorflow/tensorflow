@@ -1251,7 +1251,7 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
       // strides in each dimension, are represented in the view memref layout
       // map as symbols 's1', 's2' and 's3'.
       %1 = subview %0[%i, %j, %k][%size0, %size1, %size2][%x, %y, %z]
-        : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)>
+        : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
           memref<?x?x?xf32,
             (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
     }
@@ -1260,6 +1260,12 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
   let arguments = (ins AnyMemRef:$source, Variadic<Index>:$offsets,
                    Variadic<Index>:$sizes, Variadic<Index>:$strides);
   let results = (outs AnyMemRef);
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState &result, Value *source, "
+    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
+    "ArrayRef<Value *> strides, Type resultType = Type(), "
+    "ArrayRef<NamedAttribute> attrs = {}">];
 
   let extraClassDeclaration = [{
     /// The result of a subview is always a memref.
@@ -1287,6 +1293,14 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
       return {operand_begin() + getStrideOperandsStart(),
               operand_begin() + getStrideOperandsStart() + getType().getRank()};
     }
+
+    // Auxiliary range data structure and helper function that unpacks the
+    // offset, size and stride operands of the SubViewOp into a list of triples.
+    // Such a list of triple is sometimes more convenient to manipulate.
+    struct Range {
+      Value *offset, *size, *stride;
+    };
+    SmallVector<Range, 8> getRanges();
   }];
 
   // TODO(andydavis) Add canonicalizer.

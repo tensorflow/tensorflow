@@ -2553,6 +2553,43 @@ void ViewOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // SubViewOp
 //===----------------------------------------------------------------------===//
 
+// Returns a MemRefType with dynamic sizes and offset and the same stride as the
+// `memRefType` passed as argument.
+// TODO(andydavis,ntv) Evolve to a more powerful inference that can also keep
+// sizes and offset static.
+static Type inferSubViewResultType(MemRefType memRefType) {
+  auto rank = memRefType.getRank();
+  int64_t offset;
+  SmallVector<int64_t, 4> strides;
+  Type elementType = memRefType.getElementType();
+  auto res = getStridesAndOffset(memRefType, strides, offset);
+  assert(succeeded(res) && "SubViewOp expected strided memref type");
+  (void)res;
+
+  // Assume sizes and offset are fully dynamic for now until canonicalization
+  // occurs on the ranges. Typed strides don't change though.
+  offset = MemRefType::getDynamicStrideOrOffset();
+  // Overwrite strides because verifier will not pass.
+  // TODO(b/144419106): don't force degrade the strides to fully dynamic.
+  for (auto &stride : strides)
+    stride = MemRefType::getDynamicStrideOrOffset();
+  auto stridedLayout =
+      makeStridedLinearLayoutMap(strides, offset, memRefType.getContext());
+  SmallVector<int64_t, 4> sizes(rank, ShapedType::kDynamicSize);
+  return MemRefType::get(sizes, elementType, stridedLayout,
+                         memRefType.getMemorySpace());
+}
+
+void mlir::SubViewOp::build(Builder *b, OperationState &result, Value *source,
+                            ArrayRef<Value *> offsets, ArrayRef<Value *> sizes,
+                            ArrayRef<Value *> strides, Type resultType,
+                            ArrayRef<NamedAttribute> attrs) {
+  if (!resultType)
+    resultType = inferSubViewResultType(source->getType().cast<MemRefType>());
+  build(b, result, resultType, source, offsets, sizes, strides);
+  result.addAttributes(attrs);
+}
+
 static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType srcInfo;
   SmallVector<OpAsmParser::OperandType, 4> offsetsInfo;
@@ -2632,6 +2669,23 @@ static LogicalResult verify(SubViewOp op) {
     return op.emitError("incorrect dynamic strides in view memref type ")
            << subViewType;
   return success();
+}
+
+llvm::raw_ostream &mlir::operator<<(llvm::raw_ostream &os,
+                                    SubViewOp::Range &range) {
+  return os << "range " << *range.offset << ":" << *range.size << ":"
+            << *range.stride;
+}
+
+SmallVector<SubViewOp::Range, 8> SubViewOp::getRanges() {
+  SmallVector<Range, 8> res;
+  unsigned rank = getType().getRank();
+  res.reserve(rank);
+  for (unsigned i = 0; i < rank; ++i)
+    res.emplace_back(Range{*(getDynamicOffsets().begin() + i),
+                           *(getDynamicSizes().begin() + i),
+                           *(getDynamicStrides().begin() + i)});
+  return res;
 }
 
 //===----------------------------------------------------------------------===//

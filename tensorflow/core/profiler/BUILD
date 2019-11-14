@@ -60,15 +60,12 @@ tf_proto_library(
 
 tf_proto_library(
     name = "protos_all",
-    srcs = glob(
-        ["**/*.proto"],
-        exclude = [
-            "profiler_service.proto",
-            "profiler_analysis.proto",
-            "op_profile.proto",
-            "profiler_service_monitor_result.proto",
-        ],
-    ),
+    srcs = [
+        "profile.proto",
+        "tfprof_log.proto",
+        "tfprof_options.proto",
+        "tfprof_output.proto",
+    ],
     cc_api_version = 2,
     protodeps = tf_additional_all_protos(),
     visibility = [":friends"],
@@ -113,5 +110,5 @@ filegroup(
         "//tensorflow/core/profiler/internal:mobile_srcs",
         "//tensorflow/core/profiler/lib:mobile_srcs",
     ],
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow/core:__pkg__"],
 )

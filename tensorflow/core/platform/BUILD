@@ -84,21 +84,6 @@ cc_library(
 )
 
 cc_library(
-    name = "annotation",
-    srcs = ["annotation.cc"],
-    hdrs = ["annotation.h"],
-    visibility = [
-        "//perftools/accelerators/xprof:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":macros",
-        ":types",
-        "@com_google_absl//absl/strings",
-    ],
-)
-
-cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
 )
@@ -606,7 +591,6 @@ cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         ":abi",
-        ":annotation",
         ":byte_order",
         ":cord",
         ":cpu_feature_guard",
@@ -752,7 +736,6 @@ filegroup(
             "profile_utils/**/*.h",
         ],
         exclude = [
-            "annotation.h",
             "dynamic_annotations.h",
             "denormal.h",
             "gif.h",
@@ -791,7 +774,6 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",
-            "annotation.cc",
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",
@@ -858,4 +840,18 @@ bzl_library(
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["default/cuda_build_defs.bzl"],
+)
+
+exports_files(
+    [
+        "stacktrace.h",
+        "cpu_info.h",
+        "types.h",
+        "macros.h",
+        "abi.h",
+        "logging.h",
+        "platform.h",
+        "byte_order.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )
