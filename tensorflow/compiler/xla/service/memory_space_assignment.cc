@@ -705,7 +705,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   alternate_mem_interval.end = end_time;
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
-  if (chunk_candidate.heap_size < max_size_in_bytes_ &&
+  if (chunk_candidate.heap_size <= max_size_in_bytes_ &&
       (preferred_offset == -1 ||
        preferred_offset == chunk_candidate.chunk.offset)) {
     VLOG(3) << "Keep the buffer in alternate memory. Offset = "
