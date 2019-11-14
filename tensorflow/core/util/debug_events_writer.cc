@@ -306,7 +306,7 @@ void DebugEventsWriter::WriteSerializedExecutionDebugEvent(
       mu = &graph_execution_trace_buffer_mu_;
       break;
     default:
-      break;
+      return;
   }
 
   if (circular_buffer_size_ <= 0) {
