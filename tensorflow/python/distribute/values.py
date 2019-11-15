@@ -783,9 +783,6 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
     """Pass resource_variable_ops.is_resource_variable check."""
     pass
 
-  def _clone_with_new_values(self, new_values):
-    raise NotImplementedError("Must be implemented in descendents.")
-
 
 ops.register_dense_tensor_like_type(DistributedVariable)
 
@@ -1167,10 +1164,6 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return ops.convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
 
-  def _clone_with_new_values(self, new_values):
-    return type(self)(self._distribute_strategy, self._device_map, new_values,
-                      self._aggregation, logical_device=self._logical_device)
-
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
@@ -1371,10 +1364,6 @@ class SyncOnReadVariable(DistributedVariable):
     """Converts a variable to a tensor."""
     return ops.convert_to_tensor(
         self.get(), dtype=dtype, name=name, as_ref=as_ref)
-
-  def _clone_with_new_values(self, new_values):
-    return type(self)(self._distribute_strategy, self._device_map, new_values,
-                      self._aggregation, logical_device=self._logical_device)
 
 
 # Register a conversion function for SyncOnReadVariable which allows as_ref to
