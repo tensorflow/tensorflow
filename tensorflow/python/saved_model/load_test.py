@@ -723,6 +723,41 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertIsNotNone(imported_gradient)
     self.assertAllClose(imported_gradient, 8.)
 
+  def _test_restored_func_with_captured_var_backprop(self, cycles, dtype):
+    weight = variables.Variable(2., trainable=True, dtype=dtype)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtype, shape=())])
+    def g(x):
+      return x * weight
+
+    root = tracking.AutoTrackable()
+    root.weight = weight
+    root.g = g
+    imported = cycle(root, cycles)
+
+    def get_gradient(obj):
+      with backprop.GradientTape() as t:
+        x = constant_op.constant(2.)
+        y = obj.g(x)
+        self.assertAllClose(y, obj.weight * 2.)
+        self.assertAllEqual(t.watched_variables(), [obj.weight])
+        return t.gradient(y, obj.weight)
+
+    imported_gradient = get_gradient(imported)
+    original_gradient = get_gradient(root)
+    self.assertIsNotNone(original_gradient)
+    self.assertAllClose(original_gradient, 2.)
+    self.assertIsNotNone(imported_gradient)
+    self.assertAllClose(imported_gradient, 2.)
+
+  def test_restored_func_with_captured_var_backprop_float32(self, cycles):
+    self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
+
+  def test_restored_func_with_captured_var_backprop_float64(self, cycles):
+    self.skipTest("b/144573917")
+    self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float64)
+
   def test_callable(self, cycles):
     class M1(tracking.AutoTrackable):
 
