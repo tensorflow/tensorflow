@@ -288,6 +288,14 @@ gentbl(
             "-gen-op-defs",
             "include/mlir/Dialect/StandardOps/Ops.cpp.inc",
         ),
+        (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/StandardOps/OpsEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/StandardOps/OpsEnums.cpp.inc",
+        ),
     ],
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/StandardOps/Ops.td",

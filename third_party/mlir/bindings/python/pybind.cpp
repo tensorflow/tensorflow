@@ -870,37 +870,37 @@ PYBIND11_MODULE(pybind, m) {
         .def("__lt__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SLT, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::slt, lhs.value,
                                                   rhs.value);
              })
         .def("__le__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SLE, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::sle, lhs.value,
                                                   rhs.value);
              })
         .def("__gt__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SGT, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::sgt, lhs.value,
                                                   rhs.value);
              })
         .def("__ge__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SGE, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::sge, lhs.value,
                                                   rhs.value);
              })
         .def("__eq__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::EQ, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::eq, lhs.value,
                                                   rhs.value);
              })
         .def("__ne__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::NE, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::ne, lhs.value,
                                                   rhs.value);
              })
         .def("__invert__",

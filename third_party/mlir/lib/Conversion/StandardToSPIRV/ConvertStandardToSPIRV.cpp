@@ -90,12 +90,12 @@ public:
         cmpIOpOperands.rhs());                                                 \
     return matchSuccess();
 
-      DISPATCH(CmpIPredicate::EQ, spirv::IEqualOp);
-      DISPATCH(CmpIPredicate::NE, spirv::INotEqualOp);
-      DISPATCH(CmpIPredicate::SLT, spirv::SLessThanOp);
-      DISPATCH(CmpIPredicate::SLE, spirv::SLessThanEqualOp);
-      DISPATCH(CmpIPredicate::SGT, spirv::SGreaterThanOp);
-      DISPATCH(CmpIPredicate::SGE, spirv::SGreaterThanEqualOp);
+      DISPATCH(CmpIPredicate::eq, spirv::IEqualOp);
+      DISPATCH(CmpIPredicate::ne, spirv::INotEqualOp);
+      DISPATCH(CmpIPredicate::slt, spirv::SLessThanOp);
+      DISPATCH(CmpIPredicate::sle, spirv::SLessThanEqualOp);
+      DISPATCH(CmpIPredicate::sgt, spirv::SGreaterThanOp);
+      DISPATCH(CmpIPredicate::sge, spirv::SGreaterThanEqualOp);
 
 #undef DISPATCH
 

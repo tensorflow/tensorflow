@@ -56,20 +56,20 @@ struct CompareIConvert : public RewritePattern {
       return matchFailure();
 
     auto comparison_direction = compare_op.comparison_direction();
-    CmpIPredicate compare_predicate =
-        llvm::StringSwitch<CmpIPredicate>(comparison_direction)
-            .Case("EQ", CmpIPredicate::EQ)
-            .Case("NE", CmpIPredicate::NE)
-            .Case("LT", CmpIPredicate::SLT)
-            .Case("LE", CmpIPredicate::SLE)
-            .Case("GT", CmpIPredicate::SGT)
-            .Case("GE", CmpIPredicate::SGE)
-            .Default(CmpIPredicate::NumPredicates);
+    auto compare_predicate =
+        llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
+            .Case("EQ", CmpIPredicate::eq)
+            .Case("NE", CmpIPredicate::ne)
+            .Case("LT", CmpIPredicate::slt)
+            .Case("LE", CmpIPredicate::sle)
+            .Case("GT", CmpIPredicate::sgt)
+            .Case("GE", CmpIPredicate::sge)
+            .Default(llvm::None);
 
-    if (compare_predicate == CmpIPredicate::NumPredicates)
-      return matchFailure();
+    if (!compare_predicate.hasValue()) return matchFailure();
 
-    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate, lhs, rhs);
+    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
+                                        rhs);
     return matchSuccess();
   }
 };
