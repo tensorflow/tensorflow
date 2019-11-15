@@ -28,6 +28,11 @@ def IsSameSizePred : CPred<
     "== $1->getType().cast<ShapedType>().getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
+
+def : Pat<(HLO_AndOp HLO_PredTensor:$l, HLO_PredTensor:$r,
+                     IsNullAttr:$broadcast_dimensions),
+          (AndOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (AddFOp $l, $r),

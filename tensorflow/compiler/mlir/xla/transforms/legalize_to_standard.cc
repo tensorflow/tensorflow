@@ -31,9 +31,11 @@ using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
 
 namespace mlir {
-namespace xla_hlo {
 namespace {
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_to_standard.inc"
+}  // end anonymous namespace
+namespace xla_hlo {
+namespace {
 
 struct CompareIConvert : public RewritePattern {
   explicit CompareIConvert(MLIRContext *context)
@@ -131,7 +133,7 @@ mlir::xla_hlo::createLegalizeToStdPass() {
 
 void mlir::xla_hlo::PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                                              mlir::MLIRContext *ctx) {
-  mlir::xla_hlo::populateWithGenerated(ctx, patterns);
+  mlir::populateWithGenerated(ctx, patterns);
   patterns
       ->insert<mlir::xla_hlo::CompareFConvert, mlir::xla_hlo::CompareIConvert>(
           ctx);
