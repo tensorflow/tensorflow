@@ -1593,12 +1593,12 @@ def assert_shapes_v2(shapes, data=None, summarize=None, message=None,
   Example:
 
   ```python
-  tf.assert_shapes([
+  tf.assert_shapes({
     (x, ('N', 'Q')),
     (y, ('N', 'D')),
     (param, ('Q',)),
     (scalar, ()),
-  ])
+  })
   ```
 
   If `x`, `y`, `param` or `scalar` does not have a shape that satisfies
