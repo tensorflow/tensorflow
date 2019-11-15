@@ -1,5 +1,4 @@
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_cc",
@@ -37,9 +36,10 @@ filegroup(
     ]),
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xla_data_proto",
     srcs = ["xla_data.proto"],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
