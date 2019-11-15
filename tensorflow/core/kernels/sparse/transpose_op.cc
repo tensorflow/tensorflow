@@ -257,9 +257,9 @@ struct CSRSparseMatrixTransposeComponent<GPUDevice, T> {
   Status operator()(OpKernelContext* ctx, const ConstCSRComponent<T>& x,
                     CSRComponent<T>* y) {
     TF_RETURN_IF_ERROR(ValidateTransposeInputs(x, *y));
-    CudaSparse cuda_sparse(ctx);
+    GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
-    const cusparseAction_t copyValues = CUSPARSE_ACTION_NUMERIC;
+    const gpusparseAction_t copyValues = CUSPARSE_ACTION_NUMERIC;
     const int rank = x.dense_shape_host.size();
     const int m = x.row_ptr.size() - 1;
     const int n = x.dense_shape_host(rank - 1);

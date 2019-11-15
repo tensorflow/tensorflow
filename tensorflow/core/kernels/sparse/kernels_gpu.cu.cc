@@ -128,7 +128,7 @@ template <>
 Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
     OpKernelContext* c, TTypes<const int>::UnalignedVec csr_row_ptr,
     TTypes<int>::UnalignedVec coo_row_ind) {
-  CudaSparse cuda_sparse(c);
+  GpuSparse cuda_sparse(c);
   const int nnz = coo_row_ind.size();
   TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
   const int m = csr_row_ptr.size() - 1;  // rows
