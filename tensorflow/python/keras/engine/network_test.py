@@ -351,6 +351,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
   @test_util.run_deprecated_v1
   def test_layer_call_arguments(self):
+    if test.is_built_with_rocm:
+      self.skipTest('ROCm Dropout used MIOpen backend')
     # Test the ability to pass and serialize arguments to `call`.
     inp = keras.layers.Input(shape=(2,))
     x = keras.layers.Dense(3)(inp)

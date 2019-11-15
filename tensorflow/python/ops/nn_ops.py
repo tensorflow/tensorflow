@@ -4395,11 +4395,8 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
 
     # Should there be ROCm support, use it. Otherwise fallback to generic
     # implementation
-    if build_info.is_rocm_build and isinstance(seed, numbers.Real):
-      try:
-        return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
-      except:
-        pass
+    if build_info.is_rocm_build and x.dtype is dtypes.float32:
+      return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
 
     # Sample a uniform distribution on [0.0, 1.0) and select values larger than
     # rate.
