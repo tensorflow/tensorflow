@@ -904,6 +904,16 @@ class MatrixDiagPartTest(test.TestCase):
               self.assertAllEqual(mat_batch_diag.eval(), solution)
 
   @test_util.run_deprecated_v1
+  def testUnknownShape(self):
+    if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
+      matrix = array_ops.placeholder(dtypes_lib.int32, shape=[None, None])
+      result = array_ops.matrix_diag_part(matrix, k=-1)
+      input_matrix = [[1, 2, 3], [4, 5, 6], [7, 8, 9]]
+      with self.session(use_gpu=True):
+        result_eval = result.eval(feed_dict={matrix: input_matrix})
+      self.assertAllEqual([4, 8], result_eval)
+
+  @test_util.run_deprecated_v1
   def testInvalidShape(self):
     with self.assertRaisesRegexp(ValueError, "must be at least rank 2"):
       array_ops.matrix_diag_part(0)

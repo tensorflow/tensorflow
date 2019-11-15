@@ -1237,6 +1237,7 @@ Status MatrixDiagPartV2Shape(shape_inference::InferenceContext* c) {
   const int32 input_rank = c->Rank(input_shape);
   const int32 num_rows = c->Value(c->Dim(input_shape, input_rank - 2));
   const int32 num_cols = c->Value(c->Dim(input_shape, input_rank - 1));
+  int32 max_diag_len = InferenceContext::kUnknownDim;
   if (num_rows != InferenceContext::kUnknownDim &&
       num_cols != InferenceContext::kUnknownDim) {
     if (lower_diag_index != 0 &&  // For when num_rows or num_cols == 0.
@@ -1247,10 +1248,10 @@ Status MatrixDiagPartV2Shape(shape_inference::InferenceContext* c) {
         (-num_rows >= upper_diag_index || upper_diag_index >= num_cols)) {
       return errors::InvalidArgument("upper_diag_index is out of bound.");
     }
+    max_diag_len = std::min(num_rows + std::min(upper_diag_index, 0),
+                            num_cols - std::max(lower_diag_index, 0));
   }
 
-  const int32 max_diag_len = std::min(num_rows + std::min(upper_diag_index, 0),
-                                      num_cols - std::max(lower_diag_index, 0));
   std::vector<DimensionHandle> dims;
   dims.reserve(input_rank - 2);
   for (int i = 0; i < input_rank - 2; ++i) {
