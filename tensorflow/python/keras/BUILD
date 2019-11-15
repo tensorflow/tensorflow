@@ -617,7 +617,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_adapter_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/data_adapter_test.py"],
     additional_deps = [
         ":data_adapter",
