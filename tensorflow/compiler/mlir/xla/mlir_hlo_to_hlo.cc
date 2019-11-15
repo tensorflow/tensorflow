@@ -369,6 +369,24 @@ LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
+  xla::XlaComputation true_branch;
+  xla::XlaComputation false_branch;
+  auto& value_map = *ctx.values;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.true_branch(),
+                                                     &true_branch)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.false_branch(),
+                                                     &false_branch))) {
+    return failure();
+  }
+
+  value_map[op] =
+      xla::Conditional(value_map[op.pred()], value_map[op.true_arg()],
+                       true_branch, value_map[op.false_arg()], false_branch);
+
+  return success();
+}
+
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }

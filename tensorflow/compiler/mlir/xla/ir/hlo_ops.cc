@@ -888,6 +888,38 @@ static LogicalResult Verify(TransposeOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// GetTupleElementOp
+//===----------------------------------------------------------------------===//
+
+void GetTupleElementOp::build(Builder* builder, OperationState& result,
+                              Value* tuple, int32_t index) {
+  if (auto tuple_type = tuple->getType().dyn_cast<TupleType>()) {
+    auto element_type = tuple_type.getType(index);
+    build(builder, result, element_type, tuple,
+          builder->getI32IntegerAttr(index));
+    return;
+  }
+
+  build(builder, result, tuple->getType(), tuple,
+        builder->getI32IntegerAttr(index));
+}
+
+//===----------------------------------------------------------------------===//
+// TupleOp
+//===----------------------------------------------------------------------===//
+
+void TupleOp::build(Builder* builder, OperationState& result,
+                    ArrayRef<Value*> values) {
+  SmallVector<Type, 4> types;
+  types.reserve(values.size());
+  for (auto val : values) {
+    types.push_back(val->getType());
+  }
+
+  build(builder, result, builder->getTupleType(types), values);
+}
+
+//===----------------------------------------------------------------------===//
 // CompareOp
 //===----------------------------------------------------------------------===//
 

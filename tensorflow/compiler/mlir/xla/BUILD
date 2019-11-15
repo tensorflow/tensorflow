@@ -102,6 +102,7 @@ cc_library(
     srcs = [
         "transforms/generated_legalize_tf.inc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_control_flow.cc",
     ],
     deps = [
         ":convert_op_folder",
@@ -210,6 +211,7 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
 )
