@@ -56,8 +56,7 @@ def AOp : NS_Op<"a_op", []> {
 
 // CHECK:      void AOp::build(
 // CHECK-SAME:   ArrayRef<NamedAttribute> attributes
-// CHECK:        for (const auto& pair : attributes)
-// CHECK-NEXT:     tblgen_state.addAttribute(pair.first, pair.second);
+// CHECK:      tblgen_state.addAttributes(attributes);
 
 // Test verify method
 // ---

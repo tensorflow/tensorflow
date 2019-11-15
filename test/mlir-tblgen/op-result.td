@@ -45,8 +45,8 @@ def OpD : NS_Op<"type_attr_as_result_type", [FirstAttrDerivedResultType]> {
 }
 
 // CHECK-LABEL: OpD definitions
-// CHECK: void OpD::build(Builder *, OperationState &tblgen_state, Value *x, TypeAttr attr, FloatAttr f32)
-// CHECK: tblgen_state.addTypes({attr.getValue()});
+// CHECK: void OpD::build(Builder *, OperationState &tblgen_state, ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes)
+// CHECK: tblgen_state.addTypes({attr.second.cast<TypeAttr>().getValue()});
 
 def OpE : NS_Op<"value_attr_as_result_type", [FirstAttrDerivedResultType]> {
   let arguments = (ins I32:$x, F32Attr:$attr);
@@ -54,8 +54,8 @@ def OpE : NS_Op<"value_attr_as_result_type", [FirstAttrDerivedResultType]> {
 }
 
 // CHECK-LABEL: OpE definitions
-// CHECK: void OpE::build(Builder *, OperationState &tblgen_state, Value *x, FloatAttr attr)
-// CHECK: tblgen_state.addTypes({attr.getType()});
+// CHECK: void OpE::build(Builder *, OperationState &tblgen_state, ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes)
+// CHECK: tblgen_state.addTypes({attr.second.getType()});
 
 def OpF : NS_Op<"one_variadic_result_op", []> {
   let results = (outs Variadic<I32>:$x);
