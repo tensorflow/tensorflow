@@ -1,8 +1,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_copts",
-    "tf_cuda_library",
     "if_cuda_is_configured_compat",
+    "tf_copts",
+    "tf_cuda_library"
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load(
