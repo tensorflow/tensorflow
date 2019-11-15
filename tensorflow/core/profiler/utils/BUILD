@@ -18,9 +18,7 @@ cc_library(
     hdrs = ["event_span.h"],
     deps = [
         ":timespan",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base:core_headers",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -36,7 +34,7 @@ cc_library(
     srcs = ["tf_op_utils.cc"],
     hdrs = ["tf_op_utils.h"],
     deps = [
-        "//tensorflow/core/platform:regexp",
+        "//tensorflow/core:regexp_internal",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -57,8 +55,7 @@ cc_library(
     hdrs = ["timespan.h"],
     deps = [
         ":time_utils",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -76,7 +73,7 @@ cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     deps = [
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core:lib",
     ],
 )
 
