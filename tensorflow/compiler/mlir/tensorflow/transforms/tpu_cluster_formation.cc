@@ -47,8 +47,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TFTPU {
@@ -410,10 +408,6 @@ LogicalResult FormClustersInBlock(Block* block,
 }
 
 void TPUClusterFormation::runOnFunction() {
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_tpu_cluster_formation_before",
-                                 getFunction());
-
   MetadataMap metadata_map;
   if (failed(CollectMetadata(getFunction(), &metadata_map)))
     return signalPassFailure();
@@ -456,10 +450,6 @@ void TPUClusterFormation::runOnFunction() {
   });
 
   if (remove_result.wasInterrupted()) return signalPassFailure();
-
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_tpu_cluster_formation_after",
-                                 getFunction());
 }
 }  // anonymous namespace
 

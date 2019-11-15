@@ -15,9 +15,12 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 
+#include <memory>
+
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
 #include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/bridge_logger.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 
 namespace mlir {
@@ -41,9 +44,14 @@ void createTPUBridge(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(createCanonicalizerPass());
 }
 
-tensorflow::Status TPUBridge(ModuleOp module) {
-  // Populate a passmanager with the list of passes that implement the bridge.
+tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
   PassManager bridge(module.getContext());
+
+  // Add logger to bridge passmanager.
+  if (enable_logging)
+    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+
+  // Populate a passmanager with the list of passes that implement the bridge.
   createTPUBridge(bridge);
 
   // Run the bridge on the module, in case of failure, the `diag_handler`

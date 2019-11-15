@@ -22,8 +22,6 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 // This pass is used in preparation for Graph export.
 // The GraphDef exporter expects each op to be in its own island.
@@ -47,10 +45,6 @@ struct BreakUpIslands : OperationPass<BreakUpIslands, FuncOp> {
 }  // end anonymous namespace
 
 void BreakUpIslands::runOnOperation() {
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_executor_breakup_islands_before",
-                                 getOperation());
-
   auto graph_op_range = getOperation().getBody().front().without_terminator();
   tf_executor::GraphOp graph_op;
   if (graph_op_range.begin() != graph_op_range.end() &&
@@ -110,10 +104,6 @@ void BreakUpIslands::runOnOperation() {
     new_op->setAttrs(item.getAttrList());
     item.erase();
   }
-
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_executor_breakup_islands_after",
-                                 getOperation());
 }
 
 // Converts a single island into multiple islands (one for each op). The islands

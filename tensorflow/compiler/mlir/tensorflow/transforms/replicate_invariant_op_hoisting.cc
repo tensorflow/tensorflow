@@ -27,8 +27,6 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -148,16 +146,8 @@ void HoistReplicateInvariantOps(tf_device::ReplicateOp replicate_op) {
 }
 
 void ReplicateInvariantOpHoistingPass::runOnFunction() {
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_replicate_invariant_op_hoisting_before",
-                                 getFunction());
-
   getFunction().walk(
       [](tf_device::ReplicateOp op) { HoistReplicateInvariantOps(op); });
-
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_replicate_invariant_op_hoisting_after",
-                                 getFunction());
 }
 }  // anonymous namespace
 

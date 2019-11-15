@@ -230,10 +230,10 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":bridge_logger",
         ":convert_tensor",
         ":convert_type",
         ":device_util",
-        ":dump_mlir_util",
         ":error_util",
         ":export_tf_dialect_op",
         ":mangling_util",
@@ -947,5 +947,17 @@ tf_cc_test(
         "//tensorflow/core/platform:test",
         "@llvm//:support",
         "@local_config_mlir//:IR",
+    ],
+)
+
+cc_library(
+    name = "bridge_logger",
+    srcs = ["utils/bridge_logger.cc"],
+    hdrs = ["utils/bridge_logger.h"],
+    deps = [
+        ":dump_mlir_util",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
     ],
 )

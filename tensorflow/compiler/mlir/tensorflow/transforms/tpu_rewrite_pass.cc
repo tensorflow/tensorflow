@@ -41,7 +41,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -49,7 +48,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
 #include "tensorflow/core/protobuf/tpu/dynamic_padding.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -508,9 +506,6 @@ LogicalResult Rewrite(
 }
 
 void TPURewritePass::runOnModule() {
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_tpu_rewrite_before", getModule());
-
   llvm::SmallVector<tensorflow::DeviceNameUtils::ParsedName, 8> devices;
   if (failed(tensorflow::GetDevicesFromOp(getModule(), &devices)))
     return signalPassFailure();
@@ -528,9 +523,6 @@ void TPURewritePass::runOnModule() {
   getModule().walk([&](TF::TPUCompilationResultOp op) { op.erase(); });
 
   // TODO(b/139377366): Remove functions that are no longer needed.
-
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_tpu_rewrite_after", getModule());
 }
 
 }  // namespace

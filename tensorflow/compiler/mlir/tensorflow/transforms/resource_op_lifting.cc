@@ -30,9 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -377,17 +375,7 @@ void LiftResourceOps(Operation* op) {
   });
 }
 
-void ResourceOpLiftingPass::runOnFunction() {
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_resource_op_lifting_before",
-                                 getFunction());
-
-  LiftResourceOps(getFunction());
-
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_resource_op_lifting_after",
-                                 getFunction());
-}
+void ResourceOpLiftingPass::runOnFunction() { LiftResourceOps(getFunction()); }
 
 std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();
