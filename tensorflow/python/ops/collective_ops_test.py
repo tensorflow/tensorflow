@@ -356,7 +356,8 @@ class CollectiveOpTest(test.TestCase):
     group_size = 2
     group_key = 1
     instance_key = 123
-    with self.session(config=config_pb2.ConfigProto(device_count={'CPU': group_size})) as sess:
+    with self.session(
+        config=config_pb2.ConfigProto(device_count={'CPU': group_size})) as sess:
       with ops.device('/CPU:0'):
         in0 = array_ops.placeholder(dtype=dtypes.int32, shape=[None])
         c0 = collective_ops.all_gather(in0, group_size, group_key, instance_key)
