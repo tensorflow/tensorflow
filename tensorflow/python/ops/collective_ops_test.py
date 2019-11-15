@@ -29,11 +29,11 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import kernels
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 
@@ -54,10 +54,10 @@ class CollectiveOpTest(test.TestCase):
       for i in range(group_size):
         with ops.device(devices[i]):
           tensor = constant_op.constant(inputs[i], dtype=(
-            dtypes.float16 if fp16 else dtypes.float32))
+              dtypes.float16 if fp16 else dtypes.float32))
           colred.append(collective_ops.all_reduce(
-            tensor, group_size, group_key, instance_key, merge_op, final_op,
-            communication_hint=communication_hint))
+              tensor, group_size, group_key, instance_key, merge_op, final_op,
+              communication_hint=communication_hint))
       run_options = config_pb2.RunOptions()
       if set_graph_key:
         run_options.experimental.collective_graph_key = 1
@@ -80,7 +80,7 @@ class CollectiveOpTest(test.TestCase):
           in_tensor = constant_op.constant(t0 if cpu == 0 else t1)
           for instance in range(num_instances):
             all_reduces.append(collective_ops.all_reduce(
-              in_tensor, group_size, group_key, instance, 'Add', 'Div'))
+                in_tensor, group_size, group_key, instance, 'Add', 'Div'))
       results = sess.run(all_reduces)
     for i in range(group_size * num_instances):
       self.assertAllClose(results[i], expected, rtol=1e-5, atol=1e-5)
@@ -88,34 +88,34 @@ class CollectiveOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testCollectiveReduce(self):
     self._testCollectiveReduce(
-      inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-              [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-      expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-      set_graph_key=True)
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=True)
 
   @test_util.run_deprecated_v1
   def testCollectiveAutoGraphKey(self):
     self._testCollectiveReduce(
-      inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-              [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-      expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-      set_graph_key=False)
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=False)
 
   @test_util.run_deprecated_v1
   def testFp16Reduce(self):
     self._testCollectiveReduce(
-      inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-              [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-      expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-      set_graph_key=True,
-      fp16=True)
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=True,
+        fp16=True)
 
   @test_util.run_deprecated_v1
   def testCollectiveMultipleConcurrentReduce(self):
     self._testMultipleConcurrentCollectiveReduce(
-      [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-      [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
-      [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
+        [0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+        [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3],
+        [0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2])
 
   @test_util.run_deprecated_v1
   def testNcclHintFallbackToRingReduce(self):
@@ -123,11 +123,11 @@ class CollectiveOpTest(test.TestCase):
     if kernels.get_registered_kernels_for_op('NcclAllReduce'):
       self.skipTest('Run only on non-GPU environments')
     self._testCollectiveReduce(
-      inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
-              [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
-      expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
-      set_graph_key=False,
-      communication_hint='nccl')
+        inputs=[[0.1, 1.1, 2.1, 3.1, 4.1, 5.1, 6.1, 7.1],
+                [0.3, 1.3, 2.3, 3.3, 4.3, 5.3, 6.3, 7.3]],
+        expected=[0.2, 1.2, 2.2, 3.2, 4.2, 5.2, 6.2, 7.2],
+        set_graph_key=False,
+        communication_hint='nccl')
 
   def _testWhile(self, num_vars, num_iterations, key_base):
     group_size = 2
@@ -138,7 +138,7 @@ class CollectiveOpTest(test.TestCase):
     config = config_pb2.ConfigProto(device_count={'CPU': group_size})
     rewrite_options = config.graph_options.rewrite_options
     rewrite_options.scoped_allocator_optimization = (
-      rewriter_config_pb2.RewriterConfig.ON)
+        rewriter_config_pb2.RewriterConfig.ON)
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
 
@@ -147,10 +147,9 @@ class CollectiveOpTest(test.TestCase):
       for device in devices:
         with ops.device(device):
           loop_vars.append(
-            [variables.VariableV1((1 << i) * 1.) for i in range(num_vars)])
+              [variables.VariableV1((1 << i) * 1.) for i in range(num_vars)])
       # This variable controls number of iterations.
       loop_vars.append(variables.VariableV1(0.))
-
       def loop_body(dev0_tensors, dev1_tensors, loop_tensor):
         return_ops = []
         for i in range(len(devices)):
@@ -165,22 +164,21 @@ class CollectiveOpTest(test.TestCase):
               # away by various optimization passes.
               input_tensor = math_ops.cast(device_tensors[j], dtypes.float16)
               collective_op = collective_ops.all_reduce(
-                input_tensor, group_size, group_key, instances[j],
-                'Add', 'Id')
+                  input_tensor, group_size, group_key, instances[j],
+                  'Add', 'Id')
               output_tensor = math_ops.cast(collective_op, dtypes.float32)
               device_collectives.append(output_tensor)
             return_ops.append(device_collectives)
         return_ops.append(math_ops.add(loop_tensor, 1.))
         return return_ops
-
       # Run until last variable exceeds number of iterations.
       loop_cond = lambda d0, d1, i: math_ops.less(i, num_iterations)
       sess.run(variables.global_variables_initializer())
       results = sess.run(control_flow_ops.while_loop(loop_cond, loop_body,
                                                      loop_vars))
       self.assertEqual(results[:-1], [
-        [((1 << (num_iterations + v)) * 1.) for v in range(num_vars)]
-        for _ in range(group_size)])
+          [((1 << (num_iterations + v)) * 1.) for v in range(num_vars)]
+          for _ in range(group_size)])
 
   @test_util.run_deprecated_v1
   def testSimpleWhile(self):
@@ -200,7 +198,7 @@ class CollectiveOpTest(test.TestCase):
     config = config_pb2.ConfigProto(device_count={'CPU': group_size})
     rewrite_options = config.graph_options.rewrite_options
     rewrite_options.scoped_allocator_optimization = (
-      rewriter_config_pb2.RewriterConfig.ON)
+        rewriter_config_pb2.RewriterConfig.ON)
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append('CollectiveReduce')
 
@@ -229,22 +227,22 @@ class CollectiveOpTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testCollectiveReduceMaximum(self):
     self._testCollectiveReduce(
-      inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
-      expected=[10., 20., 30., 40., 50.],
-      set_graph_key=True,
-      instance_key=30,
-      merge_op='Max',
-      final_op='Id')
+        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+        expected=[10., 20., 30., 40., 50.],
+        set_graph_key=True,
+        instance_key=30,
+        merge_op='Max',
+        final_op='Id')
 
   @test_util.run_deprecated_v1
   def testCollectiveReduceMinimum(self):
     self._testCollectiveReduce(
-      inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
-      expected=[1., 2., 3., 4., 5.],
-      set_graph_key=True,
-      instance_key=40,
-      merge_op='Min',
-      final_op='Id')
+        inputs=[[1., 20., 3., 40., 5.], [10., 2., 30., 4., 50.]],
+        expected=[1., 2., 3., 4., 5.],
+        set_graph_key=True,
+        instance_key=40,
+        merge_op='Min',
+        final_op='Id')
 
   def _testCollectiveBroadcast(self, t0):
     group_key = 1
@@ -350,7 +348,7 @@ class CollectiveOpTest(test.TestCase):
         sess.run([c0, c1], options=run_options)
 
   @test_util.run_deprecated_v1
-  def testCollectiveGatherPolymophicShape(self):
+  def testCollectiveGatherPolymorphicShape(self):
     t0 = [0, 1, 2, 3, 4, 5, 6, 7]
     t1 = [10, 11, 12, 13, 14, 15, 16, 17]
     t01 = [0, 1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17]
@@ -378,8 +376,8 @@ class CollectiveOpTest(test.TestCase):
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
     config.set_logical_device_configuration(cpus[0], [
-      context.LogicalDeviceConfiguration(),
-      context.LogicalDeviceConfiguration()
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
     context.ensure_initialized()
 
@@ -392,13 +390,13 @@ class CollectiveOpTest(test.TestCase):
       with ops.device('/CPU:0'):
         in0 = constant_op.constant(t0)
         c0 = collective_ops.all_reduce(
-          in0, group_size=2, group_key=group_key, instance_key=instance_key,
-          merge_op='Add', final_op='Id')
+            in0, group_size=2, group_key=group_key, instance_key=instance_key,
+            merge_op='Add', final_op='Id')
       with ops.device('/CPU:1'):
         in1 = constant_op.constant(t1)
         c1 = collective_ops.all_reduce(
-          in1, group_size=3, group_key=group_key, instance_key=instance_key,
-          merge_op='Add', final_op='Id')
+            in1, group_size=3, group_key=group_key, instance_key=instance_key,
+            merge_op='Add', final_op='Id')
       return c0, c1
 
     with self.assertRaisesRegexp(errors.InternalError,
@@ -421,12 +419,12 @@ class CollectiveOpTest(test.TestCase):
 
       with ops.device('/CPU:0'):
         results.append(
-          collective_ops.all_reduce(all_args[0], group_size, group_key,
-                                    instance_key, 'Add', 'Div'))
+            collective_ops.all_reduce(all_args[0], group_size, group_key,
+                                      instance_key, 'Add', 'Div'))
       with ops.device('/CPU:1'):
         results.append(
-          collective_ops.all_reduce(all_args[1], group_size, group_key,
-                                    instance_key, 'Add', 'Div'))
+            collective_ops.all_reduce(all_args[1], group_size, group_key,
+                                      instance_key, 'Add', 'Div'))
 
       return results
 
@@ -454,11 +452,11 @@ class CollectiveOpTest(test.TestCase):
     in_tensor = constant_op.constant(in_value)
 
     reduced_tensor = collective_ops.all_reduce(
-      in_tensor, group_size, group_key, instance_key, 'Add', 'Id')
+        in_tensor, group_size, group_key, instance_key, 'Add', 'Id')
     self.assertAllEqual(in_value, reduced_tensor.numpy())
 
     gathered_tensor = collective_ops.all_gather(
-      in_tensor, group_size, group_key, instance_key)
+        in_tensor, group_size, group_key, instance_key)
     self.assertAllEqual(in_value, gathered_tensor.numpy())
 
 
