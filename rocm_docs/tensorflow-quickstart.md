@@ -68,7 +68,7 @@ Run the training:
 ```
 cd ~/models/tutorials/image/cifar10
 
-export HIP_VISIBLE_DEVICES=0
+export ROCR_VISIBLE_DEVICES=0
 python3 ./cifar10_train.py
 ```
 
@@ -88,13 +88,13 @@ You should see output similar to this:
 
 #### Evaluation (via terminal #2)
 
-Note: If you have a second GPU, you can run the evaluation in parallel with the training -- to do so, just change `HIP_VISIBLE_DEVICES` to your second GPU's ID.  If you only have a single GPU, it is best to wait until training is complete, otherwise you risk running out of device memory.  
+Note: If you have a second GPU, you can run the evaluation in parallel with the training -- to do so, just change `ROCR_VISIBLE_DEVICES` to your second GPU's ID.  If you only have a single GPU, it is best to wait until training is complete, otherwise you risk running out of device memory.
 
 To run the evaluation, follow this:  
 ```
 cd ~/models/tutorials/image/cifar10
 
-export HIP_VISIBLE_DEVICES=0
+export ROCR_VISIBLE_DEVICES=0
 python3 ./cifar10_eval.py
 ```
 
