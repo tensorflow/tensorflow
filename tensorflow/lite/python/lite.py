@@ -635,6 +635,7 @@ class TFLiteConverter(TFLiteConverterBase):
     self.dump_graphviz_video = False
     self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
+    self._custom_opdefs = None
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -1005,7 +1006,8 @@ class TFLiteConverter(TFLiteConverterBase):
         "change_concat_input_ranges": self.change_concat_input_ranges,
         "dump_graphviz_dir": self.dump_graphviz_dir,
         "dump_graphviz_video": self.dump_graphviz_video,
-        "conversion_summary_dir": self.conversion_summary_dir
+        "conversion_summary_dir": self.conversion_summary_dir,
+        "custom_opdefs": self._custom_opdefs,
     })
 
     # Converts model.

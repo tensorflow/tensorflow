@@ -141,10 +141,7 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
   return Status::OK();
 }
 
-Status RegisterCustomBuiltinOps() {
-  std::vector<std::string> extra_tf_opdefs;
-  extra_tf_opdefs.push_back(kDetectionPostProcessOp);
-
+Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
   for (const auto& tf_opdefs_string : extra_tf_opdefs) {
     tensorflow::OpDef opdef;
     if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
@@ -253,7 +250,11 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   specs.upgrade_legacy = true;
   WarningUnusedFlags(model_flags, toco_flags);
 
-  TF_RETURN_IF_ERROR(RegisterCustomBuiltinOps());
+  // Register any custom OpDefs.
+  std::vector<string> extra_tf_opdefs(toco_flags.custom_opdefs().begin(),
+                                      toco_flags.custom_opdefs().end());
+  extra_tf_opdefs.push_back(kDetectionPostProcessOp);
+  TF_RETURN_IF_ERROR(RegisterCustomBuiltinOps(extra_tf_opdefs));
 
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));
