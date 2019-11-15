@@ -1076,119 +1076,102 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
+absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
+    // Unary
+    {"PW",
+     {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin", "Atan",
+      "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp", "Expm1", "Floor",
+      "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal", "Log", "Log1p",
+      "Invert", "LogicalNot", "Neg", "Rint", "Round", "Rsqrt", "Sigmoid",
+      "Sign", "Sinh", "Softplus", "Softsign", "Sqrt", "Square", "Tan", "Tanh",
+      "Real", "Imag", "Erf", "Erfc", "Lgamma", "Digamma",
+      // Binary
+      "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
+      "MulNoNan", "FloorDiv", "Xlogy", "Xdivy", "FloorMod", "BitwiseAnd",
+      "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift", "LogicalAnd",
+      "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv", "ReciprocalGrad",
+      "RsqrtGrad", "SqrtGrad", "TruncateDiv", "TruncateMod", "Equal",
+      "NotEqual", "Greater", "GreaterEqual", "Less", "LessEqual", "SigmoidGrad",
+      "SoftplusGrad", "SoftsignGrad", "TanhGrad", "Pow", "SquaredDifference",
+      "ApproximateEqual",
+      // Others
+      "AddN", "Bitcast", "Cast", "ClipByValue", "Const", "Empty", "Identity",
+      "IdentityN", "Relu", "Relu6", "ReluGrad", "Relu6Grad", "LeakyReluGrad",
+      "Elu", "EluGrad", "Selu", "SeluGrad", "Select", "SelectV2", "Transpose",
+      "ConjugateTranspose", "_UnaryOpsComposition",
+      // The following 4 operations are converted to identity
+      "PlaceholderWithDefault", "PreventGradient", "StopGradient", "Snapshot"}},
+    {"RED", {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
+    {"PWRED",
+     {"ArgMax", "ArgMin", "DiagPart", "Softmax",
+      "SparseSoftmaxCrossEntropyWithLogits", "LogSoftmax"}},
+    {"REDUCEWINDOW",
+     {"ArgMax", "ArgMin", "DiagPart", "Softmax",
+      "SparseSoftmaxCrossEntropyWithLogits", "LogSoftmax"}},
+    {"REDUCEWINDOWPW", {"LRN", "LRNGrad"}},
+    {"BN",
+     {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3",
+      "_FusedBatchNormEx", "FusedBatchNormGrad", "FusedBatchNormGradV2",
+      "FusedBatchNormGradV3"}},
+    {"SMALL",
+     {"BroadcastTo",
+      "ExpandDims",
+      "Fill",
+      "Max",
+      "Mean",
+      "NoOp",
+      "Prod",
+      "Range",
+      "Rank",
+      "Reshape",
+      "Shape",
+      "ShapeN",
+      "Size",
+      "Squeeze",
+      "Sum",
+      "Transpose",
+      "ZerosLike",
+      "OnesLike",
+      "BroadcastArgs",
+      "BroadcastGradientArgs",
+      "BiasAddGrad" /*(Reduce)*/,
+      "OneHot",
+      "Concat",
+      "ConcatV2",
+      "ConcatOffset",
+      "Const",
+      "MirrorPad",
+      "Pack",
+      "Pad",
+      "PadV2",
+      "Reverse",
+      "ReverseV2",
+      "ReverseSequence",
+      "Slice",
+      "Split",
+      "SplitV",
+      "StridedSlice",
+      "StridedSliceGrad",
+      "ResourceStridedSliceAssign",
+      "Tile",
+      "Transpose",
+      "InvertPermutation",
+      "Unpack"}}};
+
 std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   auto whitelist = absl::WrapUnique(new absl::flat_hash_set<string>());
 
   for (auto s : absl::StrSplit(flags->tf_xla_supported_ops, ",")) {
-    bool fusible = s == "FUSIBLE";
-    bool added = false;
-    if (s == "PW" || fusible) {
-      added = true;
-      // Unary
-      whitelist->insert(
-          {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin",
-           "Atan", "Atanh", "Ceil", "Cos", "Cosh", "Sin", "Exp", "Expm1",
-           "Floor", "IsFinite", "IsInf", "IsNan", "Inv", "Reciprocal", "Log",
-           "Log1p", "Invert", "LogicalNot", "Neg", "Rint", "Round", "Rsqrt",
-           "Sigmoid", "Sign", "Sinh", "Softplus", "Softsign", "Sqrt", "Square",
-           "Tan", "Tanh", "Real", "Imag", "Erf", "Erfc", "Lgamma", "Digamma",
-           // Binary
-           "Add", "AddV2", "Sub", "Mul", "Div", "Atan2", "Complex", "DivNoNan",
-           "MulNoNan", "FloorDiv", "Xlogy", "Xdivy", "FloorMod", "BitwiseAnd",
-           "BitwiseOr", "BitwiseXor", "LeftShift", "RightShift", "LogicalAnd",
-           "LogicalOr", "Mod", "Maximum", "Minimum", "RealDiv",
-           "ReciprocalGrad", "RsqrtGrad", "SqrtGrad", "TruncateDiv",
-           "TruncateMod", "Equal", "NotEqual", "Greater", "GreaterEqual",
-           "Less", "LessEqual", "SigmoidGrad", "SoftplusGrad", "SoftsignGrad",
-           "TanhGrad", "Pow", "SquaredDifference", "ApproximateEqual",
-           // Others
-           "AddN", "Bitcast", "Cast", "ClipByValue", "Const", "Empty",
-           "Identity", "IdentityN", "Relu", "Relu6", "ReluGrad", "Relu6Grad",
-           "LeakyReluGrad", "Elu", "EluGrad", "Selu", "SeluGrad", "Select",
-           "SelectV2", "Transpose", "ConjugateTranspose",
-           "_UnaryOpsComposition",
-           // The following 4 operations are converted to identity
-           "PlaceholderWithDefault", "PreventGradient", "StopGradient",
-           "Snapshot"});
-    }
-    if (s == "RED" || fusible) {
-      added = true;
-      whitelist->insert({"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"});
-    }
-    if (s == "PWRED" || fusible) {
-      added = true;
-      whitelist->insert({"ArgMax", "ArgMin", "DiagPart", "Softmax",
-                        "SparseSoftmaxCrossEntropyWithLogits", "LogSoftmax"});
-    }
-    if (s == "REDUCEWINDOW" || fusible) {
-      added = true;
-      whitelist->insert({"MaxPoolV2", "MaxPool3D", "AvgPool", "AvgPool3D",
-                        "MaxPoolGrad", "MaxPool3DGrad", "AvgPoolGrad",
-                        "AvgPool3DGrad", "MaxPoolGradGrad", "MaxPoolGradGradV2",
-                        "MaxPool3DGradGrad"});
-    }
-    if (s == "REDUCEWINDOWPW" || fusible) {
-      added = true;
-      whitelist->insert({"LRN", "LRNGrad"});
-    }
-    if (s == "BN" || fusible) {
-      added = true;
-      whitelist->insert({"FusedBatchNorm", "FusedBatchNormV2",
-                        "FusedBatchNormV3", "_FusedBatchNormEx",
-                        "FusedBatchNormGrad", "FusedBatchNormGradV2",
-                        "FusedBatchNormGradV3"});
-    }
-    if (s == "SMALL" || fusible) {
-      // Fill => Broadcast
-      // BroadcastTo => Broadcast + maybe Reshape
-      added = true;
-      whitelist->insert({"BroadcastTo",
-                        "ExpandDims",
-                        "Fill",
-                        "Max",
-                        "Mean",
-                        "NoOp",
-                        "Prod",
-                        "Range",
-                        "Rank",
-                        "Reshape",
-                        "Shape",
-                        "ShapeN",
-                        "Size",
-                        "Squeeze",
-                        "Sum",
-                        "Transpose",
-                        "ZerosLike",
-                        "OnesLike",
-                        "BroadcastArgs",
-                        "BroadcastGradientArgs",
-                        "BiasAddGrad" /*(Reduce)*/,
-                        "OneHot",
-                        "Concat",
-                        "ConcatV2",
-                        "ConcatOffset",
-                        "Const",
-                        "MirrorPad",
-                        "Pack",
-                        "Pad",
-                        "PadV2",
-                        "Reverse",
-                        "ReverseV2",
-                        "ReverseSequence",
-                        "Slice",
-                        "Split",
-                        "SplitV",
-                        "StridedSlice",
-                        "StridedSliceGrad",
-                        "ResourceStridedSliceAssign",
-                        "Tile",
-                        "Transpose",
-                        "InvertPermutation",
-                        "Unpack"});
-    }
-
-    if (!added && s.size() > 0) {
+    if (s == "FUSIBLE") {
+      for(auto pair: whitelist_table) {
+        whitelist->insert(pair.second.begin(), pair.second.end());
+      }
+    } else if (whitelist_table.contains(s)) {
+      auto v = whitelist_table[s];
+      whitelist->insert(v.begin(), v.end());
+    } else if (s.size() > 0) {
+      // Should be a user privided TF operation.
       whitelist->insert(string(s));
     }
   }
