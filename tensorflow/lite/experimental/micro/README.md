@@ -275,31 +275,6 @@ Building micro_speech_test binary
 -   Build the binary: `make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=riscv32_mcu`
 
-If you see build error messages like this:
-
-```
-section `.bss' will not fit in region `ram'
-...
-section .stack VMA [0000000080003800,0000000080003fff] overlaps section .bss VMA [00000000800004e8,0000000080004623]
-...
-collect2: error: ld returned 1 exit status
-```
-
-It is because the initial RAM size (16k) of SiFive FE310 is not enough for some example. 
-You can try to set the MEMORY's `ram` option with a bigger value (e.g, 32k, 64k, 128k, etc.), in the link script file
-`{PATH_TO_TENSORFLOW_ROOT_DIR}/tensorflow/lite/experimental/micro/tools/make/downloads/sifive_fe310_lib/bsp/env/freedom-e300-hifive1/flash.lds`.
-An example is like:
-
-```
-...
-MEMORY
-{
-  ...
-  ram (wxa!ri) : ORIGIN = 0x80000000, LENGTH = 128K
-}
-...
-```
-
 Launching Renode to test the binary, currently this set up is not automated.
 
 -   Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's
