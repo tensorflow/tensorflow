@@ -297,6 +297,11 @@ class ConvertToHloModule {
         .proto();
   }
 
+  // Lower function call to HLO call instruction
+  LogicalResult LowerFunctionCall(
+      mlir::CallOp* call_op, xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering);
+
  private:
   LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
                       ConvertToHloModule::ValueLoweringMap* value_lowering,
@@ -569,6 +574,11 @@ LogicalResult ConvertToHloModule::Lower(
 
   auto& value_map = *value_lowering;
   ElementsAttr const_attr;
+
+  if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
+    return LowerFunctionCall(&call_op, builder, &value_map);
+  }
+
   // TODO(jpienaar): This doesn't support layouts yet.
   if (matchPattern(inst, m_Constant(&const_attr))) {
     auto literal_or =
@@ -610,7 +620,38 @@ LogicalResult ConvertToHloModule::Lower(
   return failure();
 }
 
+LogicalResult ConvertToHloModule::LowerFunctionCall(
+    mlir::CallOp* call_op, xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  auto& value_map = *value_lowering;
+  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op->callee());
+  if (failed(RunOnFunction(callee))) return failure();
+  std::vector<xla::XlaOp> operands;
+  for (auto operand : call_op->getOperands()) {
+    operands.push_back(value_map[operand]);
+  }
+  // Each call to xla::Call would insert a copy of the computation to
+  // the HLO. Thus each callsite would have a unique callee in the
+  // exported HLO. HLO syntactically does not require all calls to have unique
+  // callees, but eventually before lowering call graph is "flattened" to
+  // make that true. This is done before lowering because buffer assignment
+  // needs this invariant.
+  xla::XlaOp call_result =
+      xla::Call(builder, lowered_computation_[callee], operands);
+  // Use GetTupleElement for multiple outputs
+  unsigned num_results = call_op->getNumResults();
+  if (num_results > 1) {
+    for (unsigned i = 0; i != num_results; ++i) {
+      value_map[call_op->getResult(i)] = xla::GetTupleElement(call_result, i);
+    }
+  } else if (num_results == 1) {
+    value_map[call_op->getResult(0)] = call_result;
+  }
+  return success();
+}
+
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
+  if (lowered_computation_.count(f)) return success();
   if (f.getBlocks().size() != 1) {
     return f.emitError("only single block Function suppored");
   }
