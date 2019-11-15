@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -123,12 +125,20 @@ void OutlineLaunch(tf_device::LaunchOp launch_op, ModuleManager* module_manager,
 }
 
 void ClusterOutliningPass::runOnModule() {
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_device_cluster_outlining_before",
+                                 getModule());
+
   ModuleOp m = getModule();
   ModuleManager module_manager(m);
   OpBuilder builder(m.getContext());
   m.walk([&](tf_device::LaunchOp launch) {
     OutlineLaunch(launch, &module_manager, &builder);
   });
+
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_device_cluster_outlining_after",
+                                 getModule());
 }
 
 }  // namespace

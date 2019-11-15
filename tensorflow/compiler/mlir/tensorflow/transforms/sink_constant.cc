@@ -28,7 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 #define DEBUG_TYPE "tf-executor-sink-constant"
 
@@ -41,6 +43,10 @@ using ::mlir::TF::ConstOp;
 class ExecutorConstantSinking
     : public mlir::FunctionPass<ExecutorConstantSinking> {
   void runOnFunction() override {
+    if (VLOG_IS_ON(1))
+      tensorflow::DumpMlirOpToFile("mlir_device_constant_sinking_before",
+                                   getFunction());
+
     getFunction().walk([](tf_device::LaunchOp launch) {
       LLVM_DEBUG(llvm::dbgs() << "Visit " << *launch.getOperation() << "\n");
       // For each launch op, we find the values used that come from a constant
@@ -80,6 +86,10 @@ class ExecutorConstantSinking
                                 << "\n     in " << *use->get() << "\n");
       });
     });
+
+    if (VLOG_IS_ON(1))
+      tensorflow::DumpMlirOpToFile("mlir_device_constant_sinking_after",
+                                   getFunction());
   }
 };
 

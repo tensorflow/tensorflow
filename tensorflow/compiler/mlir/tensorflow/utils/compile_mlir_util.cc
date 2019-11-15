@@ -25,11 +25,13 @@ limitations under the License.
 #include "mlir/Parser.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace {
@@ -159,6 +161,9 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
     }
   }
 
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_compile_legalize_hlo", module_op);
+
   xla::HloProto hlo_proto;
   TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module_op, &hlo_proto,
                                                /*use_tuple_args=*/true,
@@ -232,8 +237,14 @@ Status CompileSerializedMlirToXlaHlo(
       ParseMlirModule(mlir_module_string, &mlir_context, &mlir_module));
   auto module_op = mlir_module.get();
 
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_compile_before", module_op);
+
   // Use arg_shapes to improve the mlir type information of `main` in module_op.
   TF_RETURN_IF_ERROR(RefineShapes(arg_shapes, module_op));
+
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_compile_shape_refiner", module_op);
 
   // Convert MLIR module to XLA HLO proto contained in XlaComputation.
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
@@ -262,6 +273,9 @@ Status CompileSerializedMlirToXlaHlo(
   // Compute what resource variables need to be updated after XlaComputation's
   // execution.
   GetResourceUpdatesForMlir(&compilation_result->resource_updates);
+
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_compile_after", module_op);
 
   return Status::OK();
 }

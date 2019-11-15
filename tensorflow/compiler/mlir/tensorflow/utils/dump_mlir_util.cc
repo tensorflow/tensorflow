@@ -36,7 +36,7 @@ struct NameCounts {
   llvm::StringMap<int64_t> counts;
 };
 
-string MakeUniqueFilename(string name) {
+std::string MakeUniqueFilename(string name) {
   static NameCounts& instance = *new NameCounts;
 
   // Remove illegal characters from `name`.

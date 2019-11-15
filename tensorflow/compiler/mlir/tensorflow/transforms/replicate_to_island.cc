@@ -33,6 +33,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace mlir {
 namespace TFDevice {
@@ -196,6 +198,10 @@ void LowerSingleIslandReplicateToIslands(const Dialect* tf_dialect,
 }
 
 void ReplicateToIslandPass::runOnFunction() {
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile(
+        "mlir_device_replicate_to_executor_island_before", getFunction());
+
   const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
   if (!tf_dialect) {
     signalPassFailure();
@@ -205,6 +211,10 @@ void ReplicateToIslandPass::runOnFunction() {
   getFunction().walk([&](tf_executor::IslandOp island_op) {
     LowerSingleIslandReplicateToIslands(tf_dialect, island_op);
   });
+
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile(
+        "mlir_device_replicate_to_executor_island_after", getFunction());
 }
 }  // anonymous namespace
 

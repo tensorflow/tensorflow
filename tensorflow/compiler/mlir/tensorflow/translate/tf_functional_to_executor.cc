@@ -20,6 +20,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
+#include "tensorflow/core/platform/logging.h"
 
 #define DEBUG_TYPE "tf-functional-to-executor"
 
@@ -46,6 +48,10 @@ struct FunctionalToExecutorDialectConversion
 }  // end anonymous namespace
 
 void FunctionalToExecutorDialectConversion::runOnFunction() {
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_functional_to_executor_before",
+                                 getFunction());
+
   if (getFunction().getBlocks().size() != 1) {
     LLVM_DEBUG(llvm::dbgs() << "Expect single block function, skip conversion "
                                "to tf_executor dialect\n");
@@ -95,6 +101,10 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
   for (auto item : llvm::enumerate(graph_op.getResults())) {
     return_op.setOperand(item.index(), item.value());
   }
+
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_functional_to_executor_after",
+                                 getFunction());
 }
 
 std::unique_ptr<OpPassBase<FuncOp>>
