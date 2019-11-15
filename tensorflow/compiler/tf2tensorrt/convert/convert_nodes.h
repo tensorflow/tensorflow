@@ -563,7 +563,7 @@ class Converter {
   std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
 
   // The TRT builder used to create the network and build the engine. Not owned.
-  nvinfer1::IBuilder* trt_builder_;
+  TrtUniquePtrType<nvinfer1::IBuilder> trt_builder_;
 
   // The TRT network being built.
   TrtUniquePtrType<nvinfer1::INetworkDefinition> trt_network_;
