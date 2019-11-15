@@ -1422,8 +1422,8 @@ either is the self/context or it isn't.
 
 ```mlir {.mlir}
 // A unit attribute defined with the `unit` value specifier.
-func @verbose_form(i1 {unitAttr : unit})
+func @verbose_form(i1) attributes {unitAttr = unit}
 
 // A unit attribute can also be defined without the value specifier.
-func @simple_form(i1 {unitAttr})
+func @simple_form(i1) attributes {unitAttr}
 ```
