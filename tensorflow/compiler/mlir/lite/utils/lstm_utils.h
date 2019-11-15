@@ -60,17 +60,16 @@ class ConvertLSTMCellSimpleToFusedLSTM {
       const ConvertLSTMCellSimpleToFusedLSTM&) = delete;
   virtual ~ConvertLSTMCellSimpleToFusedLSTM() {}
 
-  // verify input func op arguments and initialize internal state.
-  virtual LogicalResult Initialize();
-
   virtual llvm::StringRef GetCompositeOpName() { return kLstmCellSimple; }
 
   // Rewrite the func body with constructed fused lstm.
-  void RewriteFunc();
+  LogicalResult RewriteFunc();
 
   int GetNumInputs() { return n_input_; }
 
  protected:
+  // verify input func op arguments and initialize internal state.
+  virtual LogicalResult Initialize();
   void UpdateFuncSignature();
   void GenerateFusedOpOperands();
 
@@ -192,9 +191,9 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
     return kLayerNormalizedLstmCellSimple;
   }
 
+ protected:
   LogicalResult Initialize() override;
 
- protected:
   void SetCellLayerNormCoefficients() override;
   void SetInputLayerNormCoefficients() override;
   void SetForgetLayerNormCoefficients() override;
