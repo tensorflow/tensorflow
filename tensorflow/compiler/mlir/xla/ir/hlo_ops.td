@@ -613,10 +613,6 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
 
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129422361) Implement special handling.
-  // Copy has an HloOpcode, but is not one of the ops defined in xla_builder.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
