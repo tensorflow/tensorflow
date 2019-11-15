@@ -1213,7 +1213,7 @@ def ViewOp : Std_Op<"view"> {
   let hasCanonicalizer = 1;
 }
 
-def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize]> {
+def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize, NoSideEffect]> {
   let summary = "memref subview operation";
   let description = [{
     The "subview" operation converts a memref type to another memref type
