@@ -54,7 +54,6 @@ pybind_extension(
         "//tensorflow/compiler/xla/python:python_ref_manager",
         "//tensorflow/compiler/xla/python:types",
         "//tensorflow/compiler/xla/service:computation_placer",
-        "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
