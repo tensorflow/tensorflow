@@ -82,7 +82,7 @@ std::string DumpMlirOpToFile(llvm::StringRef name, mlir::Operation* op,
   std::string txt_op;
   {
     llvm::raw_string_ostream os(txt_op);
-    op->print(os);
+    op->print(os, mlir::OpPrintingFlags().useLocalScope());
     os.flush();
   }
 
