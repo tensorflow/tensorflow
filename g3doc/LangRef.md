@@ -876,6 +876,10 @@ A layout map is a [semi-affine map](Dialects/Affine.md#semi-affine-maps) which
 encodes logical to physical index space mapping, by mapping input dimensions to
 their ordering from most-major (slowest varying) to most-minor (fastest
 varying). Therefore, an identity layout map corresponds to a row-major layout.
+Identity layout maps do not contribute to the MemRef type identification and are
+discarded on construction. That is, a type with an explicit identity map is
+`memref<?x?xf32, (i,j)->(i,j)>` is strictly the same as the one without layout
+maps, `memref<?x?xf32>`.
 
 Layout map examples:
 
