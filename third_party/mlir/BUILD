@@ -2282,3 +2282,14 @@ filegroup(
     name = "TdFiles",
     srcs = glob(["**/*.td"]),
 )
+
+exports_files(
+    [
+        "include/mlir/Dialect/StandardOps/Ops.td",
+        "include/mlir/Analysis/CallInterfaces.td",
+        "include/mlir/Transforms/InliningUtils.h",
+        "include/mlir/IR/OpBase.td",
+        "include/mlir/Analysis/CallInterfaces.h",
+    ],
+    visibility = ["@local_config_mlir//:friends"],
+)
