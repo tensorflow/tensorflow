@@ -345,6 +345,24 @@ def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let hasCanonicalizer = 1;
 }
 
+def CMPI_P_EQ  : I64EnumAttrCase<"eq", 0>;
+def CMPI_P_NE  : I64EnumAttrCase<"ne", 1>;
+def CMPI_P_SLT : I64EnumAttrCase<"slt", 2>;
+def CMPI_P_SLE : I64EnumAttrCase<"sle", 3>;
+def CMPI_P_SGT : I64EnumAttrCase<"sgt", 4>;
+def CMPI_P_SGE : I64EnumAttrCase<"sge", 5>;
+def CMPI_P_ULT : I64EnumAttrCase<"ult", 6>;
+def CMPI_P_ULE : I64EnumAttrCase<"ule", 7>;
+def CMPI_P_UGT : I64EnumAttrCase<"ugt", 8>;
+def CMPI_P_UGE : I64EnumAttrCase<"uge", 9>;
+
+def CmpIPredicateAttr : I64EnumAttr<
+    "CmpIPredicate", "",
+    [CMPI_P_EQ, CMPI_P_NE, CMPI_P_SLT, CMPI_P_SLE, CMPI_P_SGT,
+     CMPI_P_SGE, CMPI_P_ULT, CMPI_P_ULE, CMPI_P_UGT, CMPI_P_UGE]> {
+  let cppNamespace = "::mlir";
+}
+
 def CmpIOp : Std_Op<"cmpi",
     [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "integer comparison operation";
@@ -369,7 +387,11 @@ def CmpIOp : Std_Op<"cmpi",
       %r3 = "std.cmpi"(%0, %1){predicate: 0} : (i8, i8) -> i1
   }];
 
-  let arguments = (ins IntegerLike:$lhs, IntegerLike:$rhs);
+  let arguments = (ins
+      CmpIPredicateAttr:$predicate,
+      IntegerLike:$lhs,
+      IntegerLike:$rhs
+  );
   let results = (outs BoolLike);
 
   let builders = [OpBuilder<
@@ -387,6 +409,8 @@ def CmpIOp : Std_Op<"cmpi",
           .getInt();
     }
   }];
+
+  let verifier = [{ return success(); }];
 
   let hasFolder = 1;
 }

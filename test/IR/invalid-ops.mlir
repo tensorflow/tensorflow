@@ -201,7 +201,7 @@ func @func_with_ops(i32) {
 
 func @func_with_ops(i32) {
 ^bb0(%a : i32):
-  // expected-error@+1 {{'predicate' attribute value out of range}}
+  // expected-error@+1 {{failed to satisfy constraint: allowed 64-bit integer cases: 0, 1, 2, 3, 4, 5, 6, 7, 8, 9}}
   %r = "std.cmpi"(%a, %a) {predicate = 42} : (i32, i32) -> i1
 }
 
@@ -241,7 +241,7 @@ func @func_with_ops(i32, i32) {
 
 func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
-  // expected-error@+1 {{requires an integer attribute named 'predicate'}}
+  // expected-error@+1 {{requires attribute 'predicate'}}
   %r = "std.cmpi"(%a, %b) {foo = 1} : (i32, i32) -> i1
 }
 
