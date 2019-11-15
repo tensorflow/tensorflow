@@ -84,12 +84,6 @@ void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
   BlockAndValueMapping mapper;
   OpBuilder builder(dest_region);
 
-  llvm::SmallVector<Type, 4> arg_types;
-  arg_types.reserve(func.getNumArguments());
-  for (auto arg : func.getArguments()) {
-    arg_types.push_back(arg->getType());
-  }
-
   auto entry_block = builder.createBlock(dest_region);
   auto tuple_arg = entry_block->addArgument(
       builder.getTupleType(func.getType().getInputs()));
