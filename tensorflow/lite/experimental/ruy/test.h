@@ -180,6 +180,7 @@ struct LogCoveredPathsOnDestruction final {
 enum class RandomRange {
   kGeneral,
   kAvoidMinValue,
+  kOffCenterAvoidMinValue,
   kReasonableSrcZeroPoint,
   kReasonableDstZeroPoint,
   kBias
@@ -197,6 +198,8 @@ struct RandomRangeBounds<Scalar, true> {
         return -1;
       case RandomRange::kAvoidMinValue:
         return -1;
+      case RandomRange::kOffCenterAvoidMinValue:
+        return -1;
       case RandomRange::kReasonableSrcZeroPoint:
         return 0;
       case RandomRange::kReasonableDstZeroPoint:
@@ -213,6 +216,8 @@ struct RandomRangeBounds<Scalar, true> {
       case RandomRange::kGeneral:
         return 1;
       case RandomRange::kAvoidMinValue:
+        return 1;
+      case RandomRange::kOffCenterAvoidMinValue:
         return 1;
       case RandomRange::kReasonableSrcZeroPoint:
         return 0;
@@ -245,11 +250,19 @@ Scalar Parametrized(float param) {
 template <typename Scalar>
 struct RandomRangeBounds<Scalar, false> {
   static Scalar GetMinBound(RandomRange range) {
+    static constexpr double offcentredness =
+        0.02;  // Shift lower limit by about 5 for range of 255.
     switch (range) {
       case RandomRange::kGeneral:
         return std::numeric_limits<Scalar>::lowest();
       case RandomRange::kAvoidMinValue:
         return 1 + std::numeric_limits<Scalar>::lowest();
+      case RandomRange::kOffCenterAvoidMinValue:
+        return 1 + std::numeric_limits<Scalar>::lowest() +
+               static_cast<Scalar>(
+                   offcentredness * std::numeric_limits<Scalar>::max() -
+                   offcentredness *
+                       (std::numeric_limits<Scalar>::lowest() + 1));
       case RandomRange::kReasonableSrcZeroPoint:
         return std::numeric_limits<Scalar>::lowest();
       case RandomRange::kReasonableDstZeroPoint:
@@ -268,6 +281,8 @@ struct RandomRangeBounds<Scalar, false> {
       case RandomRange::kGeneral:
         return std::numeric_limits<Scalar>::max();
       case RandomRange::kAvoidMinValue:
+        return std::numeric_limits<Scalar>::max();
+      case RandomRange::kOffCenterAvoidMinValue:
         return std::numeric_limits<Scalar>::max();
       case RandomRange::kReasonableSrcZeroPoint:
         return std::numeric_limits<Scalar>::max();
@@ -1529,7 +1544,7 @@ template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
   RUY_CHECK_EQ(life_stage, LifeStage::kHasZeroPoints);
   MakeRandom(rows, depth, lhs_order, lhs_zero_point, layout_style,
-             RandomRange::kAvoidMinValue, &lhs);
+             RandomRange::kOffCenterAvoidMinValue, &lhs);
   MakeRandom(depth, cols, rhs_order, rhs_zero_point, layout_style,
              RandomRange::kGeneral, &rhs);
   life_stage = LifeStage::kHasLhsRhs;
@@ -1542,6 +1557,10 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
   if (!getenv("BENCHMARK_ONLY_MATMUL") && (global_random_engine()() & 1)) {
     MakeRandomVector(RandomRange::kBias, rows, &bias_data);
     spec.bias = bias_data.data();
+  }
+  if (lhs.matrix.zero_point == std::numeric_limits<LhsScalar>::lowest() &&
+      rhs.matrix.zero_point == std::numeric_limits<RhsScalar>::lowest()) {
+    lhs.matrix.zero_point += 1;
   }
   MakeSpecMultiplierFieldsImpl<TestSet>::Run(this);
   MakeSpecClampFields(lhs.matrix, rhs.matrix, dst_zero_point, &spec);
