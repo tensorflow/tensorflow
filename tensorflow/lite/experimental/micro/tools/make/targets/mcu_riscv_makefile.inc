@@ -48,30 +48,14 @@ ifeq ($(TARGET), riscv32_mcu)
 
   MICROLITE_CC_SRCS += \
     $(wildcard tensorflow/lite/experimental/micro/riscv32_mcu/*.cc)
-
-  # Wrap functions
-  MICRO_FE310_LIBWRAP_SRCS += \
+  MICRO_SPEECH_TEST_SRCS += \
     $(wildcard $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/libwrap/sys/*.c) \
+    $(wildcard $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/libwrap/sys/*.cc) \
     $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/libwrap/misc/write_hex.c \
-    $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/libwrap/stdlib/malloc.c
-
-  MICRO_FE310_BSP_ENV_SRCS += \
+    $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/libwrap/stdlib/malloc.c \
     $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/env/start.S \
     $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/env/entry.S \
     $(MAKEFILE_DIR)/downloads/sifive_fe310_lib/bsp/env/freedom-e300-hifive1/init.c
-
-  MICRO_SPEECH_TEST_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-  MICRO_SPEECH_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-
-  HELLO_WORLD_TEST_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-  HELLO_WORLD_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-
-  magic_wand_TEST_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-  magic_wand_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-
-  person_detection_TEST_HDRS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-  person_detection_SRCS += $(MICRO_FE310_LIBWRAP_SRCS) $(MICRO_FE310_BSP_ENV_SRCS)
-
   LIBWRAP_SYMS := malloc free \
                   open lseek read write fstat stat close link unlink \
                   execve fork getpid kill wait \

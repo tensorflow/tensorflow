@@ -26,7 +26,7 @@ third_party/kissfft/kiss_fft.h \
 third_party/kissfft/_kiss_fft_guts.h \
 third_party/kissfft/tools/kiss_fftr.h
 
-MICRO_SPEECH_TEST_SRCS += \
+MICRO_SPEECH_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.cc \
@@ -35,7 +35,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micr
 MICRO_SPEECH_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.h \
-tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h \
 
 SIMPLE_FEATURES_GENERATOR_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_features_generator.cc \
@@ -183,7 +183,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.cc
 COMMAND_RESPONDER_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h
 
-MICRO_SPEECH_SRCS += \
+MICRO_SPEECH_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/main.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/main_functions.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.cc \
