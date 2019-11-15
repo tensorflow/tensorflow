@@ -66,9 +66,9 @@ class GrpcEvent : public Event {
 
 class GrpcBufferHandle : public BufferHandle {
  public:
-  explicit GrpcBufferHandle(EventId id, std::shared_ptr<GrpcEvent> event,
-                            int64_t bytes,
-                            std::optional<xla::ShapeProto> shape = std::nullopt)
+  explicit GrpcBufferHandle(
+      EventId id, std::shared_ptr<GrpcEvent> event, int64_t bytes,
+      absl::optional<xla::ShapeProto> shape = absl::nullopt)
       : id_(id),
         stream_(event->stream()),
         event_(std::move(event)),
@@ -81,14 +81,14 @@ class GrpcBufferHandle : public BufferHandle {
   EventId id() const { return id_; }
   GrpcTpuStream* stream() const { return stream_; }
 
-  std::optional<xla::ShapeProto> shape() override { return shape_; }
+  absl::optional<xla::ShapeProto> shape() override { return shape_; }
 
  private:
   const EventId id_;
   GrpcTpuStream* stream_;
   std::shared_ptr<GrpcEvent> event_;
   int64_t bytes_;
-  std::optional<xla::ShapeProto> shape_;
+  absl::optional<xla::ShapeProto> shape_;
 };
 
 class GrpcCompiledProgramHandle : public CompiledProgramHandle {

@@ -15,8 +15,7 @@
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_EVENT_ID_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_TPU_DRIVER_EVENT_ID_H_
 
-#include <stdint.h>
-
+#include <cstdint>
 #include <ostream>
 #include <string>
 #include <utility>
