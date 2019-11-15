@@ -215,21 +215,22 @@ def _check_conversion_params(conversion_params, is_v2=False):
     if not trt_optimizer:
       raise TypeError("Found no TensorRTOptimizer in rewriter_config_template.")
     if not trt_optimizer.parameter_map:
-        raise TypeError("Found no parameter_map in TensorRTOptimizer.")
+      raise TypeError("Found no parameter_map in TensorRTOptimizer.")
     if ("precision_mode" in trt_optimizer.parameter_map.keys() and
         trt_optimizer.parameter_map["precision_mode"].s not in map(
             _to_bytes, supported_precision_modes)):
-      raise ValueError(
-          ("precision_mode '{}' is not supported. "
-           "It should be one of {}").format(trt_optimizer.parameter_map["precision_mode"],
-                                            supported_precision_modes))
+      raise ValueError((
+          "precision_mode '{}' is not supported. "
+          "It should be one of {}").format(
+              trt_optimizer.parameter_map["precision_mode"],
+              supported_precision_modes))
     if is_v2:
-      # Static mode (building TRT engine without executing the op) is not supported 
+      # Static mode (building TRT engine without executing the op) is not supported
       # in TF 2.0. See TrtGraphConverterV2 for more details.
       if ("is_dynamic_op" in trt_optimizer.parameter_map.keys() and
           not trt_optimizer.parameter_map["is_dynamic_op"]):
-        raise ValueError("Option is_dynamic_op=False is not supported in TF 2.0, "
-                         "please set it to True instead.")
+        raise ValueError("Option is_dynamic_op=False is not supported "
+                         "in TF 2.0, please set it to True instead.")
 
 
 def _check_trt_version_compatibility():
@@ -304,12 +305,12 @@ def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
     optimizer = rewriter_config_with_trt.custom_optimizers.add()
     # Add a constfold optimizer to cleanup the unused Const nodes.
     rewriter_config_with_trt.custom_optimizers.add().name = "constfold"
-  
+
     optimizer.name = "TensorRTOptimizer"
     optimizer.parameter_map[
         "minimum_segment_size"].i = conversion_params.minimum_segment_size
-    optimizer.parameter_map[
-        "max_workspace_size_bytes"].i = conversion_params.max_workspace_size_bytes
+    optimizer.parameter_map["max_workspace_size_bytes"].i = \
+        conversion_params.max_workspace_size_bytes
     optimizer.parameter_map["precision_mode"].s = _to_bytes(
         conversion_params.precision_mode)
     optimizer.parameter_map[
@@ -546,7 +547,7 @@ class TrtGraphConverter(object):
 
       def _gather_names(tensor_info):
         """Get the node names from a TensorInfo."""
-        return set([tensor_info[key].name.split(":")[0] for key in tensor_info])
+        return {tensor_info[key].name.split(":")[0] for key in tensor_info}
 
       # Get input and outputs from all SignatureDef.
       output_node_names = _gather_names(input_signature_def.inputs).union(
@@ -742,7 +743,7 @@ class TrtGraphConverter(object):
               # exists
               try:
                 col_op = dest_graph.as_graph_element(name)
-              except (TypeError, ValueError, KeyError) as e:
+              except (TypeError, ValueError, KeyError):
                 continue
               dest_graph.add_to_collection(key, col_op)
           elif kind == "int64_list":

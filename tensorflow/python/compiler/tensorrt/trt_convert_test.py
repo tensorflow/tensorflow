@@ -162,10 +162,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         trt_convert._to_bytes("INT8"),
         trt_optimizer.parameter_map["precision_mode"].s)
     self.assertEqual(2, trt_optimizer.parameter_map["maximum_cached_engines"].i)
-    self.assertEqual(False,
-        trt_optimizer.parameter_map["use_calibration"].b)
-    self.assertEqual(True,
-        trt_optimizer.parameter_map["use_implicit_batch"].b)
+    self.assertEqual(False, trt_optimizer.parameter_map["use_calibration"].b)
+    self.assertEqual(True, trt_optimizer.parameter_map["use_implicit_batch"].b)
 
   def _GetConfigProto(self, rewriter_config=None):
     """Get ConfigProto for session creation."""
@@ -538,9 +536,9 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Run TRT conversion.
     with self.assertRaisesRegexp(
-        ValueError, r"Option is_dynamic_op=False is not supported in TF 2.0, please set it to True instead."):
-      converter = self._CreateConverterV2(
-          input_saved_model_dir, is_dynamic_op=False)
+        ValueError, r"Option is_dynamic_op=False is not supported in TF 2.0, "
+        "please set it to True instead."):
+      self._CreateConverterV2(input_saved_model_dir, is_dynamic_op=False)
 
   @test_util.run_v2_only
   def testTrtGraphConverter_Int8Conversion_v2(self):
