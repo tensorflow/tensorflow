@@ -533,7 +533,7 @@ struct ConvertTensorListResize : public ConversionPattern {
     // `TensorListStackOp` and `ConcatOp`, since the first dimension of the
     // shape specified by `result_type` is -1.
     auto stacked_extended_part = rewriter->create<TF::TensorListStackOp>(
-        loc, ArrayRef<Type>({result_type}), extended_part,
+        loc, result_type, extended_part,
         /*element_shape=*/CreateI32SplatConst(loc, rewriter, {}, -1),
         /*num_elements=*/rewriter->getI32IntegerAttr(-1));
     auto concat_op = rewriter->create<TF::ConcatOp>(
