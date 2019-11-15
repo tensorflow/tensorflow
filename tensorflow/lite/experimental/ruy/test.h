@@ -69,7 +69,7 @@ inline std::vector<std::string>* CoveredPaths() {
   return &covered_paths;
 }
 
-const char* PathName(Path path) {
+inline const char* PathName(Path path) {
 #define RUY_PATHNAME_CASE(NAME) \
   case Path::NAME:              \
     return #NAME;
@@ -90,7 +90,7 @@ const char* PathName(Path path) {
 #undef RUY_PATHNAME_CASE
 }
 
-const char* TuningName(Tuning tuning) {
+inline const char* TuningName(Tuning tuning) {
 #define RUY_SUBPATHNAME_CASE(NAME) \
   case Tuning::NAME:               \
     return #NAME;
@@ -104,7 +104,7 @@ const char* TuningName(Tuning tuning) {
 #undef RUY_SUBPATHNAME_CASE
 }
 
-const char* PathName(ExternalPath path) {
+inline const char* PathName(ExternalPath path) {
 #define RUY_PATHNAME_CASE(NAME) \
   case ExternalPath::NAME:      \
     return #NAME;
@@ -120,11 +120,12 @@ const char* PathName(ExternalPath path) {
 #undef RUY_PATHNAME_CASE
 }
 
-std::ostream& operator<<(std::ostream& stream, Path path) {
+inline std::ostream& operator<<(std::ostream& stream, Path path) {
   return stream << PathName(path);
 }
 
-std::ostream& operator<<(std::ostream& stream, ExternalPath external_path) {
+inline std::ostream& operator<<(std::ostream& stream,
+                                ExternalPath external_path) {
   return stream << PathName(external_path);
 }
 
@@ -342,8 +343,8 @@ void MakeRandomVector(RandomRange range, int size, std::vector<Scalar>* dst) {
 
 enum class LayoutStyle { kPackedLinear, kLinear };
 
-void MakeLayout(int rows, int cols, Order order, LayoutStyle layout_style,
-                Layout* layout) {
+inline void MakeLayout(int rows, int cols, Order order,
+                       LayoutStyle layout_style, Layout* layout) {
   layout->rows = rows;
   layout->cols = cols;
   layout->order = order;
@@ -531,7 +532,7 @@ struct TestSet final {
   bool benchmark_prepack_rhs = false;
 };
 
-Context& GlobalContext() {
+inline Context& GlobalContext() {
   static Context context;
   return context;
 }
@@ -645,7 +646,7 @@ struct GemmlowpOrder<Order::kRowMajor> {
   static constexpr gemmlowp::MapOrder kValue = gemmlowp::MapOrder::RowMajor;
 };
 
-gemmlowp::GemmContext& GlobalGemmlowpContext() {
+inline gemmlowp::GemmContext& GlobalGemmlowpContext() {
   static gemmlowp::GemmContext context;
   return context;
 }
@@ -1251,7 +1252,7 @@ struct Stats {
   double max;
 };
 
-std::string StatsAsString(const Stats& stats) {
+inline std::string StatsAsString(const Stats& stats) {
   char buf[256];
   snprintf(buf, sizeof(buf), "(median = %g, mean = %g, min = %g, max = %g)",
            stats.median, stats.mean, stats.min, stats.max);
@@ -1385,9 +1386,9 @@ void ComputeReasonableMultiplier(const Matrix<LhsScalar>& lhs,
   RUY_CHECK_GT(*multiplier, 0.0);
 }
 
-void QuantizeMultiplier(double multiplier_double,
-                        std::int32_t* multiplier_fixedpoint,
-                        int* multiplier_exponent) {
+inline void QuantizeMultiplier(double multiplier_double,
+                               std::int32_t* multiplier_fixedpoint,
+                               int* multiplier_exponent) {
   RUY_CHECK_GT(multiplier_double, 0);
   if (multiplier_double == 0.) {
     *multiplier_fixedpoint = 0;
@@ -1568,7 +1569,7 @@ inline int GetHexIntEnvVarOrZero(const char* name) {
   if (!val) {
     return 0;
   }
-  return std::stoi(val, 0, 16);
+  return std::stoi(val, nullptr, 16);
 }
 
 inline bool GetBoolEnvVarOrFalse(const char* name) {
@@ -1584,7 +1585,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeOtherParams() {
   life_stage = LifeStage::kHasOtherParams;
 }
 
-std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
+inline std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
   std::vector<Path> result;
   std::uint32_t remaining_paths = static_cast<std::uint32_t>(paths_bitfield);
   std::uint32_t test_bit = 1;
@@ -1598,7 +1599,7 @@ std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
   return result;
 }
 
-std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
+inline std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
   if (benchmark) {
     return {Tuning::kAuto};
   }
