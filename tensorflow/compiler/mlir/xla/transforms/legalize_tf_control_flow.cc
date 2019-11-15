@@ -26,10 +26,12 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/iterator_range.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
+#include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
@@ -77,38 +79,36 @@ void Detuple(Value* tuple, llvm::iterator_range<ResultIterator> replace,
 // requires additional arguments requires their values be tupled together. Then,
 // to support multiple returns (as XLA only supports a single return value) the
 // results of the conditional are tupled together.
-void ImportXlaRegion(Region* src_region, Region* dest_region,
+void ImportXlaRegion(mlir::FuncOp func, Region* dest_region, Location loc,
                      bool tuple_return = true) {
   BlockAndValueMapping mapper;
-  src_region->cloneInto(dest_region, mapper);
-
-  Block& entry_block = dest_region->front();
   OpBuilder builder(dest_region);
-  llvm::SmallVector<Type, 5> arg_types;
-  arg_types.reserve(entry_block.getNumArguments());
-  for (auto arg : entry_block.getArguments()) {
+
+  llvm::SmallVector<Type, 4> arg_types;
+  arg_types.reserve(func.getNumArguments());
+  for (auto arg : func.getArguments()) {
     arg_types.push_back(arg->getType());
   }
-  auto tuple_arg = entry_block.addArgument(builder.getTupleType(arg_types));
-  for (int64_t i = 0, s = entry_block.getNumArguments() - 1; i < s; i++) {
-    Value* val = entry_block.getArgument(0);
-    auto extract =
-        builder.create<GetTupleElementOp>(dest_region->getLoc(), tuple_arg, i);
-    val->replaceAllUsesWith(extract);
-    entry_block.eraseArgument(0);
+
+  auto entry_block = builder.createBlock(dest_region);
+  auto tuple_arg = entry_block->addArgument(
+      builder.getTupleType(func.getType().getInputs()));
+  llvm::SmallVector<Value*, 4> detupled_args;
+  detupled_args.reserve(func.getNumArguments());
+
+  for (int64_t i = 0, s = func.getNumArguments(); i < s; i++) {
+    auto extract = builder.create<GetTupleElementOp>(loc, tuple_arg, i);
+    detupled_args.push_back(extract);
   }
 
-  dest_region->walk([&](mlir::ReturnOp op) -> void {
-    OpBuilder builder(op);
-    llvm::SmallVector<Value*, 4> operands(op.operands());
-    if (tuple_return) {
-      auto tuple = builder.create<xla_hlo::TupleOp>(op.getLoc(), operands);
-      operands.assign({tuple.getResult()});
-    }
-
-    builder.create<xla_hlo::ReturnOp>(op.getLoc(), operands);
-    op.erase();
-  });
+  llvm::SmallVector<Value*, 4> result(
+      builder.create<CallOp>(loc, func, detupled_args).getResults());
+  if (!tuple_return) {
+    builder.create<xla_hlo::ReturnOp>(loc, result);
+  } else {
+    auto tuple_op = builder.create<TupleOp>(loc, result);
+    builder.create<xla_hlo::ReturnOp>(loc, tuple_op.getResult());
+  }
 }
 
 void LowerIf(TF::IfOp op, ModuleOp module) {
@@ -134,8 +134,8 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   BlockAndValueMapping mapper;
   auto then_branch = module.lookupSymbol<mlir::FuncOp>(op.then_branch());
   auto else_branch = module.lookupSymbol<mlir::FuncOp>(op.else_branch());
-  ImportXlaRegion(&then_branch.getBody(), &conditional.true_branch());
-  ImportXlaRegion(&else_branch.getBody(), &conditional.false_branch());
+  ImportXlaRegion(then_branch, &conditional.true_branch(), loc);
+  ImportXlaRegion(else_branch, &conditional.false_branch(), loc);
 
   // De-tuple the results of the xla hlo conditional result.
   builder.setInsertionPointAfter(op);
@@ -164,9 +164,8 @@ void LowerWhile(TF::WhileOp op, ModuleOp module) {
   auto body_branch = module.lookupSymbol<mlir::FuncOp>(op.body());
   auto cond_branch = module.lookupSymbol<mlir::FuncOp>(op.cond());
 
-  ImportXlaRegion(&body_branch.getBody(), &while_op.body());
-  ImportXlaRegion(&cond_branch.getBody(), &while_op.cond(),
-                  /*tuple_return=*/false);
+  ImportXlaRegion(body_branch, &while_op.body(), loc);
+  ImportXlaRegion(cond_branch, &while_op.cond(), loc, /*tuple_return=*/false);
 
   // De-tuple the results of the xla hlo while.
   builder.setInsertionPointAfter(op);

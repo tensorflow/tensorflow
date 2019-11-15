@@ -5,21 +5,20 @@ func @conditional(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>)
 attributes  {tf._input_shapes = ["tfshape$", "tfshape$"]} {
   // CHECK: [[VAL0:%.+]] = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
   %0 = "xla_hlo.compare"(%arg0, %arg1) {comparison_direction = "GT"} : (tensor<f32>, tensor<f32>) -> tensor<i1>
-
   // CHECK: [[VAL1:%.+]] = "xla_hlo.tuple"(%arg0, %arg1)
   // CHECK: [[VAL2:%.+]] = "xla_hlo.conditional"([[VAL0]], [[VAL1]], [[VAL1]]) ( {
   // CHECK: ^bb0(%arg2: tuple<tensor<f32>, tensor<f32>>):
-  // CHECK:   [[VAL4:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
-  // CHECK:   [[VAL5:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 1 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
-  // CHECK:   [[VAL6:%.+]] = "xla_hlo.log"([[VAL4]]) : (tensor<f32>) -> tensor<f32>
-  // CHECK:   [[VAL7:%.+]] = "xla_hlo.tuple"([[VAL6]]) : (tensor<f32>) -> tuple<tensor<f32>>
+  // CHECK:   [[VAL4:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 0 : i32}
+  // CHECK:   [[VAL5:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 1 : i32}
+  // CHECK:   [[VAL6:%.+]] = call @cond_true([[VAL4]], [[VAL5]])
+  // CHECK:   [[VAL7:%.+]] = "xla_hlo.tuple"([[VAL6]])
   // CHECK:   "xla_hlo.return"([[VAL7]]) : (tuple<tensor<f32>>) -> ()
   // CHECK: },  {
   // CHECK: ^bb0(%arg2: tuple<tensor<f32>, tensor<f32>>)
-  // CHECK:   [[VAL4:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 0 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
-  // CHECK:   [[VAL5:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 1 : i32} : (tuple<tensor<f32>, tensor<f32>>) -> tensor<f32>
-  // CHECK:   [[VAL6:%.+]] = "xla_hlo.exp"([[VAL5]]) : (tensor<f32>) -> tensor<f32>
-  // CHECK:   [[VAL7:%.+]] = "xla_hlo.tuple"([[VAL6]]) : (tensor<f32>) -> tuple<tensor<f32>>
+  // CHECK:   [[VAL4:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 0 : i32}
+  // CHECK:   [[VAL5:%.+]] = "xla_hlo.get_tuple_element"(%arg2) {index = 1 : i32}
+  // CHECK:   [[VAL6:%.+]] = call @cond_false([[VAL4]], [[VAL5]])
+  // CHECK:   [[VAL7:%.+]] = "xla_hlo.tuple"([[VAL6]])
   // CHECK: "xla_hlo.return"([[VAL7]]) : (tuple<tensor<f32>>) -> ()
   // CHECK: })
   %1 = "tf.If"(%0, %arg0, %arg1) {Tcond = "tfdtype$DT_BOOL", Tin = ["tfdtype$DT_FLOAT", "tfdtype$DT_FLOAT"], Tout = ["tfdtype$DT_FLOAT"], _lower_using_switch_merge = true, _output_shapes = ["tfshape$"], device = "", else_branch = @cond_false, is_stateless = true, name = "cond", output_shapes = ["tfshape$"], then_branch = @cond_true} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
@@ -50,23 +49,20 @@ attributes  {tf._input_shapes = ["tfshape$"]} {
   %1 = xla_hlo.constant dense<-1> : tensor<i32>
   // CHECK: [[VAL2:%.+]] = "xla_hlo.tuple"([[VAL0]], [[VAL1]], [[VAL0]])
   // CHECK: [[VAL3:%.+]] = "xla_hlo.while"([[VAL2]]) ( {
-  // CHECK:   ^bb0(%arg1: tuple<tensor<i32>, tensor<i32>, tensor<i32>>):  // no predecessors
+  // CHECK:   ^bb0(%arg1: tuple<tensor<i32>, tensor<i32>, tensor<i32>>):
   // CHECK:   [[VAL7:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 0 : i32}
   // CHECK:   [[VAL8:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 1 : i32}
   // CHECK:   [[VAL9:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 2 : i32}
-  // CHECK:   [[VAL10:%.+]] = xla_hlo.constant dense<10>
-  // CHECK:   [[VAL11:%.+]] = "xla_hlo.compare"([[VAL9]], [[VAL10]]) {comparison_direction = "LT"}
-  // CHECK:   "xla_hlo.return"([[VAL11]])
+  // CHECK:   [[VAL10:%.+]] = call @while_cond([[VAL7]], [[VAL8]], [[VAL9]])
+  // CHECK:   "xla_hlo.return"([[VAL10]])
   // CHECK: },  {
-  // CHECK: ^bb0(%arg1: tuple<tensor<i32>, tensor<i32>, tensor<i32>>):  // no predecessors
-  // CHECK:   [[VAL7:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 0 : i32} : (tuple<tensor<i32>, tensor<i32>, tensor<i32>>) -> tensor<i32>
-  // CHECK:   [[VAL8:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 1 : i32} : (tuple<tensor<i32>, tensor<i32>, tensor<i32>>) -> tensor<i32>
-  // CHECK:   [[VAL9:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 2 : i32} : (tuple<tensor<i32>, tensor<i32>, tensor<i32>>) -> tensor<i32>
-  // CHECK:   [[VAL10:%.+]] = xla_hlo.constant dense<1> : tensor<i32>
-  // CHECK:   [[VAL11:%.+]] = xla_hlo.add [[VAL9]], [[VAL10]] : tensor<i32>
-  // CHECK:   [[VAL12:%.+]] = xla_hlo.add [[VAL7]], [[VAL10]] : tensor<i32>
-  // CHECK:   [[VAL13:%.+]] = "xla_hlo.tuple"([[VAL12]], [[VAL8]], [[VAL11]]) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tuple<tensor<i32>, tensor<i32>, tensor<i32>>
-  // CHECK:   "xla_hlo.return"([[VAL13]]) : (tuple<tensor<i32>, tensor<i32>, tensor<i32>>) -> ()
+  // CHECK: ^bb0(%arg1: tuple<tensor<i32>, tensor<i32>, tensor<i32>>):
+  // CHECK:   [[VAL7:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 0 : i32}
+  // CHECK:   [[VAL8:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 1 : i32}
+  // CHECK:   [[VAL9:%.+]] = "xla_hlo.get_tuple_element"(%arg1) {index = 2 : i32}
+  // CHECK:   [[VAL10:%.+]]:3 = call @while_body([[VAL7]], [[VAL8]], [[VAL9]])
+  // CHECK:   [[VAL11:%.+]] = "xla_hlo.tuple"([[VAL10]]#0, [[VAL10]]#1, [[VAL10]]#2)
+  // CHECK:   "xla_hlo.return"([[VAL11]])
   // CHECK: }) : (tuple<tensor<i32>, tensor<i32>, tensor<i32>>) -> tuple<tensor<i32>, tensor<i32>, tensor<i32>>
   // CHECK: [[VAL4:%.+]] = "xla_hlo.get_tuple_element"([[VAL3]]) {index = 0 : i32}
   // CHECK: [[VAL5:%.+]] = "xla_hlo.get_tuple_element"([[VAL3]]) {index = 1 : i32}
