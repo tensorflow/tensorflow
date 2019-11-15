@@ -632,16 +632,16 @@ struct CSRSparseSparseMatrixMatMul<GPUDevice, T>
 
  private:
   OpKernelContext* ctx_;
-  CudaSparse cuda_sparse_;
+  GpuSparse cuda_sparse_;
   bool initialized_;
   bool transpose_a_;
   bool adjoint_a_;
   bool transpose_b_;
-  CudaSparseMatrixDescriptor descrA_;
-  CudaSparseMatrixDescriptor descrB_;
-  CudaSparseMatrixDescriptor descrC_;
-  cusparseOperation_t transA_;
-  cusparseOperation_t transB_;
+  GpuSparseMatrixDescriptor descrA_;
+  GpuSparseMatrixDescriptor descrB_;
+  GpuSparseMatrixDescriptor descrC_;
+  gpusparseOperation_t transA_;
+  gpusparseOperation_t transB_;
 };
 
 }  // namespace functor

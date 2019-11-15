@@ -324,10 +324,10 @@ struct CSRSparseMatrixAdd<GPUDevice, T>
 
  private:
   OpKernelContext* ctx_;
-  CudaSparse cuda_sparse_;
-  CudaSparseMatrixDescriptor descrA_;
-  CudaSparseMatrixDescriptor descrB_;
-  CudaSparseMatrixDescriptor descrC_;
+  GpuSparse cuda_sparse_;
+  GpuSparseMatrixDescriptor descrA_;
+  GpuSparseMatrixDescriptor descrB_;
+  GpuSparseMatrixDescriptor descrC_;
   const T alpha_;
   const T beta_;
   bool initialized_;

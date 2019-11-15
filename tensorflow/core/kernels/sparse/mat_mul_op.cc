@@ -723,7 +723,7 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
   Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
                  typename TTypes<T>::UnalignedConstMatrix b,
                  typename TTypes<T>::UnalignedMatrix c) {
-    CudaSparse cuda_sparse(ctx);
+    GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
     {
       // Use Csrmm to calculate:
@@ -741,18 +741,18 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       // transA must be non-transpose if transB is transpose (cusparse
       // limitation).
-      const cusparseOperation_t transA = CUSPARSE_OPERATION_NON_TRANSPOSE;
+      const gpusparseOperation_t transA = CUSPARSE_OPERATION_NON_TRANSPOSE;
 
       // transB: b is row-major, and cusparse requires col-major b (or
       // equivalently transB == transpose).  this version is actually more
       // efficient.
-      const cusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
+      const gpusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
 
-      cusparseMatDescr_t descrA;
-      TF_RETURN_IF_CUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
-      TF_RETURN_IF_CUSPARSE_ERROR(
+      gpusparseMatDescr_t descrA;
+      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_CUSPARSE_ERROR(
+      TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
 
       // A is (m, k), Bt is (ldb, k) and Ct is (ldc, n)
@@ -796,13 +796,13 @@ template <typename T>
 class CSRSparseMatrixMatVec<GPUDevice, T> {
  public:
   CSRSparseMatrixMatVec(bool transpose_a, bool conjugate_a)
-      : transA_(TransposeAndConjugateToCuSparseOp(transpose_a, conjugate_a,
-                                                  &status_)) {}
+      : transA_(TransposeAndConjugateToGpuSparseOp(transpose_a, conjugate_a,
+                                                   &status_)) {}
 
   Status Compute(OpKernelContext* ctx, const ConstCSRComponent<T>& a,
                  const T* x, T* y) {
     TF_RETURN_IF_ERROR(status_);
-    CudaSparse cuda_sparse(ctx);
+    GpuSparse cuda_sparse(ctx);
     TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
     {
       // Use Csrmv to calculate:
@@ -815,11 +815,11 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       const T alpha = 1;
       const T beta = 0;
 
-      cusparseMatDescr_t descrA;
-      TF_RETURN_IF_CUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
-      TF_RETURN_IF_CUSPARSE_ERROR(
+      gpusparseMatDescr_t descrA;
+      TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
-      TF_RETURN_IF_CUSPARSE_ERROR(
+      TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
 
       const int m = a.dense_shape_host(0);
@@ -836,7 +836,7 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
 
  private:
   Status status_;
-  const cusparseOperation_t transA_;
+  const gpusparseOperation_t transA_;
 };
 
 }  // namespace functor
