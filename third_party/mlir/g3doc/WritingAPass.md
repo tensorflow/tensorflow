@@ -20,14 +20,14 @@ In MLIR, the main unit of abstraction and transformation is an
 work on instances of operations at different levels of nesting. The structure of
 the [pass manager](#pass-manager), and the concept of nesting, is detailed
 further below. All passes in MLIR derive from `OperationPass` and adhere to the
-following restrictions; Any noncompliance will lead to problematic behavior in
+following restrictions; any noncompliance will lead to problematic behavior in
 multithreaded and other advanced scenarios:
 
 *   Modify anything within the parent block/region/operation/etc, outside of the
     current operation being operated on. This includes adding or removing
     operations from the parent block.
-*   Maintain pass state across invocations of runOnOperation. A pass may be run
-    on several different operations with no guarantee of execution order.
+*   Maintain pass state across invocations of `runOnOperation`. A pass may be
+    run on several different operations with no guarantee of execution order.
     *   When multithreading, a specific pass instance may not even execute on
         all operations within the module. As such, a pass should not rely on
         running on all operations.
