@@ -36,6 +36,14 @@ func @squared_difference_complex(%arg0: tensor<3xcomplex<f32>>, %arg1: tensor<3x
   return %1 : tensor<3xcomplex<f32>>
 }
 
+// CHECK-LABEL: func @fill
+// CHECK-SAME: (%[[ARG0:.*]]: tensor<*xi64>, %[[ARG1:.*]]: tensor<*xf32>)
+func @fill(%arg0: tensor<*xi64>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: "tf.BroadcastTo"(%[[ARG1]], %[[ARG0]])
+  %0 = "tf.Fill"(%arg0, %arg1) : (tensor<*xi64>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: pack_with_unranked
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x5xf32>, %[[ARG1:.*]]: tensor<*xf32>
 func @pack_with_unranked(%arg0: tensor<?x5xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {

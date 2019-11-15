@@ -656,6 +656,26 @@ func @FakeQuantWithMinMaxVarsPerChannel_mismatch_min_max(tensor<1x2x3x8xf32>, te
 
 // -----
 
+// Test invalid tf.Fill
+func @testFill(tensor<i32>, tensor<f32>) -> tensor<?x?xf32> {
+^bb0(%arg0: tensor<i32>, %arg1: tensor<f32>):
+  // expected-error @+1 {{requires dims to be a 1D tensor}}
+  %0 = "tf.Fill"(%arg0, %arg1) : (tensor<i32>, tensor<f32>) -> (tensor<?x?xf32>)
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
+// Test invalid tf.Fill
+func @testFill(tensor<2xi32>, tensor<1xf32>) -> tensor<?x?xf32> {
+^bb0(%arg0: tensor<2xi32>, %arg1: tensor<1xf32>):
+  // expected-error @+1 {{requires value to be a scalar}}
+  %0 = "tf.Fill"(%arg0, %arg1) : (tensor<2xi32>, tensor<1xf32>) -> (tensor<?x?xf32>)
+  return %0 : tensor<?x?xf32>
+}
+
+// -----
+
 // Test valid tf.FusedBatchNorm
 // CHECK-LABEL: func @testFusedBatchNorm
 func @testFusedBatchNorm(tensor<8x8x8x8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>, tensor<8xf32>) -> tensor<8x8x8x8xf32> {

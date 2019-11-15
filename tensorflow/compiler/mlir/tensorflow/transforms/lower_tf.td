@@ -65,7 +65,6 @@ def LowerSoftmaxCrossEntropyWithLogitsOp : Pattern<
    (TF_SubOp (TF_SoftmaxOp $features), $labels)],
   [(NonScalarType $features), (NonScalarType $labels)]>;
 
-
 //===----------------------------------------------------------------------===//
 // Difference op patterns.
 //===----------------------------------------------------------------------===//
@@ -82,6 +81,13 @@ def : Pat<(TF_SquaredDifferenceOp ComplexTensor: $lhs, ComplexTensor:$rhs),
           (TF_MulOp (TF_SubOp:$diff $lhs, $rhs), (TF_ConjOp $diff))>;
 
 //===----------------------------------------------------------------------===//
+// Fill op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerFillOp : Pat<(TF_FillOp $dims, $value),
+                      (TF_BroadcastToOp $value, $dims)>;
+
+//===----------------------------------------------------------------------===//
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -93,4 +99,3 @@ def ZeroDenseElementsAttr : NativeCodeCall<
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
              (TF_ConstOp (ZeroDenseElementsAttr $input)))>;
-

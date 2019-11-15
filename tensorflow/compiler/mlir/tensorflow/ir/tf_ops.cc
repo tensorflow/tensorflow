@@ -761,6 +761,19 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// FillOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(FillOp op) {
+  if (!IsOfRankOrUnranked(op.dims(), 1))
+    return op.emitOpError() << "requires dims to be a 1D tensor";
+  if (!IsOfRankOrUnranked(op.value(), 0))
+    return op.emitOpError() << "requires value to be a scalar";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FusedBatchNormOp
 //===----------------------------------------------------------------------===//
 
