@@ -112,16 +112,9 @@ int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
   return 0;
 }
 
-const char* kUnspecifiedDeviceName = "<unspecified>";
-
-const char* DeviceNameOrUnspecified(Device* device) {
-  return (device == nullptr) ? kUnspecifiedDeviceName : device->name().c_str();
-}
-
-const string DeviceNameOrUnspecified(const DeviceNameUtils::ParsedName& name) {
-  return DeviceNameUtils::HasSomeDetails(name)
-             ? DeviceNameUtils::ParsedNameToString(name)
-             : kUnspecifiedDeviceName;
+const string& DeviceNameOrUnspecified(Device* device) {
+  static string* unspecified_string = new string("<unspecified>");
+  return (device == nullptr) ? *unspecified_string : device->name();
 }
 
 // This function expects *handle to point to an existing tensor handle that is
@@ -256,8 +249,8 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
                             " :\n", KernelsRegisteredForOp(ndef.op()));
   }
 
-  if (DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
-    ctx->pflr()->device_set()->FindMatchingDevices(op->GetDeviceName(),
+  if (DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())) {
+    ctx->pflr()->device_set()->FindMatchingDevices(op->GetDeviceParsedName(),
                                                    &final_devices);
 
     if (!final_devices.empty()) {
@@ -266,7 +259,7 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
     }
 
     if (final_devices.empty() && ctx->AllowSoftPlacement()) {
-      DeviceNameUtils::ParsedName soft_device_name = op->GetDeviceName();
+      DeviceNameUtils::ParsedName soft_device_name = op->GetDeviceParsedName();
       soft_device_name.type.clear();
       soft_device_name.has_type = false;
       soft_device_name.has_id = false;
@@ -281,7 +274,7 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
     }
     if (final_devices.empty()) {
       return errors::InvalidArgument(
-          "Could not satisfy device specification '", op->GetDeviceName(),
+          "Could not satisfy device specification '", op->GetDeviceParsedName(),
           "'. All available devices [",
           absl::StrJoin(DevicesToString(ctx->pflr()->device_set()->devices()),
                         ", "),
@@ -452,12 +445,12 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
   }
 
   // No explicit requests. Compile for XLA devices by default.
-  if (op->GetDeviceName().type == "TPU" ||
-      op->GetDeviceName().type == "XLA_GPU" ||
-      op->GetDeviceName().type == "XLA_CPU") {
+  if (op->GetDeviceParsedName().type == "TPU" ||
+      op->GetDeviceParsedName().type == "XLA_GPU" ||
+      op->GetDeviceParsedName().type == "XLA_CPU") {
     DVLOG(2) << "Compiling " << op->Name()
              << " with XLA because it is running on an XLA device "
-             << op->GetDeviceName().type;
+             << op->GetDeviceParsedName().type;
     *compile_with_xla = true;
   } else {
     *compile_with_xla = false;
@@ -491,8 +484,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(executor.status());
   Device* device = op->Device();
 
-  Fprint128 cache_key = op->MutableAttrs()->CacheKey(
-      DeviceNameOrUnspecified(op->GetDeviceName()));
+  Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->GetDeviceName());
 
   bool is_multi_device_function =
       IsMultiDevice(ctx->FindFunctionDef(op->Name()));
@@ -728,17 +720,16 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   // TODO(fishx): Remove following code when lazy tensor copy is ready.
   if (op->Device() == nullptr) {
     tensorflow::Device* device = nullptr;
-    string device_name =
-        DeviceNameUtils::ParsedNameToString(op->GetDeviceName());
+    string device_name = op->GetDeviceName();
     TF_RETURN_IF_ERROR(ctx->FindDeviceByName(device_name, &device));
     op->SetDevice(device);
   }
 
   eager::EagerClient* eager_client = nullptr;
   uint64 context_id = ctx->GetContextId();
-  TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceName(), &eager_client));
+  TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceParsedName(), &eager_client));
   string remote_task;
-  if (!DeviceNameUtils::GetTaskName(op->GetDeviceName(), &remote_task)) {
+  if (!DeviceNameUtils::GetTaskName(op->GetDeviceParsedName(), &remote_task)) {
     return errors::InvalidArgument(
         "Unable to find remote task corresponding to device ",
         op->Device()->name());
@@ -989,8 +980,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
-  bool op_is_local = op->EagerContext()->IsLocalDeviceName(op->GetDeviceName());
-
   if (!op->Executor().Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.
     // TODO(b/141004939): Remove this.
@@ -1001,7 +990,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
       EagerOpRewriteRegistry::PRE_EXECUTION, op, &out_op));
 
-  if (op_is_local) {
+  if (op->IsLocal()) {
     if (out_op) {
       op = out_op.get();
     }
@@ -1011,7 +1000,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
   if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
     string msg = strings::StrCat(
         "Executing op ", op->Name(), " on task ",
-        DeviceNameUtils::ParsedNameToString(op->GetDeviceName()));
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }
