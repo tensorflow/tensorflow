@@ -68,6 +68,7 @@ class ArenaPlanner : public MemoryPlanner {
   TfLiteStatus ExecuteAllocations(int first_node, int last_node) override;
   TfLiteStatus ReleaseNonPersistentMemory() override;
   TfLiteStatus AcquireNonPersistentMemory() override;
+  bool HasNonPersistentMemory() override;
 
   // Returns the base arena location for a given allocation type.
   std::intptr_t BasePointer(TfLiteAllocationType type);
