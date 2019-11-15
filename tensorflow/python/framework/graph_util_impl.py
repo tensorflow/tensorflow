@@ -236,6 +236,57 @@ def tensor_shape_from_node_def_name(graph, input_name):
   return shape
 
 
+def _update_resource_identities(resource_identities, output_graph_def):
+  """Updates the type of DT_RESOURCE Identity ops.
+
+  Updates the type of the `resource_identities` to the type of the node that
+  feed into it if the node is not an input to any other node. Valid nodes are
+  generally colocated nodes.
+
+  Args:
+    resource_identities: List of NodeDef protos that are Identity ops with the
+      type DT_RESOURCE.
+    output_graph_def: GraphDef proto.
+  """
+  # Identify the nodes in the graph and the nodes consuming each node.
+  map_name_to_node = {}
+  map_name_to_inputs = {}
+  for node in output_graph_def.node:
+    map_name_to_node[node.name] = node
+    for unparsed_input_name in node.input:
+      if not unparsed_input_name.startswith("^"):
+        parsed_input_name = _node_name(unparsed_input_name)
+        if parsed_input_name not in map_name_to_inputs:
+          map_name_to_inputs[parsed_input_name] = []
+        map_name_to_inputs[parsed_input_name].append(node.name)
+
+  for node in resource_identities:
+    # Validate the node is not an input to other nodes.
+    if node.name in map_name_to_inputs:
+      continue
+
+    # Get the type of the Identity node by tracing back through the nodes until
+    # we come to a non-Identity or non-control flow node or the type of the node
+    # is not DT_RESOURCE.
+    input_node = map_name_to_node[_node_name(node.input[0])]
+    while (input_node.op in _CONTROL_FLOW_OP_NAMES_OR_IDENTITY and
+           input_node.attr["T"].type == dtypes.resource):
+      input_node = map_name_to_node[_node_name(input_node.input[0])]
+
+    # Update the type of the Identity node if an Identity, control flow, or
+    # VarHandleOp node with a type that is not DT_RESOURCE is found.
+    debugging_message = str.encode(
+        "This Identity's type was changed from DT_RESOURCE during graph "
+        "freezing.")
+    if input_node.attr["T"].type != dtypes.resource:
+      if input_node.op in _CONTROL_FLOW_OP_NAMES_OR_IDENTITY:
+        node.attr["T"].CopyFrom(input_node.attr["T"])
+        node.attr["_debugging"].s = debugging_message
+      elif input_node.op == "VarHandleOp":
+        node.attr["T"].CopyFrom(input_node.attr["dtype"])
+        node.attr["_debugging"].s = debugging_message
+
+
 @deprecation.deprecated(
     date=None,
     instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
@@ -326,11 +377,6 @@ def convert_variables_to_constants(sess,
             source_op_names.append(
                 get_input_name(map_name_to_node[merge_resource_name]))
 
-        if "_class" in current_node.attr:
-          for colocated_node_name in current_node.attr["_class"].list.s:
-            source_op_names.append(
-                _get_colocated_node_name(colocated_node_name))
-
       for source_node in source_op_names:
         if map_name_to_node[source_node].op != "VarHandleOp":
           raise ValueError("Cannot find the variable that is an input "
@@ -400,6 +446,15 @@ def convert_variables_to_constants(sess,
     else:
       output_node.CopyFrom(input_node)
     output_graph_def.node.extend([output_node])
+
+  # Update the types of the DT_RESOURCE Identity nodes that do not have an
+  # associated ReadVariableOp.
+  resource_identities = []
+  for node in output_graph_def.node:
+    if node.op == "Identity" and node.attr["T"].type == dtypes.resource:
+      resource_identities.append(node)
+  if resource_identities:
+    _update_resource_identities(resource_identities, output_graph_def)
 
   output_graph_def.library.CopyFrom(inference_graph.library)
   logging.info("Converted %d variables to const ops.", how_many_converted)
