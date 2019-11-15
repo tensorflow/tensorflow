@@ -2489,6 +2489,274 @@ tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MatrixDiagV3Op : TF_Op<"MatrixDiagV3", [NoSideEffect]> {
+  let summary = [{
+Returns a batched diagonal tensor with given batched diagonal values.
+  }];
+
+  let description = [{
+Returns a tensor with the contents in `diagonal` as `k[0]`-th to `k[1]`-th
+diagonals of a matrix, with everything else padded with `padding`. `num_rows`
+and `num_cols` specify the dimension of the innermost matrix of the output. If
+both are not specified, the op assumes the innermost matrix is square and infers
+its size from `k` and the innermost dimension of `diagonal`. If only one of them
+is specified, the op assumes the unspecified value is the smallest possible
+based on other criteria.
+
+Let `diagonal` have `r` dimensions `[I, J, ..., L, M, N]`. The output tensor has
+rank `r+1` with shape `[I, J, ..., L, M, num_rows, num_cols]` when only one
+diagonal is given (`k` is an integer or `k[0] == k[1]`). Otherwise, it has rank
+`r` with shape `[I, J, ..., L, num_rows, num_cols]`.
+
+The second innermost dimension of `diagonal` has double meaning.
+When `k` is scalar or `k[0] == k[1]`, `M` is part of the batch size
+[I, J, ..., M], and the output tensor is:
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, n-max(d_upper, 0)] ; if n - m == d_upper
+    padding_value                             ; otherwise
+```
+
+Otherwise, `M` is treated as the number of diagonals for the matrix in the
+same batch (`M = k[1]-k[0]+1`), and the output tensor is:
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+    padding_value                                     ; otherwise
+```
+where `d = n - m`, `diag_index = [k] - d`, and
+`index_in_diag = n - max(d, 0) + offset`.
+
+`offset` is zero except when the alignment of the diagonal is to the right.
+```
+offset = max_diag_len - diag_len(d) ; if (`align` in {RIGHT_LEFT, RIGHT_RIGHT}
+                                           and `d >= 0`) or
+                                         (`align` in {LEFT_RIGHT, RIGHT_RIGHT}
+                                           and `d <= 0`)
+         0                          ; otherwise
+```
+where `diag_len(d) = min(cols - max(d, 0), rows + min(d, 0))`.
+
+For example:
+
+```
+# The main diagonal.
+diagonal = np.array([[1, 2, 3, 4],            # Input shape: (2, 4)
+                     [5, 6, 7, 8]])
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0],  # Output shape: (2, 4, 4)
+                               [0, 2, 0, 0],
+                               [0, 0, 3, 0],
+                               [0, 0, 0, 4]],
+                              [[5, 0, 0, 0],
+                               [0, 6, 0, 0],
+                               [0, 0, 7, 0],
+                               [0, 0, 0, 8]]]
+
+# A superdiagonal (per batch).
+diagonal = np.array([[1, 2, 3],  # Input shape: (2, 3)
+                     [4, 5, 6]])
+tf.matrix_diag(diagonal, k = 1)
+  ==> [[[0, 1, 0, 0],  # Output shape: (2, 4, 4)
+        [0, 0, 2, 0],
+        [0, 0, 0, 3],
+        [0, 0, 0, 0]],
+       [[0, 4, 0, 0],
+        [0, 0, 5, 0],
+        [0, 0, 0, 6],
+        [0, 0, 0, 0]]]
+
+# A tridiagonal band (per batch).
+diagonals = np.array([[[0, 8, 9],  # Input shape: (2, 2, 3)
+                       [1, 2, 3],
+                       [4, 5, 0]],
+                      [[0, 2, 3],
+                       [6, 7, 9],
+                       [9, 1, 0]]])
+tf.matrix_diag(diagonals, k = (-1, 1))
+  ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
+        [4, 2, 9],
+        [0, 5, 3]],
+       [[6, 2, 0],
+        [9, 7, 3],
+        [0, 1, 9]]]
+
+# LEFT_RIGHT alignment.
+diagonals = np.array([[[8, 9, 0],  # Input shape: (2, 2, 3)
+                       [1, 2, 3],
+                       [0, 4, 5]],
+                      [[2, 3, 0],
+                       [6, 7, 9],
+                       [0, 9, 1]]])
+tf.matrix_diag(diagonals, k = (-1, 1), align="LEFT_RIGHT")
+  ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
+        [4, 2, 9],
+        [0, 5, 3]],
+       [[6, 2, 0],
+        [9, 7, 3],
+        [0, 1, 9]]]
+
+# Rectangular matrix.
+diagonal = np.array([1, 2])  # Input shape: (2)
+tf.matrix_diag(diagonal, k = -1, num_rows = 3, num_cols = 4)
+  ==> [[0, 0, 0, 0],  # Output shape: (3, 4)
+       [1, 0, 0, 0],
+       [0, 2, 0, 0]]
+
+# Rectangular matrix with inferred num_cols and padding_value = 9.
+tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
+  ==> [[9, 9],  # Output shape: (3, 2)
+       [1, 9],
+       [9, 2]]
+
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$diagonal,
+    I32Tensor:$k,
+    I32Tensor:$num_rows,
+    I32Tensor:$num_cols,
+    TF_Tensor:$padding_value,
+
+    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "RIGHT_LEFT">:$align
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MatrixSetDiagV3Op : TF_Op<"MatrixSetDiagV3", [NoSideEffect]> {
+  let summary = [{
+Returns a batched matrix tensor with new batched diagonal values.
+  }];
+
+  let description = [{
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the specified diagonals of the
+innermost matrices. These will be overwritten by the values in `diagonal`.
+
+`input` has `r+1` dimensions `[I, J, ..., L, M, N]`. When `k` is scalar or
+`k[0] == k[1]`, `diagonal` has `r` dimensions `[I, J, ..., L, max_diag_len]`.
+Otherwise, it has `r+1` dimensions `[I, J, ..., L, num_diags, max_diag_len]`.
+`num_diags` is the number of diagonals, `num_diags = k[1] - k[0] + 1`.
+`max_diag_len` is the longest diagonal in the range `[k[0], k[1]]`,
+`max_diag_len = min(M + min(k[1], 0), N + min(-k[0], 0))`
+
+The output is a tensor of rank `k+1` with dimensions `[I, J, ..., L, M, N]`.
+If `k` is scalar or `k[0] == k[1]`:
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, n-max(k[1], 0)] ; if n - m == k[1]
+    input[i, j, ..., l, m, n]              ; otherwise
+```
+
+Otherwise,
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+    input[i, j, ..., l, m, n]                         ; otherwise
+```
+where `d = n - m`, `diag_index = k[1] - d`, and
+`index_in_diag = n - max(d, 0) + offset`.
+
+`offset` is zero except when the alignment of the diagonal is to the right.
+```
+offset = max_diag_len - diag_len(d) ; if (`align` in {RIGHT_LEFT, RIGHT_RIGHT}
+                                           and `d >= 0`) or
+                                         (`align` in {LEFT_RIGHT, RIGHT_RIGHT}
+                                           and `d <= 0`)
+         0                          ; otherwise
+```
+where `diag_len(d) = min(cols - max(d, 0), rows + min(d, 0))`.
+
+For example:
+
+```
+# The main diagonal.
+input = np.array([[[7, 7, 7, 7],              # Input shape: (2, 3, 4)
+                   [7, 7, 7, 7],
+                   [7, 7, 7, 7]],
+                  [[7, 7, 7, 7],
+                   [7, 7, 7, 7],
+                   [7, 7, 7, 7]]])
+diagonal = np.array([[1, 2, 3],               # Diagonal shape: (2, 3)
+                     [4, 5, 6]])
+tf.matrix_set_diag(input, diagonal)
+  ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+        [7, 2, 7, 7],
+        [7, 7, 3, 7]],
+       [[4, 7, 7, 7],
+        [7, 5, 7, 7],
+        [7, 7, 6, 7]]]
+
+# A superdiagonal (per batch).
+tf.matrix_set_diag(input, diagonal, k = 1)
+  ==> [[[7, 1, 7, 7],  # Output shape: (2, 3, 4)
+        [7, 7, 2, 7],
+        [7, 7, 7, 3]],
+       [[7, 4, 7, 7],
+        [7, 7, 5, 7],
+        [7, 7, 7, 6]]]
+
+# A band of diagonals.
+diagonals = np.array([[[0, 9, 1],  # Diagonal shape: (2, 4, 3)
+                       [6, 5, 8],
+                       [1, 2, 3],
+                       [4, 5, 0]],
+                      [[0, 1, 2],
+                       [5, 6, 4],
+                       [6, 1, 2],
+                       [3, 4, 0]]])
+tf.matrix_set_diag(input, diagonals, k = (-1, 2))
+  ==> [[[1, 6, 9, 7],  # Output shape: (2, 3, 4)
+        [4, 2, 5, 1],
+        [7, 5, 3, 8]],
+       [[6, 5, 1, 7],
+        [3, 1, 6, 2],
+        [7, 4, 2, 4]]]
+
+# LEFT_RIGHT alignment.
+diagonals = np.array([[[9, 1, 0],  # Diagonal shape: (2, 4, 3)
+                       [6, 5, 8],
+                       [1, 2, 3],
+                       [0, 4, 5]],
+                      [[1, 2, 0],
+                       [5, 6, 4],
+                       [6, 1, 2],
+                       [0, 3, 4]]])
+tf.matrix_set_diag(input, diagonals, k = (-1, 2), align="LEFT_RIGHT")
+  ==> [[[1, 6, 9, 7],  # Output shape: (2, 3, 4)
+        [4, 2, 5, 1],
+        [7, 5, 3, 8]],
+       [[6, 5, 1, 7],
+        [3, 1, 6, 2],
+        [7, 4, 2, 4]]]
+
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_Tensor:$diagonal,
+    I32Tensor:$k,
+
+    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "RIGHT_LEFT">:$align
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_MaxOp : TF_Op<"Max", [NoSideEffect]> {
   let summary = [{
 Computes the maximum of elements across dimensions of a tensor.

@@ -688,6 +688,39 @@ func @matrix_diag_v2(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 // CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
 }
 
+func @matrix_diag_v3_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  // this should have been 0.
+  %0 = constant dense<[1]> : tensor<1xi32>
+
+  %1 = constant dense<[-1]> : tensor<1xi32>
+  %2 = constant dense<[-1]> : tensor<1xi32>
+  %3 = constant dense<[0, 0]> : tensor<2xi32>
+  %4 = "tf.MatrixDiagV3"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v3_no_match(
+// CHECK-SAME:      [[VAL_0:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_1:%.*]] = constant dense<1> : tensor<1xi32>
+// CHECK:           [[VAL_2:%.*]] = constant dense<-1> : tensor<1xi32>
+// CHECK:           [[VAL_3:%.*]] = constant dense<0> : tensor<2xi32>
+// CHECK:           [[VAL_4:%.*]] = "tf.MatrixDiagV3"([[VAL_0]], [[VAL_1]], [[VAL_2]], [[VAL_2]], [[VAL_3]]) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_4]] : tensor<8x16x16xf32>
+}
+
+func @matrix_diag_v3(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = constant dense<[0]> : tensor<1xi32>
+  %1 = constant dense<[-1]> : tensor<1xi32>
+  %2 = constant dense<[-1]> : tensor<1xi32>
+  %3 = constant dense<[0, 0]> : tensor<2xi32>
+  %4 = "tf.MatrixDiagV3"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v3(
+// CHECK-SAME:      [[VAL_5:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_6:%.*]] = "tfl.matrix_diag"([[VAL_5]]) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
+}
+
 func @maximum(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
