@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/profiler/internal/annotation_stack.h"
 
@@ -523,7 +524,7 @@ void AddCuptiOverheadActivityEvent(CuptiTraceCollector *collector,
       break;
     case CUPTI_ACTIVITY_OBJECT_STREAM:
       event.stream_id = overhead->objectId.dcs.streamId;
-      ABSL_FALLTHROUGH_INTENDED;
+      TF_FALLTHROUGH_INTENDED;
     case CUPTI_ACTIVITY_OBJECT_DEVICE:
     case CUPTI_ACTIVITY_OBJECT_CONTEXT:
       event.device_id = overhead->objectId.dcs.deviceId;
