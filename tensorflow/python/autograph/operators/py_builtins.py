@@ -414,8 +414,34 @@ def _py_any(iterable):
   return any(iterable)
 
 
+def all_(iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_all(iterable)
+  return _py_all(iterable)
+
+
+# all() operation is similiar to any() and could be translated
+# to `filter(False)` then `take(1)`, and check if `False` exists.
+def _tf_dataset_all(iterable):
+  # check and make sure iterable.element_spec only consists of one
+  # element of tf.bool.
+  specs = nest.flatten(iterable.element_spec)
+  if len(specs) != 1 or specs[0].dtype != dtypes.bool:
+    raise ValueError('in graph mode, the "all" builtin only supports datasets '
+                     'that return bool scalars; got: {}'.format(
+                         iterable.element_spec))
+  ds = iterable.filter(lambda x: math_ops.logical_not(x))
+  ds = ds.take(1)
+  ds = ds.reduce(constant_op.constant(True, dtype=dtypes.bool), lambda _, y: y)
+  return ds
+
+
+def _py_all(iterable):
+  return all(iterable)
+
+
 SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
-                      filter, any)
+                      filter, any, all)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -434,4 +460,5 @@ BUILTIN_FUINCTIONS_MAP = {
     'map': map_,
     'filter': filter_,
     'any': any_,
+    'all': all_,
 }
