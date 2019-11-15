@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
-#include "tensorflow/core/platform/annotation.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -36,11 +36,11 @@ class PythonScopedAnnotation {
   void Enter() { current_.emplace(std::move(name_)); }
   void Exit() { current_.reset(); }
 
-  static bool IsEnabled() { return tracing::ScopedAnnotation::IsEnabled(); }
+  static bool IsEnabled() { return ScopedAnnotation::IsEnabled(); }
 
  private:
   std::string name_;
-  absl::optional<tracing::ScopedAnnotation> current_;
+  absl::optional<ScopedAnnotation> current_;
 };
 
 }  // namespace profiler

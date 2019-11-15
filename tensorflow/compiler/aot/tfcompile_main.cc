@@ -21,7 +21,7 @@ limitations under the License.
 #include "absl/strings/match.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/string_view.h"
-#include "third_party/llvm/llvm/include/llvm-c/Target.h"
+#include "llvm-c/Target.h"
 #include "tensorflow/compiler/aot/codegen.h"
 #include "tensorflow/compiler/aot/compile.h"
 #include "tensorflow/compiler/aot/flags.h"
@@ -70,22 +70,18 @@ Status Main(const MainFlags& flags) {
   LLVMInitializeAArch64TargetInfo();
   LLVMInitializeAArch64TargetMC();
   LLVMInitializeAArch64AsmPrinter();
-  LLVMInitializeAArch64Disassembler();
   LLVMInitializeARMTarget();
   LLVMInitializeARMTargetInfo();
   LLVMInitializeARMTargetMC();
   LLVMInitializeARMAsmPrinter();
-  LLVMInitializeARMDisassembler();
   LLVMInitializePowerPCTarget();
   LLVMInitializePowerPCTargetInfo();
   LLVMInitializePowerPCTargetMC();
   LLVMInitializePowerPCAsmPrinter();
-  LLVMInitializePowerPCDisassembler();
   LLVMInitializeX86Target();
   LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
   LLVMInitializeX86AsmPrinter();
-  LLVMInitializeX86Disassembler();
 
   // Process config.
   tf2xla::Config config;

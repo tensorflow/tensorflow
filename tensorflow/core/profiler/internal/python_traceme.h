@@ -20,7 +20,6 @@ limitations under the License.
 #include <utility>
 
 #include "absl/types/optional.h"
-#include "tensorflow/core/profiler/internal/traceme_recorder.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
@@ -34,7 +33,7 @@ class PythonTraceMe {
   void Enter() { current_.emplace(std::move(activity_name_)); }
   void Exit() { current_.reset(); }
 
-  static bool IsEnabled() { return TraceMeRecorder::Active(); }
+  static bool IsEnabled() { return TraceMe::Active(); }
 
  private:
   std::string activity_name_;

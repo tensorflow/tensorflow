@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
@@ -308,7 +308,7 @@ Status KernelAndDeviceOp::Run(
         [&] { return absl::StrCat(op_name, ":", kernel_->type_string()); },
         profiler::TraceMeLevel::kInfo);
     // 'ScopedAnnotation' will trace the OpKernel execution time on device.
-    tracing::ScopedAnnotation annotation(
+    profiler::ScopedAnnotation annotation(
         [&]() { return absl::StrCat(op_name, ":", kernel_->type_string()); });
     device_->Compute(kernel_.get(), &context);
   }
@@ -335,11 +335,17 @@ Status KernelAndDeviceFunc::Run(
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   std::unique_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
   if (remote_func_params.has_value()) {
-    // If the function is a remote component of a cross-process function, re-use
-    // the same op id and step id as its parent's.
-    opts = absl::make_unique<FunctionLibraryRuntime::Options>(
-        remote_func_params.value().step_id);
-    opts->op_id = remote_func_params.value().op_id;
+    const EagerRemoteFunctionParams& params = remote_func_params.value();
+    if (params.step_id.has_value()) {
+      // If the function is a remote component of a cross-process function,
+      // re-use the step id as its parent function's.
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>(
+          params.step_id.value());
+    } else {
+      opts = absl::make_unique<FunctionLibraryRuntime::Options>();
+    }
+    // Reuse the op id if it exists.
+    opts->op_id = params.op_id;
   } else {
     opts = absl::make_unique<FunctionLibraryRuntime::Options>();
     if (get_op_id_ && is_cross_process_) {

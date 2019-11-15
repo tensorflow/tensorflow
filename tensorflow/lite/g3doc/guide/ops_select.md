@@ -109,13 +109,13 @@ bazel build --cxxopt='--std=c++11' -c opt             \
   //tensorflow/lite/java:tensorflow-lite-with-select-tf-ops
 ```
 
-This will generate an AAR file in `bazel-genfiles/tensorflow/lite/java/`. From
+This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. From
 there, you can either import the AAR directly into your project, or publish the
 custom AAR to your local Maven repository:
 
 ```sh
 mvn install:install-file \
-  -Dfile=bazel-genfiles/tensorflow/lite/java/tensorflow-lite-with-select-tf-ops.aar \
+  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite-with-select-tf-ops.aar \
   -DgroupId=org.tensorflow \
   -DartifactId=tensorflow-lite-with-select-tf-ops -Dversion=0.1.100 -Dpackaging=aar
 ```

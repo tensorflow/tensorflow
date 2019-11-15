@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <sstream>
 
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -113,12 +114,12 @@ ProfileSummarizer::ProfileSummarizer() {
 void ProfileSummarizer::ProcessProfiles(
     const std::vector<const ProfileEvent*>& profile_stats,
     const tflite::Interpreter& interpreter) {
+  if (profile_stats.empty()) return;
+
   std::vector<const ProfileEvent*> events;
   std::copy_if(profile_stats.begin(), profile_stats.end(),
                std::back_inserter(events), [](const ProfileEvent* e) {
-                 return e->event_type ==
-                            ProfileEvent::EventType::OPERATOR_INVOKE_EVENT &&
-                        e->end_timestamp_us >= e->begin_timestamp_us;
+                 return e->end_timestamp_us >= e->begin_timestamp_us;
                });
   // Sort with begin_time.
   std::sort(events.begin(), events.end(),
@@ -132,29 +133,55 @@ void ProfileSummarizer::ProcessProfiles(
   int64_t base_start_us = events[0]->begin_timestamp_us;
   int node_num = 0;
   auto tag_string = [](const string& s, const string& t) {
-    return t == "OpInvoke" || t == "DelegateOpInvoke" ? s : s + "/" + t;
+    return (t == "OpInvoke" || t == "DelegateOpInvoke") ? s : s + "/" + t;
   };
 
   // Total time will be accumulated per subgraph.
   std::map<uint32_t, int64_t> total_us_per_subgraph_map;
 
   for (auto event : events) {
-    auto stats_calculator = GetStatsCalculator(event->event_subgraph_index);
-    auto op_details = GetOperatorDetails(
-        interpreter, event->event_subgraph_index, event->event_metadata);
-    auto node_name = ToString(op_details.outputs);
+    const auto subgraph_index = event->event_subgraph_index;
+    auto stats_calculator = GetStatsCalculator(subgraph_index);
     int64_t start_us = event->begin_timestamp_us - base_start_us;
     int64_t node_exec_time =
         event->end_timestamp_us - event->begin_timestamp_us;
-    stats_calculator->AddNodeStats(tag_string(node_name, event->tag),
-                                   tag_string(op_details.name, event->tag),
-                                   node_num, start_us, node_exec_time,
-                                   0 /*memory */);
+    if (event->event_type == Profiler::EventType::OPERATOR_INVOKE_EVENT) {
+      // When recording an OPERATOR_INVOKE_EVENT, we have recorded the node
+      // index as event_metadata. See the macro
+      // TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE defined in
+      // tensorflow/lite/core/api/profiler.h for details.
+      const auto node_index = event->event_metadata;
+
+      const auto op_details =
+          GetOperatorDetails(interpreter, subgraph_index, node_index);
+      const auto type_in_stats = tag_string(op_details.name, event->tag);
+
+      const auto node_name = ToString(op_details.outputs);
+      // Append node index to node name because 'stats_calculator' can not
+      // distinguish two nodes w/ the same 'node_name'.
+      const auto node_name_in_stats =
+          tag_string(node_name + ":" + std::to_string(node_index), event->tag);
+
+      stats_calculator->AddNodeStats(node_name_in_stats, type_in_stats,
+                                     node_num, start_us, node_exec_time,
+                                     0 /*memory */);
+    } else {
+      // TODO(b/139812778) consider use a different stats_calculator to record
+      // non-op-invoke events so that these could be separated from
+      // op-invoke-events in the final profiling stats report.
+      const memory::MemoryUsage node_mem_usage =
+          event->end_mem_usage - event->begin_mem_usage;
+      std::string node_name(event->tag);
+      node_name += "/" + std::to_string(event->event_subgraph_index);
+      stats_calculator->AddNodeStats(node_name, "Misc Runtime Ops", node_num,
+                                     start_us, node_exec_time,
+                                     node_mem_usage.total_allocated_bytes);
+    }
 
     // Add total time except actual delegate ops since the elapsed time of the
     // delegate ops inside are already combined at a fused DELEGATE op.
     if (strcmp(event->tag, "DelegateOpInvoke") != 0) {
-      total_us_per_subgraph_map[event->event_subgraph_index] += node_exec_time;
+      total_us_per_subgraph_map[subgraph_index] += node_exec_time;
     }
     ++node_num;
   }

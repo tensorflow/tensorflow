@@ -33,7 +33,7 @@ except ImportError:
   from distutils.spawn import find_executable as which
 # pylint: enable=g-import-not-at-top
 
-_DEFAULT_CUDA_VERSION = '10'
+_DEFAULT_CUDA_VERSION = '10.1'
 _DEFAULT_CUDNN_VERSION = '7'
 _DEFAULT_TENSORRT_VERSION = '6'
 _DEFAULT_CUDA_COMPUTE_CAPABILITIES = '3.5,7.0'
@@ -49,8 +49,8 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '0.24.1'
-_TF_MAX_BAZEL_VERSION = '0.29.1'
+_TF_MIN_BAZEL_VERSION = '0.27.1'
+_TF_MAX_BAZEL_VERSION = '1.1.0'
 
 NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
@@ -60,7 +60,8 @@ NCCL_LIB_PATHS = [
 APPLE_BAZEL_FILES = [
     'tensorflow/lite/experimental/ios/BUILD',
     'tensorflow/lite/experimental/objc/BUILD',
-    'tensorflow/lite/experimental/swift/BUILD'
+    'tensorflow/lite/experimental/swift/BUILD',
+    'tensorflow/lite/tools/benchmark/experimental/ios/BUILD'
 ]
 
 # List of files to move when building for iOS.
@@ -1353,13 +1354,6 @@ def main():
     environ_cp['TF_NEED_TENSORRT'] = '0'
   else:
     environ_cp['TF_CONFIGURE_IOS'] = '0'
-
-  # The numpy package on ppc64le uses OpenBLAS which has multi-threading
-  # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
-  # runtime to allow the Tensorflow testcases which compare numpy
-  # results to Tensorflow results to succeed.
-  if is_ppc64le():
-    write_action_env_to_bazelrc('OMP_NUM_THREADS', 1)
 
   xla_enabled_by_default = is_linux() or is_macos()
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',

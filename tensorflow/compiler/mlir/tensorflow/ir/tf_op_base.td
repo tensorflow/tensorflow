@@ -19,12 +19,10 @@ limitations under the License.
 // op, and various commonly used TensorFlow traits, types, attributes, and
 // builders.
 
-#ifdef TF_OP_BASE
-#else
+#ifndef TF_OP_BASE
 #define TF_OP_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -83,8 +81,10 @@ class TF_TensorFlowType <string name, string description> :
     BuildableType<"getType<mlir::TF::" # name # "Type>()">;
 
 // Any tensor element type allowed in TensorFlow ops
-def TF_ElementType : Type<Or<[AnyFloat.predicate, AnyInteger.predicate,
-                                 TF_TFDialectType.predicate]>,
+def TF_ElementType : Type<Or<[AnyFloat.predicate,
+                              AnyInteger.predicate,
+                              AnyComplex.predicate,
+                              TF_TFDialectType.predicate]>,
                           "tf.dtype">;
 
 // Any TensorFlow tensor type
@@ -138,10 +138,12 @@ def TF_FpTensor : TensorOf<[AnyFloat]>;
 //===----------------------------------------------------------------------===//
 // Complex types
 
-def TF_Complex64 : TF_TensorFlowType<"Complex64", "complex64">;
+// TODO(suderman): Remove TF_Complex64 and use a standard ops declaration, along
+// with the associated cleanup.
+def TF_Complex64 : Complex<F<32>>;
 def TF_Complex64Tensor : TensorOf<[TF_Complex64]>;
 
-def TF_Complex128 : TF_TensorFlowType<"Complex128", "complex128">;
+def TF_Complex128 : Complex<F<64>>;
 def TF_Complex128Tensor : TensorOf<[TF_Complex128]>;
 
 def TF_AnyComplex : AnyTypeOf<[TF_Complex64, TF_Complex128],
@@ -209,6 +211,13 @@ def TF_ConvnetDataFormatAttr : StringBasedAttr<
 //===----------------------------------------------------------------------===//
 // Type attributes
 
+// A derived attribute that returns the size of `idx`-th ODS-declared variadic
+// operand.
+class TF_DerivedOperandSizeAttr<int idx> : DerivedAttr<
+  "size_t",
+  "auto range = getODSOperands(" # idx # ");\n"
+  "return std::distance(range.begin(), range.end());">;
+
 // A derived attribute that returns the element type of `idx`-th ODS-declared
 // operand. If the `idx`-th operand is a variadic operand, then this attribute
 // just returns the element type of its first tensor, which is only meaningful
@@ -227,6 +236,13 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};"
 >;
+
+// A derived attribute that returns the size of `idx`-th ODS-declared variadic
+// result.
+class TF_DerivedResultSizeAttr<int idx> : DerivedAttr<
+  "size_t",
+  "auto range = getODSResults(" # idx # ");\n"
+  "return std::distance(range.begin(), range.end());">;
 
 // A derived attribute that returns the element type of `idx`-th ODS-declared
 // result. If the `idx`-th result is a variadic result, then this attribute

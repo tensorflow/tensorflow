@@ -916,20 +916,29 @@ class _EagerTensorBase(Tensor):
     return dtypes._INTERN_TABLE[self._datatype_enum()]  # pylint: disable=protected-access
 
   def numpy(self):
-    """Returns a numpy array or a scalar with the same contents as the Tensor.
+    """Copy of the contents of this Tensor into a NumPy array or scalar.
 
-    TODO(ashankar,agarwal): Perhaps this should NOT reference the underlying
-    buffer but instead always explicitly copy? Note that currently it may or may
-    not copy based on whether the numpy data is properly aligned or not.
+    Unlike NumPy arrays, Tensors are immutable, so this method has to copy
+    the contents to ensure safety. Use `memoryview` to get a readonly
+    view of the contents without doing a copy:
+
+    >>> t = tf.constant([42])
+    >>> np.array(memoryview(t))
+    array([42], dtype=int32)
+
+    Note that `memoryview` is only zero-copy for Tensors on CPU. If a Tensor
+    is on GPU, it will have to be transferred to CPU first in order for
+    `memoryview` to work.
 
     Returns:
-      A numpy array or a scalar. Numpy array may share memory with the
-      Tensor object. Any changes to one may be reflected in the other. A scalar
-      value is returned when self has rank 0.
+      A NumPy array of the same shape and dtype or a NumPy scalar, if this
+      Tensor has rank 0.
 
     Raises:
-      ValueError: if the type of this Tensor is not representable in numpy.
+      ValueError: If the dtype of this Tensor does not have a compatible
+        NumPy dtype.
     """
+    # TODO(slebedev): Consider avoiding a copy for non-CPU or remote tensors.
     maybe_arr = self._numpy()  # pylint: disable=protected-access
     return maybe_arr.copy() if isinstance(maybe_arr, np.ndarray) else maybe_arr
 
@@ -5447,15 +5456,14 @@ def init_scope():
     (3) The gradient tape is paused while the scope is active.
 
   When eager execution is enabled, code inside an init_scope block runs with
-  eager execution enabled even when defining graph functions via
-  tf.contrib.eager.defun. For example:
+  eager execution enabled even when tracing a `tf.function`. For example:
 
   ```python
   tf.compat.v1.enable_eager_execution()
 
-  @tf.contrib.eager.defun
+  @tf.function
   def func():
-    # A defun-decorated function constructs TensorFlow graphs,
+    # A function constructs TensorFlow graphs,
     # it does not execute eagerly.
     assert not tf.executing_eagerly()
     with tf.init_scope():
@@ -5487,8 +5495,9 @@ def init_scope():
     outer_graph = None
     outer_device_stack = None
     try:
-      with outer_context(), name_scope(scope), control_dependencies(
-          None), tape.stop_recording():
+      with outer_context(), name_scope(
+          scope, skip_on_eager=False), control_dependencies(
+              None), tape.stop_recording():
         context_manager = NullContextmanager
         context_manager_input = None
         if not context.executing_eagerly():
@@ -6132,7 +6141,7 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
-def name_scope(name, default_name=None, values=None):
+def name_scope(name, default_name=None, values=None, skip_on_eager=True):
   """Internal-only entry point for `name_scope*`.
 
   Internal ops do not use the public API and instead rely on
@@ -6148,6 +6157,11 @@ def name_scope(name, default_name=None, values=None):
     name: The name argument that is passed to the op function.
     default_name: The default name to use if the `name` argument is `None`.
     values: The list of `Tensor` arguments that are passed to the op function.
+    skip_on_eager: Indicates to return NullContextmanager if executing eagerly.
+      By default this is True since naming tensors and operations in eager mode
+      have little use and cause unecessary performance overhead. However, it is
+      important to preseve variable names since they are often useful for
+      debugging and saved models.
 
   Returns:
     `name_scope*` context manager.
@@ -6167,6 +6181,10 @@ def name_scope(name, default_name=None, values=None):
     # pylint: enable=unidiomatic-typecheck
     if graph_value is not None:
       return graph_value.graph.name_scope(name)
+
+  if skip_on_eager:
+    return NullContextmanager()
+
   return name_scope_v2(name or "")
 
 
@@ -6283,7 +6301,8 @@ class name_scope_v1(object):  # pylint: disable=invalid-name
     Raises:
       TypeError: if `default_name` is passed in but not a string.
     """
-    self._name_scope = name_scope(name, default_name, values)
+    self._name_scope = name_scope(
+        name, default_name, values, skip_on_eager=False)
     self._name = default_name if name is None else name
 
   def __enter__(self):
@@ -6589,3 +6608,36 @@ def raise_from_not_ok_status(e, name):
   # pylint: disable=protected-access
   six.raise_from(core._status_to_exception(e.code, message), None)
   # pylint: enable=protected-access
+
+
+def add_exit_callback_to_default_func_graph(fn):
+  """Add a callback to run when the default function graph goes out of scope.
+
+  Usage:
+
+  ```python
+  @tf.function
+  def fn(x, v):
+    expensive = expensive_object(v)
+    add_exit_callback_to_default_func_graph(lambda: expensive.release())
+    return g(x, expensive)
+
+  fn(x=tf.constant(...), v=...)
+  # `expensive` has been released.
+  ```
+
+  Args:
+    fn: A callable that takes no arguments and whose output is ignored.
+      To be executed when exiting func graph scope.
+
+  Raises:
+    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
+      or not currently executing in function creation mode (e.g., if inside
+      an init_scope).
+  """
+  default_graph = get_default_graph()
+  if not default_graph._building_function:  # pylint: disable=protected-access
+    raise RuntimeError(
+        "Cannot add scope exit callbacks when not building a function.  "
+        "Default graph: {}".format(default_graph))
+  default_graph._add_scope_exit_callback(fn)  # pylint: disable=protected-access

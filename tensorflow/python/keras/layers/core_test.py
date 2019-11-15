@@ -443,8 +443,8 @@ class CoreLayersTest(keras_parameterized.TestCase):
 
   def test_dense_with_policy(self):
     inputs = ops.convert_to_tensor(
-        np.random.randint(low=0, high=7, size=(2, 2)), dtype='float16')
-    layer = keras.layers.Dense(5, dtype=policy.Policy('infer_float32_vars'))
+        np.random.randint(low=0, high=7, size=(2, 2)))
+    layer = keras.layers.Dense(5, dtype=policy.Policy('mixed_float16'))
     outputs = layer(inputs)
     output_signature = layer.compute_output_signature(
         tensor_spec.TensorSpec(dtype='float16', shape=(2, 2)))

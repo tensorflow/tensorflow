@@ -23,13 +23,11 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestReluFloat(std::initializer_list<int> input_dims_data,
-                   std::initializer_list<float> input_data,
-                   std::initializer_list<float> expected_output_data,
-                   std::initializer_list<int> output_dims_data,
+void TestReluFloat(const int* input_dims_data, const float* input_data,
+                   const int* output_dims_data, const float* golden,
                    float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
   constexpr int inputs_size = 1;
@@ -77,18 +75,15 @@ void TestReluFloat(std::initializer_list<int> input_dims_data,
     registration->free(&context, user_data);
   }
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(golden[i], output_data[i], 1e-5f);
   }
 }
 
-void TestRelu6Float(std::initializer_list<int> input_dims_data,
-                    std::initializer_list<float> input_data,
-                    std::initializer_list<float> expected_output_data,
-                    std::initializer_list<int> output_dims_data,
+void TestRelu6Float(const int* input_dims_data, const float* input_data,
+                    const int* output_dims_data, const float* golden,
                     float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
   constexpr int inputs_size = 1;
@@ -136,30 +131,28 @@ void TestRelu6Float(std::initializer_list<int> input_dims_data,
     registration->free(&context, user_data);
   }
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(golden[i], output_data[i], 1e-5f);
   }
 }
 
-void TestReluUint8(std::initializer_list<int> input_dims_data,
-                   std::initializer_list<uint8_t> input_data,
-                   const float input_min, const float input_max,
-                   std::initializer_list<uint8_t> expected_output_data,
-                   std::initializer_list<int> output_dims_data,
-                   const float output_min, const float output_max,
+void TestReluUint8(const int* input_dims_data, const float* input_data,
+                   uint8_t* input_data_quantized, const float input_scale,
+                   const int input_zero_point, const float* golden,
+                   uint8_t* golden_quantized, const int* output_dims_data,
+                   const float output_scale, const int output_zero_point,
                    uint8_t* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
+                            input_scale, input_zero_point, "input_tensor"),
+      CreateQuantizedTensor(output_data, output_dims, output_scale,
+                            output_zero_point, "output_tensor"),
   };
 
   TfLiteContext context;
@@ -198,31 +191,33 @@ void TestReluUint8(std::initializer_list<int> input_dims_data,
   if (registration->free) {
     registration->free(&context, user_data);
   }
+
+  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
+                     output_scale, output_zero_point);
+
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
   }
 }
 
-void TestRelu6Uint8(std::initializer_list<int> input_dims_data,
-                    std::initializer_list<uint8_t> input_data,
-                    const float input_min, const float input_max,
-                    std::initializer_list<uint8_t> expected_output_data,
-                    std::initializer_list<int> output_dims_data,
-                    const float output_min, const float output_max,
+void TestRelu6Uint8(const int* input_dims_data, const float* input_data,
+                    uint8_t* input_data_quantized, const float input_scale,
+                    const int input_zero_point, const float* golden,
+                    uint8_t* golden_quantized, const int* output_dims_data,
+                    const float output_scale, const int output_zero_point,
                     uint8_t* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
 
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
+                            input_scale, input_zero_point, "input_tensor"),
+      CreateQuantizedTensor(output_data, output_dims, output_scale,
+                            output_zero_point, "output_tensor"),
   };
 
   TfLiteContext context;
@@ -261,30 +256,32 @@ void TestRelu6Uint8(std::initializer_list<int> input_dims_data,
   if (registration->free) {
     registration->free(&context, user_data);
   }
+
+  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
+                     output_scale, output_zero_point);
+
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
   }
 }
 
-void TestReluInt8(std::initializer_list<int> input_dims_data,
-                  std::initializer_list<int8_t> input_data,
-                  const float input_min, const float input_max,
-                  std::initializer_list<int8_t> expected_output_data,
-                  std::initializer_list<int> output_dims_data,
-                  const float output_min, const float output_max,
+void TestReluInt8(const int* input_dims_data, const float* input_data,
+                  int8_t* input_data_quantized, const float input_scale,
+                  const int input_zero_point, const float* golden,
+                  int8_t* golden_quantized, const int* output_dims_data,
+                  const float output_scale, const int output_zero_point,
                   int8_t* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
+                            input_scale, input_zero_point, "input_tensor"),
+      CreateQuantizedTensor(output_data, output_dims, output_scale,
+                            output_zero_point, "output_tensor"),
   };
 
   TfLiteContext context;
@@ -325,30 +322,32 @@ void TestReluInt8(std::initializer_list<int> input_dims_data,
   if (registration->free) {
     registration->free(&context, user_data);
   }
+
+  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
+                     output_scale, output_zero_point);
+
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
   }
 }
 
-void TestRelu6Int8(std::initializer_list<int> input_dims_data,
-                   std::initializer_list<int8_t> input_data,
-                   const float input_min, const float input_max,
-                   std::initializer_list<int8_t> expected_output_data,
-                   std::initializer_list<int> output_dims_data,
-                   const float output_min, const float output_max,
+void TestRelu6Int8(const int* input_dims_data, const float* input_data,
+                   int8_t* input_data_quantized, const float input_scale,
+                   const int input_zero_point, const float* golden,
+                   int8_t* golden_quantized, const int* output_dims_data,
+                   const float output_scale, const int output_zero_point,
                    int8_t* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_elements_count = ElementCount(*output_dims);
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_data_quantized, input_dims,
+                            input_scale, input_zero_point, "input_tensor"),
+      CreateQuantizedTensor(output_data, output_dims, output_scale,
+                            output_zero_point, "output_tensor"),
   };
 
   TfLiteContext context;
@@ -389,9 +388,12 @@ void TestRelu6Int8(std::initializer_list<int> input_dims_data,
   if (registration->free) {
     registration->free(&context, user_data);
   }
+
+  AsymmetricQuantize(golden, golden_quantized, output_elements_count,
+                     output_scale, output_zero_point);
+
   for (int i = 0; i < output_elements_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_EQ(golden_quantized[i], output_data[i]);
   }
 }
 
@@ -403,180 +405,118 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(SimpleReluTestFloat) {
   const int output_elements_count = 10;
+  const int input_shape[] = {2, 1, 5};
+  const float input_data[] = {
+      1.0, 2.0, 3.0, 4.0, 5.0, -1.0, -2.0, -3.0, -4.0, -5.0,
+  };
+  const float golden[] = {1.0, 2.0, 3.0, 4.0, 5.0, 0, 0, 0, 0, 0};
+  const int output_shape[] = {2, 1, 5};
   float output_data[output_elements_count];
-  tflite::testing::TestReluFloat({2, 1, 5},  // Input shape.
-                                 {
-                                     1.0,
-                                     2.0,
-                                     3.0,
-                                     4.0,
-                                     5.0,
-                                     -1.0,
-                                     -2.0,
-                                     -3.0,
-                                     -4.0,
-                                     -5.0,
-                                 },
-                                 {
-                                     // Expected results.
-                                     1.0,
-                                     2.0,
-                                     3.0,
-                                     4.0,
-                                     5.0,
-                                     0.0,
-                                     0.0,
-                                     0.0,
-                                     0.0,
-                                     0.0,
-                                 },
-                                 {2, 1, 5},  // Output shape.
+  tflite::testing::TestReluFloat(input_shape, input_data, output_shape, golden,
                                  output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleRelu6TestFloat) {
   const int output_elements_count = 10;
   float output_data[output_elements_count];
-  tflite::testing::TestRelu6Float({2, 1, 5},  // Input shape.
-                                  {
-                                      4.0,
-                                      5.0,
-                                      6.0,
-                                      7.0,
-                                      8.0,
-                                      -4.0,
-                                      -5.0,
-                                      -6.0,
-                                      -7.0,
-                                      -8.0,
-                                  },
-                                  {
-                                      // Expected results.
-                                      4.0,
-                                      5.0,
-                                      6.0,
-                                      6.0,
-                                      6.0,
-                                      0.0,
-                                      0.0,
-                                      0.0,
-                                      0.0,
-                                      0.0,
-                                  },
-                                  {2, 1, 5},  // Output shape.
+  const int input_shape[] = {2, 1, 5};
+  const float input_data[] = {4.0,  5.0,  6.0,  7.0,  8.0,
+                              -4.0, -5.0, -6.0, -7.0, -8.0};
+  const int output_shape[] = {2, 1, 5};
+  const float golden[] = {
+      4.0, 5.0, 6.0, 6.0, 6.0, 0.0, 0.0, 0.0, 0.0, 0.0,
+  };
+
+  tflite::testing::TestRelu6Float(input_shape, input_data, output_shape, golden,
                                   output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleReluTestUint8) {
-  using tflite::testing::F2Q;
+  const int elements_count = 10;
 
-  const float input_min = -15.9375;
-  const float input_max = 15.9375;
-  const float output_min = -15.9375;
-  const float output_max = 15.9375;
+  const int input_shape[] = {2, 1, 5};
+  const float input_data[] = {1, 2, 3, 4, 5, -1, -2, -3, -4, -5};
+  uint8_t input_quantized[elements_count];
+  const int output_shape[] = {2, 1, 5};
+  const float golden[] = {1, 2, 3, 4, 5, 0, 0, 0, 0, 0};
+  uint8_t golden_quantized[elements_count];
+  uint8_t output_data[elements_count];
 
-  const int output_elements_count = 10;
-  uint8_t output_data[output_elements_count];
-  tflite::testing::TestReluUint8(
-      {2, 1, 5},  // Input shape.
-      {F2Q(1.0, input_min, input_max), F2Q(2.0, input_min, input_max),
-       F2Q(3.0, input_min, input_max), F2Q(4.0, input_min, input_max),
-       F2Q(5.0, input_min, input_max), F2Q(-1.0, input_min, input_max),
-       F2Q(-2.0, input_min, input_max), F2Q(-3.0, input_min, input_max),
-       F2Q(-4.0, input_min, input_max), F2Q(-5.0, input_min, input_max)},
-      input_min, input_max,
-      {// Expected results.
-       F2Q(1.0, input_min, input_max), F2Q(2.0, input_min, input_max),
-       F2Q(3.0, input_min, input_max), F2Q(4.0, input_min, input_max),
-       F2Q(5.0, input_min, input_max), F2Q(0.0, input_min, input_max),
-       F2Q(0.0, input_min, input_max), F2Q(0.0, input_min, input_max),
-       F2Q(0.0, input_min, input_max), F2Q(0.0, input_min, input_max)},
-      {2, 1, 5},  // Output shape.
-      output_min, output_max, output_data);
+  const float input_scale = 0.5f;
+  const int input_zero_point = 127;
+  const float output_scale = 0.5f;
+  const int output_zero_point = 127;
+
+  tflite::testing::TestReluUint8(input_shape, input_data, input_quantized,
+                                 input_scale, input_zero_point, golden,
+                                 golden_quantized, output_shape, output_scale,
+                                 output_zero_point, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleRelu6TestUint8) {
-  using tflite::testing::F2Q;
+  const int elements_count = 10;
 
-  const float input_min = -15.9375;
-  const float input_max = 15.9375;
-  const float output_min = -15.9375;
-  const float output_max = 15.9375;
+  const int input_shape[] = {2, 1, 5};
+  const float input_data[] = {4, 5, 6, 7, 8, -1, -2, -3, -4, -5};
+  uint8_t input_quantized[elements_count];
+  const int output_shape[] = {2, 1, 5};
+  const float golden[] = {4, 5, 6, 6, 6, 0, 0, 0, 0, 0};
+  uint8_t golden_quantized[elements_count];
+  uint8_t output_data[elements_count];
 
-  const int output_elements_count = 10;
-  uint8_t output_data[output_elements_count];
-  tflite::testing::TestRelu6Uint8(
-      {2, 1, 5},  // Input shape.
-      {F2Q(4.0, input_min, input_max), F2Q(5.0, input_min, input_max),
-       F2Q(6.0, input_min, input_max), F2Q(7.0, input_min, input_max),
-       F2Q(8.0, input_min, input_max), F2Q(-1.0, input_min, input_max),
-       F2Q(-2.0, input_min, input_max), F2Q(-3.0, input_min, input_max),
-       F2Q(-4.0, input_min, input_max), F2Q(-5.0, input_min, input_max)},
-      input_min, input_max,
-      {// Expected results.
-       F2Q(4.0, input_min, input_max), F2Q(5.0, input_min, input_max),
-       F2Q(6.0, input_min, input_max), F2Q(6.0, input_min, input_max),
-       F2Q(6.0, input_min, input_max), F2Q(0.0, input_min, input_max),
-       F2Q(0.0, input_min, input_max), F2Q(0.0, input_min, input_max),
-       F2Q(0.0, input_min, input_max), F2Q(0.0, input_min, input_max)},
-      {2, 1, 5},  // Output shape.
-      output_min, output_max, output_data);
+  const float input_scale = 0.5f;
+  const int input_zero_point = 127;
+  const float output_scale = 0.5f;
+  const int output_zero_point = 127;
+
+  tflite::testing::TestRelu6Uint8(input_shape, input_data, input_quantized,
+                                  input_scale, input_zero_point, golden,
+                                  golden_quantized, output_shape, output_scale,
+                                  output_zero_point, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleReluTestInt8) {
-  using tflite::testing::F2QS;
+  const int elements_count = 10;
 
-  const float input_min = -15.9375;
-  const float input_max = 15.9375;
-  const float output_min = -15.9375;
-  const float output_max = 15.9375;
+  const int input_shape[] = {2, 1, 5};
+  const float input_data[] = {1, 2, 3, 4, 5, -1, -2, -3, -4, -5};
+  int8_t input_quantized[elements_count];
+  const int output_shape[] = {2, 1, 5};
+  const float golden[] = {1, 2, 3, 4, 5, 0, 0, 0, 0, 0};
+  int8_t golden_quantized[elements_count];
+  int8_t output_data[elements_count];
 
-  const int output_elements_count = 10;
-  int8_t output_data[output_elements_count];
-  tflite::testing::TestReluInt8(
-      {2, 1, 5},  // Input shape.
-      {F2QS(1.0, input_min, input_max), F2QS(2.0, input_min, input_max),
-       F2QS(3.0, input_min, input_max), F2QS(4.0, input_min, input_max),
-       F2QS(5.0, input_min, input_max), F2QS(-1.0, input_min, input_max),
-       F2QS(-2.0, input_min, input_max), F2QS(-3.0, input_min, input_max),
-       F2QS(-4.0, input_min, input_max), F2QS(-5.0, input_min, input_max)},
-      input_min, input_max,
-      {// Expected results.
-       F2QS(1.0, input_min, input_max), F2QS(2.0, input_min, input_max),
-       F2QS(3.0, input_min, input_max), F2QS(4.0, input_min, input_max),
-       F2QS(5.0, input_min, input_max), F2QS(0.0, input_min, input_max),
-       F2QS(0.0, input_min, input_max), F2QS(0.0, input_min, input_max),
-       F2QS(0.0, input_min, input_max), F2QS(0.0, input_min, input_max)},
-      {2, 1, 5},  // Output shape.
-      output_min, output_max, output_data);
+  const float input_scale = 0.5f;
+  const int input_zero_point = 0;
+  const float output_scale = 0.5f;
+  const int output_zero_point = 0;
+
+  tflite::testing::TestReluInt8(input_shape, input_data, input_quantized,
+                                input_scale, input_zero_point, golden,
+                                golden_quantized, output_shape, output_scale,
+                                output_zero_point, output_data);
 }
 
 TF_LITE_MICRO_TEST(SimpleRelu6TestInt8) {
-  using tflite::testing::F2QS;
+  const int elements_count = 10;
 
-  const float input_min = -15.9375;
-  const float input_max = 15.9375;
-  const float output_min = -15.9375;
-  const float output_max = 15.9375;
+  const int input_shape[] = {2, 1, 5};
+  const float input_data[] = {4, 5, 6, 7, 8, -1, -2, -3, -4, -5};
+  int8_t input_quantized[elements_count];
+  const int output_shape[] = {2, 1, 5};
+  const float golden[] = {4, 5, 6, 6, 6, 0, 0, 0, 0, 0};
+  int8_t golden_quantized[elements_count];
+  int8_t output_data[elements_count];
 
-  const int output_elements_count = 10;
-  int8_t output_data[output_elements_count];
-  tflite::testing::TestRelu6Int8(
-      {2, 1, 5},  // Input shape.
-      {F2QS(4.0, input_min, input_max), F2QS(5.0, input_min, input_max),
-       F2QS(6.0, input_min, input_max), F2QS(7.0, input_min, input_max),
-       F2QS(8.0, input_min, input_max), F2QS(-1.0, input_min, input_max),
-       F2QS(-2.0, input_min, input_max), F2QS(-3.0, input_min, input_max),
-       F2QS(-4.0, input_min, input_max), F2QS(-5.0, input_min, input_max)},
-      input_min, input_max,
-      {// Expected results.
-       F2QS(4.0, input_min, input_max), F2QS(5.0, input_min, input_max),
-       F2QS(6.0, input_min, input_max), F2QS(6.0, input_min, input_max),
-       F2QS(6.0, input_min, input_max), F2QS(0.0, input_min, input_max),
-       F2QS(0.0, input_min, input_max), F2QS(0.0, input_min, input_max),
-       F2QS(0.0, input_min, input_max), F2QS(0.0, input_min, input_max)},
-      {2, 1, 5},  // Output shape.
-      output_min, output_max, output_data);
+  const float input_scale = 0.5f;
+  const int input_zero_point = 127;
+  const float output_scale = 0.5f;
+  const int output_zero_point = 127;
+
+  tflite::testing::TestRelu6Int8(input_shape, input_data, input_quantized,
+                                 input_scale, input_zero_point, golden,
+                                 golden_quantized, output_shape, output_scale,
+                                 output_zero_point, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

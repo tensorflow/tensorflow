@@ -193,6 +193,11 @@ template <typename ContainerTy> auto make_second_range(ContainerTy &&c) {
       });
 }
 
+/// Returns true of the given range only contains a single element.
+template <typename ContainerTy> bool has_single_element(ContainerTy &&c) {
+  auto it = std::begin(c), e = std::end(c);
+  return it != e && std::next(it) == e;
+}
 } // end namespace mlir
 
 // Allow tuples to be usable as DenseMap keys.

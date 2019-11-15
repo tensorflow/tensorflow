@@ -217,6 +217,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     self.steps_per_run = steps_per_run
     self._require_static_shapes = True
 
+    # TPUStrategy handles the graph replication in TF-XLA bridge, so we don't
+    # need to retrace functions for each device.
+    self._retrace_functions_for_each_device = False
+
     self.experimental_enable_get_next_as_optional = True
     self.experimental_enable_dynamic_batch_size = True
 
@@ -386,7 +390,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
-    if kwargs.pop("tpu_embedding_variable_creator", False):
+    if kwargs.pop("skip_mirrored_creator", False):
       return next_creator(*args, **kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
@@ -488,7 +492,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, (d, v) in enumerate(zip(var.devices, var.values)):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
                           *values.select_device_mirrored(d, args),
@@ -510,6 +514,24 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _broadcast_to(self, tensor, destinations):
     del destinations
+    # This is both a fast path for Python constants, and a way to delay
+    # converting Python values to a tensor until we know what type it
+    # should be converted to. Otherwise we have trouble with:
+    #   global_step.assign_add(1)
+    # since the `1` gets broadcast as an int32 but global_step is int64.
+    if isinstance(tensor, (float, int)):
+      return tensor
+    if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
+      broadcast_tensor = [tensor for _ in range(self._num_replicas_in_sync)]
+      result = tpu_ops.all_to_all(
+          broadcast_tensor,
+          concat_dimension=0,
+          split_dimension=0,
+          split_count=self._num_replicas_in_sync)
+
+      # This uses the broadcasted value from the first replica because the only
+      # caller of this is for ONLY_FIRST_REPLICA variables aggregation.
+      return result[0]
     return tensor
 
   @property
@@ -569,8 +591,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    with ops.device(self._host_device), distribute_lib.UpdateContext(
-        self._host_device):
+    with ops.device(self._host_device), distribute_lib.UpdateContext(None):
       result = fn(*args, **kwargs)
       if group:
         return result

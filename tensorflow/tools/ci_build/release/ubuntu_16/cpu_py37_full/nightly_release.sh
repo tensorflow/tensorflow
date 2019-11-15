@@ -21,6 +21,8 @@ set_bazel_outdir
 
 install_ubuntu_16_pip_deps pip3.7
 
+update_bazel_linux
+
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
@@ -34,7 +36,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
 bazel build --config=opt --config=v2 \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag

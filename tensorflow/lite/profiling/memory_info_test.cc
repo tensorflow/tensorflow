@@ -43,8 +43,13 @@ TEST(MemoryUsage, GetMemoryUsage) {
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.max_rss_kb);
   EXPECT_EQ(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
 
-#ifndef _MSC_VER
+#ifdef __linux__
+  // Just allocate some space in heap so that we could meaningful memory usage
+  // report.
+  std::unique_ptr<int[]> int_array(new int[1204]);
+  for (int i = 0; i < 1024; ++i) int_array[i] = i;
   result = GetMemoryUsage();
+
   // As the getrusage call may fail, we might not be able to get max_rss_kb.
   EXPECT_NE(MemoryUsage::kValueNotSet, result.total_allocated_bytes);
 #endif

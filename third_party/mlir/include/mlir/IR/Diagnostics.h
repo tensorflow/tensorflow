@@ -391,7 +391,7 @@ private:
   friend DiagnosticEngine;
 
   /// The engine that this diagnostic is to report to.
-  DiagnosticEngine *owner;
+  DiagnosticEngine *owner = nullptr;
 
   /// The raw diagnostic that is inflight to be reported.
   llvm::Optional<Diagnostic> impl;

@@ -12,6 +12,7 @@ visibility = [
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
+    "//third_party/py/reverb:__subpackages__",
     "//third_party/py/neural_structured_learning:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_slim:__subpackages__",
@@ -98,14 +99,14 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":_pywrap_checkpoint_reader",
         ":_pywrap_events_writer",
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_quantize_training",
-        ":_pywrap_scoped_annotation",
+        ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
-        ":_pywrap_traceme",
         ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
@@ -226,8 +227,6 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
-        ":_pywrap_scoped_annotation",
-        ":_pywrap_traceme",
         ":_pywrap_util_port",
         ":lib",
         ":util",
@@ -383,7 +382,7 @@ cc_library(
     srcs = ["lib/core/py_exception_registry.cc"],
     hdrs = ["lib/core/py_exception_registry.h"],
     deps = [
-        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
     ],
@@ -410,7 +409,10 @@ cc_library(
 
 cc_library(
     name = "pybind11_status",
-    hdrs = ["lib/core/pybind11_status.h"],
+    hdrs = [
+        "lib/core/pybind11_status.h",
+        "//tensorflow/c:headers",
+    ],
     features = ["-parse_headers"],
     deps = [
         "//tensorflow/core:lib_internal",
@@ -439,6 +441,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ],
+    alwayslink = 1,
 )
 
 tf_python_pybind_extension(
@@ -564,18 +567,12 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
-    name = "_pywrap_scoped_annotation",
-    srcs = ["util/scoped_annotation_wrapper.cc"],
-    hdrs = [
-        "//tensorflow/core/platform:annotation_hdrs",
-        "//tensorflow/core/profiler/internal:python_scoped_annotation_hdrs",
-    ],
-    module_name = "_pywrap_scoped_annotation",
+    name = "_pywrap_stacktrace_handler",
+    srcs = ["platform/stacktrace_handler_wrapper.cc"],
+    hdrs = ["//tensorflow/core/platform:stacktrace_handler_hdrs"],
+    module_name = "_pywrap_stacktrace_handler",
     deps = [
-        "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -596,19 +593,27 @@ tf_python_pybind_extension(
 )
 
 tf_python_pybind_extension(
-    name = "_pywrap_traceme",
-    srcs = ["util/traceme_wrapper.cc"],
+    name = "_pywrap_checkpoint_reader",
+    srcs = ["util/py_checkpoint_reader_wrapper.cc"],
     hdrs = [
-        "//tensorflow/core/profiler/internal:python_traceme_hdrs",
-        "//tensorflow/core/profiler/lib:traceme_hdrs",
+        "lib/core/ndarray_tensor.h",
+        "lib/core/safe_ptr.h",
+        ":py_exception_registry_hdr",
+        "//tensorflow/c:checkpoint_reader_hdrs",
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
     ],
-    module_name = "_pywrap_traceme",
+    module_name = "_pywrap_checkpoint_reader",
     deps = [
+        ":pybind11_lib",
+        ":pybind11_status",
         "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/util/tensor_bundle:tensor_bundle_headers_lib",
+        "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -980,16 +985,16 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":_pywrap_checkpoint_reader",
         ":_pywrap_debug_events_writer",
         ":_pywrap_events_writer",
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
         ":_pywrap_quantize_training",
-        ":_pywrap_scoped_annotation",
+        ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
         ":_pywrap_tfprof",
-        ":_pywrap_traceme",
         ":_pywrap_transform_graph",
         ":_pywrap_util_port",
         ":_pywrap_utils",
@@ -1630,6 +1635,7 @@ py_library(
         "//tensorflow_estimator/python/estimator:__subpackages__",
     ],
     deps = [
+        ":_pywrap_stacktrace_handler",
         ":array_ops",
         ":client",
         ":errors",
@@ -3791,6 +3797,7 @@ cuda_py_test(
     additional_deps = [
         ":stateful_random_ops",
         ":client_testlib",
+        ":config",
         ":logging_ops",
         ":random_ops_gen",
         "//tensorflow/python/kernel_tests/random:util",
@@ -4118,6 +4125,7 @@ py_library(
         ":util",
         ":variable_scope",
         ":variables",
+        "//tensorflow/python/compiler",
         "//tensorflow/python/eager:wrap_function",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python/ops/linalg",
@@ -4653,6 +4661,18 @@ cuda_py_test(
     tags = ["no_windows_gpu"],
 )
 
+tf_py_test(
+    name = "variable_spec_test",
+    size = "small",
+    srcs = ["ops/variable_spec_test.py"],
+    additional_deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform_test",
+        "//third_party/py/numpy",
+    ],
+)
+
 py_library(
     name = "training_lib",
     srcs = glob(
@@ -4699,6 +4719,7 @@ py_library(
         ":math_ops",
         ":mixed_precision",
         ":platform",
+        ":py_checkpoint_reader",
         ":pywrap_tensorflow",
         ":random_ops",
         ":resource_variable_ops",
@@ -4755,6 +4776,17 @@ py_library(
 )
 
 py_library(
+    name = "py_checkpoint_reader",
+    srcs = ["training/py_checkpoint_reader.py"],
+    deps = [
+        ":_pywrap_checkpoint_reader",
+        ":dtypes",
+        ":errors",
+        ":util",
+    ],
+)
+
+py_library(
     name = "checkpoint_management",
     srcs = ["training/checkpoint_management.py"],
     deps = [
@@ -4805,7 +4837,7 @@ py_library(
         ":io_ops",
         ":io_ops_gen",
         ":platform",
-        ":pywrap_tensorflow",
+        ":py_checkpoint_reader",
         ":resource_variable_ops",
         ":session",
         ":state_ops",
@@ -5252,9 +5284,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
-        "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
-        "util/py_checkpoint_reader.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
     # add win_def_file for pywrap_tensorflow
@@ -5301,11 +5331,10 @@ tf_py_wrap_cc(
         "//tensorflow/core/debug",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/profiler/internal:print_model_analysis",
-        "//tensorflow/core/profiler/internal:python_traceme",
-        "//tensorflow/core/profiler/internal:python_scoped_annotation",
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
+        "//tensorflow/core/util/tensor_bundle:tensor_bundle",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
@@ -5351,19 +5380,21 @@ genrule(
         ":cpp_python_util",  # util
         ":py_func_lib",  # py_func
         "//tensorflow/core:util_port",  # util_port
-        "//tensorflow/core/profiler/internal:python_scoped_annotation",  # scoped_annotation
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
         "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
         "//tensorflow/core:framework_internal_impl",  # op_def_registry
         "//tensorflow/core:lib_internal_impl",  # device_lib
         "//tensorflow/core:core_cpu_impl",  # device_lib
-        "//tensorflow/core/profiler/internal:python_traceme",  # traceme
-        "//tensorflow/core/profiler/internal:traceme_recorder",  # traceme
         ":py_exception_registry",  # py_exception_registry
-        ":kernel_registry",
+        ":kernel_registry",  # kernel_registry
         "//tensorflow/lite/toco/python:toco_python_api",  # toco
         "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
+        ":ndarray_tensor",  # checkpoint_reader
+        ":numpy_lib",  # checkpoint_reader
+        ":safe_ptr",  # checkpoint_reader
+        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
@@ -6009,7 +6040,7 @@ cuda_py_test(
         ":partitioned_variables",
         ":platform",
         ":platform_test",
-        ":pywrap_tensorflow",
+        ":py_checkpoint_reader",
         ":random_ops",
         ":resource_variable_ops",
         ":sparse_ops",
@@ -6181,7 +6212,6 @@ tf_py_test(
         ":io_ops",
         ":partitioned_variables",
         ":platform",
-        ":pywrap_tensorflow",
         ":resource_variable_ops",
         ":state_ops",
         ":training",
@@ -6607,6 +6637,24 @@ tf_py_test(
         "//third_party/py/numpy",
     ],
     tags = ["no_windows"],
+)
+
+py_test(
+    name = "ops/array_ops_test",
+    srcs = ["ops/array_ops_test.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":client_testlib",
+        ":constant_op",
+        ":dtypes",
+        ":framework_ops",
+        ":framework_test_lib",
+        ":gradients",
+        ":math_ops",
+        ":random_ops",
+    ],
 )
 
 cuda_py_test(

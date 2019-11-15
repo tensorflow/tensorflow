@@ -150,4 +150,28 @@ REGISTER_KERNEL_BUILDER(Name("DebugIdentityV2")
                         DebugIdentityV2Op);
 #endif
 
+#define REGISTER_DEBUG_NUMERIC_SUMMARY_V2(type)           \
+  REGISTER_KERNEL_BUILDER(Name("DebugNumericSummaryV2")   \
+                              .Device(DEVICE_CPU)         \
+                              .TypeConstraint<type>("T"), \
+                          DebugNumericSummaryV2Op<CPUDevice, type>);
+TF_CALL_half(REGISTER_DEBUG_NUMERIC_SUMMARY_V2);
+TF_CALL_bfloat16(REGISTER_DEBUG_NUMERIC_SUMMARY_V2);
+TF_CALL_float(REGISTER_DEBUG_NUMERIC_SUMMARY_V2);
+TF_CALL_double(REGISTER_DEBUG_NUMERIC_SUMMARY_V2);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+REGISTER_KERNEL_BUILDER(Name("DebugNumericSummaryV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        DebugNumericSummaryV2Op<GPUDevice, Eigen::half>);
+REGISTER_KERNEL_BUILDER(
+    Name("DebugNumericSummaryV2").Device(DEVICE_GPU).TypeConstraint<float>("T"),
+    DebugNumericSummaryV2Op<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("DebugNumericSummaryV2")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<double>("T"),
+                        DebugNumericSummaryV2Op<GPUDevice, double>);
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 }  // namespace tensorflow

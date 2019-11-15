@@ -31,9 +31,9 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-constexpr char kLstmCellSimple[] = "LSTMCellSimple";
+constexpr char kLstmCellSimple[] = "lingvo.LSTMCellSimple";
 constexpr char kLayerNormalizedLstmCellSimple[] =
-    "LayerNormalizedLstmCellSimple";
+    "lingvo.LayerNormalizedLstmCellSimple";
 
 // A utility class that enables the conversion of the LSTMCellSimple composite
 // op into a fused TFL LSTM op. The fused op is contained within a FuncOp
@@ -60,17 +60,16 @@ class ConvertLSTMCellSimpleToFusedLSTM {
       const ConvertLSTMCellSimpleToFusedLSTM&) = delete;
   virtual ~ConvertLSTMCellSimpleToFusedLSTM() {}
 
-  // verify input func op arguments and initialize internal state.
-  virtual LogicalResult Initialize();
-
   virtual llvm::StringRef GetCompositeOpName() { return kLstmCellSimple; }
 
   // Rewrite the func body with constructed fused lstm.
-  void RewriteFunc();
+  LogicalResult RewriteFunc();
 
   int GetNumInputs() { return n_input_; }
 
  protected:
+  // verify input func op arguments and initialize internal state.
+  virtual LogicalResult Initialize();
   void UpdateFuncSignature();
   void GenerateFusedOpOperands();
 
@@ -192,9 +191,9 @@ class ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
     return kLayerNormalizedLstmCellSimple;
   }
 
+ protected:
   LogicalResult Initialize() override;
 
- protected:
   void SetCellLayerNormCoefficients() override;
   void SetInputLayerNormCoefficients() override;
   void SetForgetLayerNormCoefficients() override;

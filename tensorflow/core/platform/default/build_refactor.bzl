@@ -39,8 +39,11 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "deps": [
             "@local_config_cuda//cuda:cuda_headers",
-            "//tensorflow/core/platform:logging",
-            "//tensorflow/core/platform:types",
+            "//tensorflow/core:lib",
+            # TODO(bmzhao): When bazel gains cc_shared_library support, the targets below are
+            # the actual granular targets we should depend on, instead of tf/core:lib.
+            # "//tensorflow/core/platform:logging",
+            # "//tensorflow/core/platform:types",
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
@@ -79,7 +82,6 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/lib/core:errors",
             "//tensorflow/core/lib/core:status",
             "//tensorflow/core/lib/core:stringpiece",
-            "//tensorflow/core/lib/gtl:stl_util",
             "//tensorflow/core/lib/io:path",
             "//tensorflow/core/platform",
             "//tensorflow/core/platform:context",
@@ -210,6 +212,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
+        "alwayslink": 1,
     },
     "notification": {
         "name": "notification_impl",
@@ -233,9 +236,12 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "deps": [
             "@local_config_rocm//rocm:rocm_headers",
-            "//tensorflow/core/lib/io:path",
-            "//tensorflow/core/platform:logging",
-            "//tensorflow/core/platform:types",
+            "//tensorflow/core:lib",
+            # TODO(bmzhao): When bazel gains cc_shared_library support, the targets below are
+            # the actual granular targets we should depend on, instead of tf/core:lib.
+            # "//tensorflow/core/lib/io:path",
+            # "//tensorflow/core/platform:logging",
+            # "//tensorflow/core/platform:types",
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
@@ -298,6 +304,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
+        "alwayslink": 1,
     },
     "test": {
         "name": "test_impl",
@@ -333,14 +340,11 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:tracing.cc",
         ],
         "deps": [
-            "@com_google_absl//absl/memory",
             "//tensorflow/core/lib/core:errors",
             "//tensorflow/core/lib/hash",
             "//tensorflow/core/platform",
-            "//tensorflow/core/platform:annotation",
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
-            "//tensorflow/core/platform:mutex",
             "//tensorflow/core/platform:strcat",
             "//tensorflow/core/platform:str_util",
             "//tensorflow/core/platform:stringpiece",
@@ -403,7 +407,6 @@ TF_WINDOWS_PLATFORM_LIBRARIES = {
             "//tensorflow/core/lib/core:errors",
             "//tensorflow/core/lib/core:status",
             "//tensorflow/core/lib/core:stringpiece",
-            "//tensorflow/core/lib/gtl:stl_util",
             "//tensorflow/core/lib/io:path",
             "//tensorflow/core/platform",
             "//tensorflow/core/platform:context",

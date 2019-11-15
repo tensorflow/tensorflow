@@ -55,9 +55,8 @@ from tensorflow.python import _pywrap_stat_summarizer
 from tensorflow.python import _pywrap_py_exception_registry
 from tensorflow.python import _pywrap_kernel_registry
 from tensorflow.python import _pywrap_quantize_training
-from tensorflow.python import _pywrap_scoped_annotation
 from tensorflow.python import _pywrap_transform_graph
-from tensorflow.python import _pywrap_traceme
+from tensorflow.python import _pywrap_stacktrace_handler
 
 # Protocol buffers
 from tensorflow.core.framework.graph_pb2 import *
@@ -163,6 +162,7 @@ from tensorflow.python.ops import rnn_cell
 
 # TensorFlow Debugger (tfdbg).
 from tensorflow.python.debug.lib import check_numerics_callback
+from tensorflow.python.debug.lib import dumping_callback
 from tensorflow.python.ops import gen_debug_ops
 
 # XLA JIT compiler APIs.

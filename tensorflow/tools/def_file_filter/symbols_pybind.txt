@@ -21,6 +21,7 @@ tensorflow::swig::RegisterType
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm
+tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 
@@ -80,12 +81,6 @@ tensorflow::DeviceAttributes::SerializeToString
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
 
-[python_scoped_annotation] # scoped_annotation
-tensorflow::profiler::PythonScopedAnnotation::Init
-tensorflow::profiler::PythonScopedAnnotation::Enter
-tensorflow::profiler::PythonScopedAnnotation::Exit
-tensorflow::profiler::PythonScopedAnnotation::IsEnabled
-
 [kernel_registry] # kernel_registry
 tensorflow::swig::TryFindKernelClass
 
@@ -97,12 +92,23 @@ toco::TocoGetPotentiallySupportedOps
 tensorflow::graph_transforms::TransformGraph
 tensorflow::graph_transforms::ParseTransformParameters
 
-[python_traceme] # traceme
-tensorflow::profiler::PythonTraceMe::Init
-tensorflow::profiler::PythonTraceMe::Enter
-tensorflow::profiler::PythonTraceMe::Exit
-tensorflow::profiler::PythonTraceMe::IsEnabled
+[checkpoint_reader] # py_checkpoint_reader
+tensorflow::checkpoint::CheckpointReader
+tensorflow::checkpoint::CheckpointReader::Init
+tensorflow::checkpoint::CheckpointReader::DebugString
+tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap
+tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+tensorflow::checkpoint::CheckpointReader::GetTensor
+tensorflow::checkpoint::CheckpointReader::HasTensor
 
-[traceme_recorder] # traceme
-tensorflow::profiler::internal::g_trace_level
+[tensor_bundle] # py_checkpoint_reader
+tensorflow::BundleReader::BundleReader
+tensorflow::BundleReader::~BundleReader
+
+[ndarray_tensor] # py_checkpoint_reader
+tensorflow::TensorToNdarray
+
+[safe_ptr] # py_checkpoint_reader
+tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
 

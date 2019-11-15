@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_MEMORY_SPACE_ASSIGNMENT_H_
 
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
 
 namespace xla {
 
@@ -54,6 +54,171 @@ class PresetAssignments {
   std::vector<std::pair<int64, int64>> sizes_;
 };
 
+// A wrapper class around HloCostAnalysis with additional knowledge about the
+// bandwidths of different memory spaces.
+class MemorySpaceAssignmentCostAnalysis {
+ public:
+  MemorySpaceAssignmentCostAnalysis(
+      const HloCostAnalysis& cost_analysis,
+      float async_copy_bandwidth_bytes_per_second,
+      float alternate_mem_bandwidth_bytes_per_second)
+      : cost_analysis_(cost_analysis),
+        async_copy_bandwidth_bytes_per_second_(
+            async_copy_bandwidth_bytes_per_second),
+        alternate_mem_bandwidth_bytes_per_second_(
+            alternate_mem_bandwidth_bytes_per_second) {}
+
+  const HloCostAnalysis& cost_analysis() const { return cost_analysis_; }
+
+  // Returns the elapsed time in seconds due to compute only.
+  float GetInstructionElapsedDueToCompute(
+      const HloInstruction& instruction) const;
+
+  // Returns the elapsed time in seconds due to memory only. If
+  // operand_in_alternate_mem is provided or if output_in_alternate_mem is true,
+  // it will assume that operand or output will be in the alternate memory
+  // space. This is useful for calculating the benefit of placing the buffer in
+  // alternate memory.
+  float GetInstructionElapsedDueToMemory(
+      const HloInstruction& instruction,
+      absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
+      bool output_in_alternate_mem = false) const;
+
+  // Returns the estimated elapsed duration of the instruction in seconds.  It
+  // assumes all operands and outputs of the instruction are in the default
+  // memory, except for the operand number that is in the alternate memory, if
+  // provided, or output if output_in_alternate_mem is true.
+  float GetInstructionElapsed(
+      const HloInstruction& instruction,
+      absl::optional<int64> operand_in_alternate_mem = absl::nullopt,
+      bool output_in_alternate_mem = false) const;
+
+  // Returns the elapsed time it would take to asynchronously copy the shape
+  // from default to alternate memory space (or vice versa).
+  float GetAsyncCopyElapsed(const Shape& shape) const;
+
+ private:
+  const HloCostAnalysis& cost_analysis_;
+  float async_copy_bandwidth_bytes_per_second_;
+  float alternate_mem_bandwidth_bytes_per_second_;
+};
+
+// Abstract base class that memory space assignment uses to pick prefetch
+// intervals.
+class PrefetchIntervalPicker {
+ public:
+  PrefetchIntervalPicker() = default;
+  virtual ~PrefetchIntervalPicker() = default;
+
+  // Sets the instruction schedule.
+  virtual void SetInstructionSchedule(
+      const absl::flat_hash_map<const HloInstruction*, int64>&
+          instruction_schedule) {
+    instruction_schedule_ = &instruction_schedule;
+  }
+
+  // Returns true if the buffer can be allocated in alternate memory space
+  // without any copies (prefetches).
+  virtual bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape,
+                                                  int64 start_time,
+                                                  int64 end_time) const = 0;
+
+  // Begins the iterator for the first start time of the prefetch.
+  virtual void Begin(const HloUse& use, int64 start_time, int64 end_time) = 0;
+
+  // Advances the start time of the prefetch and returns that value.
+  virtual int64 Next() = 0;
+
+  // Returns true if the available prefetch intervals have been exhausted.
+  virtual bool Done() const = 0;
+
+ protected:
+  const absl::flat_hash_map<const HloInstruction*, int64>*
+      instruction_schedule_ = nullptr;
+};
+
+// Prefetch interval picker that uses instruction count to overlap asynchronous
+// copies with independent computation. The min and max overlap counts describe
+// the number of independent HLOs overlapped while a value is being prefetched
+// into the alternate memory (between CopyStart and CopyDone HLO instructions).
+// max_overlap_count attempts to prevent bringing tensors into the alternate
+// memory too eagerly and hence occupying the space for other tensors which
+// might use it.  min_overlap_count attempts to prevent cases where tensors are
+// prefetched into the alternate memory without sufficient time for the copy to
+// take place.  In those cases, it's just better to keep the tensor in the
+// default memory instead of hurting the critical path with this copy that
+// likely won't finish in time.
+class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
+ public:
+  InstructionCountPrefetchIntervalPicker(int64 min_overlap_count,
+                                         int64 max_overlap_count)
+      : min_overlap_count_(min_overlap_count),
+        max_overlap_count_(max_overlap_count) {}
+
+  bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
+                                          int64 end_time) const override;
+
+  void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
+
+  int64 Next() override;
+  bool Done() const override;
+
+ private:
+  int64 min_overlap_count_;
+  int64 max_overlap_count_;
+  int64 end_time_;
+  int64 current_prefetch_time_;
+};
+
+// Prefetch interval picker that uses cost analysis to overlap asynchronous
+// copies with independent computation. It uses min/max (asynchronous copy
+// duration) / (independent computation duration) ratios to guide whether the
+// prefetch is within those bounds. It starts with the maximum allowed ratio
+// (earliest prefetch) in Begin() and works its way for later and later prefetch
+// with each Next() call until hitting the minimum ratio, in order not to hurt
+// the critical path.
+class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
+ public:
+  CostAnalysisPrefetchIntervalPicker(
+      const MemorySpaceAssignmentCostAnalysis& cost_analysis,
+      float min_async_copy_to_overlap_ratio,
+      float max_async_copy_to_overlap_ratio)
+      : cost_analysis_(cost_analysis),
+        min_async_copy_to_overlap_ratio_(min_async_copy_to_overlap_ratio),
+        max_async_copy_to_overlap_ratio_(max_async_copy_to_overlap_ratio) {}
+
+  void SetInstructionSchedule(
+      const absl::flat_hash_map<const HloInstruction*, int64>&
+          instruction_schedule) override;
+
+  bool CanAllocateInAlternateMemoryNoCopy(const Shape& shape, int64 start_time,
+                                          int64 end_time) const override;
+
+  void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
+
+  int64 Next() override;
+  bool Done() const override;
+
+ private:
+  // Returns the elapsed time in seconds between the logical interval that
+  // corresponds to the instruction schedule.
+  float GetLogicalIntervalElapsed(int64 start_time, int64 end_time) const;
+
+  // For performance reasons, we calculate the prefix sum of the elapsed time so
+  // that it's efficient to find the elapsed time in seconds in any logical
+  // interval.
+  std::vector<float> elapsed_time_cumsum_;
+
+  const MemorySpaceAssignmentCostAnalysis& cost_analysis_;
+  float min_async_copy_to_overlap_ratio_;
+  float max_async_copy_to_overlap_ratio_;
+
+  float async_copy_elapsed_;
+  float inst_elapsed_reduction_;
+  int64 end_logical_time_;
+  int64 current_logical_prefetch_time_;
+};
+
 // MemorySpaceAssignment assigns memory spaces (default or alternate) to each
 // instruction in the module. It will greedily try placing as as many values in
 // the alternate memory space as possible. It uses the heap simulator to
@@ -64,10 +229,46 @@ class PresetAssignments {
 class MemorySpaceAssignment {
  public:
   using Chunk = HeapSimulator::Chunk;
+  using BufferInterval = GlobalDecreasingSizeBestFitHeap::BufferInterval;
+  using BufferIntervalCompare =
+      GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare;
+  using IsAllowedInAlternateMemoryFunction =
+      std::function<bool(const HloValue&)>;
 
   // MemorySpaceAssignment uses a notion of a slow and large default memory
   // space and a fast and small alternate memory space.
   enum class MemorySpace { kDefault, kAlternate };
+
+  // The different options to be passed to the Run() API.
+  struct Options {
+    // Backend-specific integer value that describes the alternate memory.
+    int64 alternate_memory_space = 0;
+
+    // Maximum size of the alternate memory space.
+    int64 max_size_in_bytes = 0;
+
+    // Memory alignment of the alternate memory space.
+    int64 alignment_in_bytes = 1;
+
+    // If provided, we sort the buffers using this comparison function
+    // otherwise, we use GlobalDecreasingSizeBestFitHeap::kSpatial.
+    absl::optional<BufferIntervalCompare> buffer_interval_compare =
+        absl::nullopt;
+
+    // This object determines how early and how late prefetches can occur.
+    PrefetchIntervalPicker* prefetch_interval_picker = nullptr;
+
+    // Size function for buffer values.
+    BufferValue::SizeFunction size_fn;
+
+    // This function can be used to prevent certain HloValues (e.g., based on
+    // the opcode) to be placed on the alternate memory.
+    IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_fn;
+
+    // Specifies the upper bound for number of outstanding asynchronous copies,
+    // -1 for unlimited.
+    int64 max_outstanding_async_copies = -1;
+  };
 
   // This class represents an allocation that might either be in the default or
   // alternate memory. An HloValue might live in multiple different allocations
@@ -227,30 +428,16 @@ class MemorySpaceAssignment {
   using AllocationMap =
       absl::flat_hash_map<const HloValue*, AllocationSequence>;
 
-  // Runs the MemorySpaceAssignment pass. alternate_memory_space is the
-  // architecture-specific integer value that describes the alternate memory.
-  // max_size_in_bytes is the maximum size of the alternate memory.
-  // min/max_prefetch_interval define min/max number of independent instructions
-  // that can be overlapped while prefetching to decide how early can prefetch
-  // begin. alternate_memory_space_alignment_in_bytes is the alignment required
-  // in the alternate memory space, size_fn is the size function for buffer
-  // values, and is_allowed_in_alternate_mem can be used to prevent certain
-  // HloValues (e.g., based on the opcode) to be placed on the alternate memory.
-  // max_outstanding_async_copies specifies the upper bound for number of
-  // outstanding asynchronous copies, -1 for unlimited.
-  // TODO(berkin): Use the cost model instead of using number of instructions to
-  // decide how early to prefetch.
+  // Runs the MemorySpaceAssignment pass.
   static StatusOr<std::unique_ptr<PresetAssignments>> Run(
-      HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
-      int64 min_prefetch_interval, int64 max_prefetch_interval,
-      int64 alternate_memory_space_alignment_in_bytes,
-      BufferValue::SizeFunction size_fn,
-      std::function<bool(const HloValue&)> is_allowed_in_alternate_mem,
-      int64 max_outstanding_async_copies = -1);
+      HloModule* module, const Options& options);
 
   // Returns the maximum number of outstanding asynchronous copies in the
   // module.
   static int64 CountMaximumOutstandingAsyncCopies(const HloModule& module);
+
+  static BufferIntervalCompare GetMemoryBoundednessBufferIntervalCompare(
+      const MemorySpaceAssignmentCostAnalysis& cost_analysis);
 
  private:
   MemorySpaceAssignment(HloModule* module, int64 alternate_memory_space)
@@ -282,10 +469,6 @@ class MemorySpaceAssignment {
   // corresponding CopyDones follow the same order.
   void ScheduleAsynchronousCopies();
 
-  // Add the position to the pending positions that will be colored as alternate
-  // memory.
-  void AddPositionInAlternateMemorySpace(HloPosition position);
-
   HloModule* module_;
   int64 alternate_memory_space_;
   std::unique_ptr<HloLiveRange> hlo_live_range_;
@@ -297,7 +480,6 @@ class MemorySpaceAssignment {
   // to modify and fix the schedule.
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_after_;
   absl::flat_hash_map<int64, std::vector<HloInstruction*>> schedule_before_;
-  std::vector<HloPosition> pending_positions_in_alternate_mem_;
 };
 
 // This struct contains mandatory memory assignments at a given time. E.g., an
@@ -313,27 +495,23 @@ struct RequiredMemoryAssignment {
 // maximum size.
 class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
  public:
-  using IsAllowedInAlternateMemoryFunction =
-      std::function<bool(const HloValue&)>;
   using MemorySpace = MemorySpaceAssignment::MemorySpace;
 
   AlternateMemoryBestFitHeap(
       MemorySpaceAssignment::AllocationMap* allocation_map,
-      int64 max_size_in_bytes, int64 min_prefetch_interval,
-      int64 max_prefetch_interval, const HloAliasAnalysis& alias_analysis,
-      const HloLiveRange& hlo_live_range, int64 alignment,
-      GlobalDecreasingSizeBestFitHeap::Type type,
-      IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem,
-      int64 max_outstanding_async_copies)
-      : GlobalDecreasingSizeBestFitHeap(alignment, type),
+      const MemorySpaceAssignment::Options& options,
+      const HloAliasAnalysis& alias_analysis,
+      const HloLiveRange& hlo_live_range)
+      : GlobalDecreasingSizeBestFitHeap(options.alignment_in_bytes),
         allocation_map_(allocation_map),
-        max_size_in_bytes_(max_size_in_bytes),
-        min_prefetch_interval_(min_prefetch_interval),
-        max_prefetch_interval_(max_prefetch_interval),
+        options_(options),
         alias_analysis_(alias_analysis),
-        hlo_live_range_(hlo_live_range),
-        is_allowed_in_alternate_mem_(is_allowed_in_alternate_mem),
-        max_outstanding_async_copies_(max_outstanding_async_copies) {}
+        hlo_live_range_(hlo_live_range) {
+    // Override buffer interval compare if provided.
+    if (options.buffer_interval_compare) {
+      buffer_interval_compare_ = *options.buffer_interval_compare;
+    }
+  }
 
   HeapSimulator::Result Finish() override;
 
@@ -389,28 +567,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void CommitPendingChunks();
 
   MemorySpaceAssignment::AllocationMap* allocation_map_;
-  int64 max_size_in_bytes_;
-  // The min and max prefetch intervals decribe the number of independent HLOs
-  // overlapped while a value is being prefetched into the alternate memory
-  // (between CopyStart and CopyDone HLO instructions). max_prefetch_interval
-  // attempts to prevent bringing tensors into the alternate memory too eagerly
-  // and hence occupying the space for other tensors which might use it.
-  // min_prefetch_interval attempts to prevent cases where tensors are
-  // prefetched into the alternate memory without sufficient time for the copy
-  // to take place. In those cases, it's just better to keep the tensor in the
-  // default memory instead of hurting the critical path with this copy that
-  // likely won't finish in time.
-  // TODO(berkin): Explore heuristics that take into account the cost of copying
-  // tensors between alternate and default memories.
-  int64 min_prefetch_interval_;
-  int64 max_prefetch_interval_;
+  const MemorySpaceAssignment::Options& options_;
   const HloAliasAnalysis& alias_analysis_;
   const HloLiveRange& hlo_live_range_;
-  IsAllowedInAlternateMemoryFunction is_allowed_in_alternate_mem_;
   // We use a interval tree to keep track of the number of outstanding
   // asynchronous copies.
   BufferIntervalTree async_copy_interval_tree_;
-  int64 max_outstanding_async_copies_;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<std::pair<int64, int64>> pending_async_copies_;
   // This map contains required memory assignments for HloValues (e.g., input

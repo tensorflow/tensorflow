@@ -156,7 +156,10 @@ py_library(
     name = "monitoring",
     srcs = ["monitoring.py"],
     srcs_version = "PY2AND3",
-    visibility = ["//tensorflow:internal"],
+    visibility = [
+        "//tensorflow:internal",
+        "//third_party/py/tf_agents:__subpackages__",
+    ],
     deps = [
         "//tensorflow/python:c_api_util",
         "//tensorflow/python:pywrap_tensorflow",
@@ -775,9 +778,11 @@ cuda_py_test(
         ":def_function",
         ":test",
         ":remote",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,
+    shard_count = 2,
     tags = [
         "no_oss",  # This test launches local server.
         "optonly",  # times out

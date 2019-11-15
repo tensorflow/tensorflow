@@ -164,7 +164,8 @@ def run_one_epoch(model,
           batch_logs['size'] = data_batch_size
           current_batch_size = data_batch_size
       else:
-        batch_outs = _aggregate_predict_results(strategy, batch_outs, model)
+        batch_outs = training_v2_utils._aggregate_predict_results(
+            strategy, batch_outs, model)
 
       if step == 0:
         aggregator.create(batch_outs)
@@ -251,12 +252,15 @@ class Loop(training_utils.TrainingLoop):
       # Raise an error if steps_per_epoch isn't specified but the dataset
       # is infinite.
       # TODO(scottzhu): This check should probably happen in the adapter
-      training_utils.infer_steps_for_dataset(
+      inferred_steps = training_utils.infer_steps_for_dataset(
           model,
           training_dataset,
           steps_per_epoch,
           steps_name='steps_per_epoch',
           epochs=0)
+
+      steps_per_epoch = (
+          inferred_steps if steps_per_epoch is None else steps_per_epoch)
 
       training_dataset = strategy.experimental_distribute_dataset(
           training_dataset)
@@ -432,6 +436,8 @@ class Loop(training_utils.TrainingLoop):
 
       # tf.print('{} on {} steps.'.format(ModeKeys.TRAIN, steps_per_epoch))
       training_context = TrainingContext()
+      if mode == ModeKeys.PREDICT:
+        dataset = training_v2_utils._add_batch_index_to_element(dataset)
       dataset = strategy.experimental_distribute_dataset(dataset)
 
       execution_function = training_v2_utils._get_or_make_execution_function(
@@ -446,7 +452,7 @@ class Loop(training_utils.TrainingLoop):
           batch_size=batch_size,
           epochs=1,
           steps_per_epoch=steps,
-          samples=use_sample,
+          samples=total_samples,
           count_mode='samples' if use_sample else 'steps',
           verbose=0,  # Handle ProgBarLogger separately in this loop.
           mode=mode)
@@ -589,7 +595,7 @@ def _process_training_inputs(model,
     if validation_data:
       (val_x, val_y,
        val_sample_weights) = training_utils.unpack_validation_data(
-           validation_data)
+           validation_data, raise_if_ambiguous=False)
       # For eval data, we use a representative batch size of the
       # training data if batch_size was unknown.
       # This is useful for generator/sequence training data input with numpy
@@ -703,18 +709,6 @@ def _get_total_number_of_samples(adapter):
   if adapter.has_partial_batch():
     total_sample -= (adapter.batch_size() - adapter.partial_batch_size())
   return total_sample
-
-
-def _aggregate_predict_results(strategy, batch_outs, model):
-  if not isinstance(batch_outs, list):
-    batch_outs = [batch_outs]
-  total_batch_outs = []
-  for i in range(len(model.outputs)):
-    num_replicas = strategy.num_replicas_in_sync
-    nested_outs = batch_outs[i * num_replicas:i * num_replicas + num_replicas]
-    total_batch_outs.append(
-        dist_utils.concat_along_batch_dimension(nest.flatten(nested_outs)))
-  return total_batch_outs
 
 
 def _print_train_info(total_samples, steps, val_total_samples, val_steps):

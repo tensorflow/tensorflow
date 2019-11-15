@@ -70,19 +70,18 @@ TEST(CompileSerializedMlirToXlaHloTest, Success) {
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
   ASSERT_TRUE(status_or_hlo_module.ok());
-  string expected_hlo_module_string = R"(HloModule main.6
+  string expected_hlo_module_string = R"(HloModule main.5
 
-ENTRY %main.6 (arg_tuple.1: (f32[], f32[])) -> (f32[]) {
+ENTRY %main.5 (arg_tuple.1: (f32[], f32[])) -> f32[] {
   %arg_tuple.1 = (f32[], f32[]) parameter(0)
   %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[]) %arg_tuple.1), index=0
   %get-tuple-element.3 = f32[] get-tuple-element((f32[], f32[]) %arg_tuple.1), index=1
-  %add.4 = f32[] add(f32[] %get-tuple-element.2, f32[] %get-tuple-element.3)
-  ROOT %tuple.5 = (f32[]) tuple(f32[] %add.4)
+  ROOT %add.4 = f32[] add(f32[] %get-tuple-element.2, f32[] %get-tuple-element.3)
 }
 
 )";
-  EXPECT_EQ(status_or_hlo_module.ValueOrDie()->ToString(),
-            expected_hlo_module_string);
+  EXPECT_EQ(expected_hlo_module_string,
+            status_or_hlo_module.ValueOrDie()->ToString());
 
   // Expect an iota like input mapping.
   EXPECT_EQ(compilation_result.input_mapping, std::vector<int>({0, 1}));
@@ -140,7 +139,7 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
   ASSERT_TRUE(status_or_hlo_module.ok());
 
   string expected_signature =
-      R"((arg_tuple.1: (f32[10,17], f32[17,19])) -> (f32[10,19]))";
+      R"((arg_tuple.1: (f32[10,17], f32[17,19])) -> f32[10,19])";
   EXPECT_THAT(status_or_hlo_module.ValueOrDie()->ToString(),
               ::testing::HasSubstr(expected_signature));
 }

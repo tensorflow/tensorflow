@@ -27,8 +27,7 @@ limitations under the License.
 //
 // Ops in this file are sorted alphabetically.
 
-#ifdef TF_OP_BASE
-#else
+#ifndef TF_OP_BASE
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
 #endif // TF_OP_BASE
 
@@ -88,9 +87,7 @@ Inputs must be of same size and shape.
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>>:$inputs,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$N
+    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>>:$inputs
   );
 
   let results = (outs
@@ -98,6 +95,7 @@ Inputs must be of same size and shape.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
@@ -203,9 +201,9 @@ Usage:
     TF_I32OrI64Tensor:$output
   );
 
+  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
-  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_ArgMinOp : TF_Op<"ArgMin", [NoSideEffect]> {
@@ -236,9 +234,9 @@ Usage:
     TF_I32OrI64Tensor:$output
   );
 
+  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
-  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_AssertOp : TF_Op<"Assert", []> {
@@ -360,6 +358,8 @@ It is computed as:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_BatchMatMulV2Op : TF_Op<"BatchMatMulV2", [NoSideEffect]> {
@@ -403,6 +403,8 @@ about broadcasting
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_BatchToSpaceNDOp : TF_Op<"BatchToSpaceND", [NoSideEffect]> {
@@ -480,6 +482,10 @@ the feature dimension is the third-to-last.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_BitcastOp : TF_Op<"Bitcast", [NoSideEffect]> {
@@ -548,10 +554,32 @@ endian orderings will give different results.
     TF_NumberTensor:$output
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr type = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
+  let summary = [{
+Return the reduction indices for computing gradients of s0 op s1 with broadcast.
+  }];
+
+  let description = [{
+This is typically used by gradient computations for a broadcasting operation.
+  }];
+
+  let arguments = (ins
+    TF_I32OrI64Tensor:$s0,
+    TF_I32OrI64Tensor:$s1
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$r0,
+    TF_I32OrI64Tensor:$r1
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_BroadcastToOp : TF_Op<"BroadcastTo", [NoSideEffect]> {
@@ -655,6 +683,61 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_ComplexOp : TF_Op<"Complex", [Broadcastable, NoSideEffect]> {
+  let summary = "Converts two real numbers to a complex number.";
+
+  let description = [{
+Given a tensor `real` representing the real part of a complex number, and a
+tensor `imag` representing the imaginary part of a complex number, this
+operation returns complex numbers elementwise of the form \\(a + bj\\), where
+*a* represents the `real` part and *b* represents the `imag` part.
+
+The input tensors `real` and `imag` must have the same shape.
+
+For example:
+
+```
+# tensor 'real' is [2.25, 3.25]
+# tensor `imag` is [4.75, 5.75]
+tf.complex(real, imag) ==> [[2.25 + 4.75j], [3.25 + 5.75j]]
+```
+  }];
+
+  let arguments = (ins
+    TF_F32OrF64Tensor:$real,
+    TF_F32OrF64Tensor:$imag
+  );
+
+  let results = (outs
+    TensorOf<[TF_Complex128, TF_Complex64]>:$out
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
+def TF_ComplexAbsOp : TF_Op<"ComplexAbs", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Computes the complex absolute value of a tensor.";
+
+  let description = [{
+Given a tensor `x` of complex numbers, this operation returns a tensor of type
+`float` or `double` that is the absolute value of each element in `x`. All
+elements in `x` must be complex numbers of the form \\(a + bj\\). The absolute
+value is computed as \\( \sqrt{a^2 + b^2}\\).
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   let summary = "Concatenates tensors along one dimension.";
 
@@ -663,9 +746,7 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
 
   let arguments = (ins
     I32Tensor:$concat_dim,
-    Variadic<TF_Tensor>:$values,
-
-    Confined<I64Attr, [IntMinValue<2>]>:$N
+    Variadic<TF_Tensor>:$values
   );
 
   let results = (outs
@@ -673,6 +754,7 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
 
   let verifier = [{
     return Verify(*this);
@@ -687,9 +769,7 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
 
   let arguments = (ins
     Variadic<TF_Tensor>:$values,
-    TF_I32OrI64Tensor:$axis,
-
-    Confined<I64Attr, [IntMinValue<2>]>:$N
+    TF_I32OrI64Tensor:$axis
   );
 
   let results = (outs
@@ -698,13 +778,14 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 
   let verifier = [{
     return Verify(*this);
   }];
 }
 
-def TF_ConjOp : TF_Op<"Conj", [NoSideEffect]> {
+def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
   let description = [{
@@ -903,6 +984,30 @@ Given an input tensor, this function computes cosine of every
 
   let results = (outs
     TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_CrossReplicaSumOp : TF_Op<"CrossReplicaSum", [AllTypesMatch<["input", "output"]>, NoSideEffect]> {
+  let summary = "An Op to sum inputs across replicated TPU instances.";
+
+  let description = [{
+Each instance supplies its own input.
+
+For example, suppose there are 8 TPU instances: `[A, B, C, D, E, F, G, H]`.
+Passing group_assignment=`[[0,2,4,6],[1,3,5,7]]` sets `A, C, E, G` as group 0,
+and `B, D, F, H` as group 1. Thus we get the outputs:
+`[A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H]`.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F32, I32, TF_Uint32]>:$input,
+    I32Tensor:$group_assignment
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F32, I32, TF_Uint32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -1408,6 +1513,10 @@ fill([2, 3], 9) ==> [[9, 9, 9]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr index_type = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_FloorOp : TF_Op<"Floor", [NoSideEffect, SameOperandsAndResultType]> {
@@ -1865,6 +1974,35 @@ def ApplyG(op, dy, _):
   TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 }
 
+def TF_ImagOp : TF_Op<"Imag", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns the imaginary part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the imaginary part of each element in `input`. All
+elements in `input` must be complex numbers of the form \\(a + bj\\), where *a*
+is the real part and *b* is the imaginary part returned by this operation.
+
+For example:
+
+```
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.imag(input) ==> [4.75, 5.75]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_InvertOp : TF_Op<"Invert", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = [{
 Invert (flip) each bit of supported types; for example, type `uint8` value 01010101 becomes 10101010.
@@ -1923,6 +2061,26 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
+  let summary = "L2 Loss.";
+
+  let description = [{
+Computes half the L2 norm of a tensor without the `sqrt`:
+
+    output = sum(t ** 2) / 2
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$t
+  );
+
+  let results = (outs
+    TF_FpTensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_LRNOp : TF_Op<"LRN", [NoSideEffect]> {
@@ -2072,7 +2230,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
-def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect]> {
+def TF_LogSoftmaxOp : TF_Op<"LogSoftmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes log softmax activations.";
 
   let description = [{
@@ -2248,7 +2406,7 @@ When `k` is scalar or `k[0] == k[1]`, `M` is part of the batch size
 ```
 output[i, j, ..., l, m, n]
   = diagonal[i, j, ..., l, n-max(d_upper, 0)] ; if n - m == d_upper
-    output[i, j, ..., l, m, n]                ; otherwise
+    padding_value                             ; otherwise
 ```
 
 Otherwise, `M` is treated as the number of diagonals for the matrix in the
@@ -2256,10 +2414,10 @@ same batch (`M = k[1]-k[0]+1`), and the output tensor is:
 
 ```
 output[i, j, ..., l, m, n]
-  = diagonal[i, j, ..., l, k[1]-d, n-max(d, 0)] ; if d_lower <= d <= d_upper
-    input[i, j, ..., l, m, n]                   ; otherwise
+  = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+    padding_value                                     ; otherwise
 ```
-where `d = n - m`
+where `d = n - m`, `diag_index = k[1] - d`, and `index_in_diag = n - max(d, 0)`.
 
 For example:
 
@@ -2309,8 +2467,8 @@ tf.matrix_diag(diagonal, k = -1, num_rows = 3, num_cols = 4)
        [1, 0, 0, 0],
        [0, 2, 0, 0]]
 
-# Rectangular matrix with inferred num_cols and padding = 9.
-tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding = 9)
+# Rectangular matrix with inferred num_cols and padding_value = 9.
+tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
   ==> [[9, 9],  # Output shape: (3, 2)
        [1, 9],
        [9, 2]]
@@ -2323,6 +2481,274 @@ tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding = 9)
     I32Tensor:$num_rows,
     I32Tensor:$num_cols,
     TF_Tensor:$padding_value
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MatrixDiagV3Op : TF_Op<"MatrixDiagV3", [NoSideEffect]> {
+  let summary = [{
+Returns a batched diagonal tensor with given batched diagonal values.
+  }];
+
+  let description = [{
+Returns a tensor with the contents in `diagonal` as `k[0]`-th to `k[1]`-th
+diagonals of a matrix, with everything else padded with `padding`. `num_rows`
+and `num_cols` specify the dimension of the innermost matrix of the output. If
+both are not specified, the op assumes the innermost matrix is square and infers
+its size from `k` and the innermost dimension of `diagonal`. If only one of them
+is specified, the op assumes the unspecified value is the smallest possible
+based on other criteria.
+
+Let `diagonal` have `r` dimensions `[I, J, ..., L, M, N]`. The output tensor has
+rank `r+1` with shape `[I, J, ..., L, M, num_rows, num_cols]` when only one
+diagonal is given (`k` is an integer or `k[0] == k[1]`). Otherwise, it has rank
+`r` with shape `[I, J, ..., L, num_rows, num_cols]`.
+
+The second innermost dimension of `diagonal` has double meaning.
+When `k` is scalar or `k[0] == k[1]`, `M` is part of the batch size
+[I, J, ..., M], and the output tensor is:
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, n-max(d_upper, 0)] ; if n - m == d_upper
+    padding_value                             ; otherwise
+```
+
+Otherwise, `M` is treated as the number of diagonals for the matrix in the
+same batch (`M = k[1]-k[0]+1`), and the output tensor is:
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+    padding_value                                     ; otherwise
+```
+where `d = n - m`, `diag_index = [k] - d`, and
+`index_in_diag = n - max(d, 0) + offset`.
+
+`offset` is zero except when the alignment of the diagonal is to the right.
+```
+offset = max_diag_len - diag_len(d) ; if (`align` in {RIGHT_LEFT, RIGHT_RIGHT}
+                                           and `d >= 0`) or
+                                         (`align` in {LEFT_RIGHT, RIGHT_RIGHT}
+                                           and `d <= 0`)
+         0                          ; otherwise
+```
+where `diag_len(d) = min(cols - max(d, 0), rows + min(d, 0))`.
+
+For example:
+
+```
+# The main diagonal.
+diagonal = np.array([[1, 2, 3, 4],            # Input shape: (2, 4)
+                     [5, 6, 7, 8]])
+tf.matrix_diag(diagonal) ==> [[[1, 0, 0, 0],  # Output shape: (2, 4, 4)
+                               [0, 2, 0, 0],
+                               [0, 0, 3, 0],
+                               [0, 0, 0, 4]],
+                              [[5, 0, 0, 0],
+                               [0, 6, 0, 0],
+                               [0, 0, 7, 0],
+                               [0, 0, 0, 8]]]
+
+# A superdiagonal (per batch).
+diagonal = np.array([[1, 2, 3],  # Input shape: (2, 3)
+                     [4, 5, 6]])
+tf.matrix_diag(diagonal, k = 1)
+  ==> [[[0, 1, 0, 0],  # Output shape: (2, 4, 4)
+        [0, 0, 2, 0],
+        [0, 0, 0, 3],
+        [0, 0, 0, 0]],
+       [[0, 4, 0, 0],
+        [0, 0, 5, 0],
+        [0, 0, 0, 6],
+        [0, 0, 0, 0]]]
+
+# A tridiagonal band (per batch).
+diagonals = np.array([[[0, 8, 9],  # Input shape: (2, 2, 3)
+                       [1, 2, 3],
+                       [4, 5, 0]],
+                      [[0, 2, 3],
+                       [6, 7, 9],
+                       [9, 1, 0]]])
+tf.matrix_diag(diagonals, k = (-1, 1))
+  ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
+        [4, 2, 9],
+        [0, 5, 3]],
+       [[6, 2, 0],
+        [9, 7, 3],
+        [0, 1, 9]]]
+
+# LEFT_RIGHT alignment.
+diagonals = np.array([[[8, 9, 0],  # Input shape: (2, 2, 3)
+                       [1, 2, 3],
+                       [0, 4, 5]],
+                      [[2, 3, 0],
+                       [6, 7, 9],
+                       [0, 9, 1]]])
+tf.matrix_diag(diagonals, k = (-1, 1), align="LEFT_RIGHT")
+  ==> [[[1, 8, 0],  # Output shape: (2, 3, 3)
+        [4, 2, 9],
+        [0, 5, 3]],
+       [[6, 2, 0],
+        [9, 7, 3],
+        [0, 1, 9]]]
+
+# Rectangular matrix.
+diagonal = np.array([1, 2])  # Input shape: (2)
+tf.matrix_diag(diagonal, k = -1, num_rows = 3, num_cols = 4)
+  ==> [[0, 0, 0, 0],  # Output shape: (3, 4)
+       [1, 0, 0, 0],
+       [0, 2, 0, 0]]
+
+# Rectangular matrix with inferred num_cols and padding_value = 9.
+tf.matrix_diag(diagonal, k = -1, num_rows = 3, padding_value = 9)
+  ==> [[9, 9],  # Output shape: (3, 2)
+       [1, 9],
+       [9, 2]]
+
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$diagonal,
+    I32Tensor:$k,
+    I32Tensor:$num_rows,
+    I32Tensor:$num_cols,
+    TF_Tensor:$padding_value,
+
+    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "RIGHT_LEFT">:$align
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MatrixSetDiagV3Op : TF_Op<"MatrixSetDiagV3", [NoSideEffect]> {
+  let summary = [{
+Returns a batched matrix tensor with new batched diagonal values.
+  }];
+
+  let description = [{
+Given `input` and `diagonal`, this operation returns a tensor with the
+same shape and values as `input`, except for the specified diagonals of the
+innermost matrices. These will be overwritten by the values in `diagonal`.
+
+`input` has `r+1` dimensions `[I, J, ..., L, M, N]`. When `k` is scalar or
+`k[0] == k[1]`, `diagonal` has `r` dimensions `[I, J, ..., L, max_diag_len]`.
+Otherwise, it has `r+1` dimensions `[I, J, ..., L, num_diags, max_diag_len]`.
+`num_diags` is the number of diagonals, `num_diags = k[1] - k[0] + 1`.
+`max_diag_len` is the longest diagonal in the range `[k[0], k[1]]`,
+`max_diag_len = min(M + min(k[1], 0), N + min(-k[0], 0))`
+
+The output is a tensor of rank `k+1` with dimensions `[I, J, ..., L, M, N]`.
+If `k` is scalar or `k[0] == k[1]`:
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, n-max(k[1], 0)] ; if n - m == k[1]
+    input[i, j, ..., l, m, n]              ; otherwise
+```
+
+Otherwise,
+
+```
+output[i, j, ..., l, m, n]
+  = diagonal[i, j, ..., l, diag_index, index_in_diag] ; if k[0] <= d <= k[1]
+    input[i, j, ..., l, m, n]                         ; otherwise
+```
+where `d = n - m`, `diag_index = k[1] - d`, and
+`index_in_diag = n - max(d, 0) + offset`.
+
+`offset` is zero except when the alignment of the diagonal is to the right.
+```
+offset = max_diag_len - diag_len(d) ; if (`align` in {RIGHT_LEFT, RIGHT_RIGHT}
+                                           and `d >= 0`) or
+                                         (`align` in {LEFT_RIGHT, RIGHT_RIGHT}
+                                           and `d <= 0`)
+         0                          ; otherwise
+```
+where `diag_len(d) = min(cols - max(d, 0), rows + min(d, 0))`.
+
+For example:
+
+```
+# The main diagonal.
+input = np.array([[[7, 7, 7, 7],              # Input shape: (2, 3, 4)
+                   [7, 7, 7, 7],
+                   [7, 7, 7, 7]],
+                  [[7, 7, 7, 7],
+                   [7, 7, 7, 7],
+                   [7, 7, 7, 7]]])
+diagonal = np.array([[1, 2, 3],               # Diagonal shape: (2, 3)
+                     [4, 5, 6]])
+tf.matrix_set_diag(input, diagonal)
+  ==> [[[1, 7, 7, 7],  # Output shape: (2, 3, 4)
+        [7, 2, 7, 7],
+        [7, 7, 3, 7]],
+       [[4, 7, 7, 7],
+        [7, 5, 7, 7],
+        [7, 7, 6, 7]]]
+
+# A superdiagonal (per batch).
+tf.matrix_set_diag(input, diagonal, k = 1)
+  ==> [[[7, 1, 7, 7],  # Output shape: (2, 3, 4)
+        [7, 7, 2, 7],
+        [7, 7, 7, 3]],
+       [[7, 4, 7, 7],
+        [7, 7, 5, 7],
+        [7, 7, 7, 6]]]
+
+# A band of diagonals.
+diagonals = np.array([[[0, 9, 1],  # Diagonal shape: (2, 4, 3)
+                       [6, 5, 8],
+                       [1, 2, 3],
+                       [4, 5, 0]],
+                      [[0, 1, 2],
+                       [5, 6, 4],
+                       [6, 1, 2],
+                       [3, 4, 0]]])
+tf.matrix_set_diag(input, diagonals, k = (-1, 2))
+  ==> [[[1, 6, 9, 7],  # Output shape: (2, 3, 4)
+        [4, 2, 5, 1],
+        [7, 5, 3, 8]],
+       [[6, 5, 1, 7],
+        [3, 1, 6, 2],
+        [7, 4, 2, 4]]]
+
+# LEFT_RIGHT alignment.
+diagonals = np.array([[[9, 1, 0],  # Diagonal shape: (2, 4, 3)
+                       [6, 5, 8],
+                       [1, 2, 3],
+                       [0, 4, 5]],
+                      [[1, 2, 0],
+                       [5, 6, 4],
+                       [6, 1, 2],
+                       [0, 3, 4]]])
+tf.matrix_set_diag(input, diagonals, k = (-1, 2), align="LEFT_RIGHT")
+  ==> [[[1, 6, 9, 7],  # Output shape: (2, 3, 4)
+        [4, 2, 5, 1],
+        [7, 5, 3, 8]],
+       [[6, 5, 1, 7],
+        [3, 1, 6, 2],
+        [7, 4, 2, 4]]]
+
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_Tensor:$diagonal,
+    I32Tensor:$k,
+
+    DefaultValuedAttr<TF_AnyStrAttrOf<["LEFT_RIGHT", "RIGHT_LEFT", "LEFT_LEFT", "RIGHT_RIGHT"]>, "RIGHT_LEFT">:$align
   );
 
   let results = (outs
@@ -2357,6 +2783,11 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *input, "
+    "Value *reduction_indices, BoolAttr keep_dims"
+  >];
 }
 
 def TF_MaxPoolOp : TF_Op<"MaxPool", [NoSideEffect]> {
@@ -2919,7 +3350,6 @@ This is the opposite of `unpack`.
   let arguments = (ins
     Variadic<TF_Tensor>:$values,
 
-    Confined<I64Attr, [IntMinValue<1>]>:$N,
     DefaultValuedAttr<I64Attr, "0">:$axis
   );
 
@@ -2928,6 +3358,7 @@ This is the opposite of `unpack`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 
   let verifier = [{
     return Verify(*this);
@@ -3041,6 +3472,34 @@ tf.pow(x, y) ==> [[256, 65536], [9, 27]]
 
   let results = (outs
     TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_PreventGradientOp : TF_Op<"PreventGradient", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+An identity op that triggers an error if a gradient is requested.
+  }];
+
+  let description = [{
+When executed in a graph, this op outputs its input tensor as-is.
+
+When building ops to compute gradients, the TensorFlow gradient system
+will return an error when trying to lookup the gradient of this op,
+because no gradient must ever be registered for this function.  This
+op exists to prevent subtle bugs from silently returning unimplemented
+gradients in some corner cases.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    StrAttr:$message
+  );
+
+  let results = (outs
+    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3348,6 +3807,35 @@ operation.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_RealOp : TF_Op<"Real", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns the real part of a complex number.";
+
+  let description = [{
+Given a tensor `input` of complex numbers, this operation returns a tensor of
+type `float` that is the real part of each element in `input`. All elements in
+`input` must be complex numbers of the form \\(a + bj\\), where *a* is the real
+ part returned by this operation and *b* is the imaginary part.
+
+For example:
+
+```
+# tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
+tf.real(input) ==> [-2.25, 3.25]
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TF_F32OrF64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_RealDivOp : TF_Op<"RealDiv", [Broadcastable, NoSideEffect]>,
                    WithBroadcastableBinOpBuilder {
   let summary = "Returns x / y element-wise for real types.";
@@ -3579,6 +4067,25 @@ Resize `images` to `size` using nearest neighbor interpolation.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []> {
+  let summary = "Update '*var' by subtracting 'alpha' * 'delta' from it.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$var,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$alpha,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$delta,
+
+    DefaultValuedAttr<BoolAttr, "false">:$use_locking
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
 }
 
 def TF_ReverseSequenceOp : TF_Op<"ReverseSequence", [NoSideEffect]> {
@@ -3881,9 +4388,7 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
   }];
 
   let arguments = (ins
-    Variadic<TF_Tensor>:$input,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$N
+    Variadic<TF_Tensor>:$input
   );
 
   let results = (outs
@@ -3892,10 +4397,13 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
@@ -3911,6 +4419,30 @@ Specifically, `y = 1 / (1 + exp(-x))`.
 
   let results = (outs
     TF_FpOrComplexTensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_SignOp : TF_Op<"Sign", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Returns an element-wise indication of the sign of a number.";
+
+  let description = [{
+`y = sign(x) = -1` if `x < 0`; 0 if `x == 0`; 1 if `x > 0`.
+
+For complex numbers, `y = sign(x) = x / |x|` if `x != 0`, otherwise `y = 0`.
+
+Example usage:
+>>> tf.math.sign([0., 2., -3.])
+<tf.Tensor: shape=(3,), dtype=float32, numpy=array([ 0.,  1., -1.], dtype=float32)>
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -3988,7 +4520,7 @@ def TF_SnapshotOp : TF_Op<"Snapshot", [NoSideEffect, SameOperandsAndResultType]>
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect]> {
+def TF_SoftmaxOp : TF_Op<"Softmax", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes softmax activations.";
 
   let description = [{
@@ -4032,6 +4564,10 @@ Inputs are the logits, not probabilities.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
@@ -4216,9 +4752,7 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
 
   let arguments = (ins
     I32Tensor:$split_dim,
-    TF_Tensor:$value,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+    TF_Tensor:$value
   );
 
   let results = (outs
@@ -4226,6 +4760,7 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
@@ -4237,9 +4772,7 @@ def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
   let arguments = (ins
     TF_Tensor:$value,
     TF_I32OrI64Tensor:$size_splits,
-    I32Tensor:$split_dim,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+    I32Tensor:$split_dim
   );
 
   let results = (outs
@@ -4248,6 +4781,7 @@ def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr Tlen = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_SqrtOp : TF_Op<"Sqrt", [NoSideEffect, SameOperandsAndResultType]> {
@@ -4548,6 +5082,11 @@ retained with length 1.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *input, "
+    "Value *reduction_indices, BoolAttr keep_dims"
+  >];
 }
 
 def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
@@ -4890,19 +5429,26 @@ def TF_UniqueOp : TF_Op<"Unique", [NoSideEffect]> {
 
   let description = [{
 This operation returns a tensor `y` containing all of the unique elements of `x`
-sorted in the same order that they occur in `x`. This operation also returns a
-tensor `idx` the same size as `x` that contains the index of each value of `x`
-in the unique output `y`. In other words:
+sorted in the same order that they occur in `x`; `x` does not need to be sorted.
+This operation also returns a tensor `idx` the same size as `x` that contains 
+the index of each value of `x` in the unique output `y`. In other words:
 
 `y[idx[i]] = x[i] for i in [0, 1,...,rank(x) - 1]`
 
-For example:
+Examples:
 
 ```
 # tensor 'x' is [1, 1, 2, 4, 4, 4, 7, 8, 8]
 y, idx = unique(x)
 y ==> [1, 2, 4, 7, 8]
 idx ==> [0, 0, 1, 2, 2, 2, 3, 4, 4]
+```
+
+```
+# tensor 'x' is [4, 5, 1, 2, 3, 3, 4, 5]
+y, idx = unique(x)
+y ==> [4, 5, 1, 2, 3]
+idx ==> [0, 1, 2, 3, 4, 4, 0, 1]
 ```
   }];
 
@@ -4942,7 +5488,6 @@ This is the opposite of `pack`.
   let arguments = (ins
     TF_Tensor:$value,
 
-    Confined<I64Attr, [IntMinValue<0>]>:$num,
     DefaultValuedAttr<I64Attr, "0">:$axis
   );
 
@@ -4950,7 +5495,37 @@ This is the opposite of `pack`.
     Variadic<TF_Tensor>:$output
   );
 
+  TF_DerivedResultSizeAttr num = TF_DerivedResultSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_VariableShapeOp : TF_Op<"VariableShape", []> {
+  let summary = "Returns the shape of the variable pointed to by `resource`.";
+
+  let description = [{
+This operation returns a 1-D integer tensor representing the shape of `input`.
+
+For example:
+
+```
+# 't' is [[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]
+shape(t) ==> [2, 2, 3]
+```
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$input
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_WhereOp : TF_Op<"Where", [NoSideEffect]> {

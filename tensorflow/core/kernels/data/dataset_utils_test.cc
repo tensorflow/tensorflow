@@ -328,6 +328,63 @@ TEST_F(DatasetHashUtilsTest, HashNodeDifferentGraphs) {
   EXPECT_NE(hash1, hash2);
 }
 
+TEST_F(DatasetHashUtilsTest, HashSameGraphDifferentSeeds) {
+  GraphDef gd;
+
+  NodeDef* n1 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/node_1", "Const")
+                  .Attr("value", 1)
+                  .Device("CPU:0")
+                  .Finalize(n1));
+
+  NodeDef* seed = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed", "Const")
+                  .Attr("value", 123)
+                  .Device("CPU:0")
+                  .Finalize(seed));
+
+  NodeDef* seed2 = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed2", "Const")
+                  .Attr("value", 456)
+                  .Device("CPU:0")
+                  .Finalize(seed2));
+
+  NodeDef* range_ds = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/range", "RangeDataset")
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Device("CPU:0")
+                  .Finalize(range_ds));
+
+  NodeDef* shuffle_ds = gd.add_node();
+  TF_CHECK_OK(NodeDefBuilder("graph_1/shuffle", "ShuffleDataset")
+                  .Input(range_ds->name(), 0, DT_VARIANT)
+                  .Input(n1->name(), 0, DT_INT64)
+                  .Input(seed->name(), 0, DT_INT64)
+                  .Input(seed2->name(), 0, DT_INT64)
+                  .Device("CPU:0")
+                  .Finalize(shuffle_ds));
+
+  uint64 hash1 = GetHash(gd, *shuffle_ds);
+
+  seed->Clear();
+  seed2->Clear();
+
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed", "Const")
+                  .Attr("value", 789)
+                  .Device("CPU:0")
+                  .Finalize(seed));
+  TF_CHECK_OK(NodeDefBuilder("graph_1/seed2", "Const")
+                  .Attr("value", 654)
+                  .Device("CPU:0")
+                  .Finalize(seed2));
+
+  uint64 hash2 = GetHash(gd, *shuffle_ds);
+
+  EXPECT_EQ(hash1, hash2);
+}
+
 TEST_F(DatasetHashUtilsTest, HashNodeReversedOrder) {
   GraphDef gd;
 

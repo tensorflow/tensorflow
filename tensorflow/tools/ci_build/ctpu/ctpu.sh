@@ -110,10 +110,14 @@ function ctpu_delete {
   export TPU_ZONE="$(cat "${TF_GFILE_DIR}/tpu_zone")"
   # TODO(rsopher): conditionally save (and load) TPU_PROJECT if it was specified.
 
-  ./ctpu delete \
-    --project=tensorflow-testing \
-    --zone="${TPU_ZONE}" \
-    --name="${TPU_NAME}" \
-    --tpu-only \
-    -noconf
+  # Retry due to rare race condition where TPU creation hasn't propagated by
+  # the time we try to delete it.
+  for i in 1 2 3; do
+    ./ctpu delete \
+      --project=tensorflow-testing \
+      --zone="${TPU_ZONE}" \
+      --name="${TPU_NAME}" \
+      --tpu-only \
+      -noconf && break || sleep 60
+  done
 }

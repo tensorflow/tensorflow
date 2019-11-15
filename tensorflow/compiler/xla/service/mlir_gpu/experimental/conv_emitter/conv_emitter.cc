@@ -387,6 +387,21 @@ mlir::Operation* HoistAndFix(mlir::Operation* op, mlir::AffineForOp where) {
   return HoistAndFix(op->getIterator(), std::next(op->getIterator()), where);
 }
 
+// Sinks a segment of perfectly nested loops to the bottom. It implements this
+// by rotating the loop nest by rotate_amount.
+void SinkPerfectlyNestedLoops(absl::Span<const mlir::AffineForOp> loops,
+                              int rotate_amount) {
+  CHECK_GE(rotate_amount, 0);
+  std::vector<unsigned> permutation(loops.size());
+  std::iota(permutation.begin(), permutation.end(), unsigned(0));
+  std::rotate(permutation.begin(),
+              permutation.begin() + loops.size() - rotate_amount,
+              permutation.end());
+  mlir::interchangeLoops(
+      llvm::ArrayRef<mlir::AffineForOp>(loops.begin(), loops.end()),
+      permutation);
+}
+
 struct InitialMlirConvAnchors {
   std::vector<mlir::AffineForOp> cartesian_product_loops;
   std::vector<mlir::AffineForOp> reduction_loops;
@@ -635,13 +650,48 @@ StatusOr<TransformedMlirConvAnchors> TransformMlirConv(
   //       for (reduction loops...) {
   //         output_acc[] += input[...] * filter[...]
   //       }
+  //     }  // compute loop
+  //     for (tiled cartesian loops...) {
+  //       output[...] = output_acc[...]
+  //     }
+  //   }
+  {
+    auto compute_loop = llvm::cast<mlir::AffineForOp>(
+        HoistAndFix(reduction_loops.front(), tiled_cartesian_loops[0]));
+
+    // Fix tiled_cartesian_loops to make them point to the tiled compute loops,
+    // not the writeback loops to output buffer.
+    llvm::SmallVector<mlir::AffineForOp, 4> all_loops;
+    getPerfectlyNestedLoops(all_loops, compute_loop);
+    absl::c_copy_n(all_loops, tiled_cartesian_loops.size(),
+                   tiled_cartesian_loops.data());
+  }
+
+  // After exchanging tiled cartesian compute loops with reduction loops:
+  //   for (cartesian loops...) {
+  //     %output_acc = alloc() : memref(..., f32)
+  //     for (tiled cartesian loops...) {
+  //       output_acc[...] = 0
+  //     }
+  //     for (reduction loops...) {
+  //       for (tiled cartesian loops...) {
+  //         output_acc[] += input[...] * filter[...]
+  //       }
   //     }
   //     for (tiled cartesian loops...) {
   //       output[...] = output_acc[...]
   //     }
   //   }
-  HoistAndFix(reduction_loops.front(), tiled_cartesian_loops.front());
-
+  //
+  // ...so that later tiled cartesian loops (with computations in it) can be
+  // replaced by CUDA MMA instructions.
+  {
+    std::vector<mlir::AffineForOp> loops;
+    loops.insert(loops.end(), tiled_cartesian_loops.begin(),
+                 tiled_cartesian_loops.end());
+    loops.insert(loops.end(), reduction_loops.begin(), reduction_loops.end());
+    SinkPerfectlyNestedLoops(loops, tiled_cartesian_loops.size());
+  }
   return TransformedMlirConvAnchors{cartesian_product_loops, reduction_loops};
 }
 

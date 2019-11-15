@@ -24,6 +24,7 @@ import types
 import numpy as np
 import six
 
+from tensorflow.python.distribute import distribution_strategy_context as distribute_ctx
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -253,11 +254,10 @@ class Metric(base_layer.Layer):
                  initializer=None,
                  dtype=None):
     """Adds state variable. Only for use by subclasses."""
-    from tensorflow.python.distribute import distribution_strategy_context as ds_context  # pylint:disable=g-import-not-at-top
     from tensorflow.python.keras.distribute import distributed_training_utils  # pylint:disable=g-import-not-at-top
 
-    if ds_context.has_strategy():
-      strategy = ds_context.get_strategy()
+    if distribute_ctx.has_strategy():
+      strategy = distribute_ctx.get_strategy()
     else:
       strategy = None
 

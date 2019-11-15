@@ -52,6 +52,24 @@ TF_LITE_MICRO_TEST(FloatToAsymmetricQuantizedInt8Test) {
   TF_LITE_MICRO_EXPECT_EQ(-128, FloatToAsymmetricQuantizedInt8(-127, 1.0, -1));
 }
 
+TF_LITE_MICRO_TEST(FloatToSymmetricQuantizedInt8Test) {
+  using tflite::FloatToSymmetricQuantizedInt8;
+  // [-64, 63.5] -> zero_point=0, scale=0.5
+  TF_LITE_MICRO_EXPECT_EQ(2, FloatToSymmetricQuantizedInt8(1, 0.5));
+  TF_LITE_MICRO_EXPECT_EQ(4, FloatToSymmetricQuantizedInt8(2, 0.5));
+  TF_LITE_MICRO_EXPECT_EQ(6, FloatToSymmetricQuantizedInt8(3, 0.5));
+  TF_LITE_MICRO_EXPECT_EQ(-10, FloatToSymmetricQuantizedInt8(-5, 0.5));
+  TF_LITE_MICRO_EXPECT_EQ(-128, FloatToSymmetricQuantizedInt8(-64, 0.5));
+  TF_LITE_MICRO_EXPECT_EQ(127, FloatToSymmetricQuantizedInt8(63.5, 0.5));
+  // [-127, 128] -> zero_point=-1, scale=1.0
+  TF_LITE_MICRO_EXPECT_EQ(1, FloatToSymmetricQuantizedInt8(1, 1.0));
+  TF_LITE_MICRO_EXPECT_EQ(0, FloatToSymmetricQuantizedInt8(0, 1.0));
+  TF_LITE_MICRO_EXPECT_EQ(127, FloatToSymmetricQuantizedInt8(127, 1.0));
+  TF_LITE_MICRO_EXPECT_EQ(127, FloatToSymmetricQuantizedInt8(128, 1.0));
+  TF_LITE_MICRO_EXPECT_EQ(-126, FloatToSymmetricQuantizedInt8(-126, 1.0));
+  TF_LITE_MICRO_EXPECT_EQ(-127, FloatToSymmetricQuantizedInt8(-127, 1.0));
+}
+
 TF_LITE_MICRO_TEST(FloatToAsymmetricQuantizedInt32Test) {
   using tflite::FloatToSymmetricQuantizedInt32;
   TF_LITE_MICRO_EXPECT_EQ(0, FloatToSymmetricQuantizedInt32(0, 0.5));

@@ -4,7 +4,7 @@ Use a pre-trained model to category a paragraph into predefined groups.
 
 ## Get started
 
-<img src="images/screenshot.png" class="attempt-right" style="max-width: 300px">
+<img src="images/screenshot.gif" class="attempt-right" style="max-width: 300px">
 
 If you are new to TensorFlow Lite and are working with Android, we recommend
 exploring the following example applications that can help you get started.
@@ -44,6 +44,44 @@ Here are the steps to classify a paragraph with the model:
 *   This model was trained on movie reviews dataset so you may experience
     reduced accuracy when classifying text of other domains.
 
+## Performance Benchmarks
+
+Performance benchmark numbers are generated with the tool
+[described here](https://www.tensorflow.org/lite/performance/benchmarks).
+
+<table>
+  <thead>
+    <tr>
+      <th>Model Name</th>
+      <th>Model size </th>
+      <th>Device </th>
+      <th>CPU</th>
+    </tr>
+  </thead>
+  <tr>
+    <td rowspan = 3>
+      <a href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/text_classification/text_classification.tflite">Text Classification</a>
+    </td>
+    <td rowspan = 3>
+      0.6 Mb
+    </td>
+    <td>Pixel 3 (Android 10) </td>
+    <td>0.05ms*</td>
+  </tr>
+   <tr>
+     <td>Pixel 4 (Android 10) </td>
+    <td>0.05ms*</td>
+  </tr>
+   <tr>
+     <td>iPhone XS (iOS 12.4.1) </td>
+    <td>0.025ms** </td>
+  </tr>
+</table>
+
+\* 4 threads used.
+
+\*\* 2 threads used on iPhone for the best performance result.
+
 ## Example output
 
 | Text                                       | Negative (0) | Positive (1) |
@@ -55,7 +93,7 @@ Here are the steps to classify a paragraph with the model:
 ## Use your training dataset
 
 Follow this
-[tutorial](https://github.com/tensorflow/examples/tree/master/lite/examples/model_customization/demo/image_classification.ipynb)
+[tutorial](https://github.com/tensorflow/examples/tree/master/tensorflow_examples/lite/model_customization/demo/text_classification.ipynb)
 to apply the same technique used here to train a text classification model using
 your own datasets. With the right dataset, you can create a model for use cases
 such as document categorization or toxic comments detection.

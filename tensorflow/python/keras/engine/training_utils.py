@@ -58,6 +58,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
 
 
@@ -1145,6 +1146,7 @@ def call_metric_function(metric_fn,
       weights = mask
     else:
       # Update dimensions of weights to match with mask.
+      weights = math_ops.cast(weights, dtype=y_pred.dtype)
       mask, _, weights = tf_losses_utils.squeeze_or_expand_dimensions(
           mask, sample_weight=weights)
       weights *= mask
@@ -1159,6 +1161,12 @@ def get_loss_function(loss):
   """Returns the loss corresponding to the loss input in `compile` API."""
   if loss is None or isinstance(loss, losses.Loss):
     return loss
+
+  if tf_inspect.isclass(loss) and issubclass(loss, losses.Loss):
+    # It is not safe to assume that the loss takes no constructor arguments.
+    raise ValueError(
+        'Received uninstantiated Loss class: {}\nPlease call loss ""classes '
+        'before passing them to Model.compile.'.format(loss))
 
   # Deserialize loss configuration, if needed.
   if isinstance(loss, collections_abc.Mapping):
@@ -1976,7 +1984,7 @@ def split_training_and_validation_data(x, y, sample_weights, validation_split):
   return x, y, sample_weights, val_x, val_y, val_sample_weights
 
 
-def unpack_validation_data(validation_data):
+def unpack_validation_data(validation_data, raise_if_ambiguous=True):
   """Unpack validation data based input type.
 
   The validation data is not touched if its dataset or dataset iterator.
@@ -1985,6 +1993,9 @@ def unpack_validation_data(validation_data):
 
   Args:
     validation_data: dataset, dataset iterator, or numpy, tensor tuple.
+    raise_if_ambiguous: boolean on whether to fail if validation_data cannot be
+      parsed. Otherwise simply return validation_data, None, None and defer the
+      decision to the caller.
 
   Returns:
     tuple of 3, (x, y, sample_weights) for numpy and tensor input.
@@ -1998,18 +2009,26 @@ def unpack_validation_data(validation_data):
     val_y = None
     val_sample_weight = None
   elif len(validation_data) == 2:
-    val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
-    val_sample_weight = None
+    try:
+      val_x, val_y = validation_data  # pylint: disable=unpacking-non-sequence
+      val_sample_weight = None
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   elif len(validation_data) == 3:
-    val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    try:
+      val_x, val_y, val_sample_weight = validation_data  # pylint: disable=unpacking-non-sequence
+    except ValueError:
+      val_x, val_y, val_sample_weight = validation_data, None, None
   else:
-    raise ValueError(
-        'When passing a `validation_data` argument, '
-        'it must contain either 2 items (x_val, y_val), '
-        'or 3 items (x_val, y_val, val_sample_weights), '
-        'or alternatively it could be a dataset or a '
-        'dataset or a dataset iterator. '
-        'However we received `validation_data=%s`' % validation_data)
+    if raise_if_ambiguous:
+      raise ValueError(
+          'When passing a `validation_data` argument, '
+          'it must contain either 2 items (x_val, y_val), '
+          'or 3 items (x_val, y_val, val_sample_weights), '
+          'or alternatively it could be a dataset or a '
+          'dataset or a dataset iterator. '
+          'However we received `validation_data=%s`' % validation_data)
+    val_x, val_y, val_sample_weight = validation_data, None, None
   return val_x, val_y, val_sample_weight
 
 

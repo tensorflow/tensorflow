@@ -122,6 +122,14 @@ def _node_name(n):
     return n.split(":")[0]
 
 
+def _get_colocated_node_name(colocated_node_name):
+  """Decodes colocated node name and returns it without loc:@ preprended."""
+  colocated_node_decoded = colocated_node_name.decode("utf-8")
+  if colocated_node_decoded.startswith("loc:@"):
+    return colocated_node_decoded[5:]
+  return colocated_node_decoded
+
+
 def _extract_graph_summary(graph_def):
   """Extracts useful information from the graph and returns them."""
   name_to_input_name = {}  # Keyed by the dest node name.
@@ -138,9 +146,8 @@ def _extract_graph_summary(graph_def):
     # Prevent colocated nodes from being lost.
     if "_class" in node.attr:
       for colocated_node_name in node.attr["_class"].list.s:
-        colocated_node_decoded = colocated_node_name.decode("utf-8")
-        if colocated_node_decoded.startswith("loc:@"):
-          name_to_input_name[n].append(colocated_node_decoded[5:])
+        name_to_input_name[n].append(
+            _get_colocated_node_name(colocated_node_name))
     name_to_seq_num[n] = seq
     seq += 1
   return name_to_input_name, name_to_node, name_to_seq_num
@@ -306,19 +313,23 @@ def convert_variables_to_constants(sess,
       while (source_op_names and map_name_to_node[source_op_names[0]].op in
              _CONTROL_FLOW_OP_NAMES_OR_IDENTITY):
         source_op_name = source_op_names.pop()
+        current_node = map_name_to_node[source_op_name]
 
         if source_op_name not in resource_op_types:
           resource_op_types[source_op_name] = node.attr["dtype"]
-          source_op_names.append(
-              get_input_name(map_name_to_node[source_op_name]))
+          source_op_names.append(get_input_name(current_node))
 
-        if map_name_to_node[source_op_name].op == "Merge":
-          merge_resource_name = get_input_name(
-              map_name_to_node[source_op_name], index=1)
+        if current_node == "Merge":
+          merge_resource_name = get_input_name(current_node, index=1)
           if merge_resource_name not in resource_op_types:
             resource_op_types[merge_resource_name] = node.attr["dtype"]
             source_op_names.append(
                 get_input_name(map_name_to_node[merge_resource_name]))
+
+        if "_class" in current_node.attr:
+          for colocated_node_name in current_node.attr["_class"].list.s:
+            source_op_names.append(
+                _get_colocated_node_name(colocated_node_name))
 
       for source_node in source_op_names:
         if map_name_to_node[source_node].op != "VarHandleOp":

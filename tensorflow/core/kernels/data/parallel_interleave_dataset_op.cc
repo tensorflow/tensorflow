@@ -228,9 +228,13 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     }
 
     string BuildTraceMeName() override {
-      // NOTE: We do not synchronize the following access to
-      // num_parallel_calls_ to minimize the tracing overhead.
-      int64 parallelism = num_parallel_calls_->value;
+      int64 parallelism = -1;
+      // NOTE: We only set the parallelism value if the lock can be acquired
+      // right away to avoid introducing tracing overhead.
+      if (mu_->try_lock()) {
+        parallelism = num_parallel_calls_->value;
+        mu_->unlock();
+      }
       return strings::StrCat(
           prefix(), "#parallelism=", parallelism,
           ",cycle_length=", dataset()->cycle_length_,
@@ -257,7 +261,6 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (num_parallel_calls_->value == model::kAutotune) {
         num_parallel_calls_->value = dataset()->cycle_length_;
       }
-      last_valid_current_element_ = dataset()->cycle_length_ - 1;
       ctx_ = std::make_unique<IteratorContext>(*ctx);
       TF_RETURN_IF_ERROR(
           dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_));
@@ -433,10 +436,12 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       if (!initial_elements_created_) {
         for (int i = 0; i < dataset()->cycle_length_; ++i) {
           current_elements_[i] = MakeElement();
-          if (current_elements_[i]) {
-            current_elements_[i]->cycle_index = i;
-            elements_to_process_.push_back(i);
+          if (!current_elements_[i]) {
+            break;
           }
+          current_elements_[i]->cycle_index = i;
+          elements_to_process_.push_back(i);
+          last_valid_current_element_ = i;
         }
         initial_elements_created_ = true;
       }
@@ -453,8 +458,9 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // Advances the position in the interleave cycle to the next cycle
     // element.
     void AdvanceToNextInCycle() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+      DCHECK_NE(last_valid_current_element_, -1);
       block_index_ = 0;
-      cycle_index_ = (cycle_index_ + 1) % dataset()->cycle_length_;
+      cycle_index_ = (cycle_index_ + 1) % (last_valid_current_element_ + 1);
     }
 
     // Advances the position in the interleave cycle by one.
@@ -490,6 +496,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     bool ConsumeHelper(std::shared_ptr<Result>* result)
         EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       while (true) {
+        if (last_valid_current_element_ == -1) {
+          // Reached end of input.
+          return true;
+        }
         for (int64 i = 0; i < (last_valid_current_element_ + 1); ++i) {
           int64 index = (cycle_index_ + i) % (last_valid_current_element_ + 1);
           if (current_elements_[index]) {
@@ -500,10 +510,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             break;
           }
         }
-        if (!current_elements_[cycle_index_]) {
-          // Reached end of input.
-          return true;
-        }
+        DCHECK(current_elements_[cycle_index_]);
         std::shared_ptr<Element> element = current_elements_[cycle_index_];
         if (!element->results.empty()) {
           // We found a result.
@@ -547,9 +554,16 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           while (last_valid_current_element_ >= 0 &&
                  !current_elements_[last_valid_current_element_]) {
             last_valid_current_element_--;
+            if (cycle_index_ > last_valid_current_element_) {
+              // We are about to move the cycle index below in
+              // AdvanceToNextInCycle().
+              cycle_index_ = last_valid_current_element_;
+            }
           }
         }
-        AdvanceToNextInCycle();
+        if (last_valid_current_element_ != -1) {
+          AdvanceToNextInCycle();
+        }
       }
     }
 
@@ -1148,7 +1162,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
     // TODO(aaudibert): Generalize this optimization by removing null elements
     // from `current_elements_`, e.g. by compacting the vector when x% of
     // its elements are null.
-    int64 last_valid_current_element_ GUARDED_BY(mu_);
+    int64 last_valid_current_element_ GUARDED_BY(mu_) = -1;
 
     const int per_iterator_prefetch_;
     const int future_elements_prefetch_;
@@ -1204,6 +1218,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
 
     // Identifies position in the interleave cycle.
     int64 block_index_ GUARDED_BY(mu_) = 0;
+    // It is an invariant that either `last_valid_current_element_ == -1` or
+    // `cycle_index_ <= last_valid_current_element_`.
     int64 cycle_index_ GUARDED_BY(mu_) = 0;
 
     // Elements of the current interleave cycle.

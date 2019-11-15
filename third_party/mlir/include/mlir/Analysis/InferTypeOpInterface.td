@@ -1,4 +1,4 @@
-//===- InferTypeOpInterface.td - Infer Type interfaces -*- tablegen -----*-===//
+//===- InferTypeOpInterface.td - Infer Type interfaces -----*- tablegen -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,12 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef MLIR_INFERTYPEOPINTERFACE
-#else
+#ifndef MLIR_INFERTYPEOPINTERFACE
 #define MLIR_INFERTYPEOPINTERFACE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -56,7 +54,21 @@ def InferTypeOpInterface : OpInterface<"InferTypeOpInterface"> {
                     "ArrayRef<NamedAttribute>":$attributes,
                     "ArrayRef<Region>":$regions)
     >,
+    StaticInterfaceMethod<
+      /*desc=*/"Returns whether two array of types are compatible result types"
+               " for an op.",
+      /*retTy=*/"bool",
+      /*methodName=*/"isCompatibleReturnTypes",
+      /*args=*/(ins "ArrayRef<Type>":$lhs, "ArrayRef<Type>":$rhs),
+      [{
+        return ConcreteOp::isCompatibleReturnTypes(lhs, rhs);
+      }]
+    >,
   ];
 }
+
+// Default implementations for some of the interface methods above:
+// - compatibleReturnTypes returns whether strictly true.
+def InferTypeOpInterfaceDefault : NativeOpTrait<"TypeOpInterfaceDefault">;
 
 #endif // MLIR_INFERTYPEOPINTERFACE

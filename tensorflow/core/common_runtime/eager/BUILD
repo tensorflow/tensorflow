@@ -54,6 +54,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        ":process_function_library_runtime",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
@@ -216,6 +217,7 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/core/profiler/lib:scoped_annotation",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -355,6 +357,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:mkl_graph_util",
     ],
+    alwayslink = 1,
 )
 
 tf_cc_test_mkl(

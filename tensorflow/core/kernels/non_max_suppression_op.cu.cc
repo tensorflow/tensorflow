@@ -751,13 +751,15 @@ REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
 //                             .HostMemory("score_threshold"),
 //                         NonMaxSuppressionV3GPUOp);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
-                            .TypeConstraint<float>("T")
-                            .Device(DEVICE_GPU)
-                            .HostMemory("iou_threshold")
-                            .HostMemory("max_output_size")
-                            .HostMemory("score_threshold"),
-                        NonMaxSuppressionV4GPUOp);
+// TODO(b/143610288): this op tries to allocate 4GB of memory for the mask for
+// some model and cause OOM.
+// REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
+//                             .TypeConstraint<float>("T")
+//                             .Device(DEVICE_GPU)
+//                             .HostMemory("iou_threshold")
+//                             .HostMemory("max_output_size")
+//                             .HostMemory("score_threshold"),
+//                         NonMaxSuppressionV4GPUOp);
 
 }  // namespace tensorflow
 #endif

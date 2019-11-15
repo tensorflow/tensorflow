@@ -23,9 +23,10 @@ import os
 import six
 from six.moves.urllib.error import URLError
 
-from tensorflow.python import eager
+from tensorflow.python import framework
 from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver as resolver
+from tensorflow.python.eager.context import LogicalDevice
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -636,33 +637,33 @@ class TPUClusterResolverTest(test.TestCase):
               1: [1, 2]
           })
 
-  @mock.patch.object(eager.context, 'list_devices')
+  @mock.patch.object(framework.config, 'list_logical_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
   @mock.patch.object(resolver, 'is_running_in_gce',
                      mock_is_not_running_in_gce)
   def testNumAcceleratorsSuccess(self, mock_list_devices,
                                  mock_eager_list_devices):
-    device_names = [
-        '/job:tpu_worker/task:0/device:TPU:0',
-        '/job:tpu_worker/task:1/device:TPU:1',
-        '/job:tpu_worker/task:2/device:TPU:0',
-        '/job:tpu_worker/task:3/device:TPU:1',
-        '/job:tpu_worker/task:0/device:TPU:4',
-        '/job:tpu_worker/task:1/device:TPU:5',
-        '/job:tpu_worker/task:2/device:TPU:4',
-        '/job:tpu_worker/task:3/device:TPU:5',
+    devices = [
+        LogicalDevice('/job:tpu_worker/task:0/device:TPU:0', 'TPU'),
+        LogicalDevice('/job:tpu_worker/task:1/device:TPU:1', 'TPU'),
+        LogicalDevice('/job:tpu_worker/task:2/device:TPU:0', 'TPU'),
+        LogicalDevice('/job:tpu_worker/task:3/device:TPU:1', 'TPU'),
+        LogicalDevice('/job:tpu_worker/task:0/device:TPU:4', 'TPU'),
+        LogicalDevice('/job:tpu_worker/task:1/device:TPU:5', 'TPU'),
+        LogicalDevice('/job:tpu_worker/task:2/device:TPU:4', 'TPU'),
+        LogicalDevice('/job:tpu_worker/task:3/device:TPU:5', 'TPU'),
     ]
     device_list = [
-        session._DeviceAttributes(
-            name, 'TPU', 1024, 0) for name in device_names
+        session._DeviceAttributes(d.name, d.device_type, 1024, 0)
+        for d in devices
     ]
-    mock_eager_list_devices.return_value = device_names
+    mock_eager_list_devices.return_value = devices
     mock_list_devices.return_value = device_list
 
     cluster_resolver = resolver.TPUClusterResolver(tpu='')
     self.assertEqual(cluster_resolver.num_accelerators(), {'TPU': 2})
 
-  @mock.patch.object(eager.context, 'list_devices')
+  @mock.patch.object(framework.config, 'list_logical_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
   @mock.patch.object(resolver, 'is_running_in_gce',
                      mock_is_not_running_in_gce)

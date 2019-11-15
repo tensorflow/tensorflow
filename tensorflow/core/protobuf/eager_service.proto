@@ -38,6 +38,8 @@ message Operation {
   // multi-device function should use the same step id to make sure that they
   // can communicate through Send/Recv ops.
   int64 func_step_id = 8;
+  // Indicates whether the op is a function.
+  bool is_function = 9;
 }
 
 message QueueItem {
@@ -87,6 +89,11 @@ message CreateContextRequest {
 
   // The view ID of the context.
   fixed64 context_view_id = 8;
+
+  // For a multi device function, if false, eagerly copy all remote inputs to
+  // the default function device; if true, lazily copy remote inputs to their
+  // target devices after function instantiation to avoid redundant copies.
+  bool lazy_copy_remote_function_inputs = 9;
 
   reserved 5;
 }
@@ -164,6 +171,14 @@ message RegisterFunctionOp {
   // If true, it means that function_def is produced by graph partition during
   // multi-device function instantiation.
   bool is_component_function = 2;
+
+  // All necessary FunctionDefs and GradientDefs to expand `function_def`.
+  // When is_component_function is true, `function_def` could be a nested
+  // function, since some nodes in its parent's function body could be
+  // replaced with a new function by the graph optimization passes. No need to
+  // add FunctionDefs here to the function cache in EagerContext since they
+  // won't be executed as KernelAndDevices.
+  FunctionDefLibrary library = 3;
 }
 
 // Cleanup the step state of a multi-device function (e.g. tensors buffered by

@@ -173,6 +173,9 @@ class InlinedFunctionBodyPlacer {
 
   virtual absl::optional<string> InputNodeDevice(int input_index) const = 0;
   virtual absl::optional<string> OutputNodeDevice(int output_index) const = 0;
+  // Returns true if the added output identity node should be colocated with the
+  // corresponding output from the function body.
+  virtual bool ColocateOutputIdentity() const = 0;
   virtual absl::optional<string> ControlNodeDevice() const = 0;
   virtual absl::optional<string> BodyNodeDevice(const NodeDef& ndef) const = 0;
 

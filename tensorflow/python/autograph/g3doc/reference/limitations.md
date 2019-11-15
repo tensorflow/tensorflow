@@ -269,6 +269,103 @@ Note: In general, these restrictions do not apply in control flow in Eager
 execution, because Eager execution uses Python control flow, rather than
 TensorFlow control flow ops.
 
+#### Mixing dynamic computations and static shapes
+
+Key Point: Use `.shape` on tensors of static shape, and `.shape.rank` on
+tensors of static rank; only use `tf.shape` and `tf.rank` when the shape or
+rank is dynamic.
+
+TensorFlow has optional static types and shapes: the shape of tensors may be
+static (e.g. `my_tensor.shape=(3, 3)` denotes a three by three matrix) or
+dynamic (e.g. `my_tensor.shape=(None, 3)` denotes a matrix with a dynamic
+number of rows and three columns. When the shapes are dynamic, you can still
+query it at runtime by using the `tf.shape()` function.
+
+Note: `tf.shape` always returns a tensor.
+
+For static shapes, TensorFlow will perform additional shape verifications at
+graph construction time, that is, during tracing. These static shape
+verifications are useful because they work like a compiler for example, errors
+are caught early, before execution even begins.
+
+For example:
+
+```
+x = tf.constant([1, 2, 3])
+x[4]  # Tracing error! 4 is out of bounds.
+```
+
+To avoid tracing errors, you can add static shape verifications, which help
+write more robust code:
+
+```
+if x.shape[0] > 4:
+  val = x[4]
+else:
+  val = some_default_value
+```
+
+In the snippet above, the code is protected against index-out-of-bounds
+errors. The code is also efficient because the verification `s.shape[0] > 4`
+will not be included in the graph.
+
+But what happens if you try to perform the index verifications using dynamic
+control flow? You might expect that the code works in the same way:
+
+```
+val = tf.cond(
+  x.shape[0] >= 4,
+  lambda: x[4],
+  lambda: some_default_value)
+```
+
+However, TensorFlow will not let you write code that could result in an error,
+even if that code appeared in a branch of a `tf.cond` that would never
+execute. Remember that the shape of `x` is `(3,)`, so TensorFlow performs
+static shape verification.
+
+This can lead to surprising behavior when using `tf.shape` on tensors with
+static shape in TensorFlow:
+
+```
+x = tf.constant((1, 2, 3))
+if tf.shape(x)[0] > 4:
+  val = x[4]  # Error at tracing: 4 is out of bounds!
+else:
+  val = some_default_value
+```
+
+Because `tf.shape` always evaluates to a Tensor, the `if` statement above is
+converted by AutoGraph into a `tf.cond`, which performs static shape
+verification of both branches.
+
+What if you need to write code which can handle both static and dynamic
+shapes? There are a few options in this case:
+
+A first option is to always work with dynamic shapes, for instance by
+using `input_signature` in `tf.function`. Many shape and shape-related checks
+are skipped when the shape is dynamic:
+
+```
+@tf.function(input_signature=(tf.TensorSpec(shape=(None,))))
+def f(x):  # x now has dynamic shape
+  if tf.shape(x)[0] >= 3:  # Builds a tf.cond
+    val = x[4]  # Okay, bounds checks are skipped when the shape is dynamic
+  else:
+    val = some_default_value
+```
+
+A second option is to first verify whether the shape is static or dynamic.
+This can be done at tracing time, allowing to use Python `if` to only trace
+the code that is suitable for the situation:
+
+```
+if x.shape[0] is None:  # Python bool, does not use tf.cond
+  # ... use x.shape here ...
+else:
+  # ... use tf.shape(x) here ...
+```
+
 #### Consistency of dtype
 
 The dtypes across all code paths must be consistent in conditionals and loops.

@@ -46,7 +46,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -63,19 +62,23 @@ const int32 kInvalidOutputNum = -1;
 #endif
 }  // namespace
 
+void TensorHandle::SetResourceHandleDtypeAndShape(
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes) {
+  handle_dtypes_and_shapes_ = std::move(dtypes_and_shapes);
+}
+
 Status TensorHandle::GetResourceHandleDtypesAndShapes(
     std::vector<DtypeAndPartialTensorShape>* result) {
-  if (IsRemote()) {
-    return errors::Unimplemented(
-        "Getting resource data type and shape for a remote tensor is not "
-        "implemented yet");
-  }
-
   if (dtype != DT_RESOURCE) {
     return errors::InvalidArgument(
         "TensorHandle::GetResourceDtypeAndShape should be called on tensor "
         "handles with data type DT_RESOURCE. Actual tensor: ",
         dtype);
+  }
+
+  if (IsRemote()) {
+    *result = handle_dtypes_and_shapes_;
+    return Status::OK();
   }
 
   // Wait for this TensorHandle to be ready.
@@ -546,7 +549,7 @@ Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
 
   DVLOG(3) << "SetTensor on TensorHandle: " << this;
 
-  if (tensor.dtype() == DT_RESOURCE) {
+  if (tensor.dtype() == DT_RESOURCE && tensor.NumElements() > 0) {
     auto& resource_handle = tensor.flat<class ResourceHandle>()(0);
     handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
   }

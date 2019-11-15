@@ -77,8 +77,13 @@ struct ReturnTypeOpMatch : public RewritePattern {
       values.reserve(op->getNumOperands());
       for (auto &operand : op->getOpOperands())
         values.push_back(operand.get());
-      (void)retTypeFn.inferReturnTypes(op->getLoc(), values, op->getAttrs(),
-                                       op->getRegions());
+      auto res = retTypeFn.inferReturnTypes(op->getLoc(), values,
+                                            op->getAttrs(), op->getRegions());
+      SmallVector<Type, 1> result_types(op->getResultTypes());
+      if (!retTypeFn.isCompatibleReturnTypes(res, result_types))
+        return op->emitOpError(
+                   "inferred type incompatible with return type of operation"),
+               matchFailure();
     }
     return matchFailure();
   }
@@ -157,15 +162,32 @@ struct TestRegionRewriteUndo : public RewritePattern {
 //===----------------------------------------------------------------------===//
 // Type-Conversion Rewrite Testing
 
-/// This pattern simply erases the given operation.
-struct TestDropOp : public ConversionPattern {
-  TestDropOp(MLIRContext *ctx) : ConversionPattern("test.drop_op", 1, ctx) {}
+/// This patterns erases a region operation that has had a type conversion.
+struct TestDropOpSignatureConversion : public ConversionPattern {
+  TestDropOpSignatureConversion(MLIRContext *ctx, TypeConverter &converter)
+      : ConversionPattern("test.drop_region_op", 1, ctx), converter(converter) {
+  }
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
-                  ConversionPatternRewriter &rewriter) const final {
+                  ConversionPatternRewriter &rewriter) const override {
+    Region &region = op->getRegion(0);
+    Block *entry = &region.front();
+
+    // Convert the original entry arguments.
+    TypeConverter::SignatureConversion result(entry->getNumArguments());
+    for (unsigned i = 0, e = entry->getNumArguments(); i != e; ++i)
+      if (failed(converter.convertSignatureArg(
+              i, entry->getArgument(i)->getType(), result)))
+        return matchFailure();
+
+    // Convert the region signature and just drop the operation.
+    rewriter.applySignatureConversion(&region, result);
     rewriter.eraseOp(op);
     return matchSuccess();
   }
+
+  /// The type converter to use when rewriting the signature.
+  TypeConverter &converter;
 };
 /// This pattern simply updates the operands of the given operation.
 struct TestPassthroughInvalidOp : public ConversionPattern {
@@ -329,10 +351,11 @@ struct TestLegalizePatternDriver
     populateWithGenerated(&getContext(), &patterns);
     patterns
         .insert<TestRegionRewriteBlockMovement, TestRegionRewriteUndo,
-                TestDropOp, TestPassthroughInvalidOp, TestSplitReturnType,
+                TestPassthroughInvalidOp, TestSplitReturnType,
                 TestChangeProducerTypeI32ToF32, TestChangeProducerTypeF32ToF64,
                 TestChangeProducerTypeF32ToInvalid, TestUpdateConsumerType,
                 TestNonRootReplacement>(&getContext());
+    patterns.insert<TestDropOpSignatureConversion>(&getContext(), converter);
     mlir::populateFuncOpTypeConversionPattern(patterns, &getContext(),
                                               converter);
 
@@ -354,6 +377,12 @@ struct TestLegalizePatternDriver
         [](TestTypeProducerOp op) { return op.getType().isF64(); });
     target.addDynamicallyLegalOp<TestTypeConsumerOp>([](TestTypeConsumerOp op) {
       return op.getOperand()->getType().isF64();
+    });
+
+    // Check support for marking certain operations as recursively legal.
+    target.markOpRecursivelyLegal<FuncOp, ModuleOp>([](Operation *op) {
+      return static_cast<bool>(
+          op->getAttrOfType<UnitAttr>("test.recursively_legal"));
     });
 
     // Handle a partial conversion.

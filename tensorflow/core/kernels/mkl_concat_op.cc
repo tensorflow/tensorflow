@@ -11,6 +11,7 @@ limitations under the License.
 ==============================================================================*/
 
 #ifdef INTEL_MKL
+#define EIGEN_USE_THREADS
 
 #include <limits>
 #include <unordered_map>

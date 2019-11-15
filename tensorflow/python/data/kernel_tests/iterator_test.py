@@ -996,6 +996,26 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(self.evaluate(f(iter(dataset2))), 45)
       self.assertEqual(trace_count[0], 1)
 
+  @combinations.generate(combinations.combine(tf_api_version=2, mode="eager"))
+  def testNestedFunctionsIteratorResource(self):
+
+    @def_function.function
+    def sum_dataset(ds):
+      it = iter(ds)
+
+      @def_function.function
+      def next_element(it):
+        return next(it)
+
+      total = 0
+      for _ in range(10):
+        total += next_element(it)
+      return total
+
+    ds = dataset_ops.Dataset.range(10)
+    self.assertEqual(sum_dataset(ds).numpy(), 45)
+    self.assertEqual(sum_dataset(ds).numpy(), 45)
+
 
 if __name__ == "__main__":
   test.main()

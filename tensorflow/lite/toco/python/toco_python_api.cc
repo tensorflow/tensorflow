@@ -14,13 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/python/toco_python_api.h"
 
+#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
 
+#include "google/protobuf/text_format.h"
+#include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
 #include "tensorflow/lite/toco/import_tensorflow.h"
+#include "tensorflow/lite/toco/logging/conversion_log_util.h"
+#include "tensorflow/lite/toco/logging/toco_conversion_log.pb.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_convert.h"
 #include "tensorflow/lite/toco/toco_flags.pb.h"
@@ -28,13 +33,47 @@ limitations under the License.
 #include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_tooling.h"
 #include "tensorflow/lite/toco/toco_types.h"
-
-#if defined(TFLITE_BUILD_WITH_MLIR_CONVERTER)
-#include "tensorflow/compiler/mlir/lite/python/graphdef_to_tfl_flatbuffer.h"
-#endif
-#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 namespace toco {
+
+void PopulateConversionLogHelper(const toco::ModelFlags& model_flags,
+                                 toco::TocoFlags* toco_flags,
+                                 const string& input_contents_txt,
+                                 const string& output_file_contents_txt,
+                                 const string& error_message,
+                                 GraphVizDumpOptions* dump_options) {
+  // Make sure the graphviz file will be dumped under the same folder.
+  dump_options->dump_graphviz = toco_flags->conversion_summary_dir();
+  // Here we construct the `toco::Model` class based on the input graph def,
+  // it will then be used to populate the conversion log.
+  // TODO(haoliang): Don't depend on `toco::Model`.
+  std::unique_ptr<toco::Model> imported_model =
+      toco::Import(*toco_flags, model_flags, input_contents_txt);
+  // Dump pre-conversion toco logs.
+  TocoConversionLog toco_log_before;
+  PopulateConversionLog(*imported_model, &toco_log_before);
+  std::ofstream osstream_before(toco_flags->conversion_summary_dir() +
+                                "/toco_log_before.pb");
+  toco_log_before.SerializeToOstream(&osstream_before);
+  osstream_before.close();
+  toco::LogDump(toco::kLogLevelModelChanged, "tf_graph", *imported_model);
+
+  // Populate the post-conversion log, for convenient initiate the
+  // `toco::Model` class from the generated flatbuffer.
+  toco_flags->set_input_format(toco::FileFormat::TFLITE);
+  std::unique_ptr<toco::Model> flatbuffer_model =
+      toco::Import(*toco_flags, model_flags, output_file_contents_txt);
+  // Dump post-conversion toco logs.
+  TocoConversionLog toco_log_after;
+  PopulateConversionLog(*flatbuffer_model, &toco_log_after);
+  toco_log_after.set_toco_err_logs(error_message);
+  std::ofstream ostream_after(toco_flags->conversion_summary_dir() +
+                              "/toco_log_after.pb");
+  toco_log_after.SerializeToOstream(&ostream_after);
+  ostream_after.close();
+  toco::LogDump(toco::kLogLevelModelChanged, "tflite_graph", *flatbuffer_model);
+}
 
 // NOTE(aselle): We are using raw PyObject's here because we want to make
 // sure we input and output bytes rather than unicode strings for Python3.
@@ -125,18 +164,14 @@ PyObject* TocoConvert(PyObject* model_flags_proto_txt_raw,
 
   // Convert model.
   if (enable_mlir_converter) {
-#if defined(TFLITE_BUILD_WITH_MLIR_CONVERTER)
     status = tensorflow::ConvertGraphDefToTFLiteFlatBuffer(
         model_flags, toco_flags, debug_info, graph_def,
         &output_file_contents_txt);
-#else
-    // TODO(b/124314620): Remove this condition.
-    PyErr_SetString(PyExc_RuntimeError,
-                    "This flag is not supported by this version of the "
-                    "TFLite converter. This functionality is being "
-                    "actively worked on.");
-    return nullptr;
-#endif
+    if (!toco_flags.conversion_summary_dir().empty()) {
+      PopulateConversionLogHelper(model_flags, &toco_flags, input_contents_txt,
+                                  output_file_contents_txt,
+                                  status.error_message(), &dump_options);
+    }
   } else {
     status = Convert(input_contents_txt, toco_flags, model_flags,
                      &output_file_contents_txt, &arithmetic_ops_count);

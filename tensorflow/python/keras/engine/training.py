@@ -149,6 +149,10 @@ class Model(network.Network):
     # predict on a model without compiling it.
     self._distribution_strategy = None
     self._compile_time_distribution_strategy = None
+    if (ops.executing_eagerly_outside_functions() and
+        distribution_strategy_context.has_strategy()):
+      self._set_strategy(
+          distribution_strategy_context.get_strategy())
 
     # This flag is used to track if the user is using the deprecated path of
     # passing distribution strategy to compile rather than creating the model
@@ -156,7 +160,12 @@ class Model(network.Network):
     self._compile_distribution = False
 
     self._run_eagerly = None
-    self._experimental_run_tf_function = False
+    self._experimental_run_tf_function = (
+        ops.executing_eagerly_outside_functions())
+
+  @trackable.no_automatic_dependency_tracking
+  def _set_strategy(self, strategy):
+    self._compile_time_distribution_strategy = strategy
 
   def get_weights(self):
     """Retrieves the weights of the model.
@@ -241,10 +250,12 @@ class Model(network.Network):
         optimizer: String (name of optimizer) or optimizer instance.
             See `tf.keras.optimizers`.
         loss: String (name of objective function), objective function or
-            `tf.losses.Loss` instance. See `tf.losses`. If the model has
-            multiple outputs, you can use a different loss on each output by
-            passing a dictionary or a list of losses. The loss value that will
-            be minimized by the model will then be the sum of all individual
+            `tf.keras.losses.Loss` instance. See `tf.keras.losses`. An objective
+            function is any callable with the signature
+            `scalar_loss = fn(y_true, y_pred)`. If the model has multiple
+            outputs, you can use a different loss on each output by passing a
+            dictionary or a list of losses. The loss value that will be
+            minimized by the model will then be the sum of all individual
             losses.
         metrics: List of metrics to be evaluated by the model during training
             and testing. Typically you will use `metrics=['accuracy']`.
@@ -309,17 +320,21 @@ class Model(network.Network):
             'Session arguments: %s' % (self._function_kwargs,))
 
     self._set_optimizer(optimizer)
-    is_any_optimizer_v1 = any(isinstance(opt, optimizers.Optimizer)
-                              for opt in nest.flatten(self.optimizer))
+    is_any_keras_optimizer_v1 = any(
+        (isinstance(opt, optimizers.Optimizer)
+         and not isinstance(opt, optimizers.TFOptimizer)
+        ) for opt in nest.flatten(self.optimizer))
+
+    if is_any_keras_optimizer_v1 and ops.executing_eagerly_outside_functions():
+      raise ValueError('`tf.compat.v1.keras` Optimizer (', optimizer, ') is '
+                       'not supported when eager execution is enabled. Use a '
+                       '`tf.keras` Optimizer instead, or disable eager '
+                       'execution.')
 
     if ((target_tensors is not None)
-        or is_any_optimizer_v1
         or not ops.executing_eagerly_outside_functions()):
       # Fallback out of things that aren't supported with v2 loops
       self._experimental_run_tf_function = False
-
-    self._compile_time_distribution_strategy = (
-        distribution_strategy_context.get_strategy())
 
     if distribute is not None:
       if tf2.enabled() or self._experimental_run_tf_function:
@@ -1020,7 +1035,8 @@ class Model(network.Network):
     if self._experimental_run_tf_function:
       outputs = training_v2_utils.train_on_batch(
           self, x, y=y, sample_weight=sample_weight,
-          class_weight=class_weight, reset_metrics=reset_metrics)
+          class_weight=class_weight, reset_metrics=reset_metrics,
+          standalone=True)
       outputs = (outputs['total_loss'] + outputs['output_losses'] +
                  outputs['metrics'])
       outputs = [
@@ -1117,7 +1133,7 @@ class Model(network.Network):
     if self._experimental_run_tf_function:
       outputs = training_v2_utils.test_on_batch(
           self, x, y=y, sample_weight=sample_weight,
-          reset_metrics=reset_metrics)
+          reset_metrics=reset_metrics, standalone=True)
       outputs = (outputs['total_loss'] + outputs['output_losses'] +
                  outputs['metrics'])
       outputs = [
@@ -1182,7 +1198,7 @@ class Model(network.Network):
     """
     self._check_call_args('predict_on_batch')
     if self._experimental_run_tf_function:
-      return training_v2_utils.predict_on_batch(self, x)
+      return training_v2_utils.predict_on_batch(self, x, standalone=True)
 
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
@@ -1721,8 +1737,8 @@ class Model(network.Network):
         # Check `batch_size` argument is consistent with InputLayer.
         if batch_size is not None:
           if batch_size % num_splits_for_ds != 0:
-            raise ValueError('The `batch_size` argument value {} cannot be '
-                             'divisible by number of replicas {}'.format(
+            raise ValueError('The `batch_size` argument ({}) must be divisible '
+                             'the by number of replicas ({})'.format(
                                  batch_size, num_splits_for_ds))
           per_replica_batch_size = batch_size // num_splits_for_ds
 
@@ -3138,6 +3154,11 @@ def _convert_scipy_sparse_tensor(value, expected_input):
   """
   if issparse is not None and issparse(value):
     if ops.is_dense_tensor_like(expected_input):
+      if ops.executing_eagerly_outside_functions():
+        # In TF2 we do not silently densify sparse matrices.
+        raise ValueError('A SciPy sparse matrix was passed to a model '
+                         'that expects dense inputs. Please densify your '
+                         'inputs first, such as by calling `x.toarray().')
       return value.toarray()
     else:
       sparse_coo = value.tocoo()

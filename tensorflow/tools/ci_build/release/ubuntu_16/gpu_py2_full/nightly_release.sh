@@ -22,6 +22,8 @@ set_bazel_outdir
 
 install_ubuntu_16_pip_deps pip2.7
 
+update_bazel_linux
+
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
@@ -29,7 +31,7 @@ export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=10
+export TF_CUDA_VERSION=10.1
 export TF_CUDNN_VERSION=7
 export TF_CUDA_COMPUTE_CAPABILITIES=3.5,3.7,5.2,6.0,6.1,7.0
 export TF_NEED_TENSORRT=1
@@ -40,14 +42,11 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
 bazel build --config=opt --config=v2 \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   tensorflow/tools/pip_package:build_pip_package
-./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --gpu --nightly_flag
 
-# Copy and rename to tf_nightly
-for WHL_PATH in $(ls pip_pkg/tf_nightly_gpu-*dev*.whl); do
-  copy_to_new_project_name "${WHL_PATH}" tf_nightly
-done
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --nightly_flag
+./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --gpu --nightly_flag
 
 # Upload the built packages to pypi.
 for WHL_PATH in $(ls pip_pkg/tf_nightly*dev*.whl); do

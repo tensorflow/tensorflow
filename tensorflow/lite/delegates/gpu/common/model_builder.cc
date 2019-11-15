@@ -2084,7 +2084,7 @@ class TransposeOperationParser : public TFLiteOperationParser {
     Tensor<Linear, DataType::INT32> perm;
     RETURN_IF_ERROR(reader->ReadTensor(1, &perm));
     if (perm.data.size() == 4) {
-      attr.perm = BHWC(perm.data[0], perm.data[1], perm.data[0], perm.data[3]);
+      attr.perm = BHWC(perm.data[0], perm.data[1], perm.data[2], perm.data[3]);
     } else if (perm.data.size() == 3) {
       attr.perm = BHWC(0, perm.data[0] + 1, perm.data[1] + 1, perm.data[2] + 1);
     } else if (perm.data.size() == 2) {

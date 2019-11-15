@@ -197,7 +197,7 @@ def make_pow_tests(options):
 
 @register_make_test_function()
 def make_floor_div_tests(options):
-  make_binary_op_tests(options, tf.floor_div)
+  make_binary_op_tests(options, tf.math.floordiv)
 
 
 @register_make_test_function()

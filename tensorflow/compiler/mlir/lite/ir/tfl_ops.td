@@ -15,12 +15,10 @@ limitations under the License.
 
 // This is the operation definition file for TensorFlow Lite.
 
-#ifdef TFL_OPS
-#else
+#ifndef TFL_OPS
 #define TFL_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -144,6 +142,12 @@ class TFL_OperandHasRank<int n, int m> :
       CPred<"$_op.getOperand(" # n #
       ")->getType().cast<ShapedType>().getRank() == " # m>]>>;
 
+// Returns true if the n-th operand is ranked and has rank dim.
+class TFL_OperandHasKnownRank<int n, int dim> : And<[
+  CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
+  CPred<"$_op.getOperand(" # n # ")->getType().cast<ShapedType>().getRank() == "
+    # dim>]>;
+
 // True if operand n is ranked and has a rank > dim.
 class TFL_OperandIsRankedAndHasDimPred<int n, int dim> : And<[
   CPred<"$_op.getOperand(" # n # ")->getType().isa<RankedTensorType>()">,
@@ -169,6 +173,11 @@ class TFL_OperandRankEquals1DimOfOperand<int x, int y> :
       "$_op.getOperand(" # y #
       ")->getType().cast<ShapedType>().getShape()[0]">>;
 
+class TFL_Operand0DOr1ElementTensor<int x> :
+  PredOpTrait<"operand #" # x # " is an 0-d tensor or 1-d tensor w/ 1 element",
+    Or<[TFL_OperandHasKnownRank<x, 0>,
+        And<[TFL_OperandHasKnownRank<x, 1>, TFL_OperandDimEquals<x, 0, 1>]>]>>;
+
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
   TCOpResIsShapedTypePred<i, j>,
@@ -181,7 +190,6 @@ class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
                 "getElementTypeOrSelf($_op.getResult(" # i # "))) == "
             "quant::QuantizedType::castToStorageType("
                 "getElementTypeOrSelf($_op.getOperand(" # j # ")))">]>]>]>;
-
 //===----------------------------------------------------------------------===//
 // TFL op common constraints.
 //===----------------------------------------------------------------------===//
@@ -257,7 +265,7 @@ class TFL_Op<string mnemonic, list<OpTrait> traits = []> :
 
 class TFL_ConvOp<string mnemonic, string opSummary, int index> :
     TFL_Op<mnemonic, [NoSideEffect, AccumulatorUniformScale<2, 0, 1>,
-    ChannelDimIndex<index>]> {
+    ChannelDimIndex<index>, AffineOpCoefficient<index, 1>]> {
   let summary = opSummary # " operator";
 
   let description = [{
@@ -538,6 +546,14 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   let hasFolder = 1;
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Attribute value",
+    [{
+      state.addAttribute("value", value);
+      state.addTypes(value.getType());
+    }]>
+  ];
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
@@ -572,7 +588,8 @@ def TFL_FullyConnectedOptionsWeightFormatAttr :
 
 // TODO(jpienaar): Update post discussion on semantics of FC OP.
 def TFL_FullyConnectedOp : TFL_Op<"fully_connected", [
-    NoSideEffect, AccumulatorUniformScale<2, 0, 1>, ChannelDimIndex<0>]> {
+    NoSideEffect, AccumulatorUniformScale<2, 0, 1>, ChannelDimIndex<0>,
+    AffineOpCoefficient<-1, 1>]> {
   let summary = "Fully connected op";
 
   let arguments = (ins
@@ -1161,24 +1178,6 @@ def TFL_HardSwishOp: TFL_Op<"hard_swish", [NoSideEffect,
   let results = (outs TensorOf<[F32, QUI8, QI8]>:$out);
 
   let hasOptions = 0;
-}
-
-
-// NoSideEffect trait is not added to the op intentionally to prevent it from
-// getting removed if the input is unused. The generated FlatBuffer needs to
-// have a tensor along with the metadata for each of the subgraph inputs.
-def TFL_InputOp : Op<TFL_Dialect, "pseudo_input", [SameOperandsAndResultType]> {
-  let summary = "Input pseudo operator";
-
-  let description = [{
-    Takes one of the function arguments as input and returns it as result.  This
-    is a NOP and is used to attach attributes such as tensor name to function
-    arguments.
-  }];
-
-  let arguments = (ins AnyTensor:$input);
-
-  let results = (outs AnyTensor:$output);
 }
 
 def TFL_L2NormalizationOp : TFL_Op<"l2_normalization", [NoSideEffect,
@@ -2409,7 +2408,10 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
   let hasOptions = 1;
 }
 
-def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
+def TFL_SplitOp : TFL_Op<"split", [
+    NoSideEffect,
+    TFL_Operand0DOr1ElementTensor<0>,
+    SameOperandsAndResultsScale]> {
   let summary = "Splits a tensor into `num_split` tensors along one dimension.";
 
   let description = [{
@@ -2419,7 +2421,7 @@ def TFL_SplitOp : TFL_Op<"split", [NoSideEffect, SameOperandsAndResultsScale]> {
   }];
 
   let arguments = (ins
-    0DTensorOf<[I32]>:$split_dim,
+    TensorOf<[I32]>:$split_dim,
     TensorOf<[F32, I16, I32, I64, QI8, QUI8]>:$value,
     PositiveI32Attr:$num_splits
   );
@@ -2711,6 +2713,15 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
   );
 
   let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, TypeAttr qtype, Attribute value",
+    [{
+      state.addAttribute("qtype", qtype);
+      state.addAttribute("value", value);
+      state.addTypes(qtype.getValue());
+    }]>
+  ];
 }
 
 def TFL_QuantizeOp: TFL_Op<"quantize", [

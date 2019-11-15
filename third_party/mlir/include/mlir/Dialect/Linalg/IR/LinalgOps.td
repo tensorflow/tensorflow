@@ -19,12 +19,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LINALG_OPS
-#else
+#ifndef LINALG_OPS
 #define LINALG_OPS
 
+#ifndef AFFINE_OPS_BASE
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
+#endif // AFFINE_OPS_BASE
+
+#ifndef LINALG_BASE
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
+#endif // LINALG_BASE
 
 // Base class for Linalg dialect ops that do not correspond to library calls.
 class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
@@ -38,108 +42,6 @@ class Linalg_Op<string mnemonic, list<OpTrait> traits = []> :
   let printer = [{ return ::print(p, *this); }];
   let verifier = [{ return ::verify(*this); }];
   let parser = [{ return ::parse$cppClass(parser, result); }];
-}
-
-def BufferAllocOp :
-    Linalg_Op<"buffer_alloc">,
-    Arguments<(ins Variadic<Index>:$size, OptionalAttr<I64Attr>:$alignment)>,
-    Results<(outs Buffer)> {
-  let summary = "buffer allocation operation";
-  let description = [{
-    The "buffer_alloc" op creates a 1-D linalg.buffer of the specified type,
-    upon which a base view can be laid out to give it indexing semantics.
-    "buffer_alloc" takes a single argument, the size of the buffer to allocate
-    (in number of elements).
-    An optional alignment attribute may be specified in which case the actual
-    underlying allocation size may be increased. The base pointer is guaranteed
-    to be a multiple of `alignment`. Such an alignment must be a positive power
-    of 2.
-
-    Examples:
-
-        %0 = linalg.buffer_alloc(%arg0) : !linalg.buffer<?xf32>
-
-        %1 = linalg.buffer_alloc(%arg0) { alignment = 16 } :
-          !linalg.buffer<?xf32>
-
-    The size argument may be omitted if it is statically known, in which case it
-    must be reflected in the type.
-
-    Example:
-
-        %0 = linalg.buffer_alloc() : !linalg.buffer<4xf32>
-  }];
-  let builders = [
-    OpBuilder<
-      "Builder *b, OperationState &result, BufferType bufferType", [{
-          result.addTypes(bufferType);
-       }]>,
-    OpBuilder<
-      "Builder *b, OperationState &result, BufferType bufferType, "
-      "unsigned alignment", [{
-        build(b, result, bufferType);
-        if (alignment != 0)
-          result.addAttribute(BufferAllocOp::getAlignmentAttrName(),
-                               b->getI64IntegerAttr(alignment));
-      }]>,
-    OpBuilder<
-      "Builder *b, OperationState &result, BufferType bufferType, "
-      "Value *size, unsigned alignment", [{
-        if (alignment == 0)
-          return build(b, result, bufferType, size);
-        build(b, result, bufferType, size, b->getI64IntegerAttr(alignment));
-      }]>,
-    OpBuilder<
-      "Builder *b, OperationState &result, BufferType bufferType, Value *size",
-      [{
-        result.addOperands(size);
-        result.addTypes(bufferType);
-      }]>
-  ];
-  let extraClassDeclaration = [{
-    static StringRef getAlignmentAttrName() { return "alignment"; }
-    BufferType getBufferType() { return getType().cast<BufferType>(); }
-    Type getElementType() { return getBufferType().getElementType(); }
-  }];
-}
-
-def BufferDeallocOp :
-    Linalg_Op<"buffer_dealloc">,
-    Arguments<(ins Buffer:$buffer)>,
-    Results<(outs)> {
-  let summary = "buffer allocation operation";
-  let description = [{
-    The "buffer_dealloc" op frees a 1-D linalg.buffer of the specified type.
-
-    Example:
-
-        linalg.buffer_dealloc %0 : !linalg.buffer<f32>
-  }];
-  let extraClassDeclaration = [{
-    BufferType getBufferType() {
-      return buffer()->getType().cast<BufferType>();
-    }
-  }];
-
-  // Fully specified by traits.
-  let verifier = ?;
-}
-
-def BufferSizeOp :
-    Linalg_Op<"buffer_size", [NoSideEffect]>,
-    Arguments<(ins Buffer:$buffer)>,
-    Results<(outs Index)> {
-  let summary = "buffer size operation";
-  let description = [{
-    The "linalg.buffer_size" operation takes a linalg.buffer and returns an
-    "index".
-
-    Example:
-
-       %0 = linalg.buffer_size %arg0 : !linalg.buffer<f32>
-  }];
-  // Fully specified by traits.
-  let verifier = ?;
 }
 
 def RangeOp :
@@ -229,70 +131,6 @@ def SliceOp : Linalg_Op<"slice", [NoSideEffect]>,
   }];
 }
 
-def SubViewOp : Linalg_Op<"subview", [NoSideEffect]>,
-    Arguments<(ins AnyStridedMemRef:$view, Variadic<Index>:$ranges)>,
-    Results<(outs AnyStridedMemRef)> {
-  let summary = "subview operation";
-  let description = [{
-    The "linalg.subview" op produces a linalg.view which is a subview of a given
-    base view. This allows defining a subregion within the underlying buffer.
-
-    The "linalg.subview" operation takes a base view, a list of indices and
-    returns a new linalg.view of the same type that is contained within the
-    view. This operation is equivalent to a non-rank-reducing slice operation.
-    The main difference is the operands are all of type `index` and no
-    intermediate linalg.range operations are required. A "linalg.subview" is
-    thus a specialized linalg.slice with a higher level of abstraction.
-
-    Similary to linalg.slice, if a range extends past the size of the base view,
-    the slice operation automatically truncates it to be within the bounds of
-    the view.
-
-    Example:
-
-      %1 = linalg.subview %0[%1, %2, %3, %4, %5, %6] :
-        memref<?x?xf32, stride_specification>
-
-  }];
-  // TODO(ntv) evolve syntax towards:
-  //   linalg.subview %0[%1:%2:%3][%4:%5:%6] :
-  //     memref<?x?xf32, stride_specification>
-
-  let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *buffer, "
-    "ArrayRef<Value *> ranges, Type resultType = Type(), "
-    "ArrayRef<NamedAttribute> attrs = {}">];
-
-  let verifier = [{
-    auto rank = getViewType().getRank();
-    if (getNumOperands() != 3 * rank + 1)
-      return emitOpError("expected a strided memref followed by ") << (3 * rank)
-        << " indices specifying a range for each dimension";
-    return success();
-  }];
-
-  let extraClassDeclaration = [{
-    Value *getView() { return getOperand(0); }
-    MemRefType getViewType() { return getView()->getType().cast<MemRefType>(); }
-
-    struct Range { Value *min; Value *max; Value *step; };
-
-    Range getRange(unsigned i) {
-      return Range{
-        getOperand(1 + 3*i), getOperand(1 + 3*i + 1), getOperand(1 + 3*i + 2)};
-    }
-
-    SmallVector<Range, 8> getRanges() {
-      SmallVector<Range, 8> res;
-      unsigned rank = getViewType().getRank();
-      res.reserve(rank);
-      for (unsigned i = 0; i < rank; ++i)
-        res.push_back(getRange(i));
-      return res;
-    }
-  }];
-}
-
 def TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
     Arguments<(ins AnyStridedMemRef:$view, AffineMapAttr:$permutation)>,
     Results<(outs AnyStridedMemRef)> {
@@ -322,51 +160,6 @@ def TransposeOp : Linalg_Op<"transpose", [NoSideEffect]>,
   let extraClassDeclaration = [{
     static StringRef getPermutationAttrName() { return "permutation"; }
     MemRefType getViewType() { return view()->getType().cast<MemRefType>(); }
-  }];
-}
-
-def ViewOp : Linalg_Op<"view", [NoSideEffect]>,
-    Arguments<(ins Buffer:$buffer, Variadic<Range>:$ranges)>,
-    Results<(outs AnyStridedMemRef)> {
-  let summary = "view operation";
-  let description = [{
-    The "linalg.view" op produces a strided memref which is a multi-dimensional
-    range abstraction on top of an underlying linalg.buffer. This gives an
-    indexing structure to an otherwise non-indexable linalg.buffer.
-
-    A "linalg.view" takes a buffer and a variadic number of ranges and produces
-    a `view` of rank the number of ranges. The elemental type may not match the
-    buffer element type:
-
-    Example:
-
-       %1 = linalg.buffer_alloc %0 : !linalg.buffer<f32>
-       %2 = linalg.range %arg2:%arg3:%arg4 : !linalg.range
-       %3 = linalg.view %1[%2, %2] :
-         memref<?x?xvector<4xf32>, stride_specification>
-  }];
-
-  let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *buffer, "
-    "ArrayRef<Value *> ranges, Type resultType = Type(), "
-    "ArrayRef<NamedAttribute> attrs = {}">];
-
-  let verifier = [{
-    if (getViewType().getRank() != llvm::size(ranges()))
-      return emitOpError("the view rank must be the number of its ranges");
-    return success();
-  }];
-
-  let extraClassDeclaration = [{
-    enum { FirstIndexingOperand = 1 };
-    unsigned getRank() { return getViewType().getRank(); }
-    Type getElementType() { return getViewType().getElementType(); }
-    MemRefType getViewType() { return getType().cast<MemRefType>(); }
-    /// Get the underlying indexing at a given rank.
-    Value *getRange(unsigned rank) {
-      assert(rank < getRank() && "rank overflow");
-      return *(ranges().begin() + rank);
-    }
   }];
 }
 

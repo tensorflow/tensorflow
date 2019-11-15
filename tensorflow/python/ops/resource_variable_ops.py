@@ -33,6 +33,7 @@ from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_logging_ops
@@ -1515,8 +1516,10 @@ class ResourceVariable(BaseResourceVariable):
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
-      with ops.name_scope(name, "Variable", []
-                          if init_from_fn else [initial_value]) as name:
+      with ops.name_scope(
+          name,
+          "Variable", [] if init_from_fn else [initial_value],
+          skip_on_eager=False) as name:
         # pylint: disable=protected-access
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
@@ -1752,7 +1755,7 @@ class UninitializedVariable(BaseResourceVariable):
     with ops.init_scope():
       self._in_graph_mode = not context.executing_eagerly()
     with ops.init_scope():
-      with ops.name_scope(name, "Variable") as name:
+      with ops.name_scope(name, "Variable", skip_on_eager=False) as name:
         handle_name = ops.name_from_scope_name(name)
         if self._in_graph_mode:
           shared_name = handle_name
@@ -1964,3 +1967,24 @@ def copy_to_graph_uninitialized(var):
 ops.NotDifferentiable("Assert")
 ops.NotDifferentiable("VarIsInitializedOp")
 ops.NotDifferentiable("VariableShape")
+
+
+class VariableSpec(tensor_spec.DenseSpec):
+  """Describes a tf.Variable."""
+
+  __slots__ = []
+
+  value_type = property(lambda self: BaseResourceVariable)
+
+  def _to_components(self, value):
+    raise NotImplementedError
+
+  def _from_components(self, components):
+    raise NotImplementedError
+
+  def _from_compatible_tensor_list(self, tensor_list):
+    assert len(tensor_list) == 1
+    return tensor_list[0]
+
+
+_pywrap_utils.RegisterType("VariableSpec", VariableSpec)

@@ -52,21 +52,21 @@ class TensorFlowDialect : public Dialect {
   static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
 
   // Parse a type registered to this dialect.
-  Type parseType(StringRef data, Location loc) const override;
+  Type parseType(DialectAsmParser &parser) const override;
 
   // Prints a type registered to this dialect.
-  void printType(Type ty, raw_ostream &os) const override;
+  void printType(Type ty, DialectAsmPrinter &os) const override;
 
   // Parses resource type with potential subtypes.
-  Type ParseResourceType(StringRef spec, Location loc) const;
+  Type ParseResourceType(DialectAsmParser &parser, Location loc) const;
 
   // Prints resource type with potential subtypes.
-  void PrintResourceType(ResourceType ty, raw_ostream &os) const;
+  void PrintResourceType(ResourceType ty, DialectAsmPrinter &os) const;
 
   // Parse and print variant type. It may have subtypes inferred using shape
   // inference.
-  Type ParseVariantType(StringRef spec, Location loc) const;
-  void PrintVariantType(VariantType ty, raw_ostream &os) const;
+  Type ParseVariantType(DialectAsmParser &parser, Location loc) const;
+  void PrintVariantType(VariantType ty, DialectAsmPrinter &os) const;
 
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.

@@ -337,7 +337,12 @@ void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
                                                  fused_func_op_.getContext()));
 }
 
-void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
+LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
+  LogicalResult result = Initialize();
+  if (failed(result)) {
+    return result;
+  }
+
   // Update the func signature, based on output shape.
   // The func will ultimately return the output of the fused
   // LSTM op.
@@ -376,6 +381,7 @@ void ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
       fused_func_op_.getLoc(), lstm_.getResult(), func_result_type);
   builder_.create<mlir::ReturnOp>(fused_func_op_.getLoc(),
                                   tensor_cast.getResult());
+  return success();
 }
 
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::Initialize() {

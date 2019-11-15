@@ -1,3 +1,5 @@
+load("@local_config_mlir//:tblgen.bzl", "gentbl")
+
 licenses(["notice"])
 
 package(default_visibility = [":test_friends"])
@@ -8,8 +10,6 @@ package_group(
     includes = ["@org_tensorflow//tensorflow/compiler/mlir:subpackages"],
     packages = ["//..."],
 )
-
-load("@local_config_mlir//:tblgen.bzl", "gentbl")
 
 cc_library(
     name = "IRProducingAPITest",
@@ -69,6 +69,7 @@ cc_library(
 cc_library(
     name = "TestIR",
     srcs = [
+        "lib/IR/TestFunc.cpp",
         "lib/IR/TestSymbolUses.cpp",
     ],
     deps = [
@@ -103,6 +104,7 @@ cc_library(
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
+        "lib/Transforms/TestLowerVectorTransfers.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestOpaqueLoc.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
@@ -121,6 +123,7 @@ cc_library(
         "@local_config_mlir//:Support",
         "@local_config_mlir//:TransformUtils",
         "@local_config_mlir//:Transforms",
+        "@local_config_mlir//:VectorConversions",
         "@local_config_mlir//:VectorOps",
     ],
     alwayslink = 1,

@@ -51,18 +51,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-filegroup(
-    name = "traceme_hdrs",
-    srcs = [
-        "traceme.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
-tf_cuda_library(
+cc_library(
     name = "traceme",
     srcs = ["traceme.cc"],
     hdrs = ["traceme.h"],
@@ -70,6 +59,17 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal:traceme_recorder",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "scoped_annotation",
+    hdrs = ["scoped_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:annotation_stack",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -84,6 +84,14 @@ cc_library(
 
 filegroup(
     name = "mobile_srcs",
-    srcs = glob(["*"]),
+    srcs = [
+        "profiler_session.cc",
+        "profiler_session.h",
+        "profiler_utils.cc",
+        "profiler_utils.h",
+        "scoped_annotation.h",
+        "traceme.cc",
+        "traceme.h",
+    ],
     visibility = ["//visibility:public"],
 )

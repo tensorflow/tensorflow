@@ -21,7 +21,8 @@ Android example</a>
 
 Read the
 [GitHub page](https://github.com/tensorflow/examples/tree/master/lite/examples/smart_reply/android/)
-to learn how the app works.
+to learn how the app works. Inside this project, you will also learn how to
+build an app with custom C++ ops.
 
 ## How it works
 
@@ -36,7 +37,7 @@ The on-device model comes with several benefits. It is:
 
 ## Example output
 
-<img alt="Animation showing smart reply" src="images/smart_reply.gif" />
+<img alt="Animation showing smart reply" src="images/smart_reply.gif" style="max-width: 300px"/>
 
 ## Read more about this
 

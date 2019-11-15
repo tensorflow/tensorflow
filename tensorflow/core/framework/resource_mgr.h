@@ -125,7 +125,8 @@ class ResourceMgr {
   const string& default_container() const { return default_container_; }
 
   // Creates a resource "name" in the "container".  The caller transfers
-  // the ownership of one ref on "resource" to *this
+  // the ownership of one ref on "resource" to *this, regardless of whether this
+  // operation succeeds or fails.
   //
   // REQUIRES: std::is_base_of<ResourceBase, T>
   // REQUIRES: resource != nullptr.
@@ -185,7 +186,7 @@ class ResourceMgr {
   string DebugString() const;
 
  private:
-  typedef std::pair<uint64, string> Key;
+  typedef std::pair<uint64, StringPiece> Key;
   struct KeyHash {
     std::size_t operator()(const Key& k) const {
       return Hash64(k.second.data(), k.second.size(), k.first);
@@ -196,7 +197,21 @@ class ResourceMgr {
       return (x.second == y.second) && (x.first == y.first);
     }
   };
-  typedef std::unordered_map<Key, ResourceBase*, KeyHash, KeyEqual> Container;
+  struct ResourceAndName {
+    core::RefCountPtr<ResourceBase> resource;
+    std::unique_ptr<string> name;
+
+    ResourceAndName();
+    ResourceAndName(ResourceBase* resource, string name);
+    ResourceAndName(ResourceAndName&& other) noexcept;
+    ~ResourceAndName();
+
+    ResourceAndName& operator=(ResourceAndName&&) noexcept;
+
+   private:
+    TF_DISALLOW_COPY_AND_ASSIGN(ResourceAndName);
+  };
+  typedef std::unordered_map<Key, ResourceAndName, KeyHash, KeyEqual> Container;
 
   const string default_container_;
   mutable mutex mu_;

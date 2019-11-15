@@ -1,8 +1,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_is_configured_compat",
     "tf_copts",
     "tf_cuda_library",
-    "if_cuda_is_configured_compat",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load(
@@ -34,9 +34,11 @@ tf_cuda_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/internal:annotation_stack",
         "//tensorflow/core/profiler/internal:parse_annotation",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/flags:flag",
     ],
     alwayslink = 1,
@@ -105,7 +107,7 @@ tf_cuda_library(
         ":cupti_interface",
         ":cupti_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core/platform:annotation",
+        "//tensorflow/core/profiler/internal:annotation_stack",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:node_hash_map",

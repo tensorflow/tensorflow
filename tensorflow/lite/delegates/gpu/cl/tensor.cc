@@ -293,16 +293,14 @@ bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
       return shape.b * shape.w * shape.h * depth <=
              device.GetInfo().image_buffer_max_size;
     case TensorStorageType::TEXTURE_ARRAY:
-      return shape.b == 1 &&
-             shape.w * shape.b <= device.GetInfo().image2d_max_width &&
+      return shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height &&
              depth <= device.GetInfo().image_array_max_layers;
     case TensorStorageType::TEXTURE_2D:
-      return shape.b == 1 &&
-             shape.w * shape.b <= device.GetInfo().image2d_max_width &&
+      return shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h * depth <= device.GetInfo().image2d_max_height;
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      return shape.b == 1 && shape.c <= 4 &&
+      return shape.c <= 4 &&
              context.IsFloatTexture2DSupported(shape.c, descriptor.data_type) &&
              shape.w * shape.b <= device.GetInfo().image2d_max_width &&
              shape.h <= device.GetInfo().image2d_max_height;

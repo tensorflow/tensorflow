@@ -173,12 +173,13 @@ def set_virtual_cpus_to_at_least(num_virtual_cpus):
   physical_devices = config.list_physical_devices("CPU")
   if not physical_devices:
     raise RuntimeError("No CPUs found")
-  configs = config.get_virtual_device_configuration(physical_devices[0])
+  configs = config.get_logical_device_configuration(physical_devices[0])
   if configs is None:
-    virtual_devices = [context.VirtualDeviceConfiguration()
-                       for _ in range(num_virtual_cpus)]
-    config.set_virtual_device_configuration(
-        physical_devices[0], virtual_devices)
+    logical_devices = [
+        context.LogicalDeviceConfiguration() for _ in range(num_virtual_cpus)
+    ]
+    config.set_logical_device_configuration(physical_devices[0],
+                                            logical_devices)
   else:
     if len(configs) < num_virtual_cpus:
       raise RuntimeError("Already configured with %d < %d virtual CPUs" %
@@ -227,6 +228,8 @@ tpu_strategies = [
     tpu_strategy,  # steps_per_run=2
     tpu_strategy_one_step
 ]
+
+all_strategies = strategies_minus_tpu + tpu_strategies
 
 
 def strategy_minus_tpu_combinations():

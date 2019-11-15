@@ -15,12 +15,10 @@ limitations under the License.
 
 // This is the definition file for the TensorFlow Device Dialect.
 
-#ifdef TF_DEVICE_DIALECT
-#else
+#ifndef TF_DEVICE_DIALECT
 #define TF_DEVICE_DIALECT
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -82,6 +80,8 @@ def TfDevice_LaunchOp : TfDevice_Op<"launch",
       }]
     >
   ];
+
+  let hasCanonicalizer = 1;
 }
 
 def TfDevice_ReturnOp : TfDevice_Op<"return", [Terminator]> {
@@ -112,7 +112,7 @@ def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
 
   let arguments = (ins
     StrAttr:$device,
-    SymbolRefAttr:$func,
+    FlatSymbolRefAttr:$func,
     Variadic<AnyType>:$operands);
 
   let results = (outs

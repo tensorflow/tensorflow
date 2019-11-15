@@ -7,6 +7,7 @@
   * `TF_CUDA_CLANG`: Whether to use clang as a cuda compiler.
   * `CLANG_CUDA_COMPILER_PATH`: The clang compiler path that will be used for
     both host and device code compilation if TF_CUDA_CLANG is 1.
+  * `TF_SYSROOT`: The sysroot to use when compiling.
   * `TF_DOWNLOAD_CLANG`: Whether to download a recent release of clang
     compiler and use it to build tensorflow. When this option is set
     CLANG_CUDA_COMPILER_PATH is ignored.
@@ -40,6 +41,7 @@ load(
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _CLANG_CUDA_COMPILER_PATH = "CLANG_CUDA_COMPILER_PATH"
+_TF_SYSROOT = "TF_SYSROOT"
 _CUDA_TOOLKIT_PATH = "CUDA_TOOLKIT_PATH"
 _TF_CUDA_VERSION = "TF_CUDA_VERSION"
 _TF_CUDNN_VERSION = "TF_CUDNN_VERSION"
@@ -79,7 +81,7 @@ def verify_build_defines(params):
         "host_compiler_prefix",
         "host_compiler_warnings",
         "linker_bin_path",
-        "linker_files",
+        "compiler_deps",
         "msvc_cl_path",
         "msvc_env_include",
         "msvc_env_lib",
@@ -89,7 +91,7 @@ def verify_build_defines(params):
         "msvc_link_path",
         "msvc_ml_path",
         "unfiltered_compile_flags",
-        "win_linker_files",
+        "win_compiler_deps",
     ]:
         if ("%{" + param + "}") not in params:
             missing.append(param)
@@ -275,13 +277,17 @@ def _normalize_include_path(repository_ctx, path):
         return path[len(crosstool_folder) + 1:]
     return path
 
-def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
+def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
     """Compute the list of default C or C++ include directories."""
     if lang_is_cpp:
         lang = "c++"
     else:
         lang = "c"
-    result = repository_ctx.execute([cc, "-E", "-x" + lang, "-", "-v"])
+    sysroot = []
+    if tf_sysroot:
+        sysroot += ["--sysroot", tf_sysroot]
+    result = repository_ctx.execute([cc, "-E", "-x" + lang, "-", "-v"] +
+                                    sysroot)
     index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:
         return []
@@ -302,14 +308,24 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
         for p in inc_dirs.split("\n")
     ]
 
-def get_cxx_inc_directories(repository_ctx, cc):
+def get_cxx_inc_directories(repository_ctx, cc, tf_sysroot):
     """Compute the list of default C and C++ include directories."""
 
     # For some reason `clang -xc` sometimes returns include paths that are
     # different from the ones from `clang -xc++`. (Symlink and a dir)
     # So we run the compiler with both `-xc` and `-xc++` and merge resulting lists
-    includes_cpp = _get_cxx_inc_directories_impl(repository_ctx, cc, True)
-    includes_c = _get_cxx_inc_directories_impl(repository_ctx, cc, False)
+    includes_cpp = _get_cxx_inc_directories_impl(
+        repository_ctx,
+        cc,
+        True,
+        tf_sysroot,
+    )
+    includes_c = _get_cxx_inc_directories_impl(
+        repository_ctx,
+        cc,
+        False,
+        tf_sysroot,
+    )
 
     return includes_cpp + [
         inc
@@ -970,17 +986,20 @@ def _flag_enabled(repository_ctx, flag_name):
 def _use_cuda_clang(repository_ctx):
     return _flag_enabled(repository_ctx, "TF_CUDA_CLANG")
 
+def _tf_sysroot(repository_ctx):
+    if _TF_SYSROOT in repository_ctx.os.environ:
+        return repository_ctx.os.environ[_TF_SYSROOT]
+    return ""
+
 def _compute_cuda_extra_copts(repository_ctx, compute_capabilities):
-    if _use_cuda_clang(repository_ctx):
-        capability_flags = [
-            "--cuda-gpu-arch=sm_" + cap.replace(".", "")
-            for cap in compute_capabilities
-        ]
-    else:
-        # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
-        # TODO(csigg): Make this consistent with cuda clang and pass to crosstool.
-        capability_flags = []
-    return str(capability_flags)
+    capability_flags = [
+        "--cuda-gpu-arch=sm_" + cap.replace(".", "")
+        for cap in compute_capabilities
+    ]
+
+    # Capabilities are handled in the "crosstool_wrapper_driver_is_not_gcc" for nvcc
+    # TODO(csigg): Make this consistent with cuda clang and pass unconditionally.
+    return "if_cuda_clang(%s)" % str(capability_flags)
 
 def _create_local_cuda_repository(repository_ctx):
     """Creates the repository containing files set up to build with CUDA."""
@@ -1100,6 +1119,7 @@ def _create_local_cuda_repository(repository_ctx):
     )
 
     is_cuda_clang = _use_cuda_clang(repository_ctx)
+    tf_sysroot = _tf_sysroot(repository_ctx)
 
     should_download_clang = is_cuda_clang and _flag_enabled(
         repository_ctx,
@@ -1112,8 +1132,16 @@ def _create_local_cuda_repository(repository_ctx):
     cc = find_cc(repository_ctx)
     cc_fullpath = cc if not should_download_clang else "crosstool/" + cc
 
-    host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc_fullpath)
+    host_compiler_includes = get_cxx_inc_directories(
+        repository_ctx,
+        cc_fullpath,
+        tf_sysroot,
+    )
     cuda_defines = {}
+    cuda_defines["%{builtin_sysroot}"] = tf_sysroot
+    cuda_defines["%{cuda_toolkit_path}"] = ""
+    if is_cuda_clang:
+        cuda_defines["%{cuda_toolkit_path}"] = cuda_config.config["cuda_toolkit_path"]
 
     host_compiler_prefix = "/usr/bin"
     if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
@@ -1143,8 +1171,8 @@ def _create_local_cuda_repository(repository_ctx):
         "-Wno-invalid-partial-specialization"
     """
         cuda_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes)
-        cuda_defines["%{linker_files}"] = ":empty"
-        cuda_defines["%{win_linker_files}"] = ":empty"
+        cuda_defines["%{compiler_deps}"] = ":empty"
+        cuda_defines["%{win_compiler_deps}"] = ":empty"
         repository_ctx.file(
             "crosstool/clang/bin/crosstool_wrapper_driver_is_not_gcc",
             "",
@@ -1177,8 +1205,8 @@ def _create_local_cuda_repository(repository_ctx):
                 ".exe" if _is_windows(repository_ctx) else "",
             )),
         )
-        cuda_defines["%{linker_files}"] = ":crosstool_wrapper_driver_is_not_gcc"
-        cuda_defines["%{win_linker_files}"] = ":windows_msvc_wrapper_files"
+        cuda_defines["%{compiler_deps}"] = ":crosstool_wrapper_driver_is_not_gcc"
+        cuda_defines["%{win_compiler_deps}"] = ":windows_msvc_wrapper_files"
 
         wrapper_defines = {
             "%{cpu_compiler}": str(cc),

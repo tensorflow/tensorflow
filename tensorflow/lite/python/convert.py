@@ -223,6 +223,7 @@ def build_toco_convert_protos(input_tensors,
                               drop_control_dependency=True,
                               reorder_across_fake_quant=False,
                               allow_custom_ops=False,
+                              custom_opdefs=None,
                               change_concat_input_ranges=False,
                               post_training_quantize=False,
                               quantize_to_float16=False,
@@ -230,7 +231,8 @@ def build_toco_convert_protos(input_tensors,
                               dump_graphviz_video=False,
                               target_ops=None,
                               allow_nonexistent_arrays=False,
-                              debug_info=None):
+                              debug_info=None,
+                              conversion_summary_dir=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -272,6 +274,9 @@ def build_toco_convert_protos(input_tensors,
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver.
       (default False)
+    custom_opdefs: List of strings representing custom ops OpDefs that are
+      included in the GraphDef. Required when using custom operations with the
+      MLIR-based converter. (default None)
     change_concat_input_ranges: Boolean to change behavior of min/max ranges for
       inputs and outputs of the concat operator for quantized models. Changes
       the ranges of concat operator overlap when true. (default False)
@@ -294,6 +299,7 @@ def build_toco_convert_protos(input_tensors,
       or are unused in the final graph. (default False)
     debug_info: `GraphDebugInfo` proto containing the stack traces for the
       original nodes referred by the converted graph.
+    conversion_summary_dir: A string, the path to the generated conversion logs.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -318,6 +324,8 @@ def build_toco_convert_protos(input_tensors,
   toco.drop_control_dependency = drop_control_dependency
   toco.reorder_across_fake_quant = reorder_across_fake_quant
   toco.allow_custom_ops = allow_custom_ops
+  if custom_opdefs:
+    toco.custom_opdefs.extend(custom_opdefs)
   toco.post_training_quantize = post_training_quantize
   toco.quantize_to_float16 = quantize_to_float16
   if default_ranges_stats:
@@ -326,6 +334,8 @@ def build_toco_convert_protos(input_tensors,
   if dump_graphviz_dir:
     toco.dump_graphviz_dir = dump_graphviz_dir
   toco.dump_graphviz_include_video = dump_graphviz_video
+  if conversion_summary_dir:
+    toco.conversion_summary_dir = conversion_summary_dir
   if target_ops:
     if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
       toco.enable_select_tf_ops = True
@@ -341,7 +351,8 @@ def build_toco_convert_protos(input_tensors,
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
-    if toco.inference_input_type == _types_pb2.QUANTIZED_UINT8:
+    if toco.inference_input_type in \
+        [_types_pb2.QUANTIZED_UINT8, _types_pb2.INT8]:
       if not quantized_input_stats:
         raise ValueError("std_dev and mean must be defined when "
                          "inference_input_type is QUANTIZED_UINT8.")

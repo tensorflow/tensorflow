@@ -10,17 +10,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef MLIR_CONVERSION_STANDARDTOSPIRV_TD
-#else
+#ifndef MLIR_CONVERSION_STANDARDTOSPIRV_TD
 #define MLIR_CONVERSION_STANDARDTOSPIRV_TD
 
-#ifdef STANDARD_OPS
-#else
+#ifndef STANDARD_OPS
 include "mlir/Dialect/StandardOps/Ops.td"
 #endif // STANDARD_OPS
 
-#ifdef SPIRV_OPS
-#else
+#ifndef SPIRV_OPS
 include "mlir/Dialect/SPIRV/SPIRVOps.td"
 #endif // SPIRV_OPS
 

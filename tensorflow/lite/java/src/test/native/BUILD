@@ -19,6 +19,7 @@ cc_library(
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/kernels:kernel_util",
     ],
+    alwayslink = 1,
 )
 
 tflite_jni_binary(

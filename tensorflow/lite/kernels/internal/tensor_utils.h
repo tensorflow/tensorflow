@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
@@ -50,6 +51,10 @@ void SymmetricQuantizeFloats(const float* values, const int size,
 void SymmetricQuantizeFloats(const float* values, const int size,
                              int8_t* quantized_values, float min_value,
                              float max_value, float* scaling_factor);
+
+void AsymmetricQuantizeFloats(const float* values, const int size,
+                              int8_t* quantized_values, float* scaling_factor,
+                              int32_t* offset);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
@@ -96,6 +101,15 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
 
+// Same as the function above except that vector values
+// are quantized with asymmetric quantization per-batch and the matrix
+// is quantized per row.
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset);
+
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
@@ -139,13 +153,11 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 //     - scratch is created for optimization purpose only.
 //       TODO(jianlijianli): this can be removed if some furture optimization
 //       work makes it unnecesssary.
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int16_t* output);
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context);
 
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
@@ -172,13 +184,11 @@ void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
 //     - scratch is created for optimization purpose only.
 //       TODO(jianlijianli): this can be removed if some furture optimization
 //       work makes it unnecesssary.
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int8_t* output);
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context);
 
 // Multiplies a matrix with a scalar and reduce the result on each row to a
 // scalar.
@@ -429,10 +439,8 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                         int output_size, int reduction_size);
 
 // Layer norm for each batch.
-// normalization_epsilon is added to avoid divergence.
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch,
-                             float normalization_epsilon);
+                             int v_size, int n_batch);
 }  // namespace tensor_utils
 }  // namespace tflite
 

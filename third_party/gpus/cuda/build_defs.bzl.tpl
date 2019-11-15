@@ -12,9 +12,21 @@ def if_cuda(if_true, if_false = []):
         "//conditions:default": if_false,
     })
 
+def if_cuda_clang(if_true, if_false = []):
+   """Shorthand for select()'ing on wheteher we're building with cuda-clang.
+
+    Returns a select statement which evaluates to if_true if we're building
+    with cuda-clang.  Otherwise, the select statement evaluates to if_false.
+
+   """
+   return select({
+       "@local_config_cuda//cuda:using_clang": if_true,
+       "//conditions:default": if_false
+   })
+
 def cuda_default_copts():
     """Default options for all CUDA compilations."""
-    return if_cuda(["-x", "cuda", "-DGOOGLE_CUDA=1"] + %{cuda_extra_copts})
+    return if_cuda(["-x", "cuda", "-DGOOGLE_CUDA=1"]) + %{cuda_extra_copts}
 
 def cuda_is_configured():
     """Returns true if CUDA was enabled during the configure process."""
@@ -58,3 +70,7 @@ def cuda_header_library(
         deps = deps + [":%s_virtual" % name],
         **kwargs
     )
+
+def cuda_library(copts = [], **kwargs):
+    """Wrapper over cc_library which adds default CUDA options."""
+    native.cc_library(copts = cuda_default_copts() + copts, **kwargs)

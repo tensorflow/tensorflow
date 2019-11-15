@@ -24,6 +24,7 @@ limitations under the License.
 namespace mlir {
 
 class FuncOp;
+class ModuleOp;
 class Operation;
 template <typename T>
 class OpPassBase;
@@ -32,6 +33,9 @@ namespace xla_hlo {
 
 /// Lowers from TF dialect to HLO dialect.
 std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass();
+
+/// Lowers from TF dialect's control flow to HLO dialect's control flow.
+std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeTFControlFlowPass();
 
 /// Converts the provided Operation as well as all nested operations into HLO
 /// dialect using the conversion patterns registered by the HLO dialect.

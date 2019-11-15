@@ -15,8 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#ifdef TEST_OPS
-#else
+#ifndef TEST_OPS
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
@@ -72,10 +71,24 @@ def NDTensorOfOp : TEST_Op<"nd_tensor_of"> {
   );
 }
 
+def RankedTensorOp : TEST_Op<"ranked_tensor_op"> {
+  let arguments = (ins AnyRankedTensor:$input);
+}
+
 def MultiTensorRankOf : TEST_Op<"multi_tensor_rank_of"> {
   let arguments = (ins
     TensorRankOf<[I8, I32, F32], [0, 1]>:$arg0
   );
+}
+
+//===----------------------------------------------------------------------===//
+// Test Operands
+//===----------------------------------------------------------------------===//
+
+def SymbolScopeOp : TEST_Op<"symbol_scope",
+    [SymbolTable, SingleBlockImplicitTerminator<"TerminatorOp">]> {
+  let summary =  "operation which defines a new symbol table";
+  let regions = (region SizedRegion<1>:$region);
 }
 
 //===----------------------------------------------------------------------===//
@@ -188,6 +201,16 @@ def UpdateFloatElementsAttr : Pat<
     $f64attr)>;
 
 //===----------------------------------------------------------------------===//
+// Test Attribute Constraints
+//===----------------------------------------------------------------------===//
+
+def SymbolRefOp : TEST_Op<"symbol_ref_attr"> {
+  let arguments = (ins
+    Confined<FlatSymbolRefAttr, [ReferToOp<"FuncOp">]>:$symbol
+  );
+}
+
+//===----------------------------------------------------------------------===//
 // Test Regions
 //===----------------------------------------------------------------------===//
 
@@ -209,7 +232,7 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
 
 def ConversionCallOp : TEST_Op<"conversion_call_op",
     [CallOpInterface]> {
-  let arguments = (ins Variadic<AnyType>:$inputs, SymbolRefAttr:$callee);
+  let arguments = (ins Variadic<AnyType>:$inputs, FlatSymbolRefAttr:$callee);
   let results = (outs Variadic<AnyType>);
 
   let extraClassDeclaration = [{
@@ -218,7 +241,7 @@ def ConversionCallOp : TEST_Op<"conversion_call_op",
 
     /// Return the callee of this operation.
     CallInterfaceCallable getCallableForCallee() {
-      return getAttrOfType<SymbolRefAttr>("callee");
+      return getAttrOfType<FlatSymbolRefAttr>("callee");
     }
   }];
 }
@@ -372,8 +395,9 @@ def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
 }
 
-def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if",
-    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpInterfaceDefault]> {
   let arguments = (ins AnyTensor, AnyTensor);
   let results = (outs AnyTensor);
 }
@@ -443,6 +467,30 @@ def OpInterleavedOperandAttribute2 : TEST_Op<"interleaved_operand_attr2"> {
     I64Attr:$attr2
   );
 }
+
+def ManyArgsOp : TEST_Op<"many_arguments"> {
+  let arguments = (ins
+    I32:$input1, I32:$input2, I32:$input3, I32:$input4, I32:$input5,
+    I32:$input6, I32:$input7, I32:$input8, I32:$input9,
+    I64Attr:$attr1, I64Attr:$attr2, I64Attr:$attr3, I64Attr:$attr4,
+    I64Attr:$attr5, I64Attr:$attr6, I64Attr:$attr7, I64Attr:$attr8,
+    I64Attr:$attr9
+  );
+}
+
+// Test that DRR does not blow up when seeing lots of arguments.
+def : Pat<(ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "42">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9),
+          (ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "24">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9)>;
 
 // Test that we can capture and reference interleaved operands and attributes.
 def : Pat<(OpInterleavedOperandAttribute1 $input1, $attr1, $input2, $attr2),

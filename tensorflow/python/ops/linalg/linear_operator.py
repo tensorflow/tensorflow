@@ -148,6 +148,7 @@ class LinearOperator(module.Module):
     way.
   """
 
+  # TODO(b/143910018) Remove graph_parents in V3.
   @deprecation.deprecated_args(None, "Do not pass `graph_parents`.  They will "
                                " no longer be used.", "graph_parents")
   def __init__(self,
@@ -201,13 +202,11 @@ class LinearOperator(module.Module):
 
     self._is_square_set_or_implied_by_hints = is_square
 
-    graph_parents = [] if graph_parents is None else graph_parents
-    for i, t in enumerate(graph_parents):
-      if t is None or not (linear_operator_util.is_ref(t) or
-                           tensor_util.is_tensor(t)):
-        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    if graph_parents is not None:
+      self._set_graph_parents(graph_parents)
+    else:
+      self._graph_parents = []
     self._dtype = dtypes.as_dtype(dtype).base_dtype if dtype else dtype
-    self._graph_parents = graph_parents
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
     self._is_positive_definite = is_positive_definite
@@ -1077,6 +1076,24 @@ class LinearOperator(module.Module):
   def _can_use_cholesky(self):
     return self.is_self_adjoint and self.is_positive_definite
 
+  def _set_graph_parents(self, graph_parents):
+    """Set self._graph_parents.  Called during derived class init.
+
+    This method allows derived classes to set graph_parents, without triggering
+    a deprecation warning (which is invoked if `graph_parents` is passed during
+    `__init__`.
+
+    Args:
+      graph_parents: Iterable over Tensors.
+    """
+    # TODO(b/143910018) Remove this function in V3.
+    graph_parents = [] if graph_parents is None else graph_parents
+    for i, t in enumerate(graph_parents):
+      if t is None or not (linear_operator_util.is_ref(t) or
+                           tensor_util.is_tensor(t)):
+        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+    self._graph_parents = graph_parents
+
 
 # Overrides for tf.linalg functions. This allows a LinearOperator to be used in
 # place of a Tensor.
@@ -1094,10 +1111,17 @@ def _cholesky(input, name=None):   # pylint:disable=redefined-builtin
 
 
 # The signature has to match with the one in python/op/array_ops.py,
-# so we have k and padding_value even though we don't use them here.
+# so we have k, padding_value, and align even though we don't use them here.
+# pylint:disable=unused-argument
 @dispatch.dispatch_for_types(linalg.diag_part, LinearOperator)
-def _diag_part(input, name="diag_part", k=0, padding_value=0):  # pylint:disable=redefined-builtin, unused-argument
+def _diag_part(
+    input,  # pylint:disable=redefined-builtin
+    name="diag_part",
+    k=0,
+    padding_value=0,
+    align="RIGHT_LEFT"):
   return input.diag_part(name)
+# pylint:enable=unused-argument
 
 
 @dispatch.dispatch_for_types(linalg.det, LinearOperator)

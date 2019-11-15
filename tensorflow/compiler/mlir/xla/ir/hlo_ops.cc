@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
 namespace mlir {
@@ -137,7 +138,7 @@ static void Print(ConstOp op, OpAsmPrinter* printer) {
 }
 
 static ParseResult ParseConstOp(OpAsmParser* parser, OperationState* result) {
-  if (parser->parseOptionalAttributeDict(result->attributes)) return failure();
+  if (parser->parseOptionalAttrDict(result->attributes)) return failure();
 
   // If colon is not present after attribute dictionary, it should be short form
   // and attribute 'value' is outside the dictionary.
@@ -212,72 +213,47 @@ OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
 }
 
 //===----------------------------------------------------------------------===//
+// AbsOp
+//===----------------------------------------------------------------------===//
+
+void AbsOp::build(Builder* builder, OperationState& result, Value* operand) {
+  auto shaped_type = operand->getType().cast<ShapedType>();
+  Type new_type;
+  if (!shaped_type.getElementType().isa<ComplexType>()) {
+    new_type = operand->getType();
+  } else if (shaped_type.hasRank()) {
+    new_type =
+        mlir::RankedTensorType::get(shaped_type.getShape(), operand->getType());
+  } else {
+    new_type = mlir::UnrankedTensorType::get(operand->getType());
+  }
+
+  return AbsOp::build(builder, result, new_type, operand);
+}
+
+//===----------------------------------------------------------------------===//
 // ConvertOp
 //===----------------------------------------------------------------------===//
 
-namespace {
-
-// Converts the values of an ElementsAttr into the corresponding type.
-ElementsAttr ConvertElements(const ElementsAttr& elements, Type newType) {
-  auto oldType = getElementTypeOrSelf(elements);
-  size_t bitWidth = newType.isBF16() ? 64 : newType.getIntOrFloatBitWidth();
-
-  if (oldType.isa<FloatType>()) {
-    // mapValues always takes a function returning APInt, even when the output
-    // is actually float.
-    using func_type = APInt(const APFloat&);
-    if (auto newFloatType = newType.dyn_cast<FloatType>()) {
-      // Float -> Float
-      return elements.mapValues(
-          newType, llvm::function_ref<func_type>([&newFloatType](
-                                                     const APFloat& floatVal) {
-            APFloat newDouble(FloatAttr::getValueAsDouble(floatVal));
-            bool losesInfo = false;
-            newDouble.convert(newFloatType.getFloatSemantics(),
-                              llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-            return newDouble.bitcastToAPInt();
-          }));
-    }
-    // Float -> Int
-    return elements.mapValues(
-        newType,
-        llvm::function_ref<func_type>([&bitWidth](const APFloat& floatVal) {
-          return APInt(bitWidth, FloatAttr::getValueAsDouble(floatVal));
-        }));
+void ConvertOp::build(Builder* builder, OperationState& result, Value* operand,
+                      Type result_element_ty) {
+  Type result_ty;
+  Type operand_ty = operand->getType();
+  if (auto ranked_ty = operand_ty.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(ranked_ty.getShape(), result_element_ty);
+  } else {
+    result_ty = UnrankedTensorType::get(result_element_ty);
   }
-
-  // oldType is Integer
-  // mapValues always takes a function returning APInt, even when the output
-  // is actually float.
-  using func_type = APInt(const APInt&);
-  if (auto newFloatType = newType.dyn_cast<FloatType>()) {
-    // Int -> Float
-    return elements.mapValues(
-        newType,
-        llvm::function_ref<func_type>([&newFloatType](const APInt& intVal) {
-          APFloat newDouble(static_cast<double>(intVal.getSExtValue()));
-          bool losesInfo = false;
-          newDouble.convert(newFloatType.getFloatSemantics(),
-                            llvm::APFloat::rmNearestTiesToEven, &losesInfo);
-          return newDouble.bitcastToAPInt();
-        }));
-  }
-  // newType is Integer
-  // Int -> Int
-  return elements.mapValues(
-      newType, llvm::function_ref<func_type>([&bitWidth](const APInt& intVal) {
-        return APInt(bitWidth, intVal.getSExtValue());
-      }));
+  build(builder, result, result_ty, operand);
 }
-
-}  // namespace
 
 OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
   if (getOperand()->getType() == getResult()->getType()) return getOperand();
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return ConvertElements(elementsAttr, getElementTypeOrSelf(getResult()));
+    return xla::ConvertElementsAttr(elementsAttr,
+                                    getElementTypeOrSelf(getResult()));
   }
 
   return {};
@@ -465,6 +441,51 @@ static LogicalResult Verify(ClampOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// ComplexOp
+//===----------------------------------------------------------------------===//
+
+void ComplexOp::build(Builder* builder, OperationState& state, Value* lhs,
+                      Value* rhs) {
+  auto type = lhs->getType();
+  auto element_ty = mlir::ComplexType::get(getElementTypeOrSelf(type));
+  Type result_ty;
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.isa<UnrankedTensorType>()) {
+    result_ty = UnrankedTensorType::get(element_ty);
+  } else {
+    result_ty = element_ty;
+  }
+
+  build(builder, state, result_ty, lhs, rhs);
+}
+
+namespace {
+Type CreateRealType(Type type) {
+  auto element_ty = getElementTypeOrSelf(type);
+  if (auto complex_ty = element_ty.dyn_cast<ComplexType>()) {
+    element_ty = complex_ty.getElementType();
+  }
+
+  if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_type.getShape(), element_ty);
+  } else if (type.dyn_cast<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(element_ty);
+  }
+
+  return element_ty;
+}
+}  // namespace
+
+void ImagOp::build(Builder* builder, OperationState& state, Value* val) {
+  build(builder, state, CreateRealType(val->getType()), val);
+}
+
+void RealOp::build(Builder* builder, OperationState& state, Value* val) {
+  build(builder, state, CreateRealType(val->getType()), val);
+}
+
+//===----------------------------------------------------------------------===//
 // ConcatenateOp
 //===----------------------------------------------------------------------===//
 
@@ -545,6 +566,41 @@ OpFoldResult ReverseOp::fold(ArrayRef<Attribute> operands) {
 // ReduceOp
 //===----------------------------------------------------------------------===//
 
+// Returns the result type after reducing operand of the given type across the
+// specified dimensions.
+static TensorType GetReduceResultType(Type operand_ty,
+                                      DenseIntElementsAttr dimensions,
+                                      Builder* builder) {
+  Type element_ty = getElementTypeOrSelf(operand_ty);
+
+  auto ranked_ty = operand_ty.dyn_cast<RankedTensorType>();
+  if (!ranked_ty) return UnrankedTensorType::get(element_ty);
+
+  int64_t rank = ranked_ty.getRank();
+  llvm::SmallVector<bool, 4> dims_mask(rank, false);
+  for (int64_t dim : dimensions.getValues<int64_t>()) dims_mask[dim] = true;
+
+  SmallVector<int64_t, 4> shape;
+  for (int64_t i = 0; i < rank; ++i) {
+    if (!dims_mask[i]) shape.push_back(ranked_ty.getDimSize(i));
+  }
+
+  return RankedTensorType::get(shape, element_ty);
+}
+
+void ReduceOp::build(Builder* builder, OperationState& state,
+                     ArrayRef<Value*> operands, ArrayRef<Value*> init_values,
+                     DenseIntElementsAttr dimensions) {
+  SmallVector<Type, 1> result_ty;
+  result_ty.reserve(operands.size());
+
+  for (Value* operand : operands) {
+    result_ty.push_back(
+        GetReduceResultType(operand->getType(), dimensions, builder));
+  }
+  build(builder, state, result_ty, operands, init_values, dimensions);
+}
+
 LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
                              SmallVectorImpl<OpFoldResult>& results) {
   // No dimensions to reduce.
@@ -562,28 +618,8 @@ LogicalResult ReduceOp::fold(ArrayRef<Attribute> operands,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(SelectOp op) {
-  auto onTrueType = op.on_true()->getType().cast<RankedTensorType>();
-  auto onFalseType = op.on_false()->getType().cast<RankedTensorType>();
-
-  if (onTrueType != onFalseType) {
-    return op.emitOpError(
-        llvm::formatv("on_true type ({0}) does not match on_false type ({1})",
-                      onTrueType, onFalseType));
-  }
-
-  auto predType = op.pred()->getType().cast<RankedTensorType>();
-  auto predShape = predType.getShape();
-  auto predRank = predType.getRank();
-  auto selectShape = onTrueType.getShape();
-
-  if (predRank != 0 && predShape != selectShape) {
-    return op.emitOpError(llvm::formatv(
-        "pred shape ([{0}]) is not scalar and does not match operand shapes "
-        "([{1}])",
-        llvm::make_range(predShape.begin(), predShape.end()),
-        llvm::make_range(selectShape.begin(), selectShape.end())));
-  }
-
+  // TODO(jpienaar): Update to allow broadcastable and unranked inputs. This
+  // corresponds to the client side HLO.
   return success();
 }
 
@@ -683,6 +719,9 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
     return RankedTensorType::get(out_shape, element_type);
   }
 
+  // Return unranked tensor for invalid broadcast dimensions.
+  if (!broadcast_dimensions) return UnrankedTensorType::get(element_type);
+
   auto shape_large = shape_x.size() > shape_y.size() ? shape_x : shape_y;
   auto shape_small = shape_x.size() <= shape_y.size() ? shape_x : shape_y;
 
@@ -714,14 +753,20 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
   }
 
 BINARY_BUILDER(AddOp);
-BINARY_BUILDER(SubOp);
-BINARY_BUILDER(MulOp);
+BINARY_BUILDER(AndOp);
+BINARY_BUILDER(Atan2Op);
 BINARY_BUILDER(DivOp);
 BINARY_BUILDER(MaxOp);
 BINARY_BUILDER(MinOp);
-BINARY_BUILDER(AndOp);
+BINARY_BUILDER(MulOp);
 BINARY_BUILDER(OrOp);
+BINARY_BUILDER(PowOp);
 BINARY_BUILDER(RemOp);
+BINARY_BUILDER(ShiftLeftOp);
+BINARY_BUILDER(ShiftRightArithmeticOp);
+BINARY_BUILDER(ShiftRightLogicalOp);
+BINARY_BUILDER(SubOp);
+BINARY_BUILDER(XorOp);
 
 #undef BINARY_BUILDER
 
@@ -840,6 +885,38 @@ static LogicalResult Verify(TransposeOp op) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// GetTupleElementOp
+//===----------------------------------------------------------------------===//
+
+void GetTupleElementOp::build(Builder* builder, OperationState& result,
+                              Value* tuple, int32_t index) {
+  if (auto tuple_type = tuple->getType().dyn_cast<TupleType>()) {
+    auto element_type = tuple_type.getType(index);
+    build(builder, result, element_type, tuple,
+          builder->getI32IntegerAttr(index));
+    return;
+  }
+
+  build(builder, result, tuple->getType(), tuple,
+        builder->getI32IntegerAttr(index));
+}
+
+//===----------------------------------------------------------------------===//
+// TupleOp
+//===----------------------------------------------------------------------===//
+
+void TupleOp::build(Builder* builder, OperationState& result,
+                    ArrayRef<Value*> values) {
+  SmallVector<Type, 4> types;
+  types.reserve(values.size());
+  for (auto val : values) {
+    types.push_back(val->getType());
+  }
+
+  build(builder, result, builder->getTupleType(types), values);
 }
 
 //===----------------------------------------------------------------------===//

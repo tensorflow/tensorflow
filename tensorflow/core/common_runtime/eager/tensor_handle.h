@@ -46,7 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
+
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
@@ -209,6 +209,9 @@ class TensorHandle : public core::RefCounted {
 
   string DebugString() const;
 
+  void SetResourceHandleDtypeAndShape(
+      std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
+
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
   // return data types and shapes of the underlying resource.
   Status GetResourceHandleDtypesAndShapes(
@@ -279,8 +282,9 @@ class TensorHandle : public core::RefCounted {
   // executing that graph node.
   std::unique_ptr<OutputGraphNode> symbolic_tensor_;
 
-  // If this TensorHandle is 1) a local tensor, and 2) a resource handle, we
-  // store data types and shapes for the underlying resource.
+  // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
+  // refers to a remote resource handle, we store data types and shapes for
+  // the underlying resource.
   std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
 
   // The TensorHandleData can either represent a local or remote tensor handle.

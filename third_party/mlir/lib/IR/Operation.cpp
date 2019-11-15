@@ -26,9 +26,21 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "llvm/Support/CommandLine.h"
 #include <numeric>
 
 using namespace mlir;
+
+static llvm::cl::opt<bool> printOpOnDiagnostic(
+    "mlir-print-op-on-diagnostic",
+    llvm::cl::desc("When a diagnostic is emitted on an operation, also print "
+                   "the operation as an attached note"));
+
+OpAsmParser::~OpAsmParser() {}
+
+//===----------------------------------------------------------------------===//
+// OperationName
+//===----------------------------------------------------------------------===//
 
 /// Form the OperationName for an op with the specified string.  This either is
 /// a reference to an AbstractOperation if one is known, or a uniqued Identifier
@@ -59,8 +71,6 @@ const AbstractOperation *OperationName::getAbstractOperation() const {
 OperationName OperationName::getFromOpaquePointer(void *pointer) {
   return OperationName(RepresentationUnion::getFromOpaqueValue(pointer));
 }
-
-OpAsmParser::~OpAsmParser() {}
 
 //===----------------------------------------------------------------------===//
 // OpResult
@@ -301,26 +311,50 @@ void Operation::replaceUsesOfWith(Value *from, Value *to) {
 }
 
 //===----------------------------------------------------------------------===//
-// Other
+// Diagnostics
 //===----------------------------------------------------------------------===//
 
 /// Emit an error about fatal conditions with this operation, reporting up to
 /// any diagnostic handlers that may be listening.
 InFlightDiagnostic Operation::emitError(const Twine &message) {
-  return mlir::emitError(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitError(getLoc(), message);
+  if (printOpOnDiagnostic) {
+    // Print out the operation explicitly here so that we can print the generic
+    // form.
+    // TODO(riverriddle) It would be nice if we could instead provide the
+    // specific printing flags when adding the operation as an argument to the
+    // diagnostic.
+    std::string printedOp;
+    {
+      llvm::raw_string_ostream os(printedOp);
+      print(os, OpPrintingFlags().printGenericOpForm().useLocalScope());
+    }
+    diag.attachNote(getLoc()) << "see current operation: " << printedOp;
+  }
+  return diag;
 }
 
 /// Emit a warning about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitWarning(const Twine &message) {
-  return mlir::emitWarning(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitWarning(getLoc(), message);
+  if (printOpOnDiagnostic)
+    diag.attachNote(getLoc()) << "see current operation: " << *this;
+  return diag;
 }
 
 /// Emit a remark about this operation, reporting up to any diagnostic
 /// handlers that may be listening.
 InFlightDiagnostic Operation::emitRemark(const Twine &message) {
-  return mlir::emitRemark(getLoc(), message);
+  InFlightDiagnostic diag = mlir::emitRemark(getLoc(), message);
+  if (printOpOnDiagnostic)
+    diag.attachNote(getLoc()) << "see current operation: " << *this;
+  return diag;
 }
+
+//===----------------------------------------------------------------------===//
+// Other
+//===----------------------------------------------------------------------===//
 
 /// Given an operation 'other' that is within the same parent block, return
 /// whether the current operation is before 'other' in the operation list
@@ -332,8 +366,8 @@ bool Operation::isBeforeInBlock(Operation *other) {
   assert(other && other->block == block &&
          "Expected other operation to have the same parent block.");
   // Recompute the parent ordering if necessary.
-  if (!block->isInstOrderValid())
-    block->recomputeInstOrder();
+  if (!block->isOpOrderValid())
+    block->recomputeOpOrder();
   return orderIndex < other->orderIndex;
 }
 
@@ -384,7 +418,7 @@ void llvm::ilist_traits<::mlir::Operation>::addNodeToList(Operation *op) {
   op->block = getContainingBlock();
 
   // Invalidate the block ordering.
-  op->block->invalidateInstOrder();
+  op->block->invalidateOpOrder();
 }
 
 /// This is a trait method invoked when a operation is removed from a block.
@@ -401,7 +435,7 @@ void llvm::ilist_traits<::mlir::Operation>::transferNodesFromList(
   Block *curParent = getContainingBlock();
 
   // Invalidate the ordering of the parent block.
-  curParent->invalidateInstOrder();
+  curParent->invalidateOpOrder();
 
   // If we are transferring operations within the same block, the block
   // pointer doesn't need to be updated.
@@ -423,10 +457,10 @@ void Operation::erase() {
 }
 
 /// Unlink this operation from its current block and insert it right before
-/// `existingInst` which may be in the same or another block in the same
+/// `existingOp` which may be in the same or another block in the same
 /// function.
-void Operation::moveBefore(Operation *existingInst) {
-  moveBefore(existingInst->getBlock(), existingInst->getIterator());
+void Operation::moveBefore(Operation *existingOp) {
+  moveBefore(existingOp->getBlock(), existingOp->getIterator());
 }
 
 /// Unlink this operation from its current basic block and insert it right
@@ -927,7 +961,7 @@ ParseResult impl::parseOneResultSameOperandTypeOp(OpAsmParser &parser,
   SmallVector<OpAsmParser::OperandType, 2> ops;
   Type type;
   return failure(parser.parseOperandList(ops) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperands(ops, type, result.operands) ||
                  parser.addTypeToList(type, result.types));
@@ -966,7 +1000,7 @@ ParseResult impl::parseCastOp(OpAsmParser &parser, OperationState &result) {
   OpAsmParser::OperandType srcInfo;
   Type srcType, dstType;
   return failure(parser.parseOperand(srcInfo) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(srcType) ||
                  parser.resolveOperand(srcInfo, srcType, result.operands) ||
                  parser.parseKeywordType("to", dstType) ||

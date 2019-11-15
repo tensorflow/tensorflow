@@ -55,7 +55,7 @@ tf.math.segment_sum(c, tf.constant([0, 0, 1]))
 
 The standard `segment_*` functions assert that the segment indices are sorted.
 If you have unsorted indices use the equivalent `unsorted_segment_` function.
-Thses functions take an additional argument `num_segments` so that the output
+These functions take an additional argument `num_segments` so that the output
 tensor can be efficiently allocated.
 
 ``` python
@@ -317,7 +317,24 @@ class DivideDelegateWithName(object):
 @tf_export("math.divide", "divide")
 @dispatch.add_dispatch_support
 def divide(x, y, name=None):
-  """Computes Python style division of `x` by `y`."""
+  """Computes Python style division of `x` by `y`.
+
+  For example:
+
+  >>> x = tf.constant([16, 12, 11])
+  >>> y = tf.constant([4, 6, 2])
+  >>> tf.divide(x,y)
+  <tf.Tensor: shape=(3,), dtype=float64,
+  numpy=array([4. , 2. , 5.5])>
+
+  Args:
+    x: A `Tensor`
+    y: A `Tensor`
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with same shape as input
+  """
 
   if name is not None:
     # Cannot use tensors operator overload, because it has no way to track
@@ -2808,7 +2825,8 @@ def matvec(a,
   """Multiplies matrix `a` by vector `b`, producing `a` * `b`.
 
   The matrix `a` must, following any transpositions, be a tensor of rank >= 2,
-  and we must have `shape(b) = shape(a)[:-2] + [shape(a)[-1]]`.
+  with `shape(a)[-1] == shape(b)[-1]`, and `shape(a)[:-2]` able to broadcast
+  with `shape(b)[:-1]`.
 
   Both `a` and `b` must be of the same type. The supported types are:
   `float16`, `float32`, `float64`, `int32`, `complex64`, `complex128`.
@@ -2863,7 +2881,7 @@ def matvec(a,
   Args:
     a: `Tensor` of type `float16`, `float32`, `float64`, `int32`, `complex64`,
       `complex128` and rank > 1.
-    b: `Tensor` with same type and rank = `rank(a) - 1`.
+    b: `Tensor` with same type as `a` and compatible dimensions.
     transpose_a: If `True`, `a` is transposed before multiplication.
     adjoint_a: If `True`, `a` is conjugated and transposed before
       multiplication.
@@ -3287,32 +3305,52 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
 
   By default, this op performs an inclusive cumsum, which means that the first
   element of the input is identical to the first element of the output:
+  For example:
 
-  ```python
-  tf.cumsum([a, b, c])  # [a, a + b, a + b + c]
-  ```
-
+  # tf.cumsum([a, b, c])   # [a, a + b, a + b + c]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x)
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([ 2,  6, 12, 20], dtype=int32)>
+  
+  # using varying `axis` values
+  >>> y = tf.constant([[2, 4, 6, 8], [1,3,5,7]])
+  >>> tf.cumsum(y, axis=0)
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[ 2,  4,  6,  8],
+         [ 3,  7, 11, 15]], dtype=int32)>
+         
+  >>> tf.cumsum(y, axis=1)
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[ 2,  6, 12, 20],
+         [ 1,  4,  9, 16]], dtype=int32)>
+ 
   By setting the `exclusive` kwarg to `True`, an exclusive cumsum is performed
   instead:
-
-  ```python
-  tf.cumsum([a, b, c], exclusive=True)  # [0, a, a + b]
-  ```
+  
+  # tf.cumsum([a, b, c], exclusive=True)  => [0, a, a + b]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x, exclusive=True)
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([ 0,  2,  6, 12], dtype=int32)>
 
   By setting the `reverse` kwarg to `True`, the cumsum is performed in the
   opposite direction:
-
-  ```python
-  tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
-  ```
+  
+  # tf.cumsum([a, b, c], reverse=True)  # [a + b + c, b + c, c]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x, reverse=True) 
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([20, 18, 14,  8], dtype=int32)>
 
   This is more efficient than using separate `tf.reverse` ops.
-
   The `reverse` and `exclusive` kwargs can also be combined:
-
-  ```python
-  tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
-  ```
+  
+  # tf.cumsum([a, b, c], exclusive=True, reverse=True)  # [b + c, c, 0]
+  >>> x = tf.constant([2, 4, 6, 8])
+  >>> tf.cumsum(x, exclusive=True, reverse=True)
+  <tf.Tensor: shape=(4,), dtype=int32,
+  numpy=array([18, 14,  8,  0], dtype=int32)>
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`,
@@ -3527,15 +3565,20 @@ def _unsorted_segment_N(data, segment_ids, num_segments):
   Computes the number
       of segment entries with 0-entries set to 1 to allow division by N.
   """
+  num_segments = ops.convert_to_tensor(num_segments)
   # bincount doesn't support negative indices so we use unsorted_segment_sum
   segment_ids_shape = array_ops.shape_internal(segment_ids)
   ones_tensor = array_ops.ones(segment_ids_shape, dtype=data.dtype)
-  N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
+  n = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
   # add dimensions for all non-reduced axes
-  ndims_output = data.shape.ndims - segment_ids.shape.ndims
-  broadcast_shape = [num_segments] + [1] * ndims_output
-  N = array_ops.reshape(N, broadcast_shape)
-  return gen_math_ops.maximum(N, 1)
+  broadcastable_shape = array_ops.concat(
+      [num_segments[array_ops.newaxis],
+       array_ops.ones([array_ops.rank(data)
+                       - array_ops.rank(segment_ids)],
+                      dtype=num_segments.dtype)],
+      axis=0)
+  n = array_ops.reshape(n, broadcastable_shape)
+  return gen_math_ops.maximum(n, 1)
 
 
 @tf_export(

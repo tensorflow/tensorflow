@@ -24,14 +24,12 @@ limitations under the License.
 // all ops whose definitions are generated from TensorFlow codebase.
 // Changes made there are not respected.
 
-#ifdef TF_OPS
-#else
+#ifndef TF_OPS
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 
-#ifdef MLIR_CALLINTERFACES
-#else
+#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
 #endif // MLIR_CALLINTERFACES
 
@@ -159,8 +157,8 @@ else_branch: A function that takes 'inputs' and returns a list of
     TF_Tensor:$cond,
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$then_branch,
-    SymbolRefAttr:$else_branch,
+    FlatSymbolRefAttr:$then_branch,
+    FlatSymbolRefAttr:$else_branch,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
@@ -219,7 +217,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -241,33 +239,6 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
       return getAttrOfType<SymbolRefAttr>("f");
     }
   }];
-}
-
-// In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
-// of function arguments.
-// Note: NoSideEffect trait is not added intentionally to preserve the captured
-// attributes even if the input is unused.
-def TF_PlaceholderInputOp : TF_Op<"Placeholder.input",
-    [SameOperandsAndResultType]> {
-  let summary = "PlaceholderInput op";
-
-  let description = [{
-Inserts a placeholder for a tensor that will be always fed.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$arg,
-
-    OptionalAttr<F32Attr>:$min,
-    OptionalAttr<F32Attr>:$max,
-    OptionalAttr<TF_IntTypeAttr>:$type
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
@@ -319,7 +290,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -368,8 +339,8 @@ body: A function that takes a list of tensors and returns another
   let arguments = (ins
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$cond,
-    SymbolRefAttr:$body,
+    FlatSymbolRefAttr:$cond,
+    FlatSymbolRefAttr:$body,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 

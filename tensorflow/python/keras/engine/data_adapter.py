@@ -46,6 +46,14 @@ except ImportError:
   scipy_sparse = None
 
 
+try:
+  # In Python2 unicode is a scalar type
+  scalar_types = (float, int, str, unicode)
+except NameError:
+  # In Python3 unicode is not present, it always uses string
+  scalar_types = (float, int, str)
+
+
 @six.add_metaclass(abc.ABCMeta)
 class DataAdapter(object):
   """Base class for input data adapter.
@@ -414,6 +422,9 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
   as Numpy, but it ignores any case where all the inputs are Tensors or Numpy
   arrays (because that case is handled by the base TensorLikeDataAdapter).
 
+  It ignores scipy sparse matrices and Composite Tensors because those are
+  handled by the CompositeTensorDataAdapter.
+
   It also does not handle lists/tuples of scalars, because those are handled
   by the ListsOfScalarsDataAdapter.
   """
@@ -433,7 +444,8 @@ class GenericArrayLikeDataAdapter(TensorLikeDataAdapter):
           hasattr(v, "__len__")
       )
 
-    if not TensorLikeDataAdapter.can_handle(x, y):
+    if (not TensorLikeDataAdapter.can_handle(x, y) and
+        not CompositeTensorDataAdapter.can_handle(x, y)):
       return all(_is_array_like(v) for v in flat_inputs)
     else:
       return False
@@ -607,7 +619,7 @@ class ListsOfScalarsDataAdapter(DataAdapter):
 
   @staticmethod
   def _is_list_of_scalars(inp):
-    if isinstance(inp, (float, int, str)):
+    if isinstance(inp, scalar_types):
       return True
     if isinstance(inp, (list, tuple)):
       return ListsOfScalarsDataAdapter._is_list_of_scalars(inp[0])
@@ -707,7 +719,8 @@ class GeneratorDataAdapter(DataAdapter):
   @staticmethod
   def can_handle(x, y=None):
     return ((hasattr(x, "__next__") or hasattr(x, "next"))
-            and hasattr(x, "__iter__"))
+            and hasattr(x, "__iter__")
+            and not isinstance(x, data_utils.Sequence))
 
   def __init__(self, x, y=None, sample_weights=None, standardize_function=None,
                workers=1, use_multiprocessing=False, max_queue_size=10,
@@ -755,7 +768,7 @@ class GeneratorDataAdapter(DataAdapter):
     """Map the peeked batch into a regular form.
 
     This function serves two purposes. First, it determines if per-batch
-    transformations are needed. Second, it extracts the structre to be used
+    transformations are needed. Second, it extracts the structure to be used
     by Dataset.from_generator.
 
     Args:
@@ -794,7 +807,7 @@ class GeneratorDataAdapter(DataAdapter):
     # (x, y, None) to indicate no sample weights.
     if len(peek) >= 2 and y_peek is None:
       if any_sample_weight:
-        raise ValueError("Found sample weights, but not targets.")
+        raise ValueError("Found sample weights but no targets\n{}".format(peek))
       elements_to_keep = 1
     elif len(peek) == 3 and not any_sample_weight:
       elements_to_keep = 2
@@ -809,7 +822,7 @@ class GeneratorDataAdapter(DataAdapter):
         return t
       return np.array(t, dtype=backend.floatx())
 
-    canonicalized_peek = nest.list_to_tuple(
+    canonicalized_peek = nest._list_to_tuple(  # pylint: disable=protected-access
         nest.map_structure(convert_for_inspection, peek[:elements_to_keep]))
     nested_dtypes = nest.map_structure(lambda t: t.dtype, canonicalized_peek)
     nested_shape = nest.map_structure(dynamic_shape_like, canonicalized_peek)
@@ -851,7 +864,7 @@ class GeneratorDataAdapter(DataAdapter):
     """Optional compatibility layer between user's data and Dataset."""
     must_prune_nones = (elements_to_keep != len(peek))
     try:
-      nest.assert_same_structure(peek, nest.list_to_tuple(peek))
+      nest.assert_same_structure(peek, nest._list_to_tuple(peek))  # pylint: disable=protected-access
       must_extract_lists = False
     except TypeError:
       must_extract_lists = True
@@ -868,7 +881,7 @@ class GeneratorDataAdapter(DataAdapter):
           batch = (batch,)
 
         if must_extract_lists:
-          batch = nest.list_to_tuple(batch)
+          batch = nest._list_to_tuple(batch)  # pylint: disable=protected-access
 
         if must_prune_nones:
           batch = batch[:elements_to_keep]

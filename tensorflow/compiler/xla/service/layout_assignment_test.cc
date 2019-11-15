@@ -869,11 +869,8 @@ TEST_F(LayoutAssignmentTest, ChannelLayoutMismatch) {
   ChannelLayoutConstraints channel_constraints;
   AssignLayouts(m.get(), &computation_layout, &channel_constraints);
 
-  EXPECT_THAT(LayoutOf(m.get(), "gte"), ElementsAre(0, 1));
-  EXPECT_THAT(LayoutOf(m.get(), "root"), ElementsAre(1, 0));
-  EXPECT_TRUE(ShapeUtil::Equal(
-      ShapeUtil::GetSubshape(FindInstruction(m.get(), "send")->shape(), {0}),
-      ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0})));
+  EXPECT_TRUE(ShapeUtil::Equal(FindInstruction(m.get(), "send")->shape(),
+                               FindInstruction(m.get(), "recv")->shape()));
 }
 
 TEST_F(LayoutAssignmentTest, AllReduceLayoutMissmatch) {

@@ -87,10 +87,8 @@ class LstmUtilsTest : public ::testing::Test {
 TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
   mlir::TFL::ConvertLSTMCellSimpleToFusedLSTM convert(fused_lstm_func_, false);
 
-  auto result = convert.Initialize();
+  auto result = convert.RewriteFunc();
   EXPECT_FALSE(failed(result));
-
-  convert.RewriteFunc();
   fused_lstm_func_.dump();
 
   // verify transpose
@@ -164,10 +162,8 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimple) {
 TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
   mlir::TFL::ConvertLSTMCellSimpleToFusedLSTM convert(fused_lstm_func_, true);
 
-  auto result = convert.Initialize();
+  auto result = convert.RewriteFunc();
   EXPECT_FALSE(failed(result));
-
-  convert.RewriteFunc();
   fused_lstm_func_.dump();
 
   auto it = fused_lstm_func_.getBody().back().rbegin();
@@ -186,10 +182,8 @@ TEST_F(LstmUtilsTest, ConvertLayerNormLSTMCellSimpleToFusedLSTM) {
   mlir::TFL::ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM convert(
       fused_lstm_func_, false);
 
-  auto result = convert.Initialize();
+  auto result = convert.RewriteFunc();
   EXPECT_FALSE(failed(result));
-
-  convert.RewriteFunc();
   fused_lstm_func_.dump();
 
   EXPECT_EQ(
