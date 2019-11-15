@@ -68,5 +68,10 @@ Status SetTypeAttribute(absl::string_view name, mlir::Type type,
 // with a different value, returns an error.
 Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shape,
                          AttrValueMap* values);
+
+// Sets the given size_t value as an integer attribute with the given name.
+// If the attribute already exists with a different value, returns an error.
+Status SetSizeAttribute(absl::string_view name, size_t size,
+                        AttrValueMap* values);
 }  // namespace tensorflow
 #endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_EXPORTER_UTILS_H_

@@ -87,9 +87,7 @@ Inputs must be of same size and shape.
   }];
 
   let arguments = (ins
-    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>>:$inputs,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$N
+    Variadic<TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8, TF_Variant]>>:$inputs
   );
 
   let results = (outs
@@ -97,6 +95,7 @@ Inputs must be of same size and shape.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
 def TF_AddV2Op : TF_Op<"AddV2", [Broadcastable, Commutative, NoSideEffect]>,
@@ -202,9 +201,9 @@ Usage:
     TF_I32OrI64Tensor:$output
   );
 
+  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
-  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_ArgMinOp : TF_Op<"ArgMin", [NoSideEffect]> {
@@ -235,9 +234,9 @@ Usage:
     TF_I32OrI64Tensor:$output
   );
 
+  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
-  TF_DerivedResultTypeAttr output_type = TF_DerivedResultTypeAttr<0>;
 }
 
 def TF_AssertOp : TF_Op<"Assert", []> {
@@ -555,8 +554,8 @@ endian orderings will give different results.
     TF_NumberTensor:$output
   );
 
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr type = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
 }
@@ -747,9 +746,7 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
 
   let arguments = (ins
     I32Tensor:$concat_dim,
-    Variadic<TF_Tensor>:$values,
-
-    Confined<I64Attr, [IntMinValue<2>]>:$N
+    Variadic<TF_Tensor>:$values
   );
 
   let results = (outs
@@ -757,6 +754,7 @@ def TF_ConcatOp : TF_Op<"Concat", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<1>;
 
   let verifier = [{
     return Verify(*this);
@@ -771,9 +769,7 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
 
   let arguments = (ins
     Variadic<TF_Tensor>:$values,
-    TF_I32OrI64Tensor:$axis,
-
-    Confined<I64Attr, [IntMinValue<2>]>:$N
+    TF_I32OrI64Tensor:$axis
   );
 
   let results = (outs
@@ -782,6 +778,7 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 
   let verifier = [{
     return Verify(*this);
@@ -3353,7 +3350,6 @@ This is the opposite of `unpack`.
   let arguments = (ins
     Variadic<TF_Tensor>:$values,
 
-    Confined<I64Attr, [IntMinValue<1>]>:$N,
     DefaultValuedAttr<I64Attr, "0">:$axis
   );
 
@@ -3362,6 +3358,7 @@ This is the opposite of `unpack`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 
   let verifier = [{
     return Verify(*this);
@@ -4391,9 +4388,7 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
   }];
 
   let arguments = (ins
-    Variadic<TF_Tensor>:$input,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$N
+    Variadic<TF_Tensor>:$input
   );
 
   let results = (outs
@@ -4402,6 +4397,7 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 
   let verifier = [{
     return Verify(*this);
@@ -4756,9 +4752,7 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
 
   let arguments = (ins
     I32Tensor:$split_dim,
-    TF_Tensor:$value,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+    TF_Tensor:$value
   );
 
   let results = (outs
@@ -4766,6 +4760,7 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
@@ -4777,9 +4772,7 @@ def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
   let arguments = (ins
     TF_Tensor:$value,
     TF_I32OrI64Tensor:$size_splits,
-    I32Tensor:$split_dim,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$num_split
+    I32Tensor:$split_dim
   );
 
   let results = (outs
@@ -4788,6 +4781,7 @@ def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr Tlen = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
 }
 
 def TF_SqrtOp : TF_Op<"Sqrt", [NoSideEffect, SameOperandsAndResultType]> {
@@ -5494,7 +5488,6 @@ This is the opposite of `pack`.
   let arguments = (ins
     TF_Tensor:$value,
 
-    Confined<I64Attr, [IntMinValue<0>]>:$num,
     DefaultValuedAttr<I64Attr, "0">:$axis
   );
 
@@ -5502,6 +5495,7 @@ This is the opposite of `pack`.
     Variadic<TF_Tensor>:$output
   );
 
+  TF_DerivedResultSizeAttr num = TF_DerivedResultSizeAttr<0>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 

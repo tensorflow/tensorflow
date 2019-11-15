@@ -99,7 +99,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
     Type prev_input_ty, inferred_ty;
     SmallVector<Value *, 4> expanded_inputs;
-    expanded_inputs.reserve(op.N().getSExtValue());
+    expanded_inputs.reserve(op.N());
     for (Value *input : op.values()) {
       // If input type is different than the previous input type, infer the
       // output type. Otherwise, use the already inferred output type from the
@@ -113,9 +113,8 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
           loc, inferred_ty, input, axis_value));
     }
 
-    rewriter.replaceOpWithNewOp<TF::ConcatV2Op>(
-        op, op.getType(), expanded_inputs, axis_value,
-        op.getAttrOfType<IntegerAttr>("N"));
+    rewriter.replaceOpWithNewOp<TF::ConcatV2Op>(op, op.getType(),
+                                                expanded_inputs, axis_value);
     return matchSuccess();
   }
 };

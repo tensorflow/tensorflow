@@ -437,14 +437,6 @@ static LogicalResult Verify(OpT op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
 
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
-
   int axis_idx = std::is_same<OpT, ConcatOp>() ? 0 : 1;
   Value *axis = *op.getODSOperands(axis_idx).begin();
   if (!HasRankAtMost(axis, 1)) {
@@ -1036,14 +1028,6 @@ static LogicalResult Verify(PackOp op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
 
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
-
   if (failed(VerifyTypesCompatibility(values,
                                       /*mask_one_dim=*/false,
                                       op.getOperation()))) {
@@ -1356,17 +1340,17 @@ void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(ShapeNOp op) {
-  const uint64_t n_attr = op.N().getZExtValue();
+  const size_t num_tensors = op.N();
 
-  if (op.getNumOperands() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " operand(s), got "
+  if (op.getNumOperands() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " operand(s), got "
                             << op.getNumOperands() << " operand(s)";
 
-  if (op.getNumResults() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " result(s), got "
+  if (op.getNumResults() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " result(s), got "
                             << op.getNumResults() << " result(s)";
 
-  for (auto i : llvm::seq<uint64_t>(0, n_attr)) {
+  for (auto i : llvm::seq<uint64_t>(0, num_tensors)) {
     auto verification = VerifyShapeOperandAndResult(
         op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
     if (failed(verification)) return verification;

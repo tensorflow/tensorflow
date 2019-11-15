@@ -150,7 +150,7 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
 
   SmallVector<Value*, 4> values(tf_pack_op.values());
   auto output_type = tf_pack_op.output()->getType();
-  auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N().getZExtValue());
+  auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N());
   // Axis can be negative.
   auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis().getSExtValue());
 
@@ -190,8 +190,7 @@ PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
   auto output_types = functional::map([](Value* v) { return v->getType(); },
                                       tf_split_op.output());
   // Number of splits cannot be negative.
-  auto num_split =
-      rewriter.getI32IntegerAttr(tf_split_op.num_split().getZExtValue());
+  auto num_split = rewriter.getI32IntegerAttr(tf_split_op.num_split());
 
   rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, output_types,
                                             tf_split_op.split_dim(),
@@ -206,8 +205,7 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
   auto output_types = functional::map([](Value* v) { return v->getType(); },
                                       tf_splitv_op.output());
   // Number of splits cannot be negative.
-  auto num_split =
-      rewriter.getI32IntegerAttr(tf_splitv_op.num_split().getZExtValue());
+  auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.num_split());
 
   rewriter.replaceOpWithNewOp<TFL::SplitVOp>(
       op, output_types, tf_splitv_op.value(), tf_splitv_op.size_splits(),
@@ -305,7 +303,7 @@ PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
   auto* input = tf_unpack_op.value();
   auto output_types = functional::map([](Value* v) { return v->getType(); },
                                       tf_unpack_op.output());
-  auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num().getZExtValue());
+  auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
   // Axis can be negative.
   auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis().getSExtValue());
 
