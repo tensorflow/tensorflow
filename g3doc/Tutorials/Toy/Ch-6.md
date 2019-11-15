@@ -1,5 +1,7 @@
 # Chapter 6 - Lowering to LLVM and CodeGeneration
 
+[TOC]
+
 In the [previous chapter](Ch-5.md), we introduced the
 [dialect conversion](../../DialectConversion.md) framework and partially lowered
 many of the `Toy` operations to affine loop nests for optimization. In this
@@ -318,3 +320,6 @@ You can also play with -emit=mlir, -emit=mlir-affine, -emit=mlir-llvm, and
 -emit=llvm to compare the various levels of IR involved. Also try options like
 [--print-ir-after-all](../../WritingAPass.md#ir-printing) to track the evolution
 of the IR throughout the pipeline.
+
+So far, we have worked with primitive data types. In the
+[next chapter](Ch-7.md), we will add a composite `struct` type.

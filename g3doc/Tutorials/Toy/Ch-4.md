@@ -1,5 +1,7 @@
 # Chapter 4: Enabling Generic Transformation with Interfaces
 
+[TOC]
+
 ## Background: Grappling with an Extensible IR
 
 Through dialects, MLIR allows for the representation of many different levels of
@@ -274,8 +276,8 @@ def ShapeInferenceOpInterface : OpInterface<"ShapeInference"> {
 Next we define the interface methods that the operations will need to provide.
 An interface method is comprised of: a description, a c++ return type in string
 form, a method name in string form, as well as a few optional components
-depending on the need. See the [ODS
-documentation]](../../OpDefinitions.md#operation-interfaces) for more
+depending on the need. See the
+[ODS documentation](../../OpDefinitions.md#operation-interfaces) for more
 information.
 
 ```.td
