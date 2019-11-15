@@ -1,11 +1,15 @@
 # Chapter 1: Toy Tutorial Introduction
 
+[TOC]
+
 This tutorial runs through the implementation of a basic toy language on top of
 MLIR. The goal of this tutorial is to introduce the concepts of MLIR, and
 especially how *dialects* can help easily support language specific constructs
 and transformations, while still offering an easy path to lower to LLVM or other
 codegen infrastructure. This tutorial is based on the model of the
 [LLVM Kaleidoscope Tutorial](https://llvm.org/docs/tutorial/MyFirstLanguageFrontend/index.html).
+
+## The Chapters
 
 This tutorial is divided in the following chapters:
 

@@ -1,5 +1,7 @@
 # Chapter 5 - Partial Lowering to Lower-Level Dialects for Optimization
 
+[TOC]
+
 At this point, we are eager to generate actual code and see our Toy language
 taking life. We will obviously use LLVM to generate code, but just showing the
 LLVM builder interface wouldn't be very exciting here. Instead, we will show how

@@ -1,5 +1,7 @@
 # Chapter 3: High-level Language-Specific Analysis and Transformation
 
+[TOC]
+
 Creating a dialect that closely represents the semantics of an input language
 enables analyses, transformations and optimizations in MLIR that require high
 level language information and are generally performed on the language AST. For
@@ -256,3 +258,7 @@ As expected, no reshape operations remain after canonicalization.
 
 Further details on the declarative rewrite method can be found at
 [Table-driven Declarative Rewrite Rule (DRR)](../../DeclarativeRewrites.md).
+
+In this chapter, we saw how to use certain core transformations through always
+available hooks. In the [next chapter](Ch-4.md), we will see how to use generic
+solutions that scale better through Interfaces.
