@@ -1678,6 +1678,14 @@ func @conv_simple(%arg0: tensor<256x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32>) -
   return %0 : tensor<256x30x30x16xf32>
 }
 
+// CHECK-LABEL: conv_valid_padding
+func @conv_valid_padding(%arg0: tensor<1x4x5x1xf32>, %arg1: tensor<3x3x1x1xf32>) -> tensor<1x2x3x1xf32> {
+  // CHECK: "xla_hlo.conv"(%arg0, %arg1)
+
+  %0 = "tf.Conv2D"(%arg0, %arg1) {data_format = "NHWC", dilations = [1, 1, 1, 1], padding = "VALID", strides = [1, 1, 1, 1]} : (tensor<1x4x5x1xf32>, tensor<3x3x1x1xf32>) -> tensor<1x2x3x1xf32>
+  return %0 : tensor<1x2x3x1xf32>
+}
+
 // CHECK-LABEL: conv_explicit_paddings
 func @conv_explicit_paddings(%arg0: tensor<256x32x32x6xf32>, %arg1: tensor<3x3x3x16xf32>) -> tensor<256x32x32x16xf32> {
 
