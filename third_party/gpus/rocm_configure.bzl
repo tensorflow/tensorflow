@@ -497,6 +497,12 @@ def _find_libs(repository_ctx, rocm_config):
             cpu_value,
             rocm_config.rocm_toolkit_path + "/rccl",
         ),
+        "hipsparse": _find_rocm_lib(
+            "hipsparse",
+            repository_ctx,
+            cpu_value,
+            rocm_config.rocm_toolkit_path + "/hipsparse",
+        ),
     }
 
 def _get_rocm_config(repository_ctx):
@@ -582,6 +588,7 @@ def _create_dummy_repository(repository_ctx):
             "%{rccl_lib}": _lib_name("rccl", cpu_value),
             "%{rocfft_lib}": _lib_name("rocfft", cpu_value),
             "%{hiprand_lib}": _lib_name("hiprand", cpu_value),
+            "%{hipsparse_lib}": _lib_name("hipsparse", cpu_value),
             "%{copy_rules}": "",
             "%{rocm_headers}": "",
         },
@@ -732,6 +739,12 @@ def _create_local_rocm_repository(repository_ctx):
             src_dir = rocm_toolkit_path + "/rccl/include",
             out_dir = "rocm/include/rccl",
         ),
+        make_copy_dir_rule(
+            repository_ctx,
+            name = "hipsparse-include",
+            src_dir = rocm_toolkit_path + "/hipsparse/include",
+            out_dir = "rocm/include/hipsparse",
+        ),
     ]
 
     rocm_libs = _find_libs(repository_ctx, rocm_config)
@@ -769,12 +782,14 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hiprand_lib}": rocm_libs["hiprand"].file_name,
             "%{miopen_lib}": rocm_libs["miopen"].file_name,
             "%{rccl_lib}": rocm_libs["rccl"].file_name,
+            "%{hipsparse_lib}": rocm_libs["hipsparse"].file_name,
             "%{copy_rules}": "\n".join(copy_rules),
             "%{rocm_headers}": ('":rocm-include",\n' +
-                                '":rocfft-include",\n' +
-                                '":rocblas-include",\n' +
-                                '":miopen-include",\n' +
-                                '":rccl-include",'),
+                                '\t":rocfft-include",\n' +
+                                '\t":rocblas-include",\n' +
+                                '\t":miopen-include",\n' +
+                                '\t":rccl-include",\n' +
+                                '\t":hipsparse-include",'),
         },
     )
 
