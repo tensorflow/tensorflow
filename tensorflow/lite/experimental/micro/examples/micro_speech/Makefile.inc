@@ -30,8 +30,7 @@ MICRO_SPEECH_TEST_SRCS += \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro_features_data.cc \
-tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc \
-tensorflow/lite/experimental/micro/arduino/abi.cc
+tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc
 
 MICRO_SPEECH_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
@@ -194,7 +193,6 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micr
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.cc \
-tensorflow/lite/experimental/micro/arduino/abi.cc \
 $(MICRO_FEATURES_GENERATOR_SRCS)
 
 MICRO_SPEECH_HDRS := \

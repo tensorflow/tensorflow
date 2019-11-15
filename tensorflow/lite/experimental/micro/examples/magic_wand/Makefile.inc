@@ -41,8 +41,7 @@ magic_wand_TEST_SRCS += \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_test.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/angle_micro_features_data.cc \
-tensorflow/lite/experimental/micro/examples/magic_wand/circle_micro_features_data.cc \
-tensorflow/lite/experimental/micro/arduino/abi.cc
+tensorflow/lite/experimental/micro/examples/magic_wand/circle_micro_features_data.cc
 
 magic_wand_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.h \
@@ -56,8 +55,7 @@ tensorflow/lite/experimental/micro/examples/magic_wand/constants.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/magic_wand_model_data.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/accelerometer_handler.cc \
 tensorflow/lite/experimental/micro/examples/magic_wand/gesture_predictor.cc \
-tensorflow/lite/experimental/micro/examples/magic_wand/output_handler.cc \
-tensorflow/lite/experimental/micro/arduino/abi.cc
+tensorflow/lite/experimental/micro/examples/magic_wand/output_handler.cc
 
 magic_wand_HDRS := \
 tensorflow/lite/experimental/micro/examples/magic_wand/main_functions.h \

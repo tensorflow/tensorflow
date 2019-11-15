@@ -18,8 +18,7 @@ tensorflow/lite/experimental/micro/examples/hello_world/main.cc \
 tensorflow/lite/experimental/micro/examples/hello_world/main_functions.cc \
 tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.cc \
 tensorflow/lite/experimental/micro/examples/hello_world/output_handler.cc \
-tensorflow/lite/experimental/micro/examples/hello_world/constants.cc \
-tensorflow/lite/experimental/micro/arduino/abi.cc
+tensorflow/lite/experimental/micro/examples/hello_world/constants.cc
 
 HELLO_WORLD_HDRS := \
 tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.h \

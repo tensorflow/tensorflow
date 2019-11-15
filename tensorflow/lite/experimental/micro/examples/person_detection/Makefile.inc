@@ -12,7 +12,6 @@ person_detection_TEST_SRCS += \
 tensorflow/lite/experimental/micro/examples/person_detection/person_detection_test.cc \
 $(MAKEFILE_DIR)/downloads/person_model_grayscale/no_person_image_data.cc \
 $(MAKEFILE_DIR)/downloads/person_model_grayscale/person_image_data.cc \
-tensorflow/lite/experimental/micro/arduino/abi.cc \
 $(person_detection_MODEL_SRCS)
 
 person_detection_TEST_HDRS := \
@@ -41,7 +40,6 @@ tensorflow/lite/experimental/micro/examples/person_detection/detection_responder
 tensorflow/lite/experimental/micro/examples/person_detection/image_provider.cc \
 tensorflow/lite/experimental/micro/examples/person_detection/main.cc \
 tensorflow/lite/experimental/micro/examples/person_detection/main_functions.cc \
-tensorflow/lite/experimental/micro/arduino/abi.cc \
 $(person_detection_MODEL_SRCS)
 
 person_detection_HDRS := \
