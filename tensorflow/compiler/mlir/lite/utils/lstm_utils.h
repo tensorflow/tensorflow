@@ -31,9 +31,9 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
-constexpr char kLstmCellSimple[] = "LSTMCellSimple";
+constexpr char kLstmCellSimple[] = "lingvo.LSTMCellSimple";
 constexpr char kLayerNormalizedLstmCellSimple[] =
-    "LayerNormalizedLstmCellSimple";
+    "lingvo.LayerNormalizedLstmCellSimple";
 
 // A utility class that enables the conversion of the LSTMCellSimple composite
 // op into a fused TFL LSTM op. The fused op is contained within a FuncOp
