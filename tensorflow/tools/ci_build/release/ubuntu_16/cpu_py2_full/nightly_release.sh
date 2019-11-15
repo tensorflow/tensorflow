@@ -51,6 +51,16 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
   AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
   auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
 
-  echo "Uploading package: ${AUDITED_WHL_NAME}"
-  twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  # test the whl pip package
+  ./tensorflow/tools/ci_build/release/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
+  RETVAL=$?
+
+  # Update results counter
+  if [ ${RETVAL} -eq 0 ]; then
+    echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
+    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+  else
+    echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
+    return 1
+  fi
 done
