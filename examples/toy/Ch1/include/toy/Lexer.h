@@ -60,14 +60,14 @@ enum Token : int {
 
 /// The Lexer is an abstract base class providing all the facilities that the
 /// Parser expects. It goes through the stream one token at a time and keeps
-/// track of the location in the file for debugging purpose.
+/// track of the location in the file for debugging purposes.
 /// It relies on a subclass to provide a `readNextLine()` method. The subclass
 /// can proceed by reading the next line from the standard input or from a
 /// memory mapped file.
 class Lexer {
 public:
   /// Create a lexer for the given filename. The filename is kept only for
-  /// debugging purpose (attaching a location to a Token).
+  /// debugging purposes (attaching a location to a Token).
   Lexer(std::string filename)
       : lastLocation(
             {std::make_shared<std::string>(std::move(filename)), 0, 0}) {}
