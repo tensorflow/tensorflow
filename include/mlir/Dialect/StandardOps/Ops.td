@@ -1151,7 +1151,7 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
   }];
 }
 
-def ViewOp : Std_Op<"view"> {
+def ViewOp : Std_Op<"view", [NoSideEffect]> {
   let summary = "memref view operation";
   let description = [{
     The "view" operation converts a 1-D memref with i8 element type,

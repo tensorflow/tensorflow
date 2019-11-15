@@ -640,6 +640,7 @@ func @cast_values(%arg0: tensor<*xi32>, %arg1: memref<?xi32>) -> (tensor<2xi32>,
 // CHECK-LABEL: func @view
 func @view(%arg0 : index) {
   %0 = alloc() : memref<2048xi8>
+  %c0 = constant 0 : index
   %c7 = constant 7 : index
   %c11 = constant 11 : index
   %c15 = constant 15 : index
@@ -648,30 +649,35 @@ func @view(%arg0 : index) {
   // CHECK: std.view %0[][] : memref<2048xi8> to memref<7x11xf32, #[[VIEW_MAP0]]>
   %1 = view %0[%c15][%c7, %c11]
     : memref<2048xi8> to memref<?x?xf32, #TEST_VIEW_MAP0>
+  load %1[%c0, %c0] : memref<?x?xf32, #TEST_VIEW_MAP0>
 
   // Test: fold constant sizes but not offset, update map with static stride.
   // Test that we do not a fold dynamic dim which is not produced by a constant.
   // CHECK: std.view %0[%arg0][] : memref<2048xi8> to memref<7x11xf32, #[[VIEW_MAP1]]>
   %2 = view %0[%arg0][%c7, %c11]
     : memref<2048xi8> to memref<?x?xf32, #TEST_VIEW_MAP0>
+  load %2[%c0, %c0] : memref<?x?xf32, #TEST_VIEW_MAP0>
 
   // Test: fold constant offset but not sizes, update map with constant offset.
   // Test that we fold constant offset but not dynamic dims.
   // CHECK: std.view %0[][%arg0, %arg0] : memref<2048xi8> to memref<?x?xf32, #[[VIEW_MAP2]]>
   %3 = view %0[%c15][%arg0, %arg0]
     : memref<2048xi8> to memref<?x?xf32,  #TEST_VIEW_MAP0>
+  load %3[%c0, %c0] : memref<?x?xf32, #TEST_VIEW_MAP0>
 
   // Test: fold one constant dim, no offset, should update with constant
   // stride on dim 1, but leave dynamic stride on dim 0.
   // CHECK: std.view %0[][%arg0, %arg0] : memref<2048xi8> to memref<?x?x7xf32, #[[VIEW_MAP3]]>
   %4 = view %0[][%arg0, %arg0, %c7]
     : memref<2048xi8> to memref<?x?x?xf32, #TEST_VIEW_MAP1>
+  load %4[%c0, %c0, %c0] : memref<?x?x?xf32, #TEST_VIEW_MAP1>
 
   // Test: preserve an existing static dim size while folding a dynamic
   // dimension and offset.
   // CHECK: std.view %0[][] : memref<2048xi8> to memref<7x4xf32, #[[VIEW_MAP4]]>
   %5 = view %0[%c15][%c7]
     : memref<2048xi8> to memref<?x4xf32, #TEST_VIEW_MAP2>
+  load %5[%c0, %c0] : memref<?x4xf32, #TEST_VIEW_MAP2>
 
   return
 }
