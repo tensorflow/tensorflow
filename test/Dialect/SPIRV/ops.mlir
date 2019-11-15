@@ -215,6 +215,56 @@ func @bitcount(%arg: i32) -> i32 {
 // -----
 
 //===----------------------------------------------------------------------===//
+// spv.BitFieldInsert
+//===----------------------------------------------------------------------===//
+
+func @bit_field_insert_vec(%base: vector<3xi32>, %insert: vector<3xi32>, %offset: i32, %count: i16) -> vector<3xi32> {
+  // CHECK: {{%.*}} = spv.BitFieldInsert {{%.*}}, {{%.*}}, {{%.*}}, {{%.*}} : vector<3xi32>, i32, i16
+  %0 = spv.BitFieldInsert %base, %insert, %offset, %count : vector<3xi32>, i32, i16
+  spv.ReturnValue %0 : vector<3xi32>
+}
+
+// -----
+
+func @bit_field_insert_invalid_insert_type(%base: vector<3xi32>, %insert: vector<2xi32>, %offset: i32, %count: i16) -> vector<3xi32> {
+  // expected-error @+1 {{expected the same type for the base operand, insert operand, and result, but provided 'vector<3xi32>', 'vector<2xi32>' and 'vector<3xi32>'}}
+  %0 = "spv.BitFieldInsert" (%base, %insert, %offset, %count) : (vector<3xi32>, vector<2xi32>, i32, i16) -> vector<3xi32>
+  spv.ReturnValue %0 : vector<3xi32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
+// spv.BitFieldSExtract
+//===----------------------------------------------------------------------===//
+
+func @bit_field_s_extract_vec(%base: vector<3xi32>, %offset: i8, %count: i8) -> vector<3xi32> {
+  // CHECK: {{%.*}} = spv.BitFieldSExtract {{%.*}}, {{%.*}}, {{%.*}} : vector<3xi32>, i8, i8
+  %0 = spv.BitFieldSExtract %base, %offset, %count : vector<3xi32>, i8, i8
+  spv.ReturnValue %0 : vector<3xi32>
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BitFieldUExtract
+//===----------------------------------------------------------------------===//
+
+func @bit_field_u_extract_vec(%base: vector<3xi32>, %offset: i8, %count: i8) -> vector<3xi32> {
+  // CHECK: {{%.*}} = spv.BitFieldUExtract {{%.*}}, {{%.*}}, {{%.*}} : vector<3xi32>, i8, i8
+  %0 = spv.BitFieldUExtract %base, %offset, %count : vector<3xi32>, i8, i8
+  spv.ReturnValue %0 : vector<3xi32>
+}
+
+// -----
+
+func @bit_field_u_extract_invalid_result_type(%base: vector<3xi32>, %offset: i32, %count: i16) -> vector<4xi32> {
+  // expected-error @+1 {{expected the same type for the first operand and result, but provided 'vector<3xi32>' and 'vector<4xi32>'}}
+  %0 = "spv.BitFieldUExtract" (%base, %offset, %count) : (vector<3xi32>, i32, i16) -> vector<4xi32>
+  spv.ReturnValue %0 : vector<4xi32>
+}
+
+// -----
+
+//===----------------------------------------------------------------------===//
 // spv.BitReverse
 //===----------------------------------------------------------------------===//
 

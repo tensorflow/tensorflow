@@ -6,6 +6,21 @@ spv.module "Logical" "GLSL450" {
     %0 = spv.BitCount %arg : i32
     spv.ReturnValue %0 : i32
   }
+  func @bit_field_insert(%base: vector<3xi32>, %insert: vector<3xi32>, %offset: i32, %count: i16) -> vector<3xi32> {
+    // CHECK: {{%.*}} = spv.BitFieldInsert {{%.*}}, {{%.*}}, {{%.*}}, {{%.*}} : vector<3xi32>, i32, i16
+    %0 = spv.BitFieldInsert %base, %insert, %offset, %count : vector<3xi32>, i32, i16
+    spv.ReturnValue %0 : vector<3xi32>
+  }
+  func @bit_field_s_extract(%base: vector<3xi32>, %offset: i8, %count: i8) -> vector<3xi32> {
+    // CHECK: {{%.*}} = spv.BitFieldSExtract {{%.*}}, {{%.*}}, {{%.*}} : vector<3xi32>, i8, i8
+    %0 = spv.BitFieldSExtract %base, %offset, %count : vector<3xi32>, i8, i8
+    spv.ReturnValue %0 : vector<3xi32>
+  }
+  func @bit_field_u_extract(%base: vector<3xi32>, %offset: i8, %count: i8) -> vector<3xi32> {
+    // CHECK: {{%.*}} = spv.BitFieldUExtract {{%.*}}, {{%.*}}, {{%.*}} : vector<3xi32>, i8, i8
+    %0 = spv.BitFieldUExtract %base, %offset, %count : vector<3xi32>, i8, i8
+    spv.ReturnValue %0 : vector<3xi32>
+  }
   func @bitreverse(%arg: i32) -> i32 {
     // CHECK: spv.BitReverse {{%.*}} : i32
     %0 = spv.BitReverse %arg : i32
