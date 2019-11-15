@@ -397,7 +397,6 @@ py_library(
 
 py_library(
     name = "testing",
-    testonly = 1,
     srcs = ["testing.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -480,6 +479,7 @@ py_library(
         ":snapshot",
         ":stats_ops",
         ":take_while_ops",
+        ":testing",
         ":threadpool",
         ":unique",
         ":writers",
