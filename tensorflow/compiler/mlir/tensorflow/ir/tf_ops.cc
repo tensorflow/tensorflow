@@ -306,6 +306,24 @@ void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// BatchMatMulOp
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulToMatMul>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulV2Op
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulV2ToMatMul>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // BiasAddOp
 //===----------------------------------------------------------------------===//
 
