@@ -449,27 +449,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "python_traceme",
-    hdrs = ["python_traceme.h"],
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [
-        "//tensorflow/core/profiler/lib:traceme",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
-    name = "python_scoped_annotation",
-    hdrs = ["python_scoped_annotation.h"],
-    visibility = ["//tensorflow/python/profiler/internal:__pkg__"],
-    deps = [
-        "//tensorflow/core/profiler/lib:scoped_annotation",
-        "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
     name = "parse_annotation",
     srcs = ["parse_annotation.cc"],
     hdrs = ["parse_annotation.h"],

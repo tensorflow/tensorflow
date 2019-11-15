@@ -13,17 +13,43 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <utility>
+
+#include "absl/types/optional.h"
 #include "include/pybind11/pybind11.h"
-#include "tensorflow/core/profiler/internal/python_scoped_annotation.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 
 namespace py = pybind11;
 
+namespace {
+
+// Helper to implement ScopedAnnotation as a context manager in Python.
+class ScopedAnnotationWrapper {
+ public:
+  explicit ScopedAnnotationWrapper(const tensorflow::string& name)
+      : name_(name) {}
+
+  void Enter() { annotation_.emplace(std::move(name_)); }
+
+  void Exit() { annotation_.reset(); }
+
+  static bool IsEnabled() {
+    return tensorflow::profiler::ScopedAnnotation::IsEnabled();
+  }
+
+ private:
+  tensorflow::string name_;
+  absl::optional<tensorflow::profiler::ScopedAnnotation> annotation_;
+};
+
+}  // namespace
+
 PYBIND11_MODULE(_pywrap_scoped_annotation, m) {
-  py::class_<tensorflow::profiler::PythonScopedAnnotation>
-      scoped_annotation_class(m, "PythonScopedAnnotation");
-  scoped_annotation_class.def(py::init<const std::string&>())
-      .def("Enter", &tensorflow::profiler::PythonScopedAnnotation::Enter)
-      .def("Exit", &tensorflow::profiler::PythonScopedAnnotation::Exit)
-      .def_static("IsEnabled",
-                  &tensorflow::profiler::PythonScopedAnnotation::IsEnabled);
+  py::class_<ScopedAnnotationWrapper> scoped_annotation_class(
+      m, "ScopedAnnotation");
+  scoped_annotation_class.def(py::init<const tensorflow::string&>())
+      .def("Enter", &ScopedAnnotationWrapper::Enter)
+      .def("Exit", &ScopedAnnotationWrapper::Exit)
+      .def_static("IsEnabled", &ScopedAnnotationWrapper::IsEnabled);
 };

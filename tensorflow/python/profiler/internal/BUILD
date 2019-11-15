@@ -83,7 +83,9 @@ pybind_extension(
         "//tensorflow/python/profiler:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/profiler/internal:python_traceme",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -93,7 +95,9 @@ pybind_extension(
     srcs = ["scoped_annotation_wrapper.cc"] + tf_binary_additional_srcs(),
     module_name = "_pywrap_scoped_annotation",
     deps = [
-        "//tensorflow/core/profiler/internal:python_scoped_annotation",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
+        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
