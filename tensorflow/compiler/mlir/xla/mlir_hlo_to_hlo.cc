@@ -540,7 +540,16 @@ LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
-  return failure();
+  xla::XlaComputation condition;
+  xla::XlaComputation body;
+  auto& value_map = *ctx.values;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.cond(), &condition))) {
+    return failure();
+  }
+
+  value_map[op] = xla::While(condition, body, value_map[op.getOperand()]);
+  return success();
 }
 
 }  // namespace

@@ -373,14 +373,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           .getOperation();
     }
     case HloOpcode::kWhile: {
-      llvm::SmallVector<Type, 4> types;
-      types.reserve(operands.size());
-      for (auto operand : operands) {
-        types.push_back(operand->getType());
-      }
-
-      auto op =
-          func_builder->create<mlir::xla_hlo::WhileOp>(loc, types, operands);
+      auto op = func_builder->create<mlir::xla_hlo::WhileOp>(
+          loc, operands[0]->getType(), operands[0]);
       TF_RETURN_IF_ERROR(
           ImportComputation(instruction->while_condition(), &op.cond()));
       TF_RETURN_IF_ERROR(

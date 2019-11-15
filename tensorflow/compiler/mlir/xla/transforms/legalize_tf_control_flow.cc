@@ -22,6 +22,11 @@ limitations under the License.
 #include <numeric>
 
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/iterator_range.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
@@ -56,22 +61,60 @@ createLegalizeTFControlFlowPass() {
 }
 
 namespace {
-void ImportXlaRegion(Region* src_region, Region* dest_region) {
+
+void Detuple(Value* tuple, llvm::iterator_range<ResultIterator> replace,
+             OpBuilder* builder) {
+  // De-tuple the results of the xla hlo conditional result.
+  for (auto result_it : llvm::enumerate(replace)) {
+    auto get_tuple_value = builder->create<xla_hlo::GetTupleElementOp>(
+        result_it.value()->getLoc(), tuple, result_it.index());
+    result_it.value()->replaceAllUsesWith(get_tuple_value);
+  }
+}
+
+// Imports the source region into the destination region. The XLA conditional
+// operation only supports one argument per branch. Therefore any branch that
+// requires additional arguments requires their values be tupled together. Then,
+// to support multiple returns (as XLA only supports a single return value) the
+// results of the conditional are tupled together.
+void ImportXlaRegion(Region* src_region, Region* dest_region,
+                     bool tuple_return = true) {
   BlockAndValueMapping mapper;
   src_region->cloneInto(dest_region, mapper);
+
+  Block& entry_block = dest_region->front();
+  OpBuilder builder(dest_region);
+  llvm::SmallVector<Type, 5> arg_types;
+  arg_types.reserve(entry_block.getNumArguments());
+  for (auto arg : entry_block.getArguments()) {
+    arg_types.push_back(arg->getType());
+  }
+  auto tuple_arg = entry_block.addArgument(builder.getTupleType(arg_types));
+  for (int64_t i = 0, s = entry_block.getNumArguments() - 1; i < s; i++) {
+    Value* val = entry_block.getArgument(0);
+    auto extract =
+        builder.create<GetTupleElementOp>(dest_region->getLoc(), tuple_arg, i);
+    val->replaceAllUsesWith(extract);
+    entry_block.eraseArgument(0);
+  }
+
   dest_region->walk([&](mlir::ReturnOp op) -> void {
     OpBuilder builder(op);
     llvm::SmallVector<Value*, 4> operands(op.operands());
-    auto tuple = builder.create<xla_hlo::TupleOp>(op.getLoc(), operands);
-    builder.create<xla_hlo::ReturnOp>(op.getLoc(), tuple.getResult());
+    if (tuple_return) {
+      auto tuple = builder.create<xla_hlo::TupleOp>(op.getLoc(), operands);
+      operands.assign({tuple.getResult()});
+    }
+
+    builder.create<xla_hlo::ReturnOp>(op.getLoc(), operands);
     op.erase();
   });
 }
 
 void LowerIf(TF::IfOp op, ModuleOp module) {
   Location loc = op.getLoc();
-
   OpBuilder builder(op);
+
   // XLA prefers tuple arguments for control flow due to XLA not supporting
   // multiple return values.
   SmallVector<Value*, 3> inputs(op.input());
@@ -82,7 +125,7 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   SmallVector<Value*, 3> operands(op.getOperands());
   SmallVector<Type, 4> types(op.getResultTypes());
   auto result_type = builder.getTupleType(types);
-  auto conditional_result = builder.create<xla_hlo::ConditionalOp>(
+  auto conditional = builder.create<xla_hlo::ConditionalOp>(
       loc, result_type, op.cond(), tuple_input, tuple_input);
 
   // Import the regions for both the true and false cases. These regions
@@ -91,17 +134,43 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
   BlockAndValueMapping mapper;
   auto then_branch = module.lookupSymbol<mlir::FuncOp>(op.then_branch());
   auto else_branch = module.lookupSymbol<mlir::FuncOp>(op.else_branch());
-  ImportXlaRegion(&then_branch.getBody(), &conditional_result.true_branch());
-  ImportXlaRegion(&else_branch.getBody(), &conditional_result.false_branch());
+  ImportXlaRegion(&then_branch.getBody(), &conditional.true_branch());
+  ImportXlaRegion(&else_branch.getBody(), &conditional.false_branch());
 
   // De-tuple the results of the xla hlo conditional result.
   builder.setInsertionPointAfter(op);
-  for (auto result_it : llvm::enumerate(op.getResults())) {
-    auto get_tuple_value = builder.create<xla_hlo::GetTupleElementOp>(
-        loc, conditional_result, result_it.index());
-    result_it.value()->replaceAllUsesWith(get_tuple_value);
-  }
+  Detuple(conditional.getResult(), op.getResults(), &builder);
+  op.erase();
+}
 
+void LowerWhile(TF::WhileOp op, ModuleOp module) {
+  Location loc = op.getLoc();
+  OpBuilder builder(op);
+
+  // XLA prefers tuple arguments for control flow due to XLA not supporting
+  // multiple return values.
+  SmallVector<Value*, 3> inputs(op.input());
+  builder.setInsertionPoint(op);
+  Value* tuple_input = builder.create<xla_hlo::TupleOp>(loc, inputs);
+
+  // Create the new while op with tuple inputs.
+  SmallVector<Value*, 3> operands(op.getOperands());
+  SmallVector<Type, 4> types(op.getResultTypes());
+  auto while_op = builder.create<xla_hlo::WhileOp>(
+      loc, builder.getTupleType(types), tuple_input);
+
+  // Import the regions for both the cond and body. These regions must be
+  // updated to tuple the return results together and use the xla hlo return op.
+  auto body_branch = module.lookupSymbol<mlir::FuncOp>(op.body());
+  auto cond_branch = module.lookupSymbol<mlir::FuncOp>(op.cond());
+
+  ImportXlaRegion(&body_branch.getBody(), &while_op.body());
+  ImportXlaRegion(&cond_branch.getBody(), &while_op.cond(),
+                  /*tuple_return=*/false);
+
+  // De-tuple the results of the xla hlo while.
+  builder.setInsertionPointAfter(op);
+  Detuple(while_op.getResult(), op.getResults(), &builder);
   op.erase();
 }
 }  // namespace
@@ -109,7 +178,7 @@ void LowerIf(TF::IfOp op, ModuleOp module) {
 void LegalizeTFControlFlow::runOnModule() {
   auto module = getModule();
 
-  TypeConverter type_converter;
+  module.walk([&](TF::WhileOp op) -> void { LowerWhile(op, module); });
   module.walk([&](TF::IfOp op) -> void { LowerIf(op, module); });
 }
 }  // namespace xla_hlo

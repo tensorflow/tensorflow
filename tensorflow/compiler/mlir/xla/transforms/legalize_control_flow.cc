@@ -105,7 +105,7 @@ LogicalResult LowerConditionalOp(mlir::xla_hlo::ConditionalOp conditional_op) {
   return success();
 }
 
-bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
+LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   // Converts an xla while loop into control flow. This mostly generates the
   // right MLIR boilerplate for calling the body / condition functions, then
   // branching on their results appropriately. The operation should look similar
@@ -117,12 +117,6 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   auto* op_inst = while_op.getOperation();
   mlir::OpBuilder builder(while_op);
   auto loc = while_op.getLoc();
-
-  llvm::SmallVector<Value*, 4> operands;
-  operands.reserve(while_op.getNumOperands());
-  for (auto operand : while_op.getOperands()) {
-    operands.push_back(operand);
-  }
 
   // Break the block into four sections:
   // orig_block - operations before the while and the branch into looping check.
@@ -147,7 +141,7 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   //     <prior operations>
   //     br ^cond(%arg0) // Jumps to the condition statement.
   builder.setInsertionPointToEnd(orig_block);
-  builder.create<mlir::BranchOp>(loc, cond_block, operands);
+  builder.create<mlir::BranchOp>(loc, cond_block, while_op.getOperand());
 
   // Updates the condition blocks by replacing the return op with an
   // extract_element and conditional branch. This changes the block below:
@@ -170,7 +164,7 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
     auto new_block = mapper.lookup(&block);
 
     auto return_op = dyn_cast<xla_hlo::ReturnOp>(new_block->getTerminator());
-    if (!return_op) continue;
+    if (!return_op) return failure();
     builder.setInsertionPointToEnd(new_block);
 
     auto return_value = return_op.getOperand(0);
@@ -202,7 +196,7 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
     builder.setInsertionPointToEnd(new_block);
     auto return_op =
         dyn_cast<mlir::xla_hlo::ReturnOp>(new_block->getTerminator());
-    if (!return_op) continue;
+    if (!return_op) return failure();
 
     llvm::SmallVector<Value*, 4> body_results(return_op.operand_begin(),
                                               return_op.operand_end());
@@ -211,13 +205,11 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   }
 
   // Erase the original while loop.
-  for (int i = 0; i < while_op.getNumOperands(); i++) {
-    tail_block->addArgument(while_op.getOperand(i)->getType());
-    while_op.getResult(i)->replaceAllUsesWith(tail_block->getArgument(i));
-  }
+  tail_block->addArgument(while_op.getType());
+  while_op.getResult()->replaceAllUsesWith(tail_block->getArgument(0));
   op_inst->erase();
 
-  return false;
+  return success();
 }
 
 void LegalizeControlFlow::runOnFunction() {
@@ -233,7 +225,7 @@ void LegalizeControlFlow::runOnFunction() {
   func.walk([&](WhileOp op) { while_ops.push_back(op); });
 
   for (auto& op : while_ops) {
-    if (LowerWhileOp(op)) return signalPassFailure();
+    if (failed(LowerWhileOp(op))) return signalPassFailure();
   }
 }
 }  // namespace
