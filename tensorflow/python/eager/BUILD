@@ -779,6 +779,7 @@ cuda_py_test(
         ":test",
         ":remote",
         "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,
