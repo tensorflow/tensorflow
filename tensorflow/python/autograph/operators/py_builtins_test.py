@@ -52,6 +52,15 @@ class PyBuiltinsTest(test.TestCase):
       t = py_builtins.abs_(constant_op.constant([-1, 2, -3]))
       self.assertAllEqual(self.evaluate(t), [1, 2, 3])
 
+  def test_abs_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 1)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 2)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 3)
+
   def test_float(self):
     self.assertEqual(py_builtins.float_(10), 10.0)
     self.assertEqual(py_builtins.float_('10.0'), 10.0)
