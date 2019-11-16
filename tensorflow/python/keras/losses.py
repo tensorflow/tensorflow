@@ -490,8 +490,8 @@ class SparseCategoricalCrossentropy(LossFunctionWrapper):
   cce = tf.keras.losses.SparseCategoricalCrossentropy()
   loss = cce(
     tf.convert_to_tensor([0, 1, 2]),
-    tf.convert_to_tensor([[.9, .05, .05], [.5, .89, .6], [.05, .01, .94]]))
-  print('Loss: ', loss.numpy())  # Loss: 0.3239
+    tf.convert_to_tensor([[.9, .05, .05], [.05, .89, .06], [.05, .01, .94]]))
+  print('Loss: ', loss.numpy())  # Loss: 0.09458992
   ```
 
   Usage with the `compile` API:
