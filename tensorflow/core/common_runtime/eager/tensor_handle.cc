@@ -470,6 +470,15 @@ bool TensorHandle::HasRemoteMirror(Device* d) {
   return false;
 }
 
+bool TensorHandle::HasResourceShapeMirror(Device* d) {
+  tf_shared_lock l(resource_shape_mirrors_mutex_);
+  auto mirror = resource_shape_mirrors_.find(d);
+  if (mirror != resource_shape_mirrors_.end()) {
+    return true;
+  }
+  return false;
+}
+
 Status TensorHandle::AddUnshapedRemoteMirror(
     std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d) {
   mutex_lock l(remote_mirrors_mutex_);
@@ -481,6 +490,17 @@ Status TensorHandle::AddUnshapedRemoteMirror(
   if (!ret.second) {
     return errors::Internal(
         "Attempted to duplicate an unshaped remote mirror.");
+  }
+
+  return Status::OK();
+}
+
+Status TensorHandle::AddResourceShapeMirror(
+    std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d) {
+  mutex_lock l(resource_shape_mirrors_mutex_);
+  auto ret = resource_shape_mirrors_.insert(std::make_pair(d, std::move(t)));
+  if (!ret.second) {
+    return errors::Internal("Attempted to duplicate a resource shape mirror.");
   }
 
   return Status::OK();

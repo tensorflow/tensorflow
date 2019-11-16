@@ -780,12 +780,23 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
             handle->Unref();
           }
         } else {
-          serialize_resource_dtype_and_shape = input->dtype == DT_RESOURCE;
+          serialize_resource_dtype_and_shape =
+              (input->dtype == DT_RESOURCE) &&
+              (!input->HasResourceShapeMirror(op->Device()));
         }
       }
+      auto* input_handle = remote_op->add_inputs();
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          input, remote_op->add_inputs(), input_device, *input_device_name,
+          input, input_handle, input_device, *input_device_name,
           serialize_resource_dtype_and_shape));
+      if (!input_handle->resource_dtypes_and_shapes().empty()) {
+        auto tensor_handle_data =
+            absl::make_unique<UnshapedRemoteTensorHandleData>(
+                input_handle->op_id(), input_handle->output_num(), remote_task,
+                context_id, ctx);
+        TF_RETURN_IF_ERROR(input->AddResourceShapeMirror(
+            std::move(tensor_handle_data), op->Device()));
+      }
     }
   }
 
