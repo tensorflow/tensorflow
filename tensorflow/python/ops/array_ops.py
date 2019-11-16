@@ -3303,28 +3303,31 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
   is the reverse of SpaceToBatch.  See below for a precise description.
 
   Args:
-    input: A `Tensor`. N-D with shape `input_shape = [batch] + spatial_shape +
-      remaining_shape`, where spatial_shape has M dimensions.
-    block_shape: A `Tensor`. Must be one of the following types: `int32`,
-      `int64`. 1-D with shape `[M]`, all values must be >= 1. For backwards
-      compatibility with TF 1.0, this parameter may be an int, in which case it
-      is converted to `numpy.array([block_shape, block_shape],
+    input: A N-D `Tensor` with shape `input_shape = [batch] + spatial_shape +
+      remaining_shape`, where `spatial_shape` has M dimensions.
+    block_shape: A 1-D `Tensor` with shape [M]. Must be one of the following types: `int32`,
+      `int64`. All values must be >= 1. For backwards compatibility with TF 1.0,
+      this parameter may be an int, in which case it is converted to
+      `numpy.array([block_shape, block_shape],
       dtype=numpy.int64)`.
-    crops: A `Tensor`. Must be one of the following types: `int32`, `int64`. 2-D
-      with shape `[M, 2]`, all values must be >= 0. `crops[i] = [crop_start,
-      crop_end]` specifies the amount to crop from input dimension `i + 1`,
-      which corresponds to spatial dimension `i`.  It is required that
+    crops: A  2-D `Tensor` with shape `[M, 2]`. Must be one of the 
+      following types: `int32`, `int64`. All values must be >= 0. 
+      `crops[i] = [crop_start, crop_end]` specifies the amount to crop from input dimension `i + 1`,
+      which corresponds to spatial dimension `i`. It is required that
       `crop_start[i] + crop_end[i] <= block_shape[i] * input_shape[i + 1]`.
       This operation is equivalent to the following steps:
       1. Reshape `input` to `reshaped` of shape: [block_shape[0], ...,
         block_shape[M-1], batch / prod(block_shape), input_shape[1], ...,
-        input_shape[N-1]]  2. Permute dimensions of `reshaped` to produce
+        input_shape[N-1]]  
+      2. Permute dimensions of `reshaped` to produce
         `permuted` of shape [batch / prod(block_shape),  input_shape[1],
         block_shape[0], ..., input_shape[M], block_shape[M-1],
-        input_shape[M+1], ..., input_shape[N-1]]  3. Reshape `permuted` to
+        input_shape[M+1], ..., input_shape[N-1]]  
+      3. Reshape `permuted` to
         produce `reshaped_permuted` of shape [batch / prod(block_shape),
         input_shape[1] * block_shape[0], ..., input_shape[M] * block_shape[M-1],
-        input_shape[M+1], ..., input_shape[N-1]]  4. Crop the start and end of
+        input_shape[M+1], ..., input_shape[N-1]]  
+      4. Crop the start and end of
         dimensions `[1, ..., M]` of `reshaped_permuted` according to `crops` to
         produce the
          output of shape: [batch / prod(block_shape),  input_shape[1] *
