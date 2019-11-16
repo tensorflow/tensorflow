@@ -15,9 +15,7 @@ limitations under the License.
 
 #include <jni.h>
 
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
-#include "tensorflow/lite/model.h"
 
 #ifdef __cplusplus
 extern "C" {

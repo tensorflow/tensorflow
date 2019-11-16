@@ -29,7 +29,9 @@ public class NnApiDelegate implements Delegate, AutoCloseable {
   public static final class Options {
     public Options() {}
 
-    /** undefined */
+    /** undefined, specifies default behavior.
+     *  so far, the default setting of NNAPI is EXECUTION_PREFERENCE_FAST_SINGLE_ANSWER
+     */
     public static final int EXECUTION_PREFERENCE_UNDEFINED = -1;
 
     /**
