@@ -31,6 +31,7 @@ tf_kernel_library(
         "cwise_ops.h",
         "data_format_ops.cc",
         "depthtospace_op.cc",
+        "dequantize_op.cc",
         "determinant_ops.cc",
         "diag_op.cc",
         "dynamic_slice_ops.cc",
