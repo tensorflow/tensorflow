@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -662,6 +663,12 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                            ret_types_);
   Notification n;
   Status s;
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -700,6 +707,13 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   Notification n;
   Status s;
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::RunWithBorrowedArgs#id=",
+            f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -737,6 +751,12 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   Notification n;
   Status s;
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
+                            f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -839,6 +859,12 @@ void InstantiatedCapturedFunction::RunAsync(
       std::move(done), ctx, std::move(deregister_fn), prefix,
       std::move(stats_collector), std::placeholders::_1);
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
 }
 
