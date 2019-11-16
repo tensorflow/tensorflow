@@ -818,7 +818,7 @@ def get_ndk_api_level(environ_cp, android_ndk_home_path):
   android_ndk_api_level = prompt_loop_or_load_from_env(
       environ_cp,
       var_name='ANDROID_NDK_API_LEVEL',
-      var_default='18',  # 18 is required for GPU acceleration.
+      var_default='21',  # 21 is required for ARM64 support.
       ask_for_var=('Please specify the (min) Android NDK API level to use. '
                    '[Available levels: %s]') % api_levels,
       check_success=valid_api_level,
