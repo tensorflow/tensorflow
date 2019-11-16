@@ -57,9 +57,29 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
   // Run the bridge on the module, in case of failure, the `diag_handler`
   // converts MLIR errors emitted to the MLIRContext into a tensorflow::Status.
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  if (failed(bridge.run(module))) return diag_handler.ConsumeStatus();
+  LogicalResult result = bridge.run(module);
+  (void)result;
   return diag_handler.ConsumeStatus();
 }
 
 }  // namespace TFTPU
+
+namespace TF {
+
+tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
+                                                 bool enable_logging) {
+  PassManager bridge(module.getContext());
+
+  // Add logger to bridge passmanager.
+  if (enable_logging)
+    bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
+
+  CreateTFStandardPipeline(bridge);
+  mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  LogicalResult result = bridge.run(module);
+  (void)result;
+  return diag_handler.ConsumeStatus();
+}
+
+}  // namespace TF
 }  // namespace mlir

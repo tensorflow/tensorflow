@@ -16,6 +16,7 @@ package_group(
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/swift/swift_mlir/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",

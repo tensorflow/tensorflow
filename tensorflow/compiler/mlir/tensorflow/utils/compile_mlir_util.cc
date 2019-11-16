@@ -20,7 +20,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
-#include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
@@ -146,32 +145,6 @@ void GetInputMappingForMlir(int num_inputs, std::vector<int>* input_mapping) {
   std::iota(input_mapping->begin(), input_mapping->end(), 0);
 }
 
-// Lowers MLIR module to XLA HLO inside an XlaComputation.
-Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
-                                   xla::XlaComputation* xla_computation) {
-  {
-    // Make sure we catch any error reported by MLIR and forward it to the TF
-    // error reporting system. Report a generic error if pass manager failed
-    // without emitting a diagnostic.
-    mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
-    mlir::LogicalResult result = mlir::xla_hlo::legalizeTF(module_op);
-    if (failed(result)) {
-      return error_handler.Combine(
-          errors::Internal("MLIR TF to XLA legalization failed"));
-    }
-  }
-
-  if (VLOG_IS_ON(1))
-    tensorflow::DumpMlirOpToFile("mlir_compile_legalize_hlo", module_op);
-
-  xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module_op, &hlo_proto,
-                                               /*use_tuple_args=*/true,
-                                               /*always_return_tuple=*/false));
-  *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
-  return Status::OK();
-}
-
 // Refine MLIR types based on new shape information.
 Status RefineShapes(absl::Span<TensorShape> arg_shapes, mlir::ModuleOp module) {
   auto versions = module.getAttrOfType<::mlir::DictionaryAttr>("tf.versions");
@@ -226,6 +199,32 @@ Status RefineShapes(absl::Span<TensorShape> arg_shapes, mlir::ModuleOp module) {
 
 }  //  namespace
 
+Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
+                                   xla::XlaComputation* xla_computation,
+                                   bool use_tuple_args,
+                                   bool always_return_tuple) {
+  {
+    // Make sure we catch any error reported by MLIR and forward it to the TF
+    // error reporting system. Report a generic error if pass manager failed
+    // without emitting a diagnostic.
+    mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
+    mlir::LogicalResult result = mlir::xla_hlo::legalizeTF(module_op);
+    if (failed(result)) {
+      return error_handler.Combine(
+          errors::Internal("MLIR TF to XLA legalization failed"));
+    }
+  }
+
+  if (VLOG_IS_ON(1))
+    tensorflow::DumpMlirOpToFile("mlir_compile_legalize_hlo", module_op);
+
+  xla::HloProto hlo_proto;
+  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(
+      module_op, &hlo_proto, use_tuple_args, always_return_tuple));
+  *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
+  return Status::OK();
+}
+
 Status CompileSerializedMlirToXlaHlo(
     llvm::StringRef mlir_module_string, absl::Span<TensorShape> arg_shapes,
     const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
@@ -249,7 +248,8 @@ Status CompileSerializedMlirToXlaHlo(
   // Convert MLIR module to XLA HLO proto contained in XlaComputation.
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
-      module_op, compilation_result->computation.get()));
+      module_op, compilation_result->computation.get(), /*use_tuple_args=*/true,
+      /*always_return_tuple=*/false));
 
   // Construct mapping from XlaComputation's arg to input edges of execute
   // node.
