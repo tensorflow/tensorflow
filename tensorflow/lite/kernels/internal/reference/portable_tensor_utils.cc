@@ -38,12 +38,6 @@ const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
 const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
 }  // namespace
 
-float PortableClip(float f, float abs_limit) {
-  float result = (abs_limit < f) ? abs_limit : f;
-  result = (-abs_limit > result) ? -abs_limit : result;
-  return result;
-}
-
 template <typename T>
 bool PortableIsZeroVectorImpl(const T* vector, int v_size, T zero_value) {
   for (int i = 0; i < v_size; ++i) {
@@ -611,7 +605,7 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
 void PortableClipVector(const float* vector, int v_size, float abs_limit,
                         float* result) {
   for (int v = 0; v < v_size; v++) {
-    *result++ = PortableClip(*vector++, abs_limit);
+    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
   }
 }
 
