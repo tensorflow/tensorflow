@@ -52,7 +52,7 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
   auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
 
   # test the whl pip package
-  ./tensorflow/tools/ci_build/release/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
+  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${AUDITED_WHL_NAME}
   RETVAL=$?
 
   # Update results counter
