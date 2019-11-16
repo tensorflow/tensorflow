@@ -61,6 +61,30 @@ class PyBuiltinsTest(test.TestCase):
       self.assertAllEqual(self.evaluate(iterator.get_next()), 2)
       self.assertAllEqual(self.evaluate(iterator.get_next()), 3)
 
+  def test_abs_dataset_zipped(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([1, -2, 3])
+    dataset = dataset_ops.DatasetV2.zip((dataset_1, dataset_2))
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (1, 1))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (2, 2))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (3, 3))
+
+  def test_abs_dataset_mixed(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([1, -2, 3])
+    dataset_3 = dataset_ops.DatasetV2.from_tensor_slices([-1, -2, -3])
+    dataset_4 = dataset_ops.DatasetV2.zip((dataset_1, dataset_2))
+    dataset = dataset_ops.DatasetV2.zip((dataset_3, dataset_4))
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (1, (1, 1)))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (2, (2, 2)))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (3, (3, 3)))
+
   def test_float(self):
     self.assertEqual(py_builtins.float_(10), 10.0)
     self.assertEqual(py_builtins.float_('10.0'), 10.0)

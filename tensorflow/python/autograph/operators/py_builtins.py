@@ -161,7 +161,10 @@ def _tf_abs(x):
 
 
 def _tf_dataset_abs(x):
-  return x.map(math_ops.abs)
+  specs = nest.flatten(x.element_spec)
+  if len(specs) == 1:
+    return x.map(math_ops.abs)
+  return x.map(lambda *e: nest.map_structure(math_ops.abs, e))
 
 
 def _py_abs(x):
