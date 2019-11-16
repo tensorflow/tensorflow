@@ -104,7 +104,7 @@ ResourceMgr::ResourceAndName::ResourceAndName()
 
 ResourceMgr::ResourceAndName::ResourceAndName(ResourceBase* resource,
                                               string name)
-    : resource(resource), name(std::make_unique<string>(std::move(name))) {}
+    : resource(resource), name(absl::make_unique<string>(std::move(name))) {}
 
 ResourceMgr::ResourceAndName::ResourceAndName(
     ResourceAndName&& other) noexcept {
