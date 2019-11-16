@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_XPLANE_BUILDER_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"

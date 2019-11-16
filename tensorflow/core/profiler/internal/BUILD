@@ -384,6 +384,7 @@ tf_cc_test(
     deps = [
         ":traceme_recorder",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/synchronization",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -393,9 +394,10 @@ cc_library(
     srcs = ["profiler_interface.cc"],
     hdrs = ["profiler_interface.h"],
     deps = [
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/lib/core:status",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 
