@@ -432,16 +432,20 @@ setdiff1d.__doc__ = gen_array_ops.list_diff.__doc__
 def broadcast_dynamic_shape(shape_x, shape_y):
   """Computes the shape of a broadcast given symbolic shapes.
 
-  When shape_x and shape_y are Tensors representing shapes (i.e. the result of
+  When `shape_x` and `shape_y` are Tensors representing shapes (i.e. the result of
   calling tf.shape on another Tensor) this computes a Tensor which is the shape
-  of the result of a broadcasting op applied in tensors of shapes shape_x and
-  shape_y.
-
-  For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
-  Tensor whose value is [5, 2, 3].
+  of the result of a broadcasting op applied in tensors of shapes `shape_x` and
+  `shape_y`.
 
   This is useful when validating the result of a broadcasting operation when the
   tensors do not have statically known shapes.
+
+  Example:
+
+  >>> shape_x = [1, 2, 3]
+  >>> shape_y = [5, 1, 3]
+  >>> broadcast_dynamic_shape(shape_x, shape_y)
+  <tf.Tensor: id=..., shape=(3,), dtype=int32, numpy=array([5, 2, 3], dtype=int32)>
 
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
@@ -449,6 +453,10 @@ def broadcast_dynamic_shape(shape_x, shape_y):
 
   Returns:
     A rank 1 integer `Tensor` representing the broadcasted shape.
+
+  Raises:
+    InvalidArgumentError: If the two shapes are incompatible for
+    broadcasting.
   """
   return gen_array_ops.broadcast_args(shape_x, shape_y)
 
@@ -457,15 +465,22 @@ def broadcast_dynamic_shape(shape_x, shape_y):
 def broadcast_static_shape(shape_x, shape_y):
   """Computes the shape of a broadcast given known shapes.
 
-  When shape_x and shape_y are fully known TensorShapes this computes a
-  TensorShape which is the shape of the result of a broadcasting op applied in
-  tensors of shapes shape_x and shape_y.
+  When `shape_x` and `shape_y` are fully known `TensorShape`s this computes a
+  `TensorShape` which is the shape of the result of a broadcasting op applied in
+  tensors of shapes `shape_x` and `shape_y`.
 
   For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
   TensorShape whose value is [5, 2, 3].
 
   This is useful when validating the result of a broadcasting operation when the
   tensors have statically known shapes.
+
+  Example:
+
+  >>> shape_x = tf.TensorShape([1, 2, 3])
+  >>> shape_y = tf.TensorShape([5, 1 ,3])
+  >>> broadcast_static_shape(shape_x, shape_y)
+  TensorShape([Dimension(5), Dimension(2), Dimension(3)])
 
   Args:
     shape_x: A `TensorShape`
@@ -1523,13 +1538,6 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   Numpy equivalent is `tensor[mask]`.
 
-  ```python
-  # 1-D example
-  tensor = [0, 1, 2, 3]
-  mask = np.array([True, False, True, False])
-  boolean_mask(tensor, mask)  # [0, 2]
-  ```
-
   In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
   the first K dimensions of `tensor`'s shape.  We then have:
     `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
@@ -1542,9 +1550,23 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   ragged tensors, and can be used if you need to preserve the masked dimensions
   of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
 
+  Examples:
+
+  ```python
+  # 1-D example
+  tensor = [0, 1, 2, 3]
+  mask = np.array([True, False, True, False])
+  boolean_mask(tensor, mask)  # [0, 2]
+
+  # 2-D example
+  tensor = [[1, 2], [3, 4], [5, 6]]
+  mask = np.array([True, False, True])
+  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
+  ```
+
   Args:
-    tensor:  N-D tensor.
-    mask:  K-D boolean tensor, K <= N and K must be known statically.
+    tensor:  N-D Tensor.
+    mask:  K-D boolean Tensor, K <= N and K must be known statically.
     name:  A name for this operation (optional).
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
@@ -1556,15 +1578,6 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   Raises:
     ValueError:  If shapes do not conform.
-
-  Examples:
-
-  ```python
-  # 2-D example
-  tensor = [[1, 2], [3, 4], [5, 6]]
-  mask = np.array([True, False, True])
-  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
-  ```
   """
 
   def _apply_mask_1d(reshaped_tensor, mask, axis=None):
@@ -1611,13 +1624,6 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
 
   Numpy equivalent is `tensor[mask]`.
 
-  ```python
-  # 1-D example
-  tensor = [0, 1, 2, 3]
-  mask = np.array([True, False, True, False])
-  boolean_mask(tensor, mask)  # [0, 2]
-  ```
-
   In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
   the first K dimensions of `tensor`'s shape.  We then have:
     `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
@@ -1630,9 +1636,21 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   ragged tensors, and can be used if you need to preserve the masked dimensions
   of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
 
+  Examples:
+
+  >>> tensor = [0, 1, 2, 3]  # 1-D example
+  >>> mask = np.array([True, False, True, False])
+  >>> boolean_mask(tensor, mask)
+  <tf.Tensor: id=..., shape=(2,), dtype=int32, numpy=array([0, 2], dtype=int32)>
+
+  >>> tensor = [[1, 2], [3, 4], [5, 6]] # 2-D example
+  >>> mask = np.array([True, False, True])
+  >>> boolean_mask(tensor, mask)
+  <tf.Tensor: id=..., shape=(2, 2), dtype=int32, numpy=array([[1, 2], [5, 6]], dtype=int32)>
+
   Args:
-    tensor:  N-D tensor.
-    mask:  K-D boolean tensor, K <= N and K must be known statically.
+    tensor:  N-D Tensor.
+    mask:  K-D boolean Tensor, K <= N and K must be known statically.
     axis:  A 0-D int Tensor representing the axis in `tensor` to mask from. By
       default, axis is 0 which will mask from the first dimension. Otherwise K +
       axis <= N.
@@ -3433,18 +3451,18 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
       This operation is equivalent to the following steps:
       1. Reshape `input` to `reshaped` of shape: [block_shape[0], ...,
         block_shape[M-1], batch / prod(block_shape), input_shape[1], ...,
-        input_shape[N-1]]  
-      2. Permute dimensions of `reshaped` to produce `permuted` of shape 
-         [batch / prod(block_shape),  input_shape[1], block_shape[0], ..., 
+        input_shape[N-1]]
+      2. Permute dimensions of `reshaped` to produce `permuted` of shape
+         [batch / prod(block_shape),  input_shape[1], block_shape[0], ...,
          input_shape[M], block_shape[M-1], input_shape[M+1],
-        ..., input_shape[N-1]]  
-      3. Reshape `permuted` to produce `reshaped_permuted` of shape 
-         [batch / prod(block_shape), input_shape[1] * block_shape[0], ..., 
-         input_shape[M] * block_shape[M-1], input_shape[M+1], ..., 
-         input_shape[N-1]]  
-      4. Crop the start and end of dimensions `[1, ..., M]` of 
-         `reshaped_permuted` according to `crops` to produce the output 
-         of shape: 
+        ..., input_shape[N-1]]
+      3. Reshape `permuted` to produce `reshaped_permuted` of shape
+         [batch / prod(block_shape), input_shape[1] * block_shape[0], ...,
+         input_shape[M] * block_shape[M-1], input_shape[M+1], ...,
+         input_shape[N-1]]
+      4. Crop the start and end of dimensions `[1, ..., M]` of
+         `reshaped_permuted` according to `crops` to produce the output
+         of shape:
          [batch / prod(block_shape),  input_shape[1] *
            block_shape[0] - crops[0,0] - crops[0,1], ..., input_shape[M] *
            block_shape[M-1] - crops[M-1,0] - crops[M-1,1],  input_shape[M+1],
