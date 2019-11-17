@@ -1437,13 +1437,6 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   Numpy equivalent is `tensor[mask]`.
 
-  ```python
-  # 1-D example
-  tensor = [0, 1, 2, 3]
-  mask = np.array([True, False, True, False])
-  boolean_mask(tensor, mask)  # [0, 2]
-  ```
-
   In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
   the first K dimensions of `tensor`'s shape.  We then have:
     `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
@@ -1455,6 +1448,20 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
   ragged tensors, and can be used if you need to preserve the masked dimensions
   of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
+
+  Examples:
+
+  ```python
+  # 1-D example
+  tensor = [0, 1, 2, 3]
+  mask = np.array([True, False, True, False])
+  boolean_mask(tensor, mask)  # [0, 2]
+
+  # 2-D example
+  tensor = [[1, 2], [3, 4], [5, 6]]
+  mask = np.array([True, False, True])
+  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
+  ```
 
   Args:
     tensor:  N-D tensor.
@@ -1470,15 +1477,6 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
 
   Raises:
     ValueError:  If shapes do not conform.
-
-  Examples:
-
-  ```python
-  # 2-D example
-  tensor = [[1, 2], [3, 4], [5, 6]]
-  mask = np.array([True, False, True])
-  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
-  ```
   """
 
   def _apply_mask_1d(reshaped_tensor, mask, axis=None):
@@ -1525,13 +1523,6 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
 
   Numpy equivalent is `tensor[mask]`.
 
-  ```python
-  # 1-D example
-  tensor = [0, 1, 2, 3]
-  mask = np.array([True, False, True, False])
-  boolean_mask(tensor, mask)  # [0, 2]
-  ```
-
   In general, `0 < dim(mask) = K <= dim(tensor)`, and `mask`'s shape must match
   the first K dimensions of `tensor`'s shape.  We then have:
     `boolean_mask(tensor, mask)[i, j1,...,jd] = tensor[i1,...,iK,j1,...,jd]`
@@ -1543,6 +1534,22 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   See also: `tf.ragged.boolean_mask`, which can be applied to both dense and
   ragged tensors, and can be used if you need to preserve the masked dimensions
   of `tensor` (rather than flattening them, as `tf.boolean_mask` does).
+
+  Examples:
+
+  ```python
+  # 1-D example
+  tensor = [0, 1, 2, 3]
+  mask = np.array([True, False, True, False])
+  boolean_mask(tensor, mask)  # [0, 2]
+  ```
+
+  ```python
+  # 2-D example
+  tensor = [[1, 2], [3, 4], [5, 6]]
+  mask = np.array([True, False, True])
+  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
+  ```
 
   Args:
     tensor:  N-D tensor.
@@ -1558,15 +1565,6 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
 
   Raises:
     ValueError:  If shapes do not conform.
-
-  Examples:
-
-  ```python
-  # 2-D example
-  tensor = [[1, 2], [3, 4], [5, 6]]
-  mask = np.array([True, False, True])
-  boolean_mask(tensor, mask)  # [[1, 2], [5, 6]]
-  ```
   """
   return boolean_mask(tensor, mask, name, axis)
 
