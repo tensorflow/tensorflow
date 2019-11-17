@@ -944,14 +944,15 @@ class Network(base_layer.Layer):
     was never compiled in the first place).
 
     Arguments:
-        filepath: String, path to SavedModel or H5 file to save the model.
-        overwrite: Whether to silently overwrite any existing file at the
+      filepath: String, path to SavedModel or H5 file to save the model.
+      overwrite: Whether to silently overwrite any existing file at the
             target location, or provide the user with a manual prompt.
-        include_optimizer: If True, save optimizer's state together.
-        save_format: Either 'tf' or 'h5', indicating whether to save the model
-          to Tensorflow SavedModel or HDF5. The default is currently 'h5', but
-          will switch to 'tf' in TensorFlow 2.0. The 'tf' option is currently
-          disabled (use `tf.keras.experimental.export_saved_model` instead).
+      include_optimizer: If True, save optimizer's state together.
+      save_format: Either 'tf' or 'h5', indicating whether to save the model
+          to Tensorflow SavedModel or HDF5. `None` or anything except 'h5' 
+          defaults to 'tf'. Note that a filepath ending in '.h5', '.keras' or
+          '.hdf5' will default to 'h5' format regardless of the value passed 
+          here.
       signatures: Signatures to save with the SavedModel. Applicable to the 'tf'
         format only. Please see the `signatures` argument in
         `tf.saved_model.save` for details.
