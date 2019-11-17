@@ -358,16 +358,20 @@ setdiff1d.__doc__ = gen_array_ops.list_diff.__doc__
 def broadcast_dynamic_shape(shape_x, shape_y):
   """Computes the shape of a broadcast given symbolic shapes.
 
-  When shape_x and shape_y are Tensors representing shapes (i.e. the result of
+  When `shape_x` and `shape_y` are Tensors representing shapes (i.e. the result of
   calling tf.shape on another Tensor) this computes a Tensor which is the shape
-  of the result of a broadcasting op applied in tensors of shapes shape_x and
-  shape_y.
-
-  For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
-  Tensor whose value is [5, 2, 3].
+  of the result of a broadcasting op applied to tensors of shapes `shape_x` and
+  `shape_y`.
 
   This is useful when validating the result of a broadcasting operation when the
   tensors do not have statically known shapes.
+
+  Example:
+
+  >>> shape_x = [1, 2, 3]
+  >>> shape_y = [5, 1, 3]
+  >>> tf.broadcast_dynamic_shape(shape_x, shape_y)
+  <tf.Tensor: id=..., shape=(3,), dtype=int32, numpy=array([5, 2, 3], dtype=int32)>
 
   Args:
     shape_x: A rank 1 integer `Tensor`, representing the shape of x.
