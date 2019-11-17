@@ -30,6 +30,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.platform import test
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -131,6 +134,25 @@ class KerasLossesTest(test.TestCase):
 
     result = f([t_val, p_val])
     self.assertArrayNear(result, [.002, 0, .17], 1e-3)
+    
+  @test_util.run_in_graph_and_eager_modes
+  def test_categorical_crossentropy_loss_with_ls(self):
+    shape = (2,3,4)
+    size = np.prod(shape)
+    epsilon = 0.1
+    target = keras.backend.variable(np.random.randint(low=0, high=2, size=size).reshape(shape))
+    logits = keras.backend.softmax(keras.backend.variable(np.random.random(size=size).reshape(shape)))
+    target = math_ops.cast(target, logits.dtype)
+    output_from_cc_with_ls = keras.losses.categorical_crossentropy(
+        target, logits, from_logits=True, label_smoothing=epsilon)
+    num_classes = math_ops.cast(array_ops.shape(target)[-1], logits.dtype)
+    #refer https://arxiv.org/pdf/1512.00567.pdf (7. Model Regularization via Label Smoothing)
+    smoothed_target = (1-epsilon) * target + (epsilon / num_classes) 
+    output_from_cc_without_ls = keras.losses.categorical_crossentropy(
+        smoothed_target, logits, from_logits=True)
+    np.testing.assert_allclose(
+        keras.backend.eval(output_from_cc_with_ls),
+        keras.backend.eval(output_from_cc_without_ls), atol=1e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def test_sparse_categorical_crossentropy_loss(self):
