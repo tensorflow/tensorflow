@@ -1542,9 +1542,7 @@ def boolean_mask_v2(tensor, mask, axis=None, name="boolean_mask"):
   tensor = [0, 1, 2, 3]
   mask = np.array([True, False, True, False])
   boolean_mask(tensor, mask)  # [0, 2]
-  ```
 
-  ```python
   # 2-D example
   tensor = [[1, 2], [3, 4], [5, 6]]
   mask = np.array([True, False, True])
