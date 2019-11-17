@@ -138,10 +138,9 @@ class KerasLossesTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_categorical_crossentropy_loss_with_ls(self):
     shape = (2,3,4)
-    size = np.prod(shape)
     epsilon = 0.1
-    target = keras.backend.variable(np.random.randint(low=0, high=2, size=size).reshape(shape))
-    logits = keras.backend.softmax(keras.backend.variable(np.random.random(size=size).reshape(shape)))
+    target = keras.backend.variable(np.random.randint(0,2,shape))
+    logits = keras.backend.softmax(keras.backend.variable(np.random.random(shape)))
     target = math_ops.cast(target, logits.dtype)
     output_from_cc_with_ls = keras.losses.categorical_crossentropy(
         target, logits, from_logits=True, label_smoothing=epsilon)
