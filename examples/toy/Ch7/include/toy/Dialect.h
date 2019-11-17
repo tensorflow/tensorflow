@@ -31,7 +31,7 @@
 namespace mlir {
 namespace toy {
 namespace detail {
-class StructTypeStorage;
+struct StructTypeStorage;
 } // end namespace detail
 
 /// This is the definition of the Toy dialect. A dialect inherits from
