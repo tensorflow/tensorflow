@@ -400,7 +400,7 @@ class RaggedTensor(composite_tensor.CompositeTensor):
             check_ops.assert_equal(nvals1, nvals2, message=msg),
             check_ops.assert_non_negative(value_rowids[:1], message=msg),
             _assert_monotonic_increasing(value_rowids, message=msg),
-            check_ops.assert_negative(value_rowids[-1:] - nrows, message=msg),
+            check_ops.assert_less(value_rowids[-1:], nrows, message=msg),
         ]
         if not isinstance(values, RaggedTensor):
           checks.append(check_ops.assert_rank_at_least(values, 1))

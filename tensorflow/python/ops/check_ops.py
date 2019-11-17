@@ -296,36 +296,8 @@ def _pretty_print(data_item, summarize):
     return str(data_item)
 
 
-def _binary_all_empty_or_all_non_empty(x, y):
-  """Chek if x and y are either all empty or all non-empty.
-
-  Args:
-    x:  A `Tensor`.
-    y:  A `Tensor`.
-
-  Returns:
-    True if x and y are either all empty or all non-empty
-  """
-  all_empty = math_ops.logical_and(
-      math_ops.equal(array_ops.size(x), 0),
-      math_ops.equal(array_ops.size(y), 0))
-  all_non_empty = math_ops.logical_and(
-      math_ops.not_equal(array_ops.size(x), 0),
-      math_ops.not_equal(array_ops.size(y), 0))
-  return math_ops.logical_or(all_empty, all_non_empty)
-
-
-def _binary_assert(sym,
-                   opname,
-                   op_func,
-                   static_func,
-                   x,
-                   y,
-                   data,
-                   summarize,
-                   message,
-                   name,
-                   allow_empty=False):
+def _binary_assert(sym, opname, op_func, static_func, x, y, data, summarize,
+                   message, name):
   """Generic binary elementwise assertion.
 
   Implements the behavior described in _binary_assert_doc() above.
@@ -357,12 +329,7 @@ def _binary_assert(sym,
 
     if context.executing_eagerly():
       test_op = op_func(x, y)
-      if allow_empty:
-        condition = math_ops.reduce_all(test_op)
-      else:
-        empty_check = _binary_all_empty_or_all_non_empty(x, y)
-        condition = math_ops.logical_and(empty_check,
-                                         math_ops.reduce_all(test_op))
+      condition = math_ops.reduce_all(test_op)
       if condition:
         return
 
@@ -395,22 +362,11 @@ def _binary_assert(sym,
         ]
       if message is not None:
         data = [message] + list(data)
-      if allow_empty:
-        condition = math_ops.reduce_all(op_func(x, y))
-      else:
-        empty_check = _binary_all_empty_or_all_non_empty(x, y)
-        condition = math_ops.logical_and(empty_check,
-                                         math_ops.reduce_all(op_func(x, y)))
+      condition = math_ops.reduce_all(op_func(x, y))
       x_static = tensor_util.constant_value(x)
       y_static = tensor_util.constant_value(y)
       if x_static is not None and y_static is not None:
-        if allow_empty:
-          condition_static = np.all(static_func(x_static, y_static))
-        else:
-          empty_check_static = ((x_static.size == 0 and y_static.size == 0) or
-                                (x_static.size != 0 and y_static.size != 0))
-          condition_static = empty_check_static and np.all(
-              static_func(x_static, y_static))
+        condition_static = np.all(static_func(x_static, y_static))
         _assert_static(condition_static, data)
       return control_flow_ops.Assert(condition, data, summarize=summarize)
 
@@ -495,18 +451,7 @@ def assert_negative(x, data=None, summarize=None, message=None, name=None):  # p
           'Condition x < 0 did not hold element-wise:',
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert(
-        '<',
-        'assert_less',
-        math_ops.less,
-        np.less,
-        x,
-        zero,
-        data,
-        summarize,
-        message=None,
-        name=None,
-        allow_empty=True)
+    return assert_less(x, zero, data=data, summarize=summarize)
 
 
 @tf_export('debugging.assert_positive', v1=[])
@@ -557,18 +502,7 @@ def assert_positive(x, data=None, summarize=None, message=None, name=None):  # p
           message, 'Condition x > 0 did not hold element-wise:',
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert(
-        '<',
-        'assert_less',
-        math_ops.less,
-        np.less,
-        zero,
-        x,
-        data,
-        summarize,
-        message=None,
-        name=None,
-        allow_empty=True)
+    return assert_less(zero, x, data=data, summarize=summarize)
 
 
 @tf_export('debugging.assert_non_negative', v1=[])
@@ -622,18 +556,7 @@ def assert_non_negative(x, data=None, summarize=None, message=None, name=None): 
           'Condition x >= 0 did not hold element-wise:',
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert(
-        '<=',
-        'assert_less_equal',
-        math_ops.less_equal,
-        np.less_equal,
-        zero,
-        x,
-        data,
-        summarize,
-        message=None,
-        name=None,
-        allow_empty=True)
+    return assert_less_equal(zero, x, data=data, summarize=summarize)
 
 
 @tf_export('debugging.assert_non_positive', v1=[])
@@ -687,18 +610,7 @@ def assert_non_positive(x, data=None, summarize=None, message=None, name=None): 
           'Condition x <= 0 did not hold element-wise:'
           'x (%s) = ' % name, x]
     zero = ops.convert_to_tensor(0, dtype=x.dtype)
-    return _binary_assert(
-        '<=',
-        'assert_less_equal',
-        math_ops.less_equal,
-        np.less_equal,
-        x,
-        zero,
-        data,
-        summarize,
-        message=None,
-        name=None,
-        allow_empty=True)
+    return assert_less_equal(x, zero, data=data, summarize=summarize)
 
 
 @tf_export('debugging.assert_equal', 'assert_equal', v1=[])
