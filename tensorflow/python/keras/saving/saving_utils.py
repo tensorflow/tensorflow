@@ -241,6 +241,8 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   metrics_config = training_config['metrics']
   if isinstance(metrics_config, dict) and 'class_name' in metrics_config:
     metrics_obj = metrics.deserialize(metrics_config, custom_objects)
+  elif isinstance(metrics_config, list):
+    metrics_obj = [ metrics.deserialize(obj, custom_objects) for obj in metrics_config ]
   else:
     metrics_obj = nest.map_structure(
       lambda obj: metrics.deserialize(obj, custom_objects),
@@ -249,6 +251,8 @@ def compile_args_from_training_config(training_config, custom_objects=None):
   weighted_metrics_config = training_config['weighted_metrics']
   if isinstance(weighted_metrics_config, dict) and 'class_name' in weighted_metrics_config:
     weighted_metrics = metrics.deserialize(weighted_metrics_config, custom_objects)
+  elif isinstance(weighted_metrics_config, list):
+    weighted_metrics = [ metrics.deserialize(obj, custom_objects) for obj in weighted_metrics_config ]
   else:
     weighted_metrics = nest.map_structure(
       lambda obj: metrics.deserialize(obj, custom_objects),
