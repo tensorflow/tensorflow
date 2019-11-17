@@ -362,9 +362,7 @@ class StringSplitV2OpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                   input,
                   expected,
                   input_is_ragged=False,
-                  **kwargs):
-    # self.assertEqual(expected, self._py_split(input, **kwargs))
-
+                  **kwargs):  # pylint: disable=redefined-builtin
     # Prepare the input tensor.
     if input_is_ragged:
       input = ragged_factory_ops.constant(input, dtype=dtypes.string)
