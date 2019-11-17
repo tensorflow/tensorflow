@@ -2549,11 +2549,12 @@ def zeros(shape, dtype=dtypes.float32, name=None):
 
     if not isinstance(shape, ops.Tensor):
       try:
-        # Create a constant if it won't be very big. Otherwise create a fill op
-        # to prevent serialized GraphDefs from becoming too large.
-        output = _constant_if_small(zero, shape, dtype, name)
-        if output is not None:
-          return output
+        if not context.executing_eagerly():
+          # Create a constant if it won't be very big. Otherwise create a fill
+          # op to prevent serialized GraphDefs from becoming too large.
+          output = _constant_if_small(zero, shape, dtype, name)
+          if output is not None:
+            return output
 
         # Go through tensor shapes to get int64-if-needed semantics
         shape = constant_op._tensor_shape_tensor_conversion_function(
@@ -2774,11 +2775,12 @@ def ones(shape, dtype=dtypes.float32, name=None):
     one = True if dtype == dtypes.bool else 1
     if not isinstance(shape, ops.Tensor):
       try:
-        # Create a constant if it won't be very big. Otherwise create a fill op
-        # to prevent serialized GraphDefs from becoming too large.
-        output = _constant_if_small(one, shape, dtype, name)
-        if output is not None:
-          return output
+        if not context.executing_eagerly():
+          # Create a constant if it won't be very big. Otherwise create a fill
+          # op to prevent serialized GraphDefs from becoming too large.
+          output = _constant_if_small(one, shape, dtype, name)
+          if output is not None:
+            return output
 
         # Go through tensor shapes to get int64-if-needed semantics
         shape = constant_op._tensor_shape_tensor_conversion_function(
