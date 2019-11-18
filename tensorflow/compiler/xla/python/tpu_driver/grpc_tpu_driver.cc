@@ -978,28 +978,30 @@ Status GrpcTpuDriver::Reset() {
   return xla::Unimplemented("GRPC driver reset is not implemented yet.");
 }
 
-REGISTER_TPU_DRIVER("grpc://",
-                    [](const TpuDriverConfig& config)
-                        -> xla::StatusOr<std::unique_ptr<TpuDriver>> {
-                      auto stub = GrpcTpuDriver::CreateTpuDriverStub(config);
-                      ::grpc::ClientContext ctx;
-                      ctx.set_fail_fast(false);
-                      ctx.set_deadline(std::chrono::system_clock::now() +
-                                       std::chrono::seconds(10));
-                      OpenRequest req;
-                      OpenResponse resp;
-                      ::grpc::Status status = stub->Open(&ctx, req, &resp);
-                      if (!status.ok()) {
-                        LOG(ERROR) << "Failed to open the gRPC driver: "
-                                   << status.error_code() << ": "
-                                   << status.error_details();
-                        return xla::Status(
-                            tensorflow::error::Code(status.error_code()),
-                            status.error_message() + status.error_details());
-                      }
-                      return std::unique_ptr<TpuDriver>(
-                          new GrpcTpuDriver(config, resp.client_id()));
-                    });
+REGISTER_TPU_DRIVER(
+    "grpc://",
+    [](const TpuDriverConfig& config)
+        -> xla::StatusOr<std::unique_ptr<TpuDriver>> {
+      auto stub = GrpcTpuDriver::CreateTpuDriverStub(config);
+      ::grpc::ClientContext ctx;
+      ctx.set_fail_fast(false);
+      ctx.set_deadline(std::chrono::system_clock::now() +
+                       std::chrono::seconds(config.connection_timeout_secs));
+      OpenRequest req;
+      OpenResponse resp;
+      ::grpc::Status status = stub->Open(&ctx, req, &resp);
+      if (!status.ok()) {
+        LOG(ERROR) << "Failed to open the gRPC driver: " << status.error_code()
+                   << ": " << status.error_details();
+        return xla::Status(
+            tensorflow::error::Code(status.error_code()),
+            absl::StrCat("Failed to connect to remote server at address: ",
+                         config.worker,
+                         ". Error from gRPC: ", status.error_details()));
+      }
+      return std::unique_ptr<TpuDriver>(
+          new GrpcTpuDriver(config, resp.client_id()));
+    });
 
 }  // namespace
 }  // namespace tpu_driver

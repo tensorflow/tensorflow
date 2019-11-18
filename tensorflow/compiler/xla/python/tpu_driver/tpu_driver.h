@@ -229,6 +229,7 @@ class TpuDriver {
 
 struct TpuDriverConfig {
   std::string worker;
+  int64_t connection_timeout_secs = 10;
 };
 
 class TpuDriverRegistry {
