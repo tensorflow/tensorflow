@@ -5123,6 +5123,57 @@ occurred during compilation.
   );
 }
 
+def TF_TPUExecuteOp : TF_Op<"TPUExecute", []> {
+  let summary = "Op that loads and executes a TPU program on a TPU device.";
+
+  let description = [{
+For the internal use of the distributed TPU compiler.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    TF_StrTensor:$key
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_TPUExecuteAndUpdateVariablesOp : TF_Op<"TPUExecuteAndUpdateVariables", []> {
+  let summary = [{
+Op that executes a program with optional in-place variable updates.
+  }];
+
+  let description = [{
+It (optionally) reads device variables, loads and executes a TPU program on a
+TPU device, and then (optionally) in-place updates variables using the program
+outputs, as specified in attributes device_var_reads_indices (program input
+indices from directly reading variables) and device_var_updates_indices (program
+output indices used to update variables, -1 means no-update/read-only). Such
+program outputs are consumed by these variables will not appear in the op
+output. For the internal use of the distributed TPU compiler.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    TF_StrTensor:$key,
+
+    I64ArrayAttr:$device_var_reads_indices,
+    I64ArrayAttr:$device_var_updates_indices
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes hyperbolic tangent of `x` element-wise.";
 

@@ -217,6 +217,7 @@ cc_library(
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
