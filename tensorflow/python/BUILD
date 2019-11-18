@@ -77,8 +77,8 @@ py_library(
         "//tensorflow_estimator:__subpackages__",
     ],
     deps = [
+        ":layers",
         ":rnn",
-        "//tensorflow/python:layers",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
     ],
@@ -652,7 +652,7 @@ tf_python_pybind_extension(
     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
     module_name = "_pywrap_toco_api",
     deps = [
-        "//tensorflow/python:pybind11_lib",
+        ":pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -676,6 +676,7 @@ cc_library(
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
     deps = [
+        ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":py_util",
@@ -687,7 +688,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
-        "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -1242,12 +1242,12 @@ py_library(
     deps = [
         ":dtypes",
         ":framework_ops",
+        ":op_callbacks",
         ":op_def_registry",
         ":platform",
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:op_callbacks",
         "@six_archive//:six",
     ],
 )
@@ -1971,7 +1971,7 @@ tf_py_test(
         ":training",
         ":variables",
     ],
-    data = ["//tensorflow/python:meta_graph_testdata"],
+    data = [":meta_graph_testdata"],
     main = "framework/meta_graph_test.py",
     tags = [
         "no_pip",
@@ -2473,13 +2473,13 @@ py_test(
         "nomac",
     ],
     deps = [
+        ":array_ops",
         ":batch_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:script_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":framework",
+        ":gradients",
+        ":script_ops",
     ],
 )
 
@@ -3062,8 +3062,8 @@ py_library(
     srcs = ["ops/cudnn_rnn_grad.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cudnn_rnn_ops_gen",
         ":framework_for_generated_wrappers",
-        "//tensorflow/python:cudnn_rnn_ops_gen",
     ],
 )
 
@@ -3449,7 +3449,7 @@ py_library(
     srcs = ["training/experimental/loss_scale.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
+        ":framework",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -3471,8 +3471,8 @@ py_test(
     srcs = ["training/experimental/loss_scale_optimizer_test.py"],
     python_version = "PY2",
     deps = [
+        ":client_testlib",
         ":loss_scale_optimizer",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras/mixed_precision/experimental:test_util",
@@ -3486,8 +3486,8 @@ py_test(
     srcs = ["training/experimental/loss_scale_test.py"],
     python_version = "PY2",
     deps = [
+        ":client_testlib",
         ":loss_scale",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "@absl_py//absl/testing:parameterized",
@@ -3509,7 +3509,7 @@ py_library(
         ":loss_scale",
         ":loss_scale_optimizer",
         ":mixed_precision_global_state",
-        "//tensorflow/python:util",
+        ":util",
     ],
 )
 
@@ -4075,7 +4075,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework_for_generated_wrappers",
-        "//tensorflow/python:rnn_ops_gen",
+        ":rnn_ops_gen",
     ],
 )
 
@@ -5066,8 +5066,8 @@ py_library(
     srcs = ["util/tf_should_use.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":framework_ops",
         ":util",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -5508,11 +5508,11 @@ py_library(
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
+        ":mixed_precision_global_state",
         ":platform",
         ":pywrap_tensorflow",
         ":session_ops",
         ":util",
-        "//tensorflow/python:mixed_precision_global_state",
         "//third_party/py/numpy",
         "@wrapt",
     ],
@@ -7316,7 +7316,7 @@ py_library(
     deps = [
         ":decode_proto_ops_gen",
         ":encode_proto_ops_gen",
-        "//tensorflow/python:framework_ops",
+        ":framework_ops",
     ],
 )
 
