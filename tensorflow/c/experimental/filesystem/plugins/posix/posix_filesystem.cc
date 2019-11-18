@@ -271,6 +271,22 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
+static void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_Status* status) {
+  if (unlink(path) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+                      TF_Status* status) {
+  if (rmdir(path) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
 // TODO(mihaimaruseac): More implementations to follow in subsequent changes.
 
 }  // namespace tf_posix_filesystem
@@ -298,6 +314,9 @@ void TF_InitPlugin(TF_Status* status) {
       tf_posix_filesystem::NewAppendableFile,
       tf_posix_filesystem::NewReadOnlyMemoryRegionFromFile,
       tf_posix_filesystem::CreateDir,
+      /*recursively_create_dir=*/nullptr,
+      tf_posix_filesystem::DeleteFile,
+      tf_posix_filesystem::DeleteDir,
       nullptr,
   };
 

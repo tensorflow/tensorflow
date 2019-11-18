@@ -137,9 +137,15 @@ Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
 }
 
 Status ModularFileSystem::DeleteFile(const std::string& fname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->delete_file == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support DeleteFile()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(fname);
+  ops_->delete_file(filesystem_.get(), translated_name.c_str(),
+                    plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
@@ -151,9 +157,15 @@ Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
 }
 
 Status ModularFileSystem::DeleteDir(const std::string& dirname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->delete_dir == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", dirname, " does not support DeleteDir()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  ops_->delete_dir(filesystem_.get(), translated_name.c_str(),
+                   plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname) {
