@@ -276,6 +276,7 @@ cc_library(
     ],
     deps = [
         ":common",
+        ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":validators",
