@@ -918,20 +918,25 @@ GrpcTpuDriver::CreateTpuDriverStub(const TpuDriverConfig& config) {
   ::grpc::ChannelArguments args;
   args.SetMaxReceiveMessageSize(std::numeric_limits<int>::max());
   args.SetMaxSendMessageSize(std::numeric_limits<int>::max());
+
+  // Send at least 20 keep-alives before giving up.
+  int keepalive_timeout_ms = config.keepalive_timeout_secs * 1000;
+  int keepalive_interval_ms = config.keepalive_timeout_secs / 20;
+
   grpc_arg client_arg_vals[] = {
       {.type = GRPC_ARG_INTEGER,
        .key = const_cast<char*>(
            GRPC_ARG_HTTP2_MIN_RECV_PING_INTERVAL_WITHOUT_DATA_MS),
-       .value = {.integer = 30000}},  // 30 sec on server-side
+       .value = {.integer = keepalive_interval_ms}},
       {.type = GRPC_ARG_INTEGER,
        .key = const_cast<char*>(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA),
        .value = {.integer = 0}},  // unlimited
       {.type = GRPC_ARG_INTEGER,
        .key = const_cast<char*>(GRPC_ARG_KEEPALIVE_TIME_MS),
-       .value = {.integer = 60 * 1000}},  // 1 minute
+       .value = {.integer = keepalive_interval_ms}},
       {.type = GRPC_ARG_INTEGER,
        .key = const_cast<char*>(GRPC_ARG_KEEPALIVE_TIMEOUT_MS),
-       .value = {.integer = 4 * 60 * 60 * 1000}},  // 4 hours
+       .value = {.integer = keepalive_timeout_ms}},
       {.type = GRPC_ARG_INTEGER,
        .key = const_cast<char*>(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS),
        .value = {.integer = 1}},
