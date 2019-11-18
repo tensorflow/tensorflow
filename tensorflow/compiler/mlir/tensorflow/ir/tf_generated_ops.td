@@ -279,6 +279,24 @@ see the incremented value or a subsequent newer one.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_AssignSubVariableOp : TF_Op<"AssignSubVariableOp", []> {
+  let summary = "Subtracts a value from the current value of a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to
+see the decremented value or a subsequent newer one.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Tensor:$value
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_AssignVariableOp : TF_Op<"AssignVariableOp", []> {
   let summary = "Assigns a new value to a variable.";
 
