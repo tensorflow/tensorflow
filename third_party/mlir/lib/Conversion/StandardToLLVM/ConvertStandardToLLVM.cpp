@@ -565,8 +565,8 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
     if (numResults != 0) {
       packedType = this->lowering.packFunctionResults(
           llvm::to_vector<4>(op->getResultTypes()));
-      assert(packedType && "type conversion failed, such operation should not "
-                           "have been matched");
+      if (!packedType)
+        return this->matchFailure();
     }
 
     auto newOp = rewriter.create<TargetOp>(op->getLoc(), packedType, operands,
