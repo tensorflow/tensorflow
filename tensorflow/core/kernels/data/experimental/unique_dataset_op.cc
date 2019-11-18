@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/kernels/data/experimental/unique_dataset_op.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -20,32 +20,14 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 namespace experimental {
-namespace {
 
-class UniqueDatasetOp : public UnaryDatasetOpKernel {
- public:
-  explicit UniqueDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {}
+/* static */ constexpr const char* const UniqueDatasetOp::kDatasetType;
+/* static */ constexpr const char* const UniqueDatasetOp::kInputDataset;
+/* static */ constexpr const char* const UniqueDatasetOp::kOutputTypes;
+/* static */ constexpr const char* const UniqueDatasetOp::kOutputShapes;
 
-  void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
-                   DatasetBase** output) override {
-    OP_REQUIRES(ctx, input->output_dtypes().size() == 1,
-                errors::InvalidArgument("UniqueDataset only supports "
-                                        "inputs with a single component."));
 
-    DataType input_dtype = input->output_dtypes()[0];
-    OP_REQUIRES(ctx,
-                input_dtype == DT_INT32 || input_dtype == DT_INT64 ||
-                    input_dtype == DT_STRING,
-                errors::InvalidArgument(
-                    "UniqueDataset only supports inputs with a single "
-                    "`tf.int32`, `tf.int64`, or `tf.string` component."));
-
-    *output = new Dataset(ctx, input);
-  }
-
- private:
-  class Dataset : public DatasetBase {
+class UniqueDatasetOp::Dataset : public DatasetBase {
    public:
     Dataset(OpKernelContext* ctx, const DatasetBase* input)
         : DatasetBase(DatasetContext(ctx)), input_(input) {
@@ -220,8 +202,28 @@ class UniqueDatasetOp : public UnaryDatasetOpKernel {
     };
 
     const DatasetBase* const input_;
-  };
 };
+
+
+void UniqueDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
+                   DatasetBase** output) {
+    OP_REQUIRES(ctx, input->output_dtypes().size() == 1,
+                errors::InvalidArgument("UniqueDataset only supports "
+                                        "inputs with a single component."));
+
+    DataType input_dtype = input->output_dtypes()[0];
+    OP_REQUIRES(ctx,
+                input_dtype == DT_INT32 || input_dtype == DT_INT64 ||
+                    input_dtype == DT_STRING,
+                errors::InvalidArgument(
+                    "UniqueDataset only supports inputs with a single "
+                    "`tf.int32`, `tf.int64`, or `tf.string` component."));
+
+    *output = new Dataset(ctx, input);
+}
+
+
+namespace {
 
 REGISTER_KERNEL_BUILDER(Name("UniqueDataset").Device(DEVICE_CPU),
                         UniqueDatasetOp);

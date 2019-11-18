@@ -527,6 +527,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "unique_dataset_op",
     srcs = ["unique_dataset_op.cc"],
+    hdrs = ["unique_dataset_op.h"],
     deps = [
         "//tensorflow/core:experimental_dataset_ops_op_lib",
         "//tensorflow/core:framework",
