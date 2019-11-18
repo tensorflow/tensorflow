@@ -123,7 +123,14 @@ class EagerExecutor {
   void ClearError();
 
   // Returns Status based on any errors that occurred during async execution.
-  Status status() const;
+  Status status() const {
+    if (ok()) return Status::OK();
+
+    tf_shared_lock l(node_queue_mutex_);
+    return status_;
+  }
+
+  bool ok() const NO_THREAD_SAFETY_ANALYSIS { return ok_; }
 
  private:
   // Possible states for this executor.
@@ -192,6 +199,7 @@ class EagerExecutor {
   // `status_` is set based on any errors raised during execution of a
   // EagerNode.  It remains set until ClearError is called.
   Status status_ GUARDED_BY(node_queue_mutex_);
+  std::atomic<bool> ok_ GUARDED_BY(node_queue_mutex_);
 
   // Map from id of a EagerNode to condition_variables (not owned by the map).
   // These condition_variables are notified and removed when that EagerNode is
