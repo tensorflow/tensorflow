@@ -105,7 +105,7 @@ class _SavedModelBuilder(object):
       file_io.recursive_create_dir(self._export_dir)
 
     # Boolean to track whether variables and assets corresponding to the
-    # SavedModel has been saved. Specifically, the first meta graph to be added
+    # SavedModel have been saved. Specifically, the first meta graph to be added
     # MUST use the add_meta_graph_and_variables() API. Subsequent add operations
     # on the SavedModel MUST use the add_meta_graph() API which does not save
     # weights.
