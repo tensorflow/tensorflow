@@ -1076,7 +1076,7 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
+const absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
     // Unary
     {"PW",
      {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin", "Atan",
@@ -1101,7 +1101,8 @@ absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
       "ConjugateTranspose", "_UnaryOpsComposition",
       // The following 4 operations are converted to identity
       "PlaceholderWithDefault", "PreventGradient", "StopGradient", "Snapshot"}},
-    {"RED", {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
+    {"RED",
+     {"All", "Any", "Min", "Max", "Mean", "Prod", "Sum"}},
     {"PWRED",
      {"ArgMax", "ArgMin", "DiagPart", "Softmax",
       "SparseSoftmaxCrossEntropyWithLogits", "LogSoftmax"}},
@@ -1164,14 +1165,14 @@ std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
 
   for (auto s : absl::StrSplit(flags->tf_xla_supported_ops, ",")) {
     if (s == "FUSIBLE") {
-      for(auto pair: whitelist_table) {
+      for (auto pair : whitelist_table) {
         whitelist->insert(pair.second.begin(), pair.second.end());
       }
     } else if (whitelist_table.contains(s)) {
-      auto v = whitelist_table[s];
+      auto v = whitelist_table.at(s);
       whitelist->insert(v.begin(), v.end());
     } else if (s.size() > 0) {
-      // Should be a user privided TF operation.
+      // Should be a user provided TF operation.
       whitelist->insert(string(s));
     }
   }
@@ -1188,14 +1189,14 @@ std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   OptimizerOptions opts;
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
-    new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
-				      TF_GRAPH_DEF_VERSION, flib_def_, opts));
+      new ProcessFunctionLibraryRuntime(nullptr, env_, /*config=*/nullptr,
+                                        TF_GRAPH_DEF_VERSION, flib_def_, opts));
   FunctionLibraryRuntime* lib_runtime =
-    pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
   std::vector<bool> compile_time_const_nodes(graph_->num_node_ids(), false);
   TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-    *graph_, /*compile_time_const_arg_indices=*/nullptr,
-    &compile_time_const_nodes, lib_runtime));
+      *graph_, /*compile_time_const_arg_indices=*/nullptr,
+      &compile_time_const_nodes, lib_runtime));
   // Iterate over nodes in sorted order so that compiler fuel is deterministic.
   // We can't simply pass op_nodes().begin() and op_nodes().end() to the
   // std::vector constructor because they're not proper iterators, with
