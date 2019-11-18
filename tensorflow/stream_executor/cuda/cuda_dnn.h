@@ -55,9 +55,6 @@ class CudnnSupport : public dnn::DnnSupport {
       float dropout, uint64 seed, ScratchAllocator* state_allocator,
       bool use_padded_io) override;
 
-  port::StatusOr<std::unique_ptr<dnn::CtcLossDescriptor>>
-  createCtcLossDescriptor(dnn::DataType data_type) override;
-
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
   createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size,

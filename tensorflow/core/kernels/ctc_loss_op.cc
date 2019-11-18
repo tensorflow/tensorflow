@@ -44,7 +44,6 @@ using GPUDevice = Eigen::GpuDevice;
 namespace {
 using se::Stream;
 using se::StreamExecutor;
-using se::dnn::CtcLossDescriptor;
 using se::dnn::RnnStateTensorDescriptor;
 using se::dnn::ToDataType;
 
@@ -310,14 +309,10 @@ class CTCLossOpGPU : public OpKernel {
     StreamExecutor* executor = ctx->op_device_context()->stream()->parent();
     se::dnn::DataType data_type = ToDataType<float>::value;
 
-    std::unique_ptr<CtcLossDescriptor> ctc_loss_desc;
+    se::dnn::CtcLossDescriptor ctc_loss_desc;
     std::unique_ptr<RnnStateTensorDescriptor> probs_desc;
     std::unique_ptr<RnnStateTensorDescriptor> grads_desc;
 
-    auto ctc_loss_desc_s = executor->createCtcLossDescriptor(data_type);
-    OP_REQUIRES_OK(ctx, ctc_loss_desc_s.status());
-    ctc_loss_desc = ctc_loss_desc_s.ConsumeValueOrDie();
-    
     auto probs_desc_s = executor->createRnnStateTensorDescriptor(
         max_time, batch_size, num_classes, data_type);
     OP_REQUIRES_OK(ctx, probs_desc_s.status());
@@ -350,7 +345,7 @@ class CTCLossOpGPU : public OpKernel {
             ->ThenCtcLoss(
                 *probs_desc, probs_data, labels_data, labels_lengths_data,
                 input_lengths_data, &costs_data, *grads_desc, &grads_data,
-                *ctc_loss_desc, &workspace_allocator)
+                ctc_loss_desc, &workspace_allocator)
             .ok();
 
     if (!cudnn_launch_status) {

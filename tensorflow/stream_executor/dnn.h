@@ -190,13 +190,11 @@ class RnnDescriptor {
   virtual ParamsRegions ParamsBiasRegions() const { return ParamsRegions(); }
 };
 
-// Specifies the CTC Loss computation.
-//
-// The user is responsible for releasing this descriptor when it is no longer
-// in use. The destructor releases the underlying descriptors.
+// Describes a CTC loss operation.
 class CtcLossDescriptor {
  public:
-  virtual ~CtcLossDescriptor() {}
+  CtcLossDescriptor();
+  ~CtcLossDescriptor();
 };
 
 // Specifies the sequence in a RNN model.
@@ -2142,16 +2140,6 @@ class DnnSupport {
                         "createRnnDescriptor is unimplemented");
   }
 
-  // Create an CTC Loss descriptor.
-  //
-  // Arguments:
-  //  data_type: an enum to specify the data types used in this model.
-  virtual port::StatusOr<std::unique_ptr<dnn::CtcLossDescriptor>>
-  createCtcLossDescriptor(dnn::DataType data_type) {
-    return port::Status(port::error::UNIMPLEMENTED,
-                        "createCtcLossDescriptor is unimplemented");
-  }
-
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   //
@@ -2417,7 +2405,7 @@ class DnnSupport {
   //  costs_data: the device memory region that contains the costs tensor.
   //  grads_desc: specifies the shape and the data layout of the grads tensor.
   //  grads_data: the device memory region that contains the grads tensor.
-  //  ctc_loss_desc: a CTCLoss descriptor created by createCTCLossDescriptor.
+  //  ctc_loss_desc: a CTCLoss descriptor.
   //  workspace_allocator: a memory allocator that creates the temporary
   //    workspace memory used by this operation. The caller is responsible for
   //    keeping the memory alive long enough for this operation, and recylces

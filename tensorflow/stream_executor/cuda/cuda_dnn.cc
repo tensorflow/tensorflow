@@ -1207,57 +1207,27 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnDescriptor);
 };
 
-class CudnnCtcLossDescriptor : public dnn::CtcLossDescriptor {
 #if CUDNN_VERSION >= 7601
-  CudnnCtcLossDescriptor(gpu::CtcLossDescriptor ctc_loss_desc,
-                         cudnnDataType_t data_type,
-                         cudnnLossNormalizationMode_t norm_mode,
-                         cudnnNanPropagation_t grad_mode)
-      : ctc_loss_desc_(std::move(ctc_loss_desc)),
-        data_type_(data_type),
-        norm_mode_(norm_mode),
-        grad_mode_(grad_mode){}
-#endif
-
+class CudnnCtcLossDescriptor {
  public:
-  CudnnCtcLossDescriptor(CudnnCtcLossDescriptor&& other) = default;
-
-  static port::StatusOr<CudnnCtcLossDescriptor> Create(
-      cudnnDataType_t data_type,
-      cudnnLossNormalizationMode_t norm_mode=CUDNN_LOSS_NORMALIZATION_SOFTMAX,
-      cudnnNanPropagation_t grad_mode=CUDNN_NOT_PROPAGATE_NAN) {
-#if CUDNN_VERSION >= 7601
-    gpu::CtcLossDescriptor ctc_loss_desc = CreateCtcLossDescriptor();
-    RETURN_IF_CUDNN_ERROR(cudnnSetCTCLossDescriptorEx(
-        /*ctcLossDesc=*/ctc_loss_desc.get(),
+  CudnnCtcLossDescriptor(const dnn::CtcLossDescriptor& ctc_loss_desc,
+                         cudnnDataType_t data_type)
+      : handle_(CreateCtcLossDescriptor()) {
+    CHECK_CUDNN_OK(cudnnSetCTCLossDescriptorEx(
+        /*ctcLossDesc=*/handle_.get(),
         /*compType=*/data_type,
-        /*normMode=*/norm_mode,
-        /*gradMode=*/grad_mode));
-    return CudnnCtcLossDescriptor(std::move(ctc_loss_desc), data_type,
-                                  norm_mode, grad_mode);
-#else
-    return port::Status(port::error::INVALID_ARGUMENT,
-                        "No supported cudnnSetCTCLossDescriptorEx when "
-                        "CUDNN_VERSION < 7.6.3");
-#endif
+        /*normMode=*/CUDNN_LOSS_NORMALIZATION_SOFTMAX,
+        /*gradMode=*/CUDNN_NOT_PROPAGATE_NAN));
   }
 
-#if CUDNN_VERSION >= 7601
-  cudnnCTCLossDescriptor_t handle() const { return ctc_loss_desc_.get(); }
-#endif
-  cudnnDataType_t data_type() const { return data_type_; }
-  cudnnLossNormalizationMode_t lnorm_mode() const { return norm_mode_; }
-  cudnnNanPropagation_t grad_mode() const { return grad_mode_; }
+  cudnnCTCLossDescriptor_t handle() const { return handle_.get(); }
 
  private:
-#if CUDNN_VERSION >= 7601
-  gpu::CtcLossDescriptor ctc_loss_desc_;
-#endif
-  cudnnDataType_t data_type_;
-  cudnnLossNormalizationMode_t norm_mode_;
-  cudnnNanPropagation_t grad_mode_;
+  CtcLossDescriptor handle_; // Owned
+
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnCtcLossDescriptor);
 };
+#endif
 
 namespace {
 
@@ -1749,9 +1719,9 @@ port::StatusOr<DeviceMemory<uint8>> CreateCtcLossWorkspace(
       /*ctcLossDesc=*/ctc_loss_desc.handle(),
       /*sizeInBytes=*/&workspace_size_in_bytes));
 #else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnGetCTCLossWorkspaceSize when "
-                          "CUDNN_VERSION < 7.6.3");
+  return port::Status(port::error::INVALID_ARGUMENT,
+                      "No supported cudnnGetCTCLossWorkspaceSize when "
+                      "CUDNN_VERSION < 7.6.3");
 #endif
   // Allocate the workspace.
   if (workspace_size_in_bytes == 0) {
@@ -2138,16 +2108,6 @@ CudnnSupport::createRnnDescriptor(
           algorithm_config, dropout, seed, state_allocator, use_padded_io));
   return std::unique_ptr<dnn::RnnDescriptor>(
       new CudnnRnnDescriptor(std::move(rnn_desc)));
-}
-
-port::StatusOr<std::unique_ptr<dnn::CtcLossDescriptor>>
-CudnnSupport::createCtcLossDescriptor(
-    dnn::DataType data_type) {
-  SE_ASSIGN_OR_RETURN(CudnnCtcLossDescriptor ctc_loss_desc,
-                      CudnnCtcLossDescriptor::Create(
-                          ToCudnnDataType(data_type)));
-  return std::unique_ptr<dnn::CtcLossDescriptor>(
-      new CudnnCtcLossDescriptor(std::move(ctc_loss_desc)));
 }
 
 port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
@@ -3997,8 +3957,13 @@ bool CudnnSupport::DoCtcLoss(
     DeviceMemory<float> *grads_data,
     const dnn::CtcLossDescriptor &ctc_loss_desc,
     ScratchAllocator *workspace_allocator) {
-  const CudnnCtcLossDescriptor& cudnn_ctc_loss_desc =
-      static_cast<const CudnnCtcLossDescriptor&>(ctc_loss_desc);
+#if CUDNN_VERSION >= 7601
+  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ctc_loss_desc, CUDNN_DATA_FLOAT);
+#else
+  LOG(WARNING) << "CuDNN CTC Loss is only supported with CUDNN Version 7.6.1 "
+                  "or later.";
+  return false;
+#endif
   const CudnnRnnStateTensorDescriptor& cudnn_probs_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
