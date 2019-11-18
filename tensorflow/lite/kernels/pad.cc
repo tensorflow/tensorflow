@@ -106,8 +106,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       op_context.constant_values->type);
   }
 
-  // TODO(nupurgarg): Current implementations rely on the inputs being <= 4D.
-  TF_LITE_ENSURE(context, op_context.dims <= 4);
+  // TODO(nupurgarg): Current implementations rely on the inputs being <= 5D.
+  TF_LITE_ENSURE(context, op_context.dims <= 5);
 
   // Exit early if paddings is a non-const tensor. Set output tensor to
   // dynamic so output size can be determined in Eval.

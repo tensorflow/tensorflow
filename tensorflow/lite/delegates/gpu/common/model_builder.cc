@@ -633,6 +633,14 @@ Status ExtractTensorShape(const TfLiteTensor& tflite_tensor, BHWC* bhwc) {
     case 4:
       *bhwc = BHWC(dims->data[0], dims->data[1], dims->data[2], dims->data[3]);
       return OkStatus();
+    case 5:
+      if (dims->data[0] != 1) {
+        return InvalidArgumentError(absl::StrCat(
+            "Tensor \"", tflite_tensor.name ? tflite_tensor.name : "nullptr",
+            "\" with input dims size of 5 must have batch size equal to 1."));
+      }
+      *bhwc = BHWC(dims->data[1], dims->data[2], dims->data[3], dims->data[4]);
+      return OkStatus();
     default:
       return InvalidArgumentError(absl::StrCat(
           "Tensor \"", tflite_tensor.name ? tflite_tensor.name : "nullptr",
@@ -1521,13 +1529,30 @@ class PadOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->ReadTensor(1, &paddings));
 
     // 4x2 tensor with paddings.
-    if (paddings.shape.h != 4 || paddings.shape.w != 2) {
+    if (paddings.shape.h == 4 && paddings.shape.w == 2) {
+      attr.prepended = BHWC(paddings.data[0], paddings.data[2], paddings.data[4],
+                            paddings.data[6]);
+      attr.appended = BHWC(paddings.data[1], paddings.data[3], paddings.data[5],
+                          paddings.data[7]);
+    }
+    // 5x2 tensor with paddings.
+    else if (paddings.shape.h == 5 && paddings.shape.w == 2)
+    {
+      if (paddings.data[0] != 0 || paddings.data[1] != 0)
+      {
+        return InvalidArgumentError("Padding batch with 5D tensors is not allowed");
+      }
+
+      attr.prepended = BHWC(paddings.data[2], paddings.data[4],
+                          paddings.data[6], paddings.data[8]);
+      attr.appended = BHWC(paddings.data[3], paddings.data[5],
+                          paddings.data[7], paddings.data[9]);
+    }
+    else
+    {
       return InvalidArgumentError("Paddings tensor has unexpected shape.");
     }
-    attr.prepended = BHWC(paddings.data[0], paddings.data[2], paddings.data[4],
-                          paddings.data[6]);
-    attr.appended = BHWC(paddings.data[1], paddings.data[3], paddings.data[5],
-                         paddings.data[7]);
+    
     node->operation.attributes = attr;
     return OkStatus();
   }
