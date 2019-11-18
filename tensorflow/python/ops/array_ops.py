@@ -3157,59 +3157,41 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   You can normalize the edit distance by length of `truth` by setting
   `normalize` to true.
 
-  For example:
-
-  Given the following input,
-  * `hypothesis` is a `tf.SparseTensor` of shape `[2, 1, 1]`
-  * `truth` is a `tf.SparseTensor` of shape `[2, 2, 2]`
-
-  >>> hypothesis = tf.SparseTensor(
-  ...   [[0, 0, 0],
-  ...    [1, 0, 0]],
-  ...   ["a", "b"],
-  ...   (2, 1, 1))
-  >>> truth = tf.SparseTensor(
-  ...   [[0, 1, 0],
-  ...    [1, 0, 0],
-  ...    [1, 0, 1],
-  ...    [1, 1, 0]],
-  ...    ["a", "b", "c", "a"],
-  ...    (2, 2, 2))
-  >>> edit_distance(hypothesis, truth, normalize=True)
-  <tf.Tensor: id=..., shape=(2, 2), dtype=float32, numpy=
-  array([[inf, 1. ],
-         [0.5, 1. ]], dtype=float32)>
-
-  The operaton returns a dense Tensor of shape `[2, 2]` with
-  edit distances normalized by `truth` lengths.
-
-  **Note**: It is possible to calculate edit distance between two
-  sparse tensors with variable-length values. However, attempting to create
-  them while eager execution is enabled will result in a `ValueError`.
-
-  For the following  inputs,
+  For example, given the following input:
 
   ```python
   # 'hypothesis' is a tensor of shape `[2, 1]` with variable-length values:
+  #   (0,0) = ["a"]
+  #   (1,0) = ["b"]
   hypothesis = tf.SparseTensor(
-    [[0, 0],
-     [1,0]],
-    ["a", "b"],
-    (2, 1))
+      [[0, 0, 0],
+       [1, 0, 0]],
+      ["a", "b"],
+      (2, 1, 1))
 
   # 'truth' is a tensor of shape `[2, 2]` with variable-length values:
+  #   (0,0) = []
+  #   (0,1) = ["a"]
+  #   (1,0) = ["b", "c"]
+  #   (1,1) = ["a"]
   truth = tf.SparseTensor(
-    [[0, 1],
-     [1, 0],
-     [1, 1]],
-    ["a", ["b", "c"], "a"],
-    (2, 2))
+      [[0, 1, 0],
+       [1, 0, 0],
+       [1, 0, 1],
+       [1, 1, 0]],
+      ["a", "b", "c", "a"],
+      (2, 2, 2))
 
   normalize = True
+  ```
 
-  # The output would be a dense Tensor of shape `[2,]`, with edit distances
-  noramlized by 'truth' lengths.
-  # output => array([0., 0.5], dtype=float32)
+  This operation would return the following:
+
+  ```python
+  # 'output' is a tensor of shape `[2, 2]` with edit distances normalized
+  # by 'truth' lengths.
+  output ==> [[inf, 1.0],  # (0,0): no truth, (0,1): no hypothesis
+             [0.5, 1.0]]  # (1,0): addition, (1,1): no hypothesis
   ```
 
   Args:
