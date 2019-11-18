@@ -2741,13 +2741,15 @@ struct SubViewOpShapeFolder : public OpRewritePattern<SubViewOp> {
       dynamicDimPos++;
     }
 
-    // Compute new strides based on 'newShapeConstants'.
+    // Compute new strides based on 'baseStrides' and SubViewOp stride args.
+    SmallVector<Value *, 4> viewStrides(subViewOp.getDynamicStrides().begin(),
+                                        subViewOp.getDynamicStrides().end());
+    assert(viewStrides.size() == baseStrides.size());
     SmallVector<int64_t, 4> newSubViewStrides(rank);
-    newSubViewStrides[rank - 1] = 1;
-    for (int i = rank - 2; i >= 0; --i) {
-      assert(!ShapedType::isDynamic(newShapeConstants[i + 1]));
-      newSubViewStrides[i] =
-          newShapeConstants[i + 1] * newSubViewStrides[i + 1];
+    for (unsigned i = 0, e = viewStrides.size(); i < e; ++i) {
+      int64_t viewStride =
+          cast<ConstantIndexOp>(viewStrides[i]->getDefiningOp()).getValue();
+      newSubViewStrides[i] = baseStrides[i] * viewStride;
     }
 
     // Regenerate strided layout map with 'newSubViewStrides' and
