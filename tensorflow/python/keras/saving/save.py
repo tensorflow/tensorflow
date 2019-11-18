@@ -23,6 +23,7 @@ import os
 import six
 
 from tensorflow.python import tf2
+from tensorflow.python.keras.engine.network import _is_hdf5_filepath
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
@@ -35,9 +36,6 @@ try:
 except ImportError:
   h5py = None
 # pylint: enable=g-import-not-at-top
-
-_HDF5_EXTENSIONS = ['.h5', '.hdf5', '.keras']
-
 
 # TODO(kathywu): Remove this when Keras SavedModel is not experimental.
 _KERAS_SAVED_MODEL_STILL_EXPERIMENTAL = True
@@ -92,12 +90,42 @@ def save_model(model,
   """
   from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
 
-  default_format = 'tf' if tf2.enabled() else 'h5'
-  save_format = save_format or default_format
+  if type(filepath) != str and not isinstance(filepath, h5py.File):
+      raise ValueError(
+          'Expected `filepath` to be a String or `h5py.File` object. Got'
+          'unsupported value %s of type %s'
+          % (filepath, type(filepath)))
 
-  if (save_format == 'h5' or
-      (h5py is not None and isinstance(filepath, h5py.File)) or
-      os.path.splitext(filepath)[1] in _HDF5_EXTENSIONS):
+  filepath_is_h5py_file = h5py is not None and isinstance(filepath, h5py.File)
+  filepath_is_h5 = type(filepath) == str and _is_hdf5_filepath(filepath)
+  if save_format is None:
+    if (filepath_is_h5 or
+        (filepath_is_h5py_file)):
+      save_format = 'h5'
+    else:
+      save_format = 'tf' if tf2.enabled() else 'h5'
+  else:
+    user_format = save_format.lower().strip()
+    if user_format in ('tensorflow', 'tf'):
+      save_format = 'tf'
+    elif user_format in ('hdf5', 'h5', 'keras'):
+      save_format = 'h5'
+    else:
+      raise ValueError(
+          'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
+          save_format,))
+  if save_format == 'tf' and filepath_is_h5:
+    raise ValueError(
+      ('`save` got save_format="tf"/"tensorflow", but the '
+       'filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras" '
+       'when saving in TensorFlow format.')
+      % filepath)
+  if save_format == 'tf' and filepath_is_h5py_file:
+    raise ValueError(
+        '`save` got save_format="tf"/"tensorflow", but the given `filepath`'
+        'is an `h5py.File` object.')
+
+  if save_format == 'h5':
     # TODO(b/130258301): add utility method for detecting model type.
     if (not model._is_graph_network and  # pylint:disable=protected-access
         not isinstance(model, sequential.Sequential)):
