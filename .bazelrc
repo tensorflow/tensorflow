@@ -279,7 +279,7 @@ build:rbe --flaky_test_attempts=3
 build:rbe --jobs=200
 build:rbe --remote_executor=grpcs://remotebuildexecution.googleapis.com
 build:rbe --remote_timeout=3600
-build:rbe --spawn_strategy=remote,worker,sandboxed,local
+build:rbe --spawn_strategy=remote,worker,standalone,local
 test:rbe --test_env=USER=anon
 
 build:rbe --distinct_host_configuration=false
