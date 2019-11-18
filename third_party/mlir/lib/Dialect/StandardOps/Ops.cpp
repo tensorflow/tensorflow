@@ -35,6 +35,9 @@
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/raw_ostream.h"
 
+// Pull in all enum type definitions and utility function declarations.
+#include "mlir/Dialect/StandardOps/OpsEnums.cpp.inc"
+
 using namespace mlir;
 
 //===----------------------------------------------------------------------===//
@@ -699,43 +702,6 @@ static Type getI1SameShape(Builder *build, Type type) {
 // CmpIOp
 //===----------------------------------------------------------------------===//
 
-// Returns an array of mnemonics for CmpIPredicates indexed by values thereof.
-static inline const char *const *getCmpIPredicateNames() {
-  static const char *predicateNames[]{
-      /*EQ*/ "eq",
-      /*NE*/ "ne",
-      /*SLT*/ "slt",
-      /*SLE*/ "sle",
-      /*SGT*/ "sgt",
-      /*SGE*/ "sge",
-      /*ULT*/ "ult",
-      /*ULE*/ "ule",
-      /*UGT*/ "ugt",
-      /*UGE*/ "uge",
-  };
-  static_assert(std::extent<decltype(predicateNames)>::value ==
-                    (size_t)CmpIPredicate::NumPredicates,
-                "wrong number of predicate names");
-  return predicateNames;
-}
-
-// Returns a value of the predicate corresponding to the given mnemonic.
-// Returns NumPredicates (one-past-end) if there is no such mnemonic.
-CmpIPredicate CmpIOp::getPredicateByName(StringRef name) {
-  return llvm::StringSwitch<CmpIPredicate>(name)
-      .Case("eq", CmpIPredicate::EQ)
-      .Case("ne", CmpIPredicate::NE)
-      .Case("slt", CmpIPredicate::SLT)
-      .Case("sle", CmpIPredicate::SLE)
-      .Case("sgt", CmpIPredicate::SGT)
-      .Case("sge", CmpIPredicate::SGE)
-      .Case("ult", CmpIPredicate::ULT)
-      .Case("ule", CmpIPredicate::ULE)
-      .Case("ugt", CmpIPredicate::UGT)
-      .Case("uge", CmpIPredicate::UGE)
-      .Default(CmpIPredicate::NumPredicates);
-}
-
 static void buildCmpIOp(Builder *build, OperationState &result,
                         CmpIPredicate predicate, Value *lhs, Value *rhs) {
   result.addOperands({lhs, rhs});
@@ -763,8 +729,8 @@ static ParseResult parseCmpIOp(OpAsmParser &parser, OperationState &result) {
 
   // Rewrite string attribute to an enum value.
   StringRef predicateName = predicateNameAttr.cast<StringAttr>().getValue();
-  auto predicate = CmpIOp::getPredicateByName(predicateName);
-  if (predicate == CmpIPredicate::NumPredicates)
+  Optional<CmpIPredicate> predicate = symbolizeCmpIPredicate(predicateName);
+  if (!predicate.hasValue())
     return parser.emitError(parser.getNameLoc())
            << "unknown comparison predicate \"" << predicateName << "\"";
 
@@ -774,7 +740,7 @@ static ParseResult parseCmpIOp(OpAsmParser &parser, OperationState &result) {
     return parser.emitError(parser.getNameLoc(),
                             "expected type with valid i1 shape");
 
-  attrs[0].second = builder.getI64IntegerAttr(static_cast<int64_t>(predicate));
+  attrs[0].second = builder.getI64IntegerAttr(static_cast<int64_t>(*predicate));
   result.attributes = attrs;
 
   result.addTypes({i1Type});
@@ -784,15 +750,11 @@ static ParseResult parseCmpIOp(OpAsmParser &parser, OperationState &result) {
 static void print(OpAsmPrinter &p, CmpIOp op) {
   p << "cmpi ";
 
+  Builder b(op.getContext());
   auto predicateValue =
       op.getAttrOfType<IntegerAttr>(CmpIOp::getPredicateAttrName()).getInt();
-  assert(predicateValue >= static_cast<int>(CmpIPredicate::FirstValidValue) &&
-         predicateValue < static_cast<int>(CmpIPredicate::NumPredicates) &&
-         "unknown predicate index");
-  Builder b(op.getContext());
-  auto predicateStringAttr =
-      b.getStringAttr(getCmpIPredicateNames()[predicateValue]);
-  p.printAttribute(predicateStringAttr);
+  p << '"' << stringifyCmpIPredicate(static_cast<CmpIPredicate>(predicateValue))
+    << '"';
 
   p << ", ";
   p.printOperand(op.lhs());
@@ -803,43 +765,30 @@ static void print(OpAsmPrinter &p, CmpIOp op) {
   p << " : " << op.lhs()->getType();
 }
 
-static LogicalResult verify(CmpIOp op) {
-  auto predicateAttr =
-      op.getAttrOfType<IntegerAttr>(CmpIOp::getPredicateAttrName());
-  if (!predicateAttr)
-    return op.emitOpError("requires an integer attribute named 'predicate'");
-  auto predicate = predicateAttr.getInt();
-  if (predicate < (int64_t)CmpIPredicate::FirstValidValue ||
-      predicate >= (int64_t)CmpIPredicate::NumPredicates)
-    return op.emitOpError("'predicate' attribute value out of range");
-
-  return success();
-}
-
 // Compute `lhs` `pred` `rhs`, where `pred` is one of the known integer
 // comparison predicates.
 static bool applyCmpPredicate(CmpIPredicate predicate, const APInt &lhs,
                               const APInt &rhs) {
   switch (predicate) {
-  case CmpIPredicate::EQ:
+  case CmpIPredicate::eq:
     return lhs.eq(rhs);
-  case CmpIPredicate::NE:
+  case CmpIPredicate::ne:
     return lhs.ne(rhs);
-  case CmpIPredicate::SLT:
+  case CmpIPredicate::slt:
     return lhs.slt(rhs);
-  case CmpIPredicate::SLE:
+  case CmpIPredicate::sle:
     return lhs.sle(rhs);
-  case CmpIPredicate::SGT:
+  case CmpIPredicate::sgt:
     return lhs.sgt(rhs);
-  case CmpIPredicate::SGE:
+  case CmpIPredicate::sge:
     return lhs.sge(rhs);
-  case CmpIPredicate::ULT:
+  case CmpIPredicate::ult:
     return lhs.ult(rhs);
-  case CmpIPredicate::ULE:
+  case CmpIPredicate::ule:
     return lhs.ule(rhs);
-  case CmpIPredicate::UGT:
+  case CmpIPredicate::ugt:
     return lhs.ugt(rhs);
-  case CmpIPredicate::UGE:
+  case CmpIPredicate::uge:
     return lhs.uge(rhs);
   default:
     llvm_unreachable("unknown comparison predicate");
@@ -1398,7 +1347,7 @@ static LogicalResult verify(DimOp op) {
 
 OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
   // Constant fold dim when the size along the index referred to is a constant.
-  auto opType = getOperand()->getType();
+  auto opType = memrefOrTensor()->getType();
   int64_t indexSize = -1;
   if (auto tensorType = opType.dyn_cast<RankedTensorType>())
     indexSize = tensorType.getShape()[getIndex()];
@@ -1407,6 +1356,14 @@ OpFoldResult DimOp::fold(ArrayRef<Attribute> operands) {
 
   if (indexSize >= 0)
     return IntegerAttr::get(IndexType::get(getContext()), indexSize);
+
+  // Fold dim to the size argument of a SubViewOp.
+  auto memref = memrefOrTensor()->getDefiningOp();
+  if (auto subview = dyn_cast_or_null<SubViewOp>(memref)) {
+    auto sizes = subview.getDynamicSizes();
+    if (!sizes.empty())
+      return *(sizes.begin() + getIndex());
+  }
 
   return {};
 }
@@ -2533,11 +2490,11 @@ struct ViewOpShapeFolder : public OpRewritePattern<ViewOp> {
            dynamicOffsetOperandCount + newMemRefType.getNumDynamicDims());
 
     // Create new ViewOp.
-    auto newShapeCastOp = rewriter.create<ViewOp>(
-        viewOp.getLoc(), newMemRefType, viewOp.getOperand(0), newOperands);
+    auto newViewOp = rewriter.create<ViewOp>(viewOp.getLoc(), newMemRefType,
+                                             viewOp.getOperand(0), newOperands);
     // Insert a cast so we have the same type as the old memref type.
     rewriter.replaceOpWithNewOp<MemRefCastOp>(droppedOperands, viewOp,
-                                              newShapeCastOp, viewOp.getType());
+                                              newViewOp, viewOp.getType());
     return matchSuccess();
   }
 };
@@ -2658,7 +2615,8 @@ static LogicalResult verify(SubViewOp op) {
            << subViewType;
 
   // Verify that the subview layout map has a dynamic offset.
-  if (subViewOffset != MemRefType::getDynamicStrideOrOffset())
+  if (op.getNumOperands() > 1 &&
+      subViewOffset != MemRefType::getDynamicStrideOrOffset())
     return op.emitError("subview memref layout map must specify a dynamic "
                         "offset for type ")
            << subViewType;
@@ -2686,6 +2644,162 @@ SmallVector<SubViewOp::Range, 8> SubViewOp::getRanges() {
                            *(getDynamicSizes().begin() + i),
                            *(getDynamicStrides().begin() + i)});
   return res;
+}
+
+static bool hasConstantOffsetSizesAndStrides(MemRefType memrefType) {
+  if (memrefType.getNumDynamicDims() > 0)
+    return false;
+  // Get offset and strides.
+  int64_t offset;
+  llvm::SmallVector<int64_t, 4> strides;
+  if (failed(getStridesAndOffset(memrefType, strides, offset)))
+    return false;
+  // Return 'false' if any of offset or strides is dynamic.
+  if (offset == MemRefType::getDynamicStrideOrOffset() ||
+      llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset()))
+    return false;
+  return true;
+}
+
+namespace {
+
+struct SubViewOpShapeFolder : public OpRewritePattern<SubViewOp> {
+  using OpRewritePattern<SubViewOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(SubViewOp subViewOp,
+                                     PatternRewriter &rewriter) const override {
+    // Get base memref type.
+    auto baseMemrefType = subViewOp.getBaseMemRefType();
+    if (baseMemrefType.getAffineMaps().size() != 1)
+      return matchFailure();
+    auto baseMap = baseMemrefType.getAffineMaps()[0];
+
+    // Get base memref offsets and strides.
+    int64_t baseOffset;
+    llvm::SmallVector<int64_t, 4> baseStrides;
+    if (failed(getStridesAndOffset(baseMemrefType, baseStrides, baseOffset)))
+      return matchFailure();
+
+    // Keep it simple for now: return if any of the base memrefs offset, sizes
+    // or strides is dynamic.
+    if (baseOffset == MemRefType::getDynamicStrideOrOffset() ||
+        baseMemrefType.getNumDynamicDims() > 0 ||
+        llvm::is_contained(baseStrides, MemRefType::getDynamicStrideOrOffset()))
+      return matchFailure();
+
+    // Get subView memref type.
+    auto subViewMemrefType = subViewOp.getType();
+    if (subViewMemrefType.getAffineMaps().size() != 1)
+      return matchFailure();
+    auto subViewMap = subViewMemrefType.getAffineMaps()[0];
+
+    // Return if the subViewOp has already been constant folded.
+    if (subViewOp.getNumOperands() == 1) {
+      assert(hasConstantOffsetSizesAndStrides(subViewMemrefType));
+      return matchFailure();
+    }
+
+    // Keep it simple for now: return if any view memref operands are dynamic.
+    SmallVector<Value *, 4> operands(subViewOp.getOperands().begin(),
+                                     subViewOp.getOperands().end());
+    ArrayRef<Value *> operandsRef(operands);
+    if (llvm::any_of(operandsRef.drop_front(), [](Value *operand) {
+          return !matchPattern(operand, m_ConstantIndex());
+        }))
+      return matchFailure();
+
+    // Compute new subview offset based on base memref strides.
+    int64_t newSubViewOffset = baseOffset;
+    SmallVector<Value *, 4> offsets(subViewOp.getDynamicOffsets().begin(),
+                                    subViewOp.getDynamicOffsets().end());
+    assert(offsets.size() == baseStrides.size());
+    for (unsigned i = 0, e = offsets.size(); i < e; ++i) {
+      auto constantOffsetOp =
+          cast<ConstantIndexOp>(offsets[i]->getDefiningOp());
+      newSubViewOffset += constantOffsetOp.getValue() * baseStrides[i];
+    }
+
+    // Fold any dynamic dim operands which are produced by a constant.
+    SmallVector<int64_t, 4> newShapeConstants;
+    newShapeConstants.reserve(subViewMemrefType.getRank());
+
+    unsigned dynamicDimPos = 1 + subViewMemrefType.getRank();
+    unsigned rank = subViewMemrefType.getRank();
+    for (unsigned dim = 0, e = rank; dim < e; ++dim) {
+      int64_t dimSize = subViewMemrefType.getDimSize(dim);
+      // SubViewOp shape folding currently folds everything or nothing, so we
+      // expect all dynamic sizes at this point.
+      assert(ShapedType::isDynamic(dimSize));
+      (void)dimSize;
+
+      auto *defOp = subViewOp.getOperand(dynamicDimPos)->getDefiningOp();
+      assert(defOp != nullptr);
+      assert(isa<ConstantIndexOp>(defOp));
+      auto constantSizeOp = cast<ConstantIndexOp>(defOp);
+      // Dynamic shape dimension will be folded.
+      newShapeConstants.push_back(constantSizeOp.getValue());
+      dynamicDimPos++;
+    }
+
+    // Compute new strides based on 'newShapeConstants'.
+    SmallVector<int64_t, 4> newSubViewStrides(rank);
+    newSubViewStrides[rank - 1] = 1;
+    for (int i = rank - 2; i >= 0; --i) {
+      assert(!ShapedType::isDynamic(newShapeConstants[i + 1]));
+      newSubViewStrides[i] =
+          newShapeConstants[i + 1] * newSubViewStrides[i + 1];
+    }
+
+    // Regenerate strided layout map with 'newSubViewStrides' and
+    // 'newSubViewOffset'.
+    subViewMap = makeStridedLinearLayoutMap(newSubViewStrides, newSubViewOffset,
+                                            rewriter.getContext());
+
+    // Create new memref type with constant folded dims and/or offset/strides.
+    auto newMemRefType =
+        MemRefType::get(newShapeConstants, subViewMemrefType.getElementType(),
+                        {subViewMap}, subViewMemrefType.getMemorySpace());
+
+    // Create new SubViewOp.
+    auto newSubViewOp = rewriter.create<SubViewOp>(
+        subViewOp.getLoc(), newMemRefType, subViewOp.getOperand(0));
+    // Insert a cast so we have the same type as the old memref type.
+    rewriter.replaceOpWithNewOp<MemRefCastOp>(
+        operandsRef.drop_front(), subViewOp, newSubViewOp, subViewOp.getType());
+    return matchSuccess();
+  }
+};
+
+} // end anonymous namespace
+
+SubViewOp::operand_range SubViewOp::getDynamicOffsets() {
+  if (hasConstantOffsetSizesAndStrides(getBaseMemRefType()) &&
+      hasConstantOffsetSizesAndStrides(getType()))
+    return {operand_end(), operand_end()};
+  return {operand_begin() + 1, operand_begin() + 1 + getType().getRank()};
+}
+
+SubViewOp::operand_range SubViewOp::getDynamicSizes() {
+  if (hasConstantOffsetSizesAndStrides(getBaseMemRefType()) &&
+      hasConstantOffsetSizesAndStrides(getType()))
+    return {operand_end(), operand_end()};
+  unsigned sizesOperandsStart = 1 + getType().getRank();
+  return {operand_begin() + sizesOperandsStart,
+          operand_begin() + sizesOperandsStart + getType().getRank()};
+}
+
+SubViewOp::operand_range SubViewOp::getDynamicStrides() {
+  if (hasConstantOffsetSizesAndStrides(getBaseMemRefType()) &&
+      hasConstantOffsetSizesAndStrides(getType()))
+    return {operand_end(), operand_end()};
+  unsigned stridesOperandsStart = 1 + 2 * getType().getRank();
+  return {operand_begin() + stridesOperandsStart,
+          operand_begin() + stridesOperandsStart + getType().getRank()};
+}
+
+void SubViewOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                            MLIRContext *context) {
+  results.insert<SubViewOpShapeFolder>(context);
 }
 
 //===----------------------------------------------------------------------===//

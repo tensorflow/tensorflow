@@ -17,6 +17,7 @@ target_link_libraries(MLIRMlirOptLib ${LIB_LIBS})
 
 set(LIBS
   MLIRAffineOps
+  MLIRAffineToStandard
   MLIRLoopsToGPU
   MLIRAnalysis
   MLIRLoopToStandard
@@ -37,7 +38,7 @@ set(LIBS
   MLIRQuantOps
   MLIRROCDLIR
   MLIRSPIRV
-  MLIRSPIRVConversion
+  MLIRStandardToSPIRVTransforms
   MLIRSPIRVTransforms
   MLIRStandardOps
   MLIRStandardToLLVM

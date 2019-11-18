@@ -2526,8 +2526,8 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds,
-                              bool use_make_callable) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
+                              int inter_op_threads) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());
@@ -2561,6 +2561,7 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
   GraphDef gd;
   g.ToGraphDef(&gd);
   SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(inter_op_threads);
   std::unique_ptr<Session> session(NewSession(opts));
   TF_CHECK_OK(session->Create(gd));
   if (use_make_callable) {
@@ -2604,14 +2605,21 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
 }
 
 void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+                           /* inter_op_threads */ 0);
 }
 void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ 0);
+}
+void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1);
 }
 
 BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThread)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 
 }  // namespace
 

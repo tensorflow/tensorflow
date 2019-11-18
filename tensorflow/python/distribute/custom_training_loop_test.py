@@ -37,7 +37,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu,
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
   def testFullEager(self, distribution):
@@ -56,7 +56,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu,
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
   def testStepInFunction(self, distribution):
@@ -76,8 +76,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu +
-          [strategy_combinations.tpu_strategy_one_step],
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
   def testRunInFunction(self, distribution):
@@ -100,8 +99,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu +
-          [strategy_combinations.tpu_strategy_one_step],
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
   def testRunInFunctionAutoGraphApplication(self, distribution):
@@ -126,7 +124,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu,
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
   def testDatasetIterationInFunction(self, distribution):
@@ -168,8 +166,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu +
-          [strategy_combinations.tpu_strategy_one_step],
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
   def testIterationInsideFunction(self, distribution):
@@ -197,8 +194,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu +
-          [strategy_combinations.tpu_strategy_one_step],
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
   def testIterationOutsideFunction(self, distribution):
@@ -246,8 +242,7 @@ class GradientTapeTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.strategies_minus_tpu +
-          [strategy_combinations.tpu_strategy_one_step],
+          distribution=strategy_combinations.all_strategies,
           mode=["eager"],
           model_in_tf_function=[True, False]
       ))

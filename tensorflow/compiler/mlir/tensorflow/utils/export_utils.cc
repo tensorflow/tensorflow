@@ -434,4 +434,24 @@ Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
   return Status::OK();
 }
 
+Status SetSizeAttribute(absl::string_view name, size_t size,
+                        AttrValueMap* values) {
+  AttrValue value;
+  value.set_i(size);
+
+  auto result = values->insert({string(name), value});
+  if (!result.second) {
+    // This should be extremely rare as it means we are adding the same
+    // attribute multiple times/have some redundancy in representing this
+    // attribute.
+    int64 actual_size = result.first->second.i();
+    // Just check via string output as we shouldn't get here and if we do they
+    // should be trivially the same, else fail.
+    if (actual_size != size)
+      return errors::InvalidArgument("Expected '", name, "' attribute to be ",
+                                     size, " but found ", actual_size);
+  }
+  return Status::OK();
+}
+
 }  // namespace tensorflow

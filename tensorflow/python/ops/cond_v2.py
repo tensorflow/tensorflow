@@ -625,6 +625,7 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
   ]
   outs_per_branch = [len(outs) for outs in branch_outputs_flat_with_composites]
   assert len(set(outs_per_branch)) == 1, outs_per_branch
+  num_none_outputs = 0
   # Store indices of IndexedSlices.indices in `indexed_slice_indices`.
   for output_idx, branch_outs in enumerate(
       zip(*branch_outputs_flat_with_composites)):
@@ -641,11 +642,15 @@ def _make_indexed_slices_indices_types_match(op_type, branch_graphs):
       current_index += len(nest.flatten(branch_outs[0], expand_composites=True))
     else:
       current_index += 1
+    if branch_outs[0] is None:
+      num_none_outputs += 1
 
   if not indexed_slice_indices:
     return
 
-  if current_index != len(branch_graphs[0].outputs):
+  # `FuncGraph.outputs` is the flattened `FuncGraph.structured_outputs` minus
+  # the Nones.
+  if current_index != len(branch_graphs[0].outputs) + num_none_outputs:
     raise ValueError("Insufficient elements in branch_graphs[0].outputs.\n"
                      "Expected: %i\n"
                      "Actual: %i" %

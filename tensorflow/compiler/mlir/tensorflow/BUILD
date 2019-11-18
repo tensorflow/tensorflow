@@ -230,6 +230,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":bridge_logger",
         ":convert_tensor",
         ":convert_type",
         ":device_util",
@@ -772,6 +773,7 @@ cc_library(
     hdrs = ["utils/compile_mlir_util.h"],
     deps = [
         ":convert_type",
+        ":dump_mlir_util",
         ":error_util",
         ":tensorflow_passes",
         ":tf_dialect_passes",
@@ -782,6 +784,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
         "@llvm//:support",
@@ -943,5 +947,17 @@ tf_cc_test(
         "//tensorflow/core/platform:test",
         "@llvm//:support",
         "@local_config_mlir//:IR",
+    ],
+)
+
+cc_library(
+    name = "bridge_logger",
+    srcs = ["utils/bridge_logger.cc"],
+    hdrs = ["utils/bridge_logger.h"],
+    deps = [
+        ":dump_mlir_util",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
     ],
 )

@@ -1183,6 +1183,12 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
+  LOG(INFO) << "Linked TensorRT version: " << NV_TENSORRT_MAJOR << "."
+            << NV_TENSORRT_MINOR << "." << NV_TENSORRT_PATCH;
+  const int loaded_version = getInferLibVersion();
+  LOG(INFO) << "Loaded TensorRT version: " << loaded_version / 1000 << "."
+            << (loaded_version / 100) % 10 << "." << loaded_version % 100;
+
   plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
     LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "

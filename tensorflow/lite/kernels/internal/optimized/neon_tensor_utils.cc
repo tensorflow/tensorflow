@@ -1940,8 +1940,7 @@ void NeonClipVector(const float* vector, int v_size, float abs_limit,
   }
   // Postamble loop.
   for (; v < v_size; v++) {
-    result[v] = (abs_limit < vector[v]) ? abs_limit : vector[v];
-    result[v] = (-abs_limit > result[v]) ? -abs_limit : result[v];
+    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
   }
 }
 

@@ -501,5 +501,4 @@ std::unique_ptr<OpPassBase<ModuleOp>> mlir::createLowerGpuOpsToNVVMOpsPass() {
 }
 
 static PassRegistration<LowerGpuOpsToNVVMOpsPass>
-    pass("lower-gpu-ops-to-nvvm-ops",
-         "Generate NVVM operations for gpu operations");
+    pass("convert-gpu-to-nvvm", "Generate NVVM operations for gpu operations");

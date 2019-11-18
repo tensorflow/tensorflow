@@ -46,6 +46,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+// Propagates the pass manager with the passes involved in transforming or
+// optimizing an MLIR graph without any target specialization.
+// NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
+void CreateTFStandardPipeline(OpPassManager& pm);
 }  // namespace TF
 
 namespace TFControlFlow {

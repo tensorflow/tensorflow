@@ -251,7 +251,7 @@ class TextFileLineIterator
   TF_DISALLOW_COPY_AND_ASSIGN(TextFileLineIterator);
 };
 
-Status GetTableHandle(const string& input_name, OpKernelContext* ctx,
+Status GetTableHandle(StringPiece input_name, OpKernelContext* ctx,
                       string* container, string* table_handle) {
   {
     mutex* mu;
@@ -273,25 +273,35 @@ Status GetTableHandle(const string& input_name, OpKernelContext* ctx,
 
 }  // namespace
 
-Status GetLookupTable(const string& input_name, OpKernelContext* ctx,
-                      LookupInterface** table) {
+Status GetResourceLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                              LookupInterface** table) {
+  const Tensor* handle_tensor;
+  TF_RETURN_IF_ERROR(ctx->input(input_name, &handle_tensor));
+  const ResourceHandle& handle = handle_tensor->scalar<ResourceHandle>()();
+  return LookupResource(ctx, handle, table);
+}
+
+Status GetReferenceLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                               LookupInterface** table) {
   string container;
   string table_handle;
+  TF_RETURN_IF_ERROR(
+      GetTableHandle(input_name, ctx, &container, &table_handle));
+  return ctx->resource_manager()->Lookup(container, table_handle, table);
+}
+
+Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                      LookupInterface** table) {
   DataType handle_dtype;
   TF_RETURN_IF_ERROR(ctx->input_dtype(input_name, &handle_dtype));
   if (handle_dtype == DT_RESOURCE) {
-    ResourceHandle handle;
-    TF_RETURN_IF_ERROR(HandleFromInput(ctx, input_name, &handle));
-    return LookupResource(ctx, handle, table);
+    return GetResourceLookupTable(input_name, ctx, table);
   } else {
-    TF_RETURN_IF_ERROR(
-        GetTableHandle(input_name, ctx, &container, &table_handle));
-    return ctx->resource_manager()->Lookup(container, table_handle, table);
+    return GetReferenceLookupTable(input_name, ctx, table);
   }
 }
 
-Status GetInitializableLookupTable(const string& input_name,
-                                   OpKernelContext* ctx,
+Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
                                    InitializableLookupTable** table) {
   LookupInterface* lookup_table;
   DataType handle_dtype;

@@ -331,6 +331,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               ConvertDimensions(instruction->slice_strides()))
           .getOperation();
     }
+    case HloOpcode::kConditional: {
+      llvm::SmallVector<Type, 4> rets;
+      TF_RETURN_IF_ERROR(GetMlirTypes(
+          {instruction->true_computation()->root_instruction()}, &rets));
+
+      auto op = func_builder->create<mlir::xla_hlo::ConditionalOp>(
+          loc, rets, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportComputation(instruction->true_computation(),
+                                           &op.true_branch()));
+      TF_RETURN_IF_ERROR(ImportComputation(instruction->false_computation(),
+                                           &op.false_branch()));
+      return op.getOperation();
+    }
     case HloOpcode::kConcatenate: {
       // TODO(b/132057942): Support taking an uint64_t instead of an IntegerAttr
       // for concatenate dimension.
@@ -360,14 +373,8 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           .getOperation();
     }
     case HloOpcode::kWhile: {
-      llvm::SmallVector<Type, 4> types;
-      types.reserve(operands.size());
-      for (auto operand : operands) {
-        types.push_back(operand->getType());
-      }
-
-      auto op =
-          func_builder->create<mlir::xla_hlo::WhileOp>(loc, types, operands);
+      auto op = func_builder->create<mlir::xla_hlo::WhileOp>(
+          loc, operands[0]->getType(), operands[0]);
       TF_RETURN_IF_ERROR(
           ImportComputation(instruction->while_condition(), &op.cond()));
       TF_RETURN_IF_ERROR(

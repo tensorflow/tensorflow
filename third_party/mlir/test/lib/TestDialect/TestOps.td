@@ -468,6 +468,30 @@ def OpInterleavedOperandAttribute2 : TEST_Op<"interleaved_operand_attr2"> {
   );
 }
 
+def ManyArgsOp : TEST_Op<"many_arguments"> {
+  let arguments = (ins
+    I32:$input1, I32:$input2, I32:$input3, I32:$input4, I32:$input5,
+    I32:$input6, I32:$input7, I32:$input8, I32:$input9,
+    I64Attr:$attr1, I64Attr:$attr2, I64Attr:$attr3, I64Attr:$attr4,
+    I64Attr:$attr5, I64Attr:$attr6, I64Attr:$attr7, I64Attr:$attr8,
+    I64Attr:$attr9
+  );
+}
+
+// Test that DRR does not blow up when seeing lots of arguments.
+def : Pat<(ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "42">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9),
+          (ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "24">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9)>;
+
 // Test that we can capture and reference interleaved operands and attributes.
 def : Pat<(OpInterleavedOperandAttribute1 $input1, $attr1, $input2, $attr2),
           (OpInterleavedOperandAttribute2 $input1, $attr1, $input2, $attr2)>;

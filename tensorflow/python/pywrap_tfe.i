@@ -26,7 +26,7 @@ limitations under the License.
 %include "tensorflow/c/tf_datatype.h"
 %include "tensorflow/c/tf_status.h"
 
-%ignore "";
+%ignoreall;
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
 %rename("%s") TF_SetTfXlaCpuGlobalJit;
@@ -511,3 +511,5 @@ static PyObject* TFE_ClearScalarCache();
 %typemap(freearg) (TF_Status* out_status);
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status);
 %typemap(in) (const void* proto);
+
+%unignoreall

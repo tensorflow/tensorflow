@@ -78,6 +78,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
 
+  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
+  }
+
   // The ophint extractions happen before lots of other passes:
   // The assumption of ophint-extraction is each ophinted region is a black-box
   // and nodes within this black-box is NOT connected to the nodes OUTSIDE the

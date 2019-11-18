@@ -1,5 +1,5 @@
 load("//tensorflow/core/platform:default/build_config.bzl", "pyx_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps", "xla_python_default_plugins")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_py_test_deps")
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_test")
 
@@ -246,6 +246,11 @@ py_test(
     ] + xla_py_test_deps(),
 )
 
+config_setting(
+    name = "enable_gpu",
+    values = {"define": "xla_python_enable_gpu=true"},
+)
+
 pybind_extension(
     name = "xla_extension",
     srcs = [
@@ -307,5 +312,8 @@ pybind_extension(
         # not require Tensorflow.
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/stream_executor:device_memory_allocator",
-    ] + xla_python_default_plugins(),
+    ] + select({
+        ":enable_gpu": ["//tensorflow/compiler/xla/service:gpu_plugin"],
+        "//conditions:default": [],
+    }),
 )

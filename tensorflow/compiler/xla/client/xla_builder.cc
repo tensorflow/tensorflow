@@ -2852,6 +2852,10 @@ XlaOp BroadcastInDim(const XlaOp operand,
                                            broadcast_dimensions);
 }
 
+XlaOp Copy(const XlaOp operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kCopy, operand);
+}
+
 XlaOp Pad(const XlaOp operand, const XlaOp padding_value,
           const PaddingConfig& padding_config) {
   return operand.builder()->Pad(operand, padding_value, padding_config);

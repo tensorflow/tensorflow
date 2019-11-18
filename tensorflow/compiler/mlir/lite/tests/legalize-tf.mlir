@@ -630,7 +630,7 @@ func @addV2(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
 }
 
 func @addN(%arg0: tensor<2x3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  %0 = "tf.AddN"(%arg0, %arg1, %arg2) {N = 3 : i64} : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 
 // CHECK-LABEL: addN
@@ -684,6 +684,39 @@ func @matrix_diag_v2(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 
 // CHECK-LABEL:   func @matrix_diag_v2(
 // CHECK-SAME:                         [[VAL_5:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_6:%.*]] = "tfl.matrix_diag"([[VAL_5]]) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
+}
+
+func @matrix_diag_v3_no_match(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  // this should have been 0.
+  %0 = constant dense<[1]> : tensor<1xi32>
+
+  %1 = constant dense<[-1]> : tensor<1xi32>
+  %2 = constant dense<[-1]> : tensor<1xi32>
+  %3 = constant dense<[0, 0]> : tensor<2xi32>
+  %4 = "tf.MatrixDiagV3"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v3_no_match(
+// CHECK-SAME:      [[VAL_0:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+// CHECK:           [[VAL_1:%.*]] = constant dense<1> : tensor<1xi32>
+// CHECK:           [[VAL_2:%.*]] = constant dense<-1> : tensor<1xi32>
+// CHECK:           [[VAL_3:%.*]] = constant dense<0> : tensor<2xi32>
+// CHECK:           [[VAL_4:%.*]] = "tf.MatrixDiagV3"([[VAL_0]], [[VAL_1]], [[VAL_2]], [[VAL_2]], [[VAL_3]]) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+// CHECK:           return [[VAL_4]] : tensor<8x16x16xf32>
+}
+
+func @matrix_diag_v3(%arg0: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
+  %0 = constant dense<[0]> : tensor<1xi32>
+  %1 = constant dense<[-1]> : tensor<1xi32>
+  %2 = constant dense<[-1]> : tensor<1xi32>
+  %3 = constant dense<[0, 0]> : tensor<2xi32>
+  %4 = "tf.MatrixDiagV3"(%arg0, %0, %1, %2, %3) : (tensor<8x16xf32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>, tensor<2xi32>) -> tensor<8x16x16xf32>
+  return %4 : tensor<8x16x16xf32>
+
+// CHECK-LABEL:   func @matrix_diag_v3(
+// CHECK-SAME:      [[VAL_5:%.*]]: tensor<8x16xf32>) -> tensor<8x16x16xf32> {
 // CHECK:           [[VAL_6:%.*]] = "tfl.matrix_diag"([[VAL_5]]) : (tensor<8x16xf32>) -> tensor<8x16x16xf32>
 // CHECK:           return [[VAL_6]] : tensor<8x16x16xf32>
 }
@@ -763,7 +796,7 @@ func @padv2(tensor<2x1x3xf32>, tensor<3x2xi32>) -> tensor<? x f32> {
 }
 
 func @pack2Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2x2xi32> {
-  %0 = "tf.Pack"(%arg0, %arg1) {N = 2 : i64} : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
+  %0 = "tf.Pack"(%arg0, %arg1) : (tensor<2xi32>, tensor<2xi32>) -> tensor<2x2xi32>
   return %0 : tensor<2x2xi32>
 
 // CHECK-LABEL: pack2Tensors
@@ -771,7 +804,7 @@ func @pack2Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>) -> tensor<2x2xi32
 }
 
 func @pack3Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2xi32>) -> tensor<2x3xi32> {
-  %0 = "tf.Pack"(%arg0, %arg1, %arg2) {N = 3 : i64, axis = 1 : i64} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+  %0 = "tf.Pack"(%arg0, %arg1, %arg2) {axis = 1 : i64} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 
 // CHECK-LABEL: pack3Tensors
@@ -779,7 +812,7 @@ func @pack3Tensors(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2x
 }
 
 func @packNegAxis(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2xi32>) -> tensor<2x3xi32> {
-  %0 = "tf.Pack"(%arg0, %arg1, %arg2) {N = 3 : i64, axis = -1 : i64} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
+  %0 = "tf.Pack"(%arg0, %arg1, %arg2) {axis = -1 : i64} : (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 
 // CHECK-LABEL: packNegAxis
@@ -787,7 +820,7 @@ func @packNegAxis(%arg0: tensor<2xi32>, %arg1: tensor<2xi32>, %arg2 : tensor<2xi
 }
 
 func @unpack2Tensors(%arg0: tensor<2x2xi32>) -> tensor<2xi32> {
-  %0:2 = "tf.Unpack"(%arg0) {num = 2 : i64} : (tensor<2x2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
+  %0:2 = "tf.Unpack"(%arg0) : (tensor<2x2xi32>) -> (tensor<2xi32>, tensor<2xi32>)
   return %0#0 : tensor<2xi32>
 
 // CHECK-LABEL: unpack2Tensors
@@ -795,7 +828,7 @@ func @unpack2Tensors(%arg0: tensor<2x2xi32>) -> tensor<2xi32> {
 }
 
 func @unpack3Tensors(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
-  %0:3 = "tf.Unpack"(%arg0) {num = 3 : i64, axis = 1 : i64} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
+  %0:3 = "tf.Unpack"(%arg0) {axis = 1 : i64} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   return %0#0 : tensor<2xi32>
 
 // CHECK-LABEL: unpack3Tensors
@@ -803,7 +836,7 @@ func @unpack3Tensors(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
 }
 
 func @unpackNegAxis(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
-  %0:3 = "tf.Unpack"(%arg0) {num = 3 : i64, axis = -1 : i64} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
+  %0:3 = "tf.Unpack"(%arg0) {axis = -1 : i64} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   return %0#0 : tensor<2xi32>
 
 // CHECK-LABEL: unpackNegAxis
@@ -905,7 +938,7 @@ func @space_to_batch_nd(%arg0: tensor<1x4x4x3xf32>, %arg1: tensor<2xi32>, %arg2:
 }
 
 func @split(%arg0: tensor<i32>, %arg1: tensor<1x4x3x3xf32>) -> tensor<1x4x3xf32> {
-  %0:3 = "tf.Split"(%arg0, %arg1) {num_split = 3 : i64} : (tensor<i32>, tensor<1x4x3x3xf32>) -> (tensor<1x4x3xf32>, tensor<1x4x3xf32>, tensor<1x4x3xf32>)
+  %0:3 = "tf.Split"(%arg0, %arg1) : (tensor<i32>, tensor<1x4x3x3xf32>) -> (tensor<1x4x3xf32>, tensor<1x4x3xf32>, tensor<1x4x3xf32>)
   return %0#0 : tensor<1x4x3xf32>
 
   // CHECK-LABEL: split
@@ -913,7 +946,7 @@ func @split(%arg0: tensor<i32>, %arg1: tensor<1x4x3x3xf32>) -> tensor<1x4x3xf32>
 }
 
 func @splitv(%arg0: tensor<1x4x3x3xf32>, %arg1: tensor<2xi32>, %arg2: tensor<i32>) -> tensor<1x4x2x3xf32> {
-  %0:2 = "tf.SplitV"(%arg0, %arg1, %arg2) {num_split = 2 : i64} : (tensor<1x4x3x3xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<1x4x2x3xf32>, tensor<1x4x1x3xf32>)
+  %0:2 = "tf.SplitV"(%arg0, %arg1, %arg2) : (tensor<1x4x3x3xf32>, tensor<2xi32>, tensor<i32>) -> (tensor<1x4x2x3xf32>, tensor<1x4x1x3xf32>)
   return %0#0 : tensor<1x4x2x3xf32>
 
   // CHECK-LABEL: splitv
@@ -930,7 +963,7 @@ func @matmul_transposed(%arg0: tensor<40x37xf32>, %arg1: tensor<40x37xf32>) -> t
 
 func @concat2Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>) -> tensor<2x2xi32> {
   %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
-  %1 = "tf.Concat"(%0, %arg0, %arg1) {N = 2 : i64} : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
+  %1 = "tf.Concat"(%0, %arg0, %arg1) : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x2xi32>
   return %1 : tensor<2x2xi32>
 
 // CHECK-LABEL: concat2Tensors
@@ -939,7 +972,7 @@ func @concat2Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>) -> tensor<2
 
 func @concat3Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %arg2: tensor<2x1xi32>) -> tensor<2x3xi32> {
   %0 = "tf.Const"() { value = dense<-1> : tensor<i32> } : () -> tensor<i32>
-  %1 = "tf.Concat"(%0, %arg0, %arg1, %arg2) {N = 3 : i64} : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
+  %1 = "tf.Concat"(%0, %arg0, %arg1, %arg2) : (tensor<i32>, tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>) -> tensor<2x3xi32>
   return %1 : tensor<2x3xi32>
 
 // CHECK-LABEL: concat3Tensors
@@ -948,7 +981,7 @@ func @concat3Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %arg2: tens
 
 func @concatv2With3Tensors(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>, %arg2: tensor<2x1xi32>) -> tensor<2x3xi32> {
   %0 = "tf.Const"() { value = dense<-1> : tensor<i32> } : () -> tensor<i32>
-  %1 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %0) {N = 3 : i64} : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>, tensor<i32>) -> tensor<2x3xi32>
+  %1 = "tf.ConcatV2"(%arg0, %arg1, %arg2, %0) : (tensor<2x1xi32>, tensor<2x1xi32>, tensor<2x1xi32>, tensor<i32>) -> tensor<2x3xi32>
   return %1 : tensor<2x3xi32>
 
 // CHECK-LABEL: concatv2With3Tensors

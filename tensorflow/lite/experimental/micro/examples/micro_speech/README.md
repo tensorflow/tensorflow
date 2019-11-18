@@ -101,7 +101,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="CMSIS" micro_speech_bin
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="cmsis-nn" micro_speech_bin
 ```
 
 The binary will be created in the following location:
@@ -559,7 +559,7 @@ To begin training, run the following:
 ```
 python tensorflow/tensorflow/examples/speech_commands/train.py \
 --model_architecture=tiny_conv --window_stride=20 --preprocess=micro \
---wanted_words="on,off" --silence_percentage=25 --unknown_percentage=25 \
+--wanted_words="yes,no" --silence_percentage=25 --unknown_percentage=25 \
 --quantize=1 --verbosity=INFO --how_many_training_steps="15000,3000" \
 --learning_rate="0.001,0.0001" --summaries_dir=/tmp/retrain_logs \
 --data_dir=/tmp/speech_dataset --train_dir=/tmp/speech_commands_train
