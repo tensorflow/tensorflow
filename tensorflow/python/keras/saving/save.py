@@ -76,7 +76,7 @@ def save_model(model,
   Arguments:
       model: Keras model instance to be saved.
       filepath: One of the following:
-        - String, path where to save the model
+        - String or `pathlib.Path` object, path where to save the model
         - `h5py.File` object where to save the model
       overwrite: Whether we should overwrite any existing model at the target
         location, or instead ask the user with a manual prompt.
@@ -97,6 +97,9 @@ def save_model(model,
 
   default_format = 'tf' if tf2.enabled() else 'h5'
   save_format = save_format or default_format
+
+  if sys.version >= "3.4" and isinstance(filepath, pathlib.Path):
+    filepath = str(filepath)
 
   if (save_format == 'h5' or
       (h5py is not None and isinstance(filepath, h5py.File)) or
@@ -148,10 +151,9 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
     return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
-  path_types = tuple(six.string_types)
-  if sys.version >= "3.4":
-    path_types += (pathlib.Path,)
-  if isinstance(filepath, path_types):
+  if sys.version >= "3.4" and isinstance(filepath, pathlib.Path):
+    filepath = str(filepath)
+  if isinstance(filepath, six.string_types):
     loader_impl.parse_saved_model(filepath)
     return saved_model_load.load(filepath, compile)
 
