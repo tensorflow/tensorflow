@@ -107,7 +107,7 @@ func @multiply(%A: memref<100x?xf32>, %B: memref<?x50xf32>)
 
 MLIR has a simple and unambiguous grammar, allowing it to reliably round-trip
 through a textual form. This is important for development of the compiler - e.g.
-understanding the state of code as it is being transformed and for writing test
+for understanding the state of code as it is being transformed and writing test
 cases.
 
 This document describes the grammar using
@@ -193,7 +193,7 @@ identifiers and mapping identifiers are visible across the entire module.
 
 ## Dialects
 
-Dialects are the mechanism in which to engage with and extend the MLIR
+Dialects are the mechanism by which to engage with and extend the MLIR
 ecosystem. They allow for defining new [operations](#operations), as well as
 [attributes](#attributes) and [types](#type-system). Each dialect is given a
 unique `namespace` that is prefixed to each defined attribute/operation/type.
@@ -203,7 +203,7 @@ For example, the [Affine dialect](Dialects/Affine.md) defines the namespace:
 MLIR allows for multiple dialects, even those outside of the main tree, to
 co-exist together within one module. Dialects are produced and consumed by
 certain passes. MLIR provides a [framework](DialectConversion.md) to convert
-between, and within different dialects.
+between, and within, different dialects.
 
 A few of the dialects supported by MLIR:
 
@@ -249,7 +249,7 @@ region-list    ::= region (`,` region)*
 
 MLIR introduces a uniform concept called _operations_ to enable describing many
 different levels of abstractions and computations. Operations in MLIR are fully
-extensible (there is no fixed list of operations), and have application-specific
+extensible (there is no fixed list of operations) and have application-specific
 semantics. For example, MLIR supports
 [target-independent operations](Dialects/Standard.md#memory-operations),
 [affine operations](Dialects/Affine.md), and
@@ -285,9 +285,9 @@ printing operations. In the operation sets listed below, we show both forms.
 
 ### Terminator Operations
 
-These are a special category of operations that *must* terminate a block, for
-example [branches](Dialects/Standard.md#terminator-operations). These operations
-may also have a list of successors ([blocks](#blocks) and their arguments).
+These are a special category of operations that *must* terminate a block, e.g.
+[branches](Dialects/Standard.md#terminator-operations). These operations may
+also have a list of successors ([blocks](#blocks) and their arguments).
 
 Example:
 
@@ -443,11 +443,11 @@ of the function signature).
 ### Control and Value Scoping
 
 Regions provide nested control isolation: it is impossible to branch to a block
-within a region from outside it, or to branch from within a region to a block
-outside it. Similarly it provides a natural scoping for value visibility: SSA
-values defined in a region don't escape to the enclosing region if any. By
-default, a region can reference values defined outside of the region, whenever
-it would have been legal to use them as operands to the enclosing operation.
+within a region from outside it or to branch from within a region to a block
+outside it. Similarly, it provides a natural scoping for value visibility: SSA
+values defined in a region don't escape to the enclosing region, if any. By
+default, a region can reference values defined outside of the region whenever it
+would have been legal to use them as operands to the enclosing operation.
 
 Example:
 
@@ -524,12 +524,12 @@ defines the relation between the region results and the operation results.
 
 Each SSA value in MLIR has a type defined by the type system below. There are a
 number of primitive types (like integers) and also aggregate types for tensors
-and memory buffers. MLIR standard types do not include structures, arrays, or
-dictionaries.
+and memory buffers. MLIR [standard types](#standard-types) do not include
+structures, arrays, or dictionaries.
 
-MLIR has an open type system (there is no fixed list of types), and types may
-have application-specific semantics. For example, MLIR supports a set of
-[standard types](#standard-types) as well as [dialect types](#dialect-types).
+MLIR has an open type system (i.e. there is no fixed list of types), and types
+may have application-specific semantics. For example, MLIR supports a set of
+[dialect types](#dialect-types).
 
 ``` {.ebnf}
 type ::= type-alias | dialect-type | standard-type
@@ -876,6 +876,10 @@ A layout map is a [semi-affine map](Dialects/Affine.md#semi-affine-maps) which
 encodes logical to physical index space mapping, by mapping input dimensions to
 their ordering from most-major (slowest varying) to most-minor (fastest
 varying). Therefore, an identity layout map corresponds to a row-major layout.
+Identity layout maps do not contribute to the MemRef type identification and are
+discarded on construction. That is, a type with an explicit identity map is
+`memref<?x?xf32, (i,j)->(i,j)>` is strictly the same as the one without layout
+maps, `memref<?x?xf32>`.
 
 Layout map examples:
 
@@ -1079,8 +1083,8 @@ convolution. They consist of a name and a concrete attribute value. The set of
 expected attributes, their structure, and their interpretation are all
 contextually dependent on what they are attached to.
 
-There are two main classes of attributes; dependent and dialect. Dependent
-attributes derive their structure and meaning from what they are attached to,
+There are two main classes of attributes: dependent and dialect. Dependent
+attributes derive their structure and meaning from what they are attached to;
 e.g., the meaning of the `index` attribute on a `dim` operation is defined by
 the `dim` operation. Dialect attributes, on the other hand, derive their context
 and meaning from a specific dialect. An example of a dialect attribute may be a
@@ -1418,8 +1422,8 @@ either is the self/context or it isn't.
 
 ```mlir {.mlir}
 // A unit attribute defined with the `unit` value specifier.
-func @verbose_form(i1 {unitAttr : unit})
+func @verbose_form(i1) attributes {unitAttr = unit}
 
 // A unit attribute can also be defined without the value specifier.
-func @simple_form(i1 {unitAttr})
+func @simple_form(i1) attributes {unitAttr}
 ```

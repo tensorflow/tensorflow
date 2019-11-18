@@ -176,6 +176,9 @@ message GraphOpCreation {
 
   // The unique ID for code location (stack trace) of the op's creation.
   CodeLocation code_location = 8;
+
+  // Unique IDs for the output tensors of this op.
+  repeated int32 output_tensor_ids = 9;
 }
 
 // A debugger-instrumented graph.

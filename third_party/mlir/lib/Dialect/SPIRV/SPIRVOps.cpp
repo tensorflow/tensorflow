@@ -381,6 +381,44 @@ static inline bool isMergeBlock(Block &block) {
 // Common parsers and printers
 //===----------------------------------------------------------------------===//
 
+static ParseResult parseBitFieldExtractOp(OpAsmParser &parser,
+                                          OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 3> operandInfo;
+  Type baseType;
+  Type offsetType;
+  Type countType;
+  auto loc = parser.getCurrentLocation();
+
+  if (parser.parseOperandList(operandInfo, 3) || parser.parseColon() ||
+      parser.parseType(baseType) || parser.parseComma() ||
+      parser.parseType(offsetType) || parser.parseComma() ||
+      parser.parseType(countType) ||
+      parser.resolveOperands(operandInfo, {baseType, offsetType, countType},
+                             loc, state.operands)) {
+    return failure();
+  }
+  state.addTypes(baseType);
+  return success();
+}
+
+static void printBitFieldExtractOp(Operation *op, OpAsmPrinter &printer) {
+  printer << op->getName() << ' ';
+  printer.printOperands(op->getOperands());
+  printer << " : " << op->getOperand(0)->getType() << ", "
+          << op->getOperand(1)->getType() << ", "
+          << op->getOperand(2)->getType();
+}
+
+static LogicalResult verifyBitFieldExtractOp(Operation *op) {
+  if (op->getOperand(0)->getType() != op->getResult(0)->getType()) {
+    return op->emitError("expected the same type for the first operand and "
+                         "result, but provided ")
+           << op->getOperand(0)->getType() << " and "
+           << op->getResult(0)->getType();
+  }
+  return success();
+}
+
 // Parses an op that has no inputs and no outputs.
 static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
   if (parser.parseOptionalAttrDict(state.attributes))
@@ -729,6 +767,54 @@ static LogicalResult verify(spirv::BitcastOp bitcastOp) {
     return bitcastOp.emitOpError("mismatch in result type bitwidth ")
            << resultBitWidth << " and operand type bitwidth "
            << operandBitWidth;
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BitFieldInsert
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBitFieldInsertOp(OpAsmParser &parser,
+                                         OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 4> operandInfo;
+  Type baseType;
+  Type offsetType;
+  Type countType;
+  auto loc = parser.getCurrentLocation();
+
+  if (parser.parseOperandList(operandInfo, 4) || parser.parseColon() ||
+      parser.parseType(baseType) || parser.parseComma() ||
+      parser.parseType(offsetType) || parser.parseComma() ||
+      parser.parseType(countType) ||
+      parser.resolveOperands(operandInfo,
+                             {baseType, baseType, offsetType, countType}, loc,
+                             state.operands)) {
+    return failure();
+  }
+  state.addTypes(baseType);
+  return success();
+}
+
+static void print(spirv::BitFieldInsertOp bitFieldInsertOp,
+                  OpAsmPrinter &printer) {
+  printer << spirv::BitFieldInsertOp::getOperationName() << ' ';
+  printer.printOperands(bitFieldInsertOp.getOperands());
+  printer << " : " << bitFieldInsertOp.base()->getType() << ", "
+          << bitFieldInsertOp.offset()->getType() << ", "
+          << bitFieldInsertOp.count()->getType();
+}
+
+static LogicalResult verify(spirv::BitFieldInsertOp bitFieldOp) {
+  auto baseType = bitFieldOp.base()->getType();
+  auto insertType = bitFieldOp.insert()->getType();
+  auto resultType = bitFieldOp.getResult()->getType();
+
+  if ((baseType != insertType) || (baseType != resultType)) {
+    return bitFieldOp.emitError("expected the same type for the base operand, "
+                                "insert operand, and "
+                                "result, but provided ")
+           << baseType << ", " << insertType << " and " << resultType;
   }
   return success();
 }

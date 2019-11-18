@@ -1,8 +1,9 @@
 add_llvm_library(MLIRVectorToLLVM
   VectorToLLVM.cpp
+  VectorToLoops.cpp
 
   ADDITIONAL_HEADER_DIRS
-  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/VectorToLLVM
+  ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/VectorConversions
 )
 set(LIBS
   MLIRLLVMIR

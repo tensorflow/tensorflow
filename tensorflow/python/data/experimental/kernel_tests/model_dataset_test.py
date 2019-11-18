@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
@@ -33,7 +33,7 @@ class ModelDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testAutotuneOption(self):
     dataset = dataset_ops.Dataset.from_tensors(0)
     dataset = dataset.map(lambda x: x).apply(
-        optimization.assert_next(["Model"]))
+        testing.assert_next(["Model"]))
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.autotune = True

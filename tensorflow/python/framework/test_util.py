@@ -2608,6 +2608,8 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       msgs.append("not equal lhs = {}".format(x))
       msgs.append("not equal rhs = {}".format(y))
+      # With Python 3, we need to make sure the dtype matches between a and b.
+      b = b.astype(a.dtype)
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function

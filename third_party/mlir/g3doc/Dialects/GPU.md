@@ -22,7 +22,7 @@ x, y, or z `dimension`.
 Example:
 
 ```mlir {.mlir}
-  %bDimX = "gpu.block_dim"() {dimension: "x"} : () -> (index)
+  %bDimX = "gpu.block_dim"() {dimension = "x"} : () -> (index)
 ```
 
 ### `gpu.block_id`
@@ -33,7 +33,7 @@ the x, y, or z `dimension`.
 Example:
 
 ```mlir {.mlir}
-  %bIdY = "gpu.block_id"() {dimension: "y"} : () -> (index)
+  %bIdY = "gpu.block_id"() {dimension = "y"} : () -> (index)
 ```
 
 ### `gpu.grid_dim`
@@ -44,7 +44,7 @@ Returns the number of thread blocks in the grid along the x, y, or z
 Example:
 
 ```mlir {.mlir}
-  %gDimZ = "gpu.grid_dim"() {dimension: "z"} : () -> (index)
+  %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 ```
 
 ### `gpu.launch`
@@ -148,25 +148,25 @@ module attributes {gpu.container_module} {
   // This module creates a separate compilation unit for the GPU compiler.
   module @kernels attributes {gpu.kernel_module} {
     func @kernel_1(%arg0 : f32, %arg1 : !llvm<"float*">)
-        attributes { nvvm.kernel: true } {
+        attributes { nvvm.kernel = true } {
 
       // Operations that produce block/thread IDs and dimensions are injected when
       // outlining the `gpu.launch` body to a function called by `gpu.launch_func`.
-      %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
-      %tIdY = "gpu.thread_id"() {dimension: "y"} : () -> (index)
-      %tIdZ = "gpu.thread_id"() {dimension: "z"} : () -> (index)
+      %tIdX = "gpu.thread_id"() {dimension = "x"} : () -> (index)
+      %tIdY = "gpu.thread_id"() {dimension = "y"} : () -> (index)
+      %tIdZ = "gpu.thread_id"() {dimension = "z"} : () -> (index)
 
-      %bDimX = "gpu.block_dim"() {dimension: "x"} : () -> (index)
-      %bDimY = "gpu.block_dim"() {dimension: "y"} : () -> (index)
-      %bDimZ = "gpu.block_dim"() {dimension: "z"} : () -> (index)
+      %bDimX = "gpu.block_dim"() {dimension = "x"} : () -> (index)
+      %bDimY = "gpu.block_dim"() {dimension = "y"} : () -> (index)
+      %bDimZ = "gpu.block_dim"() {dimension = "z"} : () -> (index)
 
-      %bIdX = "gpu.block_id"() {dimension: "x"} : () -> (index)
-      %bIdY = "gpu.block_id"() {dimension: "y"} : () -> (index)
-      %bIdZ = "gpu.block_id"() {dimension: "z"} : () -> (index)
+      %bIdX = "gpu.block_id"() {dimension = "x"} : () -> (index)
+      %bIdY = "gpu.block_id"() {dimension = "y"} : () -> (index)
+      %bIdZ = "gpu.block_id"() {dimension = "z"} : () -> (index)
 
-      %gDimX = "gpu.grid_dim"() {dimension: "x"} : () -> (index)
-      %gDimY = "gpu.grid_dim"() {dimension: "y"} : () -> (index)
-      %gDimZ = "gpu.grid_dim"() {dimension: "z"} : () -> (index)
+      %gDimX = "gpu.grid_dim"() {dimension = "x"} : () -> (index)
+      %gDimY = "gpu.grid_dim"() {dimension = "y"} : () -> (index)
+      %gDimZ = "gpu.grid_dim"() {dimension = "z"} : () -> (index)
 
       "some_op"(%bx, %tx) : (index, index) -> ()
       %42 = load %arg1[%bx] : memref<?xf32, 1>
@@ -190,7 +190,7 @@ along the x, y, or z `dimension`.
 Example:
 
 ```mlir {.mlir}
-  %tIdX = "gpu.thread_id"() {dimension: "x"} : () -> (index)
+  %tIdX = "gpu.thread_id"() {dimension = "x"} : () -> (index)
 ```
 
 ### `gpu.yield`

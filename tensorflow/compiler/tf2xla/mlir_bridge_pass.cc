@@ -106,7 +106,8 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_before_");
 
   // Run the bridge now
-  TF_RETURN_IF_ERROR(mlir::TFTPU::TPUBridge(*module));
+  TF_RETURN_IF_ERROR(
+      mlir::TFTPU::TPUBridge(*module, /*enable_logging=*/VLOG_IS_ON(1)));
 
   if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_after_");
 

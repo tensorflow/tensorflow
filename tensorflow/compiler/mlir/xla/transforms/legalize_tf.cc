@@ -595,7 +595,7 @@ class ConvertConv : public OpRewritePattern<OpT> {
         tensorflow::int64 pad_low_int64;
         tensorflow::int64 pad_high_int64;
         tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
-            input_ty.getDimSize(i), filter_ty.getDimSize(i), dilation, stride,
+            input_ty.getDimSize(dim), filter_ty.getDimSize(i), dilation, stride,
             padding, &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return Pattern::matchFailure();
         pad_low = pad_low_int64;

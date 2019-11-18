@@ -24,6 +24,8 @@ import socket
 import threading
 import uuid
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
+
 from tensorflow.core.protobuf import debug_event_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.python.debug.lib import debug_events_writer
@@ -79,9 +81,12 @@ class _DumpingCallback(object):
     self._stack_frame_to_id = dict()
     # Mapping op context to unique ID.
     self._context_to_id = dict()
+    # Keeps track of counter for symbolic tensors output by in-graph ops.
+    self._symbolic_tensor_counter = 0
     self._source_file_paths_lock = threading.Lock()
     self._stack_frame_to_id_lock = threading.Lock()
     self._context_to_id_lock = threading.Lock()
+    self._symbolic_tensor_counter_lock = threading.Lock()
     self._writer = None
 
   @property
@@ -195,7 +200,8 @@ class _DumpingCallback(object):
                                    tensors,
                                    op_type,
                                    op_name,
-                                   tfdbg_context_id):
+                                   tfdbg_context_id,
+                                   tensor_ids):
     """Add debugging instrumentation for symbolic (i.e., non-eager) tensors.
 
     The detailed fashion in which the tensors are instrumented is determined
@@ -211,6 +217,8 @@ class _DumpingCallback(object):
       op_name: Name of the op that emits the Tensors (e.g., "dense_1/MatMul").
       tfdbg_context_id: A unique ID for the context that the op belongs to
         (e.g., a graph).
+      tensor_ids: A list of unique ID numbers for the tensors, for tfdbg's
+        internal use.
 
     Returns:
       Non-eager Tensors that override the `tensors` as the output of the op
@@ -219,6 +227,9 @@ class _DumpingCallback(object):
       automatic control dependencies (see `auto_control_deps.py`) instead of
       tensor overriding.
     """
+    del tensor_ids  # Unused currently.
+    # TODO(b/144441464, b/144440920, b/144440922): Make use of it.
+
     tensor_debug_mode = self._tensor_debug_mode
     debug_urls = ["file://%s" % self._dump_root]
     is_v1_graph_mode = not ops.executing_eagerly_outside_functions()
@@ -343,6 +354,7 @@ class _DumpingCallback(object):
     if graph:
       context_id = self._get_context_id(graph)
       assert op_name is not None
+      output_tensor_ids = self._get_symbolic_tensor_ids(len(outputs))
       graph_op_creation = debug_event_pb2.GraphOpCreation(
           op_type=op_type,
           op_name=op_name,
@@ -350,16 +362,26 @@ class _DumpingCallback(object):
           graph_id=context_id,
           input_names=[input_tensor.name for input_tensor in inputs],
           num_outputs=len(outputs),
+          output_tensor_ids=output_tensor_ids,
           code_location=self._process_stack_frames())
       writer.WriteGraphOpCreation(graph_op_creation)
       if outputs and compat.as_bytes(
           op_type) not in op_callbacks_common.OP_CALLBACK_SKIP_OPS:
         return self._instrument_symbolic_tensors(
-            outputs, op_type, op_name, context_id)
+            outputs, op_type, op_name, context_id, output_tensor_ids)
     else:
       input_ids = [t._id for t in inputs]  # pylint:disable=protected-access
       writer.WriteExecution(
           self._dump_eager_tensors(outputs, op_type, input_ids))
+
+  def _get_symbolic_tensor_ids(self, num_tensors):
+    tensor_ids = []
+    if num_tensors:
+      with self._symbolic_tensor_counter_lock:
+        for _ in xrange(num_tensors):
+          self._symbolic_tensor_counter += 1
+          tensor_ids.append(self._symbolic_tensor_counter)
+    return tensor_ids
 
   def _should_dump_tensor(self, op_type, dtype):
     """Determine if the given tensor's value will be dumped.

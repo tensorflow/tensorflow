@@ -648,18 +648,6 @@ Status GetTaskName(Device* d, string* task_name) {
 }
 }  // namespace
 
-bool EagerContext::IsLocalDeviceName(
-    const DeviceNameUtils::ParsedName& device_name) const {
-  if ((!device_name.has_job && !device_name.has_replica &&
-       !device_name.has_task) ||
-      remote_device_mgr() == nullptr)
-    return true;
-  auto& host_cpu_name = HostCPU()->parsed_name();
-  return device_name.job == host_cpu_name.job &&
-         device_name.replica == host_cpu_name.replica &&
-         device_name.task == host_cpu_name.task;
-}
-
 #if !defined(IS_MOBILE_PLATFORM)
 Status EagerContext::GetClient(Device* device, eager::EagerClient** client) {
   return GetClient(device->parsed_name(), client);

@@ -318,6 +318,30 @@ def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
+def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
+  string summary = "Conditional operator";
+
+  string description = [{
+    Returns the result of executing either a true or false function depending on
+    the result of a condition function.
+
+    See https://www.tensorflow.org/xla/operation_semantics#conditional.
+  }];
+
+  let arguments = (ins
+    HLO_PredTensor:$pred,
+    HLO_TensorOrTuple:$true_arg,
+    HLO_TensorOrTuple:$false_arg
+  );
+
+  let regions = (region AnyRegion:$true_branch, AnyRegion:$false_branch);
+
+  let results = (outs HLO_TensorOrTuple);
+
+  // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   string summary = "While operator";
 
@@ -328,11 +352,11 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
 
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let arguments = (ins HLO_TensorOrTuple:$val);
 
   let regions = (region AnyRegion:$cond, AnyRegion:$body);
 
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs HLO_TensorOrTuple);
 
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -381,13 +405,21 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let hasFolder = 1;
 
+  let builders = [OpBuilder<
+                  "Builder *builder, OperationState &results, "
+                  "Value* value, int32_t index">];
+
   // GetTupleElementOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
-   let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
-   let results = (outs HLO_Tuple);
+  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let results = (outs HLO_Tuple);
+
+  let builders = [OpBuilder<
+                  "Builder *builder, OperationState &results, "
+                  "ArrayRef<Value*> values">];
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -613,10 +645,6 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
 
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129422361) Implement special handling.
-  // Copy has an HloOpcode, but is not one of the ops defined in xla_builder.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {

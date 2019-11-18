@@ -24,12 +24,16 @@ import numpy as np
 
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+
+# TODO(mdan): These tests are not isolated - they also test the operators.
 
 
 class ControlFlowTestBase(converter_testing.TestCase):
@@ -51,21 +55,9 @@ class ControlFlowTestBase(converter_testing.TestCase):
       self.assertValuesEqual(returns, expected)
 
 
-class WhileStatementTest(ControlFlowTestBase):
+class NestedControlFlowTest(ControlFlowTestBase):
 
   def test_basic(self):
-
-    def test_fn(n):
-      i = 0
-      s = 0
-      while i < n:
-        s += i
-        i += 1
-      return s, i, n
-
-    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 5, 5))
-
-  def test_nested(self):
 
     def test_fn(n):
       i = 0
@@ -83,6 +75,49 @@ class WhileStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(test_fn, constant_op.constant(5),
                                  (25, 5, 0, 5))
 
+  def test_composite_state_complex(self):
+
+    class TestClassX(object):
+
+      def __init__(self, x):
+        self.x = x
+
+    class TestClassY(object):
+
+      def __init__(self, y):
+        self.y = y
+
+    def test_fn(n):
+      tc = TestClassX(TestClassY({'z': TestClassX(n)}))
+      if n > 0:
+        while n > 0:
+          if n < 2:
+            tc.x.y['z'].x += 1
+          n -= 1
+      return n, tc
+
+    with self.converted(test_fn, control_flow, {
+        'TestClassX': TestClassX,
+        'TestClassY': TestClassY,
+    }) as result:
+      n, tc = result.test_fn(constant_op.constant(5))
+      self.assertValuesEqual((n, tc.x.y['z'].x), (0, 6))
+
+
+class WhileStatementTest(ControlFlowTestBase):
+
+  def test_basic(self):
+
+    def test_fn(n):
+      i = 0
+      s = 0
+      while i < n:
+        s += i
+        i += 1
+      return s, i, n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 5, 5))
+
   def test_single_output(self):
 
     def test_fn(n):
@@ -92,7 +127,7 @@ class WhileStatementTest(ControlFlowTestBase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
 
-  def test_composite_state(self):
+  def test_composite_state_attr(self):
 
     class TestClass(object):
 
@@ -109,7 +144,30 @@ class WhileStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(
         test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
 
-  def test_composite_state_initialized_in_loop(self):
+  def test_composite_state_slice(self):
+
+    def test_fn(n):
+      d = {'a': n}
+      k = 'a'
+      while n > 0:
+        d[k] += 1
+        n -= 1
+      return d[k], n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 0))
+
+  def test_composite_state_literal_slice(self):
+
+    def test_fn(n):
+      d = {'a': n}
+      while n > 0:
+        d['a'] += 1
+        n -= 1
+      return d['a'], n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 0))
+
+  def test_composite_state_attr_initialized_in_loop(self):
 
     class TestClass(object):
       pass
@@ -118,11 +176,11 @@ class WhileStatementTest(ControlFlowTestBase):
       tc = TestClass()
       while n < 5:
         if n == 0:
-          tc.x = x
+          tc.subattr = x
         else:
-          tc.x = tc.x + 1
+          tc.subattr = tc.subattr + 1
         n += 1
-      return tc.x
+      return tc.subattr
 
     self.assertTransformedResult(
         test_fn, (0, constant_op.constant(10)),
@@ -131,29 +189,69 @@ class WhileStatementTest(ControlFlowTestBase):
     with self.converted(
         test_fn, control_flow, {'TestClass': TestClass}) as result:
       # TODO(b/128519776): Better error message.
-      with self.assertRaisesRegex(
-          AttributeError, '\'TestClass\' object has no attribute \'x\''):
+      with self.assertRaisesRegex(AttributeError, 'subattr'):
         result.test_fn(constant_op.constant(0), constant_op.constant(5))
 
-  def test_nested_composite_state(self):
+  def test_composite_state_slice_initialized_in_loop(self):
 
-    class TestClass(object):
+    def test_fn(n, x):
+      d = {}
+      k = 'subkey'
+      while n < 5:
+        if n == 0:
+          d[k] = x
+        else:
+          d[k] = d[k] + 1
+        n += 1
+      return d
 
-      def __init__(self):
-        self.x = constant_op.constant(3)
+    self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
+                                 {'subkey': 14})
+    with self.converted(test_fn, control_flow, {}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(KeyError, 'subkey'):
+        result.test_fn(constant_op.constant(0), constant_op.constant(5))
 
-    def test_fn(n):
-      tc = TestClass()
-      while n > 0:
-        if n < 2:
-          tc.x += 1
-        n -= 1
-      return n
+  def test_composite_state_literal_slice_initialized_in_loop(self):
 
-    self.assertTransformedResult(
-        test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
+    def test_fn(n, x):
+      d = {}
+      while n < 5:
+        if n == 0:
+          d['subkey'] = x
+        else:
+          d['subkey'] = d['subkey'] + 1
+        n += 1
+      return d
 
-  def test_local_composite(self):
+    self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
+                                 {'subkey': 14})
+    with self.converted(test_fn, control_flow, {}) as result:
+      # TODO(b/128519776): Better error message.
+      with self.assertRaisesRegex(KeyError, 'subkey'):
+        result.test_fn(constant_op.constant(0), constant_op.constant(5))
+
+  def test_composite_state_slice_aliased_to_local(self):
+
+    def test_fn(n, x):
+      d = {}
+      while n < 5:
+        k = 'subkey'
+        d[k] = x + 1
+        n += 1
+      return d
+
+    self.assertTransformedResult(test_fn, (0, constant_op.constant(10)),
+                                 {'subkey': 11})
+    with self.converted(test_fn, control_flow, {}) as result:
+      # TODO(b/128519776): Better error message.
+      # Note that this error happens at execution time.
+      with self.assertRaises(errors.InaccessibleTensorError):
+        graph_fn = def_function.function(result.test_fn, autograph=False)
+        self.evaluate(
+            graph_fn(constant_op.constant(0), constant_op.constant(5)))
+
+  def test_local_composite_attr(self):
 
     class TestClass(object):
 
@@ -170,8 +268,30 @@ class WhileStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(
         test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
 
-  # TODO(b/127642077): Add tests for x.y.z = 2*x.y.z and x.y[z] = 2*x.y[z].
-  def test_local_composite_complex_nestable(self):
+  def test_local_composite_slice(self):
+
+    def test_fn(n):
+      while n > 0:
+        d = {'x': n}
+        k = 'x'
+        d[k] = d[k]
+        n -= 1
+      return n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), 0, {})
+
+  def test_local_composite_literal_slice(self):
+
+    def test_fn(n):
+      while n > 0:
+        d = {'x': n}
+        d['x'] = d['x']
+        n -= 1
+      return n
+
+    self.assertTransformedResult(test_fn, constant_op.constant(5), 0, {})
+
+  def test_non_tensor_state(self):
 
     # This class is ok to be in a tf.while_loop's state.
     class TestClass(collections.namedtuple('TestClass', ('x'))):
@@ -189,7 +309,7 @@ class WhileStatementTest(ControlFlowTestBase):
     self.assertTransformedResult(
         test_fn, constant_op.constant(5), 4, symbols=ns)
 
-  def test_local_composite_complex_illegal(self):
+  def test_non_tensor_state_illegal_type(self):
 
     class TestClass(object):
 

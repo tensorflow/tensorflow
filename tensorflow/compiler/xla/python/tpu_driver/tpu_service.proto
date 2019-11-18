@@ -137,11 +137,15 @@ message StreamResponse {
 message OpenRequest {}
 
 message OpenResponse {
-  required int32 client_id = 1;
+  required fixed32 client_id = 1;
+
+  // Maximum time this client can be idle before it is GC'ed and all resources
+  // released.
+  optional int32 max_idle_time_seconds = 2 [default = 3600];
 }
 
 message CloseRequest {
-  required int32 client_id = 1;
+  required fixed32 client_id = 1;
 }
 
 message CloseResponse {}

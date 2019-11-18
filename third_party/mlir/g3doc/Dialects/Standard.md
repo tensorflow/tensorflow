@@ -147,8 +147,8 @@ Examples:
 %y = dim %A, 1 : tensor<4 x ? x f32>
 
 // Equivalent generic form:
-%x = "std.dim"(%A){index: 0} : (tensor<4 x ? x f32>) -> index
-%y = "std.dim"(%A){index: 1} : (tensor<4 x ? x f32>) -> index
+%x = "std.dim"(%A) {index = 0 : i64} : (tensor<4 x ? x f32>) -> index
+%y = "std.dim"(%A) {index = 1 : i64} : (tensor<4 x ? x f32>) -> index
 ```
 
 ## Memory Operations
@@ -583,13 +583,13 @@ Examples:
 %x = cmpi "slt", %lhs, %rhs : i32
 
 // Generic form of the same operation.
-%x = "std.cmpi"(%lhs, %rhs){predicate: 2} : (i32, i32) -> i1
+%x = "std.cmpi"(%lhs, %rhs) {predicate = 2 : i64} : (i32, i32) -> i1
 
 // Custom form of vector equality comparison.
 %x = cmpi "eq", %lhs, %rhs : vector<4xi64>
 
 // Generic form of the same operation.
-%x = "std.cmpi"(%lhs, %rhs){predicate: 0}
+%x = "std.cmpi"(%lhs, %rhs) {predicate = 0 : i64}
     : (vector<4xi64>, vector<4xi64>) -> vector<4xi1>
 ```
 
@@ -664,9 +664,9 @@ Examples:
 %3 = constant @myfn : (tensor<16xf32>, f32) -> tensor<16xf32>
 
 // Equivalent generic forms
-%1 = "std.constant"(){value: 42} : i32
-%3 = "std.constant"(){value: @myfn}
-   : () -> (tensor<16xf32>, f32) -> tensor<16xf32>
+%1 = "std.constant"() {value = 42 : i32} : () -> i32
+%3 = "std.constant"() {value = @myfn}
+   : () -> ((tensor<16xf32>, f32) -> tensor<16xf32>)
 
 ```
 

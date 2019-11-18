@@ -71,7 +71,7 @@ def IsSameOrValid : AttrConstraint<
     "'SAME' or 'VALID' paddings">;
 
 def : Pat<(TF_AbsOp $arg), (TFL_AbsOp $arg)>;
-def : Pat<(TF_AddNOp $inputs, $N), (TFL_AddNOp $inputs)>;
+def : Pat<(TF_AddNOp $inputs), (TFL_AddNOp $inputs)>;
 
 def : Pat<(TF_AvgPoolOp $value,
               IsIntList1XY1:$ksize,

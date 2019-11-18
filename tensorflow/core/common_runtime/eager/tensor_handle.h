@@ -142,10 +142,13 @@ class TensorHandle : public core::RefCounted {
 
 #if !defined(IS_MOBILE_PLATFORM)
   bool HasRemoteMirror(Device* d);
+  bool HasResourceShapeMirror(Device* d);
 
   Status AddUnshapedRemoteMirror(
       std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d);
   Status AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t, Device* d);
+  Status AddResourceShapeMirror(
+      std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d);
 
   // Return the op_id and output num if the handle refers to a remote tensor.
   Status RemoteAddress(Device* d, int64* op_id, int32* output_num) const;
@@ -245,6 +248,13 @@ class TensorHandle : public core::RefCounted {
   tensorflow::Device* const resource_device_;
 
 #if !defined(IS_MOBILE_PLATFORM)
+  // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
+  // variable is ready, since we could get the shape locally without remote copy
+  // then.
+  mutable mutex resource_shape_mirrors_mutex_;
+  std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
+      resource_shape_mirrors_ GUARDED_BY(resource_shape_mirrors_mutex_);
+
   mutable mutex remote_mirrors_mutex_;
   // TODO(gjn): Unshaped remote mirrors are long expected to be long-lived.
   // Consider replacing the unshaped_remote_mirrors_ map with something more

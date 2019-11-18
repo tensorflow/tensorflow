@@ -546,6 +546,14 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
   let results = (outs AnyTensor:$output);
 
   let hasFolder = 1;
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, Attribute value",
+    [{
+      state.addAttribute("value", value);
+      state.addTypes(value.getType());
+    }]>
+  ];
 }
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
@@ -2705,6 +2713,15 @@ def TFL_QConstOp : Op<TFL_Dialect, "pseudo_qconst", [
   );
 
   let results = (outs AnyTensor:$output);
+
+  let builders = [OpBuilder<
+    "Builder *, OperationState &state, TypeAttr qtype, Attribute value",
+    [{
+      state.addAttribute("qtype", qtype);
+      state.addAttribute("value", value);
+      state.addTypes(qtype.getValue());
+    }]>
+  ];
 }
 
 def TFL_QuantizeOp: TFL_Op<"quantize", [

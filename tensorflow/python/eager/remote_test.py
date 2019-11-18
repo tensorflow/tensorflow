@@ -22,6 +22,7 @@ import random
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
@@ -152,7 +153,10 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError) as cm:
         matmul_func(x, y)
 
-    self.assertIn('Dimensions must be equal', cm.exception.message)
+    if six.PY2:
+      self.assertIn('Dimensions must be equal', cm.exception.message)
+    else:
+      self.assertIn('Dimensions must be equal', cm.exception.args[0])
 
 
 class MultiWorkersTest(test.TestCase, parameterized.TestCase):

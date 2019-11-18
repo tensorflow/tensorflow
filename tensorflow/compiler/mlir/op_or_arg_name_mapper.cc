@@ -133,7 +133,7 @@ std::string GetNameFromLoc(mlir::Location loc) {
   }
 
   if (names_is_nonempty)
-    return llvm::join(loc_names.begin(), loc_names.end(), ",");
+    return llvm::join(loc_names.begin(), loc_names.end(), ";");
 
   return "";
 }

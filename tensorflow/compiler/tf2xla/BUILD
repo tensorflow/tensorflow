@@ -154,6 +154,33 @@ cc_library(
 )
 
 cc_library(
+    name = "mlir_tf2xla",
+    srcs = ["mlir_tf2xla.cc"],
+    hdrs = ["tf2xla.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":tf2xla_proto_cc",
+        ":xla_compiler",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util",
+        "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
+        "//tensorflow/compiler/mlir/tensorflow:device_util",
+        "//tensorflow/compiler/mlir/tensorflow:error_util",
+        "//tensorflow/compiler/mlir/tensorflow:import_utils",
+        "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
+        "//tensorflow/compiler/mlir/xla:hlo",
+        "//tensorflow/compiler/mlir/xla:mlir_hlo_to_hlo",
+        "//tensorflow/compiler/xla/client",
+        "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
     name = "xla_compiled_cpu_function",
     srcs = ["xla_compiled_cpu_function.cc"],
     hdrs = ["xla_compiled_cpu_function.h"],

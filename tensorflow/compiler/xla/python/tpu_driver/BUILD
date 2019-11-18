@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",

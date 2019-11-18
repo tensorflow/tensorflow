@@ -224,10 +224,11 @@ In the above, we are using `BOp`'s result for building `COp`.
 #### Building operations
 
 Given that `COp` was specified with table-driven op definition, there will be
-several `build()` methods generated for it. One of them has a separate argument
-in the signature for each argument appearing in the op's `arguments` list:
-`void COp::build(..., Value *input, Attribute attr)`. The pattern in the above
-calls this `build()` method for constructing the `COp`.
+several `build()` methods generated for it. One of them has aggregated
+parameters for result types, operands, and attributes in the signature: `void
+COp::build(..., ArrayRef<Type> resultTypes, Array<Value *> operands,
+ArrayRef<NamedAttribute> attr)`. The pattern in the above calls this `build()`
+method for constructing the `COp`.
 
 In general, arguments in the the result pattern will be passed directly to the
 `build()` method to leverage the auto-generated `build()` method, list them in
@@ -246,16 +247,29 @@ that has result type deduction ability via `OpBuilder` in ODS. For example,
 in the following pattern
 
 ```tblgen
-def : Pat<(AOp $input, $attr), (COp (BOp) $attr)>;
+def : Pat<(AOp $input, $attr), (COp (AOp $input, $attr) $attr)>;
 ```
 
-`BOp` is generated via a nested result pattern; DRR won't be able to deduce the
-result type for it. A custom builder for `BOp` should be defined and it should
-deduce the result type by itself.
+`AOp` is generated via a nested result pattern; DRR won't be able to deduce the
+result type for it. A custom builder for `AOp` should be defined and it should
+deduce the result type by itself. The builder should have the a separate
+parameter for each operand and attribute and deduce the result type internally
+by itself. For example, for the above `AOp`, a possible builder is:
 
-Failing to define such a builder will result in an error at C++ compilation
-time saying the call to `BOp::build()` cannot be resolved because of the number
-of parameters mismatch.
+```c++
+
+void AOp::build(Builder *builder, OperationState &state,
+                Value *input, Attribute attr) {
+  state.addOperands({input});
+  state.addAttribute("a_attr", attr);
+  Type type = ...; // Deduce result type here
+  state.addTypes({type});
+}
+```
+
+Failing to define such a builder will result in an error at C++ compilation time
+saying the call to `AOp::build()` cannot be resolved because of the number of
+parameters mismatch.
 
 #### Generating DAG of operations
 
@@ -657,6 +671,12 @@ providing include paths via `-I`. For example,
 # To see all the C++ pattern rewrite classes
 mlir-tblgen --gen-rewriters -I /path/to/mlir/include /path/to/input/td/file
 ```
+
+### Compilation error: no matching member function for call to 'build'
+
+This is because DRR is failing to call a `build()` mehtod with result type
+deduction ability. See [building operations](#building-operations) for more
+details.
 
 [TableGen]: https://llvm.org/docs/TableGen/index.html
 [OpBase]: https://github.com/tensorflow/mlir/blob/master/include/mlir/IR/OpBase.td

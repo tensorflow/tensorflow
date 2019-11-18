@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import six
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -262,15 +264,39 @@ def random_uniform(shape,
     maxval = 1
   with ops.name_scope(name, "random_uniform", [shape, minval, maxval]) as name:
     shape = tensor_util.shape_tensor(shape)
-    minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
-    maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
-    seed1, seed2 = random_seed.get_seed(seed)
-    if dtype.is_integer:
-      result = gen_random_ops.random_uniform_int(
-          shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
+    # TODO(b/143079601): Remove this once the compatible window is passed.
+    if compat.forward_compatible(2019, 12, 3):
+      # In case of [0,1) floating results, minval and maxval is unused.
+      minval_is_zero = isinstance(minval, six.integer_types +
+                                  (float,)) and minval == 0
+      maxval_is_one = isinstance(maxval, six.integer_types +
+                                 (float,)) and maxval == 1
+      if not minval_is_zero or not maxval_is_one or dtype.is_integer:
+        minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
+        maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
+      seed1, seed2 = random_seed.get_seed(seed)
+      if dtype.is_integer:
+        result = gen_random_ops.random_uniform_int(
+            shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
+      else:
+        result = gen_random_ops.random_uniform(
+            shape, dtype, seed=seed1, seed2=seed2)
+        if minval_is_zero:
+          if not maxval_is_one:
+            result = result * maxval
+        else:
+          result = math_ops.add(result * (maxval - minval), minval, name=name)
     else:
-      rnd = gen_random_ops.random_uniform(shape, dtype, seed=seed1, seed2=seed2)
-      result = math_ops.add(rnd * (maxval - minval), minval, name=name)
+      minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
+      maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
+      seed1, seed2 = random_seed.get_seed(seed)
+      if dtype.is_integer:
+        result = gen_random_ops.random_uniform_int(
+            shape, minval, maxval, seed=seed1, seed2=seed2, name=name)
+      else:
+        rnd = gen_random_ops.random_uniform(
+            shape, dtype, seed=seed1, seed2=seed2)
+        result = math_ops.add(rnd * (maxval - minval), minval, name=name)
     # TODO(b/132092188): C++ shape inference inside functional ops does not
     # cross FuncGraph boundaries since that information is only available in
     # python. So we manually get the static shape using

@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/add_intermediate_tensors.h"
+#include "tensorflow/lite/tools/optimize/quantization_wrapper_utils.h"
 
+#include <fstream>
 #include <memory>
 
+#include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/tools/optimize/operator_property.h"
 
 namespace tflite {
@@ -50,6 +52,19 @@ bool IntermediateTensorExists(ModelT* model) {
   return false;
 }
 }  // namespace
+
+TfLiteStatus LoadModel(const string& path, ModelT* model) {
+  auto input_model = FlatBufferModel::BuildFromFile(path.c_str());
+  if (!input_model) {
+    return kTfLiteError;
+  }
+  auto readonly_model = input_model->GetModel();
+  if (!readonly_model) {
+    return kTfLiteError;
+  }
+  readonly_model->UnPackTo(model);
+  return kTfLiteOk;
+}
 
 TfLiteStatus AddIntemediateTensorsToFusedOp(
     flatbuffers::FlatBufferBuilder* builder, ModelT* model) {
@@ -88,6 +103,15 @@ TfLiteStatus AddIntemediateTensorsToFusedOp(
   FinishModelBuffer(*builder, output_model_location);
 
   return kTfLiteOk;
+}
+
+bool WriteFile(const std::string& out_file, const uint8_t* bytes,
+               size_t num_bytes) {
+  std::fstream stream(out_file, std::ios::binary | std::ios::out);
+  for (size_t i = 0; i < num_bytes; i++) {
+    stream << bytes[i];
+  }
+  return (!stream.bad() && !stream.fail());
 }
 
 }  // namespace optimize

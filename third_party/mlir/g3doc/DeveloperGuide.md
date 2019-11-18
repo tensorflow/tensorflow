@@ -7,8 +7,8 @@ methods).
 ## Style guide
 
 MLIR follows the [LLVM style](https://llvm.org/docs/CodingStandards.html) guide.
-We also adhere to the following, that deviates from, or isn't specified in the
-LLVM style guide:
+We also adhere to the following (which deviate from or are not specified in the
+LLVM style guide):
 
 *   Adopts [camelBack](https://llvm.org/docs/Proposals/VariableNames.html);
 *   Except for IR units (Region, Block, and Operation), non-nullable output

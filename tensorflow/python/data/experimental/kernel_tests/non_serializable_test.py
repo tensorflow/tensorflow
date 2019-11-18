@@ -12,55 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.assert_next()`."""
+"""Tests for `tf.data.experimental.non_serializable()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class AssertNextDatasetTest(test_base.DatasetTestBase):
+class NonSerializableTest(test_base.DatasetTestBase):
 
-  def testAssertNext(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Map"])).map(lambda x: x)
+  def testNonSerializable(self):
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.apply(testing.assert_next(["FiniteSkip"]))
+    dataset = dataset.skip(0)  # Should not be removed by noop elimination
+    dataset = dataset.apply(testing.non_serializable())
+    dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
+    dataset = dataset.skip(0)  # Should be removed by noop elimination
+    dataset = dataset.cache()
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[0])
 
-  def testAssertNextInvalid(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Whoops"])).map(lambda x: x)
+  def testNonSerializableAsDirectInput(self):
+    """Tests that non-serializable dataset can be OptimizeDataset's input."""
+    dataset = dataset_ops.Dataset.from_tensors(0)
+    dataset = dataset.apply(testing.non_serializable())
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.noop_elimination = True
     dataset = dataset.with_options(options)
-    self.assertDatasetProduces(
-        dataset,
-        expected_error=(
-            errors.InvalidArgumentError,
-            "Asserted Whoops transformation at offset 0 but encountered "
-            "Map transformation instead."))
-
-  def testAssertNextShort(self):
-    dataset = dataset_ops.Dataset.from_tensors(0).apply(
-        optimization.assert_next(["Map", "Whoops"])).map(lambda x: x)
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.autotune = False
-    dataset = dataset.with_options(options)
-    self.assertDatasetProduces(
-        dataset,
-        expected_error=(
-            errors.InvalidArgumentError,
-            "Asserted next 2 transformations but encountered only 1."))
+    self.assertDatasetProduces(dataset, expected_output=[0])
 
 
 if __name__ == "__main__":

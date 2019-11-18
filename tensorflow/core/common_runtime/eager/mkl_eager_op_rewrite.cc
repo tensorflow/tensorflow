@@ -142,9 +142,8 @@ Status MklEagerOpRewrite::SetupNewOp(
   if (orig_op->Device() != nullptr) {
     (*new_mkl_op)->SetDevice(orig_op->Device());
   } else {
-    string device_name =
-        DeviceNameUtils::ParsedNameToString(orig_op->GetDeviceName());
-    (*new_mkl_op)->SetDeviceName(device_name.c_str());
+    string device_name = orig_op->GetDeviceName();
+    (*new_mkl_op)->SetDeviceName(device_name);
   }
   return Status::OK();
 }

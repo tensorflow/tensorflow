@@ -382,7 +382,7 @@ cc_library(
     srcs = ["lib/core/py_exception_registry.cc"],
     hdrs = ["lib/core/py_exception_registry.h"],
     deps = [
-        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
     ],

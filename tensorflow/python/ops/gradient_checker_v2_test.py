@@ -108,7 +108,7 @@ class GradientCheckerTest(test.TestCase):
     x = constant_op.constant(_random_complex(x_shape, x_dtype))
     analytical, numerical = gradient_checker.compute_gradient(
         f, [x])
-    correct = np.array([[5, 7], [-7, 5]])
+    correct = np.array([[5, -7], [7, 5]])
     self.assertAllEqual(correct, analytical[0])
     self.assertAllClose(correct, numerical[0], rtol=1e-4)
     x = constant_op.constant(_random_complex(x_shape, x_dtype))
@@ -154,7 +154,7 @@ class GradientCheckerTest(test.TestCase):
         np.random.random_sample((3, 4)), dtype=dtypes.float32)
     for grad in gradient_checker.compute_gradient(f, [x, y]):
       self.assertEqual(grad[0].shape, (0, 0))
-      self.assertEqual(grad[1].shape, (12, 0))
+      self.assertEqual(grad[1].shape, (0, 12))
     error = gradient_checker.max_error(
         *gradient_checker.compute_gradient(f, [x, y]))
     self.assertEqual(error, 0)
@@ -193,8 +193,8 @@ class GradientCheckerTest(test.TestCase):
         f, [x]))
     # Typical test would assert error < max_err, so assert this test would
     # raise AssertionError, since NaN is not < 1.0.
-    with self.assertRaisesRegexp(AssertionError, "False is not true"):
-      self.assertTrue(error < 1.0)
+    with self.assertRaisesRegexp(AssertionError, "nan not less than 1.0"):
+      self.assertLess(error, 1.0)
 
   def testGradGrad(self):
 

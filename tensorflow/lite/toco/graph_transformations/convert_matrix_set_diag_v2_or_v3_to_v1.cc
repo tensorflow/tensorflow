@@ -26,13 +26,16 @@ limitations under the License.
 
 namespace toco {
 
-::tensorflow::Status ConvertMatrixSetDiagV2ToV1::Run(Model* model,
-                                                     std::size_t op_index,
-                                                     bool* modified) {
+// V3 is only different from V2 because it has an extra attribute (align).
+// This attribute doesn't affect V1 so we don't have to keep track of it here.
+::tensorflow::Status ConvertMatrixSetDiagV2OrV3ToV1::Run(Model* model,
+                                                         std::size_t op_index,
+                                                         bool* modified) {
   *modified = false;
   auto it = model->operators.begin() + op_index;
   const auto* op = it->get();
-  if (op->type != OperatorType::kMatrixSetDiagV2) {
+  if (op->type != OperatorType::kMatrixSetDiagV2 &&
+      op->type != OperatorType::kMatrixSetDiagV3) {
     return ::tensorflow::Status::OK();
   }
 

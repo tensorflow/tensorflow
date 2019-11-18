@@ -568,9 +568,6 @@ def tf_protos_all():
         otherwise = ["//tensorflow/core:protos_all_cc"],
     )
 
-def tf_profiler_all_protos():
-    return ["//tensorflow/core/profiler:protos_all"]
-
 def tf_protos_grappler_impl():
     return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
 

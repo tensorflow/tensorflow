@@ -24,8 +24,8 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import grouping
-from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.experimental.ops import scan_ops
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import threadpool
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -146,7 +146,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def flat_map_fn(_):
       dataset = dataset_ops.Dataset.from_tensors(0)
-      dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
+      dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
       dataset = dataset.skip(0)  # Should be removed by noop elimination
       dataset = dataset.cache()
       return dataset
@@ -163,7 +163,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     def flat_map_fn(_):
       dataset = dataset_ops.Dataset.from_tensors(0)
-      dataset = dataset.apply(optimization.assert_next(["MapAndBatch"]))
+      dataset = dataset.apply(testing.assert_next(["MapAndBatch"]))
       # Should be fused by map and batch fusion
       dataset = dataset.map(lambda x: x)
       dataset = dataset.batch(1)
@@ -193,30 +193,6 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[list(range(10))],
         requires_initialization=True)
-
-  def testOptimizationNonSerializable(self):
-    dataset = dataset_ops.Dataset.from_tensors(0)
-    dataset = dataset.apply(optimization.assert_next(["FiniteSkip"]))
-    dataset = dataset.skip(0)  # Should not be removed by noop elimination
-    dataset = dataset.apply(optimization.non_serializable())
-    dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
-    dataset = dataset.skip(0)  # Should be removed by noop elimination
-    dataset = dataset.cache()
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.noop_elimination = True
-    dataset = dataset.with_options(options)
-    self.assertDatasetProduces(dataset, expected_output=[0])
-
-  def testOptimizationNonSerializableAsDirectInput(self):
-    """Tests that non-serializable dataset can be OptimizeDataset's input."""
-    dataset = dataset_ops.Dataset.from_tensors(0)
-    dataset = dataset.apply(optimization.non_serializable())
-    options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
-    options.experimental_optimization.noop_elimination = True
-    dataset = dataset.with_options(options)
-    self.assertDatasetProduces(dataset, expected_output=[0])
 
   @parameterized.named_parameters(_generate_captured_refvar_test_cases())
   @test_util.run_v1_only("RefVariables are not supported in eager mode.")

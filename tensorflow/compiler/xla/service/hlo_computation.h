@@ -102,6 +102,24 @@ class HloComputation {
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
+  // Helper class to automatically set the OpMetadata for every instruction
+  // added to a computation.
+  class MetadataBuilder {
+   public:
+    MetadataBuilder(HloComputation* computation, const OpMetadata& metadata)
+        : computation_(computation), metadata_(metadata) {}
+
+    HloInstruction* AddInstruction(
+        std::unique_ptr<HloInstruction> instruction) {
+      instruction->set_metadata(metadata_);
+      return computation_->AddInstruction(std::move(instruction));
+    }
+
+   private:
+    HloComputation* computation_;
+    OpMetadata metadata_;
+  };
+
   // Add an instruction to the computation. The computation takes ownership of
   // the instruction.
   HloInstruction* AddInstruction(std::unique_ptr<HloInstruction> instruction);

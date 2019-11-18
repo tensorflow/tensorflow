@@ -120,6 +120,12 @@ An operation can have zero or more [regions](#region). Note that this creates a
 nested IR structure, as regions consist of blocks, which in turn, consist of a
 list of operations.
 
+In MLIR, there are two main classes related to operations: `Operation` and `Op`.
+Operation is the actual opaque instance of the operation, and represents the
+general API into an operation instance. An `Op` is the base class of a derived
+operation, like `ConstantOp`, and acts as smart pointer wrapper around a
+`Operation*`
+
 #### [Region](LangRef.md#regions)
 
 A [CFG](https://en.wikipedia.org/wiki/Control-flow_graph) of MLIR
