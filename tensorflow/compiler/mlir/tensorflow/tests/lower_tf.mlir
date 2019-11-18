@@ -44,6 +44,29 @@ func @fill(%arg0: tensor<*xi64>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: func @l2_loss
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<?x?xf32>)
+func @l2_loss(%arg0: tensor<?x?xf32>) -> tensor<f32> {
+
+  // CHECK-DAG: %[[SQUARE:.*]] = "tf.Mul"(%[[INPUT]], %[[INPUT]]) : (tensor<?x?xf32>, tensor<?x?xf32>) -> tensor<?x?xf32>
+  // CHECK-DAG: %[[REDUCE_AXES:.*]] = "tf.Const"() {value = dense<[0, 1]> : tensor<2xi64>}
+  // CHECK-DAG: %[[SUM:.*]] = "tf.Sum"(%[[SQUARE]], %[[REDUCE_AXES]]) {keep_dims = false} : (tensor<?x?xf32>, tensor<2xi64>) -> tensor<f32>
+  // CHECK-DAG: %[[TWO:.*]] = "tf.Const"() {value = dense<2.000000e+00> : tensor<f32>}
+  // CHECK-DAG: %[[LOSS:.*]] = "tf.Div"(%[[SUM]], %[[TWO]]) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  %0 = "tf.L2Loss"(%arg0) : (tensor<?x?xf32>) -> tensor<f32>
+
+  // CHECK: return %[[LOSS]] : tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: func @l2_loss_unranked
+func @l2_loss_unranked(%arg0: tensor<*xf32>) -> tensor<f32> {
+  // CHECK: tf.L2Loss
+  %0 = "tf.L2Loss"(%arg0) : (tensor<*xf32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
 // CHECK-LABEL: pack_with_unranked
 // CHECK-SAME: %[[ARG0:.*]]: tensor<?x5xf32>, %[[ARG1:.*]]: tensor<*xf32>
 func @pack_with_unranked(%arg0: tensor<?x5xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {

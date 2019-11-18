@@ -16,6 +16,10 @@ include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
+// Here, the element type can be any integer or float type. But, note that only
+// 32 bit integers are supported for the values.
+class GetScalarOfType<int value> : NativeCodeCall<
+  "GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 //===----------------------------------------------------------------------===//
 // BiasAddGrad op patterns.
@@ -88,14 +92,30 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
 
 //===----------------------------------------------------------------------===//
+// L2Loss op patterns.
+//===----------------------------------------------------------------------===//
+
+def GetAllAxes : NativeCodeCall<
+  "GetI64ElementsAttrForSeq("
+  "0, $0->getType().cast<RankedTensorType>().getRank(), &$_builder)">;
+
+// L2Loss is lowered using the formula,
+// L2Loss(input) = Sum(input * input) / 2
+
+// TODO(hinsu): Support unranked tensors once b/144593778 is resolved to not
+// cause result type mismatch.
+def LowerL2LossOp :
+  Pat<(TF_L2LossOp AnyRankedTensor:$input),
+      (TF_DivOp
+        (TF_SumOp (TF_MulOp $input, $input),
+                  (TF_ConstOp (GetAllAxes $input)),
+                  /*keep_dims=*/ConstBoolAttrFalse),
+        (TF_ConstOp (GetScalarOfType<2> $input)))>;
+
+//===----------------------------------------------------------------------===//
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
-def ZeroDenseElementsAttr : NativeCodeCall<
-  "DenseElementsAttr::get("
-    "RankedTensorType::get({}, getElementTypeOrSelf($0->getType())) , {"
-      "$_builder.getZeroAttr(getElementTypeOrSelf($0->getType()))})">;
-
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
-             (TF_ConstOp (ZeroDenseElementsAttr $input)))>;
+             (TF_ConstOp (GetScalarOfType<0> $input)))>;

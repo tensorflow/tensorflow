@@ -155,10 +155,11 @@ static xla_hlo::ConstOp GetMinValueForType(Type ty, Location loc,
   return rewriter->create<xla_hlo::ConstOp>(loc, attr);
 }
 
-// Returns an integer constant for the given int or float element type.
-static xla_hlo::ConstOp GetScalarForType(Type ty, Location loc,
-                                         int64_t raw_value,
-                                         PatternRewriter *rewriter) {
+// Returns int or float scalar DenseElementsAttr attribute with the given
+// element type and the value.
+static xla_hlo::ConstOp GetScalarOfType(Type ty, Location loc,
+                                        int64_t raw_value,
+                                        PatternRewriter *rewriter) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
 
   DenseElementsAttr attr;
@@ -167,7 +168,7 @@ static xla_hlo::ConstOp GetScalarForType(Type ty, Location loc,
     attr = DenseElementsAttr::get(scalar_ty, value);
   } else {
     auto int_ty = ty.cast<IntegerType>();
-    APInt value(int_ty.getWidth(), raw_value, true);
+    APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value), true);
     attr = DenseElementsAttr::get(scalar_ty, value);
   }
   return rewriter->create<xla_hlo::ConstOp>(loc, attr);
@@ -1081,7 +1082,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
         }
       }
       auto divisor =
-          GetScalarForType(reduce_element_type, loc, divisor_count, &rewriter);
+          GetScalarOfType(reduce_element_type, loc, divisor_count, &rewriter);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
       result = rewriter.create<xla_hlo::DivOp>(loc, result, divisor.getResult(),
                                                broadcast_dims);
@@ -1115,7 +1116,7 @@ class ConvertMeanOp
 
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
-    return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
+    return GetScalarOfType(reduce_element_type, loc, 0, &rewriter);
   }
 };
 
@@ -1131,7 +1132,7 @@ class ConvertSumOp : public GenericConvertReductionOp<ConvertSumOp, TF::SumOp,
 
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
-    return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
+    return GetScalarOfType(reduce_element_type, loc, 0, &rewriter);
   }
 };
 
@@ -1186,7 +1187,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     Type index_element_type = output_type.getElementType();
     Value *index_init_value =
-        GetScalarForType(index_element_type, loc, 0, &rewriter);
+        GetScalarOfType(index_element_type, loc, 0, &rewriter);
 
     RankedTensorType index_type =
         RankedTensorType::get(input_type.getShape(), index_element_type);
@@ -1330,7 +1331,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
 
     auto result = rewriter.create<xla_hlo::SelectAndScatterOp>(
         loc, op.getType(), op.orig_input(), op.grad(),
-        GetScalarForType(element_type, loc, 0, &rewriter),
+        GetScalarOfType(element_type, loc, 0, &rewriter),
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
         nullptr);
 
