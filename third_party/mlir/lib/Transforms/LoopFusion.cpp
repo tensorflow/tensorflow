@@ -546,8 +546,10 @@ public:
   }
 
   // Updates edge mappings from node 'srcId' to node 'dstId' after 'oldMemRef'
-  // has been replaced in node at 'dstId' by a private memref.
-  void updateEdges(unsigned srcId, unsigned dstId, Value *oldMemRef) {
+  // has been replaced in node at 'dstId' by a private memref depending
+  // on the value of 'createPrivateMemRef'.
+  void updateEdges(unsigned srcId, unsigned dstId, Value *oldMemRef,
+                   bool createPrivateMemRef) {
     // For each edge in 'inEdges[srcId]': add new edge remaping to 'dstId'.
     if (inEdges.count(srcId) > 0) {
       SmallVector<Edge, 2> oldInEdges = inEdges[srcId];
@@ -569,7 +571,7 @@ public:
     // Remove any edges in 'inEdges[dstId]' on 'oldMemRef' (which is being
     // replaced by a private memref). These edges could come from nodes
     // other than 'srcId' which were removed in the previous step.
-    if (inEdges.count(dstId) > 0) {
+    if (inEdges.count(dstId) > 0 && createPrivateMemRef) {
       SmallVector<Edge, 2> oldInEdges = inEdges[dstId];
       for (auto &inEdge : oldInEdges)
         if (inEdge.value == oldMemRef)
@@ -1522,8 +1524,27 @@ public:
           // TODO(andydavis) Support more generic multi-output src loop nests
           // fusion.
           auto srcStoreOp = mdg->getUniqueOutgoingStore(srcNode);
-          if (!srcStoreOp)
-            continue;
+          if (!srcStoreOp) {
+            // Get the src store op at the deepest loop depth.
+            // We will use 'LoopFusionUtils::canFuseLoops' to check fusion
+            // feasibility for loops with multiple stores.
+            unsigned maxLoopDepth = 0;
+            for (auto *op : srcNode->stores) {
+              auto storeOp = cast<AffineStoreOp>(op);
+              if (storeOp.getMemRef() != memref) {
+                srcStoreOp = nullptr;
+                break;
+              }
+              unsigned loopDepth = getNestingDepth(*storeOp);
+              if (loopDepth > maxLoopDepth) {
+                maxLoopDepth = loopDepth;
+                srcStoreOp = storeOp;
+              }
+            }
+            if (!srcStoreOp)
+              continue;
+          }
+
           // Unique outgoing store found must write to 'memref' since 'memref'
           // is the one that established the producer-consumer relationship
           // between 'srcNode' and 'dstNode'.
@@ -1538,6 +1559,15 @@ public:
               !canFuseSrcWhichWritesToLiveOut(srcId, dstId, srcStoreOp, mdg))
             continue;
 
+          // Dont create a private memref if 'writesToLiveInOrOut'.
+          bool createPrivateMemref = !writesToLiveInOrOut;
+          // Dont create a private memref if 'srcNode' has in edges on 'memref',
+          // or if 'dstNode' has out edges on 'memref'.
+          if (mdg->getIncomingMemRefAccesses(srcNode->id, memref) > 0 ||
+              mdg->getOutEdgeCount(dstNode->id, memref) > 0) {
+            createPrivateMemref = false;
+          }
+
           // Skip if 'srcNode' out edge count on 'memref' > 'maxSrcUserCount'.
           if (mdg->getOutEdgeCount(srcNode->id, memref) > maxSrcUserCount)
             continue;
@@ -1547,6 +1577,29 @@ public:
           Operation *insertPointInst =
               mdg->getFusedLoopNestInsertionPoint(srcNode->id, dstNode->id);
           if (insertPointInst == nullptr)
+            continue;
+
+          // Compute the innermost common loop depth for dstNode loads/stores.
+          SmallVector<Operation *, 2> dstOps(dstNode->loads.begin(),
+                                             dstNode->loads.end());
+          dstOps.append(dstNode->stores.begin(), dstNode->stores.end());
+          unsigned dstLoopDepthTest = getInnermostCommonLoopDepth(dstOps);
+          // Check the feasibility of fusing src loop nest into dst loop nest
+          // at loop depths in range [1, dstLoopDepthTest].
+          // TODO(andydavis) Use slice union computation and union of memref
+          // read/write regions to cost model and fusion.
+          bool canFuse = false;
+          for (unsigned i = 1; i <= dstLoopDepthTest; ++i) {
+            ComputationSliceState sliceUnion;
+            FusionResult result = mlir::canFuseLoops(
+                cast<AffineForOp>(srcNode->op), cast<AffineForOp>(dstNode->op),
+                /*dstLoopDepth=*/i, &sliceUnion);
+            if (result.value == FusionResult::Success)
+              canFuse = true;
+          }
+
+          // Skip if fusion is not feasible at all loop depths.
+          if (!canFuse)
             continue;
 
           // Gather 'dstNode' store ops to 'memref'.
@@ -1562,16 +1615,7 @@ public:
                                   dstStoreOpInsts, &sliceState,
                                   &bestDstLoopDepth, maximalFusion))
             continue;
-          // TODO(andydavis) Remove the following test code when canFuseLoops
-          // is fully functional.
-          mlir::ComputationSliceState sliceUnion;
-          if (!maximalFusion) {
-            FusionResult result = mlir::canFuseLoops(
-                cast<AffineForOp>(srcNode->op), cast<AffineForOp>(dstNode->op),
-                bestDstLoopDepth, &sliceUnion);
-            assert(result.value == FusionResult::Success);
-            (void)result;
-          }
+
           // Fuse computation slice of 'srcLoopNest' into 'dstLoopNest'.
           auto sliceLoopNest = mlir::insertBackwardComputationSlice(
               srcStoreOp, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
@@ -1584,7 +1628,8 @@ public:
               dstAffineForOp.getOperation()->moveBefore(insertPointInst);
             }
             // Update edges between 'srcNode' and 'dstNode'.
-            mdg->updateEdges(srcNode->id, dstNode->id, memref);
+            mdg->updateEdges(srcNode->id, dstNode->id, memref,
+                             createPrivateMemref);
 
             // Collect slice loop stats.
             LoopNestStateCollector sliceCollector;
@@ -1593,14 +1638,15 @@ public:
             for (auto forOp : sliceCollector.forOps) {
               promoteIfSingleIteration(forOp);
             }
-            if (!writesToLiveInOrOut) {
+            if (createPrivateMemref) {
               // Create private memref for 'memref' in 'dstAffineForOp'.
               SmallVector<Operation *, 4> storesForMemref;
               for (auto *storeOpInst : sliceCollector.storeOpInsts) {
                 if (cast<AffineStoreOp>(storeOpInst).getMemRef() == memref)
                   storesForMemref.push_back(storeOpInst);
               }
-              assert(storesForMemref.size() == 1);
+              // TODO(andydavis) Use union of memref write regions to compute
+              // private memref footprint.
               auto *newMemRef = createPrivateMemRef(
                   dstAffineForOp, storesForMemref[0], bestDstLoopDepth,
                   fastMemorySpace, localBufSizeThreshold);

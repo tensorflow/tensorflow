@@ -301,7 +301,7 @@ build:rbe_linux_cuda_nvcc --extra_execution_platforms="@org_tensorflow//third_pa
 build:rbe_linux_cuda_nvcc --host_platform="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
 build:rbe_linux_cuda_nvcc --platforms="@org_tensorflow//third_party/toolchains:rbe_cuda10.1-cudnn7-ubuntu16.04-manylinux2010"
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/cuda10.1-cudnn7"
-build:rbe_linux_cuda_nvccrepoo_env=TF_TENSORRT_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0"
+build:rbe_linux_cuda_nvcc --repo_env=TF_TENSORRT_CONFIG_REPO="@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/tensorrt6.0"
 build:rbe_linux_cuda_nvcc --repo_env=TF_NEED_TENSORRT=1
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDA_VERSION=10
 build:rbe_linux_cuda_nvcc --repo_env=TF_CUDNN_VERSION=7
