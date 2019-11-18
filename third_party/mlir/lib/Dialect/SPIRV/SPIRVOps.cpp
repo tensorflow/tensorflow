@@ -652,8 +652,8 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
 
 namespace {
 
-// Combine chained `spirv::AccessChainOp` operations into one
-// `spirv::AccessChainOp` operation.
+/// Combines chained `spirv::AccessChainOp` operations into one
+/// `spirv::AccessChainOp` operation.
 struct CombineChainedAccessChain
     : public OpRewritePattern<spirv::AccessChainOp> {
   using OpRewritePattern<spirv::AccessChainOp>::OpRewritePattern;
@@ -678,7 +678,7 @@ struct CombineChainedAccessChain
     return matchSuccess();
   }
 };
-} // namespace
+} // end anonymous namespace
 
 void spirv::AccessChainOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
@@ -769,6 +769,35 @@ static LogicalResult verify(spirv::BitcastOp bitcastOp) {
            << operandBitWidth;
   }
   return success();
+}
+
+namespace {
+
+/// Converts chained `spirv::BitcastOp` operations into one
+/// `spirv::BitcastOp` operation.
+struct ConvertChainedBitcast : public OpRewritePattern<spirv::BitcastOp> {
+  using OpRewritePattern<spirv::BitcastOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::BitcastOp bitcastOp,
+                                     PatternRewriter &rewriter) const override {
+    auto parentBitcastOp = dyn_cast_or_null<spirv::BitcastOp>(
+        bitcastOp.operand()->getDefiningOp());
+
+    if (!parentBitcastOp) {
+      return matchFailure();
+    }
+
+    rewriter.replaceOpWithNewOp<spirv::BitcastOp>(
+        /*valuesToRemoveIfDead=*/{parentBitcastOp.result()}, bitcastOp,
+        bitcastOp.result()->getType(), parentBitcastOp.operand());
+    return matchSuccess();
+  }
+};
+} // end anonymous namespace
+
+void spirv::BitcastOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertChainedBitcast>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2278,7 +2307,7 @@ PatternMatchResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
 
   return matchSuccess();
 }
-} // namespace
+} // end anonymous namespace
 
 void spirv::SelectionOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
