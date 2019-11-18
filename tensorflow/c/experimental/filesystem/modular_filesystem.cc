@@ -220,22 +220,56 @@ Status ModularFileSystem::CreateDir(const std::string& dirname) {
 }
 
 Status ModularFileSystem::Stat(const std::string& fname, FileStatistics* stat) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->stat == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support Stat()"));
+
+  if (stat == nullptr)
+    return errors::InvalidArgument("FileStatistics pointer must not be NULL");
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(fname);
+  TF_FileStatistics stats;
+  ops_->stat(filesystem_.get(), translated_name.c_str(), &stats,
+             plugin_status.get());
+
+  if (TF_GetCode(plugin_status.get()) == TF_OK) {
+    stat->length = stats.length;
+    stat->mtime_nsec = stats.mtime_nsec;
+    stat->is_directory = stats.is_directory;
+  }
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::IsDirectory(const std::string& name) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->is_directory == nullptr) return FileSystem::IsDirectory(name);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(name);
+  ops_->is_directory(filesystem_.get(), translated_name.c_str(),
+                     plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::GetFileSize(const std::string& fname,
                                       uint64* file_size) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->get_file_size == nullptr) {
+    FileStatistics stat;
+    Status status = Stat(fname, &stat);
+    if (!status.ok()) return status;
+    if (stat.is_directory)
+      return errors::FailedPrecondition("Called GetFileSize on a directory");
+
+    *file_size = stat.length;
+    return status;
+  }
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(fname);
+  *file_size = ops_->get_file_size(filesystem_.get(), translated_name.c_str(),
+                                   plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::RenameFile(const std::string& src,

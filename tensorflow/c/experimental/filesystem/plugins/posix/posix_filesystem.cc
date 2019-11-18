@@ -295,6 +295,19 @@ static void PathExists(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
+static void Stat(const TF_Filesystem* filesystem, const char* path,
+                 TF_FileStatistics* stats, TF_Status* status) {
+  struct stat sbuf;
+  if (stat(path, &sbuf) != 0) {
+    TF_SetStatusFromIOError(status, errno, path);
+  } else {
+    stats->length = sbuf.st_size;
+    stats->mtime_nsec = sbuf.st_mtime * (1000 * 1000 * 1000);
+    stats->is_directory = S_ISDIR(sbuf.st_mode);
+    TF_SetStatus(status, TF_OK, "");
+  }
+}
+
 }  // namespace tf_posix_filesystem
 
 void TF_InitPlugin(TF_Status* status) {
@@ -328,6 +341,9 @@ void TF_InitPlugin(TF_Status* status) {
       /*copy_file=*/nullptr,
       tf_posix_filesystem::PathExists,
       /*paths_exist=*/nullptr,
+      tf_posix_filesystem::Stat,
+      /*is_directory=*/nullptr,
+      /*get_file_size=*/nullptr,
       nullptr,
   };
 
