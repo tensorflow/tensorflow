@@ -44,17 +44,34 @@ mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
 }
 
 //===----------------------------------------------------------------------===//
-// ExtractElementOp
+// VectorExtractElementOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter &p, ExtractElementOp op) {
+static Type inferExtractOpResultType(VectorType vectorType,
+                                     ArrayAttr position) {
+  if (static_cast<int64_t>(position.size()) == vectorType.getRank())
+    return vectorType.getElementType();
+  return VectorType::get(vectorType.getShape().drop_front(position.size()),
+                         vectorType.getElementType());
+}
+
+void VectorExtractElementOp::build(Builder *builder, OperationState &result,
+                                   Value *source, ArrayRef<int32_t> position) {
+  result.addOperands(source);
+  auto positionAttr = builder->getI32ArrayAttr(position);
+  result.addTypes(inferExtractOpResultType(source->getType().cast<VectorType>(),
+                                           positionAttr));
+  result.addAttribute(getPositionAttrName(), positionAttr);
+}
+
+static void print(OpAsmPrinter &p, VectorExtractElementOp op) {
   p << op.getOperationName() << " " << *op.vector() << op.position();
   p.printOptionalAttrDict(op.getAttrs(), {"position"});
   p << " : " << op.vector()->getType();
 }
 
-static ParseResult parseExtractElementOp(OpAsmParser &parser,
-                                         OperationState &result) {
+static ParseResult parseVectorExtractElementOp(OpAsmParser &parser,
+                                               OperationState &result) {
   llvm::SMLoc attributeLoc, typeLoc;
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType vector;
@@ -77,19 +94,13 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
         attributeLoc,
         "expected position attribute of rank smaller than vector");
 
-  Type resType =
-      (static_cast<int64_t>(positionAttr.size()) == vectorType.getRank())
-          ? vectorType.getElementType()
-          : VectorType::get(
-                vectorType.getShape().drop_front(positionAttr.size()),
-                vectorType.getElementType());
-
+  Type resType = inferExtractOpResultType(vectorType, positionAttr);
   result.attributes = attrs;
   return failure(parser.resolveOperand(vector, type, result.operands) ||
                  parser.addTypeToList(resType, result.types));
 }
 
-static LogicalResult verify(ExtractElementOp op) {
+static LogicalResult verify(VectorExtractElementOp op) {
   auto positionAttr = op.position().getValue();
   if (positionAttr.empty())
     return op.emitOpError("expected non-empty position attribute");
@@ -107,19 +118,20 @@ static LogicalResult verify(ExtractElementOp op) {
   }
   return success();
 }
+
 //===----------------------------------------------------------------------===//
-// OuterProductOp
+// VectorOuterProductOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter &p, OuterProductOp op) {
+static void print(OpAsmPrinter &p, VectorOuterProductOp op) {
   p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
   if (llvm::size(op.acc()) > 0)
     p << ", " << **op.acc().begin();
   p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
 }
 
-static ParseResult parseOuterProductOp(OpAsmParser &parser,
-                                       OperationState &result) {
+static ParseResult parseVectorOuterProductOp(OpAsmParser &parser,
+                                             OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> operandsInfo;
   Type tLHS, tRHS;
   if (parser.parseOperandList(operandsInfo) || parser.parseColonType(tLHS) ||
@@ -142,7 +154,7 @@ static ParseResult parseOuterProductOp(OpAsmParser &parser,
       parser.addTypeToList(resType, result.types));
 }
 
-static LogicalResult verify(OuterProductOp op) {
+static LogicalResult verify(VectorOuterProductOp op) {
   VectorType vLHS = op.getOperandVectorTypeLHS(),
              vRHS = op.getOperandVectorTypeRHS(),
              vACC = op.getOperandVectorTypeACC(), vRES = op.getVectorType();
