@@ -244,14 +244,14 @@ public:
     SmallVector<Value *, 4> indexedValues(nInputs + nOutputs);
 
     // 1.a. Emit std_load from input views.
-    for (unsigned i = 0, e = nInputs; i < e; ++i) {
+    for (unsigned i = 0; i < nInputs; ++i) {
       ValueHandleArray indexing(foldedAffineApplies(
           b, loc, genericOp.getInputIndexingMap(i), allIvs, folder));
       indexedValues[i] = std_load(genericOp.getInput(i), indexing);
     }
 
     // 1.b. Emit std_load from output views.
-    for (unsigned i = 0, e = nOutputs; i < e; ++i) {
+    for (unsigned i = 0; i < nOutputs; ++i) {
       ValueHandleArray indexing(foldedAffineApplies(
           b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
       indexedValues[nInputs + i] = std_load(genericOp.getOutput(i), indexing);
@@ -264,49 +264,138 @@ public:
       assert(callOp->getNumResults() == genericOp.getNumOutputs());
 
       // 3. Emit std_store.
-      for (unsigned i = 0, e = nOutputs; i < e; ++i) {
+      for (unsigned i = 0; i < nOutputs; ++i) {
         ValueHandleArray indexing(foldedAffineApplies(
             b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
         std_store(callOp->getResult(i), genericOp.getOutput(i), indexing);
       }
-    } else {
-      // TODO(ntv): When a region inliner exists, use it.
-      // 2. Inline region, currently only works for a single basic block.
-      BlockAndValueMapping map;
-      auto &block = genericOp.region().front();
-      for (auto it : llvm::zip(block.getArguments(), indexedValues))
+      return;
+    }
+    // TODO(ntv): When a region inliner exists, use it.
+    // 2. Inline region, currently only works for a single basic block.
+    BlockAndValueMapping map;
+    auto &block = genericOp.region().front();
+    for (auto it : llvm::zip(block.getArguments(), indexedValues))
+      map.map(std::get<0>(it), std::get<1>(it));
+    for (auto &op : block.without_terminator()) {
+      assert(op.getNumRegions() == 0);
+      auto *newOp = b.clone(op, map);
+      for (auto it : llvm::zip(op.getResults(), newOp->getResults()))
         map.map(std::get<0>(it), std::get<1>(it));
-      for (auto &op : block) {
-        // Skip terminator.
-        if (&op == &block.back())
-          continue;
-        assert(op.getNumRegions() == 0);
-        auto *newOp = b.clone(op, map);
-        for (auto it : llvm::zip(op.getResults(), newOp->getResults()))
-          map.map(std::get<0>(it), std::get<1>(it));
-      }
+    }
 
-      // 3. Emit std_store.
-      auto *yieldOp = cast<YieldOp>(block.back()).getOperation();
-      assert(yieldOp->getNumOperands() == nOutputs);
-      for (unsigned i = 0, e = nOutputs; i < e; ++i) {
-        ValueHandleArray indexing(foldedAffineApplies(
-            b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
-        std_store(map.lookup(yieldOp->getOperand(i)), genericOp.getOutput(i),
-                  indexing);
-      }
+    // 3. Emit std_store.
+    auto *yieldOp = cast<YieldOp>(block.back()).getOperation();
+    assert(yieldOp->getNumOperands() == nOutputs);
+    for (unsigned i = 0; i < nOutputs; ++i) {
+      ValueHandleArray indexing(foldedAffineApplies(
+          b, loc, genericOp.getOutputIndexingMap(i), allIvs, folder));
+      std_store(map.lookup(yieldOp->getOperand(i)), genericOp.getOutput(i),
+                indexing);
     }
   }
 };
 
+// Emits the MLIR for the scalar part of the indexed generic op by:
+//   1. Emitting std_load and std_store ops for each input and output view in
+//      order. This is achieved by applying the appropriate input or output map
+//      to the enclosing induction variables.
+//   2. Emitting a call to `op.fun()` that takes as arguments the induction
+//      variables and the scalars from point 1. above.
+//   3. Emitting std_store to store the results of 2. to the output views.
+//
+// An example output may resemble:
+//
+// ```
+//    loop.for %i = %c0 to %0 step %c1 {
+//      loop.for %j = %c0 to %1 step %c1 {
+//        loop.for %k = %c0 to %4 step %c1 {
+//          %11 = load %arg0[%i, %j] :
+//            memref<?x?xf32, stride_specification>
+//          %12 = load %arg1[%i, %j, %k] :
+//            memref<?x?x?xf32, stride_specification>
+//          %13 = load %arg2[%i, %k, %j] :
+//            memref<?x?x?xf32, stride_specification>
+//          %14:2 = call @foo(%i, %j, %k, %11, %12, %13) :
+//            (index, index, index, f32, f32, f32) -> (f32, f32)
+//          store %14#0, %arg1[%i, %j, %k] :
+//            memref<?x?x?Xf32, stride_specification>
+//          store %14#1, %arg2[%i, %k, %j] :
+//            memref<?x?x?Xf32, stride_specification>
+//       }
+//      }
+//    }
+// ```
 template <typename IndexedValueType>
 class LinalgScopedEmitter<IndexedValueType, IndexedGenericOp> {
 public:
   static void emitScalarImplementation(ArrayRef<Value *> allIvs,
-                                       IndexedGenericOp genericOp,
+                                       IndexedGenericOp indexedGenericOp,
                                        OperationFolder *folder) {
-    // This is just a shim to make Linalg compile.
-    // TODO(pifon): Implement lowering after IndexedGenericOp def is submitted.
+    auto b = ScopedContext::getBuilder();
+    auto loc = ScopedContext::getLocation();
+    using edsc::intrinsics::detail::ValueHandleArray;
+    unsigned nInputs = indexedGenericOp.getNumInputs();
+    unsigned nOutputs = indexedGenericOp.getNumOutputs();
+    unsigned nLoops = allIvs.size();
+    SmallVector<Value *, 4> indexedValues(nLoops + nInputs + nOutputs);
+
+    for (unsigned i = 0; i < nLoops; ++i) {
+      indexedValues[i] = allIvs[i];
+    }
+
+    // 1.a. Emit std_load from input views.
+    for (unsigned i = 0; i < nInputs; ++i) {
+      ValueHandleArray indexing(foldedAffineApplies(
+          b, loc, indexedGenericOp.getInputIndexingMap(i), allIvs, folder));
+      indexedValues[nLoops + i] =
+          std_load(indexedGenericOp.getInput(i), indexing);
+    }
+
+    // 1.b. Emit std_load from output views.
+    for (unsigned i = 0; i < nOutputs; ++i) {
+      ValueHandleArray indexing(foldedAffineApplies(
+          b, loc, indexedGenericOp.getOutputIndexingMap(i), allIvs, folder));
+      indexedValues[nLoops + nInputs + i] =
+          std_load(indexedGenericOp.getOutput(i), indexing);
+    }
+
+    if (auto funcOp = indexedGenericOp.getFunction()) {
+      // 2. Emit call.
+      Operation *callOp = call(funcOp, indexedValues);
+      assert(callOp->getNumResults() == indexedGenericOp.getNumOutputs());
+
+      // 3. Emit std_store.
+      for (unsigned i = 0; i < nOutputs; ++i) {
+        ValueHandleArray indexing(foldedAffineApplies(
+            b, loc, indexedGenericOp.getOutputIndexingMap(i), allIvs, folder));
+        std_store(callOp->getResult(i), indexedGenericOp.getOutput(i),
+                  indexing);
+      }
+      return;
+    }
+    // TODO(ntv): When a region inliner exists, use it.
+    // 2. Inline region, currently only works for a single basic block.
+    BlockAndValueMapping map;
+    auto &block = indexedGenericOp.region().front();
+    for (auto it : llvm::zip(block.getArguments(), indexedValues))
+      map.map(std::get<0>(it), std::get<1>(it));
+    for (auto &op : block.without_terminator()) {
+      assert(op.getNumRegions() == 0);
+      auto *newOp = b.clone(op, map);
+      for (auto it : llvm::zip(op.getResults(), newOp->getResults()))
+        map.map(std::get<0>(it), std::get<1>(it));
+    }
+
+    // 3. Emit std_store.
+    auto *yieldOp = cast<YieldOp>(block.back()).getOperation();
+    assert(yieldOp->getNumOperands() == nOutputs);
+    for (unsigned i = 0; i < nOutputs; ++i) {
+      ValueHandleArray indexing(foldedAffineApplies(
+          b, loc, indexedGenericOp.getOutputIndexingMap(i), allIvs, folder));
+      std_store(map.lookup(yieldOp->getOperand(i)),
+                indexedGenericOp.getOutput(i), indexing);
+    }
   }
 };
 
