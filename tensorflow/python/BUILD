@@ -103,6 +103,7 @@ py_library(
         ":_pywrap_events_writer",
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
+        ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
         ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
@@ -903,6 +904,29 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_header_only_library(
+    name = "python_op_gen_headers_lib",
+    extra_deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+    deps = [
+        ":python_op_gen",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_python_op_gen",
+    srcs = ["framework/python_op_gen_wrapper.cc"],
+    module_name = "_pywrap_python_op_gen",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_lib",
+        ":python_op_gen_headers_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "python_op_gen_main",
     srcs = ["framework/python_op_gen_main.cc"],
@@ -991,6 +1015,7 @@ py_library(
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
+        ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
         ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
@@ -5272,7 +5297,6 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/tf_session.i",
         "client/tf_sessionrun_wrapper.i",
-        "framework/python_op_gen.i",
         "grappler/cluster.i",
         "grappler/cost_analyzer.i",
         "grappler/item.i",
@@ -5394,6 +5418,7 @@ genrule(
         ":ndarray_tensor",  # checkpoint_reader
         ":numpy_lib",  # checkpoint_reader
         ":safe_ptr",  # checkpoint_reader
+        "//tensorflow/python:python_op_gen",  # python_op_gen
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
