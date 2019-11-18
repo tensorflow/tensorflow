@@ -183,15 +183,15 @@ class GrpcTpuStream {
       int32_t core_id, MemoryRegion region,
       absl::Span<BufferHandle* const> children,
       absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> Deallocate(std::unique_ptr<BufferHandle> handle,
+  std::shared_ptr<Event> Deallocate(std::unique_ptr<BufferHandle> handle,
                                     absl::Span<Event* const> wait_for);
 
-  std::unique_ptr<Event> TransferToDevice(const void* src, BufferHandle* dst,
+  std::shared_ptr<Event> TransferToDevice(const void* src, BufferHandle* dst,
                                           absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> TransferFromDevice(const BufferHandle* src, void* dst,
+  std::shared_ptr<Event> TransferFromDevice(const BufferHandle* src, void* dst,
                                             absl::Span<Event* const> wait_for);
 
-  std::unique_ptr<Event> TransferFromDeviceToDevice(
+  std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for);
 
@@ -201,10 +201,10 @@ class GrpcTpuStream {
   std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> UnloadProgram(
+  std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for);
-  std::unique_ptr<Event> ExecuteProgram(
+  std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
@@ -362,44 +362,31 @@ class GrpcTpuDriver : public TpuDriver {
     return streams_[core_id]->AllocateTuple(core_id, region, children,
                                             wait_for);
   }
-  std::unique_ptr<Event> Deallocate(
+  std::shared_ptr<Event> Deallocate(
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<GrpcBufferHandle*>(handle.get())->stream();
     return stream->Deallocate(std::move(handle), wait_for);
   }
 
-  std::unique_ptr<Event> TransferToDevice(
+  std::shared_ptr<Event> TransferToDevice(
       const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<GrpcBufferHandle*>(dst)->stream();
     return stream->TransferToDevice(src, dst, wait_for);
   }
-  std::unique_ptr<Event> TransferFromDevice(
+  std::shared_ptr<Event> TransferFromDevice(
       const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<const GrpcBufferHandle*>(src)->stream();
     return stream->TransferFromDevice(src, dst, wait_for);
   }
 
-  std::unique_ptr<Event> TransferFromDeviceToDevice(
+  std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     auto* stream = static_cast<const GrpcBufferHandle*>(src)->stream();
     return stream->TransferFromDeviceToDevice(src, dst, wait_for);
-  }
-
-  // TODO(b/140198941): Add infeed/outfeed functionality.
-  std::unique_ptr<Event> TransferToInfeed(const void* src, int64_t num_bytes,
-                                          absl::Span<Event* const> wait_for) {
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
-  }
-  // TODO(b/140198941): Add infeed/outfeed functionality.
-  std::unique_ptr<Event> TransferFromOutfeed(
-      void* dst, int64_t num_bytes, absl::Span<Event* const> wait_for) {
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
   }
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
@@ -413,14 +400,14 @@ class GrpcTpuDriver : public TpuDriver {
       absl::Span<Event* const> wait_for) override {
     return streams_[core_id]->LoadProgram(core_id, handle, wait_for);
   }
-  std::unique_ptr<Event> UnloadProgram(
+  std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto* stream =
         static_cast<const GrpcLoadedProgramHandle*>(handle.get())->stream();
     return stream->UnloadProgram(std::move(handle), wait_for);
   }
-  std::unique_ptr<Event> ExecuteProgram(
+  std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
@@ -697,7 +684,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   req->mutable_alloc()->set_region(region);
   req->mutable_alloc()->set_num_bytes(num_bytes);
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event),
                                              num_bytes);
@@ -713,7 +700,7 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::Allocate(
   req->mutable_alloc()->set_region(region);
   *req->mutable_alloc()->mutable_shape() = shape;
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcBufferHandle>(
       event->id(), std::move(event), ComputeBytesFromShape(shape), shape);
@@ -733,12 +720,12 @@ std::unique_ptr<BufferHandle> GrpcTpuStream::AllocateTuple(
     req->mutable_alloc_tuple()->add_children(grpc_child->id().AsInt());
   }
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcBufferHandle>(event->id(), std::move(event), 0);
 }
 
-std::unique_ptr<Event> GrpcTpuStream::Deallocate(
+std::shared_ptr<Event> GrpcTpuStream::Deallocate(
     std::unique_ptr<BufferHandle> handle, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
@@ -746,12 +733,12 @@ std::unique_ptr<Event> GrpcTpuStream::Deallocate(
   auto grpc_handle = static_cast<GrpcBufferHandle*>(handle.get());
   req->mutable_dealloc()->set_handle(grpc_handle->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::TransferToDevice(
+std::shared_ptr<Event> GrpcTpuStream::TransferToDevice(
     const void* src, BufferHandle* dst, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
@@ -761,12 +748,12 @@ std::unique_ptr<Event> GrpcTpuStream::TransferToDevice(
   req->mutable_transfer_to()->set_target_handle(
       static_cast<GrpcBufferHandle*>(dst)->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::TransferFromDevice(
+std::shared_ptr<Event> GrpcTpuStream::TransferFromDevice(
     const BufferHandle* src, void* dst, absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
   InitializeRequest(req.get(), wait_for);
@@ -779,12 +766,12 @@ std::unique_ptr<Event> GrpcTpuStream::TransferFromDevice(
     TransferInfo info(dst, const_cast<BufferHandle*>(src)->size_in_bytes());
     transfers_.insert(std::make_pair(event_id, info));
   }
-  auto event = absl::make_unique<GrpcEvent>(event_id, this);
+  auto event = std::make_shared<GrpcEvent>(event_id, this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
+std::shared_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
     const BufferHandle* src, BufferHandle* dst,
     absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
@@ -797,7 +784,7 @@ std::unique_ptr<Event> GrpcTpuStream::TransferFromDeviceToDevice(
   req->mutable_transfer_from_to()->set_target_handle(
       static_cast<const GrpcBufferHandle*>(dst)->id().AsInt());
   EventId event_id = EventId::FromInt(req->operation_id());
-  auto event = absl::make_unique<GrpcEvent>(event_id, this);
+  auto event = std::make_shared<GrpcEvent>(event_id, this);
   AddWriteRequest(std::move(req));
   return event;
 }
@@ -813,7 +800,7 @@ std::unique_ptr<CompiledProgramHandle> GrpcTpuStream::CompileProgram(
   EventId event_id = EventId::FromInt(req->operation_id());
 
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
 
   auto handle = absl::make_unique<GrpcCompiledProgramHandle>(event->id(),
                                                              std::move(event));
@@ -836,7 +823,7 @@ std::unique_ptr<LoadedProgramHandle> GrpcTpuStream::LoadProgram(
   req->mutable_load()->set_core_id(core_id);
   auto grpc_handle = static_cast<const GrpcCompiledProgramHandle*>(handle);
   if (grpc_handle->id().client_id != driver_->client_id()) {
-    auto event = absl::make_unique<ErrorEvent>(
+    auto event = std::make_shared<ErrorEvent>(
         xla::InvalidArgument("Invalid program handle (wrong client id). Did "
                              "you restart the server or use a stale handle?"));
     return absl::make_unique<GrpcLoadedProgramHandle>(event->id(),
@@ -844,13 +831,13 @@ std::unique_ptr<LoadedProgramHandle> GrpcTpuStream::LoadProgram(
   }
   req->mutable_load()->set_compiled_program_handle(grpc_handle->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return absl::make_unique<GrpcLoadedProgramHandle>(event->id(),
                                                     std::move(event));
 }
 
-std::unique_ptr<Event> GrpcTpuStream::UnloadProgram(
+std::shared_ptr<Event> GrpcTpuStream::UnloadProgram(
     std::unique_ptr<LoadedProgramHandle> handle,
     absl::Span<Event* const> wait_for) {
   auto req = absl::make_unique<StreamRequest::Entry>();
@@ -859,12 +846,12 @@ std::unique_ptr<Event> GrpcTpuStream::UnloadProgram(
   req->mutable_unload()->set_loaded_program_handle(
       static_cast<GrpcLoadedProgramHandle*>(handle.get())->id().AsInt());
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }
 
-std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
+std::shared_ptr<Event> GrpcTpuStream::ExecuteProgram(
     LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
     absl::Span<BufferHandle* const> outputs,
     const xla::DeviceAssignmentProto& device_assignment,
@@ -873,7 +860,7 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
   InitializeRequest(req.get(), wait_for);
   auto program_handle = static_cast<GrpcLoadedProgramHandle*>(program);
   if (program_handle->id().client_id != driver_->client_id()) {
-    return absl::make_unique<ErrorEvent>(
+    return std::make_shared<ErrorEvent>(
         xla::InvalidArgument("Invalid program handle (wrong client id). Did "
                              "you restart the server or use a stale handle?"));
   }
@@ -884,7 +871,7 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
   for (BufferHandle* input : inputs) {
     auto* grpc_handle = static_cast<GrpcBufferHandle*>(input);
     if (grpc_handle->id().client_id != driver_->client_id()) {
-      return absl::make_unique<ErrorEvent>(xla::InvalidArgument(
+      return std::make_shared<ErrorEvent>(xla::InvalidArgument(
           "Invalid input buffer (wrong client id). Did you restart the server "
           "or use a stale handle?"));
     }
@@ -894,7 +881,7 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
   for (BufferHandle* output : outputs) {
     auto* grpc_handle = static_cast<GrpcBufferHandle*>(output);
     if (grpc_handle->id().client_id != driver_->client_id()) {
-      return absl::make_unique<ErrorEvent>(xla::InvalidArgument(
+      return std::make_shared<ErrorEvent>(xla::InvalidArgument(
           "Invalid output buffer (wrong client id). Did you restart the server "
           "or use a stale handle?"));
     }
@@ -907,7 +894,7 @@ std::unique_ptr<Event> GrpcTpuStream::ExecuteProgram(
     *req->mutable_execute()->mutable_device_assignment() = device_assignment;
   }
   auto event =
-      absl::make_unique<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
+      std::make_shared<GrpcEvent>(EventId::FromInt(req->operation_id()), this);
   AddWriteRequest(std::move(req));
   return event;
 }

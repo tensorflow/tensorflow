@@ -176,7 +176,7 @@ class TpuDriver {
       int32_t core_id, MemoryRegion region,
       absl::Span<BufferHandle* const> children,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> Deallocate(
+  virtual std::shared_ptr<Event> Deallocate(
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) = 0;
 
@@ -198,14 +198,14 @@ class TpuDriver {
    *
    * `TransferFromDevice` will write out the shape back in this order as well.
    */
-  virtual std::unique_ptr<Event> TransferToDevice(
+  virtual std::shared_ptr<Event> TransferToDevice(
       const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> TransferFromDevice(
+  virtual std::shared_ptr<Event> TransferFromDevice(
       const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) = 0;
 
-  virtual std::unique_ptr<Event> TransferFromDeviceToDevice(
+  virtual std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) = 0;
 
@@ -215,10 +215,10 @@ class TpuDriver {
   virtual std::unique_ptr<LoadedProgramHandle> LoadProgram(
       int32_t core_id, const CompiledProgramHandle* handle,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> UnloadProgram(
+  virtual std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) = 0;
-  virtual std::unique_ptr<Event> ExecuteProgram(
+  virtual std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,

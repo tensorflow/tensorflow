@@ -258,7 +258,7 @@ void PyTpuBuffer::Delete() {
 }
 
 Status PyTpuBuffer::CopyToHostAsync() {
-  std::vector<std::unique_ptr<tpu_driver::Event>> transfer_events;
+  std::vector<std::shared_ptr<tpu_driver::Event>> transfer_events;
   std::shared_ptr<HostValue> host_value = std::make_shared<HostValue>();
 
   {
@@ -456,7 +456,7 @@ StatusOr<std::unique_ptr<PyTpuBuffer>> PyTpuBuffer::CreateBuffer(
   // for the initialization event in `wait_for_use` to finish first.
   std::vector<std::shared_ptr<tpu_driver::Event>> wait_for_use;
   if (initializer.has_value()) {
-    std::unique_ptr<tpu_driver::Event> init = initializer.value()(handle.get());
+    std::shared_ptr<tpu_driver::Event> init = initializer.value()(handle.get());
     wait_for_use.push_back(std::move(init));
   }
   auto device_buffer = std::make_shared<TpuSharedBuffer>(
@@ -538,7 +538,7 @@ PyTpuExecutable::ExecuteResult PyTpuExecutable::ExecuteHelper(
 
   xla::DeviceAssignmentProto device_assignment;
   CHECK(device_assignment_.Serialize(&device_assignment).ok());
-  std::unique_ptr<tpu_driver::Event> on_execute_finished =
+  std::shared_ptr<tpu_driver::Event> on_execute_finished =
       client_->driver()->ExecuteProgram(
           executables_[replica].get(), inputs,
           {output_buffer->DeviceBuffer()->handle.get()}, device_assignment,
