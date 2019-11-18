@@ -527,11 +527,13 @@ typedef struct TF_FilesystemOps {
   ///     of type `TF_Status*`.
   ///
   /// If `statuses` is not null, plugins must fill each element with detailed
-  /// status for each file, as if calling `path_exists` on each one.
+  /// status for each file, as if calling `path_exists` on each one. Core
+  /// TensorFlow initializes the `statuses` array and plugins must use
+  /// `TF_SetStatus` to set each element instead of dirrectly assigning.
   ///
   /// DEFAULT IMPLEMENTATION: Checks existence of every file. Needs
   /// `path_exists`.
-  bool (*paths_exist)(const TF_Filesystem* filesystem, const char** paths,
+  bool (*paths_exist)(const TF_Filesystem* filesystem, char** paths,
                       int num_files, TF_Status** statuses);
 
   /// Obtains statistics for the given `path`.

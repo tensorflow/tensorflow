@@ -287,7 +287,13 @@ static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
-// TODO(mihaimaruseac): More implementations to follow in subsequent changes.
+static void PathExists(const TF_Filesystem* filesystem, const char* path,
+                       TF_Status* status) {
+  if (access(path, F_OK) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
 
 }  // namespace tf_posix_filesystem
 
@@ -317,6 +323,11 @@ void TF_InitPlugin(TF_Status* status) {
       /*recursively_create_dir=*/nullptr,
       tf_posix_filesystem::DeleteFile,
       tf_posix_filesystem::DeleteDir,
+      /*delete_recursively=*/nullptr,
+      /*rename_file=*/nullptr,
+      /*copy_file=*/nullptr,
+      tf_posix_filesystem::PathExists,
+      /*paths_exist=*/nullptr,
       nullptr,
   };
 

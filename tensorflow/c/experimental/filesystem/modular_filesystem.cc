@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
 
+#include <algorithm>
 #include <string>
 #include <utility>
 
@@ -111,15 +112,47 @@ Status ModularFileSystem::NewReadOnlyMemoryRegionFromFile(
 }
 
 Status ModularFileSystem::FileExists(const std::string& fname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->path_exists == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", fname, " does not support FileExists()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  const std::string translated_name = TranslateName(fname);
+  ops_->path_exists(filesystem_.get(), translated_name.c_str(),
+                    plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 bool ModularFileSystem::FilesExist(const std::vector<std::string>& files,
                                    std::vector<Status>* status) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return true;
+  if (ops_->paths_exist == nullptr)
+    return FileSystem::FilesExist(files, status);
+
+  std::vector<char*> translated_names;
+  translated_names.reserve(files.size());
+  for (int i = 0; i < files.size(); i++)
+    translated_names.push_back(strdup(TranslateName(files[i]).c_str()));
+
+  bool result;
+  if (status == nullptr) {
+    result = ops_->paths_exist(filesystem_.get(), translated_names.data(),
+                               files.size(), nullptr);
+  } else {
+    std::vector<TF_Status*> plugin_status;
+    plugin_status.reserve(files.size());
+    for (int i = 0; i < files.size(); i++)
+      plugin_status.push_back(TF_NewStatus());
+    result = ops_->paths_exist(filesystem_.get(), translated_names.data(),
+                               files.size(), plugin_status.data());
+    for (int i = 0; i < files.size(); i++) {
+      status->push_back(StatusFromTF_Status(plugin_status[i]));
+      TF_DeleteStatus(plugin_status[i]);
+    }
+  }
+
+  for (int i = 0; i < files.size(); i++) free(translated_names[i]);
+
+  return result;
 }
 
 Status ModularFileSystem::GetChildren(const std::string& dir,
