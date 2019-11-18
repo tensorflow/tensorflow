@@ -784,7 +784,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
-        "//tensorflow/core/platform:env",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
@@ -928,7 +928,7 @@ cc_library(
     srcs = ["utils/dump_mlir_util.cc"],
     hdrs = ["utils/dump_mlir_util.h"],
     deps = [
-        "//tensorflow/core/platform:env",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm//:support",
         "@local_config_mlir//:IR",
@@ -941,9 +941,9 @@ tf_cc_test(
     srcs = ["utils/dump_mlir_util_test.cc"],
     deps = [
         ":dump_mlir_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:test",
         "@llvm//:support",
         "@local_config_mlir//:IR",
