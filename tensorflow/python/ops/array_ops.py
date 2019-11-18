@@ -3555,18 +3555,18 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
       This operation is equivalent to the following steps:
       1. Reshape `input` to `reshaped` of shape: [block_shape[0], ...,
         block_shape[M-1], batch / prod(block_shape), input_shape[1], ...,
-        input_shape[N-1]]  
-      2. Permute dimensions of `reshaped` to produce `permuted` of shape 
-         [batch / prod(block_shape),  input_shape[1], block_shape[0], ..., 
+        input_shape[N-1]]
+      2. Permute dimensions of `reshaped` to produce `permuted` of shape
+         [batch / prod(block_shape),  input_shape[1], block_shape[0], ...,
          input_shape[M], block_shape[M-1], input_shape[M+1],
-        ..., input_shape[N-1]]  
-      3. Reshape `permuted` to produce `reshaped_permuted` of shape 
-         [batch / prod(block_shape), input_shape[1] * block_shape[0], ..., 
-         input_shape[M] * block_shape[M-1], input_shape[M+1], ..., 
-         input_shape[N-1]]  
-      4. Crop the start and end of dimensions `[1, ..., M]` of 
-         `reshaped_permuted` according to `crops` to produce the output 
-         of shape: 
+        ..., input_shape[N-1]]
+      3. Reshape `permuted` to produce `reshaped_permuted` of shape
+         [batch / prod(block_shape), input_shape[1] * block_shape[0], ...,
+         input_shape[M] * block_shape[M-1], input_shape[M+1], ...,
+         input_shape[N-1]]
+      4. Crop the start and end of dimensions `[1, ..., M]` of
+         `reshaped_permuted` according to `crops` to produce the output
+         of shape:
          [batch / prod(block_shape),  input_shape[1] *
            block_shape[0] - crops[0,0] - crops[0,1], ..., input_shape[M] *
            block_shape[M-1] - crops[M-1,0] - crops[M-1,1],  input_shape[M+1],
