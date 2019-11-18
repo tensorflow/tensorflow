@@ -3345,10 +3345,10 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
 class RangeDataset(DatasetSource):
   """A `Dataset` of a step separated range of values."""
 
-  def __init__(self, *args):
+  def __init__(self, *args, output_types=dtypes.int64):
     """See `Dataset.range()` for details."""
     self._parse_args(*args)
-    self._structure = tensor_spec.TensorSpec([], dtypes.int64)
+    self._structure = tensor_spec.TensorSpec([], output_types)
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
