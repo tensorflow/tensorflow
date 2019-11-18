@@ -49,15 +49,33 @@ limitations under the License.
 using namespace mlir;
 
 namespace {
-struct LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public FunctionPass<LegalizeTF> {
+ public:
+  struct Options : public PassOptions<Options> {
+    Option<bool> allow_partial_conversion{
+        *this, "allow-partial-conversion",
+        llvm::cl::desc("Allow operations that can't be legalized."),
+        llvm::cl::init(false)};
+  };
+
+  explicit LegalizeTF(bool allow_partial_conversion)
+      : FunctionPass<LegalizeTF>(),
+        allow_partial_conversion_(allow_partial_conversion) {}
+
+  explicit LegalizeTF(const Options &option)
+      : LegalizeTF(option.allow_partial_conversion) {}
+
   /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
+
+ private:
+  bool allow_partial_conversion_;
 };
 }  // end anonymous namespace
 
 std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
-mlir::xla_hlo::createLegalizeTFPass() {
-  return std::make_unique<LegalizeTF>();
+mlir::xla_hlo::createLegalizeTFPass(bool allow_partial_conversion) {
+  return std::make_unique<LegalizeTF>(allow_partial_conversion);
 }
 
 /// Returns if the given TF data format string is the default format.
@@ -1767,7 +1785,8 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 }  // end namespace xla
 }  // end namespace mlir
 
-LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
+LogicalResult mlir::xla_hlo::legalizeTF(Operation *op,
+                                        bool allow_partial_conversion) {
   MLIRContext *context = op->getContext();
 
   // Add lowering patterns to the list.
@@ -1793,13 +1812,21 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
 
+  if (!allow_partial_conversion) {
+    target.addLegalOp<mlir::ModuleOp, mlir::FuncOp, mlir::ModuleTerminatorOp,
+                      mlir::ReturnOp>();
+    return applyFullConversion(op, target, patterns);
+  }
+
   return applyPartialConversion(op, target, patterns);
 }
 
 /// Performs the lowering to XLA dialect.
 void LegalizeTF::runOnFunction() {
-  if (failed(mlir::xla_hlo::legalizeTF(getFunction()))) signalPassFailure();
+  if (failed(
+          mlir::xla_hlo::legalizeTF(getFunction(), allow_partial_conversion_)))
+    signalPassFailure();
 }
 
-static PassRegistration<LegalizeTF> pass(
+static PassRegistration<LegalizeTF, LegalizeTF::Options> pass(
     "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");
