@@ -607,6 +607,18 @@ tf_cc_shared_object(
     ] + tf_additional_binary_deps(),
 )
 
+# This is intended to be the same as tf_binary_additional_srcs:
+# https://github.com/tensorflow/tensorflow/blob/cd67f4f3723f9165aabedd0171aaadc6290636e5/tensorflow/tensorflow.bzl#L396-L425
+# And is usable in the "deps" attribute instead of the "srcs" attribute
+# as a workaround for https://github.com/tensorflow/tensorflow/issues/34117
+cc_import(
+    name = "libtensorflow_framework_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
+    }),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------

@@ -626,6 +626,11 @@ def tf_cc_binary(
                 [
                     clean_dep("//third_party/mkl:intel_binary_blob"),
                 ],
+            ) + if_static(
+                extra_deps = [],
+                otherwise = [
+                    clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
+                ],
             ),
             data = depset(data + added_data_deps),
             linkopts = linkopts + _rpath_linkopts(name_os),
