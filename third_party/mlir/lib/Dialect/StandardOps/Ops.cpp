@@ -212,7 +212,7 @@ void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
 // dimension operands parsed.
 // Returns 'false' on success and 'true' on error.
 ParseResult mlir::parseDimAndSymbolList(OpAsmParser &parser,
-                                        SmallVector<Value *, 4> &operands,
+                                        SmallVectorImpl<Value *> &operands,
                                         unsigned &numDims) {
   SmallVector<OpAsmParser::OperandType, 8> opInfos;
   if (parser.parseOperandList(opInfos, OpAsmParser::Delimiter::Paren))

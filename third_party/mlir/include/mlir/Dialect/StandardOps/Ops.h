@@ -338,7 +338,7 @@ void printDimAndSymbolList(Operation::operand_iterator begin,
 
 /// Parses dimension and symbol list and returns true if parsing failed.
 ParseResult parseDimAndSymbolList(OpAsmParser &parser,
-                                  SmallVector<Value *, 4> &operands,
+                                  SmallVectorImpl<Value *> &operands,
                                   unsigned &numDims);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
