@@ -44,7 +44,7 @@ class CollectiveOpsTest : public HloTestBase {
       int64 num_elems, std::vector<std::vector<int64>> replica_groups,
       const HloModuleConfig& config, std::string op = "add",
       std::string datatype = "f32") {
-    const char* kTemplate = R"(
+    std::string hlo_template = R"(
       HloModule test
 
       apply_op {
@@ -55,8 +55,10 @@ class CollectiveOpsTest : public HloTestBase {
 
       ENTRY test_computation {
         p = DATATYPE[NUM_ELEMS] parameter(0)
-        crs = DATATYPE[NUM_ELEMS] all-reduce(p), replica_groups=REPLICA_GROUPS, to_apply=apply_op
-        ROOT out = DATATYPE[NUM_ELEMS] copy(crs)
+        p2 = DATATYPE[NUM_ELEMS] bitcast(p)
+        crs = DATATYPE[NUM_ELEMS] all-reduce(p2), replica_groups=REPLICA_GROUPS, to_apply=apply_op
+        copy = DATATYPE[NUM_ELEMS] copy(crs)
+        ROOT out = DATATYPE[NUM_ELEMS] bitcast(copy)
       }
     )";
     std::vector<string> replica_group_strs;
@@ -64,9 +66,17 @@ class CollectiveOpsTest : public HloTestBase {
       replica_group_strs.push_back(
           absl::StrFormat("{%s}", absl::StrJoin(g, ",")));
     }
+    if (num_elems == 1) {
+      // Exercise the scalar codepath.
+      hlo_template = absl::StrReplaceAll(
+          hlo_template,
+          {{"DATATYPE[NUM_ELEMS] bitcast(p)", "DATATYPE[] bitcast(p)"},
+           {"DATATYPE[NUM_ELEMS] all-reduce", "DATATYPE[] all-reduce"},
+           {"DATATYPE[NUM_ELEMS] copy", "DATATYPE[] copy"}});
+    }
     return ParseAndReturnVerifiedModule(
                absl::StrReplaceAll(
-                   kTemplate,
+                   hlo_template,
                    {{"NUM_ELEMS", absl::StrCat(num_elems)},
                     {"REPLICA_GROUPS",
                      absl::StrFormat("{%s}",
@@ -81,22 +91,24 @@ class CollectiveOpsTest : public HloTestBase {
   void TestTwoReplicasOneOperand(std::string op,
                                  std::vector<LiteralType> input_value,
                                  std::vector<LiteralType> expected_value) {
+    const int kNumReplicas = 2;
     std::string dtype = primitive_util::LowercasePrimitiveTypeName(
         primitive_util::NativeToPrimitiveType<LiteralType>());
     auto config = GetModuleConfigForTest();
-    config.set_replica_count(2);
-    auto module = MakeCrsModule(/*num_elems=*/3, /*replica_groups=*/{}, config,
+    config.set_replica_count(kNumReplicas);
+    auto module = MakeCrsModule(/*num_elems=*/input_value.size(),
+                                /*replica_groups=*/{}, config,
                                 /*op=*/op, /*datatype=*/dtype);
     auto literal = LiteralUtil::CreateR1<LiteralType>(input_value);
     auto expected = LiteralUtil::CreateR1<LiteralType>(expected_value);
-    TF_ASSERT_OK_AND_ASSIGN(
-        std::vector<Literal> results,
-        ExecuteReplicated(std::move(module), {&literal}, /*num_replicas=*/2,
-                          /*use_threads=*/true));
-    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected, results[0],
-                                             ErrorSpec{1e-5, 1e-5}));
-    EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected, results[1],
-                                             ErrorSpec{1e-5, 1e-5}));
+    TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> results,
+                            ExecuteReplicated(std::move(module), {&literal},
+                                              /*num_replicas=*/kNumReplicas,
+                                              /*use_threads=*/true));
+    for (int replica_idx = 0; replica_idx < kNumReplicas; replica_idx++) {
+      EXPECT_TRUE(LiteralTestUtil::NearOrEqual(expected, results[replica_idx],
+                                               ErrorSpec{1e-5, 1e-5}));
+    }
   }
 
   template <typename LiteralType>
@@ -155,6 +167,12 @@ absl::flat_hash_set<int> OpenNcclChannels() {
 template <typename T>
 static Eigen::half ToHalf(T value) {
   return static_cast<Eigen::half>(value);
+}
+
+XLA_TEST_F(CollectiveOpsTest, AllReduceSingleOutput_float32) {
+  TestTwoReplicasOneOperand<float>("add",
+                                   /*input_value=*/{1},
+                                   /*expected_value=*/{2});
 }
 
 XLA_TEST_F(CollectiveOpsTest, AllReduceTwoReplicasOneOperand_int8) {
