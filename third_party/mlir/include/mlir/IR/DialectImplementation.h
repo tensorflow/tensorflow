@@ -185,8 +185,14 @@ public:
   /// Parse a '{' token.
   virtual ParseResult parseLBrace() = 0;
 
+  /// Parse a '{' token if present
+  virtual ParseResult parseOptionalLBrace() = 0;
+
   /// Parse a `}` token.
   virtual ParseResult parseRBrace() = 0;
+
+  /// Parse a `}` token if present
+  virtual ParseResult parseOptionalRBrace() = 0;
 
   /// Parse a `:` token.
   virtual ParseResult parseColon() = 0;
@@ -263,6 +269,12 @@ public:
 
   /// Parse a `...` token if present;
   virtual ParseResult parseOptionalEllipsis() = 0;
+
+  /// Parse a `?` token.
+  virtual ParseResult parseOptionalQuestion() = 0;
+
+  /// Parse a `*` token.
+  virtual ParseResult parseOptionalStar() = 0;
 
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
