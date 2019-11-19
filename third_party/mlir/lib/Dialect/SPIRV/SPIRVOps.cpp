@@ -1079,12 +1079,10 @@ static ParseResult parseConstantOp(OpAsmParser &parser, OperationState &state) {
   if (parser.parseAttribute(value, kValueAttrName, state.attributes))
     return failure();
 
-  Type type;
-  if (value.getType().isa<NoneType>()) {
+  Type type = value.getType();
+  if (type.isa<NoneType>() || type.isa<TensorType>()) {
     if (parser.parseColonType(type))
       return failure();
-  } else {
-    type = value.getType();
   }
 
   return parser.addTypeToList(type, state.types);
@@ -1108,13 +1106,45 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
   switch (value.getKind()) {
   case StandardAttributes::Bool:
   case StandardAttributes::Integer:
-  case StandardAttributes::Float:
-  case StandardAttributes::DenseElements:
-  case StandardAttributes::SparseElements: {
+  case StandardAttributes::Float: {
     if (valueType != opType)
       return constOp.emitOpError("result type (")
              << opType << ") does not match value type (" << valueType << ")";
     return success();
+  } break;
+  case StandardAttributes::DenseElements:
+  case StandardAttributes::SparseElements: {
+    if (valueType == opType)
+      break;
+    auto arrayType = opType.dyn_cast<spirv::ArrayType>();
+    auto shapedType = valueType.dyn_cast<ShapedType>();
+    if (!arrayType) {
+      return constOp.emitOpError(
+          "must have spv.array result type for array value");
+    }
+
+    int numElements = arrayType.getNumElements();
+    auto opElemType = arrayType.getElementType();
+    while (auto t = opElemType.dyn_cast<spirv::ArrayType>()) {
+      numElements *= t.getNumElements();
+      opElemType = t.getElementType();
+    }
+    if (!opElemType.isIntOrFloat()) {
+      return constOp.emitOpError("only support nested array result type");
+    }
+
+    auto valueElemType = shapedType.getElementType();
+    if (valueElemType != opElemType) {
+      return constOp.emitOpError("result element type (")
+             << opElemType << ") does not match value element type ("
+             << valueElemType << ")";
+    }
+
+    if (numElements != shapedType.getNumElements()) {
+      return constOp.emitOpError("result number of elements (")
+             << numElements << ") does not match value number of elements ("
+             << shapedType.getNumElements() << ")";
+    }
   } break;
   case StandardAttributes::Array: {
     auto arrayType = opType.dyn_cast<spirv::ArrayType>();
