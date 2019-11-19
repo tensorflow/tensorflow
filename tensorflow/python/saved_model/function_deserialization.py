@@ -286,7 +286,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   Args:
     library: FunctionDefLibrary proto message.
     load_shared_name_suffix: If specified, used to uniquify shared
-      names. Otherwise a unique name is generated.
+      names. Otherwise, a unique name is generated.
 
   Returns:
     Map of original function names in the library to instances of
