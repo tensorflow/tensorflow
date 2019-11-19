@@ -578,7 +578,6 @@ tf_cc_test(
     name = "collective_param_resolver_distributed_test",
     size = "small",
     srcs = ["collective_param_resolver_distributed_test.cc"],
-    tags = ["no_rocm"],
     deps = [
         ":collective_param_resolver_distributed",
         ":device_resolver_distributed",
