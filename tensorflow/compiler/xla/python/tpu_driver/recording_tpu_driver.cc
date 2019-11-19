@@ -516,7 +516,7 @@ class RecordingTpuDriver : public TpuDriver {
 
 xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
     const TpuDriverConfig& config) {
-  std::vector<std::string> configs = absl::StrSplit(config.worker, '|');
+  std::vector<std::string> configs = absl::StrSplit(config.worker(), '|');
 
   std::string file;
   std::string worker;
@@ -533,7 +533,7 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
   }
 
   TpuDriverConfig worker_config;
-  worker_config.worker = worker;
+  worker_config.set_worker(worker);
 
   auto driver_status = TpuDriverRegistry::Open(worker_config);
   if (!driver_status.ok()) return driver_status.status();

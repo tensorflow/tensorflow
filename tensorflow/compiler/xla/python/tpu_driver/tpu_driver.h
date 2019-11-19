@@ -37,6 +37,9 @@
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
+// This API is EXPERIMENTAL and under active developement. It is subject to
+// change without notice.
+
 namespace tpu_driver {
 
 uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape);
@@ -225,17 +228,6 @@ class TpuDriver {
       absl::Span<Event* const> wait_for) = 0;
 
   virtual std::unique_ptr<TpuLinearizer> GetLinearizer() { return nullptr; }
-};
-
-struct TpuDriverConfig {
-  std::string worker;
-
-  // Time in seconds before the initial connection to the server will timeout.
-  int64_t connection_timeout_secs = 10;
-
-  // Time in seconds the server may be unresponsive before terminating the
-  // connection.
-  int64_t keepalive_timeout_secs = 30;
 };
 
 class TpuDriverRegistry {

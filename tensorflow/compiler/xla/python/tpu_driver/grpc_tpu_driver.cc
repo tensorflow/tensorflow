@@ -907,8 +907,8 @@ GrpcTpuDriver::CreateTpuDriverStub(const TpuDriverConfig& config) {
   args.SetMaxSendMessageSize(std::numeric_limits<int>::max());
 
   // Send at least 20 keep-alives before giving up.
-  int keepalive_timeout_ms = config.keepalive_timeout_secs * 1000;
-  int keepalive_interval_ms = config.keepalive_timeout_secs / 20;
+  int keepalive_timeout_ms = config.grpc().keepalive_timeout_secs() * 1000;
+  int keepalive_interval_ms = keepalive_timeout_ms / 20;
 
   grpc_arg client_arg_vals[] = {
       {.type = GRPC_ARG_INTEGER,
@@ -935,7 +935,7 @@ GrpcTpuDriver::CreateTpuDriverStub(const TpuDriverConfig& config) {
   args.SetChannelArgs(&client_args);
 
   // strips out 'grpc://'
-  auto worker_addr = absl::StripPrefix(config.worker, kGrpcProtocol);
+  auto worker_addr = absl::StripPrefix(config.worker(), kGrpcProtocol);
   std::shared_ptr<::grpc::Channel> channel =
       ::grpc::CreateCustomChannel(std::string(worker_addr), creds, args);
   return grpc::CloudTpuDriver::NewStub(channel);
@@ -977,8 +977,9 @@ REGISTER_TPU_DRIVER(
       auto stub = GrpcTpuDriver::CreateTpuDriverStub(config);
       ::grpc::ClientContext ctx;
       ctx.set_fail_fast(false);
-      ctx.set_deadline(std::chrono::system_clock::now() +
-                       std::chrono::seconds(config.connection_timeout_secs));
+      ctx.set_deadline(
+          std::chrono::system_clock::now() +
+          std::chrono::seconds(config.grpc().connection_timeout_secs()));
       OpenRequest req;
       OpenResponse resp;
       ::grpc::Status status = stub->Open(&ctx, req, &resp);
@@ -988,7 +989,7 @@ REGISTER_TPU_DRIVER(
         return xla::Status(
             tensorflow::error::Code(status.error_code()),
             absl::StrCat("Failed to connect to remote server at address: ",
-                         config.worker,
+                         config.worker(),
                          ". Error from gRPC: ", status.error_details()));
       }
       return std::unique_ptr<TpuDriver>(
