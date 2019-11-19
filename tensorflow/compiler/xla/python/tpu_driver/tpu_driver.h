@@ -52,8 +52,9 @@ class Event {
  public:
   virtual ~Event() {}
 
-  // Block until the event completes and returns the result status.
+  // Blocks until the event completes and returns the result status.
   virtual xla::Status Await() = 0;
+  // Returns an empty result if the wait times out.
   virtual absl::optional<xla::Status> AwaitWithTimeout(
       absl::Duration duration) = 0;
 

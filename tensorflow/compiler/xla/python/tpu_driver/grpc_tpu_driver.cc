@@ -215,10 +215,13 @@ class GrpcTpuStream {
   friend class GrpcTpuDriver;
 
   struct EventInfo {
+    bool all_deps_done = false;
     bool done = false;     // response received
     bool deleted = false;  // deleted by the user
     Status status;
     absl::InlinedVector<std::function<void(Status)>, 1> callbacks;
+    // Most events should have <= 2 requirement events.
+    absl::InlinedVector<EventId, 2> deps;
   };
 
   struct TransferInfo {
@@ -491,13 +494,22 @@ GrpcTpuStream::~GrpcTpuStream() {
 void GrpcTpuStream::InitializeRequest(StreamRequest::Entry* req,
                                       absl::Span<Event* const> wait_for) {
   auto operation_id = driver_->NewOperationId();
+  EventInfo event_info;
+
   req->set_operation_id(operation_id.AsInt());
-  for (auto* event : wait_for) {
-    auto grpc_event = static_cast<const GrpcEvent*>(event);
-    req->add_wait_for_id(grpc_event->id().AsInt());
+  if (wait_for.empty()) {
+    event_info.all_deps_done = true;
+  } else {
+    event_info.deps.reserve(wait_for.size());
+    for (auto* event : wait_for) {
+      auto grpc_event = static_cast<const GrpcEvent*>(event);
+      req->add_wait_for_id(grpc_event->id().AsInt());
+      event_info.deps.push_back(grpc_event->id());
+    }
   }
+
   absl::MutexLock lock(&events_mutex_);
-  events_[EventId::FromInt(req->operation_id())] = EventInfo();
+  events_[operation_id] = event_info;
 }
 
 void GrpcTpuStream::UpdateEventStatus(EventId id, Status status) {
@@ -551,16 +563,46 @@ void GrpcTpuStream::DeleteEvent(EventId id) {
 
 absl::optional<Status> GrpcTpuStream::WaitForEvent(EventId id,
                                                    absl::Duration duration) {
-  absl::MutexLock lock(&events_mutex_);
+  events_mutex_.Lock();
+  auto it = events_.find(id);
+
+  if (it == events_.end()) {
+    // This event has already been marked as done and deleted. Assume success.
+    events_mutex_.Unlock();
+    return Status::OK();
+  }
+
+  if (!it->second.all_deps_done) {
+    absl::InlinedVector<EventId, 2> deps = it->second.deps;
+    events_mutex_.Unlock();
+    for (auto dep : deps) {
+      // If a requirement event timed out, no point in any further waiting.
+      if (!WaitForEvent(dep, duration)) {
+        return absl::nullopt;
+      }
+    }
+    events_mutex_.Lock();
+  }
+
+  // Set the flag here, as we're guaranteed they have all completed at this
+  // point. This helps terminate recursion on a chain of completed events as
+  // soon as possible, at this event.
+  it = events_.find(id);
+  if (it != events_.end()) {
+    it->second.all_deps_done = true;
+  }
+
   auto done = [this, id]() {
     events_mutex_.AssertHeld();
     return !events_.contains(id) || events_[id].done;
   };
-
   if (events_mutex_.AwaitWithTimeout(absl::Condition(&done), duration)) {
-    return events_.contains(id) ? events_[id].status : Status();
+    auto status = events_.contains(id) ? events_[id].status : Status::OK();
+    events_mutex_.Unlock();
+    return status;
   }
-  return absl::optional<Status>();
+  events_mutex_.Unlock();
+  return absl::nullopt;
 }
 
 void GrpcTpuStream::AddEventCallback(EventId id,
