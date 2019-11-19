@@ -1507,7 +1507,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
   def call_for_each_replica(self, fn, args=(), kwargs=None):
     """Run `fn` once per replica.
 
-    `fn` may call `tf.get_replica_context()` to access methods such as
+    `fn` may call `tf.distribute.get_replica_context()` to access methods such as
     `replica_id_in_sync_group` and `merge_call()`.
 
     `merge_call()` is used to communicate between the replicas and
@@ -1525,7 +1525,7 @@ class StrategyExtendedV1(StrategyExtendedV2):
 
     # Called once per replica in `distribution`, in a "replica" context.
     def fn(three):
-      replica_ctx = tf.get_replica_context()
+      replica_ctx = tf.distribute.get_replica_context()
       v = three + replica_ctx.replica_id_in_sync_group
       # Computes the sum of the `v` values across all replicas.
       s = replica_ctx.merge_call(merge_fn, args=(v,))
