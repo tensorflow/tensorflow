@@ -311,8 +311,8 @@ def get_tensorrt_rewriter_config(conversion_params, is_v2=False):
     optimizer.name = "TensorRTOptimizer"
     optimizer.parameter_map[
         "minimum_segment_size"].i = conversion_params.minimum_segment_size
-    optimizer.parameter_map["max_workspace_size_bytes"].i = \
-        conversion_params.max_workspace_size_bytes
+    optimizer.parameter_map["max_workspace_size_bytes"].i = (
+        conversion_params.max_workspace_size_bytes)
     optimizer.parameter_map["precision_mode"].s = _to_bytes(
         conversion_params.precision_mode)
     optimizer.parameter_map[
