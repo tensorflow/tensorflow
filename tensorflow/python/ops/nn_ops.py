@@ -45,6 +45,7 @@ from tensorflow.python.ops import random_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.platform import build_info
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.compat import collections_abc
@@ -3003,7 +3004,7 @@ def softmax(logits, axis=None, name=None, dim=None):
       Tensor.
     RuntimeError: If a registered conversion function returns an invalid
       value.
-      
+
   """
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
@@ -4388,6 +4389,15 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
         return x
 
     noise_shape = _get_noise_shape(x, noise_shape)
+
+    if seed is None:
+        seed = 0
+
+    # Should there be ROCm support, use it. Otherwise fallback to generic
+    # implementation
+    if build_info.is_rocm_build and x.dtype is dtypes.float32:
+      return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
+
     # Sample a uniform distribution on [0.0, 1.0) and select values larger than
     # rate.
     #

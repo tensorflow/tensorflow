@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "Dropout"
+  summary: "Regularizing tensor input by reset random elements to zero."
+  description: <<END
+END
+}

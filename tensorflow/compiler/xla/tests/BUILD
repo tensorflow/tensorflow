@@ -1252,6 +1252,7 @@ xla_test(
         "//tensorflow/core/platform:types",
         "@com_google_absl//absl/strings",
     ],
+    tags = ["no_rocm"],
 )
 
 xla_test(

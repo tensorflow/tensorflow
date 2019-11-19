@@ -62,6 +62,7 @@ namespace stream_executor {
 
 using dnn::BatchDescriptor;
 using dnn::ConvolutionDescriptor;
+using dnn::DropoutDescriptor;
 using dnn::FilterDescriptor;
 using dnn::NormalizeDescriptor;
 using dnn::PoolingDescriptor;
@@ -192,6 +193,8 @@ namespace wrap {
   __macro(miopenCreateConvolutionDescriptor)               \
   __macro(miopenCreatePoolingDescriptor)                   \
   __macro(miopenDestroyPoolingDescriptor)                  \
+  __macro(miopenCreateDropoutDescriptor)                   \
+  __macro(miopenDestroyDropoutDescriptor)                  \
   __macro(miopenCreateLRNDescriptor)                       \
   __macro(miopenDestroyLRNDescriptor)                      \
   __macro(miopenDestroyConvolutionDescriptor)              \
@@ -215,6 +218,10 @@ namespace wrap {
   __macro(miopenPoolingForward)                            \
   __macro(miopenPoolingGetWorkSpaceSize)                   \
   __macro(miopenPoolingBackward)                           \
+  __macro(miopenDropoutForward)                            \
+  __macro(miopenDropoutBackward)                           \
+  __macro(miopenDropoutGetStatesSize)                      \
+  __macro(miopenSetDropoutDescriptor)                      \
   __macro(miopenLRNForward)                                \
   __macro(miopenLRNBackward)                               \
   __macro(miopenOpTensor)                                  \
@@ -738,6 +745,64 @@ class ScopedConvolutionDescriptor {
   miopenConvolutionDescriptor_t handle_;  // Owned.
 
   SE_DISALLOW_COPY_AND_ASSIGN(ScopedConvolutionDescriptor);
+};
+
+class ScopedDropoutDescriptor {
+ public:
+  ScopedDropoutDescriptor(miopenHandle_t miopen_handle,
+                          const DropoutDescriptor& dropout_descriptor,
+                          ScratchAllocator* state_allocator)
+      : handle_(nullptr) {
+    auto status = wrap::miopenCreateDropoutDescriptor(&handle_);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "could not create miopen dropout descriptor: "
+                 << ToString(status);
+    }
+
+    DeviceMemory<uint8> state_memory;
+    if (state_allocator) {
+      size_t state_sizes_in_bytes = 0;
+      status = wrap::miopenDropoutGetStatesSize(miopen_handle,
+                                                &state_sizes_in_bytes);
+      if (status != miopenStatusSuccess) {
+        LOG(FATAL) << "could not query miopen dropout state size: "
+                   << ToString(status);
+      }
+      auto allocated = state_allocator->AllocateBytes(state_sizes_in_bytes);
+      if (!allocated.ok() ||
+          (state_memory = allocated.ValueOrDie()) == nullptr) {
+        LOG(ERROR) << "Failed to allocate dropout workspace";
+        return;
+      }
+    }
+
+    // Note that we hard code rng_mode now because there is only one node
+    // available, and this option is not part of user API. In the future we may
+    // consider exposing this as a field in DropoutDescriptor
+    status = wrap::miopenSetDropoutDescriptor(
+        handle_, miopen_handle, dropout_descriptor.rate(),
+        state_memory.opaque(), state_memory.size(), dropout_descriptor.seed(),
+        /*use_mask=*/false, /*state_evo=*/false,
+        /*rng_mode=*/miopenRNGType_t::MIOPEN_RNG_PSEUDO_XORWOW);
+    if (status != miopenStatusSuccess) {
+      LOG(FATAL) << "could not set miopen dropout descriptor: "
+                 << ToString(status);
+    }
+  }
+
+  miopenDropoutDescriptor_t handle() const { return handle_; }
+
+  ~ScopedDropoutDescriptor() {
+    auto status = wrap::miopenDestroyDropoutDescriptor(handle_);
+    if (status != miopenStatusSuccess) {
+      LOG(ERROR) << "could not destroy miopen dropout descriptor: "
+                 << ToString(status);
+    }
+  }
+
+ private:
+  miopenDropoutDescriptor_t handle_;  // Owned.
+  SE_DISALLOW_COPY_AND_ASSIGN(ScopedDropoutDescriptor);
 };
 
 // Turns a PoolingDescriptor structure into a miopen pooling descriptor handle
@@ -3752,6 +3817,121 @@ bool MIOpenSupport::DoActivate(Stream* stream,
                                uint64 options) {
   LOG(ERROR) << "miopen does not support activation yet";
   return false;
+}
+
+bool MIOpenSupport::DoDropoutForward(
+    Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+    const dnn::BatchDescriptor& noise_dimensions,
+    const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<float>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceMemory<float>* output_data, ScratchAllocator* workspace_allocator) {
+  auto miopen = miopen_->GetHandle(parent_, stream);
+  const ScopedTensorDescriptor src_desc{input_dimensions, miopenFloat};
+  const ScopedTensorDescriptor dest_desc{output_dimensions, miopenFloat};
+  const ScopedTensorDescriptor noise_desc{noise_dimensions, miopenFloat};
+  const ScopedDropoutDescriptor dropout_desc{miopen.handle(), dropout_params,
+                                             workspace_allocator};
+
+  auto status = wrap::miopenDropoutForward(
+      miopen.handle(), dropout_desc.handle(), noise_desc.handle(),
+      src_desc.handle(), input_data.opaque(), dest_desc.handle(),
+      output_data->opaque(), nullptr, 0);
+  if (status != miopenStatusSuccess) {
+    LOG(ERROR) << "failed to enqueue forward dropout on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
+}
+
+bool MIOpenSupport::DoDropoutForward(
+    Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+    const dnn::BatchDescriptor& noise_dimensions,
+    const dnn::BatchDescriptor& input_dimensions,
+    const DeviceMemory<Eigen::half>& input_data,
+    const dnn::BatchDescriptor& output_dimensions,
+    DeviceMemory<Eigen::half>* output_data,
+    ScratchAllocator* workspace_allocator) {
+  auto miopen = miopen_->GetHandle(parent_, stream);
+  const ScopedTensorDescriptor src_desc{input_dimensions, miopenHalf};
+  const ScopedTensorDescriptor dest_desc{output_dimensions, miopenHalf};
+  const ScopedTensorDescriptor noise_desc{noise_dimensions, miopenHalf};
+  const ScopedDropoutDescriptor dropout_desc{miopen.handle(), dropout_params,
+                                             workspace_allocator};
+
+  auto status = wrap::miopenDropoutForward(
+      miopen.handle(), dropout_desc.handle(), noise_desc.handle(),
+      src_desc.handle(), input_data.opaque(), dest_desc.handle(),
+      output_data->opaque(), nullptr, 0);
+  if (status != miopenStatusSuccess) {
+    LOG(ERROR) << "failed to enqueue forward dropout on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
+}
+
+bool MIOpenSupport::DoDropoutBackward(
+    Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+    const dnn::BatchDescriptor& noise_dimensions,
+    const dnn::BatchDescriptor& input_diff_dimensions,
+    const DeviceMemory<float>& input_diff_data,
+    const dnn::BatchDescriptor& output_diff_dimensions,
+    DeviceMemory<float>* output_diff_data,
+    ScratchAllocator* workspace_allocator) {
+  auto miopen = miopen_->GetHandle(parent_, stream);
+  const ScopedTensorDescriptor input_diff_desc{input_diff_dimensions,
+                                               miopenFloat};
+  const ScopedTensorDescriptor output_diff_desc{output_diff_dimensions,
+                                                miopenFloat};
+  const ScopedTensorDescriptor noise_desc{noise_dimensions, miopenFloat};
+  const ScopedDropoutDescriptor dropout_desc{miopen.handle(), dropout_params,
+                                             workspace_allocator};
+
+  auto status = wrap::miopenDropoutBackward(
+      miopen.handle(), dropout_desc.handle(), noise_desc.handle(),
+      /*dyDesc*/ input_diff_desc.handle(), /*dy*/ input_diff_data.opaque(),
+      /*dxDesc*/ output_diff_desc.handle(), /*dx*/ output_diff_data->opaque(),
+      nullptr, 0);
+
+  if (status != miopenStatusSuccess) {
+    LOG(ERROR) << "failed to enqueue backward dropout on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
+}
+
+bool MIOpenSupport::DoDropoutBackward(
+    Stream* stream, const dnn::DropoutDescriptor& dropout_params,
+    const dnn::BatchDescriptor& noise_dimensions,
+    const dnn::BatchDescriptor& input_diff_dimensions,
+    const DeviceMemory<Eigen::half>& input_diff_data,
+    const dnn::BatchDescriptor& output_diff_dimensions,
+    DeviceMemory<Eigen::half>* output_diff_data,
+    ScratchAllocator* workspace_allocator) {
+  auto miopen = miopen_->GetHandle(parent_, stream);
+  const ScopedTensorDescriptor input_diff_desc{input_diff_dimensions,
+                                               miopenHalf};
+  const ScopedTensorDescriptor output_diff_desc{output_diff_dimensions,
+                                                miopenHalf};
+  const ScopedTensorDescriptor noise_desc{noise_dimensions, miopenFloat};
+  const ScopedDropoutDescriptor dropout_desc{miopen.handle(), dropout_params,
+                                             workspace_allocator};
+
+  auto status = wrap::miopenDropoutBackward(
+      miopen.handle(), dropout_desc.handle(), noise_desc.handle(),
+      /*dyDesc*/ input_diff_desc.handle(), /*dy*/ input_diff_data.opaque(),
+      /*dxDesc*/ output_diff_desc.handle(), /*dx*/ output_diff_data->opaque(),
+      nullptr, 0);
+
+  if (status != miopenStatusSuccess) {
+    LOG(ERROR) << "failed to enqueue backward dropout on stream: "
+               << ToString(status);
+    return false;
+  }
+  return true;
 }
 
 bool MIOpenSupport::DoPoolForward(

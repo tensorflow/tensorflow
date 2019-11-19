@@ -549,10 +549,6 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
-    name: "pywrap_tensorflow"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "qint16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -1179,6 +1175,14 @@ tf_module {
   member_method {
     name: "divide"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "dropout"
+    argspec: "args=[\'input\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "dropout_grad"
+    argspec: "args=[\'gradients\', \'rate\', \'noise_shape\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "dynamic_partition"
