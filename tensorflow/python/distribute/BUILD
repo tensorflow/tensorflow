@@ -1323,19 +1323,12 @@ py_library(
     srcs = ["multi_process_runner.py"],
     deps = [
         ":multi_process_lib",
-        ":multi_process_runner_util",
         ":multi_worker_test_base",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:tf2",
         "//tensorflow/python/compat:v2_compat",
         "@six_archive//:six",
     ],
-)
-
-py_library(
-    name = "multi_process_runner_util",
-    srcs = ["multi_process_runner_util.py"],
-    deps = [],
 )
 
 py_library(

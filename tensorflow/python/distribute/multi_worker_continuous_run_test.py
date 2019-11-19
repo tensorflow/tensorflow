@@ -26,7 +26,6 @@ import numpy as np
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import multi_process_runner
-from tensorflow.python.distribute import multi_process_runner_util
 from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
@@ -76,11 +75,9 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
       for _ in range(100):
         worker_step_fn()
 
-    # TODO(b/141948186): Remove this `with` block once b/141948186 is resolved.
-    with multi_process_runner_util.try_run_and_except_connection_error(self):
-      multi_process_runner.run(
-          worker_fn,
-          cluster_spec=test_base.create_cluster_spec(num_workers=num_workers))
+    multi_process_runner.run(
+        worker_fn,
+        cluster_spec=test_base.create_cluster_spec(num_workers=num_workers))
 
 
 if __name__ == '__main__':
