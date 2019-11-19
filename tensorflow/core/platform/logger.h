@@ -27,7 +27,7 @@ namespace tensorflow {
 class Logger {
  public:
   // The singleton is supposed to be used in the following steps:
-  // * At program start time, REGISTER_MOUDLE_INITIALIZER calls
+  // * At program start time, REGISTER_MODULE_INITIALIZER calls
   //   SetSingletonFactory.
   // * At some point in the program execution, Singleton() is called for the
   //   first time, initializing the logger.
@@ -38,10 +38,16 @@ class Logger {
     singleton_factory_ = factory;
   }
 
-  static Logger* Singleton() {
-    static Logger* instance = singleton_factory_();
-    return instance;
-  }
+  // Returns the per-process Logger instance, constructing synchronously it if
+  // necessary.
+  static Logger* GetSingleton();
+
+  // Like GetSingleton, except that this does not wait for the construction of
+  // Logger to finish before returning.
+  //
+  // Returns the constructed instance of Logger if it has been constructed,
+  // otherwise returns nullptr (if the logger is not ready yet).
+  static Logger* GetSingletonAsync();
 
   virtual ~Logger() = default;
 
@@ -61,6 +67,8 @@ class Logger {
   virtual void DoFlush() = 0;
 
   static FactoryFunc singleton_factory_;
+
+  friend struct AsyncSingletonImpl;
 };
 
 }  // namespace tensorflow

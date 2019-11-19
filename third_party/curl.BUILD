@@ -154,11 +154,11 @@ cc_library(
         "lib/parsedate.c",
         "lib/parsedate.h",
         "lib/pingpong.h",
-        "lib/pipeline.c",
-        "lib/pipeline.h",
+        "lib/pingpong.c",
         "lib/pop3.h",
         "lib/progress.c",
         "lib/progress.h",
+        "lib/quic.h",
         "lib/rand.c",
         "lib/rand.h",
         "lib/rtsp.c",
@@ -217,9 +217,6 @@ cc_library(
         "lib/vauth/vauth.c",
         "lib/vauth/vauth.h",
         "lib/version.c",
-        "lib/vtls/axtls.h",
-        "lib/vtls/cyassl.h",
-        "lib/vtls/darwinssl.h",
         "lib/vtls/gskit.h",
         "lib/vtls/gtls.h",
         "lib/vtls/mbedtls.h",
@@ -230,17 +227,31 @@ cc_library(
         "lib/vtls/schannel.h",
         "lib/vtls/vtls.c",
         "lib/vtls/vtls.h",
+        "lib/vtls/wolfssl.h",
         "lib/warnless.c",
         "lib/warnless.h",
         "lib/wildcard.c",
         "lib/wildcard.h",
         "lib/x509asn1.h",
+        "lib/psl.h",
+        "lib/psl.c",
+        "lib/vtls/sectransp.h",
+        "lib/vtls/mesalink.h",
+        "lib/vtls/mesalink.c",
+        "lib/curl_get_line.h",
+        "lib/curl_get_line.c",
+        "lib/urlapi-int.h",
+        "lib/urlapi.c",
+        "lib/altsvc.h",
+        "lib/altsvc.c",
+        "lib/doh.h",
+        "lib/doh.c",
     ] + select({
-        "@org_tensorflow//tensorflow:darwin": [
-            "lib/vtls/darwinssl.c",
+        "@org_tensorflow//tensorflow:macos": [
+            "lib/vtls/sectransp.c",
         ],
         "@org_tensorflow//tensorflow:ios": [
-            "lib/vtls/darwinssl.c",
+            "lib/vtls/sectransp.c",
         ],
         "@org_tensorflow//tensorflow:windows": CURL_WIN_SRCS,
         "//conditions:default": [
@@ -256,6 +267,7 @@ cc_library(
         "include/curl/stdcheaders.h",
         "include/curl/system.h",
         "include/curl/typecheck-gcc.h",
+        "include/curl/urlapi.h",
     ],
     copts = select({
         "@org_tensorflow//tensorflow:windows": CURL_WIN_COPTS,
@@ -271,7 +283,7 @@ cc_library(
             "-Wno-string-plus-int",
         ],
     }) + select({
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "-fno-constant-cfstrings",
         ],
         "@org_tensorflow//tensorflow:windows": [
@@ -288,7 +300,7 @@ cc_library(
         "@org_tensorflow//tensorflow:android": [
             "-pie",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "-Wl,-framework",
             "-Wl,CoreFoundation",
             "-Wl,-framework",
@@ -465,7 +477,7 @@ genrule(
         "#  define HAVE_SYS_FILIO_H 1",
         "#  define HAVE_SYS_SOCKIO_H 1",
         "#  define OS \"x86_64-apple-darwin15.5.0\"",
-        "#  define USE_DARWINSSL 1",
+        "#  define USE_SECTRANSP 1",
         "#else",
         "#  define CURL_CA_BUNDLE \"/etc/ssl/certs/ca-certificates.crt\"",
         "#  define GETSERVBYPORT_R_ARGS 6",

@@ -17,7 +17,7 @@ END
   summary: "Computes the minimum along segments of a tensor."
   description: <<END
 Read
-[the section on segmentation](https://tensorflow.org/api_guides/python/math_ops#segmentation)
+[the section on segmentation](https://tensorflow.org/api_docs/python/tf/math#Segmentation)
 for an explanation of segments.
 
 This operator is similar to the unsorted segment sum operator found
@@ -30,6 +30,15 @@ that `segment_ids[j...] == i`.
 If the minimum is empty for a given segment ID `i`, it outputs the largest
 possible value for the specific numeric type,
 `output[i] = numeric_limits<T>::max()`.
+
+For example:
+
+``` python
+c = tf.constant([[1,2,3,4], [5,6,7,8], [4,3,2,1]])
+tf.unsorted_segment_min(c, tf.constant([0, 1, 0]), num_segments=2)
+# ==> [[ 1,  2, 2, 1],
+#       [5,  6, 7, 8]]
+```
 
 If the given segment ID `i` is negative, then the corresponding value is
 dropped, and will not be included in the result.

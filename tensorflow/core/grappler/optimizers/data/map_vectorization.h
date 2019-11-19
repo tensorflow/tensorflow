@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_VECTORIZATION_H_
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DATA_MAP_VECTORIZATION_H_
 
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
@@ -33,10 +34,11 @@ namespace grappler {
 //              (or map_and_batch)
 //
 // To:
-//      input --> map --> batch --------+
-//        |     (or map_and_batch)      |
-//        |                             v
-//        +-----> batch --> map --> choose_fastest --> output
+//      input --> batch --> map --> output
+//
+// If the "ChooseFastest" configuration is enabled, it adds a
+// ChooseFastestBranch dataset node to pick between the original map->batch
+// branch and the vectorized batch->map branch.
 //
 class MapVectorization : public TFDataOptimizerBase {
  public:
@@ -45,8 +47,23 @@ class MapVectorization : public TFDataOptimizerBase {
 
   string name() const override { return "map_vectorization"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
+    if (!config) return Status::OK();
+
+    const string& choose_fastest_param =
+        config->parameter_map().at("use_choose_fastest").s();
+    if (choose_fastest_param == "true") {
+      use_choose_fastest_ = true;
+    } else if (choose_fastest_param == "false") {
+      use_choose_fastest_ = false;
+    } else {
+      return errors::Internal(
+          "Received an invalid value for parameter \"use_choose_fastest\"",
+          choose_fastest_param);
+    }
     return Status::OK();
   }
 
@@ -56,6 +73,9 @@ class MapVectorization : public TFDataOptimizerBase {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override;
+
+ private:
+  bool use_choose_fastest_ = false;
 };
 
 }  // namespace grappler

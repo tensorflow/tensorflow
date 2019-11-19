@@ -554,7 +554,8 @@ class BatchTest(test_lib.TestCase):
       examples = variables.Variable(zero64)
       counter = examples.count_up_to(num_batches * batch_size)
       string = array_ops.tile(["string"],
-                              math_ops.to_int32(array_ops.stack([counter])))
+                              math_ops.cast(array_ops.stack([counter]),
+                                            dtypes.int32))
       self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       batched = inp.batch(
@@ -1143,10 +1144,12 @@ class BatchJoinTest(test_lib.TestCase):
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
-      a = array_ops.tile(["a"],
-                         math_ops.to_int32(array_ops.stack([counter + 1])))
-      b = array_ops.tile(["b"],
-                         math_ops.to_int32(array_ops.stack([ninety_nine])))
+      a = array_ops.tile(
+          ["a"],
+          math_ops.cast(array_ops.stack([counter + 1]), dtypes.int32))
+      b = array_ops.tile(
+          ["b"],
+          math_ops.cast(array_ops.stack([ninety_nine]), dtypes.int32))
       batched = inp.batch_join(
           [[counter, a], [ninety_nine, b]],
           batch_size=batch_size,
@@ -1324,10 +1327,12 @@ class BatchJoinTest(test_lib.TestCase):
 
       # These get joined together and grouped into batches of 5.
       batch_size = 5
-      a = array_ops.tile(["a"],
-                         math_ops.to_int32(array_ops.stack([counter + 1])))
-      b = array_ops.tile(["b"],
-                         math_ops.to_int32(array_ops.stack([ninety_nine])))
+      a = array_ops.tile(
+          ["a"],
+          math_ops.cast(array_ops.stack([counter + 1]), dtypes.int32))
+      b = array_ops.tile(
+          ["b"],
+          math_ops.cast(array_ops.stack([ninety_nine]), dtypes.int32))
       batched = inp.batch_join(
           [[counter, a], [ninety_nine, b]],
           batch_size=batch_size,

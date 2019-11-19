@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
 
@@ -47,6 +48,7 @@ class AllocatorFactory {
 // framework.  This definition allows us to access the one method we need.
 class ProcessStateInterface {
  public:
+  virtual ~ProcessStateInterface() {}
   virtual Allocator* GetCPUAllocator(int numa_node) = 0;
 };
 

@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import training_ops
@@ -26,17 +27,35 @@ from tensorflow.python.util.tf_export import keras_export
 
 @keras_export('keras.optimizers.Ftrl')
 class Ftrl(optimizer_v2.OptimizerV2):
-  """Optimizer that implements the FTRL algorithm.
+  r"""Optimizer that implements the FTRL algorithm.
 
-  See this [paper](
+  See Algorithm 1 of this [paper](
   https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
   This version has support for both online L2 (the L2 penalty given in the paper
   above) and shrinkage-type L2 (which is the addition of an L2 penalty to the
   loss function).
+
+  Initialization:
+  $$t = 0$$
+  $$n_{0} = 0$$
+  $$\sigma_{0} = 0$$
+  $$z_{0} = 0$$
+
+  Update ($$i$$ is variable index):
+  $$t = t + 1$$
+  $$n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$$
+  $$\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$$
+  $$z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$$
+  $$w_{t,i} = - ((\beta+\sqrt{n+{t}}) / \alpha + \lambda_{2})^{-1} * (z_{i} -
+               sgn(z_{i}) * \lambda_{1}) if \abs{z_{i}} > \lambda_{i} else 0$$
+
+  Check the documentation for the l2_shrinkage_regularization_strength
+  parameter for more details when shrinkage is enabled, where gradient is
+  replaced with gradient_with_shrinkage.
   """
 
   def __init__(self,
-               learning_rate,
+               learning_rate=0.001,
                learning_rate_power=-0.5,
                initial_accumulator_value=0.1,
                l1_regularization_strength=0.0,
@@ -47,7 +66,8 @@ class Ftrl(optimizer_v2.OptimizerV2):
     r"""Construct a new FTRL optimizer.
 
     Args:
-      learning_rate: A float value or a constant float `Tensor`.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
       learning_rate_power: A float value, must be less or equal to zero.
         Controls how the learning rate decreases during training. Use zero for
         a fixed learning rate.
@@ -125,26 +145,37 @@ class Ftrl(optimizer_v2.OptimizerV2):
       self.add_slot(var, 'accumulator', init)
       self.add_slot(var, 'linear')
 
-  def _resource_apply_dense(self, grad, var):
-    var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
-    learning_rate_power = self._get_hyper('learning_rate_power', var_dtype)
-    l1_regularization_strength = self._get_hyper('l1_regularization_strength',
-                                                 var_dtype)
-    l2_regularization_strength = self._get_hyper('l2_regularization_strength',
-                                                 var_dtype)
+  def _prepare_local(self, var_device, var_dtype, apply_state):
+    super(Ftrl, self)._prepare_local(var_device, var_dtype, apply_state)
+    apply_state[(var_device, var_dtype)].update(dict(
+        learning_rate_power=array_ops.identity(
+            self._get_hyper('learning_rate_power', var_dtype)),
+        l1_regularization_strength=array_ops.identity(
+            self._get_hyper('l1_regularization_strength', var_dtype)),
+        l2_regularization_strength=array_ops.identity(
+            self._get_hyper('l2_regularization_strength', var_dtype)),
+        l2_shrinkage_regularization_strength=math_ops.cast(
+            self._l2_shrinkage_regularization_strength, var_dtype)
+        ))
+
+  def _resource_apply_dense(self, grad, var, apply_state=None):
+    var_device, var_dtype = var.device, var.dtype.base_dtype
+    coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                    or self._fallback_apply_state(var_device, var_dtype))
+
     accum = self.get_slot(var, 'accumulator')
     linear = self.get_slot(var, 'linear')
+
     if self._l2_shrinkage_regularization_strength <= 0.0:
       return training_ops.resource_apply_ftrl(
           var.handle,
           accum.handle,
           linear.handle,
           grad,
-          lr_t,
-          l1_regularization_strength,
-          l2_regularization_strength,
-          learning_rate_power,
+          coefficients['lr_t'],
+          coefficients['l1_regularization_strength'],
+          coefficients['l2_regularization_strength'],
+          coefficients['learning_rate_power'],
           use_locking=self._use_locking)
     else:
       return training_ops.resource_apply_ftrl_v2(
@@ -152,23 +183,21 @@ class Ftrl(optimizer_v2.OptimizerV2):
           accum.handle,
           linear.handle,
           grad,
-          lr_t,
-          l1_regularization_strength,
-          l2_regularization_strength,
-          math_ops.cast(self._l2_shrinkage_regularization_strength, var_dtype),
-          learning_rate_power,
+          coefficients['lr_t'],
+          coefficients['l1_regularization_strength'],
+          coefficients['l2_regularization_strength'],
+          coefficients['l2_shrinkage_regularization_strength'],
+          coefficients['learning_rate_power'],
           use_locking=self._use_locking)
 
-  def _resource_apply_sparse(self, grad, var, indices):
-    var_dtype = var.dtype.base_dtype
-    lr_t = self._decayed_lr(var_dtype)
-    learning_rate_power = self._get_hyper('learning_rate_power', var_dtype)
-    l1_regularization_strength = self._get_hyper('l1_regularization_strength',
-                                                 var_dtype)
-    l2_regularization_strength = self._get_hyper('l2_regularization_strength',
-                                                 var_dtype)
+  def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
+    var_device, var_dtype = var.device, var.dtype.base_dtype
+    coefficients = ((apply_state or {}).get((var_device, var_dtype))
+                    or self._fallback_apply_state(var_device, var_dtype))
+
     accum = self.get_slot(var, 'accumulator')
     linear = self.get_slot(var, 'linear')
+
     if self._l2_shrinkage_regularization_strength <= 0.0:
       return training_ops.resource_sparse_apply_ftrl(
           var.handle,
@@ -176,10 +205,10 @@ class Ftrl(optimizer_v2.OptimizerV2):
           linear.handle,
           grad,
           indices,
-          lr_t,
-          l1_regularization_strength,
-          l2_regularization_strength,
-          learning_rate_power,
+          coefficients['lr_t'],
+          coefficients['l1_regularization_strength'],
+          coefficients['l2_regularization_strength'],
+          coefficients['learning_rate_power'],
           use_locking=self._use_locking)
     else:
       return training_ops.resource_sparse_apply_ftrl_v2(
@@ -188,11 +217,11 @@ class Ftrl(optimizer_v2.OptimizerV2):
           linear.handle,
           grad,
           indices,
-          lr_t,
-          l1_regularization_strength,
-          l2_regularization_strength,
-          math_ops.cast(self._l2_shrinkage_regularization_strength, var_dtype),
-          learning_rate_power,
+          coefficients['lr_t'],
+          coefficients['l1_regularization_strength'],
+          coefficients['l2_regularization_strength'],
+          coefficients['l2_shrinkage_regularization_strength'],
+          coefficients['learning_rate_power'],
           use_locking=self._use_locking)
 
   def get_config(self):
@@ -207,9 +236,9 @@ class Ftrl(optimizer_v2.OptimizerV2):
         'learning_rate_power':
             self._serialize_hyperparameter('learning_rate_power'),
         'l1_regularization_strength':
-            self._serializer_hyperparameter('l1_regularization_strength'),
+            self._serialize_hyperparameter('l1_regularization_strength'),
         'l2_regularization_strength':
-            self._serializer_hyperparameter('l2_regularization_strength'),
+            self._serialize_hyperparameter('l2_regularization_strength'),
         'l2_shrinkage_regularization_strength':
             self._l2_shrinkage_regularization_strength,
     })

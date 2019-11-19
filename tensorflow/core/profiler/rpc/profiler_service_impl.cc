@@ -14,22 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
+
 #include "grpcpp/support/status.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
-#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/grpc_services.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
 
-// TODO(fishx): Rename TPUProfiler to something more generic.
-class ProfilerServiceImpl : public TPUProfiler::Service {
+class ProfilerServiceImpl : public grpc::ProfilerService::Service {
  public:
-  explicit ProfilerServiceImpl(EagerContext* const eager_context)
-      : eager_context_(eager_context) {}
-  ~ProfilerServiceImpl() override {}
-
   ::grpc::Status Monitor(::grpc::ServerContext* ctx, const MonitorRequest* req,
                          MonitorResponse* response) override {
     return ::grpc::Status(::grpc::StatusCode::UNIMPLEMENTED, "unimplemented.");
@@ -38,14 +34,13 @@ class ProfilerServiceImpl : public TPUProfiler::Service {
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
     LOG(INFO) << "Received a profile request.";
-    std::unique_ptr<ProfilerSession> profiler =
-        ProfilerSession::Create(eager_context_);
+    std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
     if (!profiler->Status().ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
                             profiler->Status().error_message());
     }
 
-    Env* env = eager_context_->TFEnv();
+    Env* env = Env::Default();
     for (size_t i = 0; i < req->duration_ms(); ++i) {
       env->SleepForMicroseconds(1000);
       if (ctx->IsCancelled()) {
@@ -60,15 +55,11 @@ class ProfilerServiceImpl : public TPUProfiler::Service {
 
     return ::grpc::Status::OK;
   }
-
- private:
-  EagerContext* const eager_context_;
 };
 }  // namespace
 
-std::unique_ptr<TPUProfiler::Service> CreateProfilerService(
-    EagerContext* const eager_context) {
-  return MakeUnique<ProfilerServiceImpl>(eager_context);
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
+  return MakeUnique<ProfilerServiceImpl>();
 }
 
 }  // namespace tensorflow

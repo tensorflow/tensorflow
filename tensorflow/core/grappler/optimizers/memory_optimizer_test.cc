@@ -240,6 +240,7 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"e"};
 
   EXPECT_EQ(7, item.graph.node_size());
   EXPECT_EQ(NodeName(e.name()), item.graph.node(4).name());
@@ -570,16 +571,36 @@ TEST_F(RelaxAllocatorConstraintsTest, AssignNodeInFanout) {
       s.WithOpName("variable0").WithDevice("/cpu:0"), {128, 128}, DT_FLOAT);
   Output assign0 = ops::Assign(s.WithOpName("assign0").WithDevice("/cpu:0"),
                                variable0, constant0);
+  Output assign2 = ops::Assign(s.WithOpName("assign2").WithDevice("/cpu:0"),
+                               variable0, constant0);
+  Output assign3 = ops::Assign(s.WithOpName("assign3").WithDevice("/cpu:0"),
+                               variable0, constant0);
+  Output assign4 = ops::Assign(s.WithOpName("assign4").WithDevice("/cpu:0"),
+                               variable0, constant0);
+  // Rank does not forward its input buffer, so assign3 can be relaxed.
+  Output rank_cpu =
+      ops::Rank(s.WithOpName("rank_cpu").WithDevice("/cpu:0"), assign3);
+  // Exp could forward its input buffer, so we cannot relax assign4.
+  Output exp_cpu =
+      ops::Exp(s.WithOpName("exp_cpu").WithDevice("/cpu:0"), assign4);
+
   // The rest of the graph is on a second device, so we can relax the
-  // constraint for assign1, but not for assign0.
-  Output exp1 = ops::Exp(s.WithOpName("exp1").WithDevice("/gpu:0"), assign0);
-  Output variable1 = ops::Variable(
-      s.WithOpName("variable1").WithDevice("/gpu:0"), {128, 128}, DT_FLOAT);
-  Output assign1 = ops::Assign(s.WithOpName("assign1").WithDevice("/gpu:0"),
-                               variable1, exp1);
+  // constraint for assign1, but not for assign0. Assign2 only has a
+  // control dependency crossing the device boundary, so it can be relaxed too.
+  Output rank_gpu = ops::Rank(s.WithOpName("rank_gpu")
+                                  .WithDevice("/gpu:0")
+                                  .WithControlDependencies(assign2),
+                              assign0);
+  Output id_gpu = ops::Identity(s.WithOpName("id_gpu"), rank_cpu);
+  Output id_gpu2 = ops::Identity(s.WithOpName("id_gpu2"), exp_cpu);
+  Output variable_gpu = ops::Variable(
+      s.WithOpName("variable_gpu").WithDevice("/gpu:0"), {128, 128}, DT_FLOAT);
+  Output assign_gpu = ops::Assign(
+      s.WithOpName("assign_gpu").WithDevice("/gpu:0"), variable_gpu, exp_cpu);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"assign0", "assign_gpu", "rank_gpu", "id_gpu", "id_gpu2"};
 
   MemoryOptimizer optimizer(RewriterConfig::MANUAL);
   GraphDef output;
@@ -589,19 +610,36 @@ TEST_F(RelaxAllocatorConstraintsTest, AssignNodeInFanout) {
   EXPECT_EQ("assign0", node.name());
   EXPECT_EQ(0, node.attr().count("_grappler_relax_allocator_constraints"));
 
+  node = output.node(4);
+  EXPECT_EQ("assign2", node.name());
+  EXPECT_EQ(1, node.attr().count("_grappler_relax_allocator_constraints"));
+  EXPECT_EQ(true, node.attr().at("_grappler_relax_allocator_constraints").b());
+
   node = output.node(5);
-  EXPECT_EQ("assign1", node.name());
+  EXPECT_EQ("assign3", node.name());
+  EXPECT_EQ(1, node.attr().count("_grappler_relax_allocator_constraints"));
+  EXPECT_EQ(true, node.attr().at("_grappler_relax_allocator_constraints").b());
+
+  node = output.node(6);
+  EXPECT_EQ("assign4", node.name());
+  EXPECT_EQ(0, node.attr().count("_grappler_relax_allocator_constraints"));
+
+  node = output.node(12);
+  EXPECT_EQ("assign_gpu", node.name());
   EXPECT_EQ(1, node.attr().count("_grappler_relax_allocator_constraints"));
   EXPECT_EQ(true, node.attr().at("_grappler_relax_allocator_constraints").b());
 
 #if GOOGLE_CUDA
-  item.fetch = {"assign0", "assign1"};
-  item.init_ops = {"exp1", "variable1"};
+  item.init_ops = {"exp_cpu", "variable_gpu"};
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized = item.WithGraph(std::move(output));
   auto tensors = EvaluateFetchNodes(optimized);
   for (int i = 0; i < tensors_expected.size(); ++i) {
-    test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+    if (i == 2 || i == 3) {
+      test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
+    } else {
+      test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+    }
   }
 #endif
 }

@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Utility functions for training."""
 from __future__ import absolute_import
 from __future__ import division
@@ -34,7 +33,6 @@ from tensorflow.python.util.tf_export import tf_export
 # collection keys.
 GLOBAL_STEP_READ_KEY = 'global_step_read_op_cache'
 
-
 # TODO(drpng): remove this after legacy uses are resolved.
 write_graph = graph_io.write_graph
 
@@ -47,11 +45,12 @@ def global_step(sess, global_step_tensor):
   # Create a variable to hold the global_step.
   global_step_tensor = tf.Variable(10, trainable=False, name='global_step')
   # Create a session.
-  sess = tf.Session()
+  sess = tf.compat.v1.Session()
   # Initialize the variable
   sess.run(global_step_tensor.initializer)
   # Get the variable value.
-  print('global_step: %s' % tf.train.global_step(sess, global_step_tensor))
+  print('global_step: %s' % tf.compat.v1.train.global_step(sess,
+  global_step_tensor))
 
   global_step: 10
   ```
@@ -109,8 +108,8 @@ def create_global_step(graph=None):
   """Create global step tensor in graph.
 
   Args:
-    graph: The graph in which to create the global step tensor. If missing,
-      use default graph.
+    graph: The graph in which to create the global step tensor. If missing, use
+      default graph.
 
   Returns:
     Global step tensor.
@@ -130,8 +129,9 @@ def create_global_step(graph=None):
           initializer=init_ops.zeros_initializer(),
           trainable=False,
           aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA,
-          collections=[ops.GraphKeys.GLOBAL_VARIABLES,
-                       ops.GraphKeys.GLOBAL_STEP])
+          collections=[
+              ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP
+          ])
   # Create in proper graph and base name_scope.
   with graph.as_default() as g, g.name_scope(None):
     return variable_scope.get_variable(
@@ -141,8 +141,7 @@ def create_global_step(graph=None):
         initializer=init_ops.zeros_initializer(),
         trainable=False,
         aggregation=variables.VariableAggregation.ONLY_FIRST_REPLICA,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES,
-                     ops.GraphKeys.GLOBAL_STEP])
+        collections=[ops.GraphKeys.GLOBAL_VARIABLES, ops.GraphKeys.GLOBAL_STEP])
 
 
 @tf_export(v1=['train.get_or_create_global_step'])
@@ -173,9 +172,8 @@ def assert_global_step(global_step_tensor):
   if not (isinstance(global_step_tensor, variables.Variable) or
           isinstance(global_step_tensor, ops.Tensor) or
           resource_variable_ops.is_resource_variable(global_step_tensor)):
-    raise TypeError(
-        'Existing "global_step" must be a Variable or Tensor: %s.' %
-        global_step_tensor)
+    raise TypeError('Existing "global_step" must be a Variable or Tensor: %s.' %
+                    global_step_tensor)
 
   if not global_step_tensor.dtype.base_dtype.is_integer:
     raise TypeError('Existing "global_step" does not have integer type: %s' %

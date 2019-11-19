@@ -308,6 +308,19 @@ XLA_TEST_F(VecOpsSimpleTest, ClampTenValuesConstantNonzeroLower) {
   ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
+XLA_TEST_F(VecOpsSimpleTest, ClampFloatEdgeCases) {
+  XlaBuilder builder(TestName());
+  mutable_debug_options()->set_xla_cpu_enable_fast_math(false);
+  mutable_debug_options()->set_xla_gpu_enable_fast_min_max(false);
+  auto low = ConstantR1<float>(&builder, {NAN, 1, 1});
+  auto high = ConstantR1<float>(&builder, {3, NAN, 3});
+  auto x = ConstantR1<float>(&builder, {2, 2, NAN});
+  Clamp(low, x, high);
+
+  std::vector<float> expected = {NAN, NAN, NAN};
+  ComputeAndCompareR1<float>(&builder, expected, {});
+}
+
 XLA_TEST_F(VecOpsSimpleTest, ClampValuesConstantS64) {
   XlaBuilder builder(TestName());
   auto zero = ConstantR0<int64>(&builder, 0);

@@ -1,0 +1,100 @@
+op {
+  graph_op_name: "BoostedTreesUpdateEnsembleV2"
+  visibility: HIDDEN
+  in_arg {
+    name: "tree_ensemble_handle"
+    description: <<END
+Handle to the ensemble variable.
+END
+  }
+  in_arg {
+    name: "feature_ids"
+    description: <<END
+Rank 1 tensor with ids for each feature. This is the real id of
+the feature that will be used in the split.
+END
+  }
+  in_arg {
+    name: "dimension_ids"
+    description: <<END
+List of rank 1 tensors representing the dimension in each feature.
+END
+  }
+  in_arg {
+    name: "node_ids"
+    description: <<END
+List of rank 1 tensors representing the nodes for which this feature
+has a split.
+END
+  }
+  in_arg {
+    name: "gains"
+    description: <<END
+List of rank 1 tensors representing the gains for each of the feature's
+split.
+END
+  }
+  in_arg {
+    name: "thresholds"
+    description: <<END
+List of rank 1 tensors representing the thesholds for each of the
+feature's split.
+END
+  }
+  in_arg {
+    name: "left_node_contribs"
+    description: <<END
+List of rank 2 tensors with left leaf contribs for each of
+the feature's splits. Will be added to the previous node values to constitute
+the values of the left nodes.
+END
+  }
+  in_arg {
+    name: "right_node_contribs"
+    description: <<END
+List of rank 2 tensors with right leaf contribs for each
+of the feature's splits. Will be added to the previous node values to constitute
+the values of the right nodes.
+END
+  }
+  in_arg {
+    name: "split_types"
+    description: <<END
+List of rank 1 tensors representing the split type for each feature.
+END
+  }
+  in_arg {
+    name: "max_depth"
+    description: <<END
+Max depth of the tree to build.
+END
+  }
+  in_arg {
+    name: "learning_rate"
+    description: <<END
+shrinkage const for each new tree.
+END
+  }
+  in_arg {
+    name: "pruning_mode"
+    description: <<END
+0-No pruning, 1-Pre-pruning, 2-Post-pruning.
+END
+  }
+  attr {
+    name: "num_features"
+    description: <<END
+Number of features that have best splits returned. INFERRED.
+END
+  }
+  attr {
+    name: "logits_dimension"
+    description: <<END
+scalar, dimension of the logits
+END
+  }
+  summary: "Updates the tree ensemble by adding a layer to the last tree being grown"
+  description: <<END
+or by starting a new tree.
+END
+}

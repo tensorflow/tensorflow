@@ -27,7 +27,7 @@ namespace {
 
 std::vector<const ProfileEvent*> GetProfileEvents(const ProfileBuffer& buffer) {
   std::vector<const ProfileEvent*> events;
-  for (auto i = 0; i < buffer.Size(); i++) {
+  for (size_t i = 0; i < buffer.Size(); i++) {
     events.push_back(buffer.At(i));
   }
   return events;
@@ -41,8 +41,9 @@ TEST(ProfileBufferTest, Empty) {
 TEST(ProfileBufferTest, AddEvent) {
   ProfileBuffer buffer(/*max_size*/ 10, /*enabled*/ true);
   EXPECT_EQ(0, buffer.Size());
-  auto event_handle = buffer.BeginEvent(
-      "hello", ProfileEvent::EventType::DEFAULT, /* event_metadata */ 42);
+  auto event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata*/ 42, /*event_subgraph_index*/ 0);
 
   EXPECT_GE(event_handle, 0);
   EXPECT_EQ(1, buffer.Size());
@@ -64,12 +65,12 @@ TEST(ProfileBufferTest, OverFlow) {
   std::vector<std::string> eventNames = {"first", "second", "third", "fourth"};
   for (int i = 0; i < 2 * max_size; i++) {
     buffer.BeginEvent(eventNames[i % 4].c_str(),
-                      ProfileEvent::EventType::DEFAULT, i);
+                      ProfileEvent::EventType::DEFAULT, i, 0);
     size_t expected_size = std::min(i + 1, max_size);
     EXPECT_EQ(expected_size, buffer.Size());
   }
   EXPECT_EQ(max_size, buffer.Size());
-  for (int j = 0; j < buffer.Size(); ++j) {
+  for (size_t j = 0; j < buffer.Size(); ++j) {
     auto event = buffer.At(j);
     EXPECT_EQ(eventNames[j % 4], event->tag);
     EXPECT_EQ(ProfileEvent::EventType::DEFAULT, event->event_type);
@@ -80,13 +81,15 @@ TEST(ProfileBufferTest, OverFlow) {
 TEST(ProfileBufferTest, Enable) {
   ProfileBuffer buffer(/*max_size*/ 10, /*enabled*/ false);
   EXPECT_EQ(0, buffer.Size());
-  auto event_handle = buffer.BeginEvent(
-      "hello", ProfileEvent::EventType::DEFAULT, /* event_metadata */ 42);
+  auto event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata*/ 42, /*event_subgraph_index*/ 0);
   EXPECT_EQ(kInvalidEventHandle, event_handle);
   EXPECT_EQ(0, buffer.Size());
   buffer.SetEnabled(true);
-  event_handle = buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
-                                   /* event_metadata */ 42);
+  event_handle =
+      buffer.BeginEvent("hello", ProfileEvent::EventType::DEFAULT,
+                        /*event_metadata*/ 42, /*event_subgraph_index*/ 0);
   EXPECT_GE(event_handle, 0);
   EXPECT_EQ(1, buffer.Size());
 }

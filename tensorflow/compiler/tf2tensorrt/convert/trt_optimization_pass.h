@@ -30,10 +30,11 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
+class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
  public:
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
       : name_(name),
+        trt_logger_name_("DefaultLogger"),
         minimum_segment_size_(3),
         precision_mode_(TrtPrecisionMode::FP32),
         maximum_batch_size_(-1),
@@ -46,22 +47,24 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
 
   string name() const override { return name_; };
 
-  tensorflow::Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
-                              config = nullptr) override;
+  bool UsesFunctionLibrary() const override { return true; }
 
-  tensorflow::Status Optimize(tensorflow::grappler::Cluster* cluster,
-                              const tensorflow::grappler::GrapplerItem& item,
-                              GraphDef* optimized_graph) override;
+  Status Init(
+      const RewriterConfig_CustomGraphOptimizer* config = nullptr) override;
 
-  void Feedback(tensorflow::grappler::Cluster* cluster,
-                const tensorflow::grappler::GrapplerItem& item,
+  Status Optimize(grappler::Cluster* cluster,
+                  const grappler::GrapplerItem& item,
+                  GraphDef* optimized_graph) override;
+
+  void Feedback(grappler::Cluster* cluster, const grappler::GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
 
-  void PrintDebugInfo(tensorflow::grappler::Cluster* cluster,
-                      const tensorflow::grappler::GrapplerItem& item);
+  void PrintDebugInfo(grappler::Cluster* cluster,
+                      const grappler::GrapplerItem& item);
 
  private:
   const string name_;
+  string trt_logger_name_;
   int minimum_segment_size_;
   TrtPrecisionMode precision_mode_;
   int maximum_batch_size_;

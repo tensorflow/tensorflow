@@ -18,12 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from collections import defaultdict
+import collections
 
 import numpy as np
 import six
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import keras_export
-
 
 try:
   import h5py
@@ -35,32 +37,50 @@ except ImportError:
 class HDF5Matrix(object):
   """Representation of HDF5 dataset to be used instead of a Numpy array.
 
-  Example:
+  THIS CLASS IS DEPRECATED.
+  Training with HDF5Matrix may not be optimized for performance, and might
+  not work with every distribution strategy.
 
-  ```python
-      x_data = HDF5Matrix('input/file.hdf5', 'data')
-      model.predict(x_data)
-  ```
-
-  Providing `start` and `end` allows use of a slice of the dataset.
-
-  Optionally, a normalizer function (or lambda) can be given. This will
-  be called on every slice of data retrieved.
-
-  Arguments:
-      datapath: string, path to a HDF5 file
-      dataset: string, name of the HDF5 dataset in the file specified
-          in datapath
-      start: int, start of desired slice of the specified dataset
-      end: int, end of desired slice of the specified dataset
-      normalizer: function to be called on data when retrieved
-
-  Returns:
-      An array-like HDF5 dataset.
+  We recommend using https://github.com/tensorflow/io to load your
+  HDF5 data into a tf.data Dataset and passing that dataset to Keras.
   """
-  refs = defaultdict(int)
+  refs = collections.defaultdict(int)
 
+  @deprecation.deprecated('2020-05-30', 'Training with '
+                          'HDF5Matrix is not optimized for performance. '
+                          'Instead, we recommend using '
+                          'https://github.com/tensorflow/io to load your '
+                          'HDF5 data into a tf.data Dataset and passing '
+                          'that dataset to Keras.')
   def __init__(self, datapath, dataset, start=0, end=None, normalizer=None):
+    """Representation of HDF5 dataset to be used instead of a Numpy array.
+
+    Example:
+
+    ```python
+        x_data = HDF5Matrix('input/file.hdf5', 'data')
+        model.predict(x_data)
+    ```
+
+    Providing `start` and `end` allows use of a slice of the dataset.
+
+    Optionally, a normalizer function (or lambda) can be given. This will
+    be called on every slice of data retrieved.
+
+    Arguments:
+        datapath: string, path to a HDF5 file
+        dataset: string, name of the HDF5 dataset in the file specified
+            in datapath
+        start: int, start of desired slice of the specified dataset
+        end: int, end of desired slice of the specified dataset
+        normalizer: function to be called on data when retrieved
+
+    Returns:
+        An array-like HDF5 dataset.
+
+    Raises:
+      ImportError if HDF5 & h5py are not installed
+    """
     if h5py is None:
       raise ImportError('The use of HDF5Matrix requires '
                         'HDF5 and h5py installed.')
@@ -148,6 +168,25 @@ class HDF5Matrix(object):
         An integer denoting the number of elements in the dataset.
     """
     return np.prod(self.shape)
+
+  @staticmethod
+  def _to_type_spec(value):
+    """Gets the Tensorflow TypeSpec corresponding to the passed dataset.
+
+    Args:
+      value: A HDF5Matrix object.
+
+    Returns:
+      A tf.TensorSpec.
+    """
+    if not isinstance(value, HDF5Matrix):
+      raise TypeError('Expected value to be a HDF5Matrix, but saw: {}'.format(
+          type(value)))
+    return tensor_spec.TensorSpec(shape=value.shape, dtype=value.dtype)
+
+
+type_spec.register_type_spec_from_value_converter(HDF5Matrix,
+                                                  HDF5Matrix._to_type_spec)  # pylint: disable=protected-access
 
 
 def ask_to_proceed_with_overwrite(filepath):

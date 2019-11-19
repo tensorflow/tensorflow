@@ -27,6 +27,7 @@ limitations under the License.
 
 #if defined(INTEL_MKL) && !defined(INTEL_MKL_DNN_ONLY)
 #include <vector>
+
 #include "mkl_cblas.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
@@ -36,15 +37,20 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/type_traits.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/batch_matmul_op_impl.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/matmul_bcast.h"
+#include "tensorflow/core/util/mkl_util.h"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template <typename Device, typename Scalar>
+//  The third parameter v2_bcast is set to true if we are using V2 otherwise
+//  we set it to false.
+template <typename Device, typename Scalar, bool v2_bcast>
 class BatchMatMulMkl : public OpKernel {
  public:
   explicit BatchMatMulMkl(OpKernelConstruction *context) : OpKernel(context) {
@@ -57,28 +63,54 @@ class BatchMatMulMkl : public OpKernel {
   void Compute(OpKernelContext *ctx) override {
     const Tensor &lhs = ctx->input(0);
     const Tensor &rhs = ctx->input(1);
-    OP_REQUIRES(ctx, lhs.dims() == rhs.dims(),
-                errors::InvalidArgument("lhs and rhs has different ndims: ",
-                                        lhs.shape().DebugString(), " vs. ",
-                                        rhs.shape().DebugString()));
-    const int ndims = lhs.dims();
-    OP_REQUIRES(
-        ctx, ndims >= 2,
-        errors::InvalidArgument("lhs and rhs ndims must be >= 2: ", ndims));
-    TensorShape out_shape;
-    for (int i = 0; i < ndims - 2; ++i) {
-      OP_REQUIRES(ctx, lhs.dim_size(i) == rhs.dim_size(i),
-                  errors::InvalidArgument(
-                      "lhs.dim(", i, ") and rhs.dim(", i,
-                      ") must be the same: ", lhs.shape().DebugString(), " vs ",
-                      rhs.shape().DebugString()));
-      out_shape.AddDim(lhs.dim_size(i));
+
+    if (!v2_bcast) {
+      // Using V1, so check to make sure lhs and rhs dimensions are correct and
+      // no broadcasting is needed.
+      OP_REQUIRES(ctx, lhs.dims() == rhs.dims(),
+                  errors::InvalidArgument("lhs and rhs has different ndims: ",
+                                          lhs.shape().DebugString(), " vs. ",
+                                          rhs.shape().DebugString()));
+      const int ndims = lhs.dims();
+      OP_REQUIRES(
+          ctx, ndims >= 2,
+          errors::InvalidArgument("lhs and rhs ndims must be >= 2: ", ndims));
+      for (int i = 0; i < ndims - 2; ++i) {
+        OP_REQUIRES(ctx, lhs.dim_size(i) == rhs.dim_size(i),
+                    errors::InvalidArgument(
+                        "lhs.dim(", i, ") and rhs.dim(", i,
+                        ") must be the same: ", lhs.shape().DebugString(),
+                        " vs ", rhs.shape().DebugString()));
+      }
+    } else {
+      OP_REQUIRES(
+          ctx, lhs.dims() >= 2,
+          errors::InvalidArgument("In[0] ndims must be >= 2: ", lhs.dims()));
+      OP_REQUIRES(
+          ctx, rhs.dims() >= 2,
+          errors::InvalidArgument("In[1] ndims must be >= 2: ", rhs.dims()));
     }
-    auto batch_size = (ndims == 2) ? 1 : out_shape.num_elements();
-    auto lhs_rows = lhs.dim_size(ndims - 2);
-    auto lhs_cols = lhs.dim_size(ndims - 1);
-    auto rhs_rows = rhs.dim_size(ndims - 2);
-    auto rhs_cols = rhs.dim_size(ndims - 1);
+
+    // lhs and rhs can have different dimensions
+    const int ndims_lhs = lhs.dims();
+    const int ndims_rhs = rhs.dims();
+
+    // Get broadcast info
+    MatMulBCast bcast(lhs.shape().dim_sizes(), rhs.shape().dim_sizes());
+    OP_REQUIRES(
+        ctx, bcast.IsValid(),
+        errors::InvalidArgument(
+            "In[0] and In[1] must have compatible batch dimensions: ",
+            lhs.shape().DebugString(), " vs. ", rhs.shape().DebugString()));
+
+    TensorShape out_shape = bcast.output_batch_shape();
+    auto batch_size = bcast.output_batch_size();
+
+    auto lhs_rows = lhs.dim_size(ndims_lhs - 2);
+    auto lhs_cols = lhs.dim_size(ndims_lhs - 1);
+    auto rhs_rows = rhs.dim_size(ndims_rhs - 2);
+    auto rhs_cols = rhs.dim_size(ndims_rhs - 1);
+
     if (adj_x_) std::swap(lhs_rows, lhs_cols);
     if (adj_y_) std::swap(rhs_rows, rhs_cols);
     OP_REQUIRES(ctx, lhs_cols == rhs_rows,
@@ -86,8 +118,10 @@ class BatchMatMulMkl : public OpKernel {
                     "lhs mismatch rhs shape: ", lhs_cols, " vs. ", rhs_rows,
                     ": ", lhs.shape().DebugString(), " ",
                     rhs.shape().DebugString(), " ", adj_x_, " ", adj_y_));
+
     out_shape.AddDim(lhs_rows);
     out_shape.AddDim(rhs_cols);
+
     Tensor *out = nullptr;
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, out_shape, &out));
     if (out->NumElements() == 0) {
@@ -119,10 +153,24 @@ class BatchMatMulMkl : public OpKernel {
     a_array.reserve(batch_size);
     b_array.reserve(batch_size);
     c_array.reserve(batch_size);
-    for (int64 i = 0; i < batch_size; i++) {
-      a_array.push_back(&lhs_reshaped(i, 0, 0));
-      b_array.push_back(&rhs_reshaped(i, 0, 0));
-      c_array.push_back(&out_reshaped(i, 0, 0));
+
+    if (!bcast.IsBroadcastingRequired()) {
+      for (int64 i = 0; i < batch_size; i++) {
+        a_array.push_back(&lhs_reshaped(i, 0, 0));
+        b_array.push_back(&rhs_reshaped(i, 0, 0));
+        c_array.push_back(&out_reshaped(i, 0, 0));
+      }
+    } else {
+      // Broadcasting is needed, so get the mapping from flattened output batch
+      // indices to x's and y's flattened batch indices.
+      const std::vector<int64> &a_batch_indices = bcast.x_batch_indices();
+      const std::vector<int64> &b_batch_indices = bcast.y_batch_indices();
+
+      for (int64 i = 0; i < batch_size; i++) {
+        a_array.push_back(&lhs_reshaped(a_batch_indices[i], 0, 0));
+        b_array.push_back(&rhs_reshaped(b_batch_indices[i], 0, 0));
+        c_array.push_back(&out_reshaped(i, 0, 0));
+      }
     }
 
     MklCblasGemmBatch(CblasRowMajor, adj_x_, adj_y_, &m_array[0], &n_array[0],
@@ -218,16 +266,30 @@ class BatchMatMulMkl : public OpKernel {
   }
 };
 
-#define REGISTER_BATCH_MATMUL_MKL(TYPE)                                 \
-  REGISTER_KERNEL_BUILDER(                                              \
-      Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
-      BatchMatMulMkl<CPUDevice, TYPE>)
+#define REGISTER_BATCH_MATMUL_MKL(TYPE)                                       \
+  REGISTER_KERNEL_BUILDER(Name("_MklBatchMatMul")                             \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<TYPE>("T")                      \
+                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+                          BatchMatMulMkl<CPUDevice, TYPE, false>)
+
+#define REGISTER_BATCH_MATMUL_MKL_V2(TYPE)                                    \
+  REGISTER_KERNEL_BUILDER(Name("_MklBatchMatMulV2")                           \
+                              .Device(DEVICE_CPU)                             \
+                              .TypeConstraint<TYPE>("T")                      \
+                              .Label(mkl_op_registry::kMklNameChangeOpLabel), \
+                          BatchMatMulMkl<CPUDevice, TYPE, true>)
 
 #ifdef ENABLE_MKL
 TF_CALL_float(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_double(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_complex64(REGISTER_BATCH_MATMUL_MKL);
 TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL);
+
+TF_CALL_float(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_double(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_complex64(REGISTER_BATCH_MATMUL_MKL_V2);
+TF_CALL_complex128(REGISTER_BATCH_MATMUL_MKL_V2);
 #endif  // ENABLE_MKL
 
 }  // end namespace tensorflow

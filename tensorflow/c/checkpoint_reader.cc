@@ -29,8 +29,7 @@ namespace checkpoint {
 
 class TensorSliceReader;
 
-CheckpointReader::CheckpointReader(const string& filename,
-                                   TF_Status* out_status)
+CheckpointReader::CheckpointReader(const string& filename, TF_Status* status)
     : reader_(nullptr),
       v2_reader_(nullptr),
       var_to_shape_map_(nullptr),
@@ -43,7 +42,7 @@ CheckpointReader::CheckpointReader(const string& filename,
     v2_reader_.reset(
         new BundleReader(Env::Default(), filename /* prefix to a V2 ckpt */));
     if (!v2_reader_->status().ok()) {
-      Set_TF_Status_from_Status(out_status, v2_reader_->status());
+      Set_TF_Status_from_Status(status, v2_reader_->status());
       return;
     }
     auto result = BuildV2VarMaps();
@@ -52,7 +51,7 @@ CheckpointReader::CheckpointReader(const string& filename,
   } else {
     reader_.reset(new TensorSliceReader(filename));
     if (!reader_->status().ok()) {
-      Set_TF_Status_from_Status(out_status, reader_->status());
+      Set_TF_Status_from_Status(status, reader_->status());
       return;
     }
     var_to_shape_map_.reset(

@@ -81,7 +81,7 @@ class ZipTest(test_base.DatasetTestBase):
     dataset = dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
 
     self.assertEqual(
-        dataset.output_shapes,
+        dataset_ops.get_legacy_output_shapes(dataset),
         (tensor_shape.TensorShape([20]),
          (tensor_shape.TensorShape([22]), tensor_shape.TensorShape([]))))
 

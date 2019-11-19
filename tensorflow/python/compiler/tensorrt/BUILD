@@ -3,23 +3,15 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
-)
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
+
+exports_files(["LICENSE"])
 
 exports_files(glob([
     "test/testdata/*",
@@ -32,17 +24,6 @@ py_library(
     deps = [
         ":tf_trt_integration_test_base",
         ":trt_convert_py",
-        ":trt_ops_py",
-        "//tensorflow/python:errors",
-    ],
-)
-
-py_library(
-    name = "trt_ops_py",
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/compiler/tf2tensorrt:trt_ops",
-        "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
     ],
 )
 
@@ -51,30 +32,30 @@ py_library(
     srcs = ["trt_convert.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":wrap_conversion",
+        "//tensorflow/compiler/tf2tensorrt:trt_ops_loader",
+        "//tensorflow/compiler/tf2tensorrt:wrap_py_utils",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:session",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
         "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
     ],
 )
 
-# TODO(aaroey): this wrapper has been causing troubles of double linking, so
-# either get rid of it, or split to make it contain minimum dependencies.
-tf_py_wrap_cc(
-    name = "wrap_conversion",
-    srcs = ["trt_conversion.i"],
-    copts = tf_copts(),
-    swig_includes = [
-        "//tensorflow/python:platform/base.i",
-    ],
+py_library(
+    name = "trt_convert_windows",
+    srcs = ["trt_convert_windows.py"],
+    srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/compiler/tf2tensorrt:test_utils",
-        "//tensorflow/compiler/tf2tensorrt:trt_conversion",
-        "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
-        "//third_party/python_runtime:headers",
+        "//tensorflow/python:util",
     ],
 )
 
@@ -83,9 +64,15 @@ py_library(
     srcs = ["test/tf_trt_integration_test_base.py"],
     deps = [
         ":trt_convert_py",
-        ":trt_ops_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:signature_constants",
+        "//tensorflow/python/saved_model:signature_def_utils",
+        "//tensorflow/python/saved_model:tag_constants",
+        "//tensorflow/python/saved_model:utils",
+        "//tensorflow/python/tools:saved_model_utils",
     ],
 )
 
@@ -94,7 +81,7 @@ cuda_py_test(
     srcs = ["trt_convert_test.py"],
     additional_deps = [
         ":trt_convert_py",
-        ":trt_ops_py",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:graph_util",
@@ -109,6 +96,7 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
         "nomac",
     ],
@@ -119,9 +107,8 @@ cuda_py_tests(
     srcs = [
         "test/base_test.py",
         "test/batch_matmul_test.py",
-        "test/biasadd_matmul_test.py",
         "test/binary_tensor_weight_broadcast_test.py",
-        "test/concatenation_test.py",
+        "test/combined_nms_test.py",
         "test/const_broadcast_test.py",
         "test/conv2d_test.py",
         "test/dynamic_input_shapes_test.py",
@@ -146,8 +133,28 @@ cuda_py_tests(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_rocm",
         "no_windows",
         "nomac",
+    ],
+)
+
+cuda_py_tests(
+    name = "concatenation_test",
+    srcs = [
+        "test/biasadd_matmul_test.py",
+        "test/concatenation_test.py",
+    ],
+    additional_deps = [
+        ":tf_trt_integration_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+    tags = [
+        "no_rocm",
+        "no_windows",
+        "nomac",
+        "notap",  # b/140261407
     ],
 )
 
@@ -168,7 +175,9 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
+        "no_rocm",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",

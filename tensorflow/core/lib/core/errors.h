@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <sstream>
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace errors {
@@ -69,7 +70,7 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 // For propagating errors when calling a function.
 #define TF_RETURN_IF_ERROR(...)                          \
   do {                                                   \
-    const ::tensorflow::Status _status = (__VA_ARGS__);  \
+    ::tensorflow::Status _status = (__VA_ARGS__);        \
     if (TF_PREDICT_FALSE(!_status.ok())) return _status; \
   } while (0)
 
@@ -131,10 +132,9 @@ inline string FormatNodeNameForError(const string& name) {
 // LINT.ThenChange(//tensorflow/python/client/session.py)
 template <typename T>
 string FormatNodeNamesForError(const T& names) {
-  return ::tensorflow::str_util::Join(
-      names, ", ", [](string* output, const string& s) {
-        ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
-      });
+  return absl::StrJoin(names, ", ", [](string* output, const string& s) {
+    ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
+  });
 }
 // LINT.IfChange
 inline string FormatColocationNodeForError(const string& name) {
@@ -143,11 +143,9 @@ inline string FormatColocationNodeForError(const string& name) {
 // LINT.ThenChange(//tensorflow/python/framework/error_interpolation.py)
 template <typename T>
 string FormatColocationNodeForError(const T& names) {
-  return ::tensorflow::str_util::Join(
-      names, ", ", [](string* output, const string& s) {
-        ::tensorflow::strings::StrAppend(output,
-                                         FormatColocationNodeForError(s));
-      });
+  return absl::StrJoin(names, ", ", [](string* output, const string& s) {
+    ::tensorflow::strings::StrAppend(output, FormatColocationNodeForError(s));
+  });
 }
 
 inline string FormatFunctionForError(const string& name) {

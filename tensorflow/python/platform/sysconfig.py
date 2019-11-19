@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 import os.path as _os_path
+import platform as _platform
 
 from tensorflow.python.framework.versions import CXX11_ABI_FLAG as _CXX11_ABI_FLAG
 from tensorflow.python.framework.versions import MONOLITHIC_BUILD as _MONOLITHIC_BUILD
+from tensorflow.python.framework.versions import VERSION as _VERSION
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -34,10 +36,10 @@ def get_include():
     The directory as string.
   """
   # Import inside the function.
-  # sysconfig is imported from the tensorflow module, so having this
+  # sysconfig is imported from the tensorflow_core module, so having this
   # import at the top would cause a circular import, resulting in
-  # the tensorflow module missing symbols that come after sysconfig.
-  import tensorflow as tf
+  # the tensorflow_core module missing symbols that come after sysconfig.
+  import tensorflow_core as tf
   return _os_path.join(_os_path.dirname(tf.__file__), 'include')
 
 
@@ -48,7 +50,7 @@ def get_lib():
   Returns:
     The directory as string.
   """
-  import tensorflow as tf
+  import tensorflow_core as tf
   return _os_path.join(_os_path.dirname(tf.__file__))
 
 
@@ -72,8 +74,13 @@ def get_link_flags():
   Returns:
     The link flags.
   """
+  is_mac = _platform.system() == 'Darwin'
+  ver = _VERSION.split('.')[0]
   flags = []
   if not _MONOLITHIC_BUILD:
     flags.append('-L%s' % get_lib())
-    flags.append('-ltensorflow_framework')
+    if is_mac:
+      flags.append('-ltensorflow_framework.%s' % ver)
+    else:
+      flags.append('-l:libtensorflow_framework.so.%s' % ver)
   return flags

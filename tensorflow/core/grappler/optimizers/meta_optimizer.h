@@ -39,6 +39,8 @@ class MetaOptimizer : public GraphOptimizer {
 
   string name() const override { return "meta_optimizer"; };
 
+  bool UsesFunctionLibrary() const override { return true; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
@@ -50,6 +52,8 @@ class MetaOptimizer : public GraphOptimizer {
  private:
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
       const string& optimizer) const;
+
+  bool IsSingleThreadedExecutor() const;
 
   // Initialize active optimizers from RewriterConfig toggles.
   Status InitializeOptimizers(
@@ -82,7 +86,8 @@ class MetaOptimizer : public GraphOptimizer {
 
   struct OptimizerResult {
     string optimizer_name;
-    string result;
+    string message;
+    Status status;
   };
 
   struct GraphOptimizationResult {
@@ -129,9 +134,10 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
 Status OptimizeGraph(
-    std::vector<string> ret_node_names, FunctionLibraryDefinition* lib,
-    const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto, const string& grappler_item_id,
+    std::vector<string> ret_node_names, std::vector<string> keep_node_names,
+    FunctionLibraryDefinition* lib, const DeviceSet& device_set,
+    Device* cpu_device, const ConfigProto& config_proto,
+    const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g);
 

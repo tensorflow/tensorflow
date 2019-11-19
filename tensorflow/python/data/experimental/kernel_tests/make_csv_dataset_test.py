@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -218,6 +219,54 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
           header=True,
           column_defaults=record_defaults,
           compression_type=compression_type,
+      )
+
+  def testMakeCSVDataset_withCompressionTypeAndNoColumnNames(self):
+    """Tests `compression_type` argument."""
+    record_defaults = [
+        constant_op.constant([], dtypes.int32),
+        constant_op.constant([], dtypes.int64),
+        constant_op.constant([], dtypes.float32),
+        constant_op.constant([], dtypes.float64),
+        constant_op.constant([], dtypes.string)
+    ]
+
+    column_names = ["col%d" % i for i in range(5)]
+    inputs = [[",".join(x for x in column_names), "0,1,2,3,4", "5,6,7,8,9"],
+              [
+                  ",".join(x for x in column_names), "10,11,12,13,14",
+                  "15,16,17,18,19"
+              ]]
+    expected_output = [[0, 1, 2, 3, b"4"], [5, 6, 7, 8, b"9"],
+                       [10, 11, 12, 13, b"14"], [15, 16, 17, 18, b"19"]]
+    label = "col0"
+
+    self._test_dataset(
+        inputs,
+        expected_output=expected_output,
+        expected_keys=column_names,
+        label_name=label,
+        batch_size=1,
+        num_epochs=1,
+        shuffle=False,
+        header=True,
+        column_defaults=record_defaults,
+        compression_type="GZIP",
+    )
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "compression_type .ZLIB. is not supported"):
+      self._test_dataset(
+          inputs,
+          expected_output=expected_output,
+          expected_keys=column_names,
+          label_name=label,
+          batch_size=1,
+          num_epochs=1,
+          shuffle=False,
+          header=True,
+          column_defaults=record_defaults,
+          compression_type="ZLIB",
       )
 
   def testMakeCSVDataset_withBadInputs(self):
@@ -668,7 +717,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
     ]]
     filenames = self._setup_files(inputs)
     dataset = self._make_csv_dataset(filenames, batch_size=32, num_epochs=None)
-    for shape in nest.flatten(dataset.output_shapes):
+    for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
       self.assertEqual(32, shape[0])
 
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as dtypes_module
+from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -27,16 +28,81 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 
+# LINT.IfChange
 # Op types that should not run in program order, e.g. because they need to run
 # asynchronously to avoid deadlock.
 ASYNC_STATEFUL_OPS = [
+    "CollectiveGather",
     "CollectiveReduce",
     "CollectiveBcastSend",
     "CollectiveBcastRecv",
     "NcclAllReduce",
 ]
+
+LEGACY_RANDOM_OPS = [
+    # These may be used in variable initializers -- thus their execution should
+    # not be dependent on other stateful operations.  This is because although
+    # according to program order, tf.Variables may be created in sequence,
+    # their initialization happens outside of the program order (specifically,
+    # in graph mode their initialization happens by calling a grouped
+    # initializer operation or in eager mode, where initialization is lifted
+    # out of the tf.function and executed the first time the function is
+    # executed).
+    #
+    # Unless there is a specific dependency between the initializers
+    # themselves (e.g. one initializer depends on a Variable whose value depends
+    # on another initializer), the initialization can happen in any order so
+    # long as it's before the associated Variable read operations.
+    #
+    # Note that in general the randomness of legacy random operations is only
+    # guaranteed by providing a graph-level and op-level seed (and ordering of
+    # the same op across multiple iterations of a while_loop is specifically not
+    # guaranteed; see the discussion below).
+    #
+    # There is a possible race condition inside while_loop where the same
+    # random OpKernel instantiation is reused across multiple steps
+    # of the loop.  Since legacy Random OpKernels have an internal rng state,
+    # automatic dependency tracking across loop steps would likely
+    # fix this race; and for that case this blacklist is problematic.
+    # However, since automatic dependency tracking inside while loops is not
+    # currently supported, and there are no other examples of OpKernel reuse
+    # (each OpKernel is associated with a unique op in graph mode),
+    # this blacklist has no effect on the aforementioned behavior.
+    #
+    # TODO(ebrevdo,skyewm): Modify the check against this blacklist to
+    # only occur when the op is inside a "variable initialization scope"; and
+    # add proper autodeps inside while_loops that respects this updated check.
+    "RandomUniform",
+    "RandomUniformInt",
+    "RandomStandardNormal",
+    "ParameterizedTruncatedNormal",
+    "TruncatedNormal",
+    "RandomShuffle",
+    "Multinomial",
+    "RandomGamma",
+    "RandomGammaGrad",
+    "RandomPoisson",
+    "RandomPoissonV2",
+]
+
+_ORDER_INSENSITIVE_STATEFUL_OPS = [
+    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+    "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+    "EnqueueTPUEmbeddingSparseTensorBatch"
+]
+# LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
+
+_ALL_BLACKLISTED_OPS = (
+    set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
+    | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
+
+
+def op_is_stateful(op):
+  # pylint: disable=protected-access
+  return op._is_stateful and op.type not in _ALL_BLACKLISTED_OPS
 
 
 class AutomaticControlDependencies(object):
@@ -45,7 +111,7 @@ class AutomaticControlDependencies(object):
   Code under this context manager will act as if a sensible set of control
   dependencies were present. More specifically:
     1. All stateful ops in the scope will execute (with the exception of ops in
-       ASYNC_STATEFUL_OPS)
+       ASYNC_STATEFUL_OPS and LEGACY_RANDOM_OPS)
     2. Stateful ops which modify the same resource will execute in program order
 
   Note: creating variables in an automatic control dependencies context is not
@@ -56,7 +122,8 @@ class AutomaticControlDependencies(object):
   """
 
   def __init__(self):
-    self._returned_tensors = set()
+    self._returned_tensors = object_identity.ObjectIdentitySet()
+    self.ops_which_must_run = set()
 
   def mark_as_return(self, tensor):
     """Acts like identity but marks the `Tensor` as a return value.
@@ -151,10 +218,13 @@ class AutomaticControlDependencies(object):
         all usages of it.
     """
     inp = switch_op.inputs[0]
+    input_id = ops.tensor_id(inp)
     if inp.dtype == dtypes_module.resource and inp.op.type == "Switch":
       self._process_switch(inp.op, ops_which_must_run,
                            last_op_using_resource_tensor, merge_for_resource)
-    if switch_op.outputs[0] in merge_for_resource:
+    output = switch_op.outputs[0]
+    output_id = ops.tensor_id(output)
+    if output_id in merge_for_resource:
       return
     new_merge = control_flow_ops.merge(switch_op.outputs,
                                        name="artificial_merge")
@@ -162,16 +232,16 @@ class AutomaticControlDependencies(object):
         switch_op._control_flow_context.outer_context)  # pylint: disable=protected-access
     # Ensures the merge always runs
     ops_which_must_run.add(new_merge[0].op)
-    if inp in last_op_using_resource_tensor:
+    if input_id in last_op_using_resource_tensor:
       # Ensures the switch executes after the previous op using the resource.
-      switch_op._add_control_input(last_op_using_resource_tensor[inp])  # pylint: disable=protected-access
+      switch_op._add_control_input(last_op_using_resource_tensor[input_id])  # pylint: disable=protected-access
     # Ensure the next op outside the cond happens after the merge.
-    last_op_using_resource_tensor[inp] = new_merge[0].op
-    if inp in merge_for_resource:
-      merge_for_resource[inp]._add_control_input(new_merge[0].op)  # pylint: disable=protected-access
+    last_op_using_resource_tensor[input_id] = new_merge[0].op
+    if input_id in merge_for_resource:
+      merge_for_resource[input_id]._add_control_input(new_merge[0].op)  # pylint: disable=protected-access
     for o in switch_op.outputs:
       # Ensures the merge will execute after all ops inside the cond
-      merge_for_resource[o] = new_merge[0].op
+      merge_for_resource[ops.tensor_id(o)] = new_merge[0].op
 
   def __exit__(self, unused_type, unused_value, unused_traceback):
     if context.executing_eagerly():
@@ -232,9 +302,7 @@ class AutomaticControlDependencies(object):
         continue
       control_inputs = set()
       # Ensure stateful ops run
-      if (op.type not in self._graph._registered_ops  # pylint: disable=protected-access
-          or (self._graph._registered_ops[op.type].is_stateful   # pylint: disable=protected-access
-              and op.type not in ASYNC_STATEFUL_OPS)):
+      if op_def_registry.get(op.type) is None or op_is_stateful(op):
         ops_which_must_run.add(op)
       # Ignore switches (they're handled separately)
       if op.type == "Switch" and op.inputs[0].dtype == dtypes_module.resource:
@@ -244,35 +312,44 @@ class AutomaticControlDependencies(object):
         for o in ops_which_must_run:
           op._add_control_input(o)  # pylint: disable=protected-access
           for inp in o.inputs:
-            if inp in last_op_using_resource_tensor:
-              last_op_using_resource_tensor[inp] = op
+            input_id = ops.tensor_id(inp)
+            if input_id in last_op_using_resource_tensor:
+              last_op_using_resource_tensor[input_id] = op
         ops_which_must_run = set([op])
         continue
-      found_resource = False
+
+      resource_inputs = set()
       # Check for any resource inputs. If we find any, we update control_inputs
-      # and last_op_using_resource_tensor. Note that we dedup op.inputs in case
-      # op receives the same resource tensor twice as input, which would result
-      # in op getting a control dependency on itself.
-      for inp in set(op.inputs):
+      # and last_op_using_resource_tensor.
+      for inp in op.inputs:
         if inp.dtype != dtypes_module.resource:
           continue
-        found_resource = True
+
+        input_id = ops.tensor_id(inp)
+
+        # If the op receives the same resource tensor twice as an input, we skip
+        # to avoid the op getting a control dependency on itself.
+        if input_id in resource_inputs:
+          continue
+
+        resource_inputs.add(input_id)
         # Deal with switches, finally.
         if inp.op.type == "Switch":
           self._process_switch(inp.op, ops_which_must_run,
                                last_op_using_resource_tensor,
                                merge_for_resource)
         # Ensure uses of resources are serialized
-        if inp in last_op_using_resource_tensor:
-          if (last_op_using_resource_tensor[inp]._control_flow_context  # pylint: disable=protected-access
+        if input_id in last_op_using_resource_tensor:
+          if (last_op_using_resource_tensor[input_id]._control_flow_context  # pylint: disable=protected-access
               is op._control_flow_context):  # pylint: disable=protected-access
-            control_inputs.add(last_op_using_resource_tensor[inp])
+            control_inputs.add(last_op_using_resource_tensor[input_id])
         # Ensure merges happen after the closing of a cond block
-        if inp in merge_for_resource:
-          merge_for_resource[inp]._add_control_input(op)  # pylint: disable=protected-access
-        last_op_using_resource_tensor[inp] = op
-      if (op.op_def.is_stateful and op.type not in ASYNC_STATEFUL_OPS
-          and not found_resource and op._control_flow_context is None):  # pylint: disable=protected-access
+        if input_id in merge_for_resource:
+          merge_for_resource[input_id]._add_control_input(op)  # pylint: disable=protected-access
+        last_op_using_resource_tensor[input_id] = op
+
+      if (op_is_stateful(op) and not resource_inputs
+          and op._control_flow_context is None):  # pylint: disable=protected-access
         if None in last_op_using_resource_tensor:
           op._add_control_input(last_op_using_resource_tensor[None])  # pylint: disable=protected-access
         last_op_using_resource_tensor[None] = op
@@ -281,11 +358,15 @@ class AutomaticControlDependencies(object):
       op._add_control_inputs(control_inputs)  # pylint: disable=protected-access
 
     # Ensure all ops which must run do run
-    for r in self._returned_tensors:
-      if ops_which_must_run:
+    self.ops_which_must_run.update(ops_which_must_run)
+    for r in nest.flatten(list(self._returned_tensors), expand_composites=True):
+      if self.ops_which_must_run:
         r.op._add_control_inputs(  # pylint: disable=protected-access
-            [o for o in ops_which_must_run
-             if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
+            [
+                o for o in self.ops_which_must_run
+                if r.graph.building_function or
+                (o._control_flow_context is r.op._control_flow_context)  # pylint: disable=protected-access
+            ])
 
 
 def automatic_control_dependencies(f):

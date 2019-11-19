@@ -39,7 +39,7 @@ class TensorSliceReader;
 // variables.
 class CheckpointReader {
  public:
-  CheckpointReader(const string& filepattern, TF_Status* out_status);
+  CheckpointReader(const string& filename, TF_Status* status);
 
   bool HasTensor(const string& name) const;
   const string DebugString() const;

@@ -32,12 +32,12 @@ class SquareRootOpTest(test.TestCase):
 
   def _verifySquareRoot(self, matrix, np_type):
     matrix = matrix.astype(np_type)
-    with test_util.use_gpu():
-      # Verify that matmul(sqrtm(A), sqrtm(A)) = A
-      sqrt = gen_linalg_ops.matrix_square_root(matrix)
-      square = math_ops.matmul(sqrt, sqrt)
-      self.assertShapeEqual(matrix, square)
-      self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
+
+    # Verify that matmul(sqrtm(A), sqrtm(A)) = A
+    sqrt = gen_linalg_ops.matrix_square_root(matrix)
+    square = math_ops.matmul(sqrt, sqrt)
+    self.assertShapeEqual(matrix, square)
+    self.assertAllClose(matrix, square, rtol=1e-4, atol=1e-3)
 
   def _verifySquareRootReal(self, x):
     for np_type in [np.float32, np.float64]:
@@ -59,14 +59,16 @@ class SquareRootOpTest(test.TestCase):
     self._verifySquareRootReal(matrix1)
     self._verifySquareRootReal(matrix2)
     self._verifySquareRootReal(self._makeBatch(matrix1, matrix2))
-    # Complex
-    matrix1 = matrix1.astype(np.complex64)
-    matrix2 = matrix2.astype(np.complex64)
-    matrix1 += 1j * matrix1
-    matrix2 += 1j * matrix2
-    self._verifySquareRootComplex(matrix1)
-    self._verifySquareRootComplex(matrix2)
-    self._verifySquareRootComplex(self._makeBatch(matrix1, matrix2))
+    if not test.is_built_with_rocm():
+      # ROCm does not support BLAS operations for complex types
+      # Complex
+      matrix1 = matrix1.astype(np.complex64)
+      matrix2 = matrix2.astype(np.complex64)
+      matrix1 += 1j * matrix1
+      matrix2 += 1j * matrix2
+      self._verifySquareRootComplex(matrix1)
+      self._verifySquareRootComplex(matrix2)
+      self._verifySquareRootComplex(self._makeBatch(matrix1, matrix2))
 
   def testSymmetricPositiveDefinite(self):
     matrix1 = np.array([[2., 1.], [1., 2.]])

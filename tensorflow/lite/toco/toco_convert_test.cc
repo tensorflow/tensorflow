@@ -63,8 +63,7 @@ TEST(TocoTest, BadOutputArray) {
 
   EXPECT_DEATH(Convert(input, toco_flags, model_flags, &output).ok(),
                "Specified output array .output1. is not produced by any op "
-               "in this graph. Is it a typo. To silence this message, pass "
-               "this flag:  allow_nonexistent_arrays");
+               "in this graph. Is it a typo");
 }
 
 TEST(TocoTest, BadOutputFormat) {
@@ -133,6 +132,11 @@ TEST(TocoTest, TransientStringTensors) {
   // initialization code: output format must support memory planning, and the
   // input array must have a shape.
   toco_flags.set_output_format(TFLITE);
+
+  toco::InputArray* input_1 = model_flags.add_input_arrays();
+  input_1->set_name("input1");
+  toco::InputArray* indices_1 = model_flags.add_input_arrays();
+  indices_1->set_name("indices1");
 
   model_flags.add_output_arrays("output1");
   string input = R"GraphDef(

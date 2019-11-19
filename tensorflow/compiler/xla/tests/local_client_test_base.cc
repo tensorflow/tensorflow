@@ -16,17 +16,22 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/local_client_test_base.h"
 
+#include <memory>
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/string_view.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/env.h"
@@ -36,17 +41,18 @@ namespace xla {
 
 /* static */ TestAllocator* LocalClientTestBase::allocator_;
 
-StatusOr<OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
-                                                     uint64 size,
-                                                     bool retry_on_failure) {
+StatusOr<se::OwningDeviceMemory> TestAllocator::Allocate(int device_ordinal,
+                                                         uint64 size,
+                                                         bool retry_on_failure,
+                                                         int64 memory_space) {
   VLOG(2) << "Allocate(" << device_ordinal << ", " << size << ")";
   {
     tensorflow::mutex_lock lock(count_mutex_);
     allocation_count_++;
     device_allocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Allocate(device_ordinal, size,
-                                                 retry_on_failure);
+  return se::StreamExecutorMemoryAllocator::Allocate(
+      device_ordinal, size, retry_on_failure, memory_space);
 }
 
 Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
@@ -56,7 +62,7 @@ Status TestAllocator::Deallocate(int device_ordinal, se::DeviceMemoryBase mem) {
     deallocation_count_++;
     device_deallocation_count_[device_ordinal]++;
   }
-  return StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
+  return se::StreamExecutorMemoryAllocator::Deallocate(device_ordinal, mem);
 }
 
 int64 TestAllocator::allocation_count() const {
@@ -108,12 +114,10 @@ struct LocalClientTestBase::EigenThreadPoolWrapper {
   explicit EigenThreadPoolWrapper()
       : pool(new tensorflow::thread::ThreadPool(
             tensorflow::Env::Default(), "XLAEigenTest", /*num_threads=*/2)),
-        wrapper(new tensorflow::EigenThreadPoolWrapper(pool.get())),
-        device(new Eigen::ThreadPoolDevice(wrapper.get(),
-                                           wrapper->NumThreads())) {}
+        device(new Eigen::ThreadPoolDevice(pool->AsEigenThreadPool(),
+                                           pool->NumThreads())) {}
 
   std::unique_ptr<tensorflow::thread::ThreadPool> pool;
-  std::unique_ptr<tensorflow::EigenThreadPoolWrapper> wrapper;
   std::unique_ptr<Eigen::ThreadPoolDevice> device;
 };
 
@@ -121,8 +125,10 @@ LocalClientTestBase::LocalClientTestBase(se::Platform* platform)
     : local_client_(
           ClientLibrary::GetOrCreateLocalClient(platform).ValueOrDie()),
       thread_pool_wrapper_(new EigenThreadPoolWrapper()) {
+  // Take the first executor, since it's the default one.
   stream_executor_ = PlatformUtil::GetStreamExecutors(local_client_->platform())
-                         .ValueOrDie()[local_client_->default_device_ordinal()];
+                         .ValueOrDie()
+                         .front();
   transfer_manager_ =
       TransferManager::GetForPlatform(local_client_->platform()).ValueOrDie();
 }
@@ -203,6 +209,22 @@ StatusOr<ScopedShapedBuffer> LocalClientTestBase::ExecuteLocally(
   }
   TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
   return std::move(ret);
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+LocalClientTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text) {
+  return ParseAndReturnVerifiedModule(hlo_text, HloModuleConfig());
+}
+
+StatusOr<std::unique_ptr<VerifiedHloModule>>
+LocalClientTestBase::ParseAndReturnVerifiedModule(
+    absl::string_view hlo_text, const HloModuleConfig& config) {
+  auto module = absl::make_unique<VerifiedHloModule>(
+      TestName(), config, /*verifier_layout_sensitive=*/false,
+      /*allow_mixed_precision_in_hlo_verifier=*/true,
+      local_client_->backend().compiler()->ShapeSizeBytesFunction());
+  TF_RETURN_IF_ERROR(module->ParseHloStringAndVerifyModule(hlo_text));
+  return std::move(module);
 }
 
 }  // namespace xla

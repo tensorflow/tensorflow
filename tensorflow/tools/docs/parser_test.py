@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -22,6 +23,8 @@ import collections
 import functools
 import os
 import sys
+
+import six
 
 from tensorflow.python.platform import googletest
 from tensorflow.python.util import tf_inspect
@@ -180,7 +183,8 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the brief docstring is present
     self.assertEqual(
-        tf_inspect.getdoc(TestClass).split('\n')[0], page_info.doc.brief)
+        six.ensure_str(tf_inspect.getdoc(TestClass)).split('\n')[0],
+        page_info.doc.brief)
 
     # Make sure the method is present
     self.assertEqual(TestClass.a_method, page_info.methods[0].obj)
@@ -236,7 +240,7 @@ class ParserTest(googletest.TestCase):
     #   'Alias for field number ##'. These props are returned sorted.
 
     def sort_key(prop_info):
-      return int(prop_info.obj.__doc__.split(' ')[-1])
+      return int(six.ensure_str(prop_info.obj.__doc__).split(' ')[-1])
 
     self.assertSequenceEqual(page_info.properties,
                              sorted(page_info.properties, key=sort_key))
@@ -378,7 +382,8 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the brief docstring is present
     self.assertEqual(
-        tf_inspect.getdoc(test_module).split('\n')[0], page_info.doc.brief)
+        six.ensure_str(tf_inspect.getdoc(test_module)).split('\n')[0],
+        page_info.doc.brief)
 
     # Make sure that the members are there
     funcs = {f_info.obj for f_info in page_info.functions}
@@ -389,7 +394,8 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the module's file is contained as the definition location.
     self.assertEqual(
-        os.path.relpath(test_module.__file__, '/'), page_info.defined_in.path)
+        os.path.relpath(test_module.__file__.rstrip('c'), '/'),
+        page_info.defined_in.path)
 
   def test_docs_for_function(self):
     index = {
@@ -421,7 +427,8 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the brief docstring is present
     self.assertEqual(
-        tf_inspect.getdoc(test_function).split('\n')[0], page_info.doc.brief)
+        six.ensure_str(tf_inspect.getdoc(test_function)).split('\n')[0],
+        page_info.doc.brief)
 
     # Make sure the extracted signature is good.
     self.assertEqual(['unused_arg', "unused_kwarg='default'"],
@@ -460,7 +467,8 @@ class ParserTest(googletest.TestCase):
 
     # Make sure the brief docstring is present
     self.assertEqual(
-        tf_inspect.getdoc(test_function_with_args_kwargs).split('\n')[0],
+        six.ensure_str(
+            tf_inspect.getdoc(test_function_with_args_kwargs)).split('\n')[0],
         page_info.doc.brief)
 
     # Make sure the extracted signature is good.
@@ -750,7 +758,8 @@ class TestParseFunctionDetails(googletest.TestCase):
 
     self.assertEqual(
         RELU_DOC,
-        docstring + ''.join(str(detail) for detail in function_details))
+        six.ensure_str(docstring) +
+        ''.join(str(detail) for detail in function_details))
 
 
 class TestGenerateSignature(googletest.TestCase):

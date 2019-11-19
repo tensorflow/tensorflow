@@ -30,7 +30,19 @@ TileProto Tile::ToProto() const {
 }
 
 string Tile::ToString() const {
-  return absl::StrCat("(", absl::StrJoin(dimensions(), ","), ")");
+  std::vector<string> elements;
+  for (auto dim : dimensions()) {
+    if (dim >= 0) {
+      elements.push_back(std::to_string(dim));
+    } else {
+      if (dim == kCombineDimension) {
+        elements.push_back("*");
+      } else {
+        elements.push_back(absl::StrCat("Invalid value ", dim));
+      }
+    }
+  }
+  return absl::StrCat("(", absl::StrJoin(elements, ","), ")");
 }
 
 /* static */ Layout Layout::CreateFromProto(const LayoutProto& proto) {
@@ -45,6 +57,7 @@ string Tile::ToString() const {
     *layout.add_tiles() = Tile::CreateFromProto(tile_proto);
   }
   layout.set_element_size_in_bits(proto.element_size_in_bits());
+  layout.set_memory_space(proto.memory_space());
   return layout;
 }
 
@@ -60,27 +73,59 @@ LayoutProto Layout::ToProto() const {
     *proto.add_tiles() = tile.ToProto();
   }
   proto.set_element_size_in_bits(element_size_in_bits());
+  proto.set_memory_space(memory_space_);
   return proto;
 }
 
 string Layout::ToString() const {
-  // TODO(b/119839262): Emit tiles in string.
   if (format() == SPARSE) {
+    CHECK_EQ(tiles_size(), 0) << "Sparse layout should not be tiled.";
     return absl::StrCat("sparse{", max_sparse_elements(), "}");
   } else if (format() == DENSE) {
-    return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","), "}");
+    string colon_string = tiles().empty() ? "" : "T";
+    for (Tile tile : tiles()) {
+      absl::StrAppend(&colon_string, tile.ToString());
+    }
+    if (element_size_in_bits() != 0) {
+      absl::StrAppend(&colon_string, "E(", element_size_in_bits(), ")");
+    }
+    if (memory_space() != 0) {
+      absl::StrAppend(&colon_string, "S(", memory_space(), ")");
+    }
+    return absl::StrCat("{", absl::StrJoin(minor_to_major(), ","),
+                        colon_string.empty() ? "" : ":", colon_string, "}");
   } else {
     CHECK_EQ(format(), INVALID_FORMAT);
     return "invalid{}";
   }
 }
 
+bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
+  if (lhs.format() != rhs.format()) {
+    return false;
+  }
+  if (lhs.format() == DENSE && lhs.minor_to_major() != rhs.minor_to_major()) {
+    return false;
+  }
+  if (lhs.format() == SPARSE &&
+      lhs.max_sparse_elements() != rhs.max_sparse_elements()) {
+    return false;
+  }
+  if (!ignore_tiles_ && lhs.tiles() != rhs.tiles()) {
+    return false;
+  }
+  if (!ignore_element_size_ &&
+      lhs.element_size_in_bits() != rhs.element_size_in_bits()) {
+    return false;
+  }
+  if (!ignore_memory_space_ && lhs.memory_space() != rhs.memory_space()) {
+    return false;
+  }
+  return true;
+}
+
 bool Layout::operator==(const Layout& other) const {
-  return (other.format() == format() &&
-          other.minor_to_major() == minor_to_major() &&
-          other.element_size_in_bits() == element_size_in_bits() &&
-          other.max_sparse_elements() == max_sparse_elements() &&
-          other.tiles() == tiles());
+  return Equal()(*this, other);
 }
 
 std::ostream& operator<<(std::ostream& out, const Tile& tile) {

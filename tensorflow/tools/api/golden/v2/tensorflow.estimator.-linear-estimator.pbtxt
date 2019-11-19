@@ -2,6 +2,7 @@ path: "tensorflow.estimator.LinearEstimator"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.linear.LinearEstimatorV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"
@@ -21,7 +22,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'head\', \'feature_columns\', \'model_dir\', \'optimizer\', \'config\', \'partitioner\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'Ftrl\', \'None\', \'None\', \'sum\'], "
+    argspec: "args=[\'self\', \'head\', \'feature_columns\', \'model_dir\', \'optimizer\', \'config\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'None\', \'Ftrl\', \'None\', \'sum\'], "
   }
   member_method {
     name: "eval_dir"

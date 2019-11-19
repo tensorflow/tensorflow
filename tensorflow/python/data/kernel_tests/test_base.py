@@ -21,24 +21,51 @@ import re
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import structure
 from tensorflow.python.eager import context
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+
+
+def default_test_combinations():
+  """Returns the default test combinations for tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode=["eager", "graph"])
+
+
+def eager_only_combinations():
+  """Returns the default test combinations for eager mode only tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode="eager")
+
+
+def graph_only_combinations():
+  """Returns the default test combinations for graph mode only tf.data tests."""
+  return combinations.combine(tf_api_version=[1, 2], mode="graph")
 
 
 class DatasetTestBase(test.TestCase):
   """Base class for dataset tests."""
 
-  def assertSparseValuesEqual(self, a, b):
-    """Asserts that two SparseTensors/SparseTensorValues are equal."""
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
+  def assert_op_cancelled(self, op):
+    with self.assertRaises(errors.CancelledError):
+      self.evaluate(op)
 
-  def getNext(self, dataset, requires_initialization=False):
+  def assertValuesEqual(self, expected, actual):
+    """Asserts that two values are equal."""
+    if sparse_tensor.is_sparse(expected):
+      self.assertAllEqual(expected.indices, actual.indices)
+      self.assertAllEqual(expected.values, actual.values)
+      self.assertAllEqual(expected.dense_shape, actual.dense_shape)
+    else:
+      self.assertAllEqual(expected, actual)
+
+  def getNext(self, dataset, requires_initialization=False, shared_name=None):
     """Returns a callable that returns the next element of the dataset.
 
     Example use:
@@ -54,20 +81,36 @@ class DatasetTestBase(test.TestCase):
       requires_initialization: Indicates that when the test is executed in graph
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
+      shared_name: (Optional.) If non-empty, the returned iterator will be
+        shared under the given name across multiple sessions that share the same
+        devices (e.g. when using a remote server).
     Returns:
-      A callable that returns the next element of `dataset`.
+      A callable that returns the next element of `dataset`. Any `TensorArray`
+      objects `dataset` outputs are stacked.
     """
-    if context.executing_eagerly():
+    def ta_wrapper(gn):
+      def _wrapper():
+        r = gn()
+        if isinstance(r, tensor_array_ops.TensorArray):
+          return r.stack()
+        else:
+          return r
+      return _wrapper
+
+    # Create an anonymous iterator if we are in eager-mode or are graph inside
+    # of a tf.function.
+    building_function = ops.get_default_graph()._building_function  # pylint: disable=protected-access
+    if context.executing_eagerly() or building_function:
       iterator = iter(dataset)
-      return iterator._next_internal  # pylint: disable=protected-access
+      return ta_wrapper(iterator._next_internal)  # pylint: disable=protected-access
     else:
       if requires_initialization:
-        iterator = dataset_ops.make_initializable_iterator(dataset)
+        iterator = dataset_ops.make_initializable_iterator(dataset, shared_name)
         self.evaluate(iterator.initializer)
       else:
         iterator = dataset_ops.make_one_shot_iterator(dataset)
       get_next = iterator.get_next()
-      return lambda: get_next
+      return ta_wrapper(lambda: get_next)
 
   def _compareOutputToExpected(self, result_values, expected_values,
                                assert_items_equal):
@@ -80,10 +123,7 @@ class DatasetTestBase(test.TestCase):
       nest.assert_same_structure(result_values[i], expected_values[i])
       for result_value, expected_value in zip(
           nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
-        if sparse_tensor.is_sparse(result_value):
-          self.assertSparseValuesEqual(result_value, expected_value)
-        else:
-          self.assertAllEqual(result_value, expected_value)
+        self.assertValuesEqual(expected_value, result_value)
 
   def assertDatasetProduces(self,
                             dataset,
@@ -92,7 +132,8 @@ class DatasetTestBase(test.TestCase):
                             expected_error=None,
                             requires_initialization=False,
                             num_test_iterations=1,
-                            assert_items_equal=False):
+                            assert_items_equal=False,
+                            expected_error_iter=1):
     """Asserts that a dataset produces the expected output / error.
 
     Args:
@@ -111,9 +152,11 @@ class DatasetTestBase(test.TestCase):
         mode, it should use an initializable iterator to iterate through the
         dataset (e.g. when it contains stateful nodes). Defaults to False.
       num_test_iterations: Number of times `dataset` will be iterated. Defaults
-        to 2.
+        to 1.
       assert_items_equal: Tests expected_output has (only) the same elements
         regardless of order.
+      expected_error_iter: How many times to iterate before expecting an error,
+        if an error is expected.
     """
     self.assertTrue(
         expected_error is not None or expected_output is not None,
@@ -127,10 +170,12 @@ class DatasetTestBase(test.TestCase):
                                                expected_error[1]):
         get_next = self.getNext(
             dataset, requires_initialization=requires_initialization)
-        self.evaluate(get_next())
+        for _ in range(expected_error_iter):
+          self.evaluate(get_next())
       return
     if expected_shapes:
-      self.assertEqual(expected_shapes, dataset.output_shapes)
+      self.assertEqual(expected_shapes,
+                       dataset_ops.get_legacy_output_shapes(dataset))
     self.assertGreater(num_test_iterations, 0)
     for _ in range(num_test_iterations):
       get_next = self.getNext(
@@ -146,12 +191,17 @@ class DatasetTestBase(test.TestCase):
 
   def assertDatasetsEqual(self, dataset1, dataset2):
     """Checks that datasets are equal. Supports both graph and eager mode."""
-    self.assertEqual(dataset1.output_types, dataset2.output_types)
-    self.assertEqual(dataset1.output_classes, dataset2.output_classes)
-    flattened_types = nest.flatten(dataset1.output_types)
+    self.assertTrue(
+        structure.are_compatible(
+            dataset_ops.get_structure(dataset1),
+            dataset_ops.get_structure(dataset2)))
+
+    flattened_types = nest.flatten(
+        dataset_ops.get_legacy_output_types(dataset1))
 
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
+
     while True:
       try:
         op1 = self.evaluate(next1())
@@ -165,8 +215,8 @@ class DatasetTestBase(test.TestCase):
       op2 = nest.flatten(op2)
       assert len(op1) == len(op2)
       for i in range(len(op1)):
-        if sparse_tensor.is_sparse(op1[i]):
-          self.assertSparseValuesEqual(op1[i], op2[i])
+        if sparse_tensor.is_sparse(op1[i]) or ragged_tensor.is_ragged(op1[i]):
+          self.assertValuesEqual(op1[i], op2[i])
         elif flattened_types[i] == dtypes.string:
           self.assertAllEqual(op1[i], op2[i])
         else:
@@ -178,6 +228,8 @@ class DatasetTestBase(test.TestCase):
                                    exception_class,
                                    replacements=None):
     """Checks that datasets raise the same error on the first get_next call."""
+    if replacements is None:
+      replacements = []
     next1 = self.getNext(dataset1)
     next2 = self.getNext(dataset2)
     try:
@@ -194,28 +246,30 @@ class DatasetTestBase(test.TestCase):
                                    re.escape(expected_message)):
         self.evaluate(next2())
 
-  def structuredDataset(self, structure, shape=None, dtype=dtypes.int64):
+  def structuredDataset(self, dataset_structure, shape=None,
+                        dtype=dtypes.int64):
     """Returns a singleton dataset with the given structure."""
     if shape is None:
       shape = []
-    if structure is None:
+    if dataset_structure is None:
       return dataset_ops.Dataset.from_tensors(
           array_ops.zeros(shape, dtype=dtype))
     else:
       return dataset_ops.Dataset.zip(
           tuple([
               self.structuredDataset(substructure, shape, dtype)
-              for substructure in structure
+              for substructure in dataset_structure
           ]))
 
-  def structuredElement(self, structure, shape=None, dtype=dtypes.int64):
+  def structuredElement(self, element_structure, shape=None,
+                        dtype=dtypes.int64):
     """Returns an element with the given structure."""
     if shape is None:
       shape = []
-    if structure is None:
+    if element_structure is None:
       return array_ops.zeros(shape, dtype=dtype)
     else:
       return tuple([
           self.structuredElement(substructure, shape, dtype)
-          for substructure in structure
+          for substructure in element_structure
       ])

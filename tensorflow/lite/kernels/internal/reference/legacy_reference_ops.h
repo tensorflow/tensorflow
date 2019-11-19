@@ -18,8 +18,10 @@ limitations under the License.
 #include <stdint.h>
 #include <sys/types.h>
 
+#include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/legacy_types.h"
+#include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_float.h"
 #include "tensorflow/lite/kernels/internal/reference/depthwiseconv_uint8.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
@@ -281,7 +283,7 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
                  int32 output_activation_min, int32 output_activation_max,
                  uint8* output_data, const Dims<4>& output_dims,
                  uint8* im2col_data, const Dims<4>& im2col_dims,
-                 gemmlowp::GemmContext* gemm_context) {
+                 gemmlowp::GemmContext* gemmlowp_context) {
   tflite::ConvParams op_params;
   // Padding type is ignored, but still set.
   op_params.padding_type = PaddingType::kSame;
@@ -302,7 +304,7 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
 
   Conv(op_params, DimsToShape(input_dims), input_data, DimsToShape(filter_dims),
        filter_data, DimsToShape(bias_dims), bias_data, DimsToShape(output_dims),
-       output_data, DimsToShape(im2col_dims), im2col_data, gemm_context);
+       output_data, DimsToShape(im2col_dims), im2col_data, gemmlowp_context);
 }
 
 inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
@@ -315,12 +317,12 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
                  int32 output_activation_max, uint8* output_data,
                  const Dims<4>& output_dims, uint8* im2col_data,
                  const Dims<4>& im2col_dims,
-                 gemmlowp::GemmContext* gemm_context) {
+                 gemmlowp::GemmContext* gemmlowp_context) {
   Conv(input_data, input_dims, input_offset, filter_data, filter_dims,
        filter_offset, bias_data, bias_dims, stride_width, stride_height, 1, 1,
        pad_width, pad_height, output_offset, output_multiplier, output_shift,
        output_activation_min, output_activation_max, output_data, output_dims,
-       im2col_data, im2col_dims, gemm_context);
+       im2col_data, im2col_dims, gemmlowp_context);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -335,7 +337,7 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
                  int32 output_activation_max, uint8* output_data,
                  const Dims<4>& output_dims, uint8* im2col_data,
                  const Dims<4>& im2col_dims,
-                 gemmlowp::GemmContext* gemm_context) {
+                 gemmlowp::GemmContext* gemmlowp_context) {
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
                     Ac == FusedActivationFunctionType::kRelu6 ||
@@ -349,7 +351,7 @@ inline void Conv(const uint8* input_data, const Dims<4>& input_dims,
        filter_offset, bias_data, bias_dims, stride_width, stride_height,
        pad_width, pad_height, output_offset, output_multiplier, output_shift,
        output_activation_min, output_activation_max, output_data, output_dims,
-       im2col_data, im2col_dims, gemm_context);
+       im2col_data, im2col_dims, gemmlowp_context);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -362,12 +364,12 @@ void Conv(const uint8* input_data, const Dims<4>& input_dims,
           int32 output_multiplier, int output_shift,
           int32 output_activation_min, int32 output_activation_max,
           uint8* output_data, const Dims<4>& output_dims, uint8* im2col_data,
-          const Dims<4>& im2col_dims, gemmlowp::GemmContext* gemm_context) {
+          const Dims<4>& im2col_dims, gemmlowp::GemmContext* gemmlowp_context) {
   Conv<Ac>(input_data, input_dims, input_offset, filter_data, filter_dims,
            filter_offset, bias_data, bias_dims, stride, stride, pad_width,
            pad_height, output_offset, output_multiplier, output_shift,
            output_activation_min, output_activation_max, output_data,
-           output_dims, im2col_data, im2col_dims, gemm_context);
+           output_dims, im2col_data, im2col_dims, gemmlowp_context);
 }
 
 inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
@@ -419,6 +421,26 @@ void FullyConnected(const float* input_data, const Dims<4>& input_dims,
                  output_data, output_dims);
 }
 
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext*) {
+  FullyConnected(params, input_shape, input_data, filter_shape, filter_data,
+                 bias_shape, bias_data, output_shape, output_data);
+}
+
+inline void FullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& filter_shape,
+    const uint8* filter_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    int16* output_data, gemmlowp::GemmContext*) {
+  FullyConnected(params, input_shape, input_data, filter_shape, filter_data,
+                 bias_shape, bias_data, output_shape, output_data);
+}
+
 inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                            int32 input_offset, const uint8* filter_data,
                            const Dims<4>& filter_dims, int32 filter_offset,
@@ -427,7 +449,7 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                            int output_shift, int32 output_activation_min,
                            int32 output_activation_max, uint8* output_data,
                            const Dims<4>& output_dims,
-                           gemmlowp::GemmContext* gemm_context) {
+                           gemmlowp::GemmContext* gemmlowp_context) {
   tflite::FullyConnectedParams op_params;
   op_params.input_offset = input_offset;
   op_params.weights_offset = filter_offset;
@@ -441,7 +463,7 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   FullyConnected(op_params, DimsToShape(input_dims), input_data,
                  DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
                  bias_data, DimsToShape(output_dims), output_data,
-                 gemm_context);
+                 gemmlowp_context);
 }
 
 inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
@@ -452,7 +474,7 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                            int output_shift, int32 output_activation_min,
                            int32 output_activation_max, int16* output_data,
                            const Dims<4>& output_dims,
-                           gemmlowp::GemmContext* gemm_context) {
+                           gemmlowp::GemmContext* gemmlowp_context) {
   tflite::FullyConnectedParams op_params;
   op_params.input_offset = input_offset;
   op_params.weights_offset = filter_offset;
@@ -466,7 +488,20 @@ inline void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   FullyConnected(op_params, DimsToShape(input_dims), input_data,
                  DimsToShape(filter_dims), filter_data, DimsToShape(bias_dims),
                  bias_data, DimsToShape(output_dims), output_data,
-                 gemm_context);
+                 gemmlowp_context);
+}
+
+inline void ShuffledFullyConnected(
+    const FullyConnectedParams& params, const RuntimeShape& input_shape,
+    const uint8* input_data, const RuntimeShape& weights_shape,
+    const uint8* shuffled_weights_data, const RuntimeShape& bias_shape,
+    const int32* bias_data, const RuntimeShape& output_shape,
+    int16* output_data, uint8* shuffled_input_workspace_data,
+    gemmlowp::GemmContext*) {
+  ShuffledFullyConnected(params, input_shape, input_data, weights_shape,
+                         shuffled_weights_data, bias_shape, bias_data,
+                         output_shape, output_data,
+                         shuffled_input_workspace_data);
 }
 
 inline void ShuffledFullyConnected(
@@ -475,7 +510,8 @@ inline void ShuffledFullyConnected(
     const int32* bias_data, const Dims<4>& bias_dims, int32 output_multiplier,
     int output_shift, int32 output_activation_min, int32 output_activation_max,
     int16* output_data, const Dims<4>& output_dims,
-    uint8* shuffled_input_workspace_data, gemmlowp::GemmContext* gemm_context) {
+    uint8* shuffled_input_workspace_data,
+    gemmlowp::GemmContext* gemmlowp_context) {
   tflite::FullyConnectedParams op_params;
   op_params.output_multiplier = output_multiplier;
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
@@ -487,7 +523,7 @@ inline void ShuffledFullyConnected(
                          DimsToShape(weights_dims), shuffled_weights_data,
                          DimsToShape(bias_dims), bias_data,
                          DimsToShape(output_dims), output_data,
-                         shuffled_input_workspace_data, gemm_context);
+                         shuffled_input_workspace_data, gemmlowp_context);
 }
 
 // legacy, for compatibility with old checked-in code
@@ -500,7 +536,7 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
                     int output_shift, int32 output_activation_min,
                     int32 output_activation_max, uint8* output_data,
                     const Dims<4>& output_dims,
-                    gemmlowp::GemmContext* gemm_context) {
+                    gemmlowp::GemmContext* gemmlowp_context) {
   static_assert(Ac == FusedActivationFunctionType::kNone ||
                     Ac == FusedActivationFunctionType::kRelu ||
                     Ac == FusedActivationFunctionType::kRelu6 ||
@@ -513,7 +549,8 @@ void FullyConnected(const uint8* input_data, const Dims<4>& input_dims,
   FullyConnected(input_data, input_dims, input_offset, filter_data, filter_dims,
                  filter_offset, bias_data, bias_dims, output_offset,
                  output_multiplier, output_shift, output_activation_min,
-                 output_activation_max, output_data, output_dims, gemm_context);
+                 output_activation_max, output_data, output_dims,
+                 gemmlowp_context);
 }
 
 inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
@@ -551,7 +588,7 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
               const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
               const Dims<4>& activ_temp_dims, int32 weights_zero_point,
               int32 accum_multiplier, int accum_shift,
-              gemmlowp::GemmContext* gemm_context) {
+              gemmlowp::GemmContext* gemmlowp_context) {
   tflite::LstmCellParams op_params;
   op_params.weights_zero_point = weights_zero_point;
   op_params.accum_multiplier = accum_multiplier;
@@ -565,7 +602,7 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       DimsToShape(output_state_dims), output_state_data_int16,
       DimsToShape(output_activ_dims), output_activ_data_uint8,
       DimsToShape(concat_temp_dims), concat_temp_data_uint8,
-      DimsToShape(activ_temp_dims), activ_temp_data_int16, gemm_context);
+      DimsToShape(activ_temp_dims), activ_temp_data_int16, gemmlowp_context);
 }
 
 template <typename T>
@@ -735,6 +772,47 @@ inline void LogSoftmax(const uint8* input_data, const RuntimeShape& input_shape,
   LogSoftmax(params, input_shape, input_data, output_shape, output_data);
 }
 
+inline void Logistic(const LogisticParams& params,
+                     const RuntimeShape& input_shape, const uint8* input_data,
+                     const RuntimeShape& output_shape, uint8* output_data) {
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int input_left_shift = params.input_left_shift;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    const uint8 input_val_u8 = input_data[i];
+    const int32 input_val_centered =
+        static_cast<int32>(input_val_u8) - input_zero_point;
+    uint8 output_val;
+    if (input_val_centered <= -input_range_radius) {
+      output_val = 0;
+    } else if (input_val_centered >= input_range_radius) {
+      output_val = 255;
+    } else {
+      const int32 input_val_rescaled =
+          MultiplyByQuantizedMultiplierGreaterThanOne(
+              input_val_centered, input_multiplier, input_left_shift);
+      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
+      const FixedPoint0 output_val_f0 = gemmlowp::logistic(input_val_f4);
+      // Convert from Q0.31 to Q23.8.
+      using gemmlowp::RoundingDivideByPOT;
+      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 23);
+      if (output_val_s32 == 256) {
+        output_val_s32 = 255;
+      }
+      // Reinterpret as U0.8.
+      TFLITE_DCHECK_GE(output_val_s32, 0);
+      TFLITE_DCHECK_LE(output_val_s32, 255);
+      output_val = static_cast<uint8>(output_val_s32);
+    }
+    output_data[i] = output_val;
+  }
+}
+
 inline void Logistic(const uint8* input_data, const RuntimeShape& input_shape,
                      int32 input_zero_point, int32 input_range_radius,
                      int32 input_multiplier, int input_left_shift,
@@ -752,6 +830,49 @@ inline void Logistic(const RuntimeShape& input_shape, const int16* input_data,
   LogisticParams params;
   // No params currently needed by int16 Logistic.
   Logistic(params, input_shape, input_data, output_shape, output_data);
+}
+
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const uint8* input_data, const RuntimeShape& output_shape,
+                 uint8* output_data) {
+  const int32 input_zero_point = params.input_zero_point;
+  const int32 input_range_radius = params.input_range_radius;
+  const int32 input_multiplier = params.input_multiplier;
+  const int input_left_shift = params.input_left_shift;
+  const int32 output_zero_point = 128;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    const uint8 input_val_u8 = input_data[i];
+    const int32 input_val_centered =
+        static_cast<int32>(input_val_u8) - input_zero_point;
+    uint8 output_val;
+    if (input_val_centered <= -input_range_radius) {
+      output_val = 0;
+    } else if (input_val_centered >= input_range_radius) {
+      output_val = 255;
+    } else {
+      const int32 input_val_rescaled =
+          MultiplyByQuantizedMultiplierGreaterThanOne(
+              input_val_centered, input_multiplier, input_left_shift);
+      using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
+      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
+      // Convert from Q0.31 to Q24.7.
+      using gemmlowp::RoundingDivideByPOT;
+      int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
+      output_val_s32 += output_zero_point;
+      if (output_val_s32 == 256) {
+        output_val_s32 = 255;
+      }
+      // Reinterpret as Q0.7, encoded in uint8.
+      TFLITE_DCHECK_GE(output_val_s32, 0);
+      TFLITE_DCHECK_LE(output_val_s32, 255);
+      output_val = static_cast<uint8>(output_val_s32);
+    }
+    output_data[i] = output_val;
+  }
 }
 
 inline void Tanh(const uint8* input_data, const RuntimeShape& input_shape,
@@ -2069,25 +2190,6 @@ inline void BroadcastPow(const T* input1_data, const Dims<4>& input1_dims,
   BroadcastPow4DSlow(DimsToShape(input1_dims), input1_data,
                      DimsToShape(input2_dims), input2_data,
                      DimsToShape(output_dims), output_data);
-}
-
-inline void Logical(const bool* input1_data, const Dims<4>& input1_dims,
-                    const bool* input2_data, const Dims<4>& input2_dims,
-                    bool* output_data, const Dims<4>& output_dims,
-                    const std::function<bool(bool, bool)>& func) {
-  Logical(DimsToShape(input1_dims), input1_data, DimsToShape(input2_dims),
-          input2_data, DimsToShape(output_dims), output_data, func);
-}
-
-inline void BroadcastLogical(const bool* input1_data,
-                             const Dims<4>& input1_dims,
-                             const bool* input2_data,
-                             const Dims<4>& input2_dims, bool* output_data,
-                             const Dims<4>& output_dims,
-                             const std::function<bool(bool, bool)>& func) {
-  BroadcastLogical4DSlow(DimsToShape(input1_dims), input1_data,
-                         DimsToShape(input2_dims), input2_data,
-                         DimsToShape(output_dims), output_data, func);
 }
 
 // R: Result type. T1: Input 1 type. T2: Input 2 type.

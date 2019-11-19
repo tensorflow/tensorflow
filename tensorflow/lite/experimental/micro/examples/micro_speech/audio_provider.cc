@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
 
 namespace {
 int16_t g_dummy_audio_data[kMaxAudioSampleSize];

@@ -18,24 +18,23 @@ limitations under the License.
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <vector>
 
+#include "tensorflow/lite/core/api/profiler.h"
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/profiling/time.h"
 
 namespace tflite {
 namespace profiling {
+
+constexpr uint32_t kInvalidEventHandle = static_cast<uint32_t>(~0) - 1;
 
 // A profiling event.
 struct ProfileEvent {
   // Describes the type of event.
   // The event_metadata field may contain additional data for interpreting
   // the event.
-  enum class EventType {
-    // Default event type, the metadata field has no special significance.
-    DEFAULT = 0,
-    // The event is an operator invocation and the event_metadata field is the
-    // index of operator node.
-    OPERATOR_INVOKE_EVENT = 1
-  };
+  using EventType = tflite::Profiler::EventType;
 
   // Label of the event. This usually describes the event.
   const char* tag;
@@ -43,23 +42,20 @@ struct ProfileEvent {
   uint64_t begin_timestamp_us;
   // Timestamp in microseconds when the event ended.
   uint64_t end_timestamp_us;
+
+  // The memory usage when the event begins.
+  memory::MemoryUsage begin_mem_usage;
+  // The memory usage when the event ends.
+  memory::MemoryUsage end_mem_usage;
+
   // The field containing the type of event. This must be one of the event types
   // in EventType.
   EventType event_type;
   // Extra data describing the details of the event.
   uint32_t event_metadata;
+  // The index of subgraph where an event came from.
+  uint32_t event_subgraph_index;
 };
-}  // namespace profiling
-}  // namespace tflite
-
-#ifdef TFLITE_PROFILING_ENABLED
-
-#include <sys/time.h>
-#include <vector>
-
-namespace tflite {
-namespace profiling {
-constexpr uint32_t kInvalidEventHandle = static_cast<uint32_t>(~0) - 1;
 
 // A ring buffer of profile events.
 // This class is not thread safe.
@@ -73,7 +69,7 @@ class ProfileBuffer {
   // buffer is disabled this has no affect.
   // The tag of the event should remain valid till the buffer is valid.
   uint32_t BeginEvent(const char* tag, ProfileEvent::EventType event_type,
-                      uint32_t event_metadata) {
+                      uint32_t event_metadata, uint32_t event_subgraph_index) {
     if (!enabled_) {
       return kInvalidEventHandle;
     }
@@ -84,9 +80,13 @@ class ProfileBuffer {
     }
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
+    event_buffer_[index].event_subgraph_index = event_subgraph_index;
     event_buffer_[index].event_metadata = event_metadata;
     event_buffer_[index].begin_timestamp_us = timestamp;
     event_buffer_[index].end_timestamp_us = 0;
+    if (event_type != Profiler::EventType::OPERATOR_INVOKE_EVENT) {
+      event_buffer_[index].begin_mem_usage = memory::GetMemoryUsage();
+    }
     current_index_++;
     return index;
   }
@@ -111,6 +111,10 @@ class ProfileBuffer {
 
     int event_index = event_handle % max_size;
     event_buffer_[event_index].end_timestamp_us = time::NowMicros();
+    if (event_buffer_[event_index].event_type !=
+        Profiler::EventType::OPERATOR_INVOKE_EVENT) {
+      event_buffer_[event_index].end_mem_usage = memory::GetMemoryUsage();
+    }
   }
 
   // Returns the size of the buffer.
@@ -128,7 +132,7 @@ class ProfileBuffer {
   // Returns the profile event at the given index. If the index is invalid a
   // nullptr is returned. The return event may get overwritten if more events
   // are added to buffer.
-  const struct ProfileEvent* const At(int index) const {
+  const struct ProfileEvent* At(size_t index) const {
     size_t size = Size();
     if (index >= size) {
       return nullptr;
@@ -145,7 +149,8 @@ class ProfileBuffer {
   uint32_t current_index_;
   std::vector<ProfileEvent> event_buffer_;
 };
+
 }  // namespace profiling
 }  // namespace tflite
-#endif  // TFLITE_PROFILING_ENABLED
+
 #endif  // TENSORFLOW_LITE_PROFILING_PROFILE_BUFFER_H_

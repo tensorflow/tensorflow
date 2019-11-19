@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "KMeans"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearSDCA"
     mtype: "<type \'type\'>"
   }

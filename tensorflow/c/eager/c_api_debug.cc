@@ -32,13 +32,13 @@ std::vector<int64> TensorShapeAsVector(TFE_TensorHandle* handle,
                                        TF_Status* status) {
   std::vector<int64> shape;
   int rank = TFE_TensorHandleNumDims(handle, status);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     return shape;
   }
   shape.reserve(rank);
   for (int i = 0; i < rank; ++i) {
     shape.push_back(TFE_TensorHandleDim(handle, i, status));
-    if (!status->status.ok()) {
+    if (TF_GetCode(status) != TF_OK) {
       return shape;
     }
   }
@@ -53,7 +53,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
     TFE_TensorHandle* handle, TF_Status* status) {
   const tensorflow::Tensor* tensor;
   status->status = handle->handle->Tensor(&tensor);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
 
@@ -78,7 +78,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
         status->status = tensorflow::Status::OK();
       } else {
         VLOG(3) << "Fully padded shape of ["
-                << tensorflow::str_util::Join(shape_to_log, ", ") << "] is "
+                << absl::StrJoin(shape_to_log, ", ") << "] is "
                 << padded_shape.DebugString();
       }
     }
@@ -139,7 +139,7 @@ TF_CAPI_EXPORT extern TFE_TensorDebugInfo* TFE_TensorHandleTensorDebugInfo(
   // If the tensor is not an XLA tensor, the device shape is
   // the same as regular tensor shape.
   std::vector<int64> dev_dims = TensorShapeAsVector(handle, status);
-  if (!status->status.ok()) {
+  if (TF_GetCode(status) != TF_OK) {
     return nullptr;
   }
   return new TFE_TensorDebugInfo(dev_dims);

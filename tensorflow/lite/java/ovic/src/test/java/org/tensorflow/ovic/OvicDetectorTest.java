@@ -103,7 +103,7 @@ public final class OvicDetectorTest {
   @Test
   public void ovicDetector_detectSuccess() throws Exception {
     assertThat(detector.detectByteBuffer(testImage, 1)).isTrue();
-    assertThat(detector.result != null).isTrue();
+    assertThat(detector.result).isNotNull();
   }
 
   @Test

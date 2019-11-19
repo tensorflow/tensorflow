@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <AudioToolbox/AudioToolbox.h>
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_model_settings.h"
 
 namespace {
 

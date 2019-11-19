@@ -20,7 +20,7 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_FFT_H_
 
-#include "cuda/include/cufft.h"
+#include "third_party/gpus/cuda/include/cufft.h"
 #include "tensorflow/stream_executor/fft.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"

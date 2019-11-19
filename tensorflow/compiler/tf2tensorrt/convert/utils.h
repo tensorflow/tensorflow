@@ -23,6 +23,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+class IONamePrefixes {
+ public:
+  static constexpr const char* const kInputPHName = "TensorRTInputPH_";
+  static constexpr const char* const kOutputPHName = "TensorRTOutputPH_";
+};
+
 template <typename T>
 struct TrtDestroyer {
   void operator()(T* t) {
@@ -32,8 +38,6 @@ struct TrtDestroyer {
 
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
-
-bool IsGoogleTensorRTEnabled();
 
 enum class TrtPrecisionMode { FP32, FP16, INT8 };
 

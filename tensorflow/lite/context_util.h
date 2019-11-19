@@ -38,6 +38,7 @@ class TfLiteIntArrayView {
   const_iterator begin() const { return int_array_->data; }
   const_iterator end() const { return &int_array_->data[int_array_->size]; }
   size_t size() const { return end() - begin(); }
+  int operator[](size_t pos) const { return int_array_->data[pos]; }
 
  private:
   const TfLiteIntArray* int_array_;

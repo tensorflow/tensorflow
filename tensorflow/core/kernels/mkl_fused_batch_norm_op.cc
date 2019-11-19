@@ -43,7 +43,7 @@ struct MklBatchNormFwdParams {
       : src_dims(src_dims), depth(depth), eps(eps), training(training) {}
 };
 
-template <typename T>
+template <typename T, typename U>
 class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormFwdPrimitive(const MklBatchNormFwdParams& fwdParams)
@@ -60,15 +60,15 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   //   dst_data:     output data buffer of dst
   //   mean_data:     output data buffer of means
   //   variance_data: output data buffer of variances
-  void Execute(const T* src_data, const T* weights_data, T* dst_data,
-               T* mean_data, T* variance_data) {
+  void Execute(const T* src_data, const U* weights_data, T* dst_data,
+               U* mean_data, U* variance_data) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
 
     if (context_.flags & use_scale_shift)
       context_.weights_mem->set_data_handle(
-          static_cast<void*>(const_cast<T*>(weights_data)));
+          static_cast<void*>(const_cast<U*>(weights_data)));
 
     if ((context_.pkind == prop_kind::forward_training) ||
         (context_.flags & use_global_stats)) {
@@ -158,19 +158,19 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
     context_.dst_mem.reset(new memory(fwd_pd.dst_primitive_desc(), DummyData));
 
     if (context_.flags & use_scale_shift) {
-      auto weights_desc = memory::desc({2, fwdParams.depth}, MklDnnType<T>(),
+      auto weights_desc = memory::desc({2, fwdParams.depth}, MklDnnType<U>(),
                                        memory::format::nc);
       context_.weights_mem.reset(
           new memory({weights_desc, cpu_engine_}, DummyData));
     }
 
     if (fwdParams.training || (context_.flags & use_global_stats)) {
-      auto mean_desc = memory::desc({1, fwdParams.depth}, MklDnnType<T>(),
+      auto mean_desc = memory::desc({1, fwdParams.depth}, MklDnnType<U>(),
                                     memory::format::nc);
       context_.mean_mem.reset(new memory({mean_desc, cpu_engine_}, DummyData));
 
       auto variance_desc =
-          memory::desc({1, fwdParams.depth}, MklDnnType<T>(), memory::nc);
+          memory::desc({1, fwdParams.depth}, MklDnnType<U>(), memory::nc);
       context_.variance_mem.reset(
           new memory({variance_desc, cpu_engine_}, DummyData));
     }
@@ -219,18 +219,18 @@ class MklFusedBatchNormFwdPrimitive : public MklPrimitive {
   engine cpu_engine_;
 };
 
-template <typename T>
+template <typename T, typename U>
 class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklFusedBatchNormFwdPrimitive<T>* Get(
+  static MklFusedBatchNormFwdPrimitive<T, U>* Get(
       const MklBatchNormFwdParams& fwdParams) {
-    auto bn_fwd = static_cast<MklFusedBatchNormFwdPrimitive<T>*>(
-        MklFusedBatchNormFwdPrimitiveFactory<T>::GetInstance().GetBatchNormFwd(
-            fwdParams));
+    auto bn_fwd = static_cast<MklFusedBatchNormFwdPrimitive<T, U>*>(
+        MklFusedBatchNormFwdPrimitiveFactory<T, U>::GetInstance()
+            .GetBatchNormFwd(fwdParams));
 
     if (bn_fwd == nullptr) {
-      bn_fwd = new MklFusedBatchNormFwdPrimitive<T>(fwdParams);
-      MklFusedBatchNormFwdPrimitiveFactory<T>::GetInstance().SetBatchNormFwd(
+      bn_fwd = new MklFusedBatchNormFwdPrimitive<T, U>(fwdParams);
+      MklFusedBatchNormFwdPrimitiveFactory<T, U>::GetInstance().SetBatchNormFwd(
           fwdParams, bn_fwd);
     }
     return bn_fwd;
@@ -253,6 +253,8 @@ class MklFusedBatchNormFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(fwdParams.depth);
     key_creator.AddAsKey<float>(fwdParams.eps);
     key_creator.AddAsKey<bool>(fwdParams.training);
+    key_creator.AddAsKey(typeid(T).name());
+    key_creator.AddAsKey(typeid(U).name());
     return key_creator.GetKey();
   }
 
@@ -284,7 +286,7 @@ struct MklBatchNormBwdParams {
         training(training) {}
 };
 
-template <typename T>
+template <typename T, typename U>
 class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
  public:
   explicit MklFusedBatchNormBwdPrimitive(const MklBatchNormBwdParams& bwdParams)
@@ -303,21 +305,26 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
   //   weights_data:   input data buffer of weights
   //   diff_src_data:      output data buffer of diff_src
   //   diff_weights_data:  output data buffer of diff_weights
-  void Execute(const T* src_data, const T* mean_data, const T* variance_data,
-               const T* diff_dst_data, const T* weights_data, T* diff_src_data,
-               T* diff_weights_data) {
+  //   res_space_data:     output data buffer or reserved_space_3.
+  //                       TODO: reserved_space_3: temp mem to hold
+  //                          intermediate results is not implemented
+  //                          on CPU as of now.
+  void Execute(const T* src_data, const U* mean_data, const U* variance_data,
+               const T* diff_dst_data, const U* weights_data, T* diff_src_data,
+               U* diff_weights_data, U* res_space_data) {
     context_.src_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(src_data)));
     context_.mean_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(mean_data)));
+        static_cast<void*>(const_cast<U*>(mean_data)));
     context_.variance_mem->set_data_handle(
-        static_cast<void*>(const_cast<T*>(variance_data)));
+        static_cast<void*>(const_cast<U*>(variance_data)));
     context_.diff_dst_mem->set_data_handle(
         static_cast<void*>(const_cast<T*>(diff_dst_data)));
 
+    // TODO: type for weights?
     if (context_.flags & use_scale_shift) {
       context_.weights_mem->set_data_handle(
-          static_cast<void*>(const_cast<T*>(weights_data)));
+          static_cast<void*>(const_cast<U*>(weights_data)));
       context_.diff_weights_mem->set_data_handle(
           static_cast<void*>(diff_weights_data));
     }
@@ -391,11 +398,11 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
         memory::desc({bwdParams.diff_dst_dims}, MklDnnType<T>(),
                      get_desired_format(bwdParams.diff_dst_dims[1]));
     auto variance_desc =
-        memory::desc({1, bwdParams.depth}, MklDnnType<T>(), memory::nc);
+        memory::desc({1, bwdParams.depth}, MklDnnType<U>(), memory::nc);
     auto mean_desc =
-        memory::desc({1, bwdParams.depth}, MklDnnType<T>(), memory::format::nc);
+        memory::desc({1, bwdParams.depth}, MklDnnType<U>(), memory::format::nc);
     auto weights_desc =
-        memory::desc({2, bwdParams.depth}, MklDnnType<T>(), memory::format::nc);
+        memory::desc({2, bwdParams.depth}, MklDnnType<U>(), memory::format::nc);
     auto diff_weights_desc = weights_desc;
 
     // fwd desc & primitive desc
@@ -443,17 +450,17 @@ class MklFusedBatchNormBwdPrimitive : public MklPrimitive {
   engine cpu_engine_;
 };
 
-template <typename T>
+template <typename T, typename U>
 class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklFusedBatchNormBwdPrimitive<T>* Get(
+  static MklFusedBatchNormBwdPrimitive<T, U>* Get(
       const MklBatchNormBwdParams& bwdParams) {
-    auto bn_bwd = static_cast<MklFusedBatchNormBwdPrimitive<T>*>(
-        MklFusedBatchNormBwdPrimitiveFactory<T>::GetInstance().GetBatchNormBwd(
-            bwdParams));
+    auto bn_bwd = static_cast<MklFusedBatchNormBwdPrimitive<T, U>*>(
+        MklFusedBatchNormBwdPrimitiveFactory<T, U>::GetInstance()
+            .GetBatchNormBwd(bwdParams));
     if (bn_bwd == nullptr) {
-      bn_bwd = new MklFusedBatchNormBwdPrimitive<T>(bwdParams);
-      MklFusedBatchNormBwdPrimitiveFactory<T>::GetInstance().SetBatchNormBwd(
+      bn_bwd = new MklFusedBatchNormBwdPrimitive<T, U>(bwdParams);
+      MklFusedBatchNormBwdPrimitiveFactory<T, U>::GetInstance().SetBatchNormBwd(
           bwdParams, bn_bwd);
     }
     return bn_bwd;
@@ -477,6 +484,8 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey<int>(bwdParams.depth);
     key_creator.AddAsKey<float>(bwdParams.eps);
     key_creator.AddAsKey<bool>(bwdParams.training);
+    key_creator.AddAsKey(typeid(T).name());
+    key_creator.AddAsKey(typeid(U).name());
     return key_creator.GetKey();
   }
 
@@ -492,19 +501,25 @@ class MklFusedBatchNormBwdPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <typename Device, typename T>
+//  Adding a third parameter to the template to support FusedBatchNormV3
+//  with MKL. This is different from default where the classes are
+//  derived. Moves enabling to compile-time rather than runtime.
+template <typename Device, typename T, typename U, bool reserved_space>
 class MklFusedBatchNormOp : public OpKernel {
  public:
   explicit MklFusedBatchNormOp(OpKernelConstruction* context)
       : OpKernel(context) {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
-    epsilon_ = T(epsilon);
+    epsilon_ = epsilon;
     string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    depth_ = 0;
+    mean_values_ = nullptr;
+    variance_values_ = nullptr;
   }
 
   void Compute(OpKernelContext* context) override {
@@ -583,9 +598,10 @@ class MklFusedBatchNormOp : public OpKernel {
       Tensor* batch_variance_tensor = nullptr;
       Tensor* saved_mean_tensor = nullptr;
       Tensor* saved_variance_tensor = nullptr;
+      Tensor* reserved_space_tensor = nullptr;
       AllocateTFOutputs(context, scale_tensor.shape(), &batch_mean_tensor,
                         &batch_variance_tensor, &saved_mean_tensor,
-                        &saved_variance_tensor);
+                        &saved_variance_tensor, &reserved_space_tensor);
 
       if (is_training_)
         SetMeanVariance(*batch_mean_tensor, *batch_variance_tensor);
@@ -593,7 +609,7 @@ class MklFusedBatchNormOp : public OpKernel {
         SetMeanVariance(est_mean_tensor, est_variance_tensor);
 
       MklDnnData<T> src(&cpu_engine);
-      MklDnnData<T> weights(&cpu_engine);
+      MklDnnData<U> weights(&cpu_engine);
 
       memory::format format_m;
       if (dnn_shape_src.IsMklTensor()) {
@@ -618,28 +634,28 @@ class MklFusedBatchNormOp : public OpKernel {
 
       // MKL-DNN packs scale & shift as "weights":
       // <scale>...<scale><shift>...<shift>
-      weights.AllocateBuffer(2 * depth_ * sizeof(T));
-      T* weights_data = reinterpret_cast<T*>(weights.GetAllocatedBuffer());
-      const T* scale_tf = scale_tensor.flat<T>().data();
-      const T* shift_tf = shift_tensor.flat<T>().data();
+      weights.AllocateBuffer(2 * depth_ * sizeof(U));
+      U* weights_data = reinterpret_cast<U*>(weights.GetAllocatedBuffer());
+      const U* scale_tf = scale_tensor.flat<U>().data();
+      const U* shift_tf = shift_tensor.flat<U>().data();
 
-      std::memcpy(weights_data, scale_tf, depth_ * sizeof(T));
-      std::memcpy(weights_data + depth_, shift_tf, depth_ * sizeof(T));
+      std::memcpy(weights_data, scale_tf, depth_ * sizeof(U));
+      std::memcpy(weights_data + depth_, shift_tf, depth_ * sizeof(U));
       char* saved_mean_data_tf =
-          reinterpret_cast<char*>(saved_mean_tensor->flat<T>().data());
+          reinterpret_cast<char*>(saved_mean_tensor->flat<U>().data());
       std::memcpy(saved_mean_data_tf, reinterpret_cast<char*>(mean_values_),
-                  depth_ * sizeof(T));
+                  depth_ * sizeof(U));
 
       char* saved_variance_data_tf =
-          reinterpret_cast<char*>(saved_variance_tensor->flat<T>().data());
+          reinterpret_cast<char*>(saved_variance_tensor->flat<U>().data());
       std::memcpy(saved_variance_data_tf,
                   reinterpret_cast<char*>(variance_values_),
-                  depth_ * sizeof(T));
+                  depth_ * sizeof(U));
 
       // get batchnorm op from the pool
       MklBatchNormFwdParams fwdParams(src_dims, depth_, epsilon_, is_training_);
-      MklFusedBatchNormFwdPrimitive<T>* bn_fwd =
-          MklFusedBatchNormFwdPrimitiveFactory<T>::Get(fwdParams);
+      MklFusedBatchNormFwdPrimitive<T, U>* bn_fwd =
+          MklFusedBatchNormFwdPrimitiveFactory<T, U>::Get(fwdParams);
 
       // check if reorder is needed for src, weights, mean, variance
       const T* src_data = src_tensor.flat<T>().data();
@@ -669,9 +685,9 @@ class MklFusedBatchNormOp : public OpKernel {
       AllocateOutputSetMklShape(context, kDstIndex, &dst_tensor, tf_shape_dst,
                                 dnn_shape_dst);
 
-      T* weights_op_data = weights_data;
-      T* mean_op_data = saved_mean_tensor->flat<T>().data();
-      T* variance_op_data = saved_variance_tensor->flat<T>().data();
+      U* weights_op_data = weights_data;
+      U* mean_op_data = saved_mean_tensor->flat<U>().data();
+      U* variance_op_data = saved_variance_tensor->flat<U>().data();
       T* dst_data = dst_tensor->flat<T>().data();
 
       // execution
@@ -679,10 +695,10 @@ class MklFusedBatchNormOp : public OpKernel {
                       variance_op_data);
 
       // copy batch_mean data
-      T* batch_mean_data_tf = batch_mean_tensor->flat<T>().data();
+      U* batch_mean_data_tf = batch_mean_tensor->flat<U>().data();
       std::memcpy(reinterpret_cast<char*>(batch_mean_data_tf),
                   reinterpret_cast<char*>(saved_mean_data_tf),
-                  depth_ * sizeof(T));
+                  depth_ * sizeof(U));
       // TODO(yli135): OpMem is same as usr mem since
       // since its format is hard-coded as nc when primitive is created.
 
@@ -694,14 +710,15 @@ class MklFusedBatchNormOp : public OpKernel {
         adjust_factor = (static_cast<float>(orig_size)) / adjust_size;
       }
 
-      auto variance_data = reinterpret_cast<T*>(saved_variance_data_tf);
-      auto batch_variance_data = batch_variance_tensor->flat<T>().data();
+      auto variance_data = reinterpret_cast<U*>(saved_variance_data_tf);
+      auto batch_variance_data = batch_variance_tensor->flat<U>().data();
       if (is_training_) {
         for (int k = 0; k < depth_; k++) {
-          batch_variance_data[k] = variance_data[k] * adjust_factor;
+          batch_variance_data[k] =
+              variance_data[k] * static_cast<U>(adjust_factor);
         }
       } else {
-        std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(T));
+        std::memcpy(batch_variance_data, variance_data, depth_ * sizeof(U));
       }
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
@@ -714,11 +731,11 @@ class MklFusedBatchNormOp : public OpKernel {
   }
 
  private:
-  T epsilon_;
+  float epsilon_;
   TensorFormat tensor_format_;
   bool is_training_;
-  T* mean_values_;
-  T* variance_values_;
+  U* mean_values_;
+  U* variance_values_;
   size_t depth_;  // batch normalization is done for per channel.
   engine cpu_engine = engine(engine::cpu, 0);
 
@@ -728,9 +745,9 @@ class MklFusedBatchNormOp : public OpKernel {
   }
 
   void SetMeanVariance(const Tensor& mean, const Tensor& variance) {
-    mean_values_ = reinterpret_cast<T*>(const_cast<T*>(mean.flat<T>().data()));
+    mean_values_ = reinterpret_cast<U*>(const_cast<U*>(mean.flat<U>().data()));
     variance_values_ =
-        reinterpret_cast<T*>(const_cast<T*>(variance.flat<T>().data()));
+        reinterpret_cast<U*>(const_cast<U*>(variance.flat<U>().data()));
   }
 
   void HandleEmptyInput(OpKernelContext* context, TensorShape tf_shape_src,
@@ -750,16 +767,18 @@ class MklFusedBatchNormOp : public OpKernel {
     Tensor* batch_variance_tensor = nullptr;
     Tensor* saved_mean_tensor = nullptr;
     Tensor* saved_variance_tensor = nullptr;
+    Tensor* reserved_space_tensor = nullptr;
     AllocateTFOutputs(context, tf_shape_scale, &batch_mean_tensor,
                       &batch_variance_tensor, &saved_mean_tensor,
-                      &saved_variance_tensor);
+                      &saved_variance_tensor, &reserved_space_tensor);
   }
 
   void AllocateTFOutputs(OpKernelContext* context, TensorShape tf_shape_scale,
                          Tensor** batch_mean_tensor,
                          Tensor** batch_variance_tensor,
                          Tensor** saved_mean_tensor,
-                         Tensor** saved_variance_tensor) {
+                         Tensor** saved_variance_tensor,
+                         Tensor** reserved_space_tensor) {
     CHECK_NOTNULL(batch_mean_tensor);
     CHECK_NOTNULL(batch_variance_tensor);
     CHECK_NOTNULL(saved_mean_tensor);
@@ -769,6 +788,7 @@ class MklFusedBatchNormOp : public OpKernel {
     const size_t kBatchVarianceIndex = 2;
     const size_t kSavedMeanIndex = 3;
     const size_t kSavedVarianceIndex = 4;
+    const size_t kReservedSpaceIndex = 5;
 
     // allocate batch mean output tensor
     MklDnnShape mkl_shape_batch_mean;
@@ -778,8 +798,8 @@ class MklFusedBatchNormOp : public OpKernel {
     CHECK_NOTNULL(*batch_mean_tensor);
     // set NAN mean value in case of empty input tensor
     int num_elements = tf_shape_scale.num_elements();
-    auto batch_mean_data = (*batch_mean_tensor)->flat<T>().data();
-    std::fill_n(batch_mean_data, num_elements, NAN);
+    auto batch_mean_data = (*batch_mean_tensor)->flat<U>().data();
+    std::fill_n(batch_mean_data, num_elements, static_cast<U>(NAN));
 
     // allocate batch variance output tensor
     MklDnnShape mkl_shape_batch_variance;
@@ -789,8 +809,8 @@ class MklFusedBatchNormOp : public OpKernel {
                               mkl_shape_batch_variance);
     CHECK_NOTNULL(*batch_variance_tensor);
     // set NAN variance value in case of empty input tensor
-    auto batch_variance_data = (*batch_variance_tensor)->flat<T>().data();
-    std::fill_n(batch_variance_data, num_elements, NAN);
+    auto batch_variance_data = (*batch_variance_tensor)->flat<U>().data();
+    std::fill_n(batch_variance_data, num_elements, static_cast<U>(NAN));
 
     // Mean and variance (without Bessel's correction) saved for backward
     // computation to serve as pre-computed mean and variance.
@@ -799,9 +819,9 @@ class MklFusedBatchNormOp : public OpKernel {
     AllocateOutputSetMklShape(context, kSavedMeanIndex, saved_mean_tensor,
                               tf_shape_scale, mkl_shape_saved_mean);
     CHECK_NOTNULL(*saved_mean_tensor);
-    // set NAN mean value in case of empty input tensor
-    auto saved_mean_data = (*saved_mean_tensor)->flat<T>().data();
-    std::fill_n(saved_mean_data, num_elements, NAN);
+    // set 0 mean value in case of empty input tensor
+    auto saved_mean_data = (*saved_mean_tensor)->flat<U>().data();
+    std::fill_n(saved_mean_data, num_elements, static_cast<U>(0));
 
     MklDnnShape mkl_shape_saved_variance;
     mkl_shape_saved_variance.SetMklTensor(false);
@@ -809,34 +829,54 @@ class MklFusedBatchNormOp : public OpKernel {
                               saved_variance_tensor, tf_shape_scale,
                               mkl_shape_saved_variance);
     CHECK_NOTNULL(*saved_variance_tensor);
-    // set NAN variance value in case of empty input tensor
-    auto saved_variance_data = (*saved_variance_tensor)->flat<T>().data();
-    std::fill_n(saved_variance_data, num_elements, NAN);
+    // set 0 variance value in case of empty input tensor
+    auto saved_variance_data = (*saved_variance_tensor)->flat<U>().data();
+    std::fill_n(saved_variance_data, num_elements, static_cast<U>(0));
+
+    // Changes to support reserved_space_3 parameter in FusedBatchNormV3.
+    // TODO: This parameter functionality is not implemented on CPU.
+    //       It is used to hold intermediate results. So the allocated
+    //       memory is filled with 0.
+    if (reserved_space) {
+      DCHECK(reserved_space_tensor != nullptr);
+
+      MklDnnShape mkl_shape_reserved_space;
+      mkl_shape_reserved_space.SetMklTensor(false);
+      AllocateOutputSetMklShape(context, kReservedSpaceIndex,
+                                reserved_space_tensor, tf_shape_scale,
+                                mkl_shape_reserved_space);
+      DCHECK((*reserved_space_tensor) != nullptr);
+      auto saved_reserved_space_data =
+          (*reserved_space_tensor)->flat<U>().data();
+      std::fill_n(saved_reserved_space_data, num_elements, static_cast<U>(0));
+    }
   }
 };
 
-template <typename Device, typename T>
+template <typename Device, typename T, typename U, bool reserved_space>
 class MklFusedBatchNormGradOp : public OpKernel {
  public:
   explicit MklFusedBatchNormGradOp(OpKernelConstruction* context)
       : OpKernel(context) {
     float epsilon;
     OP_REQUIRES_OK(context, context->GetAttr("epsilon", &epsilon));
-    epsilon_ = T(epsilon);
+    epsilon_ = epsilon;
     string tensor_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &tensor_format));
     OP_REQUIRES(context, FormatFromString(tensor_format, &tensor_format_),
                 errors::InvalidArgument("Invalid data format"));
     OP_REQUIRES_OK(context, context->GetAttr("is_training", &is_training_));
+    depth_ = 0;
   }
 
   void Compute(OpKernelContext* context) override {
     try {
-      const size_t kDiffDstIndex = 0;   // index of diff_dst tensor
-      const size_t kSrcIndex = 1;       // index of src input tensor
-      const size_t kScaleIndex = 2;     // index of scale tensor
-      const size_t kMeanIndex = 3;      // index of saved_mean tensor
-      const size_t kVarianceIndex = 4;  // index of saved_variance tensor
+      const size_t kDiffDstIndex = 0;        // index of diff_dst tensor
+      const size_t kSrcIndex = 1;            // index of src input tensor
+      const size_t kScaleIndex = 2;          // index of scale tensor
+      const size_t kMeanIndex = 3;           // index of saved_mean tensor
+      const size_t kVarianceIndex = 4;       // index of saved_variance tensor
+      const size_t kReservedSpaceIndex = 5;  // index of reserved space 3 tensor
 
       const Tensor& diff_dst_tensor = MklGetInput(context, kDiffDstIndex);
       const Tensor& src_tensor = MklGetInput(context, kSrcIndex);
@@ -844,6 +884,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
       const Tensor& saved_mean_tensor = MklGetInput(context, kMeanIndex);
       const Tensor& saved_variance_tensor =
           MklGetInput(context, kVarianceIndex);
+      const Tensor& reserved_space_tensor =
+          (reserved_space) ? MklGetInput(context, kReservedSpaceIndex)
+                           : Tensor();
 
       MklDnnShape dnn_shape_src, dnn_shape_diff_dst;
       GetMklShape(context, kSrcIndex, &dnn_shape_src);
@@ -918,8 +961,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       MklDnnData<T> src(&cpu_engine);
       MklDnnData<T> diff_dst(&cpu_engine);
-      MklDnnData<T> weights(&cpu_engine);
-      MklDnnData<T> diff_weights(&cpu_engine);
+      MklDnnData<U> weights(&cpu_engine);
+      MklDnnData<U> diff_weights(&cpu_engine);
 
       memory::dims src_dims =
           dnn_shape_src.IsMklTensor()
@@ -943,20 +986,20 @@ class MklFusedBatchNormGradOp : public OpKernel {
 
       // weights -- MKL DNN packs scales/ shifts as weights in order
       // of scale, ..., scale, shift, ...., shift
-      weights.AllocateBuffer(2 * depth_ * sizeof(T));
-      T* weights_data_tf = reinterpret_cast<T*>(weights.GetAllocatedBuffer());
-      const T* scale_tf = scale_tensor.flat<T>().data();
+      weights.AllocateBuffer(2 * depth_ * sizeof(U));
+      U* weights_data_tf = reinterpret_cast<U*>(weights.GetAllocatedBuffer());
+      const U* scale_tf = scale_tensor.flat<U>().data();
       for (int k = 0; k < depth_; k++) {
         weights_data_tf[k] = scale_tf[k];
-        weights_data_tf[k + depth_] = 0;
+        weights_data_tf[k + depth_] = static_cast<U>(0);
       }
 
-      diff_weights.AllocateBuffer(2 * depth_ * sizeof(T));
+      diff_weights.AllocateBuffer(2 * depth_ * sizeof(U));
 
       MklBatchNormBwdParams bwdParams(src_dims, diff_dst_dims, depth_, epsilon_,
                                       is_training_);
-      MklFusedBatchNormBwdPrimitive<T>* bn_bwd =
-          MklFusedBatchNormBwdPrimitiveFactory<T>::Get(bwdParams);
+      MklFusedBatchNormBwdPrimitive<T, U>* bn_bwd =
+          MklFusedBatchNormBwdPrimitiveFactory<T, U>::Get(bwdParams);
 
       // check if src/diff_dst need to be reordered
       const T* src_data = src_tensor.flat<T>().data();
@@ -1001,16 +1044,23 @@ class MklFusedBatchNormGradOp : public OpKernel {
       AllocateOutputSetMklShape(context, kDiffSrcIndex, &diff_src_tensor,
                                 tf_shape_diff_src, dnn_shape_diff_src);
 
-      T* mean_data =
-          static_cast<T*>(const_cast<T*>(saved_mean_tensor.flat<T>().data()));
-      T* variance_data = static_cast<T*>(
-          const_cast<T*>(saved_variance_tensor.flat<T>().data()));
-      T* weights_data = weights_data_tf;
+      U* mean_data =
+          static_cast<U*>(const_cast<U*>(saved_mean_tensor.flat<U>().data()));
+      U* variance_data = static_cast<U*>(
+          const_cast<U*>(saved_variance_tensor.flat<U>().data()));
+      U* weights_data = weights_data_tf;
       T* diff_src_data = static_cast<T*>(diff_src_tensor->flat<T>().data());
-      T* diff_weights_data = static_cast<T*>(diff_weights.GetAllocatedBuffer());
+      U* diff_weights_data = static_cast<U*>(diff_weights.GetAllocatedBuffer());
+
+      U* res_space_data =
+          ((reserved_space) ? static_cast<U*>(const_cast<U*>(
+                                  reserved_space_tensor.flat<U>().data()))
+                            : nullptr);
+
       // Execute
       bn_bwd->Execute(src_data, mean_data, variance_data, diff_dst_data,
-                      weights_data, diff_src_data, diff_weights_data);
+                      weights_data, diff_src_data, diff_weights_data,
+                      res_space_data);
 
       // allocate output TF tensors: diff_scale and diff_shift
       Tensor* diff_scale_tensor = nullptr;
@@ -1019,14 +1069,14 @@ class MklFusedBatchNormGradOp : public OpKernel {
                         &diff_shift_tensor);
 
       // copy data: diff_scale and diff_shift
-      auto diff_scale_data = diff_scale_tensor->flat<T>().data();
-      auto diff_shift_data = diff_shift_tensor->flat<T>().data();
+      auto diff_scale_data = diff_scale_tensor->flat<U>().data();
+      auto diff_shift_data = diff_shift_tensor->flat<U>().data();
       std::memcpy(reinterpret_cast<char*>(diff_scale_data),
                   reinterpret_cast<char*>(diff_weights_data),
-                  depth_ * sizeof(T));
+                  depth_ * sizeof(U));
       std::memcpy(reinterpret_cast<char*>(diff_shift_data),
                   reinterpret_cast<char*>(diff_weights_data + depth_),
-                  depth_ * sizeof(T));
+                  depth_ * sizeof(U));
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -1038,9 +1088,9 @@ class MklFusedBatchNormGradOp : public OpKernel {
   }
 
  private:
-  T epsilon_;
+  float epsilon_;
   TensorFormat tensor_format_;
-  int depth_;  // batch normalization is done for per channel.
+  size_t depth_;  // batch normalization is done for per channel.
   bool is_training_;
   engine cpu_engine = engine(engine::cpu, 0);
 
@@ -1059,7 +1109,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
     AllocateOutputSetMklShape(context, kDiffSrcIndex, diff_src_tensor,
                               tf_shape_src, dnn_shape_diff_src);
     auto diff_src_data = (*diff_src_tensor)->flat<T>().data();
-    std::fill_n(diff_src_data, (*diff_src_tensor)->shape().num_elements(), 0);
+    std::fill_n(diff_src_data, (*diff_src_tensor)->shape().num_elements(),
+                static_cast<T>(0));
 
     Tensor* diff_scale_tensor = nullptr;
     Tensor* diff_shift_tensor = nullptr;
@@ -1085,18 +1136,18 @@ class MklFusedBatchNormGradOp : public OpKernel {
     AllocateOutputSetMklShape(context, kDiffScaleIndex, diff_scale_tensor,
                               tf_shape_scale_shift, mkl_shape_diff_scale);
     CHECK_NOTNULL(*diff_scale_tensor);
-    auto diff_scale_data = (*diff_scale_tensor)->flat<T>().data();
+    auto diff_scale_data = (*diff_scale_tensor)->flat<U>().data();
     std::fill_n(diff_scale_data, (*diff_scale_tensor)->shape().num_elements(),
-                0);
+                static_cast<U>(0));
 
     MklDnnShape mkl_shape_diff_shift;
     mkl_shape_diff_shift.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kDiffShiftIndex, diff_shift_tensor,
                               tf_shape_scale_shift, mkl_shape_diff_shift);
     CHECK_NOTNULL(*diff_shift_tensor);
-    auto diff_shift_data = (*diff_shift_tensor)->flat<T>().data();
+    auto diff_shift_data = (*diff_shift_tensor)->flat<U>().data();
     std::fill_n(diff_shift_data, (*diff_shift_tensor)->shape().num_elements(),
-                0);
+                static_cast<U>(0));
 
     // Placeholders for estimated_mean and estimated_variance, which are
     // used for inference and thus not needed here for gradient computation.
@@ -1105,30 +1156,96 @@ class MklFusedBatchNormGradOp : public OpKernel {
     mkl_shape_p.SetMklTensor(false);
     AllocateOutputSetMklShape(context, kP1Index, &p1_tensor, TensorShape({}),
                               mkl_shape_p);
+    std::fill_n(p1_tensor->flat<U>().data(), p1_tensor->shape().num_elements(),
+                static_cast<U>(0));
     AllocateOutputSetMklShape(context, kP2Index, &p2_tensor, TensorShape({}),
                               mkl_shape_p);
+    std::fill_n(p2_tensor->flat<U>().data(), p2_tensor->shape().num_elements(),
+                static_cast<U>(0));
   }
 
   memory::dims GetMeanVarianceDims() { return memory::dims({1, depth_}); }
 };
 
-#define REGISTER_MKL_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklFusedBatchNorm")                \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklFusedBatchNormOp<CPUDevice, T>);
-TF_CALL_float(REGISTER_MKL_CPU);
-#undef REGISTER_MKL_CPU
+#define REGISTER_MKL_FUSED_BATCHNORM_CPU(T)                    \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNorm")                               \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, T, false>);
 
-#define REGISTER_MKL_CPU(T)                                         \
-  REGISTER_KERNEL_BUILDER(Name("_MklFusedBatchNormGrad")            \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklFusedBatchNormGradOp<CPUDevice, T>);
-TF_CALL_float(REGISTER_MKL_CPU);
-#undef REGISTER_MKL_CPU
+TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_CPU);
+#undef REGISTER_MKL_FUSED_BATCHNORM_CPU
+
+#define REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(T, U)              \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNormV2")                             \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<U>("U")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, U, false>);
+
+REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_V2_CPU(bfloat16, float);
+#undef REGISTER_MKL_FUSED_BATCHNORM_V2_CPU
+
+#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU(T)               \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNormGrad")                           \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormGradOp<CPUDevice, T, T, false>);
+
+TF_CALL_float(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
+TF_CALL_bfloat16(REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU);
+#undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_CPU
+
+#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(T, U)         \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNormGradV2")                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<U>("U")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormGradOp<CPUDevice, T, U, false>);
+
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU(bfloat16, float);
+#undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_V2_CPU
+
+// TODO: FusedBatchNormV3 has an additional output that is used to
+//       hold intermediate results. This parameter functionality is
+//       not implemented on CPU.
+#define REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(T, U)              \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNormV3")                             \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<U>("U")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormOp<CPUDevice, T, U, true>);
+
+REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_V3_CPU(bfloat16, float);
+#undef REGISTER_MKL_FUSED_BATCHNORM_V3_CPU
+
+#define REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(T, U)         \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklFusedBatchNormGradV3")                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .TypeConstraint<U>("U")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklFusedBatchNormGradOp<CPUDevice, T, U, true>);
+
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(float, float);
+REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU(bfloat16, float);
+#undef REGISTER_MKL_FUSED_BATCHNORM_GRAD_V3_CPU
+
 }  // namespace tensorflow
 
 #endif  // INTEL_MKL

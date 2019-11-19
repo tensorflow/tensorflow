@@ -16,9 +16,9 @@ limitations under the License.
 // See docs in ../ops/state_ops.cc.
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include "tensorflow/core/kernels/scatter_nd_op.h"
 
@@ -230,6 +230,9 @@ class ScatterNdUpdateOp : public OpKernel {
     const DataType dt_ref = DataTypeToEnum<T>::ref();
     const DataType index_t = DataTypeToEnum<Index>::v();
     dtype_ = c->input_type(0);
+    // If we are updating a resource, we always use the exclusive lock.
+    // For ref types, we lock based on the use_locking parameter
+    // Otherwise, we don't mutate the input tensor (we copy-on-write if needed).
     if (c->input_type(0) == DT_RESOURCE) {
       // TODO(apassos): what to validate here?
     } else if (IsRefType(c->input_type(0))) {
@@ -243,10 +246,9 @@ class ScatterNdUpdateOp : public OpKernel {
 
   void Compute(OpKernelContext* c) override {
     if (dtype_ == DT_RESOURCE) {
-      Var* v;
+      core::RefCountPtr<Var> v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
-      core::ScopedUnref scoped_unref(v);
-      OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v));
+      OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
       mutex_lock m(*v->mu());
       DoCompute(c);
     } else if (use_exclusive_lock_) {
@@ -271,7 +273,7 @@ class ScatterNdUpdateOp : public OpKernel {
     TensorShape params_shape;
 
     if (dtype_ == DT_RESOURCE) {
-      Var* v;
+      core::RefCountPtr<Var> v;
       OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
       Tensor* t = v->tensor();
       params = *t;
@@ -379,7 +381,8 @@ class ScatterNdUpdateOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
-TF_CALL_string(REGISTER_SCATTER_ND_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
@@ -429,13 +432,13 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
 // Register TensorScatterUpdate/Add/Sub for all number types.
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_TENSOR_CPU);
 // Register only TensorScatterUpdate for string/bool types as well.
-TF_CALL_string(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 
 #undef REGISTER_SCATTER_ND_TENSOR_CPU
 
 // Registers GPU kernels.
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_SCATTER_ND_ADD_SUB_GPU(type) \
   REGISTER_SCATTER_ND_ADD_SUB(type, GPU);
@@ -510,7 +513,7 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_TENSOR_GPU);
 #undef REGISTER_SCATTER_ND_TENSOR_SUB_GPU
 #undef REGISTER_SCATTER_ND_TENSOR_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 // Check whether updates.shape = indices.shape[:batch_dim] +
@@ -727,7 +730,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
     slice_shape.RemoveLastDims(1);
     return errors::InvalidArgument(
         "indices", SliceDebugString(slice_shape, bad_i), " = [",
-        str_util::Join(
+        absl::StrJoin(
             gtl::ArraySlice<Index>(&indices_flat(bad_i, 0), slice_dim), ", "),
         "] does not index into shape ", shape.DebugString());
   }
@@ -735,7 +738,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
 }
 }  // namespace functor
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
 #define DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, IXDIM)           \
@@ -778,6 +781,6 @@ TF_CALL_complex128(DECLARE_GPU_SPECS);
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

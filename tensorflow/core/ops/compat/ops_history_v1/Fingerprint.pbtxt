@@ -1,0 +1,19 @@
+op {
+  name: "Fingerprint"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "method"
+    type: DT_STRING
+  }
+  output_arg {
+    name: "fingerprint"
+    type: DT_UINT8
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

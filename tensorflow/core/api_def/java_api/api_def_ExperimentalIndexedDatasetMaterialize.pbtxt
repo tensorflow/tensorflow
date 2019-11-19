@@ -1,6 +1,0 @@
-op {
-  graph_op_name: "ExperimentalIndexedDatasetMaterialize"
-  endpoint {
-    name: "data.ExperimentalIndexedDatasetMaterialize"
-  }
-}

@@ -96,13 +96,13 @@ string HloSharding::ToString() const {
 
   if (replicated_) {
     return "{replicated}";
-  } else if (maximal_) {
+  }
+  if (maximal_) {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
-  } else {
-    return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","),
-                  "]", StrJoin(tile_assignment_, ","), "}");
   }
+  return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","), "]",
+                StrJoin(tile_assignment_, ","), "}");
 }
 
 bool HloSharding::UsesDevice(int64 device) const {
@@ -328,8 +328,8 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
             status = tensorflow::errors::InvalidArgument(
                 StrCat("core ", core, " is not unique in tile assignment"));
           }
+          seen_cores.insert(core);
         }
-        seen_cores.insert(core);
       });
   if (!status.ok()) {
     return status;
@@ -347,7 +347,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
         ToString(), ", input_shape=", ShapeUtil::HumanString(shape));
   }
 
-  // The correct constructor have to be used to create tile maximal shardings.
+  // The correct constructor has to be used to create tile maximal shardings.
   if (tile_assignment_.num_elements() == 1) {
     return tensorflow::errors::InvalidArgument(
         "Tile assignment only contains a single device. If a replicated "
@@ -359,7 +359,7 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
 
 /*static*/ StatusOr<HloSharding> HloSharding::FromProto(
     const OpSharding& proto) {
-  if (proto.type() == OpSharding::Type::OpSharding_Type_TUPLE) {
+  if (proto.type() == OpSharding::TUPLE) {
     std::vector<HloSharding> tuple_shardings;
     tuple_shardings.reserve(proto.tuple_shardings().size());
     for (const OpSharding& tuple_sharding_proto : proto.tuple_shardings()) {
@@ -368,13 +368,13 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
       tuple_shardings.push_back(sharding);
     }
     return HloSharding(tuple_shardings);
-  } else if (proto.type() == OpSharding::Type::OpSharding_Type_REPLICATED) {
+  } else if (proto.type() == OpSharding::REPLICATED) {
     return Replicate();
   } else if (proto.tile_assignment_devices().size() == 1) {
     return HloSharding(proto.tile_assignment_devices(0));
   }
 
-  TF_RET_CHECK(proto.type() != OpSharding::Type::OpSharding_Type_MAXIMAL)
+  TF_RET_CHECK(proto.type() != OpSharding::MAXIMAL)
       << "Maximal sharding is expected to have single device assignment, but "
       << proto.tile_assignment_devices().size() << " has provided.";
 
@@ -411,7 +411,7 @@ OpSharding HloSharding::ToProto() const {
     for (const HloSharding& element : tuple_elements_) {
       *result.add_tuple_shardings() = element.ToProto();
     }
-    result.set_type(OpSharding::Type::OpSharding_Type_TUPLE);
+    result.set_type(OpSharding::TUPLE);
     return result;
   }
 
@@ -422,11 +422,11 @@ OpSharding HloSharding::ToProto() const {
     result.add_tile_assignment_devices(device);
   }
   if (IsReplicated()) {
-    result.set_type(OpSharding::Type::OpSharding_Type_REPLICATED);
+    result.set_type(OpSharding::REPLICATED);
   } else if (IsTileMaximal()) {
-    result.set_type(OpSharding::Type::OpSharding_Type_MAXIMAL);
+    result.set_type(OpSharding::MAXIMAL);
   } else {
-    result.set_type(OpSharding::Type::OpSharding_Type_OTHER);
+    result.set_type(OpSharding::OTHER);
   }
   return result;
 }

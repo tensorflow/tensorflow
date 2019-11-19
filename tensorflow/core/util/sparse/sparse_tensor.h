@@ -63,7 +63,7 @@ class SparseTensor {
                                     ix.shape().dim_size(0), ", values = ",
                                     vals.shape().dim_size(0), ")"));
     }
-    int dims;
+    int dims = 0;
     TF_RETURN_IF_ERROR(GetDimsFromIx(ix, &dims));
     if (order.size() != dims) {
       return Status(error::INVALID_ARGUMENT,
@@ -312,7 +312,11 @@ class SparseTensor {
                                        str_util::Join(shape_, ","), "]");
       }
       if (!increasing) {
-        return errors::InvalidArgument(index, " is out of order");
+        return errors::InvalidArgument(
+            index,
+            " is out of order. Many sparse ops require sorted indices.\n"
+            "    Use `tf.sparse.reorder` to create a correctly ordered copy."
+            "\n\n");
       }
       if (!different) {
         return errors::InvalidArgument(index, " is repeated");

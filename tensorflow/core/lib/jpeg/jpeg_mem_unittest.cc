@@ -326,7 +326,7 @@ TEST(JpegMemTest, Jpeg2) {
     CHECK_NE(string::npos, cpdata1.find(kXMP));
 
     // Test the other API, where a storage string is supplied
-    string cptest;
+    tstring cptest;
     flags.stride = 0;
     Compress(refdata1.get(), in_w, in_h, flags, &cptest);
     CHECK_EQ(cptest, cpdata1);
@@ -465,7 +465,7 @@ TEST(JpegMemTest, ChromaDownsampling) {
     flags.format = FORMAT_RGB;
     flags.quality = 85;
     flags.chroma_downsampling = downsample;
-    string recompressed;
+    tstring recompressed;
     Compress(uncompressed.get(), w, h, flags, &recompressed);
     CHECK(!recompressed.empty());
     CHECK_EQ(IsChromaDownsampled(recompressed), downsample);

@@ -49,8 +49,8 @@ void FillArrayWithZeros(Array* array) {
 }  // namespace
 
 // Removes a multiplication by array of constant zeros by making the output
-// array an array of constant zeros and removing the input arrays if they are no
-// longer needed.
+// array to an array of constant zeros and removing the input arrays if they
+// are no longer needed.
 ::tensorflow::Status ResolveMultiplyByZero::Run(Model* model,
                                                 std::size_t op_index,
                                                 bool* modified) {
@@ -154,13 +154,7 @@ void FillArrayWithZeros(Array* array) {
       return ::tensorflow::Status::OK();
   }
 
-  // Erase input arrays to the multiply if no longer used
-  DeleteArrayIfUsedOnce(mul_op->inputs[0], model);
-  DeleteArrayIfUsedOnce(mul_op->inputs[1], model);
-
-  // Erase the multiply operator.
-  model->operators.erase(mul_it);
-
+  DeleteOpAndArrays(model, mul_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

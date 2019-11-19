@@ -18,15 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
 from absl import app
 from absl import flags
 import numpy as np
-
-import tensorflow as tf
-# TODO(vbardiovsky): Remove when load is available.
-from tensorflow.python.saved_model.load import load
-
-tf.saved_model.load = load
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -43,6 +39,10 @@ def main(argv):
   cell.next_state(
       tf.constant(np.random.uniform(size=[3, 19]).astype(np.float32)),
       initial_state)
+
+  # This is testing that a model using a SavedModel can be re-exported again,
+  # e.g. to catch issues such as b/142231881.
+  tf.saved_model.save(cell, tempfile.mkdtemp())
 
 
 if __name__ == "__main__":

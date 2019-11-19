@@ -37,6 +37,15 @@ limitations under the License.
 using mkldnn::stream;
 
 namespace tensorflow {
+
+#ifdef ENABLE_MKLDNN_V1
+#define ENGINE_CPU engine::kind::cpu
+#define OUTPUT_TF_MD output_tf_md
+#else
+#define ENGINE_CPU engine::cpu
+#define OUTPUT_TF_MD output_tf_pd
+#endif  // ENABLE_MKLDNN_V1
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 ///////////////////////////////////////////////////////////
@@ -58,6 +67,7 @@ class MklToTfOp : public OpKernel {
     VLOG(1) << "MKLToTFConversion complete successfully.";
   }
 
+  // TODO(bhavanis): Move the below ConvertMklToTf() to mkl_util.h
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
                              bool has_avx512f, uint input_number) {
@@ -82,16 +92,18 @@ class MklToTfOp : public OpKernel {
       CHECK_EQ(op_data_type, input_data_type);
       CHECK_EQ(op_data_type, output_data_type);
 
-      auto cpu_engine = engine(engine::cpu, 0);
+      auto cpu_engine = engine(ENGINE_CPU, 0);
       MklDnnData<T> input(&cpu_engine);
 
-      // Get Mkl layout of input tensor.
+      // Get MKL layout of input tensor.
       auto input_mkl_md = input_shape.GetMklLayout();
       // Get TensorFlow layout of input tensor. Expected output of conversion
       // has same layout as Tensorflow layout of input tensor.
       auto output_tf_md = input_shape.GetTfLayout();
+#ifndef ENABLE_MKLDNN_V1
       auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine);
-      // Set input Mkl layout as the user layout.
+#endif  // !ENABLE_MKLDNN_V1
+      // Set input MKL layout as the user layout.
       input.SetUsrMem(input_mkl_md, &input_tensor);
 
       // Allocate output tensor.
@@ -101,13 +113,18 @@ class MklToTfOp : public OpKernel {
                                   input_number, output_shape, &output_tensor));
       CHECK_NOTNULL(output_tensor);
 
-      // Do we need to reorder Mkl layout into TensorFlow layout?
-      if (input.IsReorderNeeded(output_tf_pd)) {
-        // Insert reorder between Mkl layout and TensorFlow layout.
-        CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, output_tensor), true);
+      // Check if input needs to be reordered
+      if (input.IsReorderNeeded(OUTPUT_TF_MD)) {
+        // Insert reorder between MKL layout and TensorFlow layout
+        OP_REQUIRES(
+            context, input.CheckReorderToOpMem(OUTPUT_TF_MD, output_tensor),
+            errors::Internal("MklToTfOp: Failed to create input reorder"));
       } else {
         // If not, just forward input tensor to output tensor.
-        CHECK(output_tensor->CopyFrom(input_tensor, output_shape));
+        OP_REQUIRES(context,
+                    output_tensor->CopyFrom(input_tensor, output_shape),
+                    errors::Internal(
+                        "MklToTfOp: Failed to forward input tensor to output"));
       }
     } catch (mkldnn::error& e) {
       OP_REQUIRES_OK(
@@ -133,16 +150,21 @@ class MklToTfOp : public OpKernel {
 //               Register kernel
 ///////////////////////////////////////////////////////////
 
-#define REGISTER_CPU(T)                                             \
-  REGISTER_KERNEL_BUILDER(Name("_MklToTf")                          \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklToTfOp<CPUDevice, T>);
+#define REGISTER_CPU(T)                                        \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklToTf")                                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<T>("T")                              \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklToTfOp<CPUDevice, T>);
 
 TF_CALL_NUMBER_TYPES(REGISTER_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_CPU);
+
 #undef REGISTER_CPU
+#undef ENGINE_CPU
+#undef OUTPUT_TF_MD
+
 }  // namespace tensorflow
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_KERNELS_MKL_TFCONV_OP_H_

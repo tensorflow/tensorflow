@@ -24,8 +24,12 @@ namespace tflite {
 namespace eigen_support {
 namespace {
 
+// For legacy reasons, we use 4 threads by default unless the thread count is
+// explicitly specified by the context.
+const int kDefaultNumThreadpoolThreads = 4;
+
 #ifndef EIGEN_DONT_ALIGN
-// Eigen may require buffers to be algiend to 16, 32 or 64 bytes depending on
+// Eigen may require buffers to be aligned to 16, 32 or 64 bytes depending on
 // hardware architecture and build configurations.
 // If the static assertion fails, try to increase `kDefaultTensorAlignment` to
 // in `arena_planner.h` to 32 or 64.
@@ -46,26 +50,77 @@ void SetEigenNbThreads(int threads) {
 // We have a single global threadpool for all convolution operations. This means
 // that inferences started from different threads may block each other, but
 // since the underlying resource of CPU cores should be consumed by the
-// operations anyway, it shouldn't affect overall performance.
+// operations anyway, it shouldn't affect overall performance. Note that we
+// also avoid ThreadPool creation if the target thread count is 1, avoiding
+// unnecessary overhead, and more closely mimicking Gemmlowp threadpool
+// behavior.
 class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
  public:
   // Takes ownership of 'pool'
-  explicit EigenThreadPoolWrapper(Eigen::ThreadPool* pool) : pool_(pool) {}
+  explicit EigenThreadPoolWrapper(int num_threads) {
+    // Avoid creating any threads for the single-threaded case.
+    if (num_threads > 1) {
+      pool_.reset(new Eigen::ThreadPool(num_threads));
+    }
+  }
   ~EigenThreadPoolWrapper() override {}
 
   void Schedule(std::function<void()> fn) override {
-    pool_->Schedule(std::move(fn));
+    if (pool_) {
+      pool_->Schedule(std::move(fn));
+    } else {
+      fn();
+    }
   }
-  int NumThreads() const override { return pool_->NumThreads(); }
-  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
+  int NumThreads() const override { return pool_ ? pool_->NumThreads() : 1; }
+  int CurrentThreadId() const override {
+    return pool_ ? pool_->CurrentThreadId() : 0;
+  }
 
  private:
+  // May be null if num_threads <= 1.
   std::unique_ptr<Eigen::ThreadPool> pool_;
 };
 
+// Utility class for lazily creating an Eigen thread pool/device only when used.
+class LazyEigenThreadPoolHolder {
+ public:
+  explicit LazyEigenThreadPoolHolder(int num_threads) {
+    SetNumThreads(num_threads);
+  }
+
+  // Gets the ThreadPoolDevice, creating if necessary.
+  const Eigen::ThreadPoolDevice* GetThreadPoolDevice() {
+    if (!device_) {
+      thread_pool_wrapper_.reset(
+          new EigenThreadPoolWrapper(target_num_threads_));
+      device_.reset(new Eigen::ThreadPoolDevice(thread_pool_wrapper_.get(),
+                                                target_num_threads_));
+    }
+    return device_.get();
+  }
+
+  // Updates the thread count, invalidating the ThreadPoolDevice if necessary.
+  void SetNumThreads(int num_threads) {
+    const int target_num_threads =
+        num_threads != -1 ? num_threads : kDefaultNumThreadpoolThreads;
+    if (target_num_threads_ != target_num_threads) {
+      target_num_threads_ = target_num_threads;
+      // As the device references the thread pool wrapper, destroy it first.
+      device_.reset();
+      thread_pool_wrapper_.reset();
+    }
+  }
+
+ private:
+  int target_num_threads_ = kDefaultNumThreadpoolThreads;
+  // Both device_ and thread_pool_wrapper_ are lazily created.
+  std::unique_ptr<Eigen::ThreadPoolDevice> device_;
+  std::unique_ptr<Eigen::ThreadPoolInterface> thread_pool_wrapper_;
+};
+
 struct RefCountedEigenContext : public TfLiteExternalContext {
-  std::unique_ptr<Eigen::ThreadPoolInterface> thread_pool_wrapper;
-  std::unique_ptr<Eigen::ThreadPoolDevice> device;
+  std::unique_ptr<LazyEigenThreadPoolHolder> thread_pool_holder;
   int num_references = 0;
 };
 
@@ -74,24 +129,12 @@ RefCountedEigenContext* GetEigenContext(TfLiteContext* context) {
       context->GetExternalContext(context, kTfLiteEigenContext));
 }
 
-void InitDevice(TfLiteContext* context, RefCountedEigenContext* ptr) {
-  int num_threads = 4;
-  if (context->recommended_num_threads != -1) {
-    num_threads = context->recommended_num_threads;
-  }
-  ptr->device.reset();  // destroy before we invalidate the thread pool
-  ptr->thread_pool_wrapper.reset(
-      new EigenThreadPoolWrapper(new Eigen::ThreadPool(num_threads)));
-  ptr->device.reset(
-      new Eigen::ThreadPoolDevice(ptr->thread_pool_wrapper.get(), num_threads));
-}
-
 TfLiteStatus Refresh(TfLiteContext* context) {
   SetEigenNbThreads(context->recommended_num_threads);
 
   auto* ptr = GetEigenContext(context);
   if (ptr != nullptr) {
-    InitDevice(context, ptr);
+    ptr->thread_pool_holder->SetNumThreads(context->recommended_num_threads);
   }
 
   return kTfLiteOk;
@@ -108,8 +151,9 @@ void IncrementUsageCounter(TfLiteContext* context) {
     ptr = new RefCountedEigenContext;
     ptr->type = kTfLiteEigenContext;
     ptr->Refresh = Refresh;
+    ptr->thread_pool_holder.reset(
+        new LazyEigenThreadPoolHolder(context->recommended_num_threads));
     ptr->num_references = 0;
-    InitDevice(context, ptr);
     context->SetExternalContext(context, kTfLiteEigenContext, ptr);
   }
   ptr->num_references++;
@@ -134,7 +178,7 @@ const Eigen::ThreadPoolDevice* GetThreadPoolDevice(TfLiteContext* context) {
     TF_LITE_FATAL(
         "Call to GetFromContext() not preceded by IncrementUsageCounter()");
   }
-  return ptr->device.get();
+  return ptr->thread_pool_holder->GetThreadPoolDevice();
 }
 
 }  // namespace eigen_support

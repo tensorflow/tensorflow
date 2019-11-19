@@ -185,9 +185,10 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         dynamic_padding_from_tensor_shapes, dynamic_padding_from_lists,
         dynamic_padding_from_lists_with_minus_one, dynamic_padding_from_tensors
     ]:
-      self.assertEqual([None, None], dataset.output_shapes[0].as_list())
-      self.assertEqual([None, None, None], dataset.output_shapes[1].as_list())
-      self.assertEqual([None, 37], dataset.output_shapes[2].as_list())
+      dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+      self.assertEqual([None, None], dataset_output_shapes[0].as_list())
+      self.assertEqual([None, None, None], dataset_output_shapes[1].as_list())
+      self.assertEqual([None, 37], dataset_output_shapes[2].as_list())
 
   def testPaddedBatchSparseError(self):
 
@@ -220,7 +221,7 @@ class PaddedBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
         TypeError, r'Padded shape .* must be a 1-D tensor '
         r'of tf.int64 values, but its element type was float32.'):
       _ = dataset_ops.Dataset.from_tensors([1, 2, 3]).padded_batch(
-          5, padded_shapes=constant_op.constant([1., 2., 3.]))
+          5, padded_shapes=constant_op.constant([1.5, 2., 3.]))
 
     with self.assertRaisesRegexp(
         ValueError, r'The padded shape \(1,\) is not compatible with the '

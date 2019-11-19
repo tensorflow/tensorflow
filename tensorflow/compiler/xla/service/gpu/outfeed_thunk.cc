@@ -28,12 +28,14 @@ OutfeedThunk::OutfeedThunk(ShapeTree<BufferAllocation::Slice> outfeed_slices,
     : Thunk(Kind::kOutfeed, hlo_instruction),
       outfeed_slices_(std::move(outfeed_slices)) {}
 
-Status OutfeedThunk::ExecuteOnStream(
-    const BufferAllocations& buffer_allocations, se::Stream* stream,
-    HloExecutionProfiler* profiler) {
+Status OutfeedThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
   VLOG(2) << "Outfeeding from GPU: " << hlo_instruction()->ToString();
 
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
   OutfeedManager* outfeed_manager = GetOrCreateOutfeedManager();
   ShapeTree<std::unique_ptr<OutfeedBuffer>>* outfeed_buffers =
       outfeed_manager->BlockingGetNextDestination();
@@ -73,9 +75,9 @@ Status OutfeedThunk::ExecuteOnStream(
               << "Tuple size must be a multiple of pointer size";
           std::vector<void*> tuple_element_buffer_addresses(tuple_slice.size() /
                                                             sizeof(void*));
-          stream->ThenMemcpy(tuple_element_buffer_addresses.data(),
-                             tuple_address, tuple_slice.size());
-          TF_RETURN_IF_ERROR(stream->BlockHostUntilDone());
+          stream.ThenMemcpy(tuple_element_buffer_addresses.data(),
+                            tuple_address, tuple_slice.size());
+          TF_RETURN_IF_ERROR(stream.BlockHostUntilDone());
           // The data address is specified by the element of the tuple pointer
           // buffer.
           data_address =
@@ -87,16 +89,16 @@ Status OutfeedThunk::ExecuteOnStream(
         // the GPU from doing work during the transfer. This could be handled by
         // making StreamAssignment do something intelligent with outfeed thunks.
         stream
-            ->ThenMemcpy((*buffer)->destination()->untyped_data(), data_address,
-                         (*buffer)->length())
+            .ThenMemcpy((*buffer)->destination()->untyped_data(), data_address,
+                        (*buffer)->length())
             .ThenDoHostCallback([buffer]() { (*buffer)->Done(); });
         return Status::OK();
       }));
 
-  Status block_status = stream->BlockHostUntilDone();
+  Status block_status = stream.BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to complete data transfer on stream %p: %s",
-                         stream, block_status.error_message());
+                         &stream, block_status.error_message());
   }
 
   VLOG(2) << "Outfeeding from GPU complete";

@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <algorithm>
 #include <vector>
+
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -55,7 +57,7 @@ string WordWrap(StringPiece prefix, StringPiece str, int width) {
     while (str_util::EndsWith(to_append, " ")) {
       to_append.remove_suffix(1);
     }
-    while (str_util::ConsumePrefix(&str, " ")) {
+    while (absl::ConsumePrefix(&str, " ")) {
     }
 
     // Go on to the next line.
@@ -67,9 +69,9 @@ string WordWrap(StringPiece prefix, StringPiece str, int width) {
 }
 
 bool ConsumeEquals(StringPiece* description) {
-  if (str_util::ConsumePrefix(description, "=")) {
-    while (str_util::ConsumePrefix(description,
-                                   " ")) {  // Also remove spaces after "=".
+  if (absl::ConsumePrefix(description, "=")) {
+    while (absl::ConsumePrefix(description,
+                               " ")) {  // Also remove spaces after "=".
     }
     return true;
   }
@@ -101,7 +103,7 @@ static bool StartsWithFieldName(StringPiece line,
                                 const std::vector<string>& multi_line_fields) {
   StringPiece up_to_colon;
   if (!SplitAt(':', &line, &up_to_colon)) return false;
-  while (str_util::ConsumePrefix(&up_to_colon, " "))
+  while (absl::ConsumePrefix(&up_to_colon, " "))
     ;  // Remove leading spaces.
   for (const auto& field : multi_line_fields) {
     if (up_to_colon == field) {
@@ -122,9 +124,9 @@ static bool ConvertLine(StringPiece line,
   StringPiece up_to_colon;
   StringPiece after_colon = line;
   SplitAt(':', &after_colon, &up_to_colon);
-  while (str_util::ConsumePrefix(&after_colon, " "))
+  while (absl::ConsumePrefix(&after_colon, " "))
     ;  // Remove leading spaces.
-  if (!str_util::ConsumePrefix(&after_colon, "\"")) {
+  if (!absl::ConsumePrefix(&after_colon, "\"")) {
     // We only convert string fields, so don't convert this line.
     return false;
   }
@@ -138,7 +140,7 @@ static bool ConvertLine(StringPiece line,
   // We've now parsed line into '<up_to_colon>: "<escaped>"<suffix>'
 
   string unescaped;
-  if (!str_util::CUnescape(escaped, &unescaped, nullptr)) {
+  if (!absl::CUnescape(escaped, &unescaped, nullptr)) {
     // Error unescaping, abort the conversion.
     return false;
   }
@@ -184,9 +186,9 @@ string PBTxtToMultiline(StringPiece pbtxt,
 static bool FindMultiline(StringPiece line, size_t colon, string* end) {
   if (colon == StringPiece::npos) return false;
   line.remove_prefix(colon + 1);
-  while (str_util::ConsumePrefix(&line, " ")) {
+  while (absl::ConsumePrefix(&line, " ")) {
   }
-  if (str_util::ConsumePrefix(&line, "<<")) {
+  if (absl::ConsumePrefix(&line, "<<")) {
     *end = string(line);
     return true;
   }
@@ -228,10 +230,9 @@ string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
     // Add every line to unescaped until we see the "END" string.
     string unescaped;
     bool first = true;
-    string suffix;
     while (!multiline_pbtxt.empty()) {
       SplitAt('\n', &multiline_pbtxt, &line);
-      if (str_util::ConsumePrefix(&line, end)) break;
+      if (absl::ConsumePrefix(&line, end)) break;
       if (first) {
         first = false;
       } else {
@@ -242,7 +243,7 @@ string PBTxtFromMultiline(StringPiece multiline_pbtxt) {
     }
 
     // Escape what we extracted and then output it in quotes.
-    strings::StrAppend(&pbtxt, " \"", str_util::CEscape(unescaped), "\"", line,
+    strings::StrAppend(&pbtxt, " \"", absl::CEscape(unescaped), "\"", line,
                        "\n");
   }
   return pbtxt;
@@ -266,7 +267,7 @@ static void StringReplace(const string& from, const string& to, string* s) {
     }
   }
   // Join the pieces back together with a new delimiter.
-  *s = str_util::Join(split, to.c_str());
+  *s = absl::StrJoin(split, to);
 }
 
 static void RenameInDocs(const string& from, const string& to,
@@ -418,10 +419,10 @@ Status MergeApiDefs(ApiDef* base_api_def, const ApiDef& new_api_def) {
                              new_api_def.arg_order().end(),
                              base_api_def->arg_order().begin())) {
       return errors::FailedPrecondition(
-          "Invalid arg_order: ", str_util::Join(new_api_def.arg_order(), ", "),
+          "Invalid arg_order: ", absl::StrJoin(new_api_def.arg_order(), ", "),
           " for ", base_api_def->graph_op_name(),
           ". All elements in arg_order override must match base arg_order: ",
-          str_util::Join(base_api_def->arg_order(), ", "));
+          absl::StrJoin(base_api_def->arg_order(), ", "));
     }
 
     base_api_def->clear_arg_order();

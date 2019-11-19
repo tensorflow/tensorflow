@@ -1,14 +1,14 @@
 # Description:
 #   Contains the Keras OptimizerV2 API (internal TensorFlow version).
 
-package(default_visibility = ["//visibility:public"])
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 py_library(
     name = "optimizer_v2",
@@ -27,16 +27,20 @@ py_library(
     deps = [
         ":learning_rate_schedule",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/keras:backend",
         "//tensorflow/python/keras:backend_config",
+        "//tensorflow/python/keras:base_layer_utils",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:tf_utils",
     ],
 )
 
@@ -110,6 +114,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -188,16 +193,13 @@ cuda_py_test(
     shard_count = 4,
 )
 
-py_test(
+cuda_py_test(
     name = "optimizer_v2_test",
     size = "medium",
     srcs = ["optimizer_v2_test.py"],
-    shard_count = 8,
-    tags = [
-        "no_windows",
-    ],
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:clip_ops",
@@ -209,21 +211,29 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras",
-        "@absl_py//absl/testing:parameterized",
+    ],
+    shard_count = 8,
+    tags = [
+        "manual",
+        "no_oss",
+        "no_rocm",
+        "no_windows",
+        "notap",
     ],
 )
 
-py_test(
+cuda_py_test(
     name = "learning_rate_schedule_test",
-    size = "small",
+    size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
-    deps = [
+    additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
     ],
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -232,6 +242,7 @@ cuda_py_test(
     srcs = ["rmsprop_test.py"],
     additional_deps = [
         ":optimizer_v2",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",

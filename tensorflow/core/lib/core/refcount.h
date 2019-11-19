@@ -72,13 +72,13 @@ using RefCountPtr = std::unique_ptr<T, RefCountDeleter>;
 // Helper class to unref an object when out-of-scope.
 class ScopedUnref {
  public:
-  explicit ScopedUnref(RefCounted* o) : obj_(o) {}
+  explicit ScopedUnref(const RefCounted* o) : obj_(o) {}
   ~ScopedUnref() {
     if (obj_) obj_->Unref();
   }
 
  private:
-  RefCounted* obj_;
+  const RefCounted* obj_;
 
   ScopedUnref(const ScopedUnref&) = delete;
   void operator=(const ScopedUnref&) = delete;

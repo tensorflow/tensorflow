@@ -28,11 +28,11 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/load_library.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/windows/wide_char.h"
 #include "tensorflow/core/platform/windows/windows_file_system.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 #pragma comment(lib, "Shlwapi.lib")
 
@@ -40,13 +40,30 @@ namespace tensorflow {
 
 namespace {
 
+mutex name_mutex(tensorflow::LINKER_INITIALIZED);
+
+std::map<std::thread::id, string>& GetThreadNameRegistry()
+    EXCLUSIVE_LOCKS_REQUIRED(name_mutex) {
+  static auto* thread_name_registry = new std::map<std::thread::id, string>();
+  return *thread_name_registry;
+}
+
 class StdThread : public Thread {
  public:
-  // name and thread_options are both ignored.
+  // thread_options is ignored.
   StdThread(const ThreadOptions& thread_options, const string& name,
             std::function<void()> fn)
-      : thread_(fn) {}
-  ~StdThread() { thread_.join(); }
+      : thread_(fn) {
+    mutex_lock l(name_mutex);
+    GetThreadNameRegistry().emplace(thread_.get_id(), name);
+  }
+
+  ~StdThread() override {
+    std::thread::id thread_id = thread_.get_id();
+    thread_.join();
+    mutex_lock l(name_mutex);
+    GetThreadNameRegistry().erase(thread_id);
+  }
 
  private:
   std::thread thread_;
@@ -88,7 +105,16 @@ class WindowsEnv : public Env {
     return static_cast<int32>(::GetCurrentThreadId());
   }
 
-  bool GetCurrentThreadName(string* name) override { return false; }
+  bool GetCurrentThreadName(string* name) override {
+    mutex_lock l(name_mutex);
+    auto thread_name = GetThreadNameRegistry().find(std::this_thread::get_id());
+    if (thread_name != GetThreadNameRegistry().end()) {
+      *name = thread_name->second;
+      return true;
+    } else {
+      return false;
+    }
+  }
 
   static VOID CALLBACK SchedClosureCallback(PTP_CALLBACK_INSTANCE Instance,
                                             PVOID Context, PTP_WORK Work) {
@@ -129,41 +155,18 @@ class WindowsEnv : public Env {
   }
 
   Status LoadLibrary(const char* library_filename, void** handle) override {
-    std::string file_name = library_filename;
-    std::replace(file_name.begin(), file_name.end(), '/', '\\');
-
-    std::wstring ws_file_name(Utf8ToWideChar(file_name));
-
-    HMODULE hModule = LoadLibraryExW(ws_file_name.c_str(), NULL,
-                                     LOAD_WITH_ALTERED_SEARCH_PATH);
-    if (!hModule) {
-      return errors::NotFound(file_name + " not found");
-    }
-    *handle = hModule;
-    return Status::OK();
+    return tensorflow::internal::LoadLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                               void** symbol) override {
-    FARPROC found_symbol;
-
-    found_symbol = GetProcAddress((HMODULE)handle, symbol_name);
-    if (found_symbol == NULL) {
-      return errors::NotFound(std::string(symbol_name) + " not found");
-    }
-    *symbol = (void**)found_symbol;
-    return Status::OK();
+    return tensorflow::internal::GetSymbolFromLibrary(handle, symbol_name,
+                                                      symbol);
   }
 
   string FormatLibraryFileName(const string& name,
                                const string& version) override {
-    string filename;
-    if (version.size() == 0) {
-      filename = name + ".dll";
-    } else {
-      filename = name + version + ".dll";
-    }
-    return filename;
+    return tensorflow::internal::FormatLibraryFileName(name, version);
   }
 
   string GetRunfilesDir() override {

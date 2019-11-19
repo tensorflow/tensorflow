@@ -30,7 +30,10 @@ namespace tensorflow {
 class TensorReference {
  public:
   // Take the reference of the root buffer so the size will be more accurate
-  explicit TensorReference(const Tensor& tensor);
+  explicit TensorReference(const Tensor& tensor)
+      : buf_(tensor.buf_ ? tensor.buf_->root_buffer() : nullptr) {
+    if (buf_) buf_->Ref();
+  }
 
   ~TensorReference() {}
 

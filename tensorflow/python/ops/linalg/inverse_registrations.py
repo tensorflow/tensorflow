@@ -23,6 +23,7 @@ from tensorflow.python.ops.linalg import linear_operator_algebra
 from tensorflow.python.ops.linalg import linear_operator_block_diag
 from tensorflow.python.ops.linalg import linear_operator_circulant
 from tensorflow.python.ops.linalg import linear_operator_diag
+from tensorflow.python.ops.linalg import linear_operator_householder
 from tensorflow.python.ops.linalg import linear_operator_identity
 from tensorflow.python.ops.linalg import linear_operator_inversion
 from tensorflow.python.ops.linalg import linear_operator_kronecker
@@ -112,3 +113,9 @@ def _inverse_circulant(circulant_operator):
       is_self_adjoint=circulant_operator.is_self_adjoint,
       is_positive_definite=circulant_operator.is_positive_definite,
       is_square=True)
+
+
+@linear_operator_algebra.RegisterInverse(
+    linear_operator_householder.LinearOperatorHouseholder)
+def _inverse_householder(householder_operator):
+  return householder_operator

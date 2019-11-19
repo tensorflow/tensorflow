@@ -80,6 +80,24 @@ XlaOp MinFiniteValue(XlaBuilder* builder, PrimitiveType type) {
   }
 }
 
+XlaOp MinPositiveNormalValue(XlaBuilder* builder, PrimitiveType type) {
+  switch (type) {
+    case F16:
+      return ConstantR0<Eigen::half>(builder,
+                                     std::numeric_limits<Eigen::half>::min());
+    case BF16:
+      return ConstantR0<bfloat16>(builder, bfloat16::min_positive_normal());
+    case F32:
+      return ConstantR0<float>(builder, std::numeric_limits<float>::min());
+    case F64:
+      return ConstantR0<double>(builder, std::numeric_limits<double>::min());
+    default:
+      return builder->ReportError(
+          InvalidArgument("Invalid type for MinPositiveNormalValue (%s).",
+                          PrimitiveType_Name(type)));
+  }
+}
+
 XlaOp MaxValue(XlaBuilder* builder, PrimitiveType type) {
   return ConstantLiteral(builder, LiteralUtil::MaxValue(type));
 }

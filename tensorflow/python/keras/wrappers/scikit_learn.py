@@ -303,7 +303,7 @@ class KerasClassifier(BaseWrapper):
     if not isinstance(outputs, list):
       outputs = [outputs]
     for name, output in zip(self.model.metrics_names, outputs):
-      if name == 'acc':
+      if name in ['accuracy', 'acc']:
         return output
     raise ValueError('The model is not configured to compute accuracy. '
                      'You should pass `metrics=["accuracy"]` to '

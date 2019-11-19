@@ -46,7 +46,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           grouping.group_by_reducer(lambda x: x % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
+          expected_shapes=tensor_shape.TensorShape([]),
           expected_output=[(i - 1) * i, i * i])
 
   def testAverage(self):
@@ -65,7 +65,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
               lambda x: math_ops.cast(x, dtypes.int64) % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
+          expected_shapes=tensor_shape.TensorShape([]),
           expected_output=[i - 1, i])
 
   def testConcat(self):
@@ -81,8 +81,8 @@ class GroupByReducerTest(test_base.DatasetTestBase):
                grouping.group_by_reducer(lambda x, y: y % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
-          expected_output=[b"acegikmoqs" [:i], b"bdfhjlnprt" [:i]])
+          expected_shapes=tensor_shape.TensorShape([]),
+          expected_output=[b"acegikmoqs"[:i], b"bdfhjlnprt"[:i]])
 
   def testSparseSum(self):
     def _sparse(i):
@@ -100,7 +100,7 @@ class GroupByReducerTest(test_base.DatasetTestBase):
           grouping.group_by_reducer(lambda x: x.values[0] % 2, reducer))
       self.assertDatasetProduces(
           dataset,
-          expected_shapes=tensor_shape.scalar(),
+          expected_shapes=tensor_shape.TensorShape([]),
           expected_output=[(i - 1) * i, i * i])
 
   def testChangingStateShape(self):
@@ -120,8 +120,9 @@ class GroupByReducerTest(test_base.DatasetTestBase):
     for i in range(1, 11):
       dataset = dataset_ops.Dataset.from_tensors(np.int64(0)).repeat(i).apply(
           grouping.group_by_reducer(lambda x: x, reducer))
-      self.assertEqual([None], dataset.output_shapes[0].as_list())
-      self.assertIs(None, dataset.output_shapes[1].ndims)
+      dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+      self.assertEqual([None], dataset_output_shapes[0].as_list())
+      self.assertIs(None, dataset_output_shapes[1].ndims)
       get_next = self.getNext(dataset)
       x, y = self.evaluate(get_next())
       self.assertAllEqual([0] * (2**i), x)

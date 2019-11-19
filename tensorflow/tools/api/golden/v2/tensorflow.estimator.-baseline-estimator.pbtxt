@@ -2,6 +2,7 @@ path: "tensorflow.estimator.BaselineEstimator"
 tf_class {
   is_instance: "<class \'tensorflow_estimator.python.estimator.canned.baseline.BaselineEstimatorV2\'>"
   is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.Estimator\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "config"

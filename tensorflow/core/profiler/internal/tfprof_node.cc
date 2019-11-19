@@ -194,7 +194,7 @@ void ExecStep::AddMemoryStats(const string& dev,
 
 void TFGraphNode::AddStepStat(int64 step, const string& device,
                               const NodeExecStats& step_stat) {
-  string dev = str_util::Lowercase(device);
+  string dev = absl::AsciiStrToLower(device);
 
   // TODO(xpan): Make this more robust?
   // See run_metadata_test.py

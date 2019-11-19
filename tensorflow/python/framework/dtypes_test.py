@@ -281,6 +281,7 @@ class TypesTest(test_util.TensorFlowTestCase):
         self.assertEquals(dtype.max, float.fromhex("0x1.FEp127"))
 
   def testRepr(self):
+    self.skipTest("b/142725777")
     for enum, name in dtypes._TYPE_TO_STRING.items():
       if enum > 100:
         continue
@@ -310,6 +311,10 @@ class TypesTest(test_util.TensorFlowTestCase):
       self.assertEquals(args, (dtype.name,))
       reconstructed = ctor(*args)
       self.assertEquals(reconstructed, dtype)
+
+  def testAsDtypeInvalidArgument(self):
+    with self.assertRaises(TypeError):
+      dtypes.as_dtype((dtypes.int32, dtypes.float32))
 
 
 if __name__ == "__main__":

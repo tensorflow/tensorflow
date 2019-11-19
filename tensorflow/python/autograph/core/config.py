@@ -18,26 +18,41 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import config_lib
+
+Action = config_lib.Action
+Convert = config_lib.Convert
+DoNotConvert = config_lib.DoNotConvert
 
 
-PYTHON_LITERALS = {
-    'None': None,
-    'False': False,
-    'True': True,
-    'float': float,
-}
+# This list is evaluated in order and stops at the first rule that tests True
+# for a definitely_convert of definitely_bypass call.
+CONVERSION_RULES = (
+    # Known packages
+    Convert('tensorflow.python.training.experimental'),
 
+    # Builtin modules
+    DoNotConvert('collections'),
+    DoNotConvert('copy'),
+    DoNotConvert('cProfile'),
+    DoNotConvert('inspect'),
+    DoNotConvert('ipdb'),
+    DoNotConvert('linecache'),
+    DoNotConvert('mock'),
+    DoNotConvert('pathlib'),
+    DoNotConvert('pdb'),
+    DoNotConvert('posixpath'),
+    DoNotConvert('pstats'),
+    DoNotConvert('re'),
+    DoNotConvert('threading'),
 
-def internal_module_name(name):
-  full_name = utils.__name__
-  name_start = full_name.find(name)
-  name_end = name_start + len(name) + 1
-  return full_name[:name_end]
+    # Known libraries
+    DoNotConvert('numpy'),
+    DoNotConvert('tensorflow'),
 
+    # TODO(b/133417201): Remove.
+    DoNotConvert('tensorflow_probability'),
 
-DEFAULT_UNCOMPILED_MODULES = set(((internal_module_name('tensorflow'),),))
-
-COMPILED_IMPORT_STATEMENTS = (
-    'from __future__ import print_function',
+    # TODO(b/133842282): Remove.
+    DoNotConvert('tensorflow_datasets.core'),
 )

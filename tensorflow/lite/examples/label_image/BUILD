@@ -1,18 +1,18 @@
 # Description:
 # TensorFlow Lite Example Label Image.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 exports_files(glob([
     "testdata/*.bmp",
 ]))
 
-tf_cc_binary(
+cc_binary(
     name = "label_image",
     srcs = [
         "get_top_n.h",
@@ -30,8 +30,16 @@ tf_cc_binary(
         ":bitmap_helpers",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
-    ],
+        "//tensorflow/lite/profiling:profiler",
+        "//tensorflow/lite/tools/evaluation:utils",
+        "@com_google_absl//absl/memory",
+    ] + select({
+        "//tensorflow:android": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
+        "//tensorflow:android_arm64": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -45,12 +53,15 @@ cc_library(
     deps = [
         "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/schema:schema_fbs",
-    ],
+    ] + select({
+        "//tensorflow:android": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
+        "//tensorflow:android_arm64": ["//tensorflow/lite/delegates/gpu:gl_delegate"],
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(

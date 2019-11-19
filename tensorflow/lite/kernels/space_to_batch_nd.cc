@@ -141,6 +141,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                   op_context.output->params.zero_point);
       }
       break;
+    case kTfLiteInt8:
+      if (kernel_type == kReference) {
+        TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int8_t,
+                                  op_context.output->params.zero_point);
+      } else {
+        TF_LITE_SPACE_TO_BATCH_ND(optimized_ops, int8_t,
+                                  op_context.output->params.zero_point);
+      }
+      break;
     case kTfLiteInt32:
       if (kernel_type == kReference) {
         TF_LITE_SPACE_TO_BATCH_ND(reference_ops, int32_t, 0);

@@ -29,9 +29,10 @@ namespace time {
 #if defined(_MSC_VER)
 
 uint64_t NowMicros() {
-  return std::chrono::duration_cast<std::chrono::microseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
+  return static_cast<uint64_t>(
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::system_clock::now().time_since_epoch())
+          .count());
 }
 
 void SleepForMicros(uint64_t micros) {

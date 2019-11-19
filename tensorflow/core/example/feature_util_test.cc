@@ -256,6 +256,20 @@ TEST(AppendFeatureValuesTest, FloatValuesUsingInitializerList) {
   EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
 }
 
+TEST(SetFeatureValuesTest, FloatValuesUsingInitializerList) {
+  Example example;
+
+  // The first set of values should be overwritten by the second.
+  AppendFeatureValues({1.1, 2.2, 3.3}, "tag", &example);
+  SetFeatureValues({10.1, 20.2, 30.3}, "tag", &example);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(10.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(20.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(30.3, tag_ro.Get(2), kTolerance);
+}
+
 TEST(AppendFeatureValuesTest, Int64ValuesUsingInitializerList) {
   Example example;
 
@@ -295,6 +309,34 @@ TEST(AppendFeatureValuesTest, StringVariablesUsingInitializerList) {
   EXPECT_EQ("FOO", tag_ro.Get(0));
   EXPECT_EQ("BAR", tag_ro.Get(1));
   EXPECT_EQ("BAZ", tag_ro.Get(2));
+}
+
+TEST(GetFeatureTest, WritesAVectorToFeature) {
+  Example example;
+
+  Feature* feature = GetFeature("tag", &example);
+  AppendFeatureValues<float>({1.1, 2.2, 3.3}, feature);
+
+  auto tag_ro = GetFeatureValues<float>("tag", example);
+
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
+}
+
+TEST(GetFeatureTest, ReadsAVectorFromFeature) {
+  Example example;
+
+  AppendFeatureValues<float>({1.1, 2.2, 3.3}, "tag", &example);
+
+  const Feature& feature = GetFeature("tag", example);
+  auto tag_ro = GetFeatureValues<float>(feature);
+
+  ASSERT_EQ(3, tag_ro.size());
+  EXPECT_NEAR(1.1, tag_ro.Get(0), kTolerance);
+  EXPECT_NEAR(2.2, tag_ro.Get(1), kTolerance);
+  EXPECT_NEAR(3.3, tag_ro.Get(2), kTolerance);
 }
 
 TEST(SequenceExampleTest, ReadsASingleValueFromContext) {
@@ -431,6 +473,98 @@ TEST(SequenceExampleTest, AppendFeatureValuesWithVectors) {
             "          value: 1\n"
             "          value: 2.5\n"
             "          value: 5\n"
+            "        }\n"
+            "      }\n"
+            "    }\n"
+            "  }\n"
+            "}\n");
+}
+
+TEST(SequenceExampleTest, SetContextFeatureValuesWithInitializerList) {
+  SequenceExample se;
+
+  // The first set of values should be overwritten by the second.
+  SetFeatureValues({101, 102, 103}, "ids", se.mutable_context());
+  SetFeatureValues({1, 2, 3}, "ids", se.mutable_context());
+
+  // These values should be appended without overwriting.
+  AppendFeatureValues({4, 5, 6}, "ids", se.mutable_context());
+
+  EXPECT_EQ(se.DebugString(),
+            "context {\n"
+            "  feature {\n"
+            "    key: \"ids\"\n"
+            "    value {\n"
+            "      int64_list {\n"
+            "        value: 1\n"
+            "        value: 2\n"
+            "        value: 3\n"
+            "        value: 4\n"
+            "        value: 5\n"
+            "        value: 6\n"
+            "      }\n"
+            "    }\n"
+            "  }\n"
+            "}\n");
+}
+
+TEST(SequenceExampleTest, SetFeatureValuesWithInitializerList) {
+  SequenceExample se;
+
+  // The first set of values should be overwritten by the second.
+  AppendFeatureValues({1, 2, 3}, "ids", se.mutable_context());
+  SetFeatureValues({4, 5, 6}, "ids", se.mutable_context());
+
+  // Two distinct features are added to the same feature list, so both will
+  // coexist in the output.
+  AppendFeatureValues({"cam1-0", "cam2-0"},
+                      GetFeatureList("images", &se)->Add());
+  SetFeatureValues({"cam1-1", "cam2-1"}, GetFeatureList("images", &se)->Add());
+
+  // The first set of values should be overwritten by the second.
+  AppendFeatureValues({"cam1-0", "cam2-0"},
+                      GetFeatureList("more-images", &se)->Add());
+  SetFeatureValues({"cam1-1", "cam2-1"},
+                   GetFeatureList("more-images", &se)->Mutable(0));
+
+  EXPECT_EQ(se.DebugString(),
+            "context {\n"
+            "  feature {\n"
+            "    key: \"ids\"\n"
+            "    value {\n"
+            "      int64_list {\n"
+            "        value: 4\n"
+            "        value: 5\n"
+            "        value: 6\n"
+            "      }\n"
+            "    }\n"
+            "  }\n"
+            "}\n"
+            "feature_lists {\n"
+            "  feature_list {\n"
+            "    key: \"images\"\n"
+            "    value {\n"
+            "      feature {\n"
+            "        bytes_list {\n"
+            "          value: \"cam1-0\"\n"
+            "          value: \"cam2-0\"\n"
+            "        }\n"
+            "      }\n"
+            "      feature {\n"
+            "        bytes_list {\n"
+            "          value: \"cam1-1\"\n"
+            "          value: \"cam2-1\"\n"
+            "        }\n"
+            "      }\n"
+            "    }\n"
+            "  }\n"
+            "  feature_list {\n"
+            "    key: \"more-images\"\n"
+            "    value {\n"
+            "      feature {\n"
+            "        bytes_list {\n"
+            "          value: \"cam1-1\"\n"
+            "          value: \"cam2-1\"\n"
             "        }\n"
             "      }\n"
             "    }\n"

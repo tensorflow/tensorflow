@@ -17,13 +17,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
-from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import dtypes
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
+@deprecation.deprecated(None, "Use `tf.data.Dataset.enumerate()")
 @tf_export("data.experimental.enumerate_dataset")
 def enumerate_dataset(start=0):
   """A transformation that enumerates the elements of a dataset.
@@ -39,8 +37,10 @@ def enumerate_dataset(start=0):
 
   # The nested structure of the `datasets` argument determines the
   # structure of elements in the resulting dataset.
-  a.apply(tf.data.experimental.enumerate(start=5)) == { (5, 1), (6, 2), (7, 3) }
-  b.apply(tf.data.experimental.enumerate()) == { (0, (7, 8)), (1, (9, 10)) }
+  a.apply(tf.data.experimental.enumerate_dataset(start=5))
+  => { (5, 1), (6, 2), (7, 3) }
+  b.apply(tf.data.experimental.enumerate_dataset())
+  => { (0, (7, 8)), (1, (9, 10)) }
   ```
 
   Args:
@@ -53,8 +53,6 @@ def enumerate_dataset(start=0):
   """
 
   def _apply_fn(dataset):
-    max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
-    return dataset_ops.Dataset.zip((dataset_ops.Dataset.range(start, max_value),
-                                    dataset))
+    return dataset.enumerate(start)
 
   return _apply_fn

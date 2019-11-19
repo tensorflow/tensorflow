@@ -31,21 +31,21 @@ class WrapDatasetVariantTest(test_base.DatasetTestBase):
 
   def testBasic(self):
     ds = dataset_ops.Dataset.range(100)
-    ds_variant = ds._as_variant_tensor()  # pylint: disable=protected-access
+    ds_variant = ds._variant_tensor  # pylint: disable=protected-access
 
     wrapped_variant = gen_dataset_ops.wrap_dataset_variant(ds_variant)
     unwrapped_variant = gen_dataset_ops.unwrap_dataset_variant(wrapped_variant)
 
     variant_ds = dataset_ops._VariantDataset(unwrapped_variant,
-                                             ds._element_structure)
+                                             ds.element_spec)
     get_next = self.getNext(variant_ds, requires_initialization=True)
     for i in range(100):
       self.assertEqual(i, self.evaluate(get_next()))
 
-  # TODO(b/117581999): add eager coverage when supported.
+  @test_util.run_v1_only("b/123901304")
   def testSkipEagerGPU(self):
     ds = dataset_ops.Dataset.range(100)
-    ds_variant = ds._as_variant_tensor()  # pylint: disable=protected-access
+    ds_variant = ds._variant_tensor  # pylint: disable=protected-access
     wrapped_variant = gen_dataset_ops.wrap_dataset_variant(ds_variant)
 
     with ops.device("/gpu:0"):
@@ -54,7 +54,7 @@ class WrapDatasetVariantTest(test_base.DatasetTestBase):
     unwrapped_variant = gen_dataset_ops.unwrap_dataset_variant(
         gpu_wrapped_variant)
     variant_ds = dataset_ops._VariantDataset(unwrapped_variant,
-                                             ds._element_structure)
+                                             ds.element_spec)
     iterator = dataset_ops.make_initializable_iterator(variant_ds)
     get_next = iterator.get_next()
 

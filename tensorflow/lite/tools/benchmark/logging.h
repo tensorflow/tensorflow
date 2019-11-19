@@ -22,6 +22,10 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 
+#ifdef _WIN32
+#undef ERROR
+#endif
+
 namespace tflite {
 namespace logging {
 // A wrapper that logs to stderr.
@@ -42,10 +46,19 @@ class LoggingWrapper {
   std::stringstream& Stream() { return stream_; }
   ~LoggingWrapper() {
     if (should_log_) {
-      std::cerr << stream_.str() << std::endl;
-      if (severity_ == LogSeverity::FATAL) {
-        std::flush(std::cerr);
-        std::abort();
+      switch (severity_) {
+        case LogSeverity::INFO:
+        case LogSeverity::WARN:
+          std::cout << stream_.str() << std::endl;
+          break;
+        case LogSeverity::ERROR:
+          std::cerr << stream_.str() << std::endl;
+          break;
+        case LogSeverity::FATAL:
+          std::cerr << stream_.str() << std::endl;
+          std::flush(std::cerr);
+          std::abort();
+          break;
       }
     }
   }

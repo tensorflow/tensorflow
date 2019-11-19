@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 class CompleteGroupRequest;
@@ -36,7 +37,8 @@ class DeviceMgr;
 // group leader for param resolution in a multi-task context.
 class CollectiveParamResolverLocal : public ParamResolverInterface {
  public:
-  CollectiveParamResolverLocal(const DeviceMgr* dev_mgr,
+  CollectiveParamResolverLocal(const ConfigProto& config,
+                               const DeviceMgr* dev_mgr,
                                DeviceResolverInterface* dev_resolver,
                                const string& task_name);
 
@@ -180,7 +182,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // ir->shared.instance.task_names by considering localities of all devices.
   void CompleteDefaultRanking(const GroupRec* gr, const CollectiveParams* cp,
                               InstanceRec* ir,
-                              const std::vector<DeviceLocality>& localities)
+                              const std::vector<DeviceAttributes>& attributes)
       EXCLUSIVE_LOCKS_REQUIRED(ir->out_mu);
 
   // Finish populating *cp.
@@ -199,11 +201,10 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
                                            const StatusCallback& done)
       LOCKS_EXCLUDED(ir->out_mu);
 
-  // Complete source data and/or nccl communicator key.
+  // Complete instance params after waiting for group.
   // Precondition: *cp has complete group data and default_rank.
   void WaitForGroup(InstanceRec* ir, CollectiveParams* cp, bool is_source,
-                    bool init_source, bool init_nccl, const IRConsumer& f)
-      LOCKS_EXCLUDED(ir->out_mu);
+                    const IRConsumer& f) LOCKS_EXCLUDED(ir->out_mu);
 
   // If cp.device_names contains only devices local to this process
   // populates *localities, else returns an error.

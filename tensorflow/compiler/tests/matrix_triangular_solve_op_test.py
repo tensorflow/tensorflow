@@ -54,7 +54,7 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
 
   def _VerifyTriangularSolve(self, a, b, lower, adjoint, atol):
     clean_a = np.tril(a) if lower else np.triu(a)
-    with self.cached_session() as sess:
+    with self.session() as sess:
       placeholder_a = MakePlaceholder(a)
       placeholder_ca = MakePlaceholder(clean_a)
       placeholder_b = MakePlaceholder(b)

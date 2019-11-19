@@ -110,6 +110,8 @@ class MatrixTriangularSolveOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSolveComplex(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     # 1x1 matrix, single rhs.
     matrix = np.array([[0.1 + 1j * 0.1]])
     rhs0 = np.array([[1. + 1j]])
@@ -136,6 +138,8 @@ class MatrixTriangularSolveOpTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def testSolveBatchComplex(self):
+    if test.is_built_with_rocm():
+      self.skipTest("ROCm does not support BLAS operations for complex types")
     matrix = np.array([[1., 2.], [3., 4.]]).astype(np.complex64)
     matrix += 1j * matrix
     rhs = np.array([[1., 0., 1.], [0., 1., 1.]]).astype(np.complex64)
@@ -149,7 +153,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
   def testNonSquareMatrix(self):
     # A non-square matrix should cause an error.
     matrix = np.array([[1., 2., 3.], [3., 4., 5.]])
-    with self.cached_session():
+    with self.cached_session(use_gpu=True):
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, matrix)
       with self.assertRaises(ValueError):
@@ -161,15 +165,18 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     # right-hand sides.
     matrix = np.array([[1., 0.], [0., 1.]])
     rhs = np.array([[1., 0.]])
-    with self.cached_session():
+    with self.cached_session(use_gpu=True):
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs)
       with self.assertRaises(ValueError):
         self._verifySolve(matrix, rhs, batch_dims=[2, 3])
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("XLA cannot throw assertion errors during a kernel.")
   def testNotInvertible(self):
     # The input should be invertible.
     # The matrix is singular because it has a zero on the diagonal.
+    # FIXME(rmlarsen): The GPU kernel does not check for singularity.
     singular_matrix = np.array([[1., 0., -1.], [-1., 0., 1.], [0., -1., 1.]])
     with self.cached_session():
       with self.assertRaisesOpError("Input matrix is not invertible."):
@@ -183,6 +190,7 @@ class MatrixTriangularSolveOpTest(test.TestCase):
     self._verifySolve(np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=False)
     self._verifySolve(
         np.empty([2, 0, 0]), np.empty([2, 0, 0]), lower=True, batch_dims=[3, 2])
+    self._verifySolve(np.empty([0, 0]), np.empty([0, 0]), lower=True)
 
 
 if __name__ == "__main__":

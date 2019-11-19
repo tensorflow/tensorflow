@@ -23,68 +23,65 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.platform import test
 
 
-class BatchMatMulTest(trt_test.TfTrtIntegrationTestBase):
+class BatchMatMulTwoTensorTest(trt_test.TfTrtIntegrationTestBase):
+  """Testing conversion of BatchMatMul where both inputs are tensors."""
+
+  def GraphFn(self, inp, inp1):
+    x1 = math_ops.matmul(inp, inp1, name="matmul")
+    # Relu to reach minimum segment size.
+    x1 = nn.relu(x1, name="relu")
+    return array_ops.identity(x1, name="output_0")
 
   def GetParams(self):
-    """Testing conversion of BatchMatMul in TF-TRT conversion."""
-    dtype = dtypes.float32
-    input_name = "input"
-    input_dims = [12, 5, 8, 12]
-    output_name = "output"
-    w1_name = "matmul_w1"
-    w1_dims = [12, 5, 12, 7]
-    w2_name = "matmul_w2"
-    w2_dims = [12, 12, 7]
-    g = ops.Graph()
-    with g.as_default():
-      inp = array_ops.placeholder(
-          dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
-      w1 = array_ops.placeholder(dtype=dtype, shape=w1_dims, name=w1_name)
-      w2 = array_ops.placeholder(dtype=dtype, shape=w2_dims, name=w2_name)
-      with g.device("/GPU:0"):
-        b = constant_op.constant(np.random.randn(12, 5, 12, 7), dtype=dtype)
-        x1 = math_ops.matmul(inp, b)
-        c = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
-        x1 = x1 + c
-
-        x2 = math_ops.matmul(inp, w1)
-        d = constant_op.constant(np.random.randn(5, 1, 1), dtype=dtype)
-        x2 = x2 * d
-
-        e = self.trt_incompatible_op(inp)
-        e = gen_array_ops.reshape(e, [12, 40, 12])
-        x3 = math_ops.matmul(e, w2)
-        f = constant_op.constant(np.random.randn(40, 1), dtype=dtype)
-        x3 = x3 + f
-        x3 = gen_array_ops.reshape(x3, [12, 5, 8, 7])
-        x3 = self.trt_incompatible_op(x3)
-
-        out = x1 + x2 + x3
-      array_ops.squeeze(out, name=output_name)
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name, w1_name, w2_name],
-        input_dims=[[input_dims, w1_dims, w2_dims]],
-        output_names=[output_name],
-        expected_output_dims=[[[12, 5, 8, 7]]])
+    return self.BuildParams(self.GraphFn, dtypes.float32,
+                            [[12, 5, 8, 12], [12, 5, 12, 7]], [[12, 5, 8, 7]])
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    if (run_params.dynamic_engine and
-        not trt_test.IsQuantizationMode(run_params.precision_mode)):
-      return ["TRTEngineOp_0", "TRTEngineOp_1"]
-    return ["TRTEngineOp_1"]
+    return {"TRTEngineOp_0": ["matmul", "relu"]}
 
-  def ExpectedEnginesToRun(self, run_params):
-    """Return the expected engines to run."""
-    return ["TRTEngineOp_1"]
+
+class BatchMatMulWeightBroadcastTest(trt_test.TfTrtIntegrationTestBase):
+  """Testing BatchMatMulV2: one operand is weight and both have same rank."""
+
+  def GraphFn(self, inp):
+    dtype = inp.dtype
+    b = constant_op.constant(
+        np.random.randn(1, 5, 7), dtype=dtype, name="kernel")
+    x1 = math_ops.matmul(inp, b, name="matmul")
+    return array_ops.identity(x1, name="output_0")
+
+  def GetParams(self):
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[12, 9, 5]],
+                            [[12, 9, 7]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return {"TRTEngineOp_0": ["matmul", "kernel"]}
+
+
+class BatchMatMulWeightBroadcastDims2Test(trt_test.TfTrtIntegrationTestBase):
+  """Testing BatchMatMulV2: weight operand must be broadcasted."""
+
+  def GraphFn(self, inp):
+    dtype = inp.dtype
+    b = constant_op.constant(np.random.randn(5, 7), dtype=dtype, name="kernel")
+    x1 = math_ops.matmul(inp, b, name="matmul")
+    return array_ops.identity(x1, name="output_0")
+
+  def GetParams(self):
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[12, 9, 5]],
+                            [[12, 9, 7]])
+
+  def ExpectedEnginesToBuild(self, run_params):
+    """Return the expected engines to build."""
+    return {"TRTEngineOp_0": ["matmul", "kernel"]}
 
 
 if __name__ == "__main__":

@@ -25,6 +25,7 @@ limitations under the License.
 #include <map>
 
 #include "tensorflow/lite/context.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/string_util.h"
 #include <farmhash.h>
@@ -59,8 +60,6 @@ bool IsValidNgram(const tflite::StringRef& strref) {
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteIntArray* outputSize1 = TfLiteIntArrayCreate(1);
-  TfLiteIntArray* outputSize2 = TfLiteIntArrayCreate(1);
   const TfLiteTensor* input = GetInput(context, node, 0);
   int dim = input->dims->data[0];
   if (dim == 0) {
@@ -68,6 +67,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     dim = 1;
   }
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteString);
+  TfLiteIntArray* outputSize1 = TfLiteIntArrayCreate(1);
+  TfLiteIntArray* outputSize2 = TfLiteIntArrayCreate(1);
   outputSize1->data[0] = dim;
   outputSize2->data[0] = dim;
   context->ResizeTensor(context, GetOutput(context, node, 0), outputSize1);
@@ -81,26 +82,28 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* label = GetOutput(context, node, 0);
   TfLiteTensor* weight = GetOutput(context, node, 1);
 
+  int32_t* label_data = GetTensorData<int32_t>(label);
+  float* weight_data = GetTensorData<float>(weight);
+
   std::map<int64_t, int> feature_id_counts;
   for (int i = 0; i < num_strings; i++) {
     // Use fingerprint of feature name as id.
     auto strref = tflite::GetString(input, i);
     if (!IsValidNgram(strref)) {
-      label->data.i32[i] = 0;
-      weight->data.i32[i] = 0;
+      label_data[i] = 0;
+      weight_data[i] = 0;
       continue;
     }
 
     int64_t feature_id =
         ::util::Fingerprint64(strref.str, strref.len) % kMaxDimension;
-    label->data.i32[i] = static_cast<int32_t>(feature_id);
-    weight->data.f[i] =
-        std::count(strref.str, strref.str + strref.len, ' ') + 1;
+    label_data[i] = static_cast<int32_t>(feature_id);
+    weight_data[i] = std::count(strref.str, strref.str + strref.len, ' ') + 1;
   }
   // Explicitly set an empty result to make preceding ops run.
   if (num_strings == 0) {
-    label->data.i32[0] = 0;
-    weight->data.i32[0] = 0;
+    label_data[0] = 0;
+    weight_data[0] = 0;
   }
   return kTfLiteOk;
 }

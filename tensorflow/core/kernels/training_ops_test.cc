@@ -22,21 +22,31 @@ limitations under the License.
 
 namespace tensorflow {
 
-// We focus on the single thread performance of training ops.
-static SessionOptions InitSingleThreadedOptions() {
-  SessionOptions opts;
-  opts.config.set_intra_op_parallelism_threads(1);
-  opts.config.set_inter_op_parallelism_threads(1);
+// We set only the number of threads for intra op thread pool to test how well
+// each individual kernel utilize multiple threads.
+static SessionOptions* InitMultiThreadingOptions(int num_threads) {
+  SessionOptions* opts = new SessionOptions();
+  opts->config.set_intra_op_parallelism_threads(num_threads);
+  opts->config.set_inter_op_parallelism_threads(1);
   return opts;
 }
 
 static SessionOptions* GetOptions() {
-  static SessionOptions opts = InitSingleThreadedOptions();
-  return &opts;
+  static SessionOptions* opts = InitMultiThreadingOptions(1);
+  return opts;
+}
+
+static SessionOptions* GetMultiThreadedOptions() {
+  static SessionOptions* opts = InitMultiThreadingOptions(32);
+  return opts;
 }
 
 static Node* Var(Graph* g, int n) {
   return test::graph::Var(g, DT_FLOAT, TensorShape({n}));
+}
+
+static Node* Var(Graph* g, int m, int n) {
+  return test::graph::Var(g, DT_FLOAT, TensorShape({m, n}));
 }
 
 static Node* Zeros(Graph* g, int n) {
@@ -45,9 +55,28 @@ static Node* Zeros(Graph* g, int n) {
   return test::graph::Constant(g, data);
 }
 
+static Node* Zeros(Graph* g, int m, int n) {
+  Tensor data(DT_FLOAT, TensorShape({m, n}));
+  data.flat<float>().setZero();
+  return test::graph::Constant(g, data);
+}
+
 static Node* Random(Graph* g, int n) {
   Tensor data(DT_FLOAT, TensorShape({n}));
   data.flat<float>().setRandom();
+  return test::graph::Constant(g, data);
+}
+
+static Node* Random(Graph* g, int m, int n) {
+  Tensor data(DT_FLOAT, TensorShape({m, n}));
+  data.flat<float>().setRandom();
+  return test::graph::Constant(g, data);
+}
+
+static Node* Iota(Graph* g, int n) {
+  Tensor data(DT_INT32, TensorShape({n}));
+  int32* base = data.flat<int32>().data();
+  for (int i = 0; i < n; ++i) base[i] = i;
   return test::graph::Constant(g, data);
 }
 
@@ -117,6 +146,45 @@ static void BM_Adagrad(int iters, int params) {
 }
 BENCHMARK(BM_Adagrad)->Arg(128 << 10)->Arg(256 << 10);
 
+static void SparseAdagrad(int32 m, int32 n, Graph** init_g, Graph** train_g) {
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, m, n);
+    auto accum = Var(g, m, n);
+    auto zero = Zeros(g, m, n);
+    test::graph::Assign(g, var, zero);
+    test::graph::Assign(g, accum, zero);
+    *init_g = g;
+  }
+  {
+    Graph* g = new Graph(OpRegistry::Global());
+    auto var = Var(g, m, n);
+    auto accum = Var(g, m, n);
+    auto lr = Scalar(g, 0.01);
+    auto grad = Random(g, m, n);
+    auto indices = Iota(g, m);
+    test::graph::Multi(g, "SparseApplyAdagrad",
+                       {var, accum, lr, grad, indices});
+    *train_g = g;
+  }
+}
+static void BM_SparseAdagrad(int iters, int m, int n) {
+  const int64 tot = static_cast<int64>(iters) * m * n;
+  testing::UseRealTime();
+  testing::ItemsProcessed(tot);
+  testing::BytesProcessed(tot * sizeof(float));
+  Graph* init;
+  Graph* train;
+  SparseAdagrad(m, n, &init, &train);
+  test::Benchmark("cpu", train, GetMultiThreadedOptions(), init).Run(iters);
+}
+BENCHMARK(BM_SparseAdagrad)
+    ->ArgPair(128, 1 << 10)
+    ->ArgPair(128, 4 << 10)
+    ->ArgPair(128, 8 << 10)
+    ->ArgPair(128, 32 << 10)
+    ->ArgPair(128, 128 << 10);
+
 static void Momentum(int32 n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});
   {
@@ -183,16 +251,22 @@ static void Adam(int32 n, Graph** init_g, Graph** train_g) {
   }
 }
 
-static void BM_Adam(int iters, int params) {
+static void BM_Adam(int iters, int params, int is_multi_threaded) {
   const int64 tot = static_cast<int64>(iters) * params;
   testing::ItemsProcessed(tot);
   testing::BytesProcessed(tot * sizeof(float));
   Graph* init;
   Graph* train;
   Adam(params, &init, &train);
-  test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  if (is_multi_threaded) {
+    // Use max thread number if test performance.
+    test::Benchmark("cpu", train, nullptr, init).Run(iters);
+  } else {
+    test::Benchmark("cpu", train, GetOptions(), init).Run(iters);
+  }
 }
-BENCHMARK(BM_Adam)->Arg(128 << 10)->Arg(256 << 10);
+BENCHMARK(BM_Adam)->ArgPair(128 << 10, 0)->ArgPair(256 << 10, 0);
+BENCHMARK(BM_Adam)->ArgPair(256 << 5, 1)->ArgPair(256 << 16, 1);
 
 static void RMSProp(int32 n, Graph** init_g, Graph** train_g) {
   TensorShape shape({n});

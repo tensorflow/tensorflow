@@ -695,6 +695,25 @@ struct NnApi {
       const ANeuralNetworksDevice* device, int64_t* featureLevel);
 
   /**
+   * Get the type of a given device.
+   *
+   * The device type can be used to help application developers to distribute
+   * Machine Learning workloads and other workloads such as graphical rendering.
+   * E.g., for an app which renders AR scenes based on real time object
+   * detection results, the developer could choose an ACCELERATOR type device
+   * for ML workloads, and reserve GPU for graphical rendering.
+   *
+   * @param device The representation of the specified device.
+   * @param type The returned {@link DeviceTypeCode} of the specified device.
+   *
+   * @return ANEURALNETWORKS_NO_ERROR if successful.
+   *
+   * Available since API level 29.
+   */
+  int (*ANeuralNetworksDevice_getType)(const ANeuralNetworksDevice* device,
+                                       int32_t* type);
+
+  /**
    * Get the supported operations for a specified set of devices. If multiple
    * devices are selected, the supported operation list is a union of supported
    * operations of all selected devices.

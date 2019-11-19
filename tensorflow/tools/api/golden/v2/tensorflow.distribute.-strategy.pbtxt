@@ -1,6 +1,6 @@
 path: "tensorflow.distribute.Strategy"
 tf_class {
-  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.DistributionStrategy\'>"
+  is_instance: "<class \'tensorflow.python.distribute.distribute_lib.Strategy\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "extended"
@@ -15,10 +15,6 @@ tf_class {
     argspec: "args=[\'self\', \'extended\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "broadcast"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "colocate_vars_with"
     argspec: "args=[\'self\', \'colocate_with_variable\'], varargs=None, keywords=None, defaults=None"
   }
@@ -27,12 +23,28 @@ tf_class {
     argspec: "args=[\'self\', \'session_config\', \'cluster_spec\', \'task_type\', \'task_id\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "experimental_make_numpy_iterator"
-    argspec: "args=[\'self\', \'numpy_input\', \'batch_size\', \'num_epochs\', \'shuffle\', \'session\'], varargs=None, keywords=None, defaults=[\'1\', \'1024\', \'None\'], "
+    name: "experimental_distribute_dataset"
+    argspec: "args=[\'self\', \'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_distribute_datasets_from_function"
+    argspec: "args=[\'self\', \'dataset_fn\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_local_results"
+    argspec: "args=[\'self\', \'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "experimental_make_numpy_dataset"
+    argspec: "args=[\'self\', \'numpy_input\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "experimental_run"
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "experimental_run_v2"
+    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\'], varargs=None, keywords=None, defaults=[\'()\', \'None\'], "
   }
   member_method {
     name: "group"
@@ -48,7 +60,7 @@ tf_class {
   }
   member_method {
     name: "reduce"
-    argspec: "args=[\'self\', \'reduce_op\', \'value\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'reduce_op\', \'value\', \'axis\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "scope"

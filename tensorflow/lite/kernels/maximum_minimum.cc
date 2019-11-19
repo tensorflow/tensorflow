@@ -26,7 +26,7 @@ namespace ops {
 namespace builtin {
 namespace maximum_minimum {
 
-// This file has a reference implemenation of TFMaximum/TFMinimum.
+// This file has a reference implementation of TFMaximum/TFMinimum.
 enum KernelType {
   kReference,
 };
@@ -85,7 +85,7 @@ struct MinimumOp {
 
 template <typename data_type, typename op_type>
 void TFLiteOperation(TfLiteContext* context, TfLiteNode* node,
-                      const OpContext& op_context) {
+                     const OpContext& op_context) {
   reference_ops::MaximumMinimumBroadcast4DSlow(
       GetTensorShape(op_context.input1),
       GetTensorData<data_type>(op_context.input1),
@@ -108,8 +108,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       case kTfLiteUInt8:
         TFLiteOperation<uint8_t, OpType>(context, node, op_context);
         break;
+      case kTfLiteInt8:
+        TFLiteOperation<int8_t, OpType>(context, node, op_context);
+        break;
       case kTfLiteInt32:
-       TFLiteOperation<int32_t, OpType>(context, node, op_context);
+        TFLiteOperation<int32_t, OpType>(context, node, op_context);
         break;
       case kTfLiteInt64:
         TFLiteOperation<int64_t, OpType>(context, node, op_context);

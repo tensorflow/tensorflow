@@ -20,11 +20,18 @@ limitations under the License.
 
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla.pb.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
+
+enum class FusionConfigCollection {
+  kOff,      // Do not collect configuration.
+  kPerEdge,  // Collect per-edge configuration.
+  kPerNode,  // Collect per-node configuration.
+};
 
 // This class gathers all settings and values which affect the compiled
 // executable outside of the HLO code itself. This include layouts of inputs and
@@ -33,6 +40,29 @@ namespace xla {
 // executable.
 class HloModuleConfig {
  public:
+  // Represents a pair of input and output of the entry computation that can be
+  // considered as the original and updated values of a variable maintained by
+  // the caller, and that can be transparently sharded by XLA as an internal
+  // optimization. If sharded, XLA will create separate sharding/unsharding
+  // programs, and the caller is responsible to call the XLA-generated
+  // sharding/unsharding programs before and after the sharded main program.
+  //
+  // If the variable is not updated and there is not a corresponding output, use
+  // {-1} as the output_shape_index.
+  //
+  // The sharding/unsharding programs will include all the input/output pairs in
+  // shardable_value_update_pairs() as a flat tuple in their inputs/outputs,
+  // sorted by (input_parameter_number, parameter_shape_index).
+  //
+  // A typical usage pattern is to shard the variables first, then repeatedly
+  // invoke the main program, and finally invoke the unsharding program before
+  // they are used in full-shape.
+  struct ShardableValueUpdatePair {
+    int64 input_parameter_number;
+    ShapeIndex parameter_shape_index;
+    ShapeIndex output_shape_index;
+  };
+
   // A configuration can be created either with, or without an entry
   // ComputationLayout. The default ctor creates it without -- in this case
   // accessing entry_computation_layout will CHECK-fail. The ctor accepting a
@@ -43,6 +73,8 @@ class HloModuleConfig {
 
   explicit HloModuleConfig(const ProgramShape& program_shape,
                            bool ignore_layouts = true);
+
+  explicit HloModuleConfig(ComputationLayout entry_computation_layout);
 
   // Checks if this config has an entry computation layout already.
   bool has_entry_computation_layout() const {
@@ -81,6 +113,11 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  void set_num_partitions(int64 num_partitions) {
+    num_partitions_ = num_partitions;
+  }
+  int64 num_partitions() const { return num_partitions_; }
+
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
@@ -101,6 +138,51 @@ class HloModuleConfig {
     return intra_op_parallelism_threads_;
   }
 
+  // Checks if this config has a static device assignment.
+  bool has_static_device_assignment() const {
+    return static_device_assignment_.has_value();
+  }
+
+  // Getter and setter of the compile-time known device assignment.
+  const DeviceAssignment& static_device_assignment() const {
+    CHECK(static_device_assignment_.has_value());
+    return *static_device_assignment_;
+  }
+  void set_static_device_assignment(const DeviceAssignment& device_assignment) {
+    static_device_assignment_ = device_assignment;
+  }
+
+  const std::vector<ShardableValueUpdatePair> shardable_value_update_pairs()
+      const {
+    return shardable_value_update_pairs_;
+  }
+  void set_shardable_value_update_pairs(
+      std::vector<ShardableValueUpdatePair> pairs) {
+    shardable_value_update_pairs_ = std::move(pairs);
+  }
+
+  // Whether input and output buffers are aliased if the associated parameter is
+  // passed-through XLA modules without being changed.
+  bool alias_passthrough_params() const { return alias_passthrough_params_; }
+  void set_alias_passthrough_params(bool alias_passthrough_params) {
+    alias_passthrough_params_ = alias_passthrough_params;
+  }
+
+  FusionConfigCollection fusion_config_collection() const {
+    return fusion_config_collection_;
+  }
+  void set_fusion_config_collection(
+      FusionConfigCollection fusion_config_collection) {
+    fusion_config_collection_ = fusion_config_collection;
+  }
+
+  const std::vector<std::vector<bool>>& fusion_config() const {
+    return fusion_config_;
+  }
+  std::vector<std::vector<bool>>* mutable_fusion_config() {
+    return &fusion_config_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -109,14 +191,29 @@ class HloModuleConfig {
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
 
-  // The number of replicas to compile this binary for.
+  // The number of replicas (data parallelism) to compile this binary for.
   int64 replica_count_ = 1;
+
+  // The number of partitions (model parallelism) to compile this binary for.
+  int64 num_partitions_ = 1;
 
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
 
   DebugOptions debug_options_;
+
+  // Compile-time known device assignment.
+  absl::optional<DeviceAssignment> static_device_assignment_;
+
+  std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
+
+  bool alias_passthrough_params_ = false;
+
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
+
+  std::vector<std::vector<bool>> fusion_config_;
 };
 
 }  // namespace xla

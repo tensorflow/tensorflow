@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "SlidingWindowDataset"
+  visibility: HIDDEN
+  in_arg {
+    name: "window_size"
+    description: <<END
+A scalar representing the number of elements in the
+sliding window.
+END
+  }
+  in_arg {
+    name: "window_shift"
+    description: <<END
+A scalar representing the steps moving the sliding window
+forward in one iteration. It must be positive.
+END
+  }
+  in_arg {
+    name: "window_stride"
+    description: <<END
+A scalar representing the stride of the input elements of the sliding window.
+It must be positive.
+END
+  }
+  summary: "Creates a dataset that passes a sliding window over `input_dataset`."
+}

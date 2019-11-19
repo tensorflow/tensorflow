@@ -41,10 +41,15 @@ class XlaArgOp : public XlaOpKernel {
     if (frame != nullptr) {
       Tensor val;
       OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-      OP_REQUIRES(ctx, val.dtype() == dtype_,
-                  errors::InvalidArgument(
-                      "Type mismatch: actual ", DataTypeString(val.dtype()),
-                      " vs. expect ", DataTypeString(dtype_)));
+      // Types that cannot be copied using memcpy (like DT_STRING) are wrapped
+      // in a DT_UINT8 and hence the type mismatches. Skip the test in such
+      // cases. See XlaOpKernelContext::SetOutputExpression for details.
+      if (DataTypeCanUseMemcpy(dtype_)) {
+        OP_REQUIRES(ctx, val.dtype() == dtype_,
+                    errors::InvalidArgument(
+                        "Type mismatch: actual ", DataTypeString(val.dtype()),
+                        " vs. expect ", DataTypeString(dtype_)));
+      }
       // Forwards the argument from the frame.
       ctx->op_kernel_context()->set_output(0, val);
       return;

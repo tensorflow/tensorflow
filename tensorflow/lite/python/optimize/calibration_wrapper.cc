@@ -19,30 +19,17 @@ limitations under the License.
 #include <string>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/compiler/mlir/lite/quantization/lite/quantize_model.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
-#include "tensorflow/lite/tools/optimize/calibration_reader.h"
-#include "tensorflow/lite/tools/optimize/calibrator.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
-
-// Disallow Numpy 1.7 deprecated symbols.
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-
-#include <Python.h>
-
-#include "numpy/arrayobject.h"
-#include "numpy/ufuncobject.h"
-
-#if PY_MAJOR_VERSION >= 3
-#define PY_TO_CPPSTRING PyBytes_AsStringAndSize
-#define CPP_TO_PYSTRING PyBytes_FromStringAndSize
-#else
-#define PY_TO_CPPSTRING PyString_AsStringAndSize
-#define CPP_TO_PYSTRING PyString_FromStringAndSize
-#endif
 
 #define TFLITE_PY_CHECK(x)               \
   if ((x) != kTfLiteOk) {                \
@@ -60,15 +47,41 @@ namespace calibration_wrapper {
 
 namespace {
 
-struct PyDecrefDeleter {
-  void operator()(PyObject* p) const { Py_DECREF(p); }
-};
+using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<tflite::ModelT> CreateMutableModel(const tflite::Model& model) {
   std::unique_ptr<tflite::ModelT> copied_model =
       absl::make_unique<tflite::ModelT>();
   model.UnPackTo(copied_model.get(), nullptr);
   return copied_model;
+}
+
+inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
+  switch (type) {
+    case kTfLiteNoType:
+      return TensorType_FLOAT32;  // TODO(b/129336260): No schema type for none.
+    case kTfLiteFloat32:
+      return TensorType_FLOAT32;
+    case kTfLiteFloat16:
+      return TensorType_FLOAT16;
+    case kTfLiteInt32:
+      return TensorType_INT32;
+    case kTfLiteUInt8:
+      return TensorType_UINT8;
+    case kTfLiteInt8:
+      return TensorType_INT8;
+    case kTfLiteInt64:
+      return TensorType_INT64;
+    case kTfLiteString:
+      return TensorType_STRING;
+    case kTfLiteBool:
+      return TensorType_BOOL;
+    case kTfLiteInt16:
+      return TensorType_INT16;
+    case kTfLiteComplex64:
+      return TensorType_COMPLEX64;
+  }
+  // No default to get compiler error when new type is introduced.
 }
 
 }  // namespace
@@ -144,22 +157,27 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   if (python_utils::TfLiteTypeFromPyArray(array) != tensor->type) {
     PyErr_Format(PyExc_ValueError,
                  "Cannot set tensor:"
-                 " Got tensor of type %d"
-                 " but expected type %d for input %d, name: %s ",
-                 python_utils::TfLiteTypeFromPyArray(array), tensor->type,
-                 index, tensor->name);
+                 " Got value of type %s"
+                 " but expected type %s for input %d, name: %s ",
+                 TfLiteTypeGetName(python_utils::TfLiteTypeFromPyArray(array)),
+                 TfLiteTypeGetName(tensor->type), index, tensor->name);
     return nullptr;
   }
 
   if (PyArray_NDIM(array) != tensor->dims->size) {
-    PyErr_SetString(PyExc_ValueError, "Cannot set tensor: Dimension mismatch");
+    PyErr_Format(
+        PyExc_ValueError,
+        "Cannot set tensor: Dimension count mismatch, expected %d but found %d",
+        tensor->dims->size, PyArray_NDIM(array));
     return nullptr;
   }
 
   for (int j = 0; j < PyArray_NDIM(array); j++) {
     if (tensor->dims->data[j] != PyArray_SHAPE(array)[j]) {
-      PyErr_SetString(PyExc_ValueError,
-                      "Cannot set tensor: Dimension mismatch");
+      PyErr_Format(PyExc_ValueError,
+                   "Cannot set tensor: Size mismatch, expected %d for dim "
+                   "%d but found %ld",
+                   tensor->dims->data[j], j, PyArray_SHAPE(array)[j]);
       return nullptr;
     }
   }
@@ -175,17 +193,69 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   Py_RETURN_NONE;
 }
 
-PyObject* CalibrationWrapper::QuantizeModel() {
+PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
+                                            int output_py_type,
+                                            bool allow_float,
+                                            bool enable_mlir_quantizer) {
+  TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
+  TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
+  if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Input/output type cannot be kTfLiteNoType");
+    return nullptr;
+  }
   auto tflite_model = CreateMutableModel(*model_->GetModel());
-  reader_->AddCalibrationToModel(tflite_model.get());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
-  auto status = tflite::optimize::QuantizeModel(&builder, tflite_model.get(),
-                                                error_reporter_.get());
+  auto status = kTfLiteOk;
+  if (enable_mlir_quantizer) {
+    status = mlir::lite::QuantizeModel(
+        *tflite_model, TfLiteTypeToSchemaType(input_type),
+        TfLiteTypeToSchemaType(output_type), {}, allow_float, &builder,
+        error_reporter_.get());
+  } else {
+    status = tflite::optimize::QuantizeModel(
+        &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
+        TfLiteTypeToSchemaType(output_type), allow_float,
+        error_reporter_.get());
+  }
+
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;
   }
-  return CPP_TO_PYSTRING(
+
+  return python_utils::ConvertToPyString(
+      reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
+      builder.GetSize());
+}
+
+PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
+                                            int output_py_type,
+                                            bool allow_float,
+                                            const char* operator_output_name) {
+  string op_name = std::string(operator_output_name);
+
+  TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
+  TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
+  if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
+    PyErr_SetString(PyExc_ValueError,
+                    "Input/output type cannot be kTfLiteNoType");
+    return nullptr;
+  }
+  auto tflite_model = CreateMutableModel(*model_->GetModel());
+  reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
+  flatbuffers::FlatBufferBuilder builder;
+  auto status = tflite::optimize::QuantizeModel(
+      &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
+      TfLiteTypeToSchemaType(output_type), allow_float, {op_name},
+      error_reporter_.get());
+  if (status != kTfLiteOk) {
+    error_reporter_->exception();
+    return nullptr;
+  }
+
+  return python_utils::ConvertToPyString(
       reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
       builder.GetSize());
 }
@@ -196,7 +266,9 @@ PyObject* CalibrationWrapper::QuantizeModel() {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
-  if (PY_TO_CPPSTRING(data, &buf, &length) == -1) {
+  ::tflite::python::ImportNumpy();
+
+  if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;
   }
   std::unique_ptr<tflite::FlatBufferModel> model =

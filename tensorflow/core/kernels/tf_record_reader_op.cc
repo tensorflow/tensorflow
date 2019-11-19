@@ -50,7 +50,7 @@ class TFRecordReader : public ReaderBase {
     return Status::OK();
   }
 
-  Status ReadLocked(string* key, string* value, bool* produced,
+  Status ReadLocked(tstring* key, tstring* value, bool* produced,
                     bool* at_end) override {
     *key = strings::StrCat(current_work(), ":", offset_);
     Status status = reader_->ReadRecord(&offset_, value);

@@ -3,9 +3,8 @@ package(
         "//visibility:public",
     ],
     features = ["-parse_headers"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 cc_binary(
     name = "option_writer_generator",
@@ -40,6 +39,16 @@ cc_library(
 cc_binary(
     name = "writer",
     srcs = ["writer.cc"],
+    deps = [
+        ":writer_lib",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
+cc_binary(
+    name = "writer_test",
+    srcs = ["writer_test.cc"],
     deps = [
         ":writer_lib",
         "//tensorflow/lite:framework",

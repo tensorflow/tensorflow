@@ -101,17 +101,28 @@ Status CompileGraph(const GraphDef& graph_def, const tf2xla::Config& config,
       xla::ClientLibrary::GetOrCreateCompileOnlyClient(cpu_platform)
           .ValueOrDie();
   xla::XlaComputation computation;
-  TF_RETURN_IF_ERROR(
-      ConvertGraphDefToXla(graph_def, config, client, &computation));
+  if (flags.mlir_components == "Bridge") {
+    TF_RETURN_IF_ERROR(
+        ConvertGraphDefToXlaViaMlir(graph_def, config, &computation));
+  } else {
+    if (!flags.mlir_components.empty()) {
+      return errors::Unknown("Unknown mlir_components ", flags.mlir_components);
+    }
+    TF_RETURN_IF_ERROR(
+        ConvertGraphDefToXla(graph_def, config, client, &computation));
+  }
   if (!flags.out_session_module.empty()) {
     TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::HloSnapshot> module,
                         computation.Snapshot());
     // Serialize the HloSnapshot deterministically so that all the outputs of a
     // tf_library genrule are deterministic.
-    string proto;
-    TF_RET_CHECK(SerializeToStringDeterministic(*module, &proto));
+    const size_t size = module->ByteSizeLong();
+    auto serialized = absl::make_unique<char[]>(size);
+    TF_RET_CHECK(
+        SerializeToBufferDeterministic(*module, serialized.get(), size));
     TF_RETURN_IF_ERROR(
-        WriteStringToFile(Env::Default(), flags.out_session_module, proto));
+        WriteStringToFile(Env::Default(), flags.out_session_module,
+                          absl::string_view(serialized.get(), size)));
   }
   xla::cpu::CpuAotCompilationOptions aot_opts(
       flags.target_triple, flags.target_cpu, flags.target_features,

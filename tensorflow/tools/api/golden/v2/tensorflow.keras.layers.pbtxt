@@ -1,6 +1,10 @@
 path: "tensorflow.keras.layers"
 tf_module {
   member {
+    name: "AbstractRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Activation"
     mtype: "<type \'type\'>"
   }
@@ -13,7 +17,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "AdditiveAttention"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "AlphaDropout"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Attention"
     mtype: "<type \'type\'>"
   }
   member {
@@ -233,11 +245,11 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LeakyReLU"
+    name: "LayerNormalization"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LinearModel"
+    name: "LeakyReLU"
     mtype: "<type \'type\'>"
   }
   member {
@@ -402,7 +414,7 @@ tf_module {
   }
   member_method {
     name: "Input"
-    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'shape\', \'batch_size\', \'name\', \'dtype\', \'sparse\', \'tensor\', \'ragged\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'False\', \'None\', \'False\'], "
   }
   member_method {
     name: "add"

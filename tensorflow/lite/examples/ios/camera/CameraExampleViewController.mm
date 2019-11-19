@@ -23,19 +23,12 @@
 #include <iostream>
 #include <queue>
 
-#if TFLITE_USE_CONTRIB_LITE
-#include "tensorflow/contrib/lite/kernels/register.h"
-#include "tensorflow/contrib/lite/model.h"
-#include "tensorflow/contrib/lite/op_resolver.h"
-#include "tensorflow/contrib/lite/string_util.h"
-#else
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/string_util.h"
 #if TFLITE_USE_GPU_DELEGATE
 #include "tensorflow/lite/delegates/gpu/metal_delegate.h"
-#endif
 #endif
 
 #define LOG(x) std::cerr
@@ -393,7 +386,7 @@ void ProcessInputWithQuantizedModel(
 - (void)dealloc {
 #if TFLITE_USE_GPU_DELEGATE
   if (delegate) {
-    DeleteGpuDelegate(delegate);
+    TFLGpuDelegateDelete(delegate);
   }
 #endif
   [self teardownAVCapture];
@@ -417,16 +410,15 @@ void ProcessInputWithQuantizedModel(
   model->error_reporter();
   LOG(INFO) << "resolved reporter";
 
-  tflite::ops::builtin::BuiltinOpResolver resolver;
   LoadLabels(labels_file_name, labels_file_type, &labels);
 
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
 
 #if TFLITE_USE_GPU_DELEGATE
-  GpuDelegateOptions options;
+  TFLGpuDelegateOptions options;
   options.allow_precision_loss = true;
-  options.wait_type = GpuDelegateOptions::WaitType::kActive;
-  delegate = NewGpuDelegate(&options);
+  options.wait_type = TFLGpuDelegateWaitTypeActive;
+  delegate = TFLGpuDelegateCreate(&options);
   interpreter->ModifyGraphWithDelegate(delegate);
 #endif
 

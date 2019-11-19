@@ -18,10 +18,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/cc/ops/parsing_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/graph/benchmark_testlib.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -96,7 +98,7 @@ TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
 
 TEST_F(GraphViewTest, ParseSingleExample) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a = ops::Const<string>(s.WithOpName("a"), "", {});
+  Output a = ops::Const<tstring>(s.WithOpName("a"), "", {});
   Output b = ops::Const<int64>(s.WithOpName("b"), 1, {1, 1});
   ops::ParseSingleExample c(s.WithOpName("c"), a, {b, b}, 2, {"w", "x"},
                             {"y", "z"}, {DT_INT64, DT_INT64}, {{1}, {1}});
@@ -288,6 +290,221 @@ TEST_F(GraphViewTest, GetRegularFaninPortOutOfBounds) {
   auto d_output_control = graph.GetRegularFanin({d_node, Graph::kControlSlot});
   EXPECT_EQ(d_output_control, GraphView::OutputPort());
 }
+
+static void BM_GraphViewConstruction(int iters, int num_nodes,
+                                     int num_edges_per_node) {
+  testing::StopTiming();
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, num_edges_per_node);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    GraphView graph_view(&graph_def);
+  }
+  testing::StopTiming();
+}
+
+BENCHMARK(BM_GraphViewConstruction)
+    ->ArgPair(10, 2)
+    ->ArgPair(100, 2)
+    ->ArgPair(1000, 2)
+    ->ArgPair(10000, 2)
+    ->ArgPair(25000, 2)
+    ->ArgPair(50000, 2)
+    ->ArgPair(100000, 2)
+    ->ArgPair(10, 4)
+    ->ArgPair(100, 4)
+    ->ArgPair(1000, 4)
+    ->ArgPair(10000, 4)
+    ->ArgPair(25000, 4)
+    ->ArgPair(50000, 4)
+    ->ArgPair(100000, 4)
+    ->ArgPair(10, 8)
+    ->ArgPair(100, 8)
+    ->ArgPair(1000, 8)
+    ->ArgPair(10000, 8)
+    ->ArgPair(25000, 8)
+    ->ArgPair(50000, 8)
+    ->ArgPair(100000, 8)
+    ->ArgPair(10, 16)
+    ->ArgPair(100, 16)
+    ->ArgPair(1000, 16)
+    ->ArgPair(10000, 16)
+    ->ArgPair(25000, 16)
+    ->ArgPair(50000, 16)
+    ->ArgPair(100000, 16);
+
+static void BM_GraphViewGetNode(int iters, int num_nodes) {
+  testing::StopTiming();
+  const GraphDef graph_def =
+      test::CreateGraphDef(num_nodes, /*num_edges_per_node=*/16);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    graph_view.GetNode("out");
+  }
+  testing::StopTiming();
+}
+
+BENCHMARK(BM_GraphViewGetNode)
+    ->Arg(10)
+    ->Arg(100)
+    ->Arg(1000)
+    ->Arg(10000)
+    ->Arg(25000)
+    ->Arg(50000)
+    ->Arg(100000);
+
+#define RUN_FANIN_FANOUT_BENCHMARK(name) \
+  BENCHMARK(name)                        \
+      ->ArgPair(10, 10)                  \
+      ->ArgPair(10, 100)                 \
+      ->ArgPair(10, 1000)                \
+      ->ArgPair(10, 10000)               \
+      ->ArgPair(10, 100000)              \
+      ->ArgPair(100, 10)                 \
+      ->ArgPair(100, 100)                \
+      ->ArgPair(100, 1000)               \
+      ->ArgPair(100, 10000)              \
+      ->ArgPair(100, 100000)             \
+      ->ArgPair(1000, 10)                \
+      ->ArgPair(1000, 100)               \
+      ->ArgPair(1000, 1000)              \
+      ->ArgPair(1000, 10000)             \
+      ->ArgPair(1000, 100000)            \
+      ->ArgPair(10000, 10)               \
+      ->ArgPair(10000, 100)              \
+      ->ArgPair(10000, 1000)             \
+      ->ArgPair(10000, 10000)            \
+      ->ArgPair(10000, 100000)           \
+      ->ArgPair(100000, 10)              \
+      ->ArgPair(100000, 100)             \
+      ->ArgPair(100000, 1000)            \
+      ->ArgPair(100000, 10000)           \
+      ->ArgPair(100000, 100000);
+
+static void BM_GraphViewGetFanout(int iters, int num_fanins, int num_fanouts) {
+  testing::StopTiming();
+  const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
+      num_fanins, num_fanouts, num_fanins, num_fanouts,
+      /*fanout_unique_index=*/true);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    const NodeDef* node = graph_view.GetNode("node");
+    graph_view.GetFanout({node, 0});
+  }
+  testing::StopTiming();
+}
+
+RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanout);
+
+static void BM_GraphViewGetFanin(int iters, int num_fanins, int num_fanouts) {
+  testing::StopTiming();
+  const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
+      num_fanins, num_fanouts, num_fanins, num_fanouts,
+      /*fanout_unique_index=*/true);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    const NodeDef* node = graph_view.GetNode("node");
+    graph_view.GetFanin({node, 0});
+  }
+  testing::StopTiming();
+}
+
+RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanin);
+
+static void BM_GraphViewGetRegularFanin(int iters, int num_fanins,
+                                        int num_fanouts) {
+  testing::StopTiming();
+  const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
+      num_fanins, num_fanouts, num_fanins, num_fanouts,
+      /*fanout_unique_index=*/true);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    const NodeDef* node = graph_view.GetNode("node");
+    graph_view.GetRegularFanin({node, 0});
+  }
+  testing::StopTiming();
+}
+
+RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetRegularFanin);
+
+static void BM_GraphViewGetFanouts(int iters, int num_fanins, int num_fanouts) {
+  testing::StopTiming();
+  const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
+      num_fanins, num_fanouts, num_fanins, num_fanouts,
+      /*fanout_unique_index=*/true);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    const NodeDef* node = graph_view.GetNode("node");
+    graph_view.GetFanouts(*node, /*include_controlled_nodes=*/false);
+  }
+  testing::StopTiming();
+}
+
+RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanouts);
+
+static void BM_GraphViewGetFanins(int iters, int num_fanins, int num_fanouts) {
+  testing::StopTiming();
+  const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
+      num_fanins, num_fanouts, num_fanins, num_fanouts,
+      /*fanout_unique_index=*/true);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    const NodeDef* node = graph_view.GetNode("node");
+    graph_view.GetFanins(*node, /*include_controlling_nodes=*/false);
+  }
+  testing::StopTiming();
+}
+
+RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanins);
+
+static void BM_GraphViewGetFanoutEdges(int iters, int num_fanins,
+                                       int num_fanouts) {
+  testing::StopTiming();
+  const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
+      num_fanins, num_fanouts, num_fanins, num_fanouts,
+      /*fanout_unique_index=*/true);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    const NodeDef* node = graph_view.GetNode("node");
+    graph_view.GetFanoutEdges(*node, /*include_controlled_edges=*/false);
+  }
+  testing::StopTiming();
+}
+
+RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFanoutEdges);
+
+static void BM_GraphViewGetFaninEdges(int iters, int num_fanins,
+                                      int num_fanouts) {
+  testing::StopTiming();
+  const GraphDef graph_def = test::CreateFaninFanoutNodeGraph(
+      num_fanins, num_fanouts, num_fanins, num_fanouts,
+      /*fanout_unique_index=*/true);
+  GraphView graph_view(&graph_def);
+
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    const NodeDef* node = graph_view.GetNode("node");
+    graph_view.GetFaninEdges(*node, /*include_controlling_edges=*/false);
+  }
+  testing::StopTiming();
+}
+
+RUN_FANIN_FANOUT_BENCHMARK(BM_GraphViewGetFaninEdges);
 
 }  // namespace
 }  // namespace grappler

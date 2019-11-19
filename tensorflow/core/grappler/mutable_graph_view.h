@@ -84,6 +84,40 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
                     absl::string_view device,
                     absl::Span<const std::pair<string, AttrValue>> attrs);
 
+  // Updates node `from_node_name` name to `to_node_name`. If `to_node_name` is
+  // in use, node `from_node_name` does not exist, or node `from_node_name` has
+  // fanouts and `update_fanouts` is set to false, an error will be returned and
+  // nothing will be modified in the graph.
+  Status UpdateNodeName(absl::string_view from_node_name,
+                        absl::string_view to_node_name, bool update_fanouts);
+
+  // Swap node names `from_node_name` and `to_node_name`. Self loops of one node
+  // are removed by updating the inputs introducing self loops to use the other
+  // node's name. Setting `update_fanouts` to false will exclude other fanouts
+  // from having their inputs updated, but inputs introducing self loops will
+  // always be updated regardless of `update_fanouts.
+  //
+  // Example:
+  //   1. foo(other:3, bar:2, ^bar)
+  //   2. bar(foo:3, other:1, foo:1, ^foo)
+  //   3. other(foo:5, bar:6)
+  //
+  // After calling SwapNodeNames("foo", "bar", false):
+  //   1. bar(other:3, foo:2, ^foo)
+  //   2. foo(bar:3, other:1, bar:1, ^bar)
+  //   3. other(foo:5, bar:6)
+  //
+  // After calling SwapNodeNames("foo", "bar", true):
+  //   1. bar(other:3, foo:2, ^foo)
+  //   2. foo(bar:3, other:1, bar:1, ^bar)
+  //   3. other(bar:5, foo:6)
+  //
+  // If it is not possible to swap node names (i.e. nodes do not exist or Switch
+  // control dependency may be introduced), an error will be returned and
+  // nothing will be modified in the graph.
+  Status SwapNodeNames(absl::string_view from_node_name,
+                       absl::string_view to_node_name, bool update_fanouts);
+
   // Updates all fanouts (input ports fetching output tensors) from
   // `from_node_name` to the `to_node_name`, including control dependencies.
   //
@@ -92,7 +126,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   //   2. foo2(bar:1, other:1)
   //   3. foo3(other:2, ^bar)
   //
-  // After calling ForwardOutputs(bar, new_bar):
+  // After calling UpdateFanouts(bar, new_bar):
   //   1. foo1(new_bar:0, new_bar:1, other:0)
   //   2. foo2(new_bar:1, other:1)
   //   3. foo3(other:2, ^new_bar)
@@ -240,7 +274,7 @@ class MutableGraphView : public internal::GraphViewInternal<GraphDef, NodeDef> {
   //   2. foo2(bar:1, other:1)
   //   3. foo3(other:2, ^bar)
   //
-  // After calling ForwardOutputs(bar, new_bar):
+  // After calling UpdateFanouts(bar, new_bar):
   //   1. foo1(new_bar:0, new_bar:1, other:0)
   //   2. foo2(new_bar:1, other:1)
   //   3. foo3(other:2, ^new_bar)

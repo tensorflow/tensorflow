@@ -21,6 +21,7 @@ from __future__ import print_function
 import colorsys
 import math
 
+from absl.testing import parameterized
 import numpy as np
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
@@ -53,7 +54,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
       inp = GenerateNumpyRandomRGB(shape).astype(nptype)
 
       # Convert to HSV and back, as a batch and individually
-      with self.cached_session() as sess:
+      with self.session() as sess:
         batch0 = array_ops.placeholder(nptype, shape=shape)
         with self.test_scope():
           batch1 = image_ops.rgb_to_hsv(batch0)
@@ -68,8 +69,8 @@ class RGBToHSVTest(xla_test.XLATestCase):
                                                 {batch0: inp})
 
       # Verify that processing batch elements together is the same as separate
-      self.assertAllClose(batch1, join1)
-      self.assertAllClose(batch2, join2)
+      self.assertAllCloseAccordingToType(batch1, join1, half_rtol=0.000002)
+      self.assertAllCloseAccordingToType(batch2, join2, half_rtol=0.000002)
       self.assertAllCloseAccordingToType(
           batch2, inp, bfloat16_atol=0.03, half_rtol=0.02)
 
@@ -77,7 +78,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
     data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     for nptype in self.float_types:
       rgb_np = np.array(data, dtype=nptype).reshape([2, 2, 3]) / 255.
-      with self.cached_session():
+      with self.session():
         placeholder = array_ops.placeholder(nptype)
         with self.test_scope():
           hsv = image_ops.rgb_to_hsv(placeholder)
@@ -96,7 +97,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
           for r, g, b in rgb_flat
       ])
       hsv_np = hsv_np.reshape(4, 4, 4, 3)
-      with self.cached_session():
+      with self.session():
         placeholder = array_ops.placeholder(nptype)
         with self.test_scope():
           hsv_op = image_ops.rgb_to_hsv(placeholder)
@@ -107,7 +108,7 @@ class RGBToHSVTest(xla_test.XLATestCase):
 class AdjustContrastTest(xla_test.XLATestCase):
 
   def _testContrast(self, x_np, y_np, contrast_factor):
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(x_np.dtype, shape=x_np.shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -145,7 +146,7 @@ class AdjustContrastTest(xla_test.XLATestCase):
     return y_np
 
   def _adjustContrastTf(self, x_np, contrast_factor):
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(np.float32)
       with self.test_scope():
         y = image_ops.adjust_contrast(x, contrast_factor)
@@ -179,7 +180,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     y_data = [0, 13, 1, 54, 226, 59, 8, 234, 150, 255, 39, 1]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -197,7 +198,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -215,7 +216,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     y_data = [13, 0, 11, 226, 54, 221, 234, 8, 92, 1, 217, 255]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       flt_x = image_ops.convert_image_dtype(x, dtypes.float32)
       with self.test_scope():
@@ -243,7 +244,7 @@ class AdjustHueTest(xla_test.XLATestCase):
     return y_v.reshape(x_np.shape)
 
   def _adjustHueTf(self, x_np, delta_h):
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(dtypes.float32)
       with self.test_scope():
         y = gen_image_ops.adjust_hue(x, delta_h)
@@ -323,7 +324,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     y_rgb_data = [6, 9, 13, 140, 180, 226, 135, 121, 234, 172, 255, 128]
     y_np = np.array(y_rgb_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       y = self._adjust_saturation(x, saturation_factor)
       y_tf = y.eval({x: x_np})
@@ -338,7 +339,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
     y_data = [0, 5, 13, 0, 106, 226, 30, 0, 234, 89, 255, 0]
     y_np = np.array(y_data, dtype=np.uint8).reshape(x_shape)
 
-    with self.cached_session():
+    with self.session():
       x = array_ops.placeholder(x_np.dtype, shape=x_shape)
       y = self._adjust_saturation(x, saturation_factor)
       y_tf = y.eval({x: x_np})
@@ -377,7 +378,7 @@ class AdjustSaturationTest(xla_test.XLATestCase):
         "gb_same",
         "rgb_same",
     ]
-    with self.cached_session():
+    with self.session():
       for x_shape in x_shapes:
         for test_style in test_styles:
           x_np = np.random.rand(*x_shape) * 255.
@@ -416,7 +417,7 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
                                       align_corners=True):
     if expected is None:
       self.fail("expected must be specified")
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       image = array_ops.placeholder(image_np.dtype)
       resized = gen_image_ops.resize_nearest_neighbor(
           image, target_shape, align_corners=align_corners)
@@ -489,11 +490,11 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
     self._assertForwardOpMatchesExpected(
         np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32), [9, 9],
         expected=np.array(
-            [[1, 2, 2, 2, 2, 3, 3, 3, 3], [4, 5, 5, 5, 5, 6, 6, 6, 6],
-             [4, 5, 5, 5, 5, 6, 6, 6, 6], [4, 5, 5, 5, 5, 6, 6, 6, 6],
-             [4, 5, 5, 5, 5, 6, 6, 6, 6], [7, 8, 8, 8, 8, 9, 9, 9, 9],
-             [7, 8, 8, 8, 8, 9, 9, 9, 9], [7, 8, 8, 8, 8, 9, 9, 9, 9],
-             [7, 8, 8, 8, 8, 9, 9, 9, 9]],
+            [[1, 1, 2, 2, 2, 2, 3, 3, 3], [1, 1, 2, 2, 2, 2, 3, 3, 3],
+             [4, 4, 5, 5, 5, 5, 6, 6, 6], [4, 4, 5, 5, 5, 5, 6, 6, 6],
+             [4, 4, 5, 5, 5, 5, 6, 6, 6], [4, 4, 5, 5, 5, 5, 6, 6, 6],
+             [7, 7, 8, 8, 8, 8, 9, 9, 9], [7, 7, 8, 8, 8, 8, 9, 9, 9],
+             [7, 7, 8, 8, 8, 8, 9, 9, 9]],
             dtype=np.float32))
 
   def testAlignCorners3x3To12x12(self):
@@ -513,8 +514,29 @@ class ResizeNearestNeighborTest(xla_test.XLATestCase):
                            [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
                           dtype=np.float32))
 
+  def testAlignCorners3x3To12x12_uint8(self):
+    # TODO(b/72099414): enable the test for TPU when the issue is fixed.
+    if (self.device not in ["XLA_GPU", "XLA_CPU"]):
+      return
+    # Ensure that resize with convolution works on XLA/GPU for integer types
+    self._assertForwardOpMatchesExpected(
+        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.uint8), [12, 12],
+        expected=np.array([[1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [1, 1, 1, 2, 2, 2, 2, 2, 2, 3, 3, 3],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9],
+                           [7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9]],
+                          dtype=np.uint8))
 
-class ResizeBilinearTest(xla_test.XLATestCase):
+
+class ResizeBilinearTest(parameterized.TestCase, xla_test.XLATestCase):
 
   def _assertForwardOpMatchesExpected(self,
                                       image_np,
@@ -524,27 +546,88 @@ class ResizeBilinearTest(xla_test.XLATestCase):
                                       align_corners=True):
     if expected is None:
       self.fail("expected must be specified")
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       image = array_ops.placeholder(image_np.dtype)
       resized = gen_image_ops.resize_bilinear(
           image, target_shape, align_corners=align_corners)
       out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
       if large_tolerance:
         self.assertAllClose(
-            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.03, atol=0.1)
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.1, atol=0.01)
       else:
         self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
+
+  @parameterized.named_parameters(
+      ("1x2To3x3", 1, 2, 3, 3),
+      ("2x2To1x1", 2, 2, 1, 1),
+      ("2x2To3x3", 2, 2, 3, 3),
+      ("3x3To2x2", 3, 3, 2, 2),
+      ("4x4To3x3", 4, 4, 3, 3),
+      ("3x3To9x9", 3, 3, 9, 9),
+      ("4x4To8x8", 4, 4, 8, 8),
+      ("8x8To16x16", 8, 8, 16, 16),
+      ("64x64To512x512", 64, 64, 512, 512),
+      ("80x80To512x512", 80, 80, 512, 512),
+      ("96x96To512x512", 96, 96, 512, 512),
+      ("112x112To512x512", 112, 112, 512, 512),
+      ("256x48To2048x384", 256, 48, 2048, 384),
+      ("320x60To2048x384", 320, 60, 2048, 384),
+      ("448x84To2048x384", 448, 84, 2048, 384),
+      ("69x69To545x545", 69, 69, 545, 545),
+      ("86x86To545x545", 86, 86, 545, 545),
+      ("103x103To545x545", 103, 103, 545, 545),
+      ("120x120To545x545", 120, 120, 545, 545),
+      ("57x57To456x456", 57, 57, 456, 456),
+      ("72x72To456x456", 72, 72, 456, 456),
+      ("86x86To456x456", 86, 86, 456, 456),
+      ("100x100To456x456", 100, 100, 456, 456),
+      ("64x64To224x224", 64, 64, 224, 224),
+      ("128x128To224x224", 128, 128, 224, 224),
+      ("256x256To224x224", 256, 256, 224, 224),
+      ("512x512To224x224", 512, 512, 224, 224),
+      ("64x64To299x299", 64, 64, 299, 299),
+      ("128x128To299x299", 128, 128, 299, 299),
+      ("256x256To299x299", 256, 256, 299, 299),
+      ("512x512To299x299", 512, 512, 299, 299),
+      ("224x224To224x224", 224, 224, 224, 224),
+      # This test is disabled because it is very slow. It is slow because
+      # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
+      # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
+  )
+
+  def test(self, src_y, src_x, dst_y, dst_x):
+    max_y = max(src_y - 1, 1) * (dst_y - 1) + 1
+    max_x = max(src_x - 1, 1) * (dst_x - 1) + 1
+
+    input_data = [
+        range(y * max_x, (y + 1) * max_x, max(dst_x - 1, 1))
+        for y in range(0, max_y, max(dst_y - 1, 1))
+    ]
+
+    result = [
+        range(y * max_x, (y + 1) * max_x, max(src_x - 1, 1))
+        for y in range(0, max_y, max(src_y - 1, 1))
+    ]
+
+    self._assertForwardOpMatchesExpected(
+        np.array(input_data, dtype=np.float32), [dst_y, dst_x],
+        expected=np.array(result, dtype=np.float32),
+        large_tolerance=True)
+
+
+class ResizeBilinearGradTest(parameterized.TestCase, xla_test.XLATestCase):
 
   def _assertBackwardOpMatchesExpected(self,
                                        grads_np,
                                        input_shape=None,
                                        dtype=None,
-                                       expected=None):
+                                       expected=None,
+                                       large_tolerance=False):
     if input_shape is None:
       self.fail("input_shape must be specified")
     if expected is None:
       self.fail("expected must be specified")
-    with self.cached_session() as sess, self.test_scope():
+    with self.session() as sess, self.test_scope():
       dtype = dtype or np.float32
       grads = array_ops.placeholder(np.float32)
       resized = gen_image_ops.resize_bilinear_grad(
@@ -552,141 +635,88 @@ class ResizeBilinearTest(xla_test.XLATestCase):
           np.zeros([1, input_shape[0], input_shape[1], 1], dtype=dtype),
           align_corners=True)
       out = sess.run(resized, {grads: grads_np[np.newaxis, :, :, np.newaxis]})
-      self.assertAllCloseAccordingToType(expected[np.newaxis, :, :, np.newaxis],
-                                         out)
+      if large_tolerance:
+        self.assertAllClose(
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.1, atol=0.01)
+      else:
+        self.assertAllCloseAccordingToType(
+            expected[np.newaxis, :, :, np.newaxis], out)
 
-  def testAlignCorners1x2To3x3(self):
-    for dtype in self.float_types:
-      self._assertForwardOpMatchesExpected(
-          np.array([[1, 2]], dtype=dtype), [3, 3],
-          expected=np.array([[1, 1.5, 2], [1, 1.5, 2], [1, 1.5, 2]],
-                            dtype=np.float32))
+  @parameterized.named_parameters(
+      ("1x3To1x3", 1, 2, 1, 3),
+      ("1x2To3x2", 1, 2, 3, 2),
+      ("1x2To3x3", 1, 2, 3, 3),
+      ("1x1To4x1", 1, 1, 4, 1),
+      ("1x1To5x1", 1, 1, 5, 1),
+      ("2x2To1x1", 2, 2, 1, 1),
+      ("2x2To3x3", 2, 2, 3, 3),
+      ("3x3To2x2", 3, 3, 2, 2),
+      ("4x4To3x3", 4, 4, 3, 3),
+      ("3x3To9x9", 3, 3, 9, 9),
+      ("4x4To8x8", 4, 4, 8, 8),
+      ("8x8To16x16", 8, 8, 16, 16),
+      ("2x64To2x512", 2, 64, 2, 512),
+      ("64x64To512x512", 64, 64, 512, 512),
+      ("80x80To512x512", 80, 80, 512, 512),
+      ("96x96To512x512", 96, 96, 512, 512),
+      ("112x112To512x512", 112, 112, 512, 512),
+      # ("Disabled_256x48To2048x384", 256, 48, 2048, 384),
+      # ("Disabled_320x60To2048x384", 320, 60, 2048, 384),
+      # ("Disabled_448x84To2048x384", 448, 84, 2048, 384),
+      ("69x69To545x545", 69, 69, 545, 545),
+      ("86x86To545x545", 86, 86, 545, 545),
+      ("103x103To545x545", 103, 103, 545, 545),
+      ("120x120To545x545", 120, 120, 545, 545),
+      ("57x57To456x456", 57, 57, 456, 456),
+      ("72x72To456x456", 72, 72, 456, 456),
+      ("86x86To456x456", 86, 86, 456, 456),
+      ("100x100To456x456", 100, 100, 456, 456),
+      # This test is disabled because it is very slow. It is slow because
+      # 383 is prime, 383 and 2047 are coprime, and 2048 is large.
+      # ("Disabled_384x72To2048x384", 384, 72, 2048, 384),
+  )
 
-  def testAlignCorners1x2To3x3Grad(self):
-    for dtype in self.float_types:
-      self._assertBackwardOpMatchesExpected(
-          np.array([[1, 2], [3, 4], [5, 6]], dtype=np.float32),
-          input_shape=[1, 2],
-          dtype=dtype,
-          expected=np.array([[9, 12]], dtype=np.float32))
+  def test(self, src_y, src_x, dst_y, dst_x):
+    def GetRow(src, dst):
+      if src == 1:
+        return np.array([[max(dst**2 - dst, 1)]])
+      row = [0] * src
+      for i in range(0, (dst - 1) * max(src - 1, 1) + 1, src - 1):
+        prev = int(math.floor(i / max(dst - 1, 1)))
+        row[prev] += max(dst - 1, 1) - i % max(dst - 1, 1)
+        if prev + 1 < src:
+          row[prev + 1] += i % max(dst - 1, 1)
+      return np.array([row])
 
-  def testAlignCorners2x2To1x1(self):
-    for dtype in self.float_types:
-      self._assertForwardOpMatchesExpected(
-          np.array([[1, 2], [3, 4]], dtype=dtype), [1, 1],
-          expected=np.array([[1]], dtype=np.float32))
-
-  def testAlignCorners2x2To1x1Grad(self):
-    for dtype in self.float_types:
-      self._assertBackwardOpMatchesExpected(
-          np.array([[7]], dtype=np.float32),
-          input_shape=[2, 2],
-          dtype=dtype,
-          expected=np.array([[7, 0], [0, 0]], dtype=np.float32))
-
-  def testAlignCorners2x2To3x3(self):
-    for dtype in self.float_types:
-      self._assertForwardOpMatchesExpected(
-          np.array([[1, 2], [3, 4]], dtype=dtype), [3, 3],
-          expected=np.array([[1, 1.5, 2], [2, 2.5, 3], [3, 3.5, 4]],
-                            dtype=np.float32))
-
-  def testAlignCorners2x2To3x3Grad(self):
+    input_element = max(dst_x - 1, 1) * max(dst_y - 1, 1)
+    input_data = [[input_element] * dst_x] * dst_y
+    result = GetRow(src_x, dst_x) * np.transpose(GetRow(src_y, dst_y))
     self._assertBackwardOpMatchesExpected(
-        np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32),
-        input_shape=[2, 2],
-        expected=np.array([[5.25, 8.25], [14.25, 17.25]], dtype=np.float32))
-
-  def testAlignCorners3x3To2x2(self):
-    for dtype in self.float_types:
-      self._assertForwardOpMatchesExpected(
-          np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtype), [2, 2],
-          expected=np.array([[1, 3], [7, 9]], dtype=np.float32))
-
-  def testAlignCorners3x3To2x2Grad(self):
-    for dtype in self.float_types:
-      self._assertBackwardOpMatchesExpected(
-          np.array([[7, 13], [22, 4]], dtype=np.float32),
-          input_shape=[3, 3],
-          dtype=dtype,
-          expected=np.array([[7, 0, 13], [0, 0, 0], [22, 0, 4]],
-                            dtype=np.float32))
-
-  def testAlignCorners4x4To3x3(self):
-    for dtype in self.float_types:
-      self._assertForwardOpMatchesExpected(
-          np.array(
-              [[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16]],
-              dtype=dtype), [3, 3],
-          expected=np.array([[1, 2.5, 4], [7, 8.5, 10], [13, 14.5, 16]],
-                            dtype=np.float32))
-
-  def testAlignCorners4x4To3x3Grad(self):
-    for dtype in self.float_types:
-      self._assertBackwardOpMatchesExpected(
-          np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=np.float32),
-          input_shape=[4, 4],
-          dtype=dtype,
-          expected=np.array([[1, 1, 1, 3], [2, 1.25, 1.25, 3],
-                             [2, 1.25, 1.25, 3], [7, 4, 4, 9]],
-                            dtype=np.float32))
-
-  def testAlignCorners3x3To9x9(self):
-    for dtype in self.float_types:
-      self._assertForwardOpMatchesExpected(
-          np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]], dtype=dtype), [9, 9],
-          expected=np.array(
-              [[1.0, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00],
-               [1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75],
-               [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50],
-               [3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25],
-               [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00],
-               [4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75],
-               [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50],
-               [6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25],
-               [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
-              dtype=np.float32))
-
-  def testAlignCorners3x3To9x9Grad(self):
-    for dtype in self.float_types:
-      self._assertBackwardOpMatchesExpected(
-          np.array([[1.00, 1.25, 1.50, 1.75, 2.00, 2.25, 2.50, 2.75, 3.00],
-                    [1.75, 2.00, 2.25, 2.50, 2.75, 3.00, 3.25, 3.50, 3.75],
-                    [2.50, 2.75, 3.00, 3.25, 3.50, 3.75, 4.00, 4.25, 4.50],
-                    [3.25, 3.50, 3.75, 4.00, 4.25, 4.50, 4.75, 5.00, 5.25],
-                    [4.00, 4.25, 4.50, 4.75, 5.00, 5.25, 5.50, 5.75, 6.00],
-                    [4.75, 5.00, 5.25, 5.50, 5.75, 6.00, 6.25, 6.50, 6.75],
-                    [5.50, 5.75, 6.00, 6.25, 6.50, 6.75, 7.00, 7.25, 7.50],
-                    [6.25, 6.50, 6.75, 7.00, 7.25, 7.50, 7.75, 8.00, 8.25],
-                    [7.00, 7.25, 7.50, 7.75, 8.00, 8.25, 8.50, 8.75, 9.00]],
-                   dtype=np.float32),
-          input_shape=[3, 3],
-          dtype=dtype,
-          expected=np.array(
-              [[12.5, 27.5, 21.875], [42.5, 80.0, 57.5], [40.625, 72.5, 50]],
-              dtype=np.float32))
-
-  def testAlignCorners4x4To8x8(self):
-    self._assertForwardOpMatchesExpected(
-        (np.array([[0, 1, 2, 3]], dtype=np.float32) + np.array(
-            [[0], [1], [2], [3]], dtype=np.float32)) * 7.0, [8, 8],
-        expected=3 *
-        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
-            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)),
+        np.array(input_data, dtype=np.float32), [src_y, src_x],
+        expected=np.array(result, dtype=np.float32),
         large_tolerance=True)
 
-  def testAlignCorners8x8To16x16(self):
-    self._assertForwardOpMatchesExpected(
-        (np.array([[0, 1, 2, 3, 4, 5, 6, 7]], dtype=np.float32) + np.array(
-            [[0], [1], [2], [3], [4], [5], [6], [7]], dtype=np.float32)) * 15.0,
-        [16, 16],
-        expected=7 *
-        (np.array([[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]],
-                  dtype=np.float32) +
-         np.array([[0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11],
-                   [12], [13], [14], [15]],
-                  dtype=np.float32)),
-        large_tolerance=True)
+
+class ResizeBilinearNonAlignCornersTest(xla_test.XLATestCase):
+
+  def _assertForwardOpMatchesExpected(self,
+                                      image_np,
+                                      target_shape,
+                                      expected=None,
+                                      large_tolerance=False,
+                                      align_corners=True):
+    if expected is None:
+      self.fail("expected must be specified")
+    with self.session() as sess, self.test_scope():
+      image = array_ops.placeholder(image_np.dtype)
+      resized = gen_image_ops.resize_bilinear(
+          image, target_shape, align_corners=align_corners)
+      out = sess.run(resized, {image: image_np[np.newaxis, :, :, np.newaxis]})
+      if large_tolerance:
+        self.assertAllClose(
+            expected[np.newaxis, :, :, np.newaxis], out, rtol=0.1, atol=0.01)
+      else:
+        self.assertAllClose(expected[np.newaxis, :, :, np.newaxis], out)
 
   def testNonAlignCorners3x2To6x4(self):
     input_data = [[64, 32], [32, 64], [50, 100]]
@@ -722,7 +752,7 @@ class ResizeBilinearTest(xla_test.XLATestCase):
     for dtype in self.float_types:
       input_image = np.array(input_data, dtype=dtype)
       expected = np.array(expected_data, dtype=dtype)
-      with self.cached_session() as sess, self.test_scope():
+      with self.session() as sess, self.test_scope():
         image = array_ops.placeholder(input_image.dtype)
         resized = gen_image_ops.resize_bilinear(
             image, [6, 4], align_corners=False)
@@ -741,7 +771,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
     iou_threshold_np = np.array(0.5, dtype=np.float32)
     score_threshold_np = np.array(0.0, dtype=np.float32)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
       scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
       iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
@@ -779,7 +809,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
     iou_threshold_np = np.array(0.5, dtype=np.float32)
     score_threshold_np = np.array(0.0, dtype=np.float32)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
       scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
       iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
@@ -821,7 +851,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
     iou_threshold_np = np.array(0.5, dtype=np.float32)
     score_threshold_np = np.array(0.4, dtype=np.float32)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
       scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
       iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
@@ -864,7 +894,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
     iou_threshold_np = np.array(0.5, dtype=np.float32)
     score_threshold_np = np.array(0.4, dtype=np.float32)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
       scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
       iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,
@@ -905,7 +935,7 @@ class NonMaxSuppressionTest(xla_test.XLATestCase):
     iou_threshold_np = np.array(0.5, dtype=np.float32)
     score_threshold_np = np.array(0.1, dtype=np.float32)
 
-    with self.cached_session() as sess:
+    with self.session() as sess:
       boxes = array_ops.placeholder(boxes_np.dtype, shape=boxes_np.shape)
       scores = array_ops.placeholder(scores_np.dtype, shape=scores_np.shape)
       iou_threshold = array_ops.placeholder(iou_threshold_np.dtype,

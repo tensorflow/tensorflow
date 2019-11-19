@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.tensorflow.lite.nnapi.NnApiDelegate;
 
 /**
  * An internal wrapper that wraps native interpreter and controls model execution.
@@ -69,9 +70,6 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this.interpreterHandle = createInterpreter(modelHandle, errorHandle, options.numThreads);
     this.inputTensors = new Tensor[getInputCount(interpreterHandle)];
     this.outputTensors = new Tensor[getOutputCount(interpreterHandle)];
-    if (options.useNNAPI != null) {
-      setUseNNAPI(options.useNNAPI.booleanValue());
-    }
     if (options.allowFp16PrecisionForFp32 != null) {
       allowFp16PrecisionForFp32(
           interpreterHandle, options.allowFp16PrecisionForFp32.booleanValue());
@@ -79,10 +77,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     if (options.allowBufferHandleOutput != null) {
       allowBufferHandleOutput(interpreterHandle, options.allowBufferHandleOutput.booleanValue());
     }
-    for (Delegate delegate : options.delegates) {
-      applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
-      delegates.add(delegate);
-    }
+    applyDelegates(options);
     allocateTensors(interpreterHandle, errorHandle);
     this.isMemoryAllocated = true;
   }
@@ -112,6 +107,14 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     outputsIndexes = null;
     isMemoryAllocated = false;
     delegates.clear();
+    for (AutoCloseable ownedDelegate : ownedDelegates) {
+      try {
+        ownedDelegate.close();
+      } catch (Exception e) {
+        System.err.println("Failed to close flex delegate: " + e);
+      }
+    }
+    ownedDelegates.clear();
   }
 
   /** Sets inputs, runs model inference and returns outputs. */
@@ -165,7 +168,7 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     this.inferenceDurationNanoseconds = inferenceDurationNanoseconds;
   }
 
-  private static native boolean run(long interpreterHandle, long errorHandle);
+  private static native void run(long interpreterHandle, long errorHandle);
 
   /** Resizes dimensions of a specific input. */
   void resizeInput(int idx, int[] dims) {
@@ -191,6 +194,10 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   void modifyGraphWithDelegate(Delegate delegate) {
     applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
     delegates.add(delegate);
+  }
+
+  void resetVariableTensors() {
+    resetVariableTensors(interpreterHandle, errorHandle);
   }
 
   /** Gets index of an input given its name. */
@@ -309,6 +316,60 @@ final class NativeInterpreterWrapper implements AutoCloseable {
     return outputTensor;
   }
 
+  private void applyDelegates(Interpreter.Options options) {
+    // First apply the flex delegate if necessary. This ensures the graph is fully resolved before
+    // applying other delegates.
+    boolean originalGraphHasUnresolvedFlexOp = hasUnresolvedFlexOp(interpreterHandle);
+    if (originalGraphHasUnresolvedFlexOp) {
+      Delegate optionalFlexDelegate = maybeCreateFlexDelegate(options.delegates);
+      if (optionalFlexDelegate != null) {
+        ownedDelegates.add((AutoCloseable) optionalFlexDelegate);
+        applyDelegate(interpreterHandle, errorHandle, optionalFlexDelegate.getNativeHandle());
+      }
+    }
+
+    // Now apply the user-supplied delegates.
+    try {
+      for (Delegate delegate : options.delegates) {
+        applyDelegate(interpreterHandle, errorHandle, delegate.getNativeHandle());
+        delegates.add(delegate);
+      }
+      if (options.useNNAPI != null && options.useNNAPI.booleanValue()) {
+        NnApiDelegate optionalNnApiDelegate = new NnApiDelegate();
+        ownedDelegates.add(optionalNnApiDelegate);
+        applyDelegate(interpreterHandle, errorHandle, optionalNnApiDelegate.getNativeHandle());
+      }
+    } catch (IllegalArgumentException e) {
+      // Suppress exceptions where a delegate fails to apply after the flex delegate is successfuly
+      // applied. This can be a common occurrence, as the flex delegate makes the graph dynamic,
+      // which is typically unsupported by most delegates (e.g., NNAPI, GPU delegates). We should
+      // still log an error to indicate that the delegate application was a no-op.
+      // TODO(b/142678372): Fix the flex delegate to not unconditionally mark graphs as dynamic.
+      boolean shouldSuppressException =
+          originalGraphHasUnresolvedFlexOp && !hasUnresolvedFlexOp(interpreterHandle);
+      if (!shouldSuppressException) {
+        throw e;
+      }
+      System.err.println("Ignoring failed delegate application: " + e);
+    }
+  }
+
+  private static Delegate maybeCreateFlexDelegate(List<Delegate> delegates) {
+    try {
+      Class<?> clazz = Class.forName("org.tensorflow.lite.flex.FlexDelegate");
+      // No need to create the Flex delegate if one has already been provided.
+      for (Delegate delegate : delegates) {
+        if (clazz.isInstance(delegate)) {
+          return null;
+        }
+      }
+      return (Delegate) clazz.getConstructor().newInstance();
+    } catch (Exception e) {
+      // The error will propagate when tensors are allocated.
+      return null;
+    }
+  }
+
   private static native int getOutputDataType(long interpreterHandle, int outputIdx);
 
   private static native int getOutputQuantizationZeroPoint(long interpreterHandle, int outputIdx);
@@ -341,7 +402,12 @@ final class NativeInterpreterWrapper implements AutoCloseable {
   // delegates for safety.
   private final List<Delegate> delegates = new ArrayList<>();
 
+  // List of owned delegates that must be closed when the interpreter is closed.
+  private final List<AutoCloseable> ownedDelegates = new ArrayList<>();
+
   private static native long allocateTensors(long interpreterHandle, long errorHandle);
+
+  private static native boolean hasUnresolvedFlexOp(long interpreterHandle);
 
   private static native int getInputTensorIndex(long interpreterHandle, int inputIdx);
 
@@ -373,6 +439,8 @@ final class NativeInterpreterWrapper implements AutoCloseable {
 
   private static native void applyDelegate(
       long interpreterHandle, long errorHandle, long delegateHandle);
+
+  private static native void resetVariableTensors(long interpreterHandle, long errorHandle);
 
   private static native void delete(long errorHandle, long modelHandle, long interpreterHandle);
 

@@ -226,6 +226,16 @@ Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
 // Shape function for MatMul-like operations.
 Status MatMulShape(shape_inference::InferenceContext* c);
 
+// Shape function for Batched MatMul-like operations with broadcasting across
+// batch dimensions.
+Status BatchMatMulV2Shape(shape_inference::InferenceContext* c);
+
+// Shape function for BatchMatMul-like operations
+Status BatchMatMulShape(shape_inference::InferenceContext* c);
+
+// Shape function for Einsum.
+Status EinsumShape(shape_inference::InferenceContext* c);
+
 // Shape function for BiasAdd-like operations.
 Status BiasAddShape(shape_inference::InferenceContext* c);
 
@@ -251,8 +261,23 @@ Status AvgPoolShape(shape_inference::InferenceContext* c);
 // Shape function for FusedBatchNorm and FusedBatchNormV2 operations.
 Status FusedBatchNormShape(shape_inference::InferenceContext* c);
 
+// Shape function for FusedBatchNormV3 operations.
+Status FusedBatchNormV3Shape(shape_inference::InferenceContext* c);
+
+// Shape function for _FusedBatchNormEx operations.
+Status FusedBatchNormExShape(shape_inference::InferenceContext* c);
+
 // Shape function for FusedBatchNormGrad and FusedBatchNormGradV2 operations.
 Status FusedBatchNormGradShape(shape_inference::InferenceContext* c);
+
+// Shape function for MatrixDiagPartV2 and MatrixDiagPartV3 operations.
+Status MatrixDiagPartV2Shape(shape_inference::InferenceContext* c);
+
+// Shape function for MatrixDiagV2 and MatrixDiagV3 operations.
+Status MatrixDiagV2Shape(shape_inference::InferenceContext* c);
+
+// Shape function for MatrixSetDiagV2 and MatrixSetDiagV3 operations.
+Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPool-like operations.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
@@ -269,6 +294,9 @@ Status UnknownShape(shape_inference::InferenceContext* c);
 // Shape function for reduction operations.
 Status ReductionShape(shape_inference::InferenceContext* c);
 
+// Shape function for unsorted segment operations.
+Status UnsortedSegmentReductionShapeFn(InferenceContext* c);
+
 // Shape function for concat operations.
 // <num_inputs_to_concat> is the number of inputs to concatenate and are taken
 // from inputs
@@ -279,12 +307,15 @@ Status ConcatShape(shape_inference::InferenceContext* c,
 // Shape function for concat operations.
 Status ConcatV2Shape(shape_inference::InferenceContext* c);
 
+Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat);
+
 // Shape function for binary operators that broadcast their inputs
 // and with output to output_index.
 // Note: out cannot be NULL.
 Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
                                             ShapeHandle shape_x,
                                             ShapeHandle shape_y,
+                                            bool incompatible_shape_error,
                                             ShapeHandle* out);
 
 // Shape function for binary operators that broadcast their inputs
@@ -292,8 +323,8 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
 inline Status BroadcastBinaryOpOutputShapeFn(InferenceContext* c,
                                              int output_index) {
   ShapeHandle out;
-  TF_RETURN_IF_ERROR(
-      BroadcastBinaryOpOutputShapeFnHelper(c, c->input(0), c->input(1), &out));
+  TF_RETURN_IF_ERROR(BroadcastBinaryOpOutputShapeFnHelper(
+      c, c->input(0), c->input(1), true, &out));
   c->set_output(output_index, out);
   return Status::OK();
 }
@@ -314,6 +345,12 @@ Status SliceShape(shape_inference::InferenceContext* c);
 // shapes. This mimics SparseTensor.__init__ in python/framework/ops.py.
 Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
                             ShapeHandle values_shape, ShapeHandle shape_shape);
+
+Status ValidateVariableResourceHandle(
+    InferenceContext* c, std::vector<ShapeAndType>* shape_and_type);
+
+// Shape function for GatherNd operations.
+Status GatherNdShape(InferenceContext* c);
 
 // Shape function for ScatterNd update/add/sub/... operations.
 Status ScatterNdUpdateShape(InferenceContext* c);

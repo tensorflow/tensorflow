@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for debugger functionalities in tf.Session with grpc:// URLs.
+"""Tests for debugger functionalities in tf.compat.v1.Session with grpc:// URLs.
 
 This test focus on grpc:// debugging of distributed (gRPC) sessions.
 """
@@ -61,7 +61,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     tf_logging.info("cluster_spec: %s", cluster_spec)
 
     server_bin = test.test_src_dir_path(
-        "tools/dist_test/server/grpc_tensorflow_server")
+        "python/debug/grpc_tensorflow_server.par")
 
     cls.server_target = "grpc://localhost:%d" % worker_port
 
@@ -69,6 +69,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     cls.server_procs["worker"] = subprocess.Popen(
         [
             server_bin,
+            "--logtostderr",
             "--cluster_spec=%s" % cluster_spec,
             "--job_name=worker",
             "--task_id=0",
@@ -92,7 +93,10 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   def tearDownClass(cls):
     for key in cls.server_procs:
       cls.server_procs[key].terminate()
-    cls.debug_server.stop_server().wait()
+    try:
+      cls.debug_server.stop_server().wait()
+    except ValueError:
+      pass
     cls.debug_server_thread.join()
 
   def setUp(self):

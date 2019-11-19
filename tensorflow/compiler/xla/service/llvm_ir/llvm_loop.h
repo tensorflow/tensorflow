@@ -43,6 +43,9 @@ enum class UnrollMode {
 // A class for constructing a for-loop in LLVM IR.
 class ForLoop {
  public:
+  ForLoop(const ForLoop&) = delete;
+  ForLoop& operator=(const ForLoop&) = delete;
+
   // Emit a for-loop at the current insert point of the given IRBuilder.
   //
   // start_index and end_index are the loop bounds (end_index is not inclusive).
@@ -169,18 +172,11 @@ class ForLoop {
   llvm::Value* indvar_;
   UnrollMode unroll_mode_;
   bool prevent_vectorization_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ForLoop);
 };
 
 // A simple class for constructing nested for-loops.
 class ForLoopNest {
  public:
-  explicit ForLoopNest(llvm::IRBuilder<>* b, llvm::Type* index_ty = nullptr)
-      : ForLoopNest(/*name=*/"", b) {
-    SetIndexType(index_ty);
-  }
-
   ForLoopNest(absl::string_view name, llvm::IRBuilder<>* b,
               llvm::Type* index_ty = nullptr)
       : name_(name),
@@ -190,6 +186,8 @@ class ForLoopNest {
         b_(b) {
     SetIndexType(index_ty);
   }
+  ForLoopNest(const ForLoopNest&) = delete;
+  ForLoopNest& operator=(const ForLoopNest&) = delete;
 
   // Adds a loop to the nest. If no loop has been added yet then emit a loop at
   // the current insert point of the given builder. If one or more loops have
@@ -241,7 +239,7 @@ class ForLoopNest {
   // The return value is an index with the induction variables. The
   // size equals the rank of shape and there is a null for each
   // dimension that is not in "dimensions".
-  IrArray::Index AddLoopsForShapeOnDimensions(
+  std::vector<llvm::Value*> AddLoopsForShapeOnDimensions(
       const Shape& shape, absl::Span<const int64> dimensions,
       absl::string_view suffix);
 
@@ -252,9 +250,9 @@ class ForLoopNest {
   // dimensions of the index are filled except for 'dimension_to_skip'.
   // name_suffix is the string to append to the names of LLVM constructs (eg,
   // basic blocks) constructed by this method.
-  IrArray::Index EmitOperandArrayLoopNest(const llvm_ir::IrArray& operand_array,
-                                          int64 dimension_to_skip,
-                                          absl::string_view name_suffix);
+  std::vector<llvm::Value*> EmitOperandArrayLoopNest(
+      const llvm_ir::IrArray& operand_array, int64 dimension_to_skip,
+      absl::string_view name_suffix);
 
   // Convenience methods which return particular basic blocks of the outermost
   // or innermost loops. These methods return nullptr if no loops have been
@@ -289,8 +287,6 @@ class ForLoopNest {
   llvm::IRBuilder<>* b_;
 
   llvm::Type* index_type_;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(ForLoopNest);
 };
 
 }  // namespace llvm_ir

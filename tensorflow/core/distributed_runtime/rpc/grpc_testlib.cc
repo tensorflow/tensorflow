@@ -25,6 +25,15 @@ namespace test {
 
 Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
                                     std::unique_ptr<TestCluster>* out_cluster) {
+  string server_path =
+      strings::StrCat(testing::TensorFlowSrcRoot(),
+                      "/core/distributed_runtime/rpc/grpc_testlib_server");
+  return MakeTestCluster(server_path, options, n, out_cluster);
+}
+
+Status TestCluster::MakeTestCluster(const string& binary_path,
+                                    const SessionOptions& options, int n,
+                                    std::unique_ptr<TestCluster>* out_cluster) {
   CHECK_GE(n, 1);
   std::unique_ptr<TestCluster> ret(new TestCluster);
 
@@ -37,7 +46,7 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
   }
 
   const string tf_jobs = strings::StrCat("--tf_jobs=localhost|",
-                                         str_util::Join(ret->targets_, ";"));
+                                         absl::StrJoin(ret->targets_, ";"));
 
   int num_cpus = 1;
   int num_gpus = 0;
@@ -51,15 +60,11 @@ Status TestCluster::MakeTestCluster(const SessionOptions& options, int n,
   }
 
   for (int i = 0; i < n; ++i) {
-    string server_file =
-        strings::StrCat(testing::TensorFlowSrcRoot(),
-                        "/core/distributed_runtime/rpc/grpc_testlib_server");
-    if (!options.env->FileExists(server_file).ok()) {
+    if (!options.env->FileExists(binary_path).ok()) {
       return errors::Internal("Could not find grpc_testlib_server");
     }
     const std::vector<string> argv(
-        {server_file,
-         /* see grpc_testlib_server.cc for flags */
+        {binary_path, /* see grpc_testlib_server.cc for flags */
          tf_jobs, "--tf_job=localhost", strings::StrCat("--tf_task=", i),
          strings::StrCat("--num_cpus=", num_cpus),
          strings::StrCat("--num_gpus=", num_gpus)});

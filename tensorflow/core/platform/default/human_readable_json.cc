@@ -14,14 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/human_readable_json.h"
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 
-Status ProtoToHumanReadableJson(const protobuf::Message& proto,
-                                string* result) {
+Status ProtoToHumanReadableJson(const protobuf::Message& proto, string* result,
+                                bool ignore_accuracy_loss) {
 #ifdef TENSORFLOW_LITE_PROTOS
   *result = "[human readable output not available on Android]";
   return Status::OK();
@@ -46,7 +47,7 @@ Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
   return errors::Internal("Cannot parse JSON protos on Android");
 #else
   proto->Clear();
-  auto status = google::protobuf::util::JsonStringToMessage(str, proto);
+  auto status = protobuf::util::JsonStringToMessage(str, proto);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
     // tensorflow::StringPiece.

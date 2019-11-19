@@ -44,28 +44,29 @@ using ::testing::ElementsAre;
 namespace internal {
 using ConverterType = tensorflow::Status (*)(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
-    Model* model);
+    const ModelFlags& model_flags, Model* model);
 using ConverterMapType = std::unordered_map<std::string, ConverterType>;
 
 ConverterMapType GetTensorFlowNodeConverterMap();
 ConverterMapType GetTensorFlowNodeConverterMapForFlex();
 Status ImportTensorFlowNode(const NodeDef&, const TensorFlowImportFlags&,
-                            Model*, const ConverterMapType&);
+                            const ModelFlags& model_flags, Model*,
+                            const ConverterMapType&);
 }  // namespace internal
 
 namespace {
 
 Status ImportNode(const NodeDef& node, Model* model) {
   const auto converter = internal::GetTensorFlowNodeConverterMap();
-  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), model,
-                                        converter);
+  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
+                                        ModelFlags(), model, converter);
 }
 
 Status ImportFlexNode(const NodeDef& node, Model* model) {
   // Empty converter => all nodes are flex nodes.
   const auto converter = internal::ConverterMapType();
-  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(), model,
-                                        converter);
+  return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
+                                        ModelFlags(), model, converter);
 }
 
 Status ImportNode(const NodeDef& node) {
@@ -115,7 +116,6 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
     s->add_dim()->set_size(d);
   }
 
-  // TODO(ahentz): also need to test via tensor_content()
   switch (dtype) {
     case DT_FLOAT:
       for (int64_t i = 0; i < num_elements; ++i) {
@@ -171,7 +171,7 @@ TEST(FlexImportTest, ConditionalConst) {
 
         const auto converter = internal::GetTensorFlowNodeConverterMapForFlex();
         return internal::ImportTensorFlowNode(node, TensorFlowImportFlags(),
-                                              &model, converter);
+                                              ModelFlags(), &model, converter);
       };
 
   EXPECT_TRUE(build_and_import_node("Known", {1, 2, 3}, DT_INT32, 6).ok());
@@ -383,6 +383,127 @@ std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
   return {{DT_FLOAT, ArrayDataType::kFloat},
           {DT_INT32, ArrayDataType::kInt32},
           {DT_INT64, ArrayDataType::kInt64}};
+}
+
+class TensorContentTest : public ::testing::Test {
+ public:
+  template <ArrayDataType T>
+  std::vector<DataType<T>> ImportAndGetData(const NodeDef& node) {
+    Model model;
+    auto status = ImportNode(node, &model);
+    CHECK(status.ok()) << status.error_message();
+    const auto& nodearray = model.GetArray("Node1");
+    return nodearray.GetBuffer<T>().data;
+  }
+  template <class T>
+  void NodeWithTensorContent(std::initializer_list<int64_t> shape,
+                             tensorflow::DataType dtype, int64_t num_elements,
+                             NodeDef* node) {
+    node->set_op("Const");
+    node->set_name("Node1");
+
+    // An attribute describing the type of this const node.
+    AttrValue dtype_attr;
+    SetAttrValue(dtype, &dtype_attr);
+    (*node->mutable_attr())["dtype"] = dtype_attr;
+
+    auto allocated_content = absl::make_unique<T[]>(num_elements);
+
+    // An attribute describing the content of this const node.
+    tensorflow::TensorProto t;
+    t.set_dtype(dtype);
+    auto* s = t.mutable_tensor_shape();
+    for (const auto& d : shape) {
+      s->add_dim()->set_size(d);
+    }
+
+    switch (dtype) {
+      case DT_FLOAT:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i / 10000.0 + 1;
+        }
+        break;
+      case DT_INT32:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i % std::numeric_limits<int>::max() + 1;
+        }
+        break;
+      case DT_QUINT8:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i % std::numeric_limits<uint8_t>::max() + 1;
+        }
+        break;
+      case DT_INT64:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i + 1;
+        }
+        break;
+      case DT_STRING:
+        break;
+      case DT_BOOL:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = ((i % 2) == 0);
+        }
+        break;
+      default:
+        break;
+    }
+    t.set_tensor_content(
+        string(reinterpret_cast<const char*>(allocated_content.get()),
+               num_elements * sizeof(T)));
+
+    AttrValue value_attr;
+    SetAttrValue(t, &value_attr);
+    (*node->mutable_attr())["value"] = value_attr;
+
+    allocated_content.reset();
+  }
+};
+
+TEST_F(TensorContentTest, Int64) {
+  constexpr ArrayDataType kType = ArrayDataType::kInt64;
+
+  NodeDef node;
+  NodeWithTensorContent<int64_t>({1, 2, 3}, DT_INT64, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+}
+
+TEST_F(TensorContentTest, Int32) {
+  constexpr ArrayDataType kType = ArrayDataType::kInt32;
+
+  NodeDef node;
+  NodeWithTensorContent<int>({1, 2, 3}, DT_INT32, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+}
+
+TEST_F(TensorContentTest, Float) {
+  constexpr ArrayDataType kType = ArrayDataType::kFloat;
+
+  NodeDef node;
+  NodeWithTensorContent<float>({1, 2, 3}, DT_FLOAT, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node),
+              ElementsAre(1.0000, 1.0001, 1.0002, 1.0003, 1.0004, 1.0005));
+}
+
+TEST_F(TensorContentTest, Quint8) {
+  constexpr ArrayDataType kType = ArrayDataType::kUint8;
+
+  NodeDef node;
+  NodeWithTensorContent<uint8_t>({1, 2, 3}, DT_QUINT8, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+}
+
+TEST_F(TensorContentTest, Bool) {
+  constexpr ArrayDataType kType = ArrayDataType::kBool;
+
+  NodeDef node;
+  NodeWithTensorContent<bool>({1, 2, 3}, DT_BOOL, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 0, 1, 0, 1, 0));
 }
 
 class TypeImportTest : public ::testing::TestWithParam<

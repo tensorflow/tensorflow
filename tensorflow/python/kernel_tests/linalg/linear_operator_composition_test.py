@@ -37,27 +37,35 @@ class SquareLinearOperatorCompositionTest(
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
   def setUp(self):
-    # Increase from 1e-6 to 1e-4
-    self._atol[dtypes.float32] = 1e-4
+    # Increase from 1e-6 to 1e-4 and 2e-4.
+    self._atol[dtypes.float32] = 2e-4
     self._atol[dtypes.complex64] = 1e-4
-    self._rtol[dtypes.float32] = 1e-4
+    self._rtol[dtypes.float32] = 2e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  @property
-  def _tests_to_skip(self):
+  @staticmethod
+  def skip_these_tests():
     # Cholesky not implemented.
     return ["cholesky"]
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder,
+                          ensure_self_adjoint_and_pd=False):
     shape = list(build_info.shape)
 
     # Either 1 or 2 matrices, depending.
     num_operators = rng.randint(low=1, high=3)
-    matrices = [
-        linear_operator_test_util.random_positive_definite_matrix(
-            shape, dtype, force_well_conditioned=True)
-        for _ in range(num_operators)
-    ]
+    if ensure_self_adjoint_and_pd:
+      # The random PD matrices are also symmetric. Here we are computing
+      # A @ A ... @ A. Since A is symmetric and PD, so are any powers of it.
+      matrices = [
+          linear_operator_test_util.random_positive_definite_matrix(
+              shape, dtype, force_well_conditioned=True)] * num_operators
+    else:
+      matrices = [
+          linear_operator_test_util.random_positive_definite_matrix(
+              shape, dtype, force_well_conditioned=True)
+          for _ in range(num_operators)
+      ]
 
     lin_op_matrices = matrices
 
@@ -68,6 +76,8 @@ class SquareLinearOperatorCompositionTest(
 
     operator = linalg.LinearOperatorComposition(
         [linalg.LinearOperatorFullMatrix(l) for l in lin_op_matrices],
+        is_positive_definite=True if ensure_self_adjoint_and_pd else None,
+        is_self_adjoint=True if ensure_self_adjoint_and_pd else None,
         is_square=True)
 
     matmul_order_list = list(reversed(matrices))
@@ -141,7 +151,7 @@ class NonSquareLinearOperatorCompositionTest(
     self._rtol[dtypes.float32] = 1e-4
     self._rtol[dtypes.complex64] = 1e-4
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(self, build_info, dtype, use_placeholder):
     sess = ops.get_default_session()
     shape = list(build_info.shape)
 
@@ -218,4 +228,6 @@ class NonSquareLinearOperatorCompositionTest(
 
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(SquareLinearOperatorCompositionTest)
+  linear_operator_test_util.add_tests(NonSquareLinearOperatorCompositionTest)
   test.main()

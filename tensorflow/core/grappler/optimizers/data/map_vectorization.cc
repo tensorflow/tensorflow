@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/map_vectorization.h"
-#include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
+#include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -48,10 +49,11 @@ constexpr char kCeilOp[] = "Ceil";
 constexpr char kBatchOp[] = "BatchDataset";
 constexpr char kBatchV2Op[] = "BatchDatasetV2";
 constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
-constexpr char kChooseFastestOp[] = "ExperimentalChooseFastestDataset";
-constexpr int kAutotune = -1;
+constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
+constexpr char kPrefetchOp[] = "PrefetchDataset";
 
 // Returns a FunctionDef containing a MapDefun op that wraps the original
 // function.
@@ -246,175 +248,6 @@ Status AddNewBatchNode(const NodeDef& old_batch_node, const NodeDef& input_node,
   return Status::OK();
 }
 
-NodeDef* AddCastNode(const string& input, DataType src_t, DataType dst_t,
-                     MutableGraphView* graph) {
-  NodeDef cast_node;
-  cast_node.set_op(kCastOp);
-  cast_node.add_input(input);
-  graph_utils::SetUniqueGraphNodeName(cast_node.op(), graph->graph(),
-                                      &cast_node);
-  AddNodeAttr("SrcT", src_t, &cast_node);
-  AddNodeAttr("DstT", dst_t, &cast_node);
-
-  return graph->AddNode(std::move(cast_node));
-}
-
-NodeDef* AddEqualityNode(const string& input_x, const string& input_y,
-                         DataType t, MutableGraphView* graph) {
-  NodeDef equal_node;
-  equal_node.set_op(kEqualOp);
-  equal_node.add_input(input_x);
-  equal_node.add_input(input_y);
-  graph_utils::SetUniqueGraphNodeName(equal_node.op(), graph->graph(),
-                                      &equal_node);
-  AddNodeAttr("T", t, &equal_node);
-
-  return graph->AddNode(std::move(equal_node));
-}
-
-NodeDef* AddCeilNode(const string& input, MutableGraphView* graph) {
-  NodeDef ceil_node;
-  ceil_node.set_op(kCeilOp);
-  graph_utils::SetUniqueGraphNodeName(ceil_node.op(), graph->graph(),
-                                      &ceil_node);
-  AddNodeAttr("T", DT_FLOAT, &ceil_node);
-  ceil_node.add_input(input);
-
-  return graph->AddNode(std::move(ceil_node));
-}
-
-NodeDef* AddBinaryNode(const string& input_x, const string& input_y,
-                       const string& op, DataType type,
-                       MutableGraphView* graph) {
-  NodeDef node;
-  node.set_op(op);
-  node.add_input(input_x);
-  node.add_input(input_y);
-  graph_utils::SetUniqueGraphNodeName(op, graph->graph(), &node);
-  AddNodeAttr("T", type, &node);
-
-  return graph->AddNode(std::move(node));
-}
-
-NodeDef* AddIntAddNode(const string& input_x, const string& input_y,
-                       MutableGraphView* graph) {
-  return AddBinaryNode(input_x, input_y, kAddOp, DT_INT32, graph);
-}
-
-NodeDef* AddFloatDivNode(const string& input_x, const string& input_y,
-                         MutableGraphView* graph) {
-  return AddBinaryNode(input_x, input_y, kRealDivOp, DT_FLOAT, graph);
-}
-
-NodeDef* AddIntSubNode(const string& input_x, const string& input_y,
-                       MutableGraphView* graph) {
-  return AddBinaryNode(input_x, input_y, kSubOp, DT_INT32, graph);
-}
-
-NodeDef* AddIntMulNode(const string& input_x, const string& input_y,
-                       MutableGraphView* graph) {
-  return AddBinaryNode(input_x, input_y, kMulOp, DT_INT32, graph);
-}
-
-// Create a new node for the num_parallel_calls input argument according to the
-// following formula:
-//
-// Let N = old num_parallel_calls, N' = new num_parallel_calls, and B =
-// batch_size.
-//     N' = ceil(N // B) * (1 - (N == -1)) + N * (N == -1)
-//
-// i.e. N' = -1 if N = -1 (autotune)
-//      N' = ceil(N // B) otherwise.
-// Note that "ceil" is necessary so N' != 0.
-//
-// For non-autotune values of `num_parallel_call`, we divide it by `batch_size`
-// to limit memory consumption by the map buffer.
-//
-// TODO(rachelim): Evaluate the performance of other potential transformations
-// to `num_parallel_calls`:
-//   1) use the autotune value (i.e. -1)
-//   2) use the original value
-Status MakeNumParallelCallsInput(const NodeDef& old_map_node,
-                                 const NodeDef& old_batch_node,
-                                 const NameRangeMap& input_map,
-                                 MutableGraphView* graph, string* result) {
-  string num_parallel_calls_name;
-  TF_RETURN_IF_ERROR(GetInputNodeName("num_parallel_calls", input_map,
-                                      old_map_node, &num_parallel_calls_name));
-
-  NodeDef* float_num_parallel_calls;
-  NodeDef* float_batch_size;
-  NodeDef* bool_is_autotune;
-
-  // Cast the old num_parallel_calls and batch_size arguments to DT_FLOAT before
-  // dividing.
-  if (old_map_node.op() == kExperimentalMapAndBatchOp) {
-    auto autotune_val =
-        graph_utils::AddScalarConstNode(static_cast<int64>(kAutotune), graph);
-    bool_is_autotune = AddEqualityNode(
-        autotune_val->name(), num_parallel_calls_name, DT_INT64, graph);
-
-    float_num_parallel_calls =
-        AddCastNode(num_parallel_calls_name, DT_INT64, DT_FLOAT, graph);
-
-    string batch_size_name;
-    TF_RETURN_IF_ERROR(GetInputNodeName("batch_size", input_map, old_map_node,
-                                        &batch_size_name));
-
-    float_batch_size = AddCastNode(batch_size_name, DT_INT64, DT_FLOAT, graph);
-  } else {
-    auto autotune_val =
-        graph_utils::AddScalarConstNode(static_cast<int>(kAutotune), graph);
-    bool_is_autotune = AddEqualityNode(
-        autotune_val->name(), num_parallel_calls_name, DT_INT32, graph);
-
-    float_num_parallel_calls =
-        AddCastNode(num_parallel_calls_name, DT_INT32, DT_FLOAT, graph);
-
-    float_batch_size =
-        AddCastNode(old_batch_node.input(1), DT_INT64, DT_FLOAT, graph);
-  }
-
-  // Divide
-  auto div_node = AddFloatDivNode(float_num_parallel_calls->name(),
-                                  float_batch_size->name(), graph);
-
-  // Ceil
-  auto float_ceil_node = AddCeilNode(div_node->name(), graph);
-
-  // Cast back to DT_INT32
-  auto int_ceil_node =
-      AddCastNode(float_ceil_node->name(), DT_FLOAT, DT_INT32, graph);
-
-  // is_autotune = int(num_parallel_calls == -1)
-  auto int_is_autotune =
-      AddCastNode(bool_is_autotune->name(), DT_BOOL, DT_INT32, graph);
-
-  // is_not_autotune = 1 - is_autotune
-  auto int_is_not_autotune =
-      AddIntSubNode(graph_utils::AddScalarConstNode(1, graph)->name(),
-                    int_is_autotune->name(), graph);
-
-  auto mul_1 =
-      AddIntMulNode(int_ceil_node->name(), int_is_not_autotune->name(), graph);
-
-  NodeDef* mul_2;
-  if (old_map_node.op() == kExperimentalMapAndBatchOp) {
-    auto int_num_parallel_calls =
-        AddCastNode(num_parallel_calls_name, DT_INT64, DT_INT32, graph);
-    mul_2 = AddIntMulNode(int_num_parallel_calls->name(),
-                          int_is_autotune->name(), graph);
-  } else {
-    mul_2 =
-        AddIntMulNode(num_parallel_calls_name, int_is_autotune->name(), graph);
-  }
-
-  auto add_node = AddIntAddNode(mul_1->name(), mul_2->name(), graph);
-
-  *result = add_node->name();
-  return Status::OK();
-}
-
 Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
                      const NodeDef& new_batch_node,
                      const FunctionDef& vectorized_func,
@@ -435,10 +268,13 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
 
   // Set the `num_parallel_calls` input argument
   if (old_map_node.op() != kMapOp) {
-    string num_parallel_calls;
-    TF_RETURN_IF_ERROR(MakeNumParallelCallsInput(
-        old_map_node, old_batch_node, input_map, graph, &num_parallel_calls));
-    map_node.add_input(std::move(num_parallel_calls));
+    // `num_parallel_calls` = `kAutotune`
+    // TODO(rachelim): Evaluate the performance of other potential
+    // transformations to `num_parallel_calls`,
+    // e.g. ceil(old num_parallel_calls // batch size)
+    auto autotune_val = graph_utils::AddScalarConstNode(
+        static_cast<int32>(data::model::kAutotune), graph);
+    map_node.add_input(autotune_val->name());
   }
 
   // Set attrs
@@ -455,52 +291,187 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
   return Status::OK();
 }
 
-Status AddNewChooseFastestNode(gtl::ArraySlice<NodeDef> input_nodes,
+Status AddNewPrefetchNode(const NodeDef& old_prefetch_node,
+                          const NodeDef& old_batch_node,
+                          const NodeDef& new_map_node, MutableGraphView* graph,
+                          NodeDef** new_prefetch_node) {
+  NodeDef prefetch_node;
+  prefetch_node.set_op(kPrefetchOp);
+  graph_utils::SetUniqueGraphNodeName(kPrefetchOp, graph->graph(),
+                                      &prefetch_node);
+
+  // `input_dataset`
+  prefetch_node.add_input(new_map_node.name());
+
+  // `buffer_size` == `kAutotune`
+  // TODO(rachelim): Evaluate the performance of other potential transformations
+  // to `buffer_size`, e.g. ceil(old buffer size // batch size)
+  auto autotune_val = graph_utils::AddScalarConstNode(
+      static_cast<int64>(data::model::kAutotune), graph);
+  prefetch_node.add_input(autotune_val->name());
+
+  for (const auto& key : {"output_shapes", "output_types"}) {
+    graph_utils::CopyAttribute(key, new_map_node, &prefetch_node);
+  }
+
+  *new_prefetch_node = graph->AddNode(std::move(prefetch_node));
+  return Status::OK();
+}
+
+Status AddBranch(gtl::ArraySlice<const NodeDef*> branch,
+                 NodeDef* choose_fastest_node, DataTypeVector* t_arguments,
+                 std::vector<NameAttrList>* branches,
+                 std::vector<int>* other_arguments_lengths,
+                 FunctionDefLibrary* library) {
+  FunctionDef* branch_func = library->add_function();
+  auto* signature = branch_func->mutable_signature();
+  graph_utils::SetUniqueGraphFunctionName("branch", library, branch_func);
+
+  // Input dataset.
+  string prev_node_output = "args_0";
+  auto* input_arg_0 = signature->add_input_arg();
+  input_arg_0->set_name(prev_node_output);
+  input_arg_0->set_type(DT_VARIANT);
+
+  auto* output_arg = signature->add_output_arg();
+  output_arg->set_name("output");
+  output_arg->set_type(DT_VARIANT);
+
+  int32 captured_arg_lengths = 0;
+
+  // For each node in the branch, copy it to the function def. Add the
+  // corresponding non-0th inputs as captured arguments, modifying the function
+  // input signature, node input names, other_arguments_lengths, and t_arguments
+  // accordingly.
+  for (const NodeDef* node : branch) {
+    // Copy the node to the function
+    auto function_node = branch_func->add_node_def();
+    *function_node = *node;
+    function_utils::SetUniqueFunctionNodeName(node->name(), branch_func,
+                                              function_node);
+    function_node->clear_input();
+    function_node->add_input(prev_node_output);
+
+    // Every input besides the 0th (dataset) becomes a captured argument.
+    int input_size = node->input_size();
+    DataTypeVector input_types;
+    const OpDef* op_def;
+    TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node->op(), &op_def));
+    TF_RETURN_IF_ERROR(InputTypesForNode(*node, *op_def, &input_types));
+    DCHECK_EQ(input_types.size(), input_size);
+
+    for (int i = 1; i < input_size; ++i) {
+      // Capture input in `other_arguments`
+      choose_fastest_node->add_input(node->input(i));
+      // Add type to function signature
+      auto* input_arg = signature->add_input_arg();
+
+      string input_arg_name = strings::StrCat(function_node->name(), "_", i);
+      input_arg->set_name(input_arg_name);
+      input_arg->set_type(input_types[i]);
+      function_node->add_input(input_arg_name);
+    }
+    // Add to `Targuments`
+    t_arguments->reserve(t_arguments->size() + input_types.size() - 1);
+    t_arguments->insert(t_arguments->end(), input_types.begin() + 1,
+                        input_types.end());
+    captured_arg_lengths += input_size - 1;
+    prev_node_output = strings::StrCat(function_node->name(), ":handle:0");
+  }
+
+  // Add to `other_arguments_lengths`
+  other_arguments_lengths->push_back(captured_arg_lengths);
+  (*branch_func->mutable_ret())["output"] = prev_node_output;
+
+  // Add to `branches`
+  NameAttrList func_attr;
+  func_attr.set_name(branch_func->signature().name());
+  branches->push_back(std::move(func_attr));
+  return Status::OK();
+}
+
+Status AddNewChooseFastestNode(const NodeDef* input_dataset_node,
+                               const string& ratio_numerator_name,
+                               std::vector<const NodeDef*> original_branch,
+                               std::vector<const NodeDef*> vectorized_branch,
                                MutableGraphView* graph,
+                               FunctionDefLibrary* library,
                                NodeDef** new_choose_fastest_node) {
   NodeDef choose_fastest_node;
   choose_fastest_node.set_op(kChooseFastestOp);
   graph_utils::SetUniqueGraphNodeName(choose_fastest_node.op(), graph->graph(),
                                       &choose_fastest_node);
 
-  // Set the `input_datasets` input argument.
-  for (const auto& node_def : input_nodes) {
-    choose_fastest_node.add_input(node_def.name());
-  }
-  AddNodeAttr("N", static_cast<int>(input_nodes.size()), &choose_fastest_node);
-  AddNodeAttr("num_experiments", 10, &choose_fastest_node);
+  // input_dataset
+  choose_fastest_node.add_input(input_dataset_node->name());
+  choose_fastest_node.add_input(ratio_numerator_name);
+  // ratio_denominator == 1
+  auto ratio_denominator =
+      graph_utils::AddScalarConstNode(static_cast<int64>(1), graph);
+  choose_fastest_node.add_input(ratio_denominator->name());
+
+  DataTypeVector t_arguments;
+  std::vector<NameAttrList> branches;
+  std::vector<int32> other_arguments_lengths;
+  // Branch 0: vectorized branch
+  TF_RETURN_IF_ERROR(AddBranch(vectorized_branch, &choose_fastest_node,
+                               &t_arguments, &branches,
+                               &other_arguments_lengths, library));
+  // Branch 1: original branch
+  TF_RETURN_IF_ERROR(AddBranch(original_branch, &choose_fastest_node,
+                               &t_arguments, &branches,
+                               &other_arguments_lengths, library));
+
+  DCHECK_EQ(t_arguments.size(), choose_fastest_node.input_size() - 3);
+  DCHECK_EQ(branches.size(), other_arguments_lengths.size());
+
+  AddNodeAttr("Targuments", t_arguments, &choose_fastest_node);
+  AddNodeAttr("num_elements_per_branch", 100, &choose_fastest_node);
+  AddNodeAttr("branches", branches, &choose_fastest_node);
+  AddNodeAttr("other_arguments_lengths", other_arguments_lengths,
+              &choose_fastest_node);
 
   for (auto key : {"output_shapes", "output_types"}) {
-    graph_utils::CopyAttribute(key, input_nodes[0], &choose_fastest_node);
+    graph_utils::CopyAttribute(key,
+                               *vectorized_branch[vectorized_branch.size() - 1],
+                               &choose_fastest_node);
   }
 
   *new_choose_fastest_node = graph->AddNode(std::move(choose_fastest_node));
   return Status::OK();
 }
 
-// Given an input pipeline graph and a query node, tries to the node to the
-// 'batch' node in a input_dataset->map->batch pattern, or the 'map_and_batch'
-// node in an input_dataset->map_and_batch pattern.
+// Given an input pipeline graph and a query node, tries to match the node to
+// the 'batch' node in a input_dataset->map->(optional prefetch->)batch pattern,
+// or the 'map_and_batch' node in an input_dataset->map_and_batch pattern.
 bool FindMapAndBatchPattern(const MutableGraphView& graph, const NodeDef& node,
                             const FunctionLibraryDefinition& function_library,
                             const NodeDef** batch_node_output,
+                            const NodeDef** optional_prefetch_node_output,
                             const NodeDef** map_node_output,
                             const NodeDef** input_node_output,
                             const FunctionDef** map_fn_output) {
   const FunctionDef*& map_fn = *map_fn_output;
   const NodeDef*& batch_node = *batch_node_output;
+  const NodeDef*& optional_prefetch_node = *optional_prefetch_node_output;
   const NodeDef*& map_node = *map_node_output;
   const NodeDef*& input_node = *input_node_output;
 
-  if (node.op() == kExperimentalMapAndBatchOp) {
+  if (node.op() == kMapAndBatchOp || node.op() == kExperimentalMapAndBatchOp) {
     batch_node = &node;
     map_node = &node;
   } else if (node.op() == kBatchOp || node.op() == kBatchV2Op) {
     batch_node = &node;
-    map_node = graph_utils::GetInputNode(*batch_node, graph);
-    if (map_node->op() != kMapOp && map_node->op() != kParallelMapOp) {
+    auto tmp_input_node = graph_utils::GetInputNode(*batch_node, graph);
+    if (tmp_input_node->op() == kPrefetchOp) {
+      optional_prefetch_node = tmp_input_node;
+      tmp_input_node = graph_utils::GetInputNode(*tmp_input_node, graph);
+    }
+    if (tmp_input_node->op() != kMapOp &&
+        tmp_input_node->op() != kParallelMapOp) {
       return false;
     }
+    map_node = tmp_input_node;
     if (!IsOutputShapesFullyDefined(*map_node)) {
       // If any of the map func outputs have an unknown shape, don't
       // optimize, so that batching errors surface as before.
@@ -550,11 +521,13 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
   for (const NodeDef& node : item.graph.node()) {
     FunctionLibraryDefinition function_library(OpRegistry::Global(), *library);
     const NodeDef* map_node;
+    const NodeDef* optional_prefetch_node = nullptr;
     const NodeDef* batch_node;
     const NodeDef* input_node;
     const FunctionDef* map_func;
     if (!FindMapAndBatchPattern(graph, node, function_library, &batch_node,
-                                &map_node, &input_node, &map_func)) {
+                                &optional_prefetch_node, &map_node, &input_node,
+                                &map_func)) {
       continue;
     }
 
@@ -570,13 +543,59 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
     TF_RETURN_IF_ERROR(AddNewMapNode(*map_node, *batch_node, *new_batch_node,
                                      *vectorized_func, &graph, &new_map_node));
 
-    NodeDef* new_choose_fastest_node;
-    TF_RETURN_IF_ERROR(AddNewChooseFastestNode(
-        {*new_map_node, *batch_node}, &graph, &new_choose_fastest_node));
+    NodeDef* optional_new_prefetch_node = nullptr;
+    if (optional_prefetch_node) {
+      // If the original pipeline was .map().prefetch().batch(), the new
+      // pipeline is .batch().map().prefetch()
+      TF_RETURN_IF_ERROR(AddNewPrefetchNode(*optional_prefetch_node,
+                                            *batch_node, *new_map_node, &graph,
+                                            &optional_new_prefetch_node));
+    }
 
-    // Make output of Batch point to ChooseFastest instead.
-    TF_RETURN_IF_ERROR(graph.UpdateFanouts(batch_node->name(),
-                                           new_choose_fastest_node->name()));
+    std::vector<const NodeDef*> vectorized_branch(
+        {new_batch_node, new_map_node});
+
+    std::vector<const NodeDef*> original_branch({map_node});
+    if (optional_prefetch_node) {
+      original_branch.push_back(optional_prefetch_node);
+      vectorized_branch.push_back(optional_new_prefetch_node);
+    }
+    if (batch_node->op() != kMapAndBatchOp &&
+        batch_node->op() != kExperimentalMapAndBatchOp) {
+      original_branch.push_back(batch_node);
+    }
+
+    // Mark the original nodes for deletion.
+    for (const auto& n : original_branch) {
+      nodes_to_delete.insert(n->name());
+    }
+
+    if (use_choose_fastest_) {
+      // Optionally, use ChooseFastestBranch node to mitigate potential
+      // regressions caused by vectorization.
+      for (const auto& n : vectorized_branch) {
+        // Mark the vectorized nodes for deletion, since they will be added in
+        // the choose fastest dataset branch function separately.
+        nodes_to_delete.insert(n->name());
+      }
+      NodeDef* new_choose_fastest_node;
+      TF_RETURN_IF_ERROR(AddNewChooseFastestNode(
+          input_node, /*ratio_numerator_name=*/new_batch_node->input(1),
+          std::move(original_branch), std::move(vectorized_branch), &graph,
+          library, &new_choose_fastest_node));
+      // Make output of Batch point to ChooseFastest instead.
+      TF_RETURN_IF_ERROR(graph.UpdateFanouts(batch_node->name(),
+                                             new_choose_fastest_node->name()));
+
+    } else {
+      // Make output of Batch point to the new Map (or Prefetch) node instead.
+      TF_RETURN_IF_ERROR(graph.UpdateFanouts(
+          batch_node->name(), optional_new_prefetch_node
+                                  ? optional_new_prefetch_node->name()
+                                  : new_map_node->name()));
+    }
+
+    TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
     stats->num_changes++;
   }
   return Status::OK();

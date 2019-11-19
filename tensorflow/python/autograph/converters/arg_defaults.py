@@ -55,13 +55,31 @@ from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import parser
 
 
-class ArgDefaultsTransformer(converter.Base):
-  """Transforms top level argument defaults.
+class _Function(object):
+  pass
 
-  This transformer modifies self.ctx.arg_defaults directly.
-  """
+
+class ArgDefaultsTransformer(converter.Base):
+  """Transforms top level argument defaults."""
+
+  def visit_Lambda(self, node):
+    self.state[_Function].enter()
+    node.args = self.visit(node.args)
+    # Only the top level function is modified - no need to visit the children.
+    self.state[_Function].exit()
+    return node
+
+  def visit_FunctionDef(self, node):
+    self.state[_Function].enter()
+    node.args = self.visit(node.args)
+    # Only the top level function is modified - no need to visit the children.
+    self.state[_Function].exit()
+    return node
 
   def visit_arguments(self, node):
+    if self.state[_Function].level > 2:
+      return node
+
     for i in range(len(node.defaults)):
       node.defaults[i] = parser.parse_expression('None')
 

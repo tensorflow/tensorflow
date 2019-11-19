@@ -1,6 +1,9 @@
 # Settings for Mac OS platforms.
 ifeq ($(TARGET), osx)
 
+  # Make sure we can find the embedded GCC compiler.
+  export PATH := ${PATH}:tensorflow/lite/experimental/micro/tools/make/downloads/gcc_embedded/bin/
+
   PLATFORM_FLAGS = \
     -DTF_LITE_DISABLE_X86_NEON
 

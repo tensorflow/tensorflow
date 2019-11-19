@@ -577,11 +577,17 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
+
+TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8) {
+  StridedSliceOpModel<int8_t, TensorType_INT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
+                                                 0, 0, 1);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
+  m.SetBegin({0, 0, 0});
+  m.SetEnd({1, 3, 2});
+  m.SetStrides({1, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

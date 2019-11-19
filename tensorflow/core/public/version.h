@@ -18,8 +18,10 @@ limitations under the License.
 
 // TensorFlow uses semantic versioning, see http://semver.org/.
 
-#define TF_MAJOR_VERSION 1
-#define TF_MINOR_VERSION 12
+// Also update tensorflow/tensorflow.bzl and
+// tensorflow/tools/pip_package/setup.py
+#define TF_MAJOR_VERSION 2
+#define TF_MINOR_VERSION 0
 #define TF_PATCH_VERSION 0
 
 // TF_VERSION_SUFFIX is non-empty for pre-releases (e.g. "-alpha", "-alpha.1",
@@ -33,8 +35,6 @@ limitations under the License.
 #define TF_VERSION_STRING                                            \
   (TF_STR(TF_MAJOR_VERSION) "." TF_STR(TF_MINOR_VERSION) "." TF_STR( \
       TF_PATCH_VERSION) TF_VERSION_SUFFIX)
-
-// TODO(josh11b): Public API functions for exporting the above.
 
 // GraphDef compatibility versions (the versions field in graph.proto).
 //
@@ -98,10 +98,17 @@ limitations under the License.
 //     deprecated in favor of V2 ops. (2018/01/23)
 // 28. Deprecate MatrixExponential op in favor of Python implementation.
 //     (2018/08/21).
+// (2019/02/15). Added `control_ret` field to FunctionDef proto, and
+//     `control_output` field to OpDef proto.
+// 29. Deprecate StatefulStandardNormal op in favor of StatefulStandardNormalV2.
+//     (2019/03/25).
+// (2019/04/17). Added `arg_attr` field to FunctionDefProto.
+// 30. (2019/05/09) First date based GraphDef version. GraphDef
+//     versions advance by 1 each day after this point.
 
 #define TF_GRAPH_DEF_VERSION_MIN_PRODUCER 0
 #define TF_GRAPH_DEF_VERSION_MIN_CONSUMER 0
-#define TF_GRAPH_DEF_VERSION 27
+#define TF_GRAPH_DEF_VERSION 175  // Updated: 2019/10/1
 
 // Checkpoint compatibility versions (the versions field in SavedSliceMeta).
 //
@@ -125,8 +132,8 @@ extern const char* tf_compiler_version();
 // If no git repository, this will be "internal".
 extern const char* tf_git_version();
 // Value of the _GLIBCXX_USE_CXX11_ABI flag, or 0 if it's not set.
-extern const int tf_cxx11_abi_flag();
+extern int tf_cxx11_abi_flag();
 // Returns 1 if build is monolithic, or 0 otherwise.
-extern const int tf_monolithic_build();
+extern int tf_monolithic_build();
 
 #endif  // TENSORFLOW_CORE_PUBLIC_VERSION_H_

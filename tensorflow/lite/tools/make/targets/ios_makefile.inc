@@ -31,7 +31,7 @@ ifeq ($(TARGET), ios)
 		${IPHONEOS_SYSROOT} \
 		-arch $(TARGET_ARCH) \
 		-O3
-	CCFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
+	CFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-fembed-bitcode \
 		-mno-thumb \
 		-isysroot \
