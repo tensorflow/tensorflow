@@ -52,6 +52,11 @@ struct ScalarOp<xla_lhlo::SubOp> {
   using FOp = ::mlir::SubFOp;
   using IOp = ::mlir::SubIOp;
 };
+template <>
+struct ScalarOp<xla_lhlo::RemOp> {
+  using FOp = ::mlir::RemFOp;
+  using IOp = ::mlir::RemISOp;
+};
 
 template <typename LHLO_BinaryOp>
 using ScalarFOp = typename ScalarOp<LHLO_BinaryOp>::FOp;
@@ -178,6 +183,54 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::SelectOp>(
 }
 
 template <>
+inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::AbsOp>(
+    xla_lhlo::AbsOp lhlo_op, ArrayRef<Type> result_types,
+    ArrayRef<Value*> block_args, OpBuilder b) {
+  Type element_type = block_args.front()->getType();
+  if (element_type.isa<FloatType>()) {
+    return b.create<::mlir::AbsOp>(lhlo_op.getLoc(), result_types, lhs, rhs);
+  }
+  return nullptr;
+}
+
+template <>
+inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::CeilOp>(
+    xla_lhlo::CeilOp lhlo_op, ArrayRef<Type> result_types,
+    ArrayRef<Value*> block_args, OpBuilder b) {
+  Type element_type = block_args.front()->getType();
+  return element_type.isa<FloatType>()
+             ? b.create<::mlir::CeilOp>(lhlo_op.getLoc(), result_types,
+                                        block_args, mlir::None)
+             : nullptr;
+}
+
+template <>
+inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::CosOp>(
+    xla_lhlo::CosOp lhlo_op, ArrayRef<Type> result_types,
+    ArrayRef<Value*> block_args, OpBuilder b) {
+  Type element_type = block_args.front()->getType();
+  return element_type.isa<FloatType>()
+             ? b.create<::mlir::CosOp>(lhlo_op.getLoc(), result_types,
+                                       block_args, mlir::None)
+             : nullptr;
+}
+
+template <>
+inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::ConvertOp>(
+    xla_lhlo::ConvertOp lhlo_op, ArrayRef<Type> result_types,
+    ArrayRef<Value*> block_args, OpBuilder b) {
+  const auto& source = block_args[0];
+  const auto& target = block_args[1];
+  Type source_type = source->getType();
+  Type target_type = target->getType();
+  if (source_type.isa<IntegerType>() && target_type.isa<FloatType>()) {
+      return b.create<::mlir::SIToFPOp>(lhlo_op.getLoc(), result_types,
+                                        block_args, mlir::None);
+  }
+  return nullptr;
+}
+
+template <>
 inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::ExpOp>(
     xla_lhlo::ExpOp lhlo_op, ArrayRef<Type> result_types,
     ArrayRef<Value*> block_args, OpBuilder b) {
@@ -185,6 +238,45 @@ inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::ExpOp>(
   return element_type.isa<FloatType>()
              ? b.create<::mlir::ExpOp>(lhlo_op.getLoc(), result_types,
                                        block_args, mlir::None)
+             : nullptr;
+}
+
+template <>
+inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::NegOp>(
+    xla_lhlo::NegOp lhlo_op, ArrayRef<Type> result_types,
+    ArrayRef<Value*> block_args, OpBuilder b) {
+  Type element_type = block_args.front()->getType();
+  if (element_type.isa<IntegerType>()) {
+    return b.create<::mlir::NegIOp>(lhlo_op.getLoc(), result_types, lhs, rhs);
+  }
+  if (element_type.isa<FloatType>()) {
+    return b.create<::mlir::NegFOp>(lhlo_op.getLoc(), result_types, lhs, rhs);
+  }
+  return nullptr;
+}
+
+template <>
+inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::SignOp>(
+    xla_lhlo::SignOp lhlo_op, ArrayRef<Type> result_types,
+    ArrayRef<Value*> block_args, OpBuilder b) {
+  Type element_type = block_args.front()->getType();
+  if (element_type.isa<IntegerType>()) {
+    return b.create<::mlir::SignISOp>(lhlo_op.getLoc(), result_types, lhs, rhs);
+  }
+  if (element_type.isa<FloatType>()) {
+    return b.create<::mlir::SignFOp>(lhlo_op.getLoc(), result_types, lhs, rhs);
+  }
+  return nullptr;
+}
+
+template <>
+inline Operation* MapLhloOpToStdScalarOp<xla_lhlo::TanhOp>(
+    xla_lhlo::TanhOp lhlo_op, ArrayRef<Type> result_types,
+    ArrayRef<Value*> block_args, OpBuilder b) {
+  Type element_type = block_args.front()->getType();
+  return element_type.isa<FloatType>()
+             ? b.create<::mlir::TanhOp>(lhlo_op.getLoc(), result_types,
+                                        block_args, mlir::None)
              : nullptr;
 }
 
