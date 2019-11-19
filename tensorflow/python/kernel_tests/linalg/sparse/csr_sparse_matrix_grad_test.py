@@ -84,6 +84,10 @@ class CSRSparseMatrixGradTest(test.TestCase):
     if not self._gpu_available:
       return
 
+    if test.is_built_with_rocm():
+      # sparse-matrix-add op is not yet supported on the ROCm platform
+      self.skipTest("sparse-matrix-add op not supported on ROCm")
+
     sparsify = lambda m: m * (m > 0)
     for dense_shape in ([53, 65, 127], [127, 65]):
       a_mats_val = sparsify(np.random.randn(*dense_shape))
