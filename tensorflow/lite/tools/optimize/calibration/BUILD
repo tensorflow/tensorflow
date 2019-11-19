@@ -18,8 +18,6 @@ cc_library(
         ":calibration_logger",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/core/api",
-        "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:kernel_utils",

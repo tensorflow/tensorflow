@@ -14,9 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
+#include <cstdint>
 #include <cstring>
+#include <limits>
+#include <utility>
 
+#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -24,7 +27,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/round.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
