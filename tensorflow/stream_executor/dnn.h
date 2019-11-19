@@ -2394,6 +2394,7 @@ class DnnSupport {
   //
   // Arguments:
   //  stream: pointer to the stream where this operation should be enqueued to.
+  //  element_type: date type of the input tensors
   //  probs_desc: specifies the shape and the data layout of the input tensor.
   //  probs_data: the device memory region that contains the input tensor.
   //  labels_data: the device memory region that contains the labels_value
@@ -2410,18 +2411,37 @@ class DnnSupport {
   //    workspace memory used by this operation. The caller is responsible for
   //    keeping the memory alive long enough for this operation, and recylces
   //    afterwards.
-  virtual bool DoCtcLoss(Stream* stream,
-                         const dnn::RnnStateTensorDescriptor &probs_desc,
-                         const DeviceMemory<float> &probs_data,
-                         const absl::Span<const int32> &labels_data,
-                         const absl::Span<const int32> &labels_lengths_data,
-                         const absl::Span<const int32> &input_lengths_data,
-                         DeviceMemory<float> *costs_data,
-                         const dnn::RnnStateTensorDescriptor &grads_desc,
-                         DeviceMemory<float> *grads_data,
-                         const dnn::CtcLossDescriptor &ctc_loss_desc,
-                         ScratchAllocator *workspace_allocator) {
-    return false;
+  virtual port::Status DoCtcLoss(Stream* stream,
+      dnn::DataType element_type,
+      const dnn::RnnStateTensorDescriptor &probs_desc,
+      const DeviceMemoryBase probs_data,
+      const absl::Span<const int32> &labels_data,
+      const absl::Span<const int32> &labels_lengths_data,
+      const absl::Span<const int32> &input_lengths_data,
+      DeviceMemoryBase costs_data,
+      const dnn::RnnStateTensorDescriptor &grads_desc,
+      DeviceMemoryBase grads_data,
+      const dnn::CtcLossDescriptor &ctc_loss_desc,
+      ScratchAllocator *workspace_allocator) = 0;
+
+  template<typename ElementType>
+  bool DoCtcLoss(Stream* stream,
+                 const dnn::RnnStateTensorDescriptor &probs_desc,
+                 const DeviceMemory<ElementType> &probs_data,
+                 const absl::Span<const int32> &labels_data,
+                 const absl::Span<const int32> &labels_lengths_data,
+                 const absl::Span<const int32> &input_lengths_data,
+                 DeviceMemory<ElementType> *costs_data,
+                 const dnn::RnnStateTensorDescriptor &grads_desc,
+                 DeviceMemory<ElementType> *grads_data,
+                 const dnn::CtcLossDescriptor &ctc_loss_desc,
+                 ScratchAllocator *workspace_allocator) {
+    return IsStatusOk(
+        DoCtcLoss(stream, ToDataType<ElementType>::value, probs_desc,
+                  probs_data, labels_data, labels_lengths_data,
+                  input_lengths_data, *costs_data, grads_desc, *grads_data,
+                  ctc_loss_desc, workspace_allocator),
+        false);
   }
 
   // Transforms a tensor into another tensor with a different layout and/or data

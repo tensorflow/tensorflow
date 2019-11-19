@@ -2044,13 +2044,13 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
 
 port::Status CudnnSupport::DoCtcLossImpl(
     Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
-    const DeviceMemory<float>& probs_data,
+    const DeviceMemoryBase probs_data,
     const absl::Span<const int32>& labels_data,
     const absl::Span<const int32>& labels_lengths_data,
     const absl::Span<const int32>& input_lengths_data,
-    DeviceMemory<float>* costs_data,
+    DeviceMemoryBase costs_data,
     const CudnnRnnStateTensorDescriptor& grads_desc,
-    DeviceMemory<float>* grads_data,
+    DeviceMemoryBase grads_data,
     const CudnnCtcLossDescriptor& ctc_loss_desc,
     ScratchAllocator* workspace_allocator) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
@@ -2072,8 +2072,8 @@ port::Status CudnnSupport::DoCtcLossImpl(
           /*probs=*/probs_data.opaque(), /*labels=*/labels_data.data(),
           /*labelsLengths=*/labels_lengths_data.data(),
           /*inputLengths=*/input_lengths_data.data(),
-          /*costs=*/costs_data->opaque(), /*gradientsDesc=*/grads_desc.handle(),
-          /*gradients=*/grads_data->opaque(),
+          /*costs=*/costs_data.opaque(), /*gradientsDesc=*/grads_desc.handle(),
+          /*gradients=*/grads_data.opaque(),
           /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
           /*ctcLossDesc=*/ctc_loss_desc.handle(),
           /*workspace=*/workspace.opaque(),
@@ -3946,34 +3946,37 @@ bool CudnnSupport::DoFusedConvolve(
       /*report_error=*/!output_profile_result);
 }
 
-bool CudnnSupport::DoCtcLoss(
-    Stream* stream, const dnn::RnnStateTensorDescriptor &probs_desc,
-    const DeviceMemory<float> &probs_data,
+port::Status CudnnSupport::DoCtcLoss(
+    Stream* stream, dnn::DataType element_type,
+    const dnn::RnnStateTensorDescriptor &probs_desc,
+    const DeviceMemoryBase probs_data,
     const absl::Span<const int32> &labels_data,
     const absl::Span<const int32> &labels_lengths_data,
     const absl::Span<const int32> &input_lengths_data,
-    DeviceMemory<float> *costs_data,
+    DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor &grads_desc,
-    DeviceMemory<float> *grads_data,
+    DeviceMemoryBase grads_data,
     const dnn::CtcLossDescriptor &ctc_loss_desc,
     ScratchAllocator *workspace_allocator) {
 #if CUDNN_VERSION >= 7601
-  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ctc_loss_desc, CUDNN_DATA_FLOAT);
+  // Current cuDNN only supports the float dtype for CTC Loss
+  if (element_type != dnn::DataType::kFloat) {
+    LOG(FATAL) << "Invalid CuDNN data type: " << static_cast<int>(element_type);
+  }
+  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ctc_loss_desc,
+                                             ToCudnnDataType(element_type));
 #else
-  LOG(WARNING) << "CuDNN CTC Loss is only supported with CUDNN Version 7.6.1 "
-                  "or later.";
-  return false;
+  LOG(FATAL) << "CuDNN CTC Loss is only supported with CUDNN Version 7.6.1 "
+                "or later.";
 #endif
   const CudnnRnnStateTensorDescriptor& cudnn_probs_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(grads_desc);
-  return IsStatusOk(
-      DoCtcLossImpl(stream, cudnn_probs_desc, probs_data, labels_data,
-                    labels_lengths_data, input_lengths_data, costs_data,
-                    cudnn_grads_desc, grads_data, cudnn_ctc_loss_desc,
-                    workspace_allocator),
-      /*report_error=*/true);
+  return DoCtcLossImpl(stream, cudnn_probs_desc, probs_data, labels_data,
+             labels_lengths_data, input_lengths_data, costs_data,
+             cudnn_grads_desc, grads_data, cudnn_ctc_loss_desc,
+             workspace_allocator);
 }
 
 bool CudnnSupport::DoTransformTensor(Stream* stream,

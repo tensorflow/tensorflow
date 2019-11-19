@@ -563,17 +563,18 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       dnn::BatchDescriptor* output_batch_descriptor);
 
-  bool DoCtcLoss(
-      Stream* stream, const dnn::RnnStateTensorDescriptor &probs_desc,
-      const DeviceMemory<float> &probs_data,
+  port::Status DoCtcLoss(
+      Stream* stream, dnn::DataType element_type,
+      const dnn::RnnStateTensorDescriptor &probs_desc,
+      const DeviceMemoryBase probs_data,
       const absl::Span<const int32> &labels_data,
       const absl::Span<const int32> &labels_lengths_data,
       const absl::Span<const int32> &input_lengths_data,
-      DeviceMemory<float> *costs_data,
+      DeviceMemoryBase costs_data,
       const dnn::RnnStateTensorDescriptor &grads_desc,
-      DeviceMemory<float> *grads_data,
+      DeviceMemoryBase grads_data,
       const dnn::CtcLossDescriptor &ctc_loss_desc,
-      ScratchAllocator *workspace_allocator);
+      ScratchAllocator *workspace_allocator) override;
 
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
                          dnn::DataType input_type,
@@ -688,13 +689,13 @@ class CudnnSupport : public dnn::DnnSupport {
 
   port::Status DoCtcLossImpl(
       Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
-      const DeviceMemory<float>& probs_data,
+      const DeviceMemoryBase probs_data,
       const absl::Span<const int32>& labels_data,
       const absl::Span<const int32>& labels_lengths_data,
       const absl::Span<const int32>& input_lengths_data,
-      DeviceMemory<float>* costs_data,
+      DeviceMemoryBase costs_data,
       const CudnnRnnStateTensorDescriptor& grads_desc,
-      DeviceMemory<float>* grads_data,
+      DeviceMemoryBase grads_data,
       const CudnnCtcLossDescriptor& ctc_loss_desc,
       ScratchAllocator* workspace_allocator);
 
