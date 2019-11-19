@@ -285,6 +285,8 @@ def random_uniform(shape,
           if not maxval_is_one:
             result = result * maxval
         else:
+          maxval = array_ops.ensure_shape(maxval, (), "max")
+          minval = array_ops.ensure_shape(minval, (), "min")
           result = math_ops.add(result * (maxval - minval), minval, name=name)
     else:
       minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
@@ -296,6 +298,8 @@ def random_uniform(shape,
       else:
         rnd = gen_random_ops.random_uniform(
             shape, dtype, seed=seed1, seed2=seed2)
+        maxval = array_ops.ensure_shape(maxval, (), "max")
+        minval = array_ops.ensure_shape(minval, (), "min")
         result = math_ops.add(rnd * (maxval - minval), minval, name=name)
     # TODO(b/132092188): C++ shape inference inside functional ops does not
     # cross FuncGraph boundaries since that information is only available in
