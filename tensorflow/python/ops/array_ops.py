@@ -2556,8 +2556,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
          [0, 0, 0, 0]], dtype=int32)>
 
   Args:
-    shape: A `list` of integers, a `tuple` of integers, or
-      a 1-D `Tensor` of type `int32`.
+    shape: A `list` of integers, a `tuple` of integers, or a 1-D `Tensor` of
+      type `int32`.
     dtype: The DType of an element in the resulting `Tensor`.
     name: Optional string. A name for the operation.
 
@@ -2787,8 +2787,8 @@ def ones(shape, dtype=dtypes.float32, name=None):
          [1, 1, 1, 1]], dtype=int32)>
 
   Args:
-    shape: A `list` of integers, a `tuple` of integers, or
-      a 1-D `Tensor` of type `int32`.
+    shape: A `list` of integers, a `tuple` of integers, or a 1-D `Tensor` of
+      type `int32`.
     dtype: Optional DType of an element in the resulting `Tensor`. Default is
       `tf.float32`.
     name: Optional string. A name for the operation.
@@ -4760,8 +4760,8 @@ def quantize(
       axis=axis)
 
 
-@tf_export("quantization.dequantize", v1=["quantization.dequantize",
-                                          "dequantize"])
+@tf_export(
+    "quantization.dequantize", v1=["quantization.dequantize", "dequantize"])
 @deprecation.deprecated_endpoints("dequantize")
 def dequantize(  # pylint: disable=missing-docstring
     input,  # pylint: disable=redefined-builtin
