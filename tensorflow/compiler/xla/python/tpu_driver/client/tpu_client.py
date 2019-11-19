@@ -41,21 +41,27 @@ class TpuBackend(xla_client.Backend):
     self.client = client
 
   @staticmethod
-  def create(worker=None):
+  def create(worker=None, force=False):
+    # `force` == True will skip caching any backends (if applicable) and will
+    # always try to create a new client.
     if worker is None:
       raise ValueError(
           'Failed to create TpuBackend. The `worker` parameter must not be '
           '`None`. Use `local` to connect to a local TPU or '
           '`grpc://host:port` to connect to a remote TPU.')
-    elif worker == 'local' or (
-        (worker.startswith('record://') or worker.startswith('replay://'))
-        and 'local://' in worker):
+
+    if worker == 'local' or 'local://' in worker:
+      # We usually want to cache for local backends to prevent double
+      # initialization, except where `force` == True.
+      if force:
+        return TpuBackend(_tpu_client.TpuClient.Get(worker))
       if TpuBackend._local_backend is None:
         logging.info('Starting the local TPU driver.')
         TpuBackend._local_backend = TpuBackend(
             _tpu_client.TpuClient.Get(worker))
       return TpuBackend._local_backend
     else:
+      # We do not cache for non-local backends.
       return TpuBackend(_tpu_client.TpuClient.Get(worker))
 
   def device_count(self):
