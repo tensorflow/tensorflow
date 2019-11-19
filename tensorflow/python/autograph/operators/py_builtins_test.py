@@ -81,9 +81,10 @@ class PyBuiltinsTest(test.TestCase):
     dataset = py_builtins.abs_(dataset)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
     with self.cached_session() as sess:
-      self.assertAllEqual(self.evaluate(iterator.get_next()), (1, (1, 1)))
-      self.assertAllEqual(self.evaluate(iterator.get_next()), (2, (2, 2)))
-      self.assertAllEqual(self.evaluate(iterator.get_next()), (3, (3, 3)))
+      for i in range(1, 4):
+        actual = self.evaluate(iterator.get_next())
+        self.assertAllEqual(actual[0], i)
+        self.assertAllEqual(actual[1], (i, i))
 
   def test_float(self):
     self.assertEqual(py_builtins.float_(10), 10.0)
