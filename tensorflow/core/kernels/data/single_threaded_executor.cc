@@ -132,7 +132,9 @@ class SingleThreadedExecutorImpl : public Executor {
         const Node* arg_node = arg_index_node_pair.second;
         arg_output_locations_[arg_index].reserve(arg_node->out_edges().size());
         for (const Edge* e : arg_node->out_edges()) {
-          if (e->src_output() != 0) {
+          if (e->src_output() == Graph::kControlSlot) {
+            continue;
+          } else if (e->src_output() != 0) {
             return errors::Internal("Invalid output index ", e->src_output(),
                                     " from argument node ", arg_index);
           }

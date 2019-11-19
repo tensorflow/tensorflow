@@ -143,7 +143,8 @@ TEST_F(ExecutorTest, SimpleAdd) {
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
   auto in1 = test::graph::Arg(g.get(), 1, DT_FLOAT);
   auto tmp = test::graph::Add(g.get(), in0, in1);
-  test::graph::Retval(g.get(), 0, tmp);
+  auto ret = test::graph::Retval(g.get(), 0, tmp);
+  g->AddControlEdge(in1, ret);
   FixupSourceAndSinkEdges(g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT, DT_FLOAT}, {DT_FLOAT});
