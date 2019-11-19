@@ -235,7 +235,8 @@ class HloComputation {
   //     calls.
   static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
       const HloComputationProto& proto,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map);
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      bool prohibit_empty_literal = true);
 
   using InstructionSequence = tensorflow::gtl::iterator_range<
       UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>;

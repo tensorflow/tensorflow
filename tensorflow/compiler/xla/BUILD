@@ -424,6 +424,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
