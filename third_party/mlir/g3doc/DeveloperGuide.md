@@ -20,6 +20,10 @@ LLVM style guide):
     recursive way). At the moment, we tolerate it for the two following cases:
     *   The nesting of the IR: we use recursion when traversing nested regions.
     *   Type nesting: recursion may be used for the nesting of composite types.
+*   Follow the `git` conventions for writing a commit message, in particular the
+    first line is the "title", it should be followed by an empty line and an
+    optional description. This [post](https://chris.beams.io/posts/git-commit/)
+    give examples and more details.
 
 Please run clang-format on the files you modified with the `.clang-format`
 configuration file available in the root directory. Check the clang-format
