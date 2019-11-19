@@ -1884,4 +1884,5 @@ mlir::createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
 }
 
 static PassRegistration<LLVMLoweringPass>
-    pass("lower-to-llvm", "Convert all functions to the LLVM IR dialect");
+    pass("convert-std-to-llvm", "Convert scalar and vector operations from the "
+                                "Standard to the LLVM dialect");
