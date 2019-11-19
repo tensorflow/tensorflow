@@ -26,7 +26,7 @@ limitations under the License.
 namespace mlir {
 namespace TFTPU {
 
-void createTPUBridge(OpPassManager &pm) {
+void CreateTPUBridge(OpPassManager &pm) {
   OpPassManager &func_pm = pm.nest<FuncOp>();
   func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
   func_pm.addPass(CreateTPUClusterFormationPass());
@@ -53,7 +53,7 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
     bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
 
   // Populate a passmanager with the list of passes that implement the bridge.
-  createTPUBridge(bridge);
+  CreateTPUBridge(bridge);
 
   // Run the bridge on the module, in case of failure, the `diag_handler`
   // converts MLIR errors emitted to the MLIRContext into a tensorflow::Status.
