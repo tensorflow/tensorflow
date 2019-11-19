@@ -1,4 +1,5 @@
 load("//tensorflow:tensorflow.bzl", "if_not_windows", "tf_cc_test")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -395,8 +396,11 @@ cc_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-    ],
+        "//tensorflow/core/platform",
+    ] + if_static(
+        extra_deps = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc"],
+        otherwise = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc_headers_only"],
+    ),
 )
 
 filegroup(

@@ -13,6 +13,7 @@ load(
 )
 load(
     "//tensorflow/core/platform:default/build_config_root.bzl",
+    "if_static",
     "tf_cuda_tests_tags",
 )
 
@@ -38,8 +39,10 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal:parse_annotation",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-    ],
+    ] + if_static(
+        extra_deps = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc"],
+        otherwise = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc_headers_only"],
+    ),
     alwayslink = 1,
 )
 
