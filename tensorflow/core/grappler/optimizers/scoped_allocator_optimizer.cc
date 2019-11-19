@@ -575,7 +575,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                            const TensorShape& sa_shape,
                            std::vector<NodeDefBuilder::NodeOut>* sac_inputs) {
     VLOG(2) << "BuildSAConcatNode " << sac_name;
-    std::set<string> sac_ctl_inputs;
+    // control input: edge name -> source node name
+    absl::flat_hash_map<string, string> sac_ctl_inputs;
     for (int i = 0; i < ops.size(); ++i) {
       NodeDef* old_op = ops[i];
       for (const string& old_op_input : old_op->input()) {
@@ -584,7 +585,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
         if (position == -1) {
           // A control input: drop if from another member of the op set.
           if (op_instance_names.find(old_op_input) == op_instance_names.end()) {
-            sac_ctl_inputs.insert(old_op_input);
+            sac_ctl_inputs.emplace(old_op_input, input_name);
           }
         } else {
           // TODO(tucker): remove redundant check.
@@ -620,8 +621,11 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     node_map->AddOutput(sa_name, sac_name);
 
     // Attach the old control inputs to the new sac node.
-    for (const string& ctl_input : sac_ctl_inputs) {
-      sac_node->add_input(ctl_input);
+    for (const auto& ctl_input : sac_ctl_inputs) {
+      const auto& ctl_edge = ctl_input.first;
+      const auto& input_name = ctl_input.second;
+      sac_node->add_input(ctl_edge);
+      node_map->AddOutput(input_name, sac_node->name());
     }
     return Status::OK();
   }
