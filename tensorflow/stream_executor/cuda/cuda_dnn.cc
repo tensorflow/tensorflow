@@ -1227,6 +1227,13 @@ class CudnnCtcLossDescriptor {
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnCtcLossDescriptor);
 };
+#else
+// dummy class
+class CudnnCtcLossDescriptor {
+ public:
+  CudnnCtcLossDescriptor(const dnn::CtcLossDescriptor& ctc_loss_desc,
+                         cudnnDataType_t data_type) {}
+};
 #endif
 
 namespace {
@@ -2079,9 +2086,9 @@ port::Status CudnnSupport::DoCtcLossImpl(
           /*workspace=*/workspace.opaque(),
           /*workSpaceSizeInBytes=*/workspace.size()));
 #else
-      return port::Status(port::error::INVALID_ARGUMENT,
-                          "No supported cudnnCTCLoss when "
-                          "CUDNN_VERSION < 7.6.3");
+  return port::Status(port::error::INVALID_ARGUMENT,
+                      "No supported cudnnCTCLoss when "
+                      "CUDNN_VERSION < 7.6.3");
 #endif
 
   return port::Status::OK();
