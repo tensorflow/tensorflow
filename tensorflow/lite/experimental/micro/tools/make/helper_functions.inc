@@ -231,6 +231,138 @@ ALL_PROJECT_TARGETS += $(if $(findstring _test,$(2)),,generate_$(2)_arduino_libr
 
 endef
 
+# Creates a set of rules to build a standalone Particle project for an
+# executable, including all of the source and header files required in a
+# separate folder and a simple makefile.
+# Arguments are:
+# 1 - Project file template names.
+# 2 - Name of executable.
+# 3 - List of C/C++ source files needed to build the target.
+# 4 - List of C/C++ header files needed to build the target.
+# 5 - Linker flags required.
+# 6 - C++ compilation flags needed.
+# 7 - C compilation flags needed.
+# Calling eval on the output will create a <Name>_makefile target that you
+# can invoke to create the standalone project.
+define generate_particle_project
+
+$(PRJDIR)$(2)/particle/examples/%.cpp: tensorflow/lite/experimental/micro/examples/%.cc
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --is_example_source \
+        --source_path="$$<" \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/particle/examples/%.h: tensorflow/lite/experimental/micro/examples/%.h
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --is_example_source \
+        --source_path="$$<" \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/particle/examples/%/main.ino: tensorflow/lite/experimental/micro/examples/%/main_functions.cc
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --is_example_ino \
+        --source_path="$$<" \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/particle/src/%.cpp: %.cc
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/particle/src/%.h: %.h third_party_downloads
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/particle/LICENSE: LICENSE
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
+$(PRJDIR)$(2)/particle/src/%: % third_party_downloads
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/particle/src/third_party/%: tensorflow/lite/experimental/micro/tools/make/downloads/% third_party_downloads
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/particle/src/third_party/%.cpp: tensorflow/lite/experimental/micro/tools/make/downloads/%.cc third_party_downloads
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --third_party_headers="$(4)" < $$< > $$@
+
+$(PRJDIR)$(2)/ardparticleuino/src/third_party/flatbuffers/include/flatbuffers/base.h: tensorflow/lite/experimental/micro/tools/make/downloads/flatbuffers/include/flatbuffers/base.h third_party_downloads
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --third_party_headers="$(4)" < $$< | \
+        sed -E 's/utility\.h/utility/g' > $$@
+
+$(PRJDIR)$(2)/particle/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h third_party_downloads
+	@mkdir -p $$(dir $$@)
+	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
+        --platform=particle \
+        --third_party_headers="$(4)" < $$< | \
+        sed -E 's@#include <string.h>@//#include <string.h> /* Patched by helper_functions.inc for Arduino compatibility */@g' > $$@
+
+$(PRJDIR)$(2)/particle/%: tensorflow/lite/experimental/micro/tools/make/templates/%
+	@mkdir -p $$(dir $$@)
+	@sed -E 's#\%\{SRCS\}\%#$(3)#g' $$< | \
+	sed -E 's#\%\{EXECUTABLE\}\%#$(2)#g' | \
+	sed -E 's#\%\{LINKER_FLAGS\}\%#$(5)#g' | \
+	sed -E 's#\%\{CXX_FLAGS\}\%#$(6)#g' | \
+	sed -E 's#\%\{CC_FLAGS\}\%#$(7)#g' > $$@
+
+$(PRJDIR)$(2)/particle/examples/$(2)/$(2).ino: tensorflow/lite/experimental/micro/tools/make/templates/arduino_example.ino
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
+$(PRJDIR)$(2)/particle/src/TensorFlowLite.h: tensorflow/lite/experimental/micro/tools/make/templates/TensorFlowLite.h
+	@mkdir -p $$(dir $$@)
+	@cp $$< $$@
+
+# This would be cleaner if we broke up the list of dependencies into variables,
+# but these get hard to define with the evaluation approach used to define make
+# functions.
+generate_$(2)_particle_project: \
+$(addprefix $(PRJDIR)$(2)/particle/,         \
+$(patsubst tensorflow/%,src/tensorflow/%,\
+$(patsubst examples/%/main_functions.cpp,examples/%/main.ino,\
+$(patsubst examples/%_test.cpp,examples/%_test.ino,\
+$(patsubst tensorflow/lite/experimental/micro/examples/%,examples/%,\
+$(patsubst third_party/%,src/third_party/%,\
+$(patsubst %.cc,%.cpp,$(3))))))))                                     \
+$(addprefix $(PRJDIR)$(2)/particle/, \
+$(patsubst tensorflow/%,src/tensorflow/%,\
+$(patsubst tensorflow/lite/experimental/micro/examples/%,examples/%,\
+$(patsubst third_party/%,src/third_party/%,$(4))))) \
+$(addprefix $(PRJDIR)$(2)/particle/,$(1)) \
+$(PRJDIR)$(2)/particle/src/TensorFlowLite.h
+
+generate_$(2)_particle_library_zip: generate_$(2)_particle_project
+	cp -r $(PRJDIR)$(2)/particle $(PRJDIR)$(2)/tensorflow_lite
+	python tensorflow/lite/experimental/micro/tools/make/fix_particle_subfolders.py $(PRJDIR)$(2)/tensorflow_lite
+	@cd $(PRJDIR)$(2) && zip -q -r tensorflow_lite.zip tensorflow_lite
+
+ALL_PROJECT_TARGETS += $(if $(findstring _test,$(2)),,generate_$(2)_particle_library_zip)
+
+    PARTICLE_LIBRARY_ZIPS += $(if $(findstring _mock,$(2)),,$(if $(findstring _test,$(2)),,$(PRJDIR)$(2)/tensorflow_lite.zip))
+
+endef
+
 # Creates a set of rules to build a standalone ESP-IDF project for an
 # executable, including all of the source and header files required in a
 # separate folder.
