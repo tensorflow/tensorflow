@@ -408,7 +408,7 @@ struct PersistentRnnPlanDeleter {
     CHECK_CUDNN_OK(cudnnDestroyPersistentRNNPlan(plan));
   }
 };
-#if CUDNN_VERSION >= 7601
+#if CUDNN_VERSION >= 7603
 struct CtcLossDescriptorDeleter {
   void operator()(cudnnCTCLossDescriptor_t descriptor) const {
     CHECK_CUDNN_OK(cudnnDestroyCTCLossDescriptor(descriptor));
@@ -437,7 +437,7 @@ using DropoutDescriptor =
 using RnnDescriptor = std::unique_ptr<cudnnRNNStruct, RnnDescriptorDeleter>;
 using PersistentRnnPlan =
     std::unique_ptr<cudnnPersistentRNNPlan, PersistentRnnPlanDeleter>;
-#if CUDNN_VERSION >= 7601
+#if CUDNN_VERSION >= 7603
 using CtcLossDescriptor =
     std::unique_ptr<cudnnCTCLossStruct, CtcLossDescriptorDeleter>;
 #endif
@@ -490,7 +490,7 @@ RnnDescriptor CreateRnnDescriptor() {
   CHECK_CUDNN_OK(cudnnCreateRNNDescriptor(&result));
   return RnnDescriptor(result);
 }
-#if CUDNN_VERSION >= 7601
+#if CUDNN_VERSION >= 7603
 CtcLossDescriptor CreateCtcLossDescriptor() {
   cudnnCTCLossDescriptor_t result;
   CHECK_CUDNN_OK(cudnnCreateCTCLossDescriptor(&result));
@@ -1207,7 +1207,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnRnnDescriptor);
 };
 
-#if CUDNN_VERSION >= 7601
+#if CUDNN_VERSION >= 7603
 class CudnnCtcLossDescriptor {
  public:
   CudnnCtcLossDescriptor(const dnn::CtcLossDescriptor& ctc_loss_desc,
@@ -1715,7 +1715,7 @@ port::StatusOr<DeviceMemory<uint8>> CreateCtcLossWorkspace(
     ScratchAllocator* workspace_allocator) {
   // Query the workspace size.
   size_t workspace_size_in_bytes = 0;
-#if CUDNN_VERSION >= 7601
+#if CUDNN_VERSION >= 7603
   RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
       /*handle=*/cudnn.handle(), /*probsDesc=*/probs_desc.handle(),
       /*gradientsDesc=*/grads_desc.handle(),
@@ -2073,7 +2073,7 @@ port::Status CudnnSupport::DoCtcLossImpl(
   int kNumLabels = probs_desc.data_size();
   int total_size = kNumLabels * kNumTimestamps * kBatchSize;
 
-#if CUDNN_VERSION >= 7601
+#if CUDNN_VERSION >= 7603
   RETURN_IF_CUDNN_ERROR(cudnnCTCLoss(
           /*handle=*/cudnn.handle(), /*probsDesc=*/probs_desc.handle(),
           /*probs=*/probs_data.opaque(), /*labels=*/labels_data.data(),
@@ -3965,17 +3965,14 @@ port::Status CudnnSupport::DoCtcLoss(
     DeviceMemoryBase grads_data,
     const dnn::CtcLossDescriptor &ctc_loss_desc,
     ScratchAllocator *workspace_allocator) {
-#if CUDNN_VERSION >= 7601
-  // Current cuDNN only supports the float dtype for CTC Loss
-  if (element_type != dnn::DataType::kFloat) {
-    LOG(FATAL) << "Invalid CuDNN data type: " << static_cast<int>(element_type);
+  // Current cuDNN CTC Loss only supports the float datatype
+  if (CUDNN_VERSION < 7603 || element_type != dnn::DataType::kFloat) {
+    return port::Status(port::error::INVALID_ARGUMENT,
+                        "CudnnCtcLossDescriptor is supported only when the "
+                        "CUDNN_VERSION >= 7.6.3 and DataType is float");
   }
   CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ctc_loss_desc,
                                              ToCudnnDataType(element_type));
-#else
-  LOG(FATAL) << "CuDNN CTC Loss is only supported with CUDNN Version 7.6.1 "
-                "or later.";
-#endif
   const CudnnRnnStateTensorDescriptor& cudnn_probs_desc =
       static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
   const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
