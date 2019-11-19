@@ -5081,6 +5081,13 @@ Status ConvertTopK(OpConverterParams* params) {
       CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
   TF_RETURN_IF_ERROR(
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
+  TFAttrs attrs(node_def);
+  const bool sorted = attrs.get<bool>("sorted");
+  if (!sorted) {
+    return errors::InvalidArgument("Only sorted=True is supported, at",
+                                   node_def.name());
+  }
+
   nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const int num_dims = tensor->getDimensions().nbDims;
   if (num_dims == 0) {
