@@ -343,6 +343,9 @@ some other module) has no body. While the MLIR textual form provides a nice
 inline syntax for function arguments, they are internally represented as "block
 arguments" to the first block in the region.
 
+Only dialect attribute names may be specified in the attribute dictionaries for
+function arguments, results, or the function itself.
+
 Examples:
 
 ```mlir {.mlir}
@@ -355,6 +358,15 @@ func @count(%x: i64) -> (i64, i64)
   attributes {fruit: "banana"} {
   return %x, %x: i64, i64
 }
+
+// A function with an argument attribute
+func @example_fn_arg(%x: i32 {swift.self = unit})
+
+// A function with a result attribute
+func @example_fn_result() -> (f64 {dialectName.attrName = 0 : i64})
+
+// A function with an attribute
+func @example_fn_attr() attributes {dialectName.attrName = false}
 ```
 
 ## Blocks
@@ -1422,8 +1434,8 @@ either is the self/context or it isn't.
 
 ```mlir {.mlir}
 // A unit attribute defined with the `unit` value specifier.
-func @verbose_form(i1) attributes {unitAttr = unit}
+func @verbose_form(i1) attributes {dialectName.unitAttr = unit}
 
 // A unit attribute can also be defined without the value specifier.
-func @simple_form(i1) attributes {unitAttr}
+func @simple_form(i1) attributes {dialectName.unitAttr}
 ```
