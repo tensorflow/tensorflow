@@ -1,5 +1,4 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
@@ -85,12 +84,10 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":time_utils",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
-    ] + if_static(
-        extra_deps = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc"],
-        otherwise = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc_headers_only"],
-    ),
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
 )
 
 cc_library(
@@ -100,11 +97,9 @@ cc_library(
     deps = [
         ":time_utils",
         ":timespan",
-        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-    ] + if_static(
-        extra_deps = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc"],
-        otherwise = ["//tensorflow/core/profiler/protobuf:xplane_proto_cc_headers_only"],
-    ),
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "@com_google_absl//absl/strings",
+    ],
 )

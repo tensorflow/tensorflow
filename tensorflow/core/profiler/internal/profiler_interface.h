@@ -19,10 +19,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/platform.h"
-#if !defined(IS_MOBILE_PLATFORM)
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#endif
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -69,12 +66,10 @@ class ProfilerInterface {
   // return empty data.
   virtual Status CollectData(RunMetadata* run_metadata) = 0;
 
-#if !defined(IS_MOBILE_PLATFORM)
   // Saves collected profile data into XSpace.
   // After this or the overload above are called once, subsequent calls might
   // return empty data.
   virtual Status CollectData(XSpace* space) = 0;
-#endif
 
   // Which device this ProfilerInterface is used for.
   virtual DeviceType GetDeviceType() = 0;
