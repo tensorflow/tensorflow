@@ -4588,6 +4588,23 @@ Inputs are the logits, not probabilities.
   }];
 }
 
+def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes softplus: `log(exp(features) + 1)`.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features
+  );
+
+  let results = (outs
+    TF_FpTensor:$activations
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
