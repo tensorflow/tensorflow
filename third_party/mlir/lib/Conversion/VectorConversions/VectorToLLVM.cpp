@@ -15,9 +15,9 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/Conversion/VectorConversions/VectorConversions.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"
+#include "mlir/Conversion/VectorConversions/VectorConversions.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/IR/Attributes.h"
@@ -49,19 +49,19 @@ static LLVM::LLVMType getPtrToElementType(T containerType,
       .getPointerTo();
 }
 
-class ExtractElementOpConversion : public LLVMOpLowering {
+class VectorExtractElementOpConversion : public LLVMOpLowering {
 public:
-  explicit ExtractElementOpConversion(MLIRContext *context,
-                                      LLVMTypeConverter &typeConverter)
-      : LLVMOpLowering(vector::ExtractElementOp::getOperationName(), context,
-                       typeConverter) {}
+  explicit VectorExtractElementOpConversion(MLIRContext *context,
+                                            LLVMTypeConverter &typeConverter)
+      : LLVMOpLowering(vector::VectorExtractElementOp::getOperationName(),
+                       context, typeConverter) {}
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    auto adaptor = vector::ExtractElementOpOperandAdaptor(operands);
-    auto extractOp = cast<vector::ExtractElementOp>(op);
+    auto adaptor = vector::VectorExtractElementOpOperandAdaptor(operands);
+    auto extractOp = cast<vector::VectorExtractElementOp>(op);
     auto vectorType = extractOp.vector()->getType().cast<VectorType>();
     auto resultType = extractOp.getResult()->getType();
     auto llvmResultType = lowering.convertType(resultType);
@@ -103,25 +103,25 @@ public:
   }
 };
 
-class OuterProductOpConversion : public LLVMOpLowering {
+class VectorOuterProductOpConversion : public LLVMOpLowering {
 public:
-  explicit OuterProductOpConversion(MLIRContext *context,
-                                    LLVMTypeConverter &typeConverter)
-      : LLVMOpLowering(vector::OuterProductOp::getOperationName(), context,
-                       typeConverter) {}
+  explicit VectorOuterProductOpConversion(MLIRContext *context,
+                                          LLVMTypeConverter &typeConverter)
+      : LLVMOpLowering(vector::VectorOuterProductOp::getOperationName(),
+                       context, typeConverter) {}
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    auto adaptor = vector::OuterProductOpOperandAdaptor(operands);
+    auto adaptor = vector::VectorOuterProductOpOperandAdaptor(operands);
     auto *ctx = op->getContext();
     auto vLHS = adaptor.lhs()->getType().cast<LLVM::LLVMType>();
     auto vRHS = adaptor.rhs()->getType().cast<LLVM::LLVMType>();
     auto rankLHS = vLHS.getUnderlyingType()->getVectorNumElements();
     auto rankRHS = vRHS.getUnderlyingType()->getVectorNumElements();
     auto llvmArrayOfVectType = lowering.convertType(
-        cast<vector::OuterProductOp>(op).getResult()->getType());
+        cast<vector::VectorOuterProductOp>(op).getResult()->getType());
     Value *desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayOfVectType);
     Value *a = adaptor.lhs(), *b = adaptor.rhs();
     Value *acc = adaptor.acc().empty() ? nullptr : adaptor.acc().front();
@@ -246,8 +246,8 @@ public:
 /// Populate the given list with patterns that convert from Vector to LLVM.
 void mlir::populateVectorToLLVMConversionPatterns(
     LLVMTypeConverter &converter, OwningRewritePatternList &patterns) {
-  patterns.insert<ExtractElementOpConversion, OuterProductOpConversion,
-                  VectorTypeCastOpConversion>(
+  patterns.insert<VectorExtractElementOpConversion,
+                  VectorOuterProductOpConversion, VectorTypeCastOpConversion>(
       converter.getDialect()->getContext(), converter);
 }
 

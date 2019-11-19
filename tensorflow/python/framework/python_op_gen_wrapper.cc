@@ -1,4 +1,5 @@
-/* Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/tensor_reference.h"
+#include <Python.h>
 
-namespace tensorflow {
+#include "include/pybind11/pybind11.h"
+#include "tensorflow/python/framework/python_op_gen.h"
 
-TensorReference::TensorReference(const Tensor& tensor)
-    : buf_(tensor.buf_ ? tensor.buf_->root_buffer() : nullptr) {
-  if (buf_) buf_->Ref();
-}
+namespace py = pybind11;
 
-}  // namespace tensorflow
+PYBIND11_MODULE(_pywrap_python_op_gen, m) {
+  m.def("GetPythonWrappers", [](py::bytes input) {
+    char* c_string;
+    Py_ssize_t py_size;
+    if (PyBytes_AsStringAndSize(input.ptr(), &c_string, &py_size) == -1) {
+      throw py::error_already_set();
+    }
+    return py::bytes(
+        tensorflow::GetPythonWrappers(c_string, static_cast<size_t>(py_size)));
+  });
+};

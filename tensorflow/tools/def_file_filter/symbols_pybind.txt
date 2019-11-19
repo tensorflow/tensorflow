@@ -112,3 +112,5 @@ tensorflow::TensorToNdarray
 tensorflow::detail::PyDecrefDeleter
 tensorflow::make_safe
 
+[python_op_gen] # python_op_gen
+tensorflow::GetPythonWrappers

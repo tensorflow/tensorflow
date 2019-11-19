@@ -1502,13 +1502,13 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(0.01f, 0.01f, 2.53e-5f),   // small mean, small variance
         std::make_tuple(0.01f, 100.0f, 1.20e-7f),  // small mean, large variance
         std::make_tuple(100.0f, 0.0f, 0.0f),       // large mean, zero variance
-        std::make_tuple(100.0f, 0.01f, 199.0f),    // large mean, small variance
+        std::make_tuple(100.0f, 0.01f, 1.81e-4f),  // large mean, small variance
         std::make_tuple(100.0f, 100.0f, 1.20e-7f)  // large mean, large variance
         ));
 
 TEST(uKernels, MeanStddevNormalizationAllBatches) {
   constexpr int kVectorSize = 4;
-  constexpr int kBatchSize = 8;  // 9, but large mean, small variance fails
+  constexpr int kBatchSize = 9;
 
   // None-zero input.
   static float input[kVectorSize * kBatchSize] = {
@@ -1519,6 +1519,7 @@ TEST(uKernels, MeanStddevNormalizationAllBatches) {
       -0.01f,   0.0f,    0.02f,   0.03f,    // small mean, small variance
       -199.99f, -99.99f, 100.01f, 200.01f,  // small mean, large variance
       100.0f,   100.0f,  100.0f,  100.0f,   // large mean, zero variance
+      99.98f,   99.99f,  100.01f, 100.02f,  // large mean, small variance
       -100.0f,  0.0f,    200.0f,  300.0f,   // large mean, large variance
   };
   float output[kVectorSize * kBatchSize];
@@ -1533,10 +1534,11 @@ TEST(uKernels, MeanStddevNormalizationAllBatches) {
       -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // small mean, small variance
       -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // small mean, large variance
       0.0f,     0.0f,     0.0f,    0.0f,     // large mean, zero variance
+      -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, small variance
       -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
   };
   EXPECT_THAT(output, testing::ElementsAreArray(
-                          ArrayFloatNear(expected_output, 2.6e-5f)));
+                          ArrayFloatNear(expected_output, 1.81e-4f)));
 }
 
 }  // namespace tensor_utils

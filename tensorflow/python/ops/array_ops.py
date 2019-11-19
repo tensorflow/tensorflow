@@ -603,6 +603,32 @@ def shape_n(input, out_type=dtypes.int32, name=None):
 @dispatch.add_dispatch_support
 def size_v2(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
+  """Returns the size of a tensor.
+
+  Returns a 0-D `Tensor` representing the number of elements in `input`
+  of type `out_type`. Defaults to tf.int32.
+
+  For example:
+
+  ```python
+  t = tf.constant([[[1, 1, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]])
+  tf.size(t)  # 12
+  ```
+
+  Args:
+    input: A `Tensor` or `SparseTensor`.
+    name: A name for the operation (optional).
+    out_type: (Optional) The specified non-quantized numeric output type of the
+      operation. Defaults to `tf.int32`.
+
+  Returns:
+    A `Tensor` of type `out_type`. Defaults to `tf.int32`.
+
+  @compatibility(numpy)
+  Equivalent to np.size()
+  @end_compatibility
+  """
+
   return size(input, name, out_type)
 
 
@@ -2530,8 +2556,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
          [0, 0, 0, 0]], dtype=int32)>
 
   Args:
-    shape: A `list` of integers, a `tuple` of integers, or
-      a 1-D `Tensor` of type `int32`.
+    shape: A `list` of integers, a `tuple` of integers, or a 1-D `Tensor` of
+      type `int32`.
     dtype: The DType of an element in the resulting `Tensor`.
     name: Optional string. A name for the operation.
 
@@ -2761,8 +2787,8 @@ def ones(shape, dtype=dtypes.float32, name=None):
          [1, 1, 1, 1]], dtype=int32)>
 
   Args:
-    shape: A `list` of integers, a `tuple` of integers, or
-      a 1-D `Tensor` of type `int32`.
+    shape: A `list` of integers, a `tuple` of integers, or a 1-D `Tensor` of
+      type `int32`.
     dtype: Optional DType of an element in the resulting `Tensor`. Default is
       `tf.float32`.
     name: Optional string. A name for the operation.
@@ -3555,18 +3581,18 @@ def batch_to_space_v2(input, block_shape, crops, name=None):  # pylint: disable=
       This operation is equivalent to the following steps:
       1. Reshape `input` to `reshaped` of shape: [block_shape[0], ...,
         block_shape[M-1], batch / prod(block_shape), input_shape[1], ...,
-        input_shape[N-1]]  
-      2. Permute dimensions of `reshaped` to produce `permuted` of shape 
-         [batch / prod(block_shape),  input_shape[1], block_shape[0], ..., 
+        input_shape[N-1]]
+      2. Permute dimensions of `reshaped` to produce `permuted` of shape
+         [batch / prod(block_shape),  input_shape[1], block_shape[0], ...,
          input_shape[M], block_shape[M-1], input_shape[M+1],
-        ..., input_shape[N-1]]  
-      3. Reshape `permuted` to produce `reshaped_permuted` of shape 
-         [batch / prod(block_shape), input_shape[1] * block_shape[0], ..., 
-         input_shape[M] * block_shape[M-1], input_shape[M+1], ..., 
-         input_shape[N-1]]  
-      4. Crop the start and end of dimensions `[1, ..., M]` of 
-         `reshaped_permuted` according to `crops` to produce the output 
-         of shape: 
+        ..., input_shape[N-1]]
+      3. Reshape `permuted` to produce `reshaped_permuted` of shape
+         [batch / prod(block_shape), input_shape[1] * block_shape[0], ...,
+         input_shape[M] * block_shape[M-1], input_shape[M+1], ...,
+         input_shape[N-1]]
+      4. Crop the start and end of dimensions `[1, ..., M]` of
+         `reshaped_permuted` according to `crops` to produce the output
+         of shape:
          [batch / prod(block_shape),  input_shape[1] *
            block_shape[0] - crops[0,0] - crops[0,1], ..., input_shape[M] *
            block_shape[M-1] - crops[M-1,0] - crops[M-1,1],  input_shape[M+1],
@@ -4734,8 +4760,8 @@ def quantize(
       axis=axis)
 
 
-@tf_export("quantization.dequantize", v1=["quantization.dequantize",
-                                          "dequantize"])
+@tf_export(
+    "quantization.dequantize", v1=["quantization.dequantize", "dequantize"])
 @deprecation.deprecated_endpoints("dequantize")
 def dequantize(  # pylint: disable=missing-docstring
     input,  # pylint: disable=redefined-builtin

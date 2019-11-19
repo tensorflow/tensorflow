@@ -112,27 +112,6 @@ config_setting(
 )
 
 config_setting(
-    name = "chromiumos_x86_64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_arm64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "arm"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_armv7",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "armeabi-v7a"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "emscripten",
     values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],

@@ -279,6 +279,24 @@ see the incremented value or a subsequent newer one.
   TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
 }
 
+def TF_AssignSubVariableOp : TF_Op<"AssignSubVariableOp", []> {
+  let summary = "Subtracts a value from the current value of a variable.";
+
+  let description = [{
+Any ReadVariableOp with a control dependency on this op is guaranteed to
+see the decremented value or a subsequent newer one.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$resource,
+    TF_Tensor:$value
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr dtype = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_AssignVariableOp : TF_Op<"AssignVariableOp", []> {
   let summary = "Assigns a new value to a variable.";
 
@@ -4570,6 +4588,23 @@ Inputs are the logits, not probabilities.
   }];
 }
 
+def TF_SoftplusOp : TF_Op<"Softplus", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Computes softplus: `log(exp(features) + 1)`.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$features
+  );
+
+  let results = (outs
+    TF_FpTensor:$activations
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_SpaceToBatchNDOp : TF_Op<"SpaceToBatchND", [NoSideEffect]> {
   let summary = "SpaceToBatch for N-D tensors of type T.";
 
@@ -5103,6 +5138,57 @@ occurred during compilation.
   let results = (outs
     TF_StrTensor:$output
   );
+}
+
+def TF_TPUExecuteOp : TF_Op<"TPUExecute", []> {
+  let summary = "Op that loads and executes a TPU program on a TPU device.";
+
+  let description = [{
+For the internal use of the distributed TPU compiler.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    TF_StrTensor:$key
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
+}
+
+def TF_TPUExecuteAndUpdateVariablesOp : TF_Op<"TPUExecuteAndUpdateVariables", []> {
+  let summary = [{
+Op that executes a program with optional in-place variable updates.
+  }];
+
+  let description = [{
+It (optionally) reads device variables, loads and executes a TPU program on a
+TPU device, and then (optionally) in-place updates variables using the program
+outputs, as specified in attributes device_var_reads_indices (program input
+indices from directly reading variables) and device_var_updates_indices (program
+output indices used to update variables, -1 means no-update/read-only). Such
+program outputs are consumed by these variables will not appear in the op
+output. For the internal use of the distributed TPU compiler.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$args,
+    TF_StrTensor:$key,
+
+    I64ArrayAttr:$device_var_reads_indices,
+    I64ArrayAttr:$device_var_updates_indices
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$results
+  );
+
+  TF_DerivedOperandTypeListAttr Targs = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tresults = TF_DerivedResultTypeListAttr<0>;
 }
 
 def TF_TanhOp : TF_Op<"Tanh", [NoSideEffect, SameOperandsAndResultType]> {

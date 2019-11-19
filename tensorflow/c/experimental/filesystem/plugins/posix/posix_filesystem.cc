@@ -271,7 +271,42 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
-// TODO(mihaimaruseac): More implementations to follow in subsequent changes.
+static void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_Status* status) {
+  if (unlink(path) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+                      TF_Status* status) {
+  if (rmdir(path) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void PathExists(const TF_Filesystem* filesystem, const char* path,
+                       TF_Status* status) {
+  if (access(path, F_OK) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void Stat(const TF_Filesystem* filesystem, const char* path,
+                 TF_FileStatistics* stats, TF_Status* status) {
+  struct stat sbuf;
+  if (stat(path, &sbuf) != 0) {
+    TF_SetStatusFromIOError(status, errno, path);
+  } else {
+    stats->length = sbuf.st_size;
+    stats->mtime_nsec = sbuf.st_mtime * (1000 * 1000 * 1000);
+    stats->is_directory = S_ISDIR(sbuf.st_mode);
+    TF_SetStatus(status, TF_OK, "");
+  }
+}
 
 }  // namespace tf_posix_filesystem
 
@@ -298,6 +333,17 @@ void TF_InitPlugin(TF_Status* status) {
       tf_posix_filesystem::NewAppendableFile,
       tf_posix_filesystem::NewReadOnlyMemoryRegionFromFile,
       tf_posix_filesystem::CreateDir,
+      /*recursively_create_dir=*/nullptr,
+      tf_posix_filesystem::DeleteFile,
+      tf_posix_filesystem::DeleteDir,
+      /*delete_recursively=*/nullptr,
+      /*rename_file=*/nullptr,
+      /*copy_file=*/nullptr,
+      tf_posix_filesystem::PathExists,
+      /*paths_exist=*/nullptr,
+      tf_posix_filesystem::Stat,
+      /*is_directory=*/nullptr,
+      /*get_file_size=*/nullptr,
       nullptr,
   };
 

@@ -43,8 +43,8 @@ class RecordingTpuDriver;
 
 class RecordingEvent : public Event {
  public:
-  explicit RecordingEvent(std::unique_ptr<Event> event)
-      : shared_event_(event.release()), id_(id_counter++) {}
+  explicit RecordingEvent(std::shared_ptr<Event> event)
+      : shared_event_(std::move(event)), id_(id_counter++) {}
 
   explicit RecordingEvent(std::shared_ptr<Event> event, int64_t id)
       : shared_event_(event), id_(id) {}
@@ -235,7 +235,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_handle;
   }
 
-  std::unique_ptr<Event> Deallocate(
+  std::shared_ptr<Event> Deallocate(
       std::unique_ptr<BufferHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
@@ -245,7 +245,7 @@ class RecordingTpuDriver : public TpuDriver {
     int64_t recording_handle_id = recording_handle->id_;
     auto event = driver_->Deallocate(std::move(recording_handle->handle_),
                                      unwrapped_wait_for);
-    auto recording_event = std::make_unique<RecordingEvent>(std::move(event));
+    auto recording_event = std::make_shared<RecordingEvent>(std::move(event));
     int64_t event_id = recording_event->id_;
 
     {
@@ -257,7 +257,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_event;
   }
 
-  std::unique_ptr<Event> TransferToDevice(
+  std::shared_ptr<Event> TransferToDevice(
       const void* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     int64_t num_bytes = dst->size_in_bytes();
@@ -267,7 +267,7 @@ class RecordingTpuDriver : public TpuDriver {
     auto recording_handle = static_cast<RecordingBufferHandle*>(dst);
     int64_t recording_handle_id = recording_handle->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferToDevice(
+        std::make_shared<RecordingEvent>(driver_->TransferToDevice(
             src, static_cast<RecordingBufferHandle*>(dst)->handle_.get(),
             unwrapped_wait_for));
     int64_t event_id = recording_event->id_;
@@ -287,7 +287,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_event;
   }
 
-  std::unique_ptr<Event> TransferFromDevice(
+  std::shared_ptr<Event> TransferFromDevice(
       const BufferHandle* src, void* dst,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
@@ -295,7 +295,7 @@ class RecordingTpuDriver : public TpuDriver {
     auto thread_id = GetCurrentThreadId();
     auto src_handle_id = static_cast<const RecordingBufferHandle*>(src)->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferFromDevice(
+        std::make_shared<RecordingEvent>(driver_->TransferFromDevice(
             static_cast<const RecordingBufferHandle*>(src)->handle_.get(), dst,
             unwrapped_wait_for));
     auto event_id = recording_event->id_;
@@ -309,7 +309,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_event;
   }
 
-  std::unique_ptr<Event> TransferFromDeviceToDevice(
+  std::shared_ptr<Event> TransferFromDeviceToDevice(
       const BufferHandle* src, BufferHandle* dst,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
@@ -318,7 +318,7 @@ class RecordingTpuDriver : public TpuDriver {
     auto src_handle_id = static_cast<const RecordingBufferHandle*>(src)->id_;
     auto dst_handle_id = static_cast<const RecordingBufferHandle*>(dst)->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->TransferFromDeviceToDevice(
+        std::make_shared<RecordingEvent>(driver_->TransferFromDeviceToDevice(
             static_cast<const RecordingBufferHandle*>(src)->handle_.get(),
             static_cast<const RecordingBufferHandle*>(dst)->handle_.get(),
             unwrapped_wait_for));
@@ -332,20 +332,6 @@ class RecordingTpuDriver : public TpuDriver {
     }
 
     return recording_event;
-  }
-
-  std::unique_ptr<Event> TransferToInfeed(const void* src, int64_t num_bytes,
-                                          absl::Span<Event* const> wait_for) {
-    // TODO(b/140198941): Add infeed/outfeed functionality.
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
-  }
-
-  std::unique_ptr<Event> TransferFromOutfeed(
-      void* dst, int64_t num_bytes, absl::Span<Event* const> wait_for) {
-    // TODO(b/140198941): Add infeed/outfeed functionality.
-    LOG(FATAL) << "Unimplemented";
-    return nullptr;
   }
 
   std::unique_ptr<CompiledProgramHandle> CompileProgram(
@@ -393,7 +379,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_handle;
   }
 
-  std::unique_ptr<Event> UnloadProgram(
+  std::shared_ptr<Event> UnloadProgram(
       std::unique_ptr<LoadedProgramHandle> handle,
       absl::Span<Event* const> wait_for) override {
     auto unwrapped_wait_for = UnwrapWaitFor(wait_for);
@@ -402,7 +388,7 @@ class RecordingTpuDriver : public TpuDriver {
     auto loaded_handle_id =
         static_cast<RecordingLoadedProgramHandle*>(handle.get())->id_;
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->UnloadProgram(
+        std::make_shared<RecordingEvent>(driver_->UnloadProgram(
             std::move(static_cast<RecordingLoadedProgramHandle*>(handle.get())
                           ->handle_),
             unwrapped_wait_for));
@@ -417,7 +403,7 @@ class RecordingTpuDriver : public TpuDriver {
     return recording_event;
   }
 
-  std::unique_ptr<Event> ExecuteProgram(
+  std::shared_ptr<Event> ExecuteProgram(
       LoadedProgramHandle* program, absl::Span<BufferHandle* const> inputs,
       absl::Span<BufferHandle* const> outputs,
       const xla::DeviceAssignmentProto& device_assignment,
@@ -449,7 +435,7 @@ class RecordingTpuDriver : public TpuDriver {
     }
 
     auto recording_event =
-        std::make_unique<RecordingEvent>(driver_->ExecuteProgram(
+        std::make_shared<RecordingEvent>(driver_->ExecuteProgram(
             static_cast<RecordingLoadedProgramHandle*>(program)->handle_.get(),
             unwrapped_inputs, unwrapped_outputs, device_assignment,
             unwrapped_wait_for));

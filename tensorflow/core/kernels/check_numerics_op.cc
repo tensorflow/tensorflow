@@ -78,7 +78,7 @@ class CheckNumericsOp<CPUDevice, T> : public OpKernel {
     const int64 size = in.size();
     // Check to see if any element of the tensor is NaN or Inf.
     int fp_props =
-        std::accumulate(data, data + size, 0, [](const int& x, const T& y) {
+        std::accumulate(data, data + size, 0, [](const int x, const T& y) {
           int result = x;
           if (TF_PREDICT_TRUE(Eigen::numext::isfinite(y))) {
             // Do nothing: common case

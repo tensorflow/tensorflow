@@ -284,7 +284,7 @@ public:
     // Check for the right kind of attribute.
     result = attr.dyn_cast<AttrType>();
     if (!result)
-      return emitError(loc, "invalid kind of constant specified");
+      return emitError(loc, "invalid kind of attribute specified");
     return success();
   }
 

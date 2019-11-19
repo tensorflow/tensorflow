@@ -24,6 +24,10 @@ which bazel
 
 set_bazel_outdir
 
+# Pick a version of xcode
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
+
 install_macos_pip_deps sudo pip3.7
 
 # For python3 path on Mac

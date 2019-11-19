@@ -652,8 +652,8 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
 
 namespace {
 
-// Combine chained `spirv::AccessChainOp` operations into one
-// `spirv::AccessChainOp` operation.
+/// Combines chained `spirv::AccessChainOp` operations into one
+/// `spirv::AccessChainOp` operation.
 struct CombineChainedAccessChain
     : public OpRewritePattern<spirv::AccessChainOp> {
   using OpRewritePattern<spirv::AccessChainOp>::OpRewritePattern;
@@ -678,7 +678,7 @@ struct CombineChainedAccessChain
     return matchSuccess();
   }
 };
-} // namespace
+} // end anonymous namespace
 
 void spirv::AccessChainOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
@@ -769,6 +769,35 @@ static LogicalResult verify(spirv::BitcastOp bitcastOp) {
            << operandBitWidth;
   }
   return success();
+}
+
+namespace {
+
+/// Converts chained `spirv::BitcastOp` operations into one
+/// `spirv::BitcastOp` operation.
+struct ConvertChainedBitcast : public OpRewritePattern<spirv::BitcastOp> {
+  using OpRewritePattern<spirv::BitcastOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::BitcastOp bitcastOp,
+                                     PatternRewriter &rewriter) const override {
+    auto parentBitcastOp = dyn_cast_or_null<spirv::BitcastOp>(
+        bitcastOp.operand()->getDefiningOp());
+
+    if (!parentBitcastOp) {
+      return matchFailure();
+    }
+
+    rewriter.replaceOpWithNewOp<spirv::BitcastOp>(
+        /*valuesToRemoveIfDead=*/{parentBitcastOp.result()}, bitcastOp,
+        bitcastOp.result()->getType(), parentBitcastOp.operand());
+    return matchSuccess();
+  }
+};
+} // end anonymous namespace
+
+void spirv::BitcastOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertChainedBitcast>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1050,12 +1079,10 @@ static ParseResult parseConstantOp(OpAsmParser &parser, OperationState &state) {
   if (parser.parseAttribute(value, kValueAttrName, state.attributes))
     return failure();
 
-  Type type;
-  if (value.getType().isa<NoneType>()) {
+  Type type = value.getType();
+  if (type.isa<NoneType>() || type.isa<TensorType>()) {
     if (parser.parseColonType(type))
       return failure();
-  } else {
-    type = value.getType();
   }
 
   return parser.addTypeToList(type, state.types);
@@ -1079,13 +1106,45 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
   switch (value.getKind()) {
   case StandardAttributes::Bool:
   case StandardAttributes::Integer:
-  case StandardAttributes::Float:
-  case StandardAttributes::DenseElements:
-  case StandardAttributes::SparseElements: {
+  case StandardAttributes::Float: {
     if (valueType != opType)
       return constOp.emitOpError("result type (")
              << opType << ") does not match value type (" << valueType << ")";
     return success();
+  } break;
+  case StandardAttributes::DenseElements:
+  case StandardAttributes::SparseElements: {
+    if (valueType == opType)
+      break;
+    auto arrayType = opType.dyn_cast<spirv::ArrayType>();
+    auto shapedType = valueType.dyn_cast<ShapedType>();
+    if (!arrayType) {
+      return constOp.emitOpError(
+          "must have spv.array result type for array value");
+    }
+
+    int numElements = arrayType.getNumElements();
+    auto opElemType = arrayType.getElementType();
+    while (auto t = opElemType.dyn_cast<spirv::ArrayType>()) {
+      numElements *= t.getNumElements();
+      opElemType = t.getElementType();
+    }
+    if (!opElemType.isIntOrFloat()) {
+      return constOp.emitOpError("only support nested array result type");
+    }
+
+    auto valueElemType = shapedType.getElementType();
+    if (valueElemType != opElemType) {
+      return constOp.emitOpError("result element type (")
+             << opElemType << ") does not match value element type ("
+             << valueElemType << ")";
+    }
+
+    if (numElements != shapedType.getNumElements()) {
+      return constOp.emitOpError("result number of elements (")
+             << numElements << ") does not match value number of elements ("
+             << shapedType.getNumElements() << ")";
+    }
   } break;
   case StandardAttributes::Array: {
     auto arrayType = opType.dyn_cast<spirv::ArrayType>();
@@ -2278,7 +2337,7 @@ PatternMatchResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
 
   return matchSuccess();
 }
-} // namespace
+} // end anonymous namespace
 
 void spirv::SelectionOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {

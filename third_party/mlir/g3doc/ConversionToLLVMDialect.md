@@ -1,15 +1,15 @@
-# Conversion to the LLVM IR Dialect
+# Conversion to the LLVM Dialect
 
-Conversion to the [LLVM IR Dialect](Dialects/LLVM.md) can be performed by the
-specialized dialect conversion pass by running
+Conversion from the Standard to the [LLVM Dialect](Dialects/LLVM.md) can be
+performed by the specialized dialect conversion pass by running
 
 ```sh
-mlir-opt -lower-to-llvm <filename.mlir>
+mlir-opt -convert-std-to-llvm <filename.mlir>
 ```
 
 It performs type and operation conversions for a subset of operations from
-standard, built-in and super-vector dialects as described in this document. We
-use the terminology defined by the
+standard dialect (operations on scalars and vectors, control flow operations) as
+described in this document. We use the terminology defined by the
 [LLVM IR Dialect description](Dialects/LLVM.md) throughout this document.
 
 [TOC]

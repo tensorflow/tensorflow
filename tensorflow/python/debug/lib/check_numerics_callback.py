@@ -279,7 +279,11 @@ class CheckNumericsCallback(object):
           array_ops.check_numerics(
               output,
               get_check_numerics_error_message(
-                  slot, len(outputs), op_type, output, inputs,
+                  slot,
+                  len(outputs),
+                  op_type,
+                  output,
+                  inputs,
                   stack_height_limit=self._stack_height_limit,
                   path_length_limit=self._path_length_limit))
 

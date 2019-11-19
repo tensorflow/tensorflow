@@ -474,10 +474,11 @@ populateLinalgToStandardConversionPatterns(OwningRewritePatternList &patterns,
                                            MLIRContext *ctx) {
   // TODO(ntv) ConvOp conversion needs to export a descriptor with relevant
   // attribute values such as kernel striding and dilation.
-  patterns.insert<CopyTransposeConversion, LinalgOpConversion<CopyOp>,
-                  LinalgOpConversion<DotOp>, LinalgOpConversion<FillOp>,
-                  LinalgOpConversion<MatvecOp>, LinalgOpConversion<MatmulOp>,
-                  LinalgOpConversion<ConvOp>, LinalgOpConversion<GenericOp>>(
+  patterns.insert<CopyTransposeConversion, LinalgOpConversion<ConvOp>,
+                  LinalgOpConversion<CopyOp>, LinalgOpConversion<DotOp>,
+                  LinalgOpConversion<FillOp>, LinalgOpConversion<GenericOp>,
+                  LinalgOpConversion<IndexedGenericOp>,
+                  LinalgOpConversion<MatmulOp>, LinalgOpConversion<MatvecOp>>(
       ctx);
 }
 

@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/grappler/graph_view.h"
@@ -67,6 +68,8 @@ constexpr char kSnapshotReaderWorkerPool[] = "snapshot_reader_worker_pool";
 constexpr char kSnapshotWriterWorkerPool[] = "snapshot_writer_worker_pool";
 constexpr char kSeparator[] = "::";
 constexpr char kBookkeeping[] = "Bookkeeping";
+constexpr char kSnapshotReadElements[] = "snapshot_read_elements";
+constexpr char kSnapshotWrittenElements[] = "snapshot_written_elements";
 
 class SnapshotWriter {
  public:
@@ -384,6 +387,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                    << dump_status.ToString();
     }
 
+    LOG(INFO) << "Graph def serialized to hash: " << hash;
+
     *output = new Dataset(
         ctx, input, path,
         strings::StrCat(strings::Hex(hash, strings::kZeroPad16)),
@@ -543,6 +548,9 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               ReadMetadataFile(hash_dir_, &metadata), metadata,
               dataset()->pending_snapshot_expiry_seconds_, &state_));
 
+          LOG(INFO) << "Op state: " << state_
+                    << " with metadata: " << metadata.DebugString();
+
           switch (state_) {
             case WRITER:
               iterator_ = absl::make_unique<SnapshotWriterIterator>(
@@ -653,6 +661,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 "SnapshotDatasetOp::Dataset::SnapshotReaderIterator::GetNext");
           }
 
+          const auto& stats_aggregator = ctx->stats_aggregator();
+          if (stats_aggregator) {
+            stats_aggregator->AddScalar(
+                strings::StrCat(dataset()->node_name(), kSeparator,
+                                kSnapshotReadElements),
+                static_cast<float>(num_elements_read_), num_elements());
+          }
+
           if (!buffer_.empty()) {
             Status s = buffer_.front().status;
             if (s.ok()) {
@@ -746,6 +762,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               elem.status = Status::OK();
               mutex_lock l(mu_);
               buffer_.push_back(std::move(elem));
+              num_elements_read_++;
               cond_var_.notify_all();
             } else if (errors::IsOutOfRange(s)) {
               return Status::OK();
@@ -828,6 +845,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         bool cancelled_ GUARDED_BY(mu_) = false;
         bool background_threads_started_ GUARDED_BY(mu_) = false;
         bool background_threads_finished_ GUARDED_BY(mu_) = false;
+        int64 num_elements_read_ = 0;
       };
 
       class SnapshotWriterIterator : public DatasetIterator<Dataset> {
@@ -929,6 +947,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               LOG(INFO) << "Current write throughput (MBPS): "
                         << (bytes_produced_ * 1000000.0) /
                                (time_spent_micros_ * 1024.0 * 1024.0);
+            }
+            const auto& stats_aggregator = ctx->stats_aggregator();
+            if (stats_aggregator) {
+              stats_aggregator->AddScalar(
+                  strings::StrCat(dataset()->node_name(), kSeparator,
+                                  kSnapshotWrittenElements),
+                  static_cast<float>(num_elements_written_), num_elements());
             }
           }
           return Status::OK();
@@ -1123,6 +1148,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               cond_var_.notify_all();
               return;
             }
+            mutex_lock l(mu_);
+            num_elements_written_++;
           }
         }
 
@@ -1157,6 +1184,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         uint64 next_file_index_ GUARDED_BY(mu_) = 0;
         std::unique_ptr<thread::ThreadPool> thread_pool_;
         int64 num_active_threads_ GUARDED_BY(mu_) = 0;
+        int64 num_elements_written_ = 0;
       };
 
       class SnapshotPassthroughIterator : public DatasetIterator<Dataset> {

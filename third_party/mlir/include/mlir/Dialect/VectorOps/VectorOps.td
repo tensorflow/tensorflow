@@ -49,7 +49,7 @@ class Vector_Op<string mnemonic, list<OpTrait> traits = []> :
   let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
-def ExtractElementOp :
+def VectorExtractElementOp :
   Vector_Op<"extractelement", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
@@ -66,14 +66,17 @@ def ExtractElementOp :
       %2 = vector.extractelement %0[3, 3, 3]: vector<4x8x16xf32>
     ```
   }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *source, ArrayRef<int32_t>">];
   let extraClassDeclaration = [{
+    static StringRef getPositionAttrName() { return "position"; }
     VectorType getVectorType() {
       return vector()->getType().cast<VectorType>();
     }
   }];
 }
 
-def OuterProductOp :
+def VectorOuterProductOp :
   Vector_Op<"outerproduct", [NoSideEffect, SameOperandsAndResultElementType]>,
     Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, Variadic<AnyVector>:$acc)>,
     Results<(outs AnyVector)> {

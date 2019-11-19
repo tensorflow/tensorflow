@@ -33,18 +33,13 @@ namespace tensorflow {
 static std::atomic<int64> current_id_;
 
 ResourceHandle MakeResourceHandle(
-    OpKernelContext* ctx, const string& container, const string& name,
+    const string& container, const string& name, const DeviceBase& device,
     const TypeIndex& type_index,
     const std::vector<DtypeAndPartialTensorShape>& dtypes_and_shapes) {
   ResourceHandle result;
-  result.set_device(ctx->device()->attributes().name());
+  result.set_device(device.name());
   string actual_container;
-  if (!container.empty()) {
-    actual_container = container;
-  } else {
-    actual_container = ctx->resource_manager()->default_container();
-  }
-  result.set_container(actual_container);
+  result.set_container(container);
   if (name == ResourceHandle::ANONYMOUS_NAME) {
     result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
   } else {
@@ -63,7 +58,7 @@ Status MakeResourceHandleToOutput(OpKernelContext* context, int output_index,
   TF_RETURN_IF_ERROR(
       context->allocate_output(output_index, TensorShape({}), &handle));
   handle->scalar<ResourceHandle>()() =
-      MakeResourceHandle(context, container, name, type_index);
+      MakeResourceHandle(container, name, *context->device(), type_index);
   return Status::OK();
 }
 
