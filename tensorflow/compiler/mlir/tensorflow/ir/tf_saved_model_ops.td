@@ -111,13 +111,23 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
 
     The `value` attribute contains the tensor's value (or initial value, in the
     case it is mutable).
+
+    The `type` attribute contains the tensor's type, which for the case of
+    mutable tensors might be more general than just the fixed static shape of
+    the `value` attribute. For example, a global tensor might be unranked such
+    as `tensor<*xf32>`, or a more complex shape such as `tensor<4x?x27xf32>`.
+    The shape of `value` must be compatible with the shape of `type` in the
+    sense of `tf.TensorShape` compatibility. And the element types must match.
   }];
 
   let arguments = (ins
     StrAttr:$sym_name,
     ElementsAttr:$value,
+    TypeAttr:$type,
     UnitAttr:$is_mutable
   );
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 #endif // SAVED_MODEL_DIALECT

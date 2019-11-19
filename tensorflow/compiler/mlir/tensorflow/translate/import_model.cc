@@ -84,6 +84,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -2341,11 +2342,16 @@ Status CreateSavedModelIR(
       TF_ASSIGN_OR_RETURN(
           Tensor value, ReadVariableFromSession(saved_model, variable.name()));
       TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
-
+      // A variable can have a partially known type, such as tensor<?x27x?xf32>,
+      // even if the initializer is a specific static shape.
+      TF_ASSIGN_OR_RETURN(
+          auto type, ConvertToMlirTensorType(variable.shape(), variable.dtype(),
+                                             &builder));
       auto op = builder.create<mlir::tf_saved_model::GlobalTensorOp>(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
+          /*type=*/mlir::TypeAttr::get(type),
           /*is_mutable=*/builder.getUnitAttr());
       op.setAttr(
           "tf_saved_model.exported_names",
@@ -2360,6 +2366,7 @@ Status CreateSavedModelIR(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
+          /*type=*/mlir::TypeAttr::get(value_attr.Attribute::getType()),
           /*is_mutable=*/nullptr);
       op.setAttr(
           "tf_saved_model.exported_names",
