@@ -1221,19 +1221,19 @@ StatusOr<std::unique_ptr<Converter>> Converter::Create(
     nvinfer1::ILogger* trt_logger) {
   std::unique_ptr<Converter> converter = absl::WrapUnique(
       new Converter(precision_mode, use_calibration, trt_logger));
-  TF_RETURN_IF_ERROR(converter->Init());
+  TF_RETURN_IF_ERROR(converter->Init(trt_logger));
   return converter;
 }
 
 Converter::Converter(TrtPrecisionMode precision_mode, bool use_calibration,
                      nvinfer1::ILogger* trt_logger)
-      precision_mode_(precision_mode),
+    : precision_mode_(precision_mode),
       use_calibration_(use_calibration) {
   InitializeTrtPlugins(trt_logger);
   this->RegisterOpConverters();
 }
 
-Status Converter::Init() {
+Status Converter::Init(nvinfer1::ILogger* trt_logger) {
   VLOG(1) << "Creating TensorRT builder";
   trt_builder_.reset(nvinfer1::createInferBuilder(*trt_logger));
 

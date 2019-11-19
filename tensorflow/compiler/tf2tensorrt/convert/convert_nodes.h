@@ -446,7 +446,7 @@ class Converter {
   };
 
   static StatusOr<std::unique_ptr<Converter>> Create(
-      nvinfer1::IBuilder* trt_builder, TrtPrecisionMode precision_mode,
+      TrtPrecisionMode precision_mode,
       bool use_calibration, nvinfer1::ILogger* trt_logger);
 
   //////////////////////////////////////////////////////////////////////////////
@@ -529,10 +529,10 @@ class Converter {
                                          const nvinfer1::Dims& dims);
 
  private:
-  Converter(nvinfer1::IBuilder* trt_builder, TrtPrecisionMode precision_mode,
+  Converter(TrtPrecisionMode precision_mode,
             bool use_calibration, nvinfer1::ILogger* trt_logger);
 
-  Status Init();
+  Status Init(nvinfer1::ILogger* trt_logger);
 
   // Verify the provided batch_size is consistent with batch_size_ and update it
   // if necessary.
