@@ -75,11 +75,13 @@ class DecodeRawOpTest(test.TestCase):
     self.assertAllEqual(
         [[1+2j]],
         parsing_ops.decode_raw(
-            [b'\x00\x00\x80?\x00\x00\x00@'], dtypes.complex64, little_endian=True))
+            [b'\x00\x00\x80?\x00\x00\x00@'], dtypes.complex64,
+            little_endian=True))
     self.assertAllEqual(
         [[1+2j]],
         parsing_ops.decode_raw(
-            [b'?\x80\x00\x00@\x00\x00\x00'], dtypes.complex64, little_endian=False))
+            [b'?\x80\x00\x00@\x00\x00\x00'], dtypes.complex64,
+            little_endian=False))
 
   def testToFloat16(self):
     result = np.matrix([[1, -2, -3, 4]], dtype="<f2")
