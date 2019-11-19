@@ -76,6 +76,48 @@ def VectorExtractElementOp :
   }];
 }
 
+def VectorStridedSliceOp :
+  Vector_Op<"strided_slice", [NoSideEffect,
+     PredOpTrait<"operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
+    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$offsets,
+               I64ArrayAttr:$sizes, I64ArrayAttr:$strides)>,
+    Results<(outs AnyVector)> {
+  let summary = "strided_slice operation";
+  let description = [{
+    Takes an n-D vector, k-D `offsets` integer array attribute, a k-D `sizes`
+    integer array attribute, a k-D `strides` integer array attribute and
+    extracts the n-D subvector at the proper offset.
+
+    At the moment strides must contain only 1s.
+
+    Returns an n-D vector where the first k-D dimensions match the `sizes`
+    attribute. The returned subvector contains the elements starting at offset
+    `offsets` and ending at `offsets + sizes`.
+
+    Examples:
+    ```
+      %1 = vector.strided_slice %0
+          {offsets : [0, 2], sizes : [2, 4], strides : [1, 1]}:
+        vector<4x8x16xf32> to vector<2x4x16xf32>
+    ```
+
+    // TODO(Evolve to a range form syntax):
+    %1 = vector.strided_slice %0[0:2:1][2:4:1]
+      vector<4x8x16xf32> to vector<2x4x16xf32>
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *source, " #
+    "ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes, " #
+    "ArrayRef<int64_t> strides">];
+  let extraClassDeclaration = [{
+    static StringRef getOffsetsAttrName() { return "offsets"; }
+    static StringRef getSizesAttrName() { return "sizes"; }
+    static StringRef getStridesAttrName() { return "strides"; }
+    VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
+  }];
+}
+
 def VectorOuterProductOp :
   Vector_Op<"outerproduct", [NoSideEffect, SameOperandsAndResultElementType]>,
     Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, Variadic<AnyVector>:$acc)>,
