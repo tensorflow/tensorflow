@@ -34,6 +34,8 @@ class DropoutOp : public OpKernel {
   ~DropoutOp() override {}
 
   void Compute(OpKernelContext* ctx) override {
+    auto* stream = ctx->op_device_context()->stream();
+
     const Tensor& in0 = ctx->input(0);
 
     const Tensor& in1 = ctx->input(1);
@@ -43,12 +45,16 @@ class DropoutOp : public OpKernel {
     OP_REQUIRES(
         ctx, in1.dims() == 0,
         errors::InvalidArgument("Dropout rate must be a scalar tensor."));
+    auto rate_src_ptr = AsDeviceMemory<T>(&in1.scalar<T>()(), sizeof(T));
+    T rate = 0;
+    stream->ThenMemcpy(&rate, rate_src_ptr, sizeof(T));
 
     const Tensor& in2 = ctx->input(2);
-    auto noise_shape = in2.flat<int32>();
-    std::vector<int32> noise_dim_size;
-    noise_dim_size.resize(in2.shape().num_elements());
-    std::copy_n(&noise_shape(0), noise_dim_size.size(), noise_dim_size.begin());
+    auto noise_shape_src_ptr = AsDeviceMemory<int32>(
+        in2.flat<int32>().data(), in2.flat<int32>().size() * sizeof(int32));
+    std::vector<int32> noise_dim_size(in2.shape().num_elements(), 0);
+    stream->ThenMemcpy(noise_dim_size.data(), noise_shape_src_ptr,
+                       in2.flat<int32>().size() * sizeof(int32));
     OP_REQUIRES(ctx, in0.dims() == noise_dim_size.size(),
                 errors::InvalidArgument("MIOpen only supports input dimensions "
                                         "to match noise dimensions."));
@@ -57,10 +63,14 @@ class DropoutOp : public OpKernel {
     OP_REQUIRES(
         ctx, in3.dims() == 0,
         errors::InvalidArgument("Dropout seed must be a scalar tensor."));
+    auto seed_src_ptr =
+        AsDeviceMemory<int64>(&in3.scalar<int64>()(), sizeof(int64));
+    int64 seed = 0;
+    stream->ThenMemcpy(&seed, seed_src_ptr, sizeof(int64));
 
     se::dnn::DropoutDescriptor dropout_desc;
-    dropout_desc.set_rate(static_cast<float>(in1.scalar<T>()()));
-    dropout_desc.set_seed(in3.scalar<int64>()());
+    dropout_desc.set_rate(rate);
+    dropout_desc.set_seed(seed);
 
     // Allocate output, and exit early if possible
     Tensor* output;
@@ -118,7 +128,6 @@ class DropoutOp : public OpKernel {
     );
     DnnScratchAllocator scratch_allocator(DropoutScratchSize, ctx);
 
-    auto* stream = ctx->op_device_context()->stream();
     bool status = stream
                       ->ThenDropoutForward(dropout_desc, noise_desc, input_desc,
                                            input_data, output_desc,
@@ -147,6 +156,8 @@ class DropoutGradOp : public OpKernel {
   ~DropoutGradOp() override {}
 
   void Compute(OpKernelContext* ctx) override {
+    auto* stream = ctx->op_device_context()->stream();
+
     const Tensor& in0 = ctx->input(0);
 
     const Tensor& in1 = ctx->input(1);
@@ -156,12 +167,16 @@ class DropoutGradOp : public OpKernel {
     OP_REQUIRES(
         ctx, in1.dims() == 0,
         errors::InvalidArgument("Dropout rate must be a scalar tensor."));
+    auto rate_src_ptr = AsDeviceMemory<T>(&in1.scalar<T>()(), sizeof(T));
+    T rate = 0;
+    stream->ThenMemcpy(&rate, rate_src_ptr, sizeof(T));
 
     const Tensor& in2 = ctx->input(2);
-    auto noise_shape = in2.flat<int32>();
-    std::vector<int32> noise_dim_size;
-    noise_dim_size.resize(in2.shape().num_elements());
-    std::copy_n(&noise_shape(0), noise_dim_size.size(), noise_dim_size.begin());
+    auto noise_shape_src_ptr = AsDeviceMemory<int32>(
+        in2.flat<int32>().data(), in2.flat<int32>().size() * sizeof(int32));
+    std::vector<int32> noise_dim_size(in2.shape().num_elements(), 0);
+    stream->ThenMemcpy(noise_dim_size.data(), noise_shape_src_ptr,
+                       in2.flat<int32>().size() * sizeof(int32));
     OP_REQUIRES(ctx, in0.dims() == noise_dim_size.size(),
                 errors::InvalidArgument("MIOpen only supports input dimensions "
                                         "to match noise dimensions."));
@@ -170,10 +185,14 @@ class DropoutGradOp : public OpKernel {
     OP_REQUIRES(
         ctx, in3.dims() == 0,
         errors::InvalidArgument("Dropout seed must be a scalar tensor."));
+    auto seed_src_ptr =
+        AsDeviceMemory<int64>(&in3.scalar<int64>()(), sizeof(int64));
+    int64 seed = 0;
+    stream->ThenMemcpy(&seed, seed_src_ptr, sizeof(int64));
 
     se::dnn::DropoutDescriptor dropout_desc;
-    dropout_desc.set_rate(static_cast<float>(in1.scalar<T>()()));
-    dropout_desc.set_seed(in3.scalar<int64>()());
+    dropout_desc.set_rate(rate);
+    dropout_desc.set_seed(seed);
 
     // Allocate output, and exit early if possible
     Tensor* output;
@@ -231,7 +250,6 @@ class DropoutGradOp : public OpKernel {
     );
     DnnScratchAllocator scratch_allocator(DropoutScratchSize, ctx);
 
-    auto* stream = ctx->op_device_context()->stream();
     bool status =
         stream
             ->ThenDropoutBackward(dropout_desc, noise_desc, input_delta_desc,
