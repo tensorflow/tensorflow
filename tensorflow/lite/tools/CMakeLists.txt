@@ -31,6 +31,7 @@ add_library(tensorflow-lite
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/block_map.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/blocking_counter.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/context.cc
+  ${TENSORFLOW_LITE_DIR}/experimental/ruy/detect_arm.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/have_built_path_for_avx2.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/have_built_path_for_avx512.cc
   ${TENSORFLOW_LITE_DIR}/experimental/ruy/kernel_arm32.cc
@@ -177,7 +178,7 @@ target_include_directories(tensorflow-lite PRIVATE
   ${TENSORFLOW_LITE_DIR}/tools/make/downloads/farmhash/src
 )
 target_link_libraries(tensorflow-lite PUBLIC
-  stdc++ pthread m z
+  stdc++ m z
 )
 
 ## minimal example
@@ -185,11 +186,12 @@ add_executable(tflite-minimal
   ${TENSORFLOW_LITE_DIR}/examples/minimal/minimal.cc
 )
 target_link_libraries(tflite-minimal tensorflow-lite gl_delegate EGL GLESv2)
-target_link_directories(tflite-minimal PUBLIC /usr/local/lib)
 
 ## GPU delegate
-set(FLATBUFFERS_BUILD_FLATC ON)
-add_subdirectory(${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers)
+if(NOT CMAKE_CROSSCOMPILING)
+  set(FLATBUFFERS_BUILD_FLATC ON)
+  add_subdirectory(${TENSORFLOW_LITE_DIR}/tools/make/downloads/flatbuffers)
+endif()
 
 add_custom_command(
   OUTPUT  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common_generated.h
@@ -336,4 +338,3 @@ add_executable(tflite-benchmark
   ${TENSORFLOW_LITE_DIR}/../core/util/stats_calculator.cc
 )
 target_link_libraries(tflite-benchmark tensorflow-lite gl_delegate EGL GLESv2)
-target_link_directories(tflite-benchmark PUBLIC /usr/local/lib)
