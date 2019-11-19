@@ -55,7 +55,8 @@ class CollectiveOpsTest : public HloTestBase {
 
       ENTRY test_computation {
         p = DATATYPE[NUM_ELEMS] parameter(0)
-        ROOT crs = DATATYPE[NUM_ELEMS] all-reduce(p), replica_groups=REPLICA_GROUPS, to_apply=apply_op
+        crs = DATATYPE[NUM_ELEMS] all-reduce(p), replica_groups=REPLICA_GROUPS, to_apply=apply_op
+        ROOT out = DATATYPE[NUM_ELEMS] copy(crs)
       }
     )";
     std::vector<string> replica_group_strs;
