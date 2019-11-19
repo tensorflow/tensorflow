@@ -423,7 +423,7 @@ class GrpcTpuDriver : public TpuDriver {
   static std::unique_ptr<grpc::CloudTpuDriver::Stub> CreateTpuDriverStub(
       const TpuDriverConfig& config);
 
-  uint32 client_id() const { return client_id_; }
+  uint32_t client_id() const { return client_id_; }
 
  private:
   std::unique_ptr<GrpcTpuStream> AllocateStream(int32_t core_id);
