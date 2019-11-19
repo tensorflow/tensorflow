@@ -47,11 +47,13 @@ class TpuBackend(xla_client.Backend):
           'Failed to create TpuBackend. The `worker` parameter must not be '
           '`None`. Use `local` to connect to a local TPU or '
           '`grpc://host:port` to connect to a remote TPU.')
-    elif worker == 'local':
+    elif worker == 'local' or (
+        (worker.startswith('record://') or worker.startswith('replay://'))
+        and 'local://' in worker):
       if TpuBackend._local_backend is None:
         logging.info('Starting the local TPU driver.')
         TpuBackend._local_backend = TpuBackend(
-            _tpu_client.TpuClient.Get('local://'))
+            _tpu_client.TpuClient.Get(worker))
       return TpuBackend._local_backend
     else:
       return TpuBackend(_tpu_client.TpuClient.Get(worker))
