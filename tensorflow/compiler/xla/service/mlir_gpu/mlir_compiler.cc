@@ -189,35 +189,27 @@ GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) {
 // other dimensions are 1.  Return nullopt otherwise or when any of the bounds
 // is not constant.
 static absl::optional<int64> getLaunchBound(const mlir::gpu::KernelDim3& dim) {
-  bool bound_is_supported = true;
-
-  auto get_constant_or_report = [&bound_is_supported](
-                                    mlir::Operation* op,
-                                    mlir::StringRef name) -> int64 {
-    auto constant = llvm::dyn_cast_or_null<mlir::ConstantOp>(op);
-    if (!constant) {
-      op->emitError() << "bound " << name << " is not constant";
-      bound_is_supported = false;
-      return -1;
+  auto get_constant = [](mlir::Operation* op,
+                         mlir::StringRef name) -> absl::optional<int64> {
+    if (auto constant = llvm::dyn_cast_or_null<mlir::ConstantOp>(op)) {
+      return constant.value().cast<mlir::IntegerAttr>().getInt();
     }
-    return constant.value().cast<mlir::IntegerAttr>().getInt();
+    op->emitError() << "bound " << name << " is not constant";
+    return absl::nullopt;
   };
-  auto assert_constant_one = [&bound_is_supported, get_constant_or_report](
-                                 mlir::Operation* op, mlir::StringRef name) {
-    if (get_constant_or_report(op, name) != 1) {
-      op->emitError() << "bound " << name << " is not constant 1";
-      bound_is_supported = false;
-    }
-  };
-
-  auto dim_x = get_constant_or_report(dim.x->getDefiningOp(), "x");
-  assert_constant_one(dim.y->getDefiningOp(), "y");
-  assert_constant_one(dim.z->getDefiningOp(), "z");
-
-  if (!bound_is_supported) {
+  auto y_op = dim.y->getDefiningOp();
+  auto dim_y = get_constant(y_op, "y");
+  if (!dim_y.has_value() || dim_y.value() != 1) {
+    y_op->emitError() << "bound 'y' is not constant 1";
     return absl::nullopt;
   }
-  return dim_x;
+  auto z_op = dim.z->getDefiningOp();
+  auto dim_z = get_constant(z_op, "z");
+  if (!dim_z.has_value() || dim_z.value() != 1) {
+    z_op->emitError() << "bound 'z' is not constant 1";
+    return absl::nullopt;
+  }
+  return get_constant(dim.x->getDefiningOp(), "x");
 }
 
 using OperandToValueMap =
