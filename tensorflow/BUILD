@@ -501,10 +501,6 @@ cc_library(
     }),
 )
 
-# PLACEHOLDER_GRPC_RULE
-
-# PLACEHOLDER_GRPC++_RULE
-
 # A shared object which includes registration mechanisms for ops and
 # kernels. Does not include the implementations of any ops or kernels. Instead,
 # the library which loads libtensorflow_framework.so
