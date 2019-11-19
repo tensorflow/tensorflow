@@ -3851,7 +3851,6 @@ cuda_py_test(
     ],
     main = "sparse_csr_matrix_ops_test.py",
     shard_count = 10,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3862,7 +3861,6 @@ cuda_py_test(
         "//tensorflow/python/ops/linalg/sparse",
     ],
     main = "csr_sparse_matrix_test.py",
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3874,7 +3872,6 @@ cuda_py_test(
     ],
     main = "sparse_csr_matrix_grad_test.py",
     shard_count = 50,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3886,7 +3883,6 @@ cuda_py_test(
     ],
     main = "sparse_csr_matrix_dense_mat_mul_grad_test.py",
     shard_count = 50,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3898,5 +3894,4 @@ cuda_py_test(
     ],
     main = "sparse_csr_matrix_sparse_mat_mul_grad_test.py",
     shard_count = 50,
-    tags = ["no_rocm"],
 )
