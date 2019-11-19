@@ -206,12 +206,14 @@ def _check_conversion_params(conversion_params, is_v2=False):
   if conversion_params.rewriter_config_template:
     rewriter_cfg = conversion_params.rewriter_config_template
     trt_optimizer = None
-    for optim in rewriter_cfg.custom_optimizers:
-      if optim.name == "TensorRTOptimizer":
+    for optimizer in rewriter_cfg.custom_optimizers:
+      if optimizer.name == "TensorRTOptimizer":
         if trt_optimizer:
           raise TypeError("Found more than one TensorRTOptimizer in "
                           "rewriter_config_template while only one is allowed.")
-        trt_optimizer = optim
+        trt_optimizer = optimizer
+    # If rewriter_config_template is set, it should inculde TensorRTOptimizer.
+    # It is possible to remove this requirement if needed.
     if not trt_optimizer:
       raise TypeError("Found no TensorRTOptimizer in rewriter_config_template.")
     if not trt_optimizer.parameter_map:
