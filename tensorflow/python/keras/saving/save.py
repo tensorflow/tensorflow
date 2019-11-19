@@ -23,7 +23,7 @@ import os
 import six
 
 from tensorflow.python import tf2
-from tensorflow.python.keras.engine.network import _is_hdf5_filepath
+from tensorflow.python.keras.engine import network
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.saving.saved_model import load as saved_model_load
 from tensorflow.python.keras.saving.saved_model import save as saved_model_save
@@ -96,34 +96,7 @@ def save_model(model,
           'unsupported value %s of type %s'
           % (filepath, type(filepath)))
 
-  filepath_is_h5py_file = h5py is not None and isinstance(filepath, h5py.File)
-  filepath_is_h5 = type(filepath) == str and _is_hdf5_filepath(filepath)
-  if save_format is None:
-    if (filepath_is_h5 or
-        (filepath_is_h5py_file)):
-      save_format = 'h5'
-    else:
-      save_format = 'tf' if tf2.enabled() else 'h5'
-  else:
-    user_format = save_format.lower().strip()
-    if user_format in ('tensorflow', 'tf'):
-      save_format = 'tf'
-    elif user_format in ('hdf5', 'h5', 'keras'):
-      save_format = 'h5'
-    else:
-      raise ValueError(
-          'Unknown format "%s". Was expecting one of {"tf", "h5"}.' % (
-          save_format,))
-  if save_format == 'tf' and filepath_is_h5:
-    raise ValueError(
-      ('`save` got save_format="tf"/"tensorflow", but the '
-       'filepath ("%s") looks like an HDF5 file. Omit the ".h5"/".keras" '
-       'when saving in TensorFlow format.')
-      % filepath)
-  if save_format == 'tf' and filepath_is_h5py_file:
-    raise ValueError(
-        '`save` got save_format="tf"/"tensorflow", but the given `filepath`'
-        'is an `h5py.File` object.')
+  save_format = network.validate_save_format(filepath, save_format)
 
   if save_format == 'h5':
     # TODO(b/130258301): add utility method for detecting model type.
