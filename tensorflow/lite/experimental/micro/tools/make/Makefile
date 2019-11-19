@@ -187,6 +187,9 @@ KEIL_PROJECT_FILES := \
 ARDUINO_PROJECT_FILES := \
   library.properties
 
+PARTICLE_PROJECT_FILES := \
+  library.properties
+
 ESP_PROJECT_FILES := \
   README_ESP.md \
   CMakeLists.txt \
@@ -197,6 +200,9 @@ ALL_PROJECT_TARGETS :=
 
 ARDUINO_LIBRARY_TARGETS :=
 ARDUINO_LIBRARY_ZIPS :=
+
+PARTICLE_LIBRARY_TARGETS :=
+PARTICLE_LIBRARY_ZIPS :=
 
 include $(MAKEFILE_DIR)/third_party_downloads.inc
 THIRD_PARTY_DOWNLOADS :=
@@ -311,6 +317,9 @@ generate_non_test_projects: $(filter-out %_test%,$(ALL_PROJECT_TARGETS))
 
 generate_arduino_zip: generate_non_kernel_projects $(ARDUINO_LIBRARY_ZIPS)
 	python tensorflow/lite/experimental/micro/tools/make/merge_arduino_zips.py $(PRJDIR)/tensorflow_lite.zip $(ARDUINO_LIBRARY_ZIPS)
+
+generate_particle_zip: generate_non_kernel_projects $(PARTICLE_LIBRARY_ZIPS)
+	python tensorflow/lite/experimental/micro/tools/make/merge_particle_zips.py $(PRJDIR)/tensorflow_lite.zip $(PARTICLE_LIBRARY_ZIPS)
 
 # Gets rid of all generated files.
 clean:
