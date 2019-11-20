@@ -18,6 +18,7 @@
 #include "absl/base/internal/sysinfo.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/platform/external/compat.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
@@ -77,7 +78,7 @@ class RecordingBufferHandle : public BufferHandle {
         event_(std::make_shared<RecordingEvent>(handle_->OnReady(), id_)) {}
   std::shared_ptr<Event> OnReady() override { return event_; }
   int64_t size_in_bytes() override { return handle_->size_in_bytes(); }
-  std::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
+  absl::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
 
  private:
   std::unique_ptr<BufferHandle> handle_;
