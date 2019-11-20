@@ -5419,7 +5419,6 @@ tf_py_wrap_cc(
         "pywrap_tfe.i",
         "//tensorflow/compiler/mlir/python:mlir.i",
     ],
-    # add win_def_file for pywrap_tensorflow
     win_def_file = select({
         "//tensorflow:windows": ":pywrap_tensorflow_filtered_def_file",
         "//conditions:default": None,
