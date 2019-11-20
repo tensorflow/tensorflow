@@ -1027,12 +1027,14 @@ REGISTER_TPU_DRIVER(
       ::grpc::Status status = stub->Open(&ctx, req, &resp);
       if (!status.ok()) {
         LOG(ERROR) << "Failed to open the gRPC driver: " << status.error_code()
-                   << ": " << status.error_details();
+                   << ": " << status.error_message() << ": "
+                   << status.error_details();
         return xla::Status(
             tensorflow::error::Code(status.error_code()),
             absl::StrCat("Failed to connect to remote server at address: ",
                          config.worker(),
-                         ". Error from gRPC: ", status.error_details()));
+                         ". Error from gRPC: ", status.error_message(),
+                         ". Details: ", status.error_details()));
       }
       return std::unique_ptr<TpuDriver>(
           new GrpcTpuDriver(config, resp.client_id()));
