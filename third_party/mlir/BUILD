@@ -1237,6 +1237,7 @@ cc_library(
         "lib/Transforms/AffineLoopInvariantCodeMotion.cpp",
         "lib/Transforms/CSE.cpp",
         "lib/Transforms/Canonicalizer.cpp",
+        "lib/Transforms/DCE.cpp",
         "lib/Transforms/DialectConversion.cpp",
         "lib/Transforms/Inliner.cpp",
         "lib/Transforms/LoopCoalescing.cpp",

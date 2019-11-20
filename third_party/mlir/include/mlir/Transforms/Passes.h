@@ -41,6 +41,9 @@ std::unique_ptr<Pass> createCanonicalizerPass();
 /// Creates a pass to perform common sub expression elimination.
 std::unique_ptr<Pass> createCSEPass();
 
+/// Creates a pass to perform dead code elimination.
+std::unique_ptr<Pass> createDCEPass();
+
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D super-vector abstraction.
 std::unique_ptr<OpPassBase<FuncOp>>

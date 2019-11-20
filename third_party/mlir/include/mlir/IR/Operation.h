@@ -438,6 +438,23 @@ public:
   /// index.
   unsigned getSuccessorOperandIndex(unsigned index);
 
+  /// Return a pair (successorIndex, successorArgIndex) containing the index
+  /// of the successor that `operandIndex` belongs to and the index of the
+  /// argument to that successor that `operandIndex` refers to.
+  ///
+  /// If `operandIndex` is not a successor operand, None is returned.
+  Optional<std::pair<unsigned, unsigned>>
+  decomposeSuccessorOperandIndex(unsigned operandIndex);
+
+  /// Returns the `BlockArgument*` corresponding to operand `operandIndex` in
+  /// some successor, or None if `operandIndex` isn't a successor operand index.
+  Optional<BlockArgument *> getSuccessorBlockArgument(unsigned operandIndex) {
+    auto decomposed = decomposeSuccessorOperandIndex(operandIndex);
+    if (!decomposed.hasValue())
+      return None;
+    return getSuccessor(decomposed->first)->getArgument(decomposed->second);
+  }
+
   //===--------------------------------------------------------------------===//
   // Accessors for various properties of operations
   //===--------------------------------------------------------------------===//
