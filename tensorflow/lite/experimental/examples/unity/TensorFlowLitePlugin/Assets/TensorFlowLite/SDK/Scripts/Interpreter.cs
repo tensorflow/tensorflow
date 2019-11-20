@@ -89,11 +89,19 @@ namespace TensorFlowLite
           tensor, tensorDataPtr, Buffer.ByteLength(outputTensorData)));
     }
 
+    public static string GetVersion() {
+      return Marshal.PtrToStringAnsi(TfLiteVersion());
+    }
+
     private static void ThrowIfError(int resultCode) {
       if (resultCode != 0) throw new Exception("TensorFlowLite operation failed.");
     }
 
     #region Externs
+
+    [DllImport (TensorFlowLibrary)]
+    private static extern unsafe IntPtr TfLiteVersion();
+
 
     [DllImport (TensorFlowLibrary)]
     private static extern unsafe TfLiteInterpreter TfLiteModelCreate(IntPtr model_data, int model_size);
