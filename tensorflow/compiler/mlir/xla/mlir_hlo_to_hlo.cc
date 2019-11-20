@@ -446,7 +446,22 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) { return failure(); }
+LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::PaddingConfig padding_config;
+  auto edge_padding_low = ConvertDenseIntAttr(op.edge_padding_low());
+  auto edge_padding_high = ConvertDenseIntAttr(op.edge_padding_high());
+  auto interior_padding = ConvertDenseIntAttr(op.interior_padding());
+  for (xla::int64 i = 0; i < edge_padding_low.size(); ++i) {
+    auto* dims = padding_config.add_dimensions();
+    dims->set_edge_padding_low(edge_padding_low[i]);
+    dims->set_edge_padding_high(edge_padding_high[i]);
+    dims->set_interior_padding(interior_padding[i]);
+  }
+  value_map[op] = xla::Pad(value_map[op.getOperand(0)],
+                           value_map[op.getOperand(1)], padding_config);
+  return success();
+}
 
 LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
