@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/threadpool.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #endif
@@ -694,7 +694,7 @@ REGISTER_CPU(complex128)
 
 #undef REGISTER_CPU
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_GPU(T)                                                     \
   REGISTER_KERNEL_BUILDER(                                                  \
@@ -703,14 +703,16 @@ REGISTER_CPU(complex128)
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
+#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
+#endif
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 namespace functor {
 
@@ -741,11 +743,16 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
 
       // transA must be non-transpose if transB is transpose (cusparse
       // limitation).
+#if GOOGLE_CUDA
       const gpusparseOperation_t transA = CUSPARSE_OPERATION_NON_TRANSPOSE;
+#elif TENSORFLOW_USE_ROCM
+      const gpusparseOperation_t transA = HIPSPARSE_OPERATION_NON_TRANSPOSE;
+#endif
 
       // transB: b is row-major, and cusparse requires col-major b (or
       // equivalently transB == transpose).  this version is actually more
       // efficient.
+#if GOOGLE_CUDA
       const gpusparseOperation_t transB = CUSPARSE_OPERATION_TRANSPOSE;
 
       gpusparseMatDescr_t descrA;
@@ -754,6 +761,16 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
           cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
       TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
+#elif TENSORFLOW_USE_ROCM
+      const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
+
+      gpusparseMatDescr_t descrA;
+      TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+#endif
 
       // A is (m, k), Bt is (ldb, k) and Ct is (ldc, n)
       const int k = b.dimension(0);
@@ -816,11 +833,19 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
       const T beta = 0;
 
       gpusparseMatDescr_t descrA;
+#if GOOGLE_CUDA
       TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseSetMatType(descrA, CUSPARSE_MATRIX_TYPE_GENERAL));
       TF_RETURN_IF_GPUSPARSE_ERROR(
           cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
+#elif TENSORFLOW_USE_ROCM
+      TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+      TF_RETURN_IF_GPUSPARSE_ERROR(
+          hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
       const int m = a.dense_shape_host(0);
       const int n = a.dense_shape_host(1);
@@ -841,6 +866,6 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
 
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define EIGEN_USE_GPU
 #endif
 
@@ -30,13 +30,18 @@ limitations under the License.
 #include "tensorflow/core/kernels/sparse/kernels.h"
 #include "tensorflow/core/kernels/sparse/sparse_matrix.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
-#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+#endif
 
+#if GOOGLE_CUDA
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
 using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+using ::perftools::gputools::rocm::ScopedActivateExecutorContext;
 #endif
 
 namespace tensorflow {
@@ -104,7 +109,7 @@ class SparseTensorToCSRSparseMatrixCPUOp : public OpKernel {
   }
 };
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T>
 class SparseTensorToCSRSparseMatrixGPUOp : public AsyncOpKernel {
@@ -322,12 +327,14 @@ extern template struct COOSparseMatrixToCSRSparseMatrix<GPUDevice>;
 
 REGISTER_GPU(float)
 REGISTER_GPU(double)
+#if GOOGLE_CUDA
 REGISTER_GPU(complex64)
 REGISTER_GPU(complex128)
+#endif
 
 #undef REGISTER_GPU
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_CPU(T)                                         \
   REGISTER_KERNEL_BUILDER(Name("SparseTensorToCSRSparseMatrix") \
