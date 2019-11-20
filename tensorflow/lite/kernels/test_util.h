@@ -168,7 +168,12 @@ class SingleOpModel {
   // Templated version of AddConstInput().
   template <typename T>
   int AddConstInput(const TensorData& t, std::initializer_list<T> data) {
-    int id = AddTensor(t, data);
+    int id = 0;
+    if (t.per_channel_quantization) {
+      id = AddTensorPerChannelQuant(t);
+    } else {
+      id = AddTensor(t, data);
+    }
     inputs_.push_back(id);
     return id;
   }
