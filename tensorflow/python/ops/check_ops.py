@@ -144,7 +144,7 @@ def _unary_assert_doc(sym, sym_name):
 
     Raises:
       InvalidArgumentError: if the check can be performed immediately and
-        `x {sym}` is False. The check can be performed immediately during 
+        `x {sym}` is False. The check can be performed immediately during
         eager execution or if `x` is statically known.
     """.format(
         sym=sym, sym_name=cap_sym_name, opname=opname)
@@ -207,7 +207,7 @@ def _binary_assert_doc(sym):
 
     Raises:
       InvalidArgumentError: if the check can be performed immediately and
-        `x {sym} y` is False. The check can be performed immediately during 
+        `x {sym} y` is False. The check can be performed immediately during
         eager execution or if `x` and `y` are statically known.
     """.format(
         sym=sym, opname=opname)
@@ -2107,24 +2107,30 @@ def ensure_shape(x, shape, name=None):
   """Updates the shape of a tensor and checks at runtime that the shape holds.
 
   For example:
-  ```python
-  x = tf.compat.v1.placeholder(tf.int32)
-  print(x.shape)
-  ==> TensorShape(None)
-  y = x * 2
-  print(y.shape)
-  ==> TensorShape(None)
+
+  >>> # tf.placeholder() is not compatible with eager execution
+  ...
+  >>> tf.compat.v1.disable_eager_execution()
+  >>> x = tf.compat.v1.placeholder(tf.int32)
+  >>> print(x.shape)
+  TensorShape(None)
+  >>> y = x * 2
+  >>> print(y.shape)
+  TensorShape(None)
 
   y = tf.ensure_shape(y, (None, 3, 3))
   print(y.shape)
-  ==> TensorShape([Dimension(None), Dimension(3), Dimension(3)])
+  TensorShape([None, 3, 3])
 
-  with tf.compat.v1.Session() as sess:
-    # Raises tf.errors.InvalidArgumentError, because the shape (3,) is not
-    # compatible with the shape (None, 3, 3)
-    sess.run(y, feed_dict={x: [1, 2, 3]})
+  >>> with tf.compat.v1.Session() as sess:
+  >>> sess.run(y, feed_dict={x: [1, 2, 3]})
+  Traceback (most recent call last):
+      ...
+  InvalidArgumentError: Shape of tensor mul [3] is not compatible with
+   expected shape [?,3,3].
 
-  ```
+  The above example raises `tf.errors.InvalidArgumentError`,
+  because the shape (3,) is not compatible with the shape (None, 3, 3)
 
   NOTE: This differs from `Tensor.set_shape` in that it sets the static shape
   of the resulting tensor and enforces it at runtime, raising an error if the
@@ -2140,8 +2146,10 @@ def ensure_shape(x, shape, name=None):
     name: A name for this operation (optional). Defaults to "EnsureShape".
 
   Returns:
-    A `Tensor`. Has the same type and contents as `x`. At runtime, raises a
-    `tf.errors.InvalidArgumentError` if `shape` is incompatible with the shape
+    A `Tensor`. Has the same type and contents as `x`.
+
+  Raises:
+    tf.errors.InvalidArgumentError: If `shape` is incompatible with the shape
     of `x`.
   """
   if not isinstance(shape, tensor_shape.TensorShape):
