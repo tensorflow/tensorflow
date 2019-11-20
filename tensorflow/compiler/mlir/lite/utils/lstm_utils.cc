@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 
+#include "absl/strings/str_split.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
@@ -323,11 +324,6 @@ void ConvertLSTMCellSimpleToFusedLSTM::GenerateFusedOpOperands() {
 
 void ConvertLSTMCellSimpleToFusedLSTM::UpdateFuncSignature() {
   // https://github.com/tensorflow/community/pull/113
-  auto attr = fused_func_op_.getAttrOfType<StringAttr>("tf_.implements");
-  if (!attr) {
-    fused_func_op_.setAttr("tf._implements",
-                           builder_.getStringAttr(GetCompositeOpName()));
-  }
   SmallVector<int64_t, 2> output_shape{1, -1};
   auto input_types = fused_func_op_.getType().getInputs();
   auto output_type = mlir::RankedTensorType::get(
@@ -384,7 +380,46 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::RewriteFunc() {
   return success();
 }
 
+LogicalResult ConvertLSTMCellSimpleToFusedLSTM::InitializeFromFuncAttributes() {
+  auto attr = fused_func_op_.getAttrOfType<StringAttr>(kTFImplements);
+  if (!attr) {
+    return fused_func_op_.emitError()
+           << "Invalid function attribute, expected " << kTFImplements
+           << " attribute "
+              "not found";
+  }
+
+  // TODO(ashwinm, b/144775479): Make these NamedAttribute on TF import
+  // once tf.function can support this.
+  std::string attribute = attr.getValue().str();
+  std::vector<std::string> attr_tokens = absl::StrSplit(attribute, ',');
+  if (attr_tokens.empty()) {
+    return fused_func_op_.emitError()
+           << kTFImplements << " attribute should be set";
+  }
+
+  // Check if the interface matches.
+  if (GetCompositeOpName().str() != attr_tokens[0]) {
+    return fused_func_op_.emitError()
+           << "Unexpected interface for the composite op. Expected: "
+           << GetCompositeOpName() << " Actual: " << attr_tokens[0];
+  }
+
+  // Extract other interface attributes, for now cifg.
+  couple_input_forget_gates_ =
+      std::find(attr_tokens.begin() + 1, attr_tokens.end(),
+                kCoupleInputForgetGates) != attr_tokens.end();
+
+  return success();
+}
+
 LogicalResult ConvertLSTMCellSimpleToFusedLSTM::Initialize() {
+  if (failed(InitializeFromFuncAttributes())) {
+    return fused_func_op_.emitError()
+           << "Expected function attributes were not set on the function "
+              "encapsulating the composite op";
+  }
+
   num_gates_ = couple_input_forget_gates_ ? 3 : 4;
 
   input_ = fused_func_op_.getArgument(0);
