@@ -19,10 +19,12 @@ limitations under the License.
 // This header declares the class GpuSparse, which contains wrappers of
 // cuSparse libraries for use in TensorFlow kernels.
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <functional>
 #include <vector>
+
+#if GOOGLE_CUDA
 
 #include "third_party/gpus/cuda/include/cusparse.h"
 
@@ -32,6 +34,19 @@ using gpusparseMatDescr_t = cusparseMatDescr_t;
 using gpusparseAction_t = cusparseAction_t;
 using gpusparseHandle_t = cusparseHandle_t;
 using gpuStream_t = cudaStream_t;
+
+#elif TENSORFLOW_USE_ROCM
+
+#include "rocm/include/hipsparse/hipsparse.h"
+
+using gpusparseStatus_t = hipsparseStatus_t;
+using gpusparseOperation_t = hipsparseOperation_t;
+using gpusparseMatDescr_t = hipsparseMatDescr_t;
+using gpusparseAction_t = hipsparseAction_t;
+using gpusparseHandle_t = hipsparseHandle_t;
+using gpuStream_t = hipStream_t;
+
+#endif
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -55,6 +70,8 @@ inline string ConvertGPUSparseErrorToString(const gpusparseStatus_t status) {
   case err:                   \
     return STRINGIZE(err);
 
+#if GOOGLE_CUDA
+
     RETURN_IF_STATUS(CUSPARSE_STATUS_SUCCESS)
     RETURN_IF_STATUS(CUSPARSE_STATUS_NOT_INITIALIZED)
     RETURN_IF_STATUS(CUSPARSE_STATUS_ALLOC_FAILED)
@@ -65,13 +82,33 @@ inline string ConvertGPUSparseErrorToString(const gpusparseStatus_t status) {
     RETURN_IF_STATUS(CUSPARSE_STATUS_INTERNAL_ERROR)
     RETURN_IF_STATUS(CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED)
 
-#undef RETURN_IF_STATUS
-#undef STRINGIZE
     default:
       return strings::StrCat("Unknown CUSPARSE error: ",
                              static_cast<int>(status));
+#elif TENSORFLOW_USE_ROCM
+
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_SUCCESS)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_NOT_INITIALIZED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_ALLOC_FAILED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_INVALID_VALUE)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_ARCH_MISMATCH)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_MAPPING_ERROR)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_EXECUTION_FAILED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_INTERNAL_ERROR)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_ZERO_PIVOT)
+
+    default:
+      return strings::StrCat("Unknown hipSPARSE error: ",
+                             static_cast<int>(status));
+#endif
+
+#undef RETURN_IF_STATUS
+#undef STRINGIZE
   }
 }
+
+#if GOOGLE_CUDA
 
 #define TF_RETURN_IF_GPUSPARSE_ERROR(expr)                                 \
   do {                                                                     \
@@ -83,9 +120,24 @@ inline string ConvertGPUSparseErrorToString(const gpusparseStatus_t status) {
     }                                                                      \
   } while (0)
 
+#elif TENSORFLOW_USE_ROCM
+
+#define TF_RETURN_IF_GPUSPARSE_ERROR(expr)                                 \
+  do {                                                                     \
+    auto status = (expr);                                                  \
+    if (TF_PREDICT_FALSE(status != HIPSPARSE_STATUS_SUCCESS)) {            \
+      return errors::Internal(__FILE__, ":", __LINE__, " (", TF_STR(expr), \
+                              "): hipSPARSE call failed with status ",     \
+                              ConvertGPUSparseErrorToString(status));      \
+    }                                                                      \
+  } while (0)
+
+#endif
+
 inline gpusparseOperation_t TransposeAndConjugateToGpuSparseOp(bool transpose,
                                                                bool conjugate,
                                                                Status* status) {
+#if GOOGLE_CUDA
   if (transpose) {
     return conjugate ? CUSPARSE_OPERATION_CONJUGATE_TRANSPOSE
                      : CUSPARSE_OPERATION_TRANSPOSE;
@@ -97,6 +149,19 @@ inline gpusparseOperation_t TransposeAndConjugateToGpuSparseOp(bool transpose,
     }
     return CUSPARSE_OPERATION_NON_TRANSPOSE;
   }
+#elif TENSORFLOW_USE_ROCM
+  if (transpose) {
+    return conjugate ? HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE
+                     : HIPSPARSE_OPERATION_TRANSPOSE;
+  } else {
+    if (conjugate) {
+      DCHECK(status != nullptr);
+      *status = errors::InvalidArgument(
+          "Conjugate == True and transpose == False is not supported.");
+    }
+    return HIPSPARSE_OPERATION_NON_TRANSPOSE;
+  }
+#endif
 }
 
 // The GpuSparse class provides a simplified templated API for cuSparse
@@ -353,7 +418,11 @@ class GpuSparseMatrixDescriptor {
   // called more than once.
   Status Initialize() {
     DCHECK(!initialized_);
+#if GOOGLE_CUDA
     TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descr_));
+#elif TENSORFLOW_USE_ROCM
+    TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descr_));
+#endif
     initialized_ = true;
     return Status::OK();
   }
@@ -371,7 +440,11 @@ class GpuSparseMatrixDescriptor {
  private:
   void Release() {
     if (initialized_) {
+#if GOOGLE_CUDA
       cusparseDestroyMatDescr(descr_);
+#elif TENSORFLOW_USE_ROCM
+      hipsparseDestroyMatDescr(descr_);
+#endif
       initialized_ = false;
     }
   }
@@ -381,6 +454,8 @@ class GpuSparseMatrixDescriptor {
 
   TF_DISALLOW_COPY_AND_ASSIGN(GpuSparseMatrixDescriptor);
 };
+
+#if GOOGLE_CUDA
 
 // A wrapper class to ensure that an unsorted/sorted CSR conversion information
 // struct (csru2csrInfo_t) is initialized only once. See:
@@ -439,8 +514,10 @@ class GpuSparseCsrSortingConversionInfo {
   TF_DISALLOW_COPY_AND_ASSIGN(GpuSparseCsrSortingConversionInfo);
 };
 
+#endif  // GOOGLE_CUDA
+
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_CUDA_SPARSE_H_
