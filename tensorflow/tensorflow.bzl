@@ -2152,7 +2152,8 @@ def gpu_py_test(
         flaky = 0,
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
@@ -2179,6 +2180,7 @@ def gpu_py_test(
             tags = test_tags,
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = False,
+            **kwargs
         )
 
 register_extension_info(
@@ -2243,7 +2245,8 @@ def py_tests(
         prefix = "",
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     for src in srcs:
         test_name = src.split("/")[-1].split(".")[0]
         if prefix:
@@ -2261,6 +2264,7 @@ def py_tests(
             tags = tags,
             xla_enabled = xla_enabled,
             xla_enable_strict_auto_jit = xla_enable_strict_auto_jit,
+            **kwargs
         )
 
 def gpu_py_tests(
@@ -2275,7 +2279,8 @@ def gpu_py_tests(
         prefix = "",
         xla_enable_strict_auto_jit = False,
         xla_enabled = False,
-        grpc_enabled = False):
+        grpc_enabled = False,
+        **kwargs):
     # TODO(b/122522101): Don't ignore xla_enable_strict_auto_jit and enable additional
     # XLA tests once enough compute resources are available.
     _ignored = [xla_enable_strict_auto_jit]
@@ -2293,6 +2298,7 @@ def gpu_py_tests(
         tags = test_tags,
         xla_enabled = xla_enabled,
         xla_enable_strict_auto_jit = False,
+        **kwargs
     )
 
 # terminology changes: saving cuda_* definition for compatibility
