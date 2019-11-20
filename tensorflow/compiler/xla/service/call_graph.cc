@@ -94,6 +94,8 @@ const CallSite* CallGraphNode::GetCallSite(
   return &callsites_[it->second];
 }
 
+std::string CallGraphNode::ToString() const { return computation_->name(); }
+
 void CallGraphNode::AddCallerCallSite(const CallSite& caller_callsite) {
   caller_callsites_.push_back(caller_callsite);
   HloComputation* caller = caller_callsite.instruction()->parent();

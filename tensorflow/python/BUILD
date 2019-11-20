@@ -12,6 +12,7 @@ visibility = [
     "//tensorflow_models:__subpackages__",
     "//tensorflow_model_optimization:__subpackages__",
     "//third_party/py/cleverhans:__subpackages__",
+    "//third_party/py/reverb:__subpackages__",
     "//third_party/py/neural_structured_learning:__subpackages__",
     "//third_party/py/tensorflow_examples:__subpackages__",
     "//third_party/py/tf_slim:__subpackages__",
@@ -76,8 +77,8 @@ py_library(
         "//tensorflow_estimator:__subpackages__",
     ],
     deps = [
+        ":layers",
         ":rnn",
-        "//tensorflow/python:layers",
         "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras",
     ],
@@ -102,6 +103,7 @@ py_library(
         ":_pywrap_events_writer",
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
+        ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
         ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
@@ -381,7 +383,7 @@ cc_library(
     srcs = ["lib/core/py_exception_registry.cc"],
     hdrs = ["lib/core/py_exception_registry.h"],
     deps = [
-        "//tensorflow/c:c_api",
+        "//tensorflow/c:tf_status",
         "//tensorflow/core:lib",
         "//third_party/python_runtime:headers",
     ],
@@ -650,7 +652,7 @@ tf_python_pybind_extension(
     hdrs = ["//tensorflow/lite/toco/python:toco_python_api_hdrs"],
     module_name = "_pywrap_toco_api",
     deps = [
-        "//tensorflow/python:pybind11_lib",
+        ":pybind11_lib",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],
@@ -674,6 +676,7 @@ cc_library(
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
     deps = [
+        ":ndarray_tensor",
         ":ndarray_tensor_bridge",
         ":numpy_lib",
         ":py_util",
@@ -685,7 +688,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:script_ops_op_lib",
-        "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python/eager:pywrap_tfe_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -902,6 +904,29 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_header_only_library(
+    name = "python_op_gen_headers_lib",
+    extra_deps = [
+        "//tensorflow/core:protos_all_cc",
+    ],
+    deps = [
+        ":python_op_gen",
+    ],
+)
+
+tf_python_pybind_extension(
+    name = "_pywrap_python_op_gen",
+    srcs = ["framework/python_op_gen_wrapper.cc"],
+    module_name = "_pywrap_python_op_gen",
+    deps = [
+        ":pybind11_absl",
+        ":pybind11_lib",
+        ":python_op_gen_headers_lib",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "python_op_gen_main",
     srcs = ["framework/python_op_gen_main.cc"],
@@ -990,6 +1015,7 @@ py_library(
         ":_pywrap_kernel_registry",
         ":_pywrap_py_exception_registry",
         ":_pywrap_py_func",  # TODO(b/142001480): remove once the bug is fixed.
+        ":_pywrap_python_op_gen",
         ":_pywrap_quantize_training",
         ":_pywrap_stacktrace_handler",
         ":_pywrap_stat_summarizer",
@@ -1216,12 +1242,12 @@ py_library(
     deps = [
         ":dtypes",
         ":framework_ops",
+        ":op_callbacks",
         ":op_def_registry",
         ":platform",
         ":tensor_shape",
         ":util",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:op_callbacks",
         "@six_archive//:six",
     ],
 )
@@ -1945,7 +1971,7 @@ tf_py_test(
         ":training",
         ":variables",
     ],
-    data = ["//tensorflow/python:meta_graph_testdata"],
+    data = [":meta_graph_testdata"],
     main = "framework/meta_graph_test.py",
     tags = [
         "no_pip",
@@ -2447,13 +2473,13 @@ py_test(
         "nomac",
     ],
     deps = [
+        ":array_ops",
         ":batch_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:script_ops",
+        ":client_testlib",
+        ":dtypes",
+        ":framework",
+        ":gradients",
+        ":script_ops",
     ],
 )
 
@@ -3036,8 +3062,8 @@ py_library(
     srcs = ["ops/cudnn_rnn_grad.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":cudnn_rnn_ops_gen",
         ":framework_for_generated_wrappers",
-        "//tensorflow/python:cudnn_rnn_ops_gen",
     ],
 )
 
@@ -3423,7 +3449,7 @@ py_library(
     srcs = ["training/experimental/loss_scale.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:framework",
+        ":framework",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -3445,8 +3471,8 @@ py_test(
     srcs = ["training/experimental/loss_scale_optimizer_test.py"],
     python_version = "PY2",
     deps = [
+        ":client_testlib",
         ":loss_scale_optimizer",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/keras/mixed_precision/experimental:test_util",
@@ -3460,8 +3486,8 @@ py_test(
     srcs = ["training/experimental/loss_scale_test.py"],
     python_version = "PY2",
     deps = [
+        ":client_testlib",
         ":loss_scale",
-        "//tensorflow/python:client_testlib",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/distribute:one_device_strategy",
         "@absl_py//absl/testing:parameterized",
@@ -3483,7 +3509,7 @@ py_library(
         ":loss_scale",
         ":loss_scale_optimizer",
         ":mixed_precision_global_state",
-        "//tensorflow/python:util",
+        ":util",
     ],
 )
 
@@ -4049,7 +4075,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":framework_for_generated_wrappers",
-        "//tensorflow/python:rnn_ops_gen",
+        ":rnn_ops_gen",
     ],
 )
 
@@ -5040,8 +5066,8 @@ py_library(
     srcs = ["util/tf_should_use.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":framework_ops",
         ":util",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
@@ -5271,7 +5297,6 @@ tf_py_wrap_cc(
     swig_includes = [
         "client/tf_session.i",
         "client/tf_sessionrun_wrapper.i",
-        "framework/python_op_gen.i",
         "grappler/cluster.i",
         "grappler/cost_analyzer.i",
         "grappler/item.i",
@@ -5333,7 +5358,7 @@ tf_py_wrap_cc(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/core/util/tensor_bundle:tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
@@ -5393,6 +5418,7 @@ genrule(
         ":ndarray_tensor",  # checkpoint_reader
         ":numpy_lib",  # checkpoint_reader
         ":safe_ptr",  # checkpoint_reader
+        ":python_op_gen",  # python_op_gen
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
@@ -5482,11 +5508,11 @@ py_library(
         ":errors",
         ":framework",
         ":framework_for_generated_wrappers",
+        ":mixed_precision_global_state",
         ":platform",
         ":pywrap_tensorflow",
         ":session_ops",
         ":util",
-        "//tensorflow/python:mixed_precision_global_state",
         "//third_party/py/numpy",
         "@wrapt",
     ],
@@ -7290,7 +7316,7 @@ py_library(
     deps = [
         ":decode_proto_ops_gen",
         ":encode_proto_ops_gen",
-        "//tensorflow/python:framework_ops",
+        ":framework_ops",
     ],
 )
 
@@ -7300,7 +7326,6 @@ tf_python_pybind_extension(
     module_name = "_pywrap_graph_analyzer",
     deps = [
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
-        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

@@ -34,6 +34,9 @@ config.name = 'MLIR ' + os.path.basename(config.mlir_test_dir)
 
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 
+# suffixes: A list of file extensions to treat as test files.
+config.suffixes = ['.cc', '.hlo', '.hlotxt', '.mlir', '.pbtxt', '.py']
+
 # test_source_root: The root path where tests are located.
 config.test_source_root = config.mlir_test_dir
 

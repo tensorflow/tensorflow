@@ -362,8 +362,10 @@ quant::QuantizedType GetUniformQuantizedTypeForBias(
 // the quantization specification of the ops. This methods assumes the initial
 // quantization parameters are stored as adjacent quantize and dequantize ops
 // and the propagation results are materialized by inserting pairs of quantize
-// and dequantize ops to this function.
+// and dequantize ops to this function. Set `disable_per_channel` to true to not
+// use per channel quantization even the op supports it.
 void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+                                        bool disable_per_channel,
                                         OpQuantSpecGetter op_quant_spec_getter);
 
 // The function might contain more stats ops than required, and it will

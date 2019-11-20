@@ -157,11 +157,11 @@ LLVM::LLVMType LLVMTypeConverter::convertFunctionSignature(
 //   int64_t sizes[Rank]; // omitted when rank == 0
 //   int64_t strides[Rank]; // omitted when rank == 0
 // };
-constexpr unsigned LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor;
-constexpr unsigned LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor;
-constexpr unsigned LLVMTypeConverter::kOffsetPosInMemRefDescriptor;
-constexpr unsigned LLVMTypeConverter::kSizePosInMemRefDescriptor;
-constexpr unsigned LLVMTypeConverter::kStridePosInMemRefDescriptor;
+static constexpr unsigned kAllocatedPtrPosInMemRefDescriptor = 0;
+static constexpr unsigned kAlignedPtrPosInMemRefDescriptor = 1;
+static constexpr unsigned kOffsetPosInMemRefDescriptor = 2;
+static constexpr unsigned kSizePosInMemRefDescriptor = 3;
+static constexpr unsigned kStridePosInMemRefDescriptor = 4;
 Type LLVMTypeConverter::convertMemRefType(MemRefType type) {
   int64_t offset;
   SmallVector<int64_t, 4> strides;
@@ -234,126 +234,114 @@ LLVMOpLowering::LLVMOpLowering(StringRef rootOpName, MLIRContext *context,
                                PatternBenefit benefit)
     : ConversionPattern(rootOpName, benefit, context), lowering(lowering_) {}
 
+/*============================================================================*/
+/* MemRefDescriptor implementation                                            */
+/*============================================================================*/
+
+/// Construct a helper for the given descriptor value.
+MemRefDescriptor::MemRefDescriptor(Value *descriptor) : value(descriptor) {
+  if (value) {
+    structType = value->getType().cast<LLVM::LLVMType>();
+    indexType = value->getType().cast<LLVM::LLVMType>().getStructElementType(
+        kOffsetPosInMemRefDescriptor);
+  }
+}
+
+/// Builds IR creating an `undef` value of the descriptor type.
+MemRefDescriptor MemRefDescriptor::undef(OpBuilder &builder, Location loc,
+                                         Type descriptorType) {
+  Value *descriptor =
+      builder.create<LLVM::UndefOp>(loc, descriptorType.cast<LLVM::LLVMType>());
+  return MemRefDescriptor(descriptor);
+}
+
+/// Builds IR extracting the allocated pointer from the descriptor.
+Value *MemRefDescriptor::allocatedPtr(OpBuilder &builder, Location loc) {
+  return extractPtr(builder, loc, kAllocatedPtrPosInMemRefDescriptor);
+}
+
+/// Builds IR inserting the allocated pointer into the descriptor.
+void MemRefDescriptor::setAllocatedPtr(OpBuilder &builder, Location loc,
+                                       Value *ptr) {
+  setPtr(builder, loc, kAllocatedPtrPosInMemRefDescriptor, ptr);
+}
+
+/// Builds IR extracting the aligned pointer from the descriptor.
+Value *MemRefDescriptor::alignedPtr(OpBuilder &builder, Location loc) {
+  return extractPtr(builder, loc, kAlignedPtrPosInMemRefDescriptor);
+}
+
+/// Builds IR inserting the aligned pointer into the descriptor.
+void MemRefDescriptor::setAlignedPtr(OpBuilder &builder, Location loc,
+                                     Value *ptr) {
+  setPtr(builder, loc, kAlignedPtrPosInMemRefDescriptor, ptr);
+}
+
+/// Builds IR extracting the offset from the descriptor.
+Value *MemRefDescriptor::offset(OpBuilder &builder, Location loc) {
+  return builder.create<LLVM::ExtractValueOp>(
+      loc, indexType, value,
+      builder.getI64ArrayAttr(kOffsetPosInMemRefDescriptor));
+}
+
+/// Builds IR inserting the offset into the descriptor.
+void MemRefDescriptor::setOffset(OpBuilder &builder, Location loc,
+                                 Value *offset) {
+  value = builder.create<LLVM::InsertValueOp>(
+      loc, structType, value, offset,
+      builder.getI64ArrayAttr(kOffsetPosInMemRefDescriptor));
+}
+
+/// Builds IR extracting the pos-th size from the descriptor.
+Value *MemRefDescriptor::size(OpBuilder &builder, Location loc, unsigned pos) {
+  return builder.create<LLVM::ExtractValueOp>(
+      loc, indexType, value,
+      builder.getI64ArrayAttr({kSizePosInMemRefDescriptor, pos}));
+}
+
+/// Builds IR inserting the pos-th size into the descriptor
+void MemRefDescriptor::setSize(OpBuilder &builder, Location loc, unsigned pos,
+                               Value *size) {
+  value = builder.create<LLVM::InsertValueOp>(
+      loc, structType, value, size,
+      builder.getI64ArrayAttr({kSizePosInMemRefDescriptor, pos}));
+}
+
+/// Builds IR extracting the pos-th size from the descriptor.
+Value *MemRefDescriptor::stride(OpBuilder &builder, Location loc,
+                                unsigned pos) {
+  return builder.create<LLVM::ExtractValueOp>(
+      loc, indexType, value,
+      builder.getI64ArrayAttr({kStridePosInMemRefDescriptor, pos}));
+}
+
+/// Builds IR inserting the pos-th stride into the descriptor
+void MemRefDescriptor::setStride(OpBuilder &builder, Location loc, unsigned pos,
+                                 Value *stride) {
+  value = builder.create<LLVM::InsertValueOp>(
+      loc, structType, value, stride,
+      builder.getI64ArrayAttr({kStridePosInMemRefDescriptor, pos}));
+}
+
+Value *MemRefDescriptor::extractPtr(OpBuilder &builder, Location loc,
+                                    unsigned pos) {
+  Type type = structType.cast<LLVM::LLVMType>().getStructElementType(pos);
+  return builder.create<LLVM::ExtractValueOp>(loc, type, value,
+                                              builder.getI64ArrayAttr(pos));
+}
+
+void MemRefDescriptor::setPtr(OpBuilder &builder, Location loc, unsigned pos,
+                              Value *ptr) {
+  value = builder.create<LLVM::InsertValueOp>(loc, structType, value, ptr,
+                                              builder.getI64ArrayAttr(pos));
+}
+
+LLVM::LLVMType MemRefDescriptor::getElementType() {
+  return value->getType().cast<LLVM::LLVMType>().getStructElementType(
+      kAlignedPtrPosInMemRefDescriptor);
+}
+
 namespace {
-/// Helper class to produce LLVM dialect operations extracting or inserting
-/// elements of a MemRef descriptor. Wraps a Value pointing to the descriptor.
-/// The Value may be null, in which case none of the operations are valid.
-class MemRefDescriptor {
-public:
-  /// Construct a helper for the given descriptor value.
-  explicit MemRefDescriptor(Value *descriptor) : value(descriptor) {
-    if (value) {
-      structType = value->getType().cast<LLVM::LLVMType>();
-      indexType = value->getType().cast<LLVM::LLVMType>().getStructElementType(
-          LLVMTypeConverter::kOffsetPosInMemRefDescriptor);
-    }
-  }
-
-  /// Builds IR creating an `undef` value of the descriptor type.
-  static MemRefDescriptor undef(OpBuilder &builder, Location loc,
-                                Type descriptorType) {
-    Value *descriptor = builder.create<LLVM::UndefOp>(
-        loc, descriptorType.cast<LLVM::LLVMType>());
-    return MemRefDescriptor(descriptor);
-  }
-
-  /// Builds IR extracting the allocated pointer from the descriptor.
-  Value *allocatedPtr(OpBuilder &builder, Location loc) {
-    return extractPtr(builder, loc,
-                      LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor);
-  }
-
-  /// Builds IR inserting the allocated pointer into the descriptor.
-  void setAllocatedPtr(OpBuilder &builder, Location loc, Value *ptr) {
-    setPtr(builder, loc, LLVMTypeConverter::kAllocatedPtrPosInMemRefDescriptor,
-           ptr);
-  }
-
-  /// Builds IR extracting the aligned pointer from the descriptor.
-  Value *alignedPtr(OpBuilder &builder, Location loc) {
-    return extractPtr(builder, loc,
-                      LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor);
-  }
-
-  /// Builds IR inserting the aligned pointer into the descriptor.
-  void setAlignedPtr(OpBuilder &builder, Location loc, Value *ptr) {
-    setPtr(builder, loc, LLVMTypeConverter::kAlignedPtrPosInMemRefDescriptor,
-           ptr);
-  }
-
-  /// Builds IR extracting the offset from the descriptor.
-  Value *offset(OpBuilder &builder, Location loc) {
-    return builder.create<LLVM::ExtractValueOp>(
-        loc, indexType, value,
-        builder.getI64ArrayAttr(
-            LLVMTypeConverter::kOffsetPosInMemRefDescriptor));
-  }
-
-  /// Builds IR inserting the offset into the descriptor.
-  void setOffset(OpBuilder &builder, Location loc, Value *offset) {
-    value = builder.create<LLVM::InsertValueOp>(
-        loc, structType, value, offset,
-        builder.getI64ArrayAttr(
-            LLVMTypeConverter::kOffsetPosInMemRefDescriptor));
-  }
-
-  /// Builds IR extracting the pos-th size from the descriptor.
-  Value *size(OpBuilder &builder, Location loc, unsigned pos) {
-    return builder.create<LLVM::ExtractValueOp>(
-        loc, indexType, value,
-        builder.getI64ArrayAttr(
-            {LLVMTypeConverter::kSizePosInMemRefDescriptor, pos}));
-  }
-
-  /// Builds IR inserting the pos-th size into the descriptor
-  void setSize(OpBuilder &builder, Location loc, unsigned pos, Value *size) {
-    value = builder.create<LLVM::InsertValueOp>(
-        loc, structType, value, size,
-        builder.getI64ArrayAttr(
-            {LLVMTypeConverter::kSizePosInMemRefDescriptor, pos}));
-  }
-
-  /// Builds IR extracting the pos-th size from the descriptor.
-  Value *stride(OpBuilder &builder, Location loc, unsigned pos) {
-    return builder.create<LLVM::ExtractValueOp>(
-        loc, indexType, value,
-        builder.getI64ArrayAttr(
-            {LLVMTypeConverter::kStridePosInMemRefDescriptor, pos}));
-  }
-
-  /// Builds IR inserting the pos-th stride into the descriptor
-  void setStride(OpBuilder &builder, Location loc, unsigned pos,
-                 Value *stride) {
-    value = builder.create<LLVM::InsertValueOp>(
-        loc, structType, value, stride,
-        builder.getI64ArrayAttr(
-            {LLVMTypeConverter::kStridePosInMemRefDescriptor, pos}));
-  }
-
-  /*implicit*/ operator Value *() { return value; }
-
-private:
-  Value *extractPtr(OpBuilder &builder, Location loc, unsigned pos) {
-    Type type = structType.getStructElementType(pos);
-    return builder.create<LLVM::ExtractValueOp>(loc, type, value,
-                                                builder.getI64ArrayAttr(pos));
-  }
-
-  void setPtr(OpBuilder &builder, Location loc, unsigned pos, Value *ptr) {
-    value = builder.create<LLVM::InsertValueOp>(loc, structType, value, ptr,
-                                                builder.getI64ArrayAttr(pos));
-  }
-
-  // Cached descriptor type.
-  LLVM::LLVMType structType;
-
-  // Cached index type.
-  LLVM::LLVMType indexType;
-
-  // Actual descriptor.
-  Value *value;
-};
-
 // Base class for Standard to LLVM IR op conversions.  Matches the Op type
 // provided as template argument.  Carries a reference to the LLVM dialect in
 // case it is necessary for rewriters.
@@ -577,8 +565,8 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
     if (numResults != 0) {
       packedType = this->lowering.packFunctionResults(
           llvm::to_vector<4>(op->getResultTypes()));
-      assert(packedType && "type conversion failed, such operation should not "
-                           "have been matched");
+      if (!packedType)
+        return this->matchFailure();
     }
 
     auto newOp = rewriter.create<TargetOp>(op->getLoc(), packedType, operands,
@@ -1896,4 +1884,5 @@ mlir::createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
 }
 
 static PassRegistration<LLVMLoweringPass>
-    pass("lower-to-llvm", "Convert all functions to the LLVM IR dialect");
+    pass("convert-std-to-llvm", "Convert scalar and vector operations from the "
+                                "Standard to the LLVM dialect");

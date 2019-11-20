@@ -195,7 +195,7 @@ bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
   (void)mustDivide;
   VectorType superVectorType;
   if (auto read = dyn_cast<vector::VectorTransferReadOp>(op)) {
-    superVectorType = read.getResultType();
+    superVectorType = read.getVectorType();
     mustDivide = true;
   } else if (auto write = dyn_cast<vector::VectorTransferWriteOp>(op)) {
     superVectorType = write.getVectorType();

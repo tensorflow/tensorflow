@@ -13,9 +13,9 @@ exports_files(glob([
 ]))
 
 cc_library(
-    name = "add_intermediate_tensors",
-    srcs = ["add_intermediate_tensors.cc"],
-    hdrs = ["add_intermediate_tensors.h"],
+    name = "quantization_wrapper_utils",
+    srcs = ["quantization_wrapper_utils.cc"],
+    hdrs = ["quantization_wrapper_utils.h"],
     deps = [
         ":operator_property",
         "//tensorflow/lite:framework",
@@ -26,18 +26,32 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "add_intermediate_tensors_test",
-    srcs = ["add_intermediate_tensors_test.cc"],
+    name = "quantization_wrapper_utils_test",
+    srcs = ["quantization_wrapper_utils_test.cc"],
     tags = [
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
     deps = [
-        ":add_intermediate_tensors",
+        ":quantization_wrapper_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_library(
+    name = "quantization_wrapper",
+    srcs = ["quantization_wrapper.cc"],
+    hdrs = ["quantization_wrapper.h"],
+    deps = [
+        ":quantization_wrapper_utils",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/core/api",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/tools/optimize:quantize_model",
         "@flatbuffers",
     ],
 )

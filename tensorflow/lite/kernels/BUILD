@@ -519,7 +519,6 @@ cc_library(
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = [
-        ":activation_functor",
         ":cpu_backend_context",
         ":eigen_support",
         ":kernel_util",

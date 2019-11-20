@@ -51,7 +51,7 @@ already present before the pass.
     they do not depend on the loop iterator value or on the result of
     `affine.apply`.
 
-## Conversion from Standard to LLVM IR dialect (`-lower-to-llvm`)
+## Conversion from Standard to LLVM IR dialect (`-convert-std-to-llvm`)
 
 Convert standard operations into the LLVM IR dialect operations.
 

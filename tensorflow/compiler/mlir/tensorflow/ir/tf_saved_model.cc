@@ -26,7 +26,9 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 
 namespace mlir {
@@ -47,6 +49,22 @@ static bool IsStrArrayAttr(Attribute attr) {
 //===----------------------------------------------------------------------===//
 // TensorFlowSavedModelDialect Op's
 //===----------------------------------------------------------------------===//
+
+LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
+  if (!t1.isa<TensorType>() || !t2.isa<TensorType>()) {
+    return failure();
+  }
+  return verifyCompatibleShape(t1.cast<TensorType>(), t2.cast<TensorType>());
+}
+
+static LogicalResult Verify(GlobalTensorOp global_tensor) {
+  if (failed(VerifyTensorTypesCompatible(
+          global_tensor.type(), global_tensor.value().Attribute::getType()))) {
+    return global_tensor.emitError() << "'type' and 'value' attributes should "
+                                        "have compatible tensor types";
+  }
+  return success();
+}
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"

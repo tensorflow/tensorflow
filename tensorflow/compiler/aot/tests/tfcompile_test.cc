@@ -18,6 +18,22 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/test.h"
+
+// The header files for the tests using mlir_bridge have the _mlir_bridge suffix
+// inherited from the tf_library target names.
+#if defined(ENABLE_MLIR_BRIDGE_TEST)
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling_mlir_bridge.h"
+#else
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
@@ -32,12 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
-#include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/test.h"
+#endif
 
 namespace tensorflow {
 namespace tfcompile {
@@ -156,6 +167,8 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
 }
 
+// TODO(bixia): the following tests failed with MLIR bridge.
+#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Cond) {
   CondComp cond;
   EXPECT_EQ(cond.arg0_data(), cond.arg_data(0));
@@ -220,6 +233,7 @@ TEST(TFCompileTest, Gather) {
     EXPECT_EQ(gather_const.result0_data(), gather.results()[0]);
   }
 }
+#endif
 
 TEST(TFCompileTest, MatMul2) {
   Eigen::ThreadPool tp(2);
@@ -409,6 +423,8 @@ TEST(TFCompileTest, MatMulAndAdd1) {
   }
 }
 
+// TODO(bixia): the following tests failed with MLIR bridge.
+#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Function) {
   // The function is equivalent to an addition
   FunctionComp add_fn;
@@ -674,6 +690,7 @@ TEST(TFCompileTest, HloProfiling) {
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,
                             add_profile_line, tuple_profile_line}));
 }
+#endif
 
 }  // namespace
 }  // namespace tfcompile

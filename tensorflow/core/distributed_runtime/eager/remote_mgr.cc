@@ -57,6 +57,22 @@ Status RemoteMgr::GetTensorHandle(
   return GetTensorHandleImpl(remote_handle, handle);
 }
 
+Status RemoteMgr::GetMirroredResourceShape(
+    const RemoteTensorHandleInternal& remote_handle,
+    std::vector<DtypeAndPartialTensorShape>* handle) {
+  tf_shared_lock l(mirrored_resource_shape_mu_);
+  auto iter = mirrored_resource_shape_map_.find(remote_handle);
+  if (iter == mirrored_resource_shape_map_.end()) {
+    return errors::InvalidArgument(
+        "Unable to find the relevant mirrored resource shape: Op ID: ",
+        remote_handle.op_id, ", Output num: ", remote_handle.output_num);
+  }
+
+  *handle = iter->second;
+
+  return Status::OK();
+}
+
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
                                         int64* op_id, int32* output_num) {
   TF_RETURN_IF_ERROR(
@@ -74,18 +90,26 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
 
 Status RemoteMgr::DeleteTensorHandle(
     const RemoteTensorHandleInternal& remote_handle) {
-  mutex_lock l(remote_tensor_handle_mu_);
-  auto iter = remote_tensor_handle_map_.find(remote_handle);
-  if (iter == remote_tensor_handle_map_.end()) {
-    return errors::InvalidArgument(
-        "Unable to find the relevant tensor remote_handle: Op ID: ",
-        remote_handle.op_id, ", Output num: ", remote_handle.output_num);
+  {
+    mutex_lock l(remote_tensor_handle_mu_);
+    auto iter = remote_tensor_handle_map_.find(remote_handle);
+    if (iter != remote_tensor_handle_map_.end()) {
+      iter->second->Unref();
+      remote_tensor_handle_map_.erase(iter);
+      return Status::OK();
+    }
   }
-
-  iter->second->Unref();
-  remote_tensor_handle_map_.erase(iter);
-
-  return Status::OK();
+  {
+    mutex_lock l(mirrored_resource_shape_mu_);
+    auto iter = mirrored_resource_shape_map_.find(remote_handle);
+    if (iter != mirrored_resource_shape_map_.end()) {
+      mirrored_resource_shape_map_.erase(iter);
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument(
+      "Unable to find the relevant tensor remote_handle: Op ID: ",
+      remote_handle.op_id, ", Output num: ", remote_handle.output_num);
 }
 
 Status RemoteMgr::SerializeRemoteTensorHandle(
@@ -94,15 +118,8 @@ Status RemoteMgr::SerializeRemoteTensorHandle(
   int64 op_id;
   int32 output_num;
   if (!in->RemoteAddress(device, &op_id, &output_num).ok()) {
-    mutex_lock l(remote_tensor_handle_mu_);
-    if (!GetRemoteTensorHandle(in, &op_id, &output_num).ok()) {
-      op_id = NextOpId();
-      output_num = 0;
-      in->SetRemoteOpIdAndOutputNumToLocalTensorHandle(op_id, output_num);
-      in->Ref();
-      remote_tensor_handle_map_.emplace(
-          RemoteTensorHandleInternal(op_id, output_num), in);
-    }
+    tf_shared_lock l(remote_tensor_handle_mu_);
+    TF_RETURN_IF_ERROR(GetRemoteTensorHandle(in, &op_id, &output_num));
   }
   out->Clear();
   out->set_op_id(op_id);
@@ -150,10 +167,19 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
     TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
         std::move(remote_handle_data), in.dtype(), device, parent_, out));
     std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
-    for (const auto& dtype_and_shape_proto : in.resource_dtypes_and_shapes()) {
-      dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{
-          dtype_and_shape_proto.dtype(),
-          TensorShape(dtype_and_shape_proto.shape())});
+    if (!GetMirroredResourceShape(RemoteTensorHandleInternal(in),
+                                  &dtypes_and_shapes)
+             .ok()) {
+      for (const auto& dtype_and_shape_proto :
+           in.resource_dtypes_and_shapes()) {
+        dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{
+            dtype_and_shape_proto.dtype(),
+            TensorShape(dtype_and_shape_proto.shape())});
+      }
+      mutex_lock l(mirrored_resource_shape_mu_);
+      mirrored_resource_shape_map_.emplace(
+          RemoteTensorHandleInternal(in.op_id(), in.output_num()),
+          dtypes_and_shapes);
     }
     (*out)->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   }

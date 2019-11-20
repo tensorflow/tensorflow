@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -108,21 +109,39 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   std::unique_ptr<tensorflow::NodeDef> node_def =
       std::move(node_def_or).ValueOrDie();
 
-  // Collect an array describing the input shape for every operand.
-  std::vector<tensorflow::PartialTensorShape> input_shapes;
-  input_shapes.reserve(op->getNumOperands());
-  for (Type operand_type : op->getOperandTypes()) {
-    auto shaped_type = operand_type.dyn_cast<ShapedType>();
-    // Non-shaped type and dynamically ranked type are marked by an empty entry.
-    if (!shaped_type || !shaped_type.hasRank()) {
-      input_shapes.emplace_back();
-      continue;
+  // Collect an array with input values for constant operands and input shapes
+  // for all the operands.
+  std::vector<const tensorflow::Tensor*> input_tensors(op->getNumOperands());
+  std::vector<tensorflow::PartialTensorShape> input_shapes(
+      op->getNumOperands());
+  std::vector<tensorflow::Tensor> tensors;
+  for (auto it : llvm::enumerate(op->getOperands())) {
+    Value* operand = it.value();
+    size_t index = it.index();
+
+    // If the operand is constant, then convert it to Tensor.
+    ElementsAttr attr;
+    if (matchPattern(operand, m_Constant(&attr))) {
+      tensors.emplace_back();
+      tensorflow::Tensor* input_tensor = &tensors.back();
+      auto status = tensorflow::ConvertToTensor(attr, input_tensor);
+      if (status.ok()) {
+        input_tensors[index] = input_tensor;
+      } else {
+        LLVM_DEBUG(llvm::dbgs()
+                   << "Error converting input " << index << " of op '" << *op
+                   << "' to Tensor: " << status.error_message() << "\n");
+      }
     }
-    // Convert the MLIR shape indices (int64_t) to TensorFlow indices (int64).
-    ArrayRef<int64_t> shape = shaped_type.getShape();
-    SmallVector<int64, 8> tf_shape(shape.begin(), shape.end());
-    input_shapes.push_back(
-        tensorflow::PartialTensorShape({tf_shape.data(), tf_shape.size()}));
+
+    Type operand_type = operand->getType();
+    if (auto ranked_type = operand_type.dyn_cast<RankedTensorType>()) {
+      // Convert the MLIR shape indices (int64_t) to TensorFlow indices (int64).
+      ArrayRef<int64_t> shape = ranked_type.getShape();
+      SmallVector<int64, 8> tf_shape(shape.begin(), shape.end());
+      input_shapes[index] =
+          tensorflow::PartialTensorShape({tf_shape.data(), tf_shape.size()});
+    }
   }
 
   // Perform the shape inference using an InferenceContext with the input
@@ -130,7 +149,7 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
   // function operates on.
   tensorflow::shape_inference::InferenceContext c(
       graph_version, *node_def, op_reg_data->op_def, input_shapes,
-      /*input_tensors=*/{}, /*input_tensors_as_shapes=*/{},
+      input_tensors, /*input_tensors_as_shapes=*/{},
       /*input_handle_shapes_and_types=*/{});
   auto status = c.Run(op_reg_data->shape_inference_fn);
   if (!status.ok()) {

@@ -111,14 +111,14 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
     void AddEvent(CuptiTracerEvent&& event) {
       absl::MutexLock lock(&mutex);
       if (event.source == CuptiTracerEventSource::DriverCallback) {
-        // Cupti api callcack events were used to populate launch times etc.
-        if (event.name == "cuStreamSynchronize") {
-          events.emplace_back(std::move(event));
-        }
+        // Cupti api callback events were used to populate launch times etc.
         if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
           correlation_info.insert(
               {event.correlation_id,
                CorrelationInfo(event.thread_id, event.start_time_ns)});
+        }
+        if (event.name == "cuStreamSynchronize") {
+          events.emplace_back(std::move(event));
         }
       } else {
         // Cupti activity events measure device times etc.

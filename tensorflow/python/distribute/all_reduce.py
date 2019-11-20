@@ -427,7 +427,7 @@ def build_recursive_hd_all_reduce(input_tensors, red_op, un_op=None):
   """Construct a subgraph for recursive halving-doubling all-reduce.
 
   The recursive halving-doubling algorithm is described in
-  http://www.mcs.anl.gov/~thakur/papers/ijhpca-coll.pdf
+  (Thakur et al., 2015).
 
   The concept is to arrange the participating n devices in
   a linear sequence where devices exchange data pairwise
@@ -459,6 +459,12 @@ def build_recursive_hd_all_reduce(input_tensors, red_op, un_op=None):
   Raises:
     ValueError: num_devices not a power of 2, or tensor len not divisible
     by 2 the proper number of times.
+
+  References:
+    Optimization of Collective Communication Operations in MPICH:
+      [Thakur et al., 2005]
+      (https://journals.sagepub.com/doi/abs/10.1177/1094342005051521)
+      ([pdf](http://wwwi10.lrr.in.tum.de/~gerndt/home/Teaching/HPCSeminar/mpich_multi_coll.pdf))
   """
   devices = [t.device for t in input_tensors]
   input_tensors, shape = _flatten_tensors(input_tensors)

@@ -39,6 +39,35 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
       .cast<DenseIntElementsAttr>();
 }
 
+// Returns a 1-d i64 elements attribute populated with numbers from start to
+// end, excluding.
+static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
+                                                     Builder *builder) {
+  int size = end - start;
+
+  SmallVector<int64_t, 4> vals;
+  vals.resize(size);
+  std::iota(vals.begin(), vals.end(), start);
+
+  TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get<int64_t>(ty, vals)
+      .cast<DenseIntElementsAttr>();
+}
+
+// Returns int or float DenseElementsAttr with scalar shape with the given
+// element type and the integer value.
+static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
+    APFloat value(float_ty.getFloatSemantics(), raw_value);
+    return DenseElementsAttr::get(scalar_ty, value);
+  }
+
+  auto int_ty = ty.cast<IntegerType>();
+  APInt value(int_ty.getWidth(), raw_value, /*isSigned=*/true);
+  return DenseElementsAttr::get(scalar_ty, value);
+}
+
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
 // op.
 DenseIntElementsAttr GetBiasAddGradReductionIndices(int64_t rank,
@@ -99,7 +128,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
     Type prev_input_ty, inferred_ty;
     SmallVector<Value *, 4> expanded_inputs;
-    expanded_inputs.reserve(op.N().getSExtValue());
+    expanded_inputs.reserve(op.N());
     for (Value *input : op.values()) {
       // If input type is different than the previous input type, infer the
       // output type. Otherwise, use the already inferred output type from the
@@ -113,9 +142,8 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
           loc, inferred_ty, input, axis_value));
     }
 
-    rewriter.replaceOpWithNewOp<TF::ConcatV2Op>(
-        op, op.getType(), expanded_inputs, axis_value,
-        op.getAttrOfType<IntegerAttr>("N"));
+    rewriter.replaceOpWithNewOp<TF::ConcatV2Op>(op, op.getType(),
+                                                expanded_inputs, axis_value);
     return matchSuccess();
   }
 };

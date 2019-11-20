@@ -44,6 +44,7 @@ limitations under the License.
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Transforms/InliningUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
 
@@ -53,17 +54,6 @@ namespace mlir {
 
 using namespace mlir;
 using namespace mlir::xla_hlo;
-
-XlaHloDialect::XlaHloDialect(MLIRContext* context)
-    : Dialect(getDialectNamespace(), context) {
-  addOperations<
-#define GET_OP_LIST
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
-      >();
-
-  // Support unknown operations because not all XLA operations are registered.
-  // allowUnknownOperations();
-}
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
                                               Attribute value, Type type,
@@ -888,6 +878,38 @@ static LogicalResult Verify(TransposeOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// GetTupleElementOp
+//===----------------------------------------------------------------------===//
+
+void GetTupleElementOp::build(Builder* builder, OperationState& result,
+                              Value* tuple, int32_t index) {
+  if (auto tuple_type = tuple->getType().dyn_cast<TupleType>()) {
+    auto element_type = tuple_type.getType(index);
+    build(builder, result, element_type, tuple,
+          builder->getI32IntegerAttr(index));
+    return;
+  }
+
+  build(builder, result, tuple->getType(), tuple,
+        builder->getI32IntegerAttr(index));
+}
+
+//===----------------------------------------------------------------------===//
+// TupleOp
+//===----------------------------------------------------------------------===//
+
+void TupleOp::build(Builder* builder, OperationState& result,
+                    ArrayRef<Value*> values) {
+  SmallVector<Type, 4> types;
+  types.reserve(values.size());
+  for (auto val : values) {
+    types.push_back(val->getType());
+  }
+
+  build(builder, result, builder->getTupleType(types), values);
+}
+
+//===----------------------------------------------------------------------===//
 // CompareOp
 //===----------------------------------------------------------------------===//
 
@@ -902,3 +924,40 @@ void CompareOp::build(Builder* builder, OperationState& result, Value* lhs,
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
+
+//===----------------------------------------------------------------------===//
+// xla_hlo Dialect Interfaces
+//===----------------------------------------------------------------------===//
+
+namespace {
+struct HLOInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+  // We don't have any special restrictions on what can be inlined into
+  // destination regions (e.g. while/conditional bodies). Always allow it.
+  bool isLegalToInline(Region* dest, Region* src,
+                       BlockAndValueMapping& valueMapping) const final {
+    return true;
+  }
+  // Operations in xla_hlo dialect are always legal to inline since they are
+  // pure.
+  bool isLegalToInline(Operation*, Region*, BlockAndValueMapping&) const final {
+    return true;
+  }
+};
+}  // end anonymous namespace
+
+//===----------------------------------------------------------------------===//
+// xla_hlo Dialect Constructor
+//===----------------------------------------------------------------------===//
+
+XlaHloDialect::XlaHloDialect(MLIRContext* context)
+    : Dialect(getDialectNamespace(), context) {
+  addOperations<
+#define GET_OP_LIST
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.cc.inc"
+      >();
+  addInterfaces<HLOInlinerInterface>();
+
+  // Support unknown operations because not all XLA operations are registered.
+  // allowUnknownOperations();
+}

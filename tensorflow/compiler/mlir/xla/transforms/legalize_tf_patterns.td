@@ -239,7 +239,7 @@ def IsShapedTensor
 // the conversion, original Concat op operands still refers to the old ops even
 // if HLO constant op is introduced as an replacement for the TensorFlow
 // Constant op.
-def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
+def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
           (HLO_ConcatenateOp $inputs, (GetHLOAxisFromTFAxis $axis, $inputs)),
           [(HasRankedFirstOperand $inputs)]>;
 

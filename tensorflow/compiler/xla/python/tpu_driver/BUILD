@@ -2,8 +2,8 @@ load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library_cc
 load(
     "//tensorflow/compiler/xla/python/tpu_driver:platform/external/tools.bzl",
     "external_deps",
-    "go_proto_library",
     "go_grpc_library",
+    "go_proto_library",
 )
 
 licenses(["notice"])  # Apache 2.0
@@ -46,6 +46,7 @@ cc_library(
         "//tensorflow/core/platform:logging",
         "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/python/tpu_driver:tpu_driver_proto_cc",
@@ -78,6 +79,7 @@ cc_library(
     deps = [
         ":tpu_driver",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/types:optional",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:stringpiece",

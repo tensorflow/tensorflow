@@ -11,6 +11,7 @@ package_group(
     includes = ["@local_config_mlir//:subpackages"],
     packages = [
         "//tensorflow/compiler/...",
+        "//tensorflow/core/tfrt_delegate/...",
         "//tensorflow/python/...",
     ],
 )
@@ -217,6 +218,7 @@ cc_library(
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
         "transforms/tpu_cluster_formation.cc",
+        "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
         "translate/breakup-islands.cc",
         "translate/control_to_executor_dialect.cc",
@@ -230,6 +232,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":bridge_logger",
         ":convert_tensor",
         ":convert_type",
         ":device_util",
@@ -487,6 +490,22 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Support",
+    ],
+)
+
+tf_cc_test(
+    name = "convert_type_test",
+    size = "small",
+    srcs = ["utils/convert_type_test.cc"],
+    deps = [
+        ":convert_type",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
     ],
 )
 
@@ -772,6 +791,7 @@ cc_library(
     hdrs = ["utils/compile_mlir_util.h"],
     deps = [
         ":convert_type",
+        ":dump_mlir_util",
         ":error_util",
         ":tensorflow_passes",
         ":tf_dialect_passes",
@@ -782,6 +802,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/types:span",
         "@llvm//:support",
@@ -924,7 +946,7 @@ cc_library(
     srcs = ["utils/dump_mlir_util.cc"],
     hdrs = ["utils/dump_mlir_util.h"],
     deps = [
-        "//tensorflow/core/platform:env",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm//:support",
         "@local_config_mlir//:IR",
@@ -937,11 +959,23 @@ tf_cc_test(
     srcs = ["utils/dump_mlir_util_test.cc"],
     deps = [
         ":dump_mlir_util",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:test",
         "@llvm//:support",
         "@local_config_mlir//:IR",
+    ],
+)
+
+cc_library(
+    name = "bridge_logger",
+    srcs = ["utils/bridge_logger.cc"],
+    hdrs = ["utils/bridge_logger.h"],
+    deps = [
+        ":dump_mlir_util",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
     ],
 )

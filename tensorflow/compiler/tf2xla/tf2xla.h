@@ -34,6 +34,11 @@ Status ConvertGraphDefToXla(const GraphDef& graph_def,
                             const tf2xla::Config& config, xla::Client* client,
                             xla::XlaComputation* computation);
 
+// Similar to ConvertGraphDefToXla, but uses MLIR.
+Status ConvertGraphDefToXlaViaMlir(const GraphDef& graph_def,
+                                   const tf2xla::Config& config,
+                                   xla::XlaComputation* computation);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TF2XLA_H_

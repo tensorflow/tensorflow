@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_allocator.h"
-#include "tensorflow/lite/experimental/micro/micro_optional_debug_tools.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/type_to_tflitetype.h"

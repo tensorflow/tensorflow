@@ -297,53 +297,6 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-// Create a symbolic tensor from the input graph node.
-TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(
-    TF_Output t, TF_DataType data_type);
-
-// Returns 0 if the input tensor handle represents a symbolic tensor (i.e., a
-// graph node). Otherwise returns non-0.
-TF_CAPI_EXPORT extern unsigned char TFE_TensorHandleIsConcrete(
-    TFE_TensorHandle* handle);
-
-// If `handle` is a symbolic tensor, return the corresponding graph node
-// represented by TF_Output. Otherwise, return an error status.
-TF_CAPI_EXPORT extern TF_Output TFE_GetTFOutputFromTensorHandle(
-    TFE_TensorHandle* handle, TF_Status* status);
-
-typedef struct TFE_TraceContext TFE_TraceContext;
-
-// A trace context contains a trace graph, to which TFE_AddEagerOpToGraph()
-// calls add graph nodes as a way to symbolically execute the eager ops.
-//
-// It also contains a hash map from concrete input tensors to symbolic
-// tensors. That map will be used to create input tensors to the trace graph.
-TF_CAPI_EXPORT extern TFE_TraceContext* TFE_NewTraceContext(TF_Graph* graph);
-
-TF_CAPI_EXPORT extern void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx);
-
-// Symbolically executes `op`, by adding a corresponding node to the graph
-// associated with `trace_ctx`. This graph node outputs a set of symbolic
-// tensors in `retvals` and `num_retvals`. Returns the corresponding graph
-// operation on success, otherwise returns nullptr.
-TF_CAPI_EXPORT extern TF_Operation* TFE_AddEagerOpToGraph(
-    TFE_Op* op, TFE_TraceContext* trace_ctx, TFE_TensorHandle** retvals,
-    int* num_retvals, TF_Status* status);
-
-// Finalizes the trace graph and its inputs, and returns the number of inputs.
-// After this call, the next two APIs can be called to iterate over the input
-// tensors.
-TF_CAPI_EXPORT extern int TFE_FinalizeInputTensorsFromTraceContext(
-    TFE_TraceContext* trace_ctx);
-
-TF_CAPI_EXPORT extern TF_Output TFE_GetInputGraphNodeFromTraceContext(
-    TFE_TraceContext* trace_ctx, unsigned int idx);
-
-// Each input tensor should be consumed at most once.
-TF_CAPI_EXPORT extern TFE_TensorHandle*
-TFE_ConsumeInputConcreteTensorFromTraceContext(TFE_TraceContext* trace_ctx,
-                                               unsigned int idx);
-
 // Information about the shape of a Tensor and its type.
 struct TF_ShapeAndType {
   // Number of dimensions. -1 indicates unknown rank.

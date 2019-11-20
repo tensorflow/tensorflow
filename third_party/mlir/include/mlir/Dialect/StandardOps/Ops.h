@@ -30,6 +30,9 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
 
+// Pull in all enum type definitions and utility function declarations.
+#include "mlir/Dialect/StandardOps/OpsEnums.h.inc"
+
 namespace mlir {
 class AffineMap;
 class Builder;
@@ -40,27 +43,6 @@ class StandardOpsDialect : public Dialect {
 public:
   StandardOpsDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "std"; }
-};
-
-/// The predicate indicates the type of the comparison to perform:
-/// (in)equality; (un)signed less/greater than (or equal to).
-enum class CmpIPredicate {
-  FirstValidValue,
-  // (In)equality comparisons.
-  EQ = FirstValidValue,
-  NE,
-  // Signed comparisons.
-  SLT,
-  SLE,
-  SGT,
-  SGE,
-  // Unsigned comparisons.
-  ULT,
-  ULE,
-  UGT,
-  UGE,
-  // Number of predicates.
-  NumPredicates
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -356,7 +338,7 @@ void printDimAndSymbolList(Operation::operand_iterator begin,
 
 /// Parses dimension and symbol list and returns true if parsing failed.
 ParseResult parseDimAndSymbolList(OpAsmParser &parser,
-                                  SmallVector<Value *, 4> &operands,
+                                  SmallVectorImpl<Value *> &operands,
                                   unsigned &numDims);
 
 llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);

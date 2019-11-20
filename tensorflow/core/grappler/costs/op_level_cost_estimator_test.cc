@@ -138,10 +138,10 @@ OpContext DescribeSparseTensorDenseMatMul(const int nnz_a,
   return op_context;
 }
 
-// Returns an OpInfo for an Einsum
-OpContext DescribeEinsum(const std::vector<int>& dims_a,
-                         const std::vector<int>& dims_b,
-                         const string& equation) {
+// Returns an OpInfo for an XlaEinsum
+OpContext DescribeXlaEinsum(const std::vector<int>& dims_a,
+                            const std::vector<int>& dims_b,
+                            const string& equation) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
   op_context.op_info.set_op("XlaEinsum");
@@ -152,6 +152,15 @@ OpContext DescribeEinsum(const std::vector<int>& dims_a,
     DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
   if (!dims_b.empty())
     DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
+  return op_context;
+}
+
+// Returns an OpInfo for an Einsum
+OpContext DescribeEinsum(const std::vector<int>& dims_a,
+                         const std::vector<int>& dims_b,
+                         const string& equation) {
+  OpContext op_context = DescribeXlaEinsum(dims_a, dims_b, equation);
+  op_context.op_info.set_op("Einsum");
   return op_context;
 }
 
@@ -1503,6 +1512,12 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(DescribeEinsum({100, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({100, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time);
   }
   {  // Test a simple batch matrix multiplication.
     auto cost = PredictCosts(
@@ -1514,6 +1529,14 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(
+                  DescribeEinsum({25, 100, 50}, {100, 50, 25}, "Bik,jkB->Bij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({25, 100, 50}, {100, 50, 25},
+                                             "Bik,jkB->Bij"))
+                  .execution_time);
   }
   {  // Test multiple batch dimensions.
     auto cost = PredictCosts(DescribeEinsum(
@@ -1526,6 +1549,15 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({25, 16, 100, 50}, {16, 100, 50, 25},
+                                    "BNik,NjkB->BNij"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({25, 16, 100, 50}, {16, 100, 50, 25},
+                                       "BNik,NjkB->BNij"))
+            .execution_time);
   }
   {  // Test multiple M dimensions.
     auto cost =
@@ -1537,6 +1569,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({25, 100, 50}, {100, 50}, "Aik,jk->Aij"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({25, 100, 50}, {100, 50}, "Aik,jk->Aij"))
+            .execution_time);
   }
   {  // Test multiple N dimensions.
     auto cost =
@@ -1548,6 +1587,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50}, {25, 100, 50}, "ik,Bjk->ijB"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50}, {25, 100, 50}, "ik,Bjk->ijB"))
+            .execution_time);
   }
   {  // Test multiple contracting dimensions.
     auto cost = PredictCosts(
@@ -1559,6 +1605,14 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(
+                  DescribeEinsum({100, 50, 25}, {100, 50, 25}, "ikl,jkl->ij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({100, 50, 25}, {100, 50, 25},
+                                             "ikl,jkl->ij"))
+                  .execution_time);
   }
   {  // Test a simple matrix transpose.
     auto cost = PredictCosts(DescribeEinsum({100, 50}, {}, "ij->ji"));
@@ -1568,6 +1622,12 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50}, {}, "ij->ji")).execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50}, {}, "ij->ji"))
+            .execution_time);
   }
   {  // Test a malformed Einsum equation: Mismatch between shapes and equation.
     auto cost =
@@ -1579,6 +1639,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50, 25}, {50, 100}, "ik,kl->il"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50, 25}, {50, 100}, "ik,kl->il"))
+            .execution_time);
+
     cost = PredictCosts(DescribeEinsum({100, 50}, {50, 100, 25}, "ik,kl->il"));
     EXPECT_EQ(Costs::Duration(52000), cost.execution_time);
     EXPECT_EQ(Costs::Duration(0), cost.compute_time);
@@ -1586,6 +1653,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50}, {50, 100, 25}, "ik,kl->il"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50}, {50, 100, 25}, "ik,kl->il"))
+            .execution_time);
   }
   {  // Test an unsupported Einsum: ellipsis
     auto cost = PredictCosts(DescribeEinsum(
@@ -1596,6 +1670,15 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 50, 25, 16}, {50, 100, 32, 12},
+                                    "ik...,kl...->il..."))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 50, 25, 16}, {50, 100, 32, 12},
+                                       "ik...,kl...->il..."))
+            .execution_time);
   }
   {  // Test a malformed/unsupported Einsum: repeated indices
     auto cost =
@@ -1606,6 +1689,13 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(
+        PredictCosts(DescribeEinsum({100, 100, 50}, {50, 100}, "iik,kl->il"))
+            .execution_time,
+        PredictCosts(DescribeXlaEinsum({100, 100, 50}, {50, 100}, "iik,kl->il"))
+            .execution_time);
   }
   {  // Test missing shapes.
     auto cost = PredictCosts(DescribeEinsum({-1, 50}, {100, 50}, "ik,jk->ij"));
@@ -1616,6 +1706,12 @@ TEST_F(OpLevelCostEstimatorTest, Einsum) {
     EXPECT_EQ(1, cost.num_ops_total);
     EXPECT_TRUE(cost.inaccurate);
     EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+
+    // Einsums and XlaEinsums should be estimated similarly.
+    EXPECT_EQ(PredictCosts(DescribeEinsum({-1, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time,
+              PredictCosts(DescribeXlaEinsum({-1, 50}, {100, 50}, "ik,jk->ij"))
+                  .execution_time);
   }
 }
 

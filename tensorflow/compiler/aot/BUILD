@@ -31,6 +31,7 @@ cc_library(
         ":aot_only_var_handle_op",
         ":embedded_protocol_buffers",
         "//tensorflow/compiler/tf2xla",
+        "//tensorflow/compiler/tf2xla:mlir_tf2xla",
         "//tensorflow/compiler/tf2xla:tf2xla_proto_cc",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",

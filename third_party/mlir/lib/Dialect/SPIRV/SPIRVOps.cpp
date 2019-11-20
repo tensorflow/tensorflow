@@ -381,6 +381,44 @@ static inline bool isMergeBlock(Block &block) {
 // Common parsers and printers
 //===----------------------------------------------------------------------===//
 
+static ParseResult parseBitFieldExtractOp(OpAsmParser &parser,
+                                          OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 3> operandInfo;
+  Type baseType;
+  Type offsetType;
+  Type countType;
+  auto loc = parser.getCurrentLocation();
+
+  if (parser.parseOperandList(operandInfo, 3) || parser.parseColon() ||
+      parser.parseType(baseType) || parser.parseComma() ||
+      parser.parseType(offsetType) || parser.parseComma() ||
+      parser.parseType(countType) ||
+      parser.resolveOperands(operandInfo, {baseType, offsetType, countType},
+                             loc, state.operands)) {
+    return failure();
+  }
+  state.addTypes(baseType);
+  return success();
+}
+
+static void printBitFieldExtractOp(Operation *op, OpAsmPrinter &printer) {
+  printer << op->getName() << ' ';
+  printer.printOperands(op->getOperands());
+  printer << " : " << op->getOperand(0)->getType() << ", "
+          << op->getOperand(1)->getType() << ", "
+          << op->getOperand(2)->getType();
+}
+
+static LogicalResult verifyBitFieldExtractOp(Operation *op) {
+  if (op->getOperand(0)->getType() != op->getResult(0)->getType()) {
+    return op->emitError("expected the same type for the first operand and "
+                         "result, but provided ")
+           << op->getOperand(0)->getType() << " and "
+           << op->getResult(0)->getType();
+  }
+  return success();
+}
+
 // Parses an op that has no inputs and no outputs.
 static ParseResult parseNoIOOp(OpAsmParser &parser, OperationState &state) {
   if (parser.parseOptionalAttrDict(state.attributes))
@@ -614,8 +652,8 @@ static LogicalResult verify(spirv::AccessChainOp accessChainOp) {
 
 namespace {
 
-// Combine chained `spirv::AccessChainOp` operations into one
-// `spirv::AccessChainOp` operation.
+/// Combines chained `spirv::AccessChainOp` operations into one
+/// `spirv::AccessChainOp` operation.
 struct CombineChainedAccessChain
     : public OpRewritePattern<spirv::AccessChainOp> {
   using OpRewritePattern<spirv::AccessChainOp>::OpRewritePattern;
@@ -640,7 +678,7 @@ struct CombineChainedAccessChain
     return matchSuccess();
   }
 };
-} // namespace
+} // end anonymous namespace
 
 void spirv::AccessChainOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
@@ -729,6 +767,83 @@ static LogicalResult verify(spirv::BitcastOp bitcastOp) {
     return bitcastOp.emitOpError("mismatch in result type bitwidth ")
            << resultBitWidth << " and operand type bitwidth "
            << operandBitWidth;
+  }
+  return success();
+}
+
+namespace {
+
+/// Converts chained `spirv::BitcastOp` operations into one
+/// `spirv::BitcastOp` operation.
+struct ConvertChainedBitcast : public OpRewritePattern<spirv::BitcastOp> {
+  using OpRewritePattern<spirv::BitcastOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::BitcastOp bitcastOp,
+                                     PatternRewriter &rewriter) const override {
+    auto parentBitcastOp = dyn_cast_or_null<spirv::BitcastOp>(
+        bitcastOp.operand()->getDefiningOp());
+
+    if (!parentBitcastOp) {
+      return matchFailure();
+    }
+
+    rewriter.replaceOpWithNewOp<spirv::BitcastOp>(
+        /*valuesToRemoveIfDead=*/{parentBitcastOp.result()}, bitcastOp,
+        bitcastOp.result()->getType(), parentBitcastOp.operand());
+    return matchSuccess();
+  }
+};
+} // end anonymous namespace
+
+void spirv::BitcastOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertChainedBitcast>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// spv.BitFieldInsert
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseBitFieldInsertOp(OpAsmParser &parser,
+                                         OperationState &state) {
+  SmallVector<OpAsmParser::OperandType, 4> operandInfo;
+  Type baseType;
+  Type offsetType;
+  Type countType;
+  auto loc = parser.getCurrentLocation();
+
+  if (parser.parseOperandList(operandInfo, 4) || parser.parseColon() ||
+      parser.parseType(baseType) || parser.parseComma() ||
+      parser.parseType(offsetType) || parser.parseComma() ||
+      parser.parseType(countType) ||
+      parser.resolveOperands(operandInfo,
+                             {baseType, baseType, offsetType, countType}, loc,
+                             state.operands)) {
+    return failure();
+  }
+  state.addTypes(baseType);
+  return success();
+}
+
+static void print(spirv::BitFieldInsertOp bitFieldInsertOp,
+                  OpAsmPrinter &printer) {
+  printer << spirv::BitFieldInsertOp::getOperationName() << ' ';
+  printer.printOperands(bitFieldInsertOp.getOperands());
+  printer << " : " << bitFieldInsertOp.base()->getType() << ", "
+          << bitFieldInsertOp.offset()->getType() << ", "
+          << bitFieldInsertOp.count()->getType();
+}
+
+static LogicalResult verify(spirv::BitFieldInsertOp bitFieldOp) {
+  auto baseType = bitFieldOp.base()->getType();
+  auto insertType = bitFieldOp.insert()->getType();
+  auto resultType = bitFieldOp.getResult()->getType();
+
+  if ((baseType != insertType) || (baseType != resultType)) {
+    return bitFieldOp.emitError("expected the same type for the base operand, "
+                                "insert operand, and "
+                                "result, but provided ")
+           << baseType << ", " << insertType << " and " << resultType;
   }
   return success();
 }
@@ -964,12 +1079,10 @@ static ParseResult parseConstantOp(OpAsmParser &parser, OperationState &state) {
   if (parser.parseAttribute(value, kValueAttrName, state.attributes))
     return failure();
 
-  Type type;
-  if (value.getType().isa<NoneType>()) {
+  Type type = value.getType();
+  if (type.isa<NoneType>() || type.isa<TensorType>()) {
     if (parser.parseColonType(type))
       return failure();
-  } else {
-    type = value.getType();
   }
 
   return parser.addTypeToList(type, state.types);
@@ -993,13 +1106,45 @@ static LogicalResult verify(spirv::ConstantOp constOp) {
   switch (value.getKind()) {
   case StandardAttributes::Bool:
   case StandardAttributes::Integer:
-  case StandardAttributes::Float:
-  case StandardAttributes::DenseElements:
-  case StandardAttributes::SparseElements: {
+  case StandardAttributes::Float: {
     if (valueType != opType)
       return constOp.emitOpError("result type (")
              << opType << ") does not match value type (" << valueType << ")";
     return success();
+  } break;
+  case StandardAttributes::DenseElements:
+  case StandardAttributes::SparseElements: {
+    if (valueType == opType)
+      break;
+    auto arrayType = opType.dyn_cast<spirv::ArrayType>();
+    auto shapedType = valueType.dyn_cast<ShapedType>();
+    if (!arrayType) {
+      return constOp.emitOpError(
+          "must have spv.array result type for array value");
+    }
+
+    int numElements = arrayType.getNumElements();
+    auto opElemType = arrayType.getElementType();
+    while (auto t = opElemType.dyn_cast<spirv::ArrayType>()) {
+      numElements *= t.getNumElements();
+      opElemType = t.getElementType();
+    }
+    if (!opElemType.isIntOrFloat()) {
+      return constOp.emitOpError("only support nested array result type");
+    }
+
+    auto valueElemType = shapedType.getElementType();
+    if (valueElemType != opElemType) {
+      return constOp.emitOpError("result element type (")
+             << opElemType << ") does not match value element type ("
+             << valueElemType << ")";
+    }
+
+    if (numElements != shapedType.getNumElements()) {
+      return constOp.emitOpError("result number of elements (")
+             << numElements << ") does not match value number of elements ("
+             << shapedType.getNumElements() << ")";
+    }
   } break;
   case StandardAttributes::Array: {
     auto arrayType = opType.dyn_cast<spirv::ArrayType>();
@@ -2192,7 +2337,7 @@ PatternMatchResult ConvertSelectionOpToSelect::canCanonicalizeSelection(
 
   return matchSuccess();
 }
-} // namespace
+} // end anonymous namespace
 
 void spirv::SelectionOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {

@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
@@ -207,25 +206,20 @@ Status KernelAndDeviceOp::Run(
     const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
     CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  ScopedStepContainer step_container(0, [this](const string& name) {
-    device_->resource_manager()->Cleanup(name).IgnoreError();
-  });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager,
-                   remote_func_params);
+  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
+                       remote_func_params);
+  step_container_.CleanUp();
+  return s;
 }
 
 Status KernelAndDeviceFunc::Run(
     const EagerKernelArgs& inputs, std::vector<Tensor>* outputs,
     CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
-  const std::vector<Device*> devices = pflr_->device_mgr()->ListDevices();
-  ScopedStepContainer step_container(0, [&devices](const string& name) {
-    for (Device* device : devices) {
-      device->resource_manager()->Cleanup(name).IgnoreError();
-    }
-  });
-  return this->Run(&step_container, inputs, outputs, cancellation_manager,
-                   remote_func_params);
+  Status s = this->Run(&step_container_, inputs, outputs, cancellation_manager,
+                       remote_func_params);
+  step_container_.CleanUp();
+  return s;
 }
 
 namespace {

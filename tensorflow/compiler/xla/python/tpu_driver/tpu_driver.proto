@@ -41,3 +41,18 @@ message SystemInfo {
   repeated TpuChipInfo tpu_chip = 1;
   required CpuInfo cpu = 2;
 }
+
+message TpuDriverConfig {
+  optional string worker = 1;
+
+  message GrpcConfig {
+    // Time in seconds before the initial connection to the server will timeout.
+    optional int64 connection_timeout_secs = 1 [default = 30];
+
+    // Time in seconds the server may be unresponsive before terminating the
+    // connection.
+    optional int64 keepalive_timeout_secs = 2 [default = 30];
+  }
+
+  optional GrpcConfig grpc = 2;
+}

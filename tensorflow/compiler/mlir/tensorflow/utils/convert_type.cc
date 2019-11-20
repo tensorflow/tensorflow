@@ -31,7 +31,7 @@ using mlir::Builder;
 using mlir::ShapedType;
 using mlir::Type;
 
-Status ConvertDataType(const DataType& dtype, Builder builder, Type* type) {
+Status ConvertDataType(DataType dtype, Builder builder, Type* type) {
   switch (dtype) {
     case DT_HALF:
       *type = builder.getF16Type();
@@ -147,6 +147,40 @@ Status ConvertToDataType(Type type, DataType* dtype) {
     TF_RETURN_IF_ERROR(ConvertScalarTypeToDataType(type, dtype));
   }
   return Status::OK();
+}
+
+void ConvertToMlirShape(const TensorShape& input_shape,
+                        llvm::SmallVectorImpl<int64_t>* shape) {
+  shape->reserve(input_shape.dims());
+  for (const auto& d : input_shape) {
+    shape->push_back(d.size);
+  }
+}
+
+Status ConvertToMlirShape(const TensorShapeProto& input_shape,
+                          llvm::SmallVectorImpl<int64_t>* shape) {
+  shape->reserve(input_shape.dim_size());
+  auto& dims = input_shape.dim();
+  for (auto& d : dims) {
+    if (d.size() > std::numeric_limits<int64_t>::max()) {
+      return errors::InvalidArgument("Shape element overflows");
+    }
+    shape->push_back(d.size());
+  }
+  return Status::OK();
+}
+
+StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
+                                             DataType dtype,
+                                             mlir::Builder* builder) {
+  mlir::Type element_type;
+  TF_RETURN_IF_ERROR(ConvertDataType(dtype, *builder, &element_type));
+  if (shape.unknown_rank()) {
+    return mlir::UnrankedTensorType::get(element_type);
+  }
+  llvm::SmallVector<int64_t, 4> shape_dims;
+  TF_RETURN_IF_ERROR(ConvertToMlirShape(shape, &shape_dims));
+  return mlir::RankedTensorType::get(shape_dims, element_type);
 }
 
 }  // namespace tensorflow

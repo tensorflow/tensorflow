@@ -90,6 +90,7 @@ class MultiProcessRunner(object):
                cluster_spec,
                max_run_time=None,
                capture_std_stream=False,
+               grpc_fail_fast=False,
                args=None,
                kwargs=None):
     """Creates a multi-process runner.
@@ -111,6 +112,8 @@ class MultiProcessRunner(object):
         level C/C++ code. So it can be delayed for arbitrarily long time.
       capture_std_stream: Boolean, whether the messages streamed to stdout and
         stderr in subprocesses are captured.
+      grpc_fail_fast: Whether GRPC connection between processes should fail
+        without retrying. Defaults to False.
       args: Positional arguments to be sent to functions run on processes.
       kwargs: Keyword arguments to be sent to functions run on processes.
 
@@ -131,6 +134,7 @@ class MultiProcessRunner(object):
     self._cluster_spec = cluster_spec
     self._max_run_time = max_run_time
     self._capture_std_stream = capture_std_stream
+    self._grpc_fail_fast = grpc_fail_fast
     self._args = args or ()
     self._kwargs = kwargs or {}
     self._processes = []
@@ -164,6 +168,7 @@ class MultiProcessRunner(object):
 
   def _proc_func_wrapper(self, task_type, task_id, *arg, **kwargs):
     """The wrapper function that actually gets run in child process(es)."""
+    os.environ['GRPC_FAIL_FAST'] = str(self._grpc_fail_fast)
     os.environ['TF_CONFIG'] = json.dumps({
         'cluster': self._cluster_spec,
         'task': {
@@ -331,6 +336,7 @@ def run(proc_func,
         cluster_spec,
         max_run_time=None,
         capture_std_stream=False,
+        grpc_fail_fast=False,
         args=None,
         kwargs=None):  # pylint: disable=g-doc-args
   """Runs functions in local child processes.
@@ -347,6 +353,7 @@ def run(proc_func,
       cluster_spec,
       max_run_time=max_run_time,
       capture_std_stream=capture_std_stream,
+      grpc_fail_fast=grpc_fail_fast,
       args=args,
       kwargs=kwargs)
   runner.start()

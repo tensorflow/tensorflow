@@ -24,6 +24,10 @@ which bazel
 
 set_bazel_outdir
 
+# Pick a version of xcode
+export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
+sudo xcode-select -s "${DEVELOPER_DIR}"
+
 sudo pip3.5 install --upgrade pip
 
 install_macos_pip_deps sudo pip3.5
@@ -53,6 +57,17 @@ done
 
 # Upload the built packages to pypi.
 for f in $(ls pip_pkg/tf_nightly*dev*macosx*.whl); do
-  echo "Uploading package: ${f}"
-  twine upload -r pypi-warehouse "${f}" || echo
+  # test the whl pip package
+  chmod +x tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh
+  ./tensorflow/tools/ci_build/builds/nightly_release_smoke_test.sh ${f}
+  RETVAL=$?
+
+  # Upload the PIP package if whl test passes.
+  if [ ${RETVAL} -eq 0 ]; then
+    echo "Basic PIP test PASSED, Uploading package: ${f}"
+    twine upload -r pypi-warehouse "${f}" || echo
+  else
+    echo "Basic PIP test FAILED, will not upload ${f} package"
+    return 1
+  fi
 done

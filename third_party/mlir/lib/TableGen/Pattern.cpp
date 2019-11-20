@@ -211,6 +211,7 @@ int tblgen::SymbolInfoMap::SymbolInfo::getStaticValueCount() const {
 
 std::string
 tblgen::SymbolInfoMap::SymbolInfo::getVarDecl(StringRef name) const {
+  LLVM_DEBUG(llvm::dbgs() << "getVarDecl for '" << name << "': ");
   switch (kind) {
   case Kind::Attr: {
     auto type =

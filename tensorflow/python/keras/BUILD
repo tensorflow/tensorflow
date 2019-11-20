@@ -617,7 +617,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_adapter_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/data_adapter_test.py"],
     additional_deps = [
         ":data_adapter",
@@ -1423,8 +1423,10 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_oss",

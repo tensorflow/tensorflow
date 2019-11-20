@@ -40,6 +40,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+        "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/python:cpp_python_util",
         "//tensorflow/python:ndarray_tensor",
         "//tensorflow/python:ndarray_tensor_bridge",
@@ -195,7 +196,6 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
-        "//tensorflow/core/profiler:protos_all_py",
     ],
 )
 
@@ -779,6 +779,7 @@ cuda_py_test(
         ":test",
         ":remote",
         "@absl_py//absl/testing:parameterized",
+        "@six_archive//:six",
         "//tensorflow/python:resource_variable_ops",
     ],
     grpc_enabled = True,

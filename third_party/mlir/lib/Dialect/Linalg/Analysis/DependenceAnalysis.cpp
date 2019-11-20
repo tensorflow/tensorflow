@@ -112,6 +112,7 @@ void LinalgDependenceGraph::addDependenceElem(DependenceType dt,
                                               LinalgOpView dependentOpView) {
   LLVM_DEBUG(dbgs() << "\nAdd dep type " << toStringRef(dt) << ":\t"
                     << *indexingOpView.op << " -> " << *dependentOpView.op);
+  (void)toStringRef;
   dependencesFromGraphs[dt][indexingOpView.op].push_back(
       LinalgDependenceGraphElem{dependentOpView, indexingOpView.view});
   dependencesIntoGraphs[dt][dependentOpView.op].push_back(

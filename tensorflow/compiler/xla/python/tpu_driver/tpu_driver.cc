@@ -17,6 +17,7 @@
 
 #include "absl/strings/match.h"
 #include "absl/synchronization/mutex.h"
+#include "tensorflow/compiler/xla/util.h"
 
 namespace tpu_driver {
 
@@ -87,15 +88,12 @@ uint64_t ByteSizeOfPrimitiveType(xla::PrimitiveType primitive_type) {
 /*static*/ xla::StatusOr<std::unique_ptr<TpuDriver>> TpuDriverRegistry::Open(
     const TpuDriverConfig& config) {
   for (const auto& driver : *GetDriverRegistryMap()) {
-    if (absl::StartsWith(config.worker, driver.first)) {
+    if (absl::StartsWith(config.worker(), driver.first)) {
       return driver.second(config);
     }
   }
-
-  // If we can't find an appropriate driver, we return a blank unique_ptr.
-  LOG(ERROR) << "Unable to find driver in registry given worker: "
-             << config.worker;
-  return std::unique_ptr<TpuDriver>();
+  return xla::NotFound("Unable to find driver in registry given worker: %s",
+                       config.worker());
 }
 
 uint64_t ComputeBytesFromShape(const xla::ShapeProto& shape) {

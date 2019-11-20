@@ -1338,6 +1338,8 @@ renames = {
         'tf.compat.v1.tpu.experimental.AdagradParameters',
     'tf.tpu.experimental.AdamParameters':
         'tf.compat.v1.tpu.experimental.AdamParameters',
+    'tf.tpu.experimental.FtrlParameters':
+        'tf.compat.v1.tpu.experimental.FtrlParameters',
     'tf.tpu.experimental.StochasticGradientDescentParameters':
         'tf.compat.v1.tpu.experimental.StochasticGradientDescentParameters',
     'tf.tpu.experimental.embedding_column':
