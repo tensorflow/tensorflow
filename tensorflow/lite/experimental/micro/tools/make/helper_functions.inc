@@ -304,7 +304,7 @@ $(PRJDIR)$(2)/particle/src/third_party/%.cpp: tensorflow/lite/experimental/micro
         --platform=particle \
         --third_party_headers="$(4)" < $$< > $$@
 
-$(PRJDIR)$(2)/ardparticleuino/src/third_party/flatbuffers/include/flatbuffers/base.h: tensorflow/lite/experimental/micro/tools/make/downloads/flatbuffers/include/flatbuffers/base.h third_party_downloads
+$(PRJDIR)$(2)/particle/src/third_party/flatbuffers/include/flatbuffers/base.h: tensorflow/lite/experimental/micro/tools/make/downloads/flatbuffers/include/flatbuffers/base.h third_party_downloads
 	@mkdir -p $$(dir $$@)
 	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
         --platform=particle \
@@ -316,7 +316,7 @@ $(PRJDIR)$(2)/particle/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/exper
 	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
         --platform=particle \
         --third_party_headers="$(4)" < $$< | \
-        sed -E 's@#include <string.h>@//#include <string.h> /* Patched by helper_functions.inc for Arduino compatibility */@g' > $$@
+        sed -E 's@#include <string.h>@//#include <string.h> /* Patched by helper_functions.inc for Particle compatibility */@g' > $$@
 
 $(PRJDIR)$(2)/particle/%: tensorflow/lite/experimental/micro/tools/make/templates/%
 	@mkdir -p $$(dir $$@)
@@ -326,7 +326,7 @@ $(PRJDIR)$(2)/particle/%: tensorflow/lite/experimental/micro/tools/make/template
 	sed -E 's#\%\{CXX_FLAGS\}\%#$(6)#g' | \
 	sed -E 's#\%\{CC_FLAGS\}\%#$(7)#g' > $$@
 
-$(PRJDIR)$(2)/particle/examples/$(2)/$(2).ino: tensorflow/lite/experimental/micro/tools/make/templates/arduino_example.ino
+$(PRJDIR)$(2)/particle/examples/$(2)/$(2).ino: tensorflow/lite/experimental/micro/tools/make/templates/particle_example.ino
 	@mkdir -p $$(dir $$@)
 	@cp $$< $$@
 
@@ -354,7 +354,7 @@ $(PRJDIR)$(2)/particle/src/TensorFlowLite.h
 
 generate_$(2)_particle_library_zip: generate_$(2)_particle_project
 	cp -r $(PRJDIR)$(2)/particle $(PRJDIR)$(2)/tensorflow_lite
-	python tensorflow/lite/experimental/micro/tools/make/fix_particle_subfolders.py $(PRJDIR)$(2)/tensorflow_lite
+	python tensorflow/lite/experimental/micro/tools/make/fix_arduino_subfolders.py $(PRJDIR)$(2)/tensorflow_lite
 	@cd $(PRJDIR)$(2) && zip -q -r tensorflow_lite.zip tensorflow_lite
 
 ALL_PROJECT_TARGETS += $(if $(findstring _test,$(2)),,generate_$(2)_particle_library_zip)
@@ -438,6 +438,7 @@ $(call generate_project,make,$(MAKE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(T
 $(call generate_project,mbed,$(MBED_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
 $(call generate_project,keil,$(KEIL_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
 $(call generate_arduino_project,$(ARDUINO_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
+$(call generate_particle_project,$(PARTICLE_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS) $(2),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS) $(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS))
 $(call generate_esp_project,$(ESP_PROJECT_FILES),$(1),$(MICROLITE_CC_SRCS) $(THIRD_PARTY_CC_SRCS),$(MICROLITE_CC_HDRS) $(THIRD_PARTY_CC_HDRS) $(MICROLITE_TEST_HDRS),$(2),$(3),$(MICROLITE_LIBS),$(CXXFLAGS),$(CCFLAGS),$(PROJECT_INCLUDES))
 endef
 
