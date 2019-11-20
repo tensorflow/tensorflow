@@ -30,6 +30,18 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+// Test support for interacting with the AsmPrinter.
+struct TestOpAsmInterface : public OpAsmDialectInterface {
+  using OpAsmDialectInterface::OpAsmDialectInterface;
+
+  void getAsmResultNames(Operation *op,
+                         OpAsmSetValueNameFn setNameFn) const final {
+    if (auto asmOp = dyn_cast<AsmDialectInterfaceOp>(op))
+      setNameFn(asmOp, "result");
+  }
+};
+
 struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
   using OpFolderDialectInterface::OpFolderDialectInterface;
 
@@ -112,7 +124,8 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
-  addInterfaces<TestOpFolderDialectInterface, TestInlinerInterface>();
+  addInterfaces<TestOpAsmInterface, TestOpFolderDialectInterface,
+                TestInlinerInterface>();
   allowUnknownOperations();
 }
 
@@ -227,6 +240,7 @@ static void print(OpAsmPrinter &p, WrappingRegionOp op) {
 //===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
+
 static ParseResult parsePolyForOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> ivsInfo;
   // Parse list of region arguments without a delimiter.
@@ -238,6 +252,21 @@ static ParseResult parsePolyForOp(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   SmallVector<Type, 4> argTypes(ivsInfo.size(), builder.getIndexType());
   return parser.parseRegion(*body, ivsInfo, argTypes);
+}
+
+//===----------------------------------------------------------------------===//
+// Test OpAsmInterface.
+//===----------------------------------------------------------------------===//
+
+void AsmInterfaceOp::getAsmResultNames(
+    function_ref<void(Value *, StringRef)> setNameFn) {
+  // Give a name to the first and middle results.
+  setNameFn(firstResult(), "first");
+  if (!llvm::empty(middleResults()))
+    setNameFn(*middleResults().begin(), "middle_results");
+
+  // Use default numbering for the last result.
+  setNameFn(getResult(getNumResults() - 1), "");
 }
 
 //===----------------------------------------------------------------------===//

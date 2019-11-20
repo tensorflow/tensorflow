@@ -44,37 +44,6 @@ using namespace mlir;
 // StandardOpsDialect Interfaces
 //===----------------------------------------------------------------------===//
 namespace {
-struct StdOpAsmInterface : public OpAsmDialectInterface {
-  using OpAsmDialectInterface::OpAsmDialectInterface;
-
-  /// Get a special name to use when printing the given operation. The desired
-  /// name should be streamed into 'os'.
-  void getOpResultName(Operation *op, raw_ostream &os) const final {
-    if (ConstantOp constant = dyn_cast<ConstantOp>(op))
-      return getConstantOpResultName(constant, os);
-  }
-
-  /// Get a special name to use when printing the given constant.
-  static void getConstantOpResultName(ConstantOp op, raw_ostream &os) {
-    Type type = op.getType();
-    Attribute value = op.getValue();
-    if (auto intCst = value.dyn_cast<IntegerAttr>()) {
-      if (type.isIndex()) {
-        os << 'c' << intCst.getInt();
-      } else if (type.cast<IntegerType>().isInteger(1)) {
-        // i1 constants get special names.
-        os << (intCst.getInt() ? "true" : "false");
-      } else {
-        os << 'c' << intCst.getInt() << '_' << type;
-      }
-    } else if (type.isa<FunctionType>()) {
-      os << 'f';
-    } else {
-      os << "cst";
-    }
-  }
-};
-
 /// This class defines the interface for handling inlining with standard
 /// operations.
 struct StdInlinerInterface : public DialectInlinerInterface {
@@ -191,7 +160,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/StandardOps/Ops.cpp.inc"
                 >();
-  addInterfaces<StdInlinerInterface, StdOpAsmInterface>();
+  addInterfaces<StdInlinerInterface>();
 }
 
 void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
@@ -1181,6 +1150,31 @@ static LogicalResult verify(ConstantOp &op) {
 OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
   return getValue();
+}
+
+void ConstantOp::getAsmResultNames(
+    function_ref<void(Value *, StringRef)> setNameFn) {
+  Type type = getType();
+  if (auto intCst = getValue().dyn_cast<IntegerAttr>()) {
+    IntegerType intTy = type.dyn_cast<IntegerType>();
+
+    // Sugar i1 constants with 'true' and 'false'.
+    if (intTy && intTy.getWidth() == 1)
+      return setNameFn(getResult(), (intCst.getInt() ? "true" : "false"));
+
+    // Otherwise, build a complex name with the value and type.
+    SmallString<32> specialNameBuffer;
+    llvm::raw_svector_ostream specialName(specialNameBuffer);
+    specialName << 'c' << intCst.getInt();
+    if (intTy)
+      specialName << '_' << type;
+    setNameFn(getResult(), specialName.str());
+
+  } else if (type.isa<FunctionType>()) {
+    setNameFn(getResult(), "f");
+  } else {
+    setNameFn(getResult(), "cst");
+  }
 }
 
 /// Returns true if a constant operation can be built with the given value and

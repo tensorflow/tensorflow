@@ -600,6 +600,10 @@ private:
 // Dialect OpAsm interface.
 //===--------------------------------------------------------------------===//
 
+/// A functor used to set the name of the start of a result group of an
+/// operation. See 'getAsmResultNames' below for more details.
+using OpAsmSetValueNameFn = function_ref<void(Value *, StringRef)>;
+
 class OpAsmDialectInterface
     : public DialectInterface::Base<OpAsmDialectInterface> {
 public:
@@ -621,10 +625,18 @@ public:
   virtual void
   getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) const {}
 
-  /// Get a special name to use when printing the given operation. The desired
-  /// name should be streamed into 'os'.
-  virtual void getOpResultName(Operation *op, raw_ostream &os) const {}
+  /// Get a special name to use when printing the given operation. See
+  /// OpAsmInterface.td#getAsmResultNames for usage details and documentation.
+  virtual void getAsmResultNames(Operation *op,
+                                 OpAsmSetValueNameFn setNameFn) const {}
 };
+
+//===--------------------------------------------------------------------===//
+// Operation OpAsm interface.
+//===--------------------------------------------------------------------===//
+
+/// The OpAsmOpInterface, see OpAsmInterface.td for more details.
+#include "mlir/IR/OpAsmInterface.h.inc"
 
 } // end namespace mlir
 
