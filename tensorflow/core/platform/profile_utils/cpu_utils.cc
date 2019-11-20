@@ -93,7 +93,7 @@ static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
     if (retval > 0) {
       const double freq_ghz = cpu_freq / 1000.0 / freq_factor;
       if (retval != 1 || freq_ghz < 0.01) {
-        LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " Hz";
+        LOG(WARNING) << "Failed to get CPU frequency: " << freq_ghz << " GHz";
         return INVALID_FREQUENCY;
       }
       const int64 freq_n =
