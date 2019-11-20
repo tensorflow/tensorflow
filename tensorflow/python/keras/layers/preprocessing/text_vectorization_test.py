@@ -472,7 +472,7 @@ class TextVectorizationPreprocessingTest(
       
   def test_standardize_with_no_identical_argument(self):
     input_array = np.array([["hello world"]])
-    expected_output = np.array([[1,1]])
+    expected_output = np.array([[1, 1]])
     
     standardize = "".join(["lower", "_and_strip_punctuation"])
     layer = get_layer_class()(standardize=standardize)
@@ -482,7 +482,7 @@ class TextVectorizationPreprocessingTest(
   
   def test_splitting_with_no_identical_argument(self):
     input_array = np.array([["hello world"]])
-    expected_output = np.array([[1,1]])
+    expected_output = np.array([[1, 1]])
     
     split = "".join(["white", "space"])
     layer = get_layer_class()(split=split)
