@@ -248,11 +248,6 @@ bool HloComputation::HasSideEffect() const {
   return false;
 }
 
-bool HloComputation::ContainsInstruction(
-    const HloInstruction* instruction) const {
-  return instruction_iterators_.contains(instruction);
-}
-
 Status HloComputation::RemoveInstructionAndUnusedOperands(
     HloInstruction* instruction, std::function<void(HloInstruction*)> cleanup) {
   TF_RET_CHECK(root_instruction() != instruction);
