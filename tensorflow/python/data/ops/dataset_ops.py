@@ -1550,12 +1550,26 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
 
     A "window" is a finite dataset of flat elements of size `size` (or possibly
     fewer if there are not enough input elements to fill the window and
-    `drop_remainder` evaluates to false).
+    `drop_remainder` evaluates to `False`).
+
+    The `shift` argument determines the number of input elements by which
+    the window moves on each iteration.  The first element in the `k`th window
+    will be element
+    ```
+    1 + (k-1) * shift
+    ```
+    of the input dataset. In particular, the first element of the first window
+    will always be the first element of the input dataset.
+
+    If the `stride` parameter is greater than 1, then each window will skip
+    `(stride - 1)` input elements between each element that appears in the
+    window. Output windows will still contain `size` elements regardless of
+    the value of `stride`.
 
     The `stride` argument determines the stride of the input elements, and the
     `shift` argument determines the shift of the window.
 
-    For example, letting {...} to represent a Dataset:
+    For example, letting `{...}` to represent a Dataset:
 
     - `tf.data.Dataset.range(7).window(2)` produces
       `{{0, 1}, {2, 3}, {4, 5}, {6}}`
@@ -1574,17 +1588,24 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
       produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
 
+    If this dataset returns elements in a deterministic order, then the
+    dataset that this function returns will also be deterministic. Otherwise,
+    the output of the windowed dataset will depend on the input order, but the
+    contents of the windows will be consistent with a single ordering of the
+    input dataset's elements.
+
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
-        of the input dataset to combine into a window.
+        of the input dataset to combine into a window. Must be positive.
       shift: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        forward shift of the sliding window in each iteration. Defaults to
-        `size`.
+        number of input elements by which the window moves in each iteration.
+        Defaults to `size`. Must be positive.
       stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-        stride of the input elements in the sliding window.
+        stride of the input elements in the sliding window. Must be positive.
+        The default value of 1 means "retain every input element".
       drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
-        whether a window should be dropped in case its size is smaller than
-        `window_size`.
+        whether the last window should be dropped if its size is smaller than
+        `size`.
 
     Returns:
       Dataset: A `Dataset` of (nests of) windows -- a finite datasets of flat
