@@ -1268,8 +1268,8 @@ Status Converter::Init(nvinfer1::ILogger* trt_logger) {
   VLOG(1) << "Creating TensorRT network";
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
   const uint32_t flags = use_implicit_batch_ ? 0U :
-      1U << static_cast<int>(
-          nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
+      (1U << static_cast<int>(
+          nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH));
   trt_network_.reset(trt_builder_->createNetworkV2(flags));
 #else
   trt_network_.reset(trt_builder_->createNetwork());
