@@ -19,6 +19,7 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Properties;
 
 /**
  * Helper class for loading the TensorFlow Java native library.
@@ -169,19 +170,30 @@ final class NativeLibrary {
    * determined.
    */
   private static String getMajorVersionNumber() {
-    // getImplementationVersion() retrun null.
-    String version = NativeLibrary.class.getPackage().getImplementationVersion();
-    // expecting a string like 1.14.0, we want to get the first '1'.
-    int dotIndex;
-    if (version == null || (dotIndex = version.indexOf('.')) == -1) {
-      // we want to get the version 1.
-      return "1";
+    InputStream resourceStream = NativeLibrary.class.getClassLoader()
+      .getResourceAsStream("tensorflow-version-info");
+    if (resourceStream == null) {
+      return null;
     }
-    String majorVersion = version.substring(0, dotIndex);
+
     try {
-      Integer.parseInt(majorVersion);
-      return majorVersion;
-    } catch (NumberFormatException unused) {
+      Properties props = new Properties();
+      props.load(resourceStream);
+      String version = props.getProperty("version");
+      // expecting a string like 1.14.0, we want to get the first '1'.
+      int dotIndex;
+      if (version == null || (dotIndex = version.indexOf('.')) == -1) {
+        return null;
+      }
+      String majorVersion = version.substring(0, dotIndex);
+      try {
+        Integer.parseInt(majorVersion);
+        return majorVersion;
+      } catch (NumberFormatException unused) {
+        return null;
+      }
+    } catch (IOException e) {
+      log("failed to load tensorflow version info.");
       return null;
     }
   }
