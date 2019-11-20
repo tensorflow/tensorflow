@@ -85,6 +85,21 @@ def : Pat<(TF_SquaredDifferenceOp ComplexTensor: $lhs, ComplexTensor:$rhs),
           (TF_MulOp (TF_SubOp:$diff $lhs, $rhs), (TF_ConjOp $diff))>;
 
 //===----------------------------------------------------------------------===//
+// DivNoNan and MulNonNan op patterns.
+//===----------------------------------------------------------------------===//
+
+class BinaryNoNanPat<Op FromOp, Op ToOp>
+  : Pat<(FromOp $l, $r),
+        (TF_SelectV2Op
+	   (TF_EqualOp $r, (TF_ConstOp:$zero (GetScalarOfType<0> $r)),
+                       /*incompatible_shape_error*/ConstBoolAttrTrue),
+           $zero, (ToOp $l, $r))>;
+
+foreach fromToBinPair = [[TF_DivNoNanOp, TF_DivOp],
+                         [TF_MulNoNanOp, TF_MulOp]] in
+  def : BinaryNoNanPat<fromToBinPair[0], fromToBinPair[1]>;
+
+//===----------------------------------------------------------------------===//
 // Fill op patterns.
 //===----------------------------------------------------------------------===//
 
