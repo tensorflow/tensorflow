@@ -15,10 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
 
-#include "absl/strings/str_split.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -391,8 +391,8 @@ LogicalResult ConvertLSTMCellSimpleToFusedLSTM::InitializeFromFuncAttributes() {
 
   // TODO(ashwinm, b/144775479): Make these NamedAttribute on TF import
   // once tf.function can support this.
-  std::string attribute = attr.getValue().str();
-  std::vector<std::string> attr_tokens = absl::StrSplit(attribute, ',');
+  llvm::SmallVector<llvm::StringRef, 4> attr_tokens;
+  attr.getValue().split(attr_tokens, ",");
   if (attr_tokens.empty()) {
     return fused_func_op_.emitError()
            << kTFImplements << " attribute should be set";

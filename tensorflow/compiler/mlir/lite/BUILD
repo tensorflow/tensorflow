@@ -214,7 +214,6 @@ cc_library(
     deps = [
         ":tensorflow_lite",
         "//tensorflow/compiler/mlir/tensorflow",
-        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:StandardOps",
@@ -247,7 +246,6 @@ tf_cc_test(
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "@com_google_absl//absl/strings",
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:StandardOps",

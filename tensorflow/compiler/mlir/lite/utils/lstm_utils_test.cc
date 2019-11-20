@@ -20,10 +20,9 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
@@ -79,7 +78,7 @@ FuncOp createLstmCompositeFunc(mlir::Builder* builder, bool ln, bool cifg) {
   }
 
   mlir::StringAttr attr_values =
-      builder->getStringAttr(absl::StrJoin(attributes, std::string(1, ',')));
+      builder->getStringAttr(llvm::join(attributes, ","));
 
   func.setAttr(kTFImplements, attr_values);
   return func;
@@ -195,10 +194,11 @@ TEST_F(LstmUtilsTest, ConvertLSTMCellSimpleToFusedLSTMCoupleInputForget) {
   EXPECT_FALSE(failed(result));
   fused_lstm_func_cifg_.dump();
 
-  std::vector<std::string> attributes{kLstmCellSimple, kCoupleInputForgetGates};
+  llvm::SmallVector<std::string, 2> attributes{kLstmCellSimple,
+                                               kCoupleInputForgetGates};
   EXPECT_EQ(
       fused_lstm_func_cifg_.getAttrOfType<StringAttr>(kTFImplements).getValue(),
-      absl::StrJoin(attributes, std::string(1, ',')));
+      llvm::join(attributes, ","));
 
   auto it = fused_lstm_func_cifg_.getBody().back().rbegin();
   EXPECT_EQ(it->getName().getStringRef(), mlir::ReturnOp::getOperationName());
