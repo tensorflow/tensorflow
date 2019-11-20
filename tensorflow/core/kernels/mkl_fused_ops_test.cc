@@ -117,7 +117,7 @@ class CommonTestUtilities : public OpsTestBase {
 
     const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
-    bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() = bias.flat<T>().setConstant(-1.0);
 
     Tensor conv_2d;
     Tensor fused_conv_2d;
@@ -147,7 +147,7 @@ class CommonTestUtilities : public OpsTestBase {
 
     const int bias_size = filter_count;
     Tensor bias(dtype, {bias_size});
-    bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() = bias.flat<T>().setConstant(-1.0);
 
     Tensor conv_2d;
     Tensor fused_conv_2d;
@@ -174,7 +174,7 @@ class CommonTestUtilities : public OpsTestBase {
     weight.flat<T>() = weight.flat<T>().setRandom();
 
     Tensor bias(dtype, {weight_count});
-    bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() = bias.flat<T>().setConstant(-1.0);
 
     Tensor output;
     Tensor fused_output;
@@ -242,7 +242,7 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
         fused_ops.end()) {
       last_op = "with_elu";
-      next_op = ops::Relu(root.WithOpName(last_op), next_op);
+      next_op = ops::Elu(root.WithOpName(last_op), next_op);
     }
 
     CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
@@ -653,7 +653,7 @@ class MklFusedMatMulOpTest : public OpsTestBase {
       if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
           fused_ops.end()) {
         last_op = "with_elu";
-        next_op = ops::Relu(root.WithOpName(last_op), next_op);
+        next_op = ops::Elu(root.WithOpName(last_op), next_op);
       }
 
       CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
