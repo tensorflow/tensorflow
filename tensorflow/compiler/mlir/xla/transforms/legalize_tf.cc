@@ -1813,8 +1813,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op,
   target.addLegalDialect<XlaHloDialect>();
 
   if (!allow_partial_conversion) {
-    target.addLegalOp<mlir::ModuleOp, mlir::FuncOp, mlir::ModuleTerminatorOp,
-                      mlir::ReturnOp>();
+    target.addLegalOp<mlir::CallOp, mlir::ModuleOp, mlir::FuncOp,
+                      mlir::ModuleTerminatorOp, mlir::ReturnOp>();
     return applyFullConversion(op, target, patterns);
   }
 
