@@ -817,15 +817,16 @@ MemorySpaceAssignment::Run(HloModule* module, const Options& options) {
   VLOG(4) << "Schedule: " << module->schedule().ToString();
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
 
-  MemorySpaceAssignment memory_space_assignment(module,
-                                                options.alternate_memory_space);
   const HloComputation* entry_computation = module->entry_computation();
-  TF_ASSIGN_OR_RETURN(memory_space_assignment.hlo_live_range_,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                       HloLiveRange::Run(module->schedule(), *alias_analysis,
                                         entry_computation));
+  MemorySpaceAssignment memory_space_assignment(
+      module, options.alternate_memory_space,
+      hlo_live_range->flattened_instruction_sequence().instructions());
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
       &memory_space_assignment.allocation_map_, options, *alias_analysis,
-      *memory_space_assignment.hlo_live_range_);
+      *hlo_live_range);
 
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
                                         module->schedule(),
@@ -1083,6 +1084,7 @@ Status MemorySpaceAssignment::SimplifyGraph() {
           // Ensure the exported preset assignments don't contain a refence to
           // the removed instruction.
           preset_assignments_->RemoveAssignmentForInstruction(instruction);
+          flattened_instruction_sequence_.remove_instruction(instruction);
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -1181,7 +1183,7 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
       // If the copy start doesn't happen to be scheduled at the correct
       // computation, delay it until the correct computation starts.
       const auto& flattened_instructions =
-          hlo_live_range_->flattened_instruction_sequence().instructions();
+          flattened_instruction_sequence_.instructions();
       int64 copy_start_schedule_after =
           copy_allocation->copy_start_schedule_after();
       while (copy_allocation->instruction()->parent() !=
@@ -1209,8 +1211,6 @@ Status MemorySpaceAssignment::FixSchedule() {
   for (const HloComputation* computation :
        module_->MakeNonfusionComputations()) {
     CHECK(schedule.is_computation_scheduled(computation));
-    const HloInstructionSequence& sequence =
-        hlo_live_range_->flattened_instruction_sequence();
     HloInstructionSequence new_sequence;
 
     absl::flat_hash_set<HloInstruction*> inserted_instructions;
@@ -1218,10 +1218,12 @@ Status MemorySpaceAssignment::FixSchedule() {
     VLOG(4) << "Scheduling: " << computation->ToString();
 
     for (int64 instruction_index = 0;
-         instruction_index < sequence.instructions().size();
+         instruction_index <
+         flattened_instruction_sequence_.instructions().size();
          ++instruction_index) {
-      HloInstruction* instruction = sequence.instructions()[instruction_index];
-      if (!computation->ContainsInstruction(instruction)) {
+      HloInstruction* instruction =
+          flattened_instruction_sequence_.instructions()[instruction_index];
+      if (instruction->parent() != computation) {
         continue;
       }
       auto insts_before_iter = schedule_before_.find(instruction_index);

@@ -520,7 +520,7 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
-  run_state.rendez = new IntraProcessRendezvous(device_mgr_.get());
+  run_state.rendez.reset(new IntraProcessRendezvous(device_mgr_.get()));
 #ifndef __ANDROID__
   // Set up for collectives if ExecutorsAndKeys declares a key.
   if (executors_and_keys->collective_graph_key !=
@@ -555,19 +555,24 @@ Status DirectSession::RunInternal(
 
   // Start parallel Executors.
   const size_t num_executors = executors_and_keys->items.size();
-  ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_executors, run_state.rendez, [&run_state](const Status& ret) {
-        {
-          mutex_lock l(run_state.mu);
-          run_state.status.Update(ret);
-        }
-        run_state.executors_done.Notify();
-      });
+  Notification executors_done;
+
+  // TODO(mrry): Switch the RunInternal() synchronous use of ExecutorBarrier
+  // to use a stack-allocated barrier.
+  ExecutorBarrier* barrier =
+      new ExecutorBarrier(num_executors, run_state.rendez.get(),
+                          [&run_state, &executors_done](const Status& ret) {
+                            {
+                              mutex_lock l(run_state.mu);
+                              run_state.status.Update(ret);
+                            }
+                            executors_done.Notify();
+                          });
 
   Executor::Args args;
   args.step_id = step_id;
   args.call_frame = call_frame;
-  args.rendezvous = run_state.rendez;
+  args.rendezvous = run_state.rendez.get();
   args.collective_executor =
       (run_state.collective_executor ? run_state.collective_executor->get()
                                      : nullptr);
@@ -609,7 +614,6 @@ Status DirectSession::RunInternal(
   if (run_options.inter_op_thread_pool() < -1 ||
       run_options.inter_op_thread_pool() >=
           static_cast<int32>(thread_pools_.size())) {
-    run_state.executors_done.Notify();
     delete barrier;
     return errors::InvalidArgument("Invalid inter_op_thread_pool: ",
                                    run_options.inter_op_thread_pool());
@@ -624,10 +628,6 @@ Status DirectSession::RunInternal(
         step_cancellation_manager.StartCancel();
       });
   if (already_cancelled) {
-    // NOTE(mrry): If we don't explicitly notify
-    // `run_state.executors_done`, the RunState destructor would
-    // block on this notification.
-    run_state.executors_done.Notify();
     delete barrier;
     return errors::Cancelled("Run call was cancelled");
   }
@@ -700,7 +700,7 @@ Status DirectSession::RunInternal(
     item.executor->RunAsync(args, barrier->Get());
   }
 
-  WaitForNotification(&run_state, &step_cancellation_manager,
+  WaitForNotification(&executors_done, &run_state, &step_cancellation_manager,
                       run_options.timeout_in_ms() > 0
                           ? run_options.timeout_in_ms()
                           : operation_timeout_in_ms_);
@@ -909,14 +909,14 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   // Create the run state and save it for future PRun calls.
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
-  RunState* run_state =
-      new RunState(input_names, output_names, args.step_id, &devices_);
-  run_state->rendez = new IntraProcessRendezvous(device_mgr_.get());
+  PartialRunState* run_state =
+      new PartialRunState(input_names, output_names, args.step_id, &devices_);
+  run_state->rendez.reset(new IntraProcessRendezvous(device_mgr_.get()));
   {
     mutex_lock l(executor_lock_);
     if (!partial_runs_
              .emplace(run_state_args.handle,
-                      std::unique_ptr<RunState>(run_state))
+                      std::unique_ptr<PartialRunState>(run_state))
              .second) {
       return errors::Internal("The handle '", run_state_args.handle,
                               "' created for this partial run is not unique.");
@@ -926,7 +926,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
   // Start parallel Executors.
   const size_t num_executors = executors_and_keys->items.size();
   ExecutorBarrier* barrier = new ExecutorBarrier(
-      num_executors, run_state->rendez, [run_state](const Status& ret) {
+      num_executors, run_state->rendez.get(), [run_state](const Status& ret) {
         if (!ret.ok()) {
           mutex_lock l(run_state->mu);
           run_state->status.Update(ret);
@@ -934,7 +934,7 @@ Status DirectSession::PRunSetup(const std::vector<string>& input_names,
         run_state->executors_done.Notify();
       });
 
-  args.rendezvous = run_state->rendez;
+  args.rendezvous = run_state->rendez.get();
   args.cancellation_manager = cancellation_manager_;
   // Note that Collectives are not supported in partial runs
   // because RunOptions is not passed in so we can't know whether
@@ -973,7 +973,7 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
   const string& key = parts[0];
   // Get the executors for this partial run.
   ExecutorsAndKeys* executors_and_keys;
-  RunState* run_state;
+  PartialRunState* run_state;
   {
     mutex_lock l(executor_lock_);  // could use reader lock
     auto exc_it = executors_.find(key);
@@ -1021,7 +1021,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       CheckFetch(inputs, output_names, executors_and_keys, run_state));
 
   // Send inputs.
-  Status s = SendPRunInputs(inputs, executors_and_keys, run_state->rendez);
+  Status s =
+      SendPRunInputs(inputs, executors_and_keys, run_state->rendez.get());
 
   // Receive outputs.
   if (s.ok()) {
@@ -1056,8 +1057,8 @@ Status DirectSession::PRun(const string& handle, const NamedTensorList& inputs,
       done = run_state->PendingDone();
     }
     if (done) {
-      WaitForNotification(run_state, cancellation_manager_,
-                          operation_timeout_in_ms_);
+      WaitForNotification(&run_state->executors_done, run_state,
+                          cancellation_manager_, operation_timeout_in_ms_);
       partial_runs_.erase(handle);
     }
   }
@@ -1153,20 +1154,19 @@ Status DirectSession::RecvPRunOutputs(
     const string& output_key = it->second;
     Tensor output_tensor;
     bool is_dead;
-    IntraProcessRendezvous* rendez = run_state->rendez;
 
     s = Rendezvous::ParseKey(output_key, &parsed);
     if (s.ok()) {
       // Fetch data from the Rendezvous.
-      s = rendez->Recv(parsed, Rendezvous::Args(), &output_tensor, &is_dead,
-                       operation_timeout_in_ms_);
+      s = run_state->rendez->Recv(parsed, Rendezvous::Args(), &output_tensor,
+                                  &is_dead, operation_timeout_in_ms_);
       if (is_dead && s.ok()) {
         s = errors::InvalidArgument("The tensor returned for ", output_name,
                                     " was not valid.");
       }
     }
     if (!s.ok()) {
-      rendez->StartAbort(s);
+      run_state->rendez->StartAbort(s);
       outputs->clear();
       return s;
     }
@@ -1179,7 +1179,7 @@ Status DirectSession::RecvPRunOutputs(
 Status DirectSession::CheckFetch(const NamedTensorList& feeds,
                                  const std::vector<string>& fetches,
                                  const ExecutorsAndKeys* executors_and_keys,
-                                 const RunState* run_state) {
+                                 const PartialRunState* run_state) {
   const Graph* graph = executors_and_keys->graph.get();
   const NameNodeMap* name_to_node = &executors_and_keys->name_to_node;
 
@@ -1712,10 +1712,8 @@ Status DirectSession::CreateGraphs(
   return ::tensorflow::Status::OK();
 }
 
-DirectSession::RunState::RunState(
-    const std::vector<string>& pending_input_names,
-    const std::vector<string>& pending_output_names, int64 step_id,
-    const std::vector<Device*>* devices)
+DirectSession::RunState::RunState(int64 step_id,
+                                  const std::vector<Device*>* devices)
     : step_container(step_id, [devices, step_id](const string& name) {
         for (auto d : *devices) {
           if (!d->resource_manager()->Cleanup(name).ok()) {
@@ -1724,7 +1722,13 @@ DirectSession::RunState::RunState(
           ScopedAllocatorMgr* sam = d->GetScopedAllocatorMgr();
           if (sam) sam->Cleanup(step_id);
         }
-      }) {
+      }) {}
+
+DirectSession::PartialRunState::PartialRunState(
+    const std::vector<string>& pending_input_names,
+    const std::vector<string>& pending_output_names, int64 step_id,
+    const std::vector<Device*>* devices)
+    : RunState(step_id, devices) {
   // Initially all the feeds and fetches are pending.
   for (auto& name : pending_input_names) {
     pending_inputs[name] = false;
@@ -1734,21 +1738,14 @@ DirectSession::RunState::RunState(
   }
 }
 
-DirectSession::RunState::RunState(int64 step_id,
-                                  const std::vector<Device*>* devices)
-    : RunState({}, {}, step_id, devices) {}
-
-DirectSession::RunState::~RunState() {
+DirectSession::PartialRunState::~PartialRunState() {
   if (rendez != nullptr) {
-    if (!executors_done.HasBeenNotified()) {
-      rendez->StartAbort(errors::Cancelled("PRun cancellation"));
-      executors_done.WaitForNotification();
-    }
-    rendez->Unref();
+    rendez->StartAbort(errors::Cancelled("PRun cancellation"));
+    executors_done.WaitForNotification();
   }
 }
 
-bool DirectSession::RunState::PendingDone() const {
+bool DirectSession::PartialRunState::PendingDone() const {
   for (const auto& it : pending_inputs) {
     if (!it.second) return false;
   }
@@ -1758,11 +1755,10 @@ bool DirectSession::RunState::PendingDone() const {
   return true;
 }
 
-void DirectSession::WaitForNotification(RunState* run_state,
+void DirectSession::WaitForNotification(Notification* n, RunState* run_state,
                                         CancellationManager* cm,
                                         int64 timeout_in_ms) {
-  const Status status =
-      WaitForNotification(&run_state->executors_done, timeout_in_ms);
+  const Status status = WaitForNotification(n, timeout_in_ms);
   if (!status.ok()) {
     {
       mutex_lock l(run_state->mu);
@@ -1772,7 +1768,7 @@ void DirectSession::WaitForNotification(RunState* run_state,
     // We must wait for the executors to complete, because they have borrowed
     // references to `cm` and other per-step state. After this notification, it
     // is safe to clean up the step.
-    run_state->executors_done.WaitForNotification();
+    n->WaitForNotification();
   }
 }
 

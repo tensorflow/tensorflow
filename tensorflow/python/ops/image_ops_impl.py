@@ -1712,7 +1712,9 @@ def adjust_contrast(images, contrast_factor):
 
 @tf_export('image.adjust_gamma')
 def adjust_gamma(image, gamma=1, gain=1):
-  """Performs Gamma Correction on the input image.
+  """Performs [Gamma Correction](http://en.wikipedia.org/wiki/Gamma_correction).
+
+  on the input image.
 
   Also known as Power Law Transform. This function converts the
   input images at first to float representation, then transforms them

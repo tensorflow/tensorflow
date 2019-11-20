@@ -155,7 +155,8 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
-  if (0 != quant_params.quantized_dimension) {
+  // Scale size can't be zero as it is checked before.
+  if (quant_params.scale.size() != 1) {
     llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
                                         quant_params.scale.end());
     return mlir::quant::UniformQuantizedPerAxisType::get(

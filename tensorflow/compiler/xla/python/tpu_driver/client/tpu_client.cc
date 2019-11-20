@@ -48,7 +48,7 @@ static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
 StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(
     const std::string& worker) {
   tpu_driver::TpuDriverConfig driver_config;
-  driver_config.worker = worker;
+  driver_config.set_worker(worker);
   auto client_status = tpu_driver::TpuDriverRegistry::Open(driver_config);
 
   if (!client_status.ok()) {

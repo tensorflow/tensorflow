@@ -27,7 +27,7 @@ mlir::PassPipelineRegistration<> tpu_pipeline(
     "tf-tpu-bridge",
     "Run all the passes involved in transforming the graph before execution so "
     "that it is suitable for targeting TPUs.",
-    mlir::TFTPU::createTPUBridge);
+    mlir::TFTPU::CreateTPUBridge);
 
 mlir::PassPipelineRegistration<> standard_pipeline(
     "tf-standard-bridge",

@@ -132,10 +132,14 @@ static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
     if (incompatible_shape_error.getValue()) {
       mlir::emitError(loc, "non-broadcastable operands");
     } else {
-      result_type = UnrankedTensorType::get(builder->getI1Type());
+      return UnrankedTensorType::get(builder->getI1Type());
     }
   }
-  return result_type;
+
+  auto ranked_type = result_type.dyn_cast<RankedTensorType>();
+  if (!ranked_type) return UnrankedTensorType::get(builder->getI1Type());
+
+  return RankedTensorType::get(ranked_type.getShape(), builder->getI1Type());
 }
 
 // Returns dimension index for the given TensorFlow axis that supports negative

@@ -261,23 +261,6 @@ TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
 }
 #endif
 
-TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
-    : dtype(dtype),
-      device_(nullptr),
-      op_device_(nullptr),
-      resource_device_(nullptr),
-#if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(kInvalidOpId),
-      remote_output_num_(kInvalidOutputNum),
-#endif
-      ctx_(nullptr),
-      is_remote_(false),
-      symbolic_tensor_(new OutputGraphNode(symbolic_tensor)) {
-  DVLOG(3) << "Creating Symbolic TensorHandle: " << this;
-  // Notify immediately since this handle is already ready.
-  is_ready_notification_.Notify();
-}
-
 bool TensorHandle::IsReady() {
   return is_ready_notification_.HasBeenNotified();
 }
@@ -665,11 +648,6 @@ Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx) {
 
 string TensorHandle::DebugString() const {
   DVLOG(1) << "Calling TensorHandle::DebugString() on " << this;
-
-  if (symbolic_tensor_) {
-    return absl::Substitute("TF_Output($0, $1)", symbolic_tensor_->oper,
-                            symbolic_tensor_->index);
-  }
 
   string out;
   strings::StrAppend(&out, "Device: ", device_ ? device_->DebugString() : "[]");

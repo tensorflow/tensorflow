@@ -133,7 +133,7 @@ module attributes {tf_saved_model.semantics} {
 
 module attributes {tf_saved_model.semantics} {
 
-  "tf_saved_model.global_tensor"() { sym_name = "some_constant", value = dense<42.0> : tensor<f32> } : () -> ()
+  "tf_saved_model.global_tensor"() { sym_name = "some_constant", type = tensor<f32>, value = dense<42.0> : tensor<f32> } : () -> ()
 
   // expected-error@+1 {{all 'tf_saved_model.index_path' arg attributes should precede all 'tf_saved_model.bound_input' arg attributes}}
   func @f(
@@ -204,4 +204,11 @@ module attributes {tf_saved_model.semantics} {
     return
   }
 
+}
+
+// -----
+
+module attributes {tf_saved_model.semantics} {
+  // expected-error@+1 {{'type' and 'value' attributes should have compatible tensor types}}
+  "tf_saved_model.global_tensor"() { is_mutable, sym_name = "v0", type = tensor<3xf32>, value = dense<42.0> : tensor<9xf32> } : () -> ()
 }

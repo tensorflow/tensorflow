@@ -97,7 +97,7 @@ inline double stirling_approx_tail(double k) {
     return kTailValues[static_cast<int>(k)];
   }
   double kp1sq = (k + 1) * (k + 1);
-  return (1.0 / 12 - (1.0 / 360 + 1.0 / 1260 / kp1sq) / kp1sq) / (k + 1);
+  return (1.0 / 12 - (1.0 / 360 - 1.0 / 1260 / kp1sq) / kp1sq) / (k + 1);
 }
 
 // We use a transformation-rejection algorithm from

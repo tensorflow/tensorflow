@@ -501,9 +501,19 @@ public:
     return parser.parseToken(Token::l_brace, "expected '{'");
   }
 
+  /// Parse a '{' token if present
+  ParseResult parseOptionalLBrace() override {
+    return success(parser.consumeIf(Token::l_brace));
+  }
+
   /// Parse a `}` token.
   ParseResult parseRBrace() override {
     return parser.parseToken(Token::r_brace, "expected '}'");
+  }
+
+  /// Parse a `}` token if present
+  ParseResult parseOptionalRBrace() override {
+    return success(parser.consumeIf(Token::r_brace));
   }
 
   /// Parse a `:` token.
@@ -594,6 +604,16 @@ public:
   /// Parses a ']' if present.
   ParseResult parseOptionalRSquare() override {
     return success(parser.consumeIf(Token::r_square));
+  }
+
+  /// Parses a '?' if present.
+  ParseResult parseOptionalQuestion() override {
+    return success(parser.consumeIf(Token::question));
+  }
+
+  /// Parses a '*' if present.
+  ParseResult parseOptionalStar() override {
+    return success(parser.consumeIf(Token::star));
   }
 
   /// Returns if the current token corresponds to a keyword.

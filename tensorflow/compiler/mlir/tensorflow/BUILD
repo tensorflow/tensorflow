@@ -493,6 +493,22 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "convert_type_test",
+    size = "small",
+    srcs = ["utils/convert_type_test.cc"],
+    deps = [
+        ":convert_type",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+    ],
+)
+
 cc_library(
     name = "convert_tensor",
     srcs = ["utils/convert_tensor.cc"],

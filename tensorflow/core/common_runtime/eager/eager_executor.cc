@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 
+#include <forward_list>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
@@ -175,13 +177,13 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
                              const Status& status) {
   DVLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
            << " with status: " << status.ToString();
-  std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
-  {
-    DCHECK(item->state != NodeState::kDONE);
-    auto previous_state = item->state;
-    item->state = NodeState::kDONE;
-    if (!ok()) return;
+  DCHECK(item->state != NodeState::kDONE);
+  auto previous_state = item->state;
+  item->state = NodeState::kDONE;
+  if (!ok()) return;
 
+  std::forward_list<core::RefCountPtr<NodeItem>> items_to_destroy;
+  {
     mutex_lock l(node_queue_mutex_);
     bool need_notification = false;
     if (previous_state == NodeState::kPENDING) {
@@ -210,11 +212,11 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
                                 "operations and poisons their output tensors.");
       }
       while (!node_queue_.empty()) {
-        items_to_destroy.push_back(std::move(node_queue_.front()));
+        items_to_destroy.push_front(std::move(node_queue_.front()));
         node_queue_.pop();
       }
       for (auto& it : unfinished_nodes_) {
-        items_to_destroy.push_back(std::move(it.second));
+        items_to_destroy.push_front(std::move(it.second));
       }
       unfinished_nodes_.clear();
     }

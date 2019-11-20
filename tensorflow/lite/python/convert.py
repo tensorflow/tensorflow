@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import distutils.spawn
 import enum  # pylint: disable=g-bad-import-order
 import os as _os
 import platform as _platform
@@ -136,6 +137,17 @@ def toco_convert_protos(model_flags_str,
     except Exception as e:
       raise ConverterError(str(e))
 
+  if distutils.spawn.find_executable(_toco_from_proto_bin) is None:
+    raise ConverterError("""Could not find toco_from_protos binary, make sure
+your virtualenv bin directory or pip local bin directory is in your path.
+In particular, if you have installed TensorFlow with --user, make sure you
+add the install directory to your path.
+
+For example:
+Linux: export PATH=$PATH:~/.local/bin/
+Mac: export PATH=$PATH:~/Library/Python/<version#>/bin
+
+Alternative, use virtualenv.""")
   # Windows and TemporaryFile are not that useful together,
   # since you cannot have two readers/writers. So we have to
   # make the temporaries and close and delete them explicitly.

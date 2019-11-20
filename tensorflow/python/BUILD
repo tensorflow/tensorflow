@@ -5358,7 +5358,7 @@ tf_py_wrap_cc(
         "//tensorflow/tools/graph_transforms:transform_graph_lib",
         "//tensorflow/lite/toco/python:toco_python_api",
         "//tensorflow/python/eager:pywrap_tfe_lib",
-        "//tensorflow/core/util/tensor_bundle:tensor_bundle",
+        "//tensorflow/core/util/tensor_bundle",
     ] + (tf_additional_lib_deps() +
          tf_additional_plugin_deps()) + if_ngraph([
         "@ngraph_tf//:ngraph_tf",
@@ -5418,7 +5418,7 @@ genrule(
         ":ndarray_tensor",  # checkpoint_reader
         ":numpy_lib",  # checkpoint_reader
         ":safe_ptr",  # checkpoint_reader
-        "//tensorflow/python:python_op_gen",  # python_op_gen
+        ":python_op_gen",  # python_op_gen
         "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
     ],
     outs = ["pybind_symbol_target_libs_file.txt"],
@@ -7326,7 +7326,6 @@ tf_python_pybind_extension(
     module_name = "_pywrap_graph_analyzer",
     deps = [
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",
-        "@com_google_absl//absl/strings",
         "@pybind11",
     ],
 )

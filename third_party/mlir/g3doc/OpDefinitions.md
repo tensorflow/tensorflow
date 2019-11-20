@@ -727,7 +727,7 @@ several mechanisms: `StrEnumAttr`, `IntEnumAttr`, and `BitEnumAttr`.
 *   `BitEnumAttr`: each enum case is a bit, the attribute is stored as a
     [`IntegerAttr`][IntegerAttr] in the op.
 
-All these `*EnumAttr` attributes require fully specifying all of the the allowed
+All these `*EnumAttr` attributes require fully specifying all of the allowed
 cases via their corresponding `*EnumAttrCase`. With this, ODS is able to
 generate additional verification to only accept allowed cases. To facilitate the
 interaction between `*EnumAttr`s and their C++ consumers, the

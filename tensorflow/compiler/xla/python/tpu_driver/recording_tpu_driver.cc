@@ -18,6 +18,7 @@
 #include "absl/base/internal/sysinfo.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/platform/external/compat.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.h"
 #include "tensorflow/compiler/xla/python/tpu_driver/tpu_driver.pb.h"
@@ -77,7 +78,7 @@ class RecordingBufferHandle : public BufferHandle {
         event_(std::make_shared<RecordingEvent>(handle_->OnReady(), id_)) {}
   std::shared_ptr<Event> OnReady() override { return event_; }
   int64_t size_in_bytes() override { return handle_->size_in_bytes(); }
-  std::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
+  absl::optional<xla::ShapeProto> shape() override { return handle_->shape(); }
 
  private:
   std::unique_ptr<BufferHandle> handle_;
@@ -516,7 +517,7 @@ class RecordingTpuDriver : public TpuDriver {
 
 xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
     const TpuDriverConfig& config) {
-  std::vector<std::string> configs = absl::StrSplit(config.worker, '|');
+  std::vector<std::string> configs = absl::StrSplit(config.worker(), '|');
 
   std::string file;
   std::string worker;
@@ -533,7 +534,7 @@ xla::StatusOr<std::unique_ptr<TpuDriver>> RegisterRecordingTpuDriver(
   }
 
   TpuDriverConfig worker_config;
-  worker_config.worker = worker;
+  worker_config.set_worker(worker);
 
   auto driver_status = TpuDriverRegistry::Open(worker_config);
   if (!driver_status.ok()) return driver_status.status();

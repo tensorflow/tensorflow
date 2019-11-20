@@ -2301,3 +2301,8 @@ exports_files(
     ],
     visibility = ["@local_config_mlir//:friends"],
 )
+
+exports_files(
+    ["include/mlir/Analysis/InferTypeOpInterface.td"],
+    visibility = ["@local_config_mlir//:friends"],
+)

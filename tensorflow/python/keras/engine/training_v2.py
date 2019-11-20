@@ -320,13 +320,7 @@ class Loop(training_utils.TrainingLoop):
           with training_context.on_epoch(epoch, ModeKeys.TRAIN) as epoch_logs:
             model.reset_metrics()
             if training_data_iter is None or recreate_training_iterator:
-              if (training_data_iter is not None and
-                  distribution_strategy_context.has_strategy()):
-                # TODO(kaftan): remove this when MultiDeviceIterator is a
-                ## compositetensor (unless this is more efficient)
-                training_data_iter._initializer  # pylint: disable=pointless-statement
-              else:
-                training_data_iter = iter(training_dataset)
+              training_data_iter = iter(training_dataset)
 
             training_result = run_one_epoch(
                 model,
@@ -353,13 +347,7 @@ class Loop(training_utils.TrainingLoop):
             if (do_validation and
                 training_utils.should_run_validation(validation_freq, epoch) and
                 not training_callbacks.model.stop_training):
-              if (eval_data_iter is not None and
-                  distribution_strategy_context.has_strategy()):
-                # TODO(kaftan): remove this when MultiDeviceIterator is a
-                ## compositetensor (unless this is more efficient)
-                eval_data_iter._initializer  # pylint: disable=pointless-statement
-              else:
-                eval_data_iter = iter(validation_dataset)
+              eval_data_iter = iter(validation_dataset)
 
               validation_callbacks = cbks.configure_callbacks(
                   training_callbacks,

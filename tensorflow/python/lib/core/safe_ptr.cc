@@ -33,4 +33,8 @@ Safe_TF_StatusPtr make_safe(TF_Status* status) {
   return Safe_TF_StatusPtr(status);
 }
 
+Safe_TF_BufferPtr make_safe(TF_Buffer* buffer) {
+  return Safe_TF_BufferPtr(buffer);
+}
+
 }  // namespace tensorflow

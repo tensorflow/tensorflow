@@ -46,7 +46,7 @@ public:
   using BlockListType = llvm::iplist<Block>;
   BlockListType &getBlocks() { return blocks; }
 
-  // Iteration over the block in the function.
+  // Iteration over the blocks in the region.
   using iterator = BlockListType::iterator;
   using reverse_iterator = BlockListType::reverse_iterator;
 
