@@ -337,6 +337,21 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_model_analyzer",
+    srcs = ["grappler/model_analyzer_wrapper.cc"],
+    hdrs = ["grappler/model_analyzer.h"],
+    module_name = "_pywrap_model_analyzer",
+    deps = [
+        ":model_analyzer_lib",
+        ":pybind11_status",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:grappler_item_builder",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "numpy_lib",
     srcs = ["lib/core/numpy.cc"],
@@ -5300,7 +5315,6 @@ tf_py_wrap_cc(
         "grappler/cluster.i",
         "grappler/cost_analyzer.i",
         "grappler/item.i",
-        "grappler/model_analyzer.i",
         "grappler/tf_optimizer.i",
         "lib/core/bfloat16.i",
         "lib/core/strings.i",
@@ -5403,6 +5417,7 @@ genrule(
     srcs = [
         ":cpp_python_util",  # util
         ":py_func_lib",  # py_func
+        ":model_analyzer_lib",  # model_analyzer
         "//tensorflow/core:util_port",  # util_port
         "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
         "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
@@ -7199,7 +7214,7 @@ py_library(
         "grappler/model_analyzer.py",
     ],
     srcs_version = "PY2AND3",
-    deps = [":pywrap_tensorflow_internal"],
+    deps = [":_pywrap_model_analyzer"],
 )
 
 tf_py_test(
