@@ -22,8 +22,8 @@ from absl import flags
 from absl.testing import absltest
 
 from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
-from tensorflow.python.eager import context
 from tensorflow.python.eager import remote
+from tensorflow.python.framework import config
 from tensorflow.python.tpu import tpu_strategy_util
 
 FLAGS = flags.FLAGS
@@ -58,7 +58,7 @@ class RemoteCloudTPUTest(absltest.TestCase):
   def test_connect(self):
     self.assertCountEqual(
         EXPECTED_DEVICES_PRE_CONNECT,
-        context.list_devices())
+        [device.name for device in config.list_logical_devices()])
 
     resolver = tpu_cluster_resolver.TPUClusterResolver(
         tpu=FLAGS.tpu, zone=FLAGS.zone, project=FLAGS.project
@@ -67,7 +67,7 @@ class RemoteCloudTPUTest(absltest.TestCase):
 
     self.assertCountEqual(
         EXPECTED_DEVICES_AFTER_CONNECT,
-        context.list_devices())
+        [device.name for device in config.list_logical_devices()])
 
     tpu_strategy_util.initialize_tpu_system(resolver)
 

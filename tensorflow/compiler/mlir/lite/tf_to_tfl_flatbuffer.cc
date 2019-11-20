@@ -85,17 +85,16 @@ StatusOr<OwningModuleRef> LoadFromGraphdefOrMlirSource(
 
   if (use_splatted_constant) {
     return tensorflow::GraphdefToSplattedMlirTranslateFunction(
-        std::move(file), debug_info_file, input_arrays, input_dtypes,
+        file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
         input_shapes, output_arrays, prune_unused_nodes,
         /*convert_legacy_fed_inputs=*/true,
-        /*graph_as_function=*/false, /*upgrade_legacy=*/true,
-        /*add_pseudo_input_nodes=*/true, context);
+        /*graph_as_function=*/false, /*upgrade_legacy=*/true, context);
   }
   return tensorflow::GraphdefToMlirTranslateFunction(
-      std::move(file), debug_info_file, input_arrays, input_dtypes,
+      file->getBuffer(), debug_info_file, input_arrays, input_dtypes,
       input_shapes, output_arrays, prune_unused_nodes,
       /*convert_legacy_fed_inputs=*/true, /*graph_as_function=*/false,
-      /*upgrade_legacy=*/true, /*add_pseudo_input_nodes=*/true, context);
+      /*upgrade_legacy=*/true, context);
 }
 
 Status ConvertTFExecutorToTFLOrFlatbuffer(

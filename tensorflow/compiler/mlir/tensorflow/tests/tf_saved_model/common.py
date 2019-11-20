@@ -22,6 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import tempfile
 from absl import app
 from absl import flags
 from absl import logging
@@ -30,7 +31,7 @@ import tensorflow.compat.v2 as tf
 from tensorflow.python import pywrap_tensorflow
 
 # Use /tmp to make debugging the tests easier (see README.md)
-flags.DEFINE_string('save_model_path', '/tmp/basic.saved_model',
+flags.DEFINE_string('save_model_path', '',
                     'Path to save the model to.')
 FLAGS = flags.FLAGS
 
@@ -74,7 +75,10 @@ def do_test(create_module_fn, exported_names=None, show_debug_info=False):
     """Function passed to absl.app.run."""
     if len(argv) > 1:
       raise app.UsageError('Too many command-line arguments.')
-    save_model_path = FLAGS.save_model_path
+    if FLAGS.save_model_path:
+      save_model_path = FLAGS.save_model_path
+    else:
+      save_model_path = tempfile.mktemp(suffix='.saved_model')
     save_options = tf.saved_model.SaveOptions(save_debug_info=show_debug_info)
     tf.saved_model.save(
         create_module_fn(), save_model_path, options=save_options)

@@ -250,7 +250,7 @@ def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$callee,
+    FlatSymbolRefAttr:$callee,
     Variadic<SPV_Type>:$arguments
   );
 
@@ -300,7 +300,12 @@ def SPV_LoopOp : SPV_Op<"loop", [InFunctionScope]> {
 
   let regions = (region AnyRegion:$body);
 
+  let builders = [OpBuilder<"Builder *builder, OperationState &state">];
+
   let extraClassDeclaration = [{
+    // Returns the entry block.
+    Block *getEntryBlock();
+
     // Returns the loop header block.
     Block *getHeaderBlock();
 

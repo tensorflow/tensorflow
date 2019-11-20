@@ -1037,11 +1037,14 @@ class MklConvOp : public OpKernel {
             const_cast<Toutput*>(add_tensor.flat<Toutput>().data()));
         void* dst_buf =
             static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
-        auto add = new MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf);
-        auto dst = new MEMORY_CONSTRUCTOR(DST_MD, this->cpu_engine_, dst_buf);
+        fuse_add_src_.reset(
+            new MEMORY_CONSTRUCTOR(ADD_MD, this->cpu_engine_, add_buf));
+        fuse_add_dst_.reset(
+            new MEMORY_CONSTRUCTOR(DST_MD, this->cpu_engine_, dst_buf));
         auto reorder_desc =
             REORDER_PD_CONSTRUCTOR(ADD_MD, DST_MD, this->cpu_engine_);
-        CreateAndExecuteReorder(reorder_desc, *add, *dst, this->cpu_engine_);
+        CreateAndExecuteReorder(reorder_desc, *fuse_add_src_, *fuse_add_dst_,
+                                this->cpu_engine_);
       }
     } else {
       AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
@@ -1052,6 +1055,8 @@ class MklConvOp : public OpKernel {
   engine cpu_engine_ = engine(ENGINE_CPU, 0);
 
  private:
+  std::shared_ptr<mkldnn::memory> fuse_add_src_;
+  std::shared_ptr<mkldnn::memory> fuse_add_dst_;
   std::vector<int32> strides_;
   std::vector<int32> dilations_;
   std::vector<Tpadding> padding_list_;
@@ -1620,10 +1625,23 @@ class MklQuantizedConv2DOp
                                 Tbias, x, this->cpu_engine_);
       void* bias_buf = static_cast<void*>(
           const_cast<Tbias*>(bias_tensor.flat<Tbias>().data()));
-      input_bias_ =
-          new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
-      scaled_bias_ = new MEMORY_CONSTRUCTOR_WITHOUT_DATA(
-          conv_fwd_pd->PRIMITIVE_DESC_BIAS, this->cpu_engine_);
+      if (!input_bias_) {
+        input_bias_ =
+            new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_, bias_buf);
+      } else {
+        input_bias_->set_data_handle(bias_buf);
+      }
+
+      if (!scaled_bias_buf_)
+        AllocTmpBuffer<Tbias>(context, &scaled_bias_tensor_,
+                              conv_fwd_pd->bias_primitive_desc(),
+                              &scaled_bias_buf_);
+      if (!scaled_bias_) {
+        scaled_bias_ = new MEMORY_CONSTRUCTOR(bias_md, this->cpu_engine_,
+                                              scaled_bias_buf_);
+      } else {
+        scaled_bias_->set_data_handle(scaled_bias_buf_);
+      }
       auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
           input_bias_->GET_DESC, scaled_bias_->GET_DESC, this->cpu_engine_,
           bias_attr);
@@ -1645,6 +1663,9 @@ class MklQuantizedConv2DOp
 
   memory* input_bias_ = nullptr;
   memory* scaled_bias_ = nullptr;
+
+  Tensor scaled_bias_tensor_;
+  void* scaled_bias_buf_ = nullptr;
 
  private:
   std::vector<float> scales_;
@@ -1734,17 +1755,7 @@ class MklQuantizedConv2DSumReluOp
     : public MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
                                   bias_enabled, is_depthwise> {
  public:
-  virtual ~MklQuantizedConv2DSumReluOp() {
-    if (this->summand_ != nullptr) {
-      delete this->summand_;
-      summand_ = nullptr;
-    }
-
-    if (this->dst_ != nullptr) {
-      delete this->dst_;
-      dst_ = nullptr;
-    }
-  }
+  virtual ~MklQuantizedConv2DSumReluOp() {}
 
   explicit MklQuantizedConv2DSumReluOp(OpKernelConstruction* context)
       : MklQuantizedConv2DOp<Device, Tinput, Tbias, Toutput, Ttemp_output,
@@ -1882,18 +1893,18 @@ class MklQuantizedConv2DSumReluOp
         static_cast<void*>(const_cast<Tbias*>(summand.flat<Tbias>().data()));
     void* dst_buf =
         static_cast<void*>((*output_tensor)->flat<Ttemp_output>().data());
-    summand_ =
-        new MEMORY_CONSTRUCTOR(SUMMAND_MD, this->cpu_engine_, summand_buf);
-    dst_ = new MEMORY_CONSTRUCTOR(conv_prim_desc.PRIMITIVE_DESC_DST,
-                                  this->cpu_engine_, dst_buf);
+    summand_.reset(
+        new MEMORY_CONSTRUCTOR(SUMMAND_MD, this->cpu_engine_, summand_buf));
+    dst_.reset(new MEMORY_CONSTRUCTOR(conv_prim_desc.PRIMITIVE_DESC_DST,
+                                      this->cpu_engine_, dst_buf));
     auto reorder_desc = REORDER_PD_CONSTRUCTOR_WITH_ATTR(
         SUMMAND_MD, conv_prim_desc.PRIMITIVE_DESC_DST, this->cpu_engine_,
         reorder_attr);
     CreateAndExecuteReorder(reorder_desc, *summand_, *dst_, this->cpu_engine_);
   }
 
-  memory* summand_ = nullptr;
-  memory* dst_ = nullptr;
+  std::shared_ptr<mkldnn::memory> summand_;
+  std::shared_ptr<mkldnn::memory> dst_;
 };
 
 // INT8 kernel registration

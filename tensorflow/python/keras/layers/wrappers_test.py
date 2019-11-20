@@ -551,9 +551,18 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
       y = np.random.random((samples, target_dim))
 
       inputs = keras.layers.Input(batch_shape=(1, timesteps, dim))
-      output = keras.layers.Bidirectional(
-          rnn(output_dim, stateful=True), merge_mode=mode)(inputs)
+      bidi_rnn = keras.layers.Bidirectional(
+          rnn(output_dim, stateful=True), merge_mode=mode)
+      self.assertTrue(bidi_rnn.stateful)
+      output = bidi_rnn(inputs)
       model = keras.models.Model(inputs, output)
+
+      y_1 = model.predict(x)
+      model.reset_states()
+      y_2 = model.predict(x)
+
+      self.assertAllClose(y_1, y_2)
+
       model.compile(loss='mse', optimizer='sgd')
       model.fit(x, y, epochs=1, batch_size=1)
 

@@ -166,9 +166,18 @@ def SPV_OC_OpFOrdLessThanEqual      : I32EnumAttrCase<"OpFOrdLessThanEqual", 188
 def SPV_OC_OpFUnordLessThanEqual    : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
 def SPV_OC_OpFOrdGreaterThanEqual   : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
 def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
+def SPV_OC_OpShiftRightLogical      : I32EnumAttrCase<"OpShiftRightLogical", 194>;
+def SPV_OC_OpShiftRightArithmetic   : I32EnumAttrCase<"OpShiftRightArithmetic", 195>;
+def SPV_OC_OpShiftLeftLogical       : I32EnumAttrCase<"OpShiftLeftLogical", 196>;
 def SPV_OC_OpBitwiseOr              : I32EnumAttrCase<"OpBitwiseOr", 197>;
 def SPV_OC_OpBitwiseXor             : I32EnumAttrCase<"OpBitwiseXor", 198>;
 def SPV_OC_OpBitwiseAnd             : I32EnumAttrCase<"OpBitwiseAnd", 199>;
+def SPV_OC_OpNot                    : I32EnumAttrCase<"OpNot", 200>;
+def SPV_OC_OpBitFieldInsert         : I32EnumAttrCase<"OpBitFieldInsert", 201>;
+def SPV_OC_OpBitFieldSExtract       : I32EnumAttrCase<"OpBitFieldSExtract", 202>;
+def SPV_OC_OpBitFieldUExtract       : I32EnumAttrCase<"OpBitFieldUExtract", 203>;
+def SPV_OC_OpBitReverse             : I32EnumAttrCase<"OpBitReverse", 204>;
+def SPV_OC_OpBitCount               : I32EnumAttrCase<"OpBitCount", 205>;
 def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
 def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
 def SPV_OC_OpPhi                    : I32EnumAttrCase<"OpPhi", 245>;
@@ -213,11 +222,14 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
-      SPV_OC_OpBitwiseOr, SPV_OC_OpBitwiseXor, SPV_OC_OpBitwiseAnd,
-      SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpPhi,
-      SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
-      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
-      SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed
+      SPV_OC_OpShiftRightLogical, SPV_OC_OpShiftRightArithmetic,
+      SPV_OC_OpShiftLeftLogical, SPV_OC_OpBitwiseOr, SPV_OC_OpBitwiseXor,
+      SPV_OC_OpBitwiseAnd, SPV_OC_OpNot, SPV_OC_OpBitFieldInsert,
+      SPV_OC_OpBitFieldSExtract, SPV_OC_OpBitFieldUExtract, SPV_OC_OpBitReverse,
+      SPV_OC_OpBitCount, SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier,
+      SPV_OC_OpPhi, SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel,
+      SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
+      SPV_OC_OpReturnValue, SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";

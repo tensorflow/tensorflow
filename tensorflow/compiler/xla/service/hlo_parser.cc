@@ -877,6 +877,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       optional<std::vector<std::vector<int64>>> tmp_groups;
       attrs["replica_groups"] = {/*required=*/false,
                                  AttrTy::kBracedInt64ListList, &tmp_groups};
+      optional<int64> channel_id;
+      attrs["channel_id"] = {/*required=*/false, AttrTy::kInt64, &channel_id};
       if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
         return false;
       }
@@ -884,8 +886,8 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       if (tmp_groups) {
         replica_groups = CreateReplicaGroups(*tmp_groups);
       }
-      instruction = builder->AddInstruction(
-          HloInstruction::CreateAllToAll(shape, operands, replica_groups));
+      instruction = builder->AddInstruction(HloInstruction::CreateAllToAll(
+          shape, operands, replica_groups, channel_id));
       break;
     }
     case HloOpcode::kCollectivePermute: {

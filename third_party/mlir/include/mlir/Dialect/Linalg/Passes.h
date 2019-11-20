@@ -36,7 +36,8 @@ std::unique_ptr<OpPassBase<FuncOp>> createLinalgFusionPass();
 std::unique_ptr<OpPassBase<FuncOp>>
 createLinalgTilingPass(ArrayRef<int64_t> tileSizes = {});
 
-std::unique_ptr<OpPassBase<FuncOp>> createLinalgPromotionPass();
+std::unique_ptr<OpPassBase<FuncOp>>
+createLinalgPromotionPass(bool dynamicBuffers);
 
 std::unique_ptr<OpPassBase<FuncOp>> createLowerLinalgToLoopsPass();
 

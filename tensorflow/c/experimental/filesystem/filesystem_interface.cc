@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 
+#include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -55,30 +56,30 @@ static bool CheckABIHelper(int pluginABI, int coreABI, StringPiece where,
 //
 // Uses the simpler `CheckABIHelper(int, int, StringPiece, TF_Status*)`
 static bool CheckABI(
-    int pluginFilesystemOpsABI,
-    const TF_RandomAccessFileOps* pluginRandomAccessFileOps,
-    int pluginRandomAccessFileOpsABI,
-    const TF_WritableFileOps* pluginWritableFileOps,
-    int pluginWritableFileOpsABI,
-    const TF_ReadOnlyMemoryRegionOps* pluginReadOnlyMemoryRegionOps,
-    int pluginReadOnlyMemoryRegionOpsABI, TF_Status* status) {
-  if (!CheckABIHelper(pluginFilesystemOpsABI, TF_FILESYSTEM_OPS_ABI,
+    int plugin_filesystem_ops_ABI,
+    const TF_RandomAccessFileOps* plugin_random_access_file_ops,
+    int plugin_random_access_file_ops_ABI,
+    const TF_WritableFileOps* plugin_writable_file_ops,
+    int plugin_writable_file_ops_ABI,
+    const TF_ReadOnlyMemoryRegionOps* plugin_read_only_memory_region_ops,
+    int plugin_read_only_memory_region_ops_ABI, TF_Status* status) {
+  if (!CheckABIHelper(plugin_filesystem_ops_ABI, TF_FILESYSTEM_OPS_ABI,
                       "filesystem", status))
     return false;
 
-  if (pluginRandomAccessFileOps != nullptr &&
-      !CheckABIHelper(pluginRandomAccessFileOpsABI,
+  if (plugin_random_access_file_ops != nullptr &&
+      !CheckABIHelper(plugin_random_access_file_ops_ABI,
                       TF_RANDOM_ACCESS_FILE_OPS_ABI, "random access file",
                       status))
     return false;
 
-  if (pluginWritableFileOps != nullptr &&
-      !CheckABIHelper(pluginWritableFileOpsABI, TF_WRITABLE_FILE_OPS_ABI,
+  if (plugin_writable_file_ops != nullptr &&
+      !CheckABIHelper(plugin_writable_file_ops_ABI, TF_WRITABLE_FILE_OPS_ABI,
                       "writable file", status))
     return false;
 
-  if (pluginReadOnlyMemoryRegionOps != nullptr &&
-      !CheckABIHelper(pluginReadOnlyMemoryRegionOpsABI,
+  if (plugin_read_only_memory_region_ops != nullptr &&
+      !CheckABIHelper(plugin_read_only_memory_region_ops_ABI,
                       TF_READ_ONLY_MEMORY_REGION_OPS_ABI,
                       "read only memory region", status))
     return false;
@@ -87,10 +88,10 @@ static bool CheckABI(
 }
 
 // Checks if the plugin and core API numbers match, logging mismatches.
-static void CheckAPIHelper(int pluginAPI, int coreAPI, StringPiece where) {
-  if (pluginAPI != coreAPI) {
-    VLOG(0) << "Plugin API (" << pluginAPI << ") for " << where
-            << " operations doesn't match expected core API (" << coreAPI
+static void CheckAPIHelper(int plugin_API, int core_API, StringPiece where) {
+  if (plugin_API != core_API) {
+    VLOG(0) << "Plugin API (" << plugin_API << ") for " << where
+            << " operations doesn't match expected core API (" << core_API
             << "). Plugin will be loaded but functionality might be missing.";
   }
 }
@@ -99,25 +100,26 @@ static void CheckAPIHelper(int pluginAPI, int coreAPI, StringPiece where) {
 //
 // Uses the simpler `CheckAPIHelper(int, int, StringPiece)`.
 static void CheckAPI(
-    int pluginFilesystemOpsAPI,
-    const TF_RandomAccessFileOps* pluginRandomAccessFileOps,
-    int pluginRandomAccessFileOpsAPI,
-    const TF_WritableFileOps* pluginWritableFileOps,
-    int pluginWritableFileOpsAPI,
-    const TF_ReadOnlyMemoryRegionOps* pluginReadOnlyMemoryRegionOps,
-    int pluginReadOnlyMemoryRegionOpsAPI) {
-  CheckAPIHelper(pluginFilesystemOpsAPI, TF_FILESYSTEM_OPS_API, "filesystem");
+    int plugin_filesystem_ops_API,
+    const TF_RandomAccessFileOps* plugin_random_access_file_ops,
+    int plugin_random_access_file_ops_API,
+    const TF_WritableFileOps* plugin_writable_file_ops,
+    int plugin_writable_file_ops_API,
+    const TF_ReadOnlyMemoryRegionOps* plugin_read_only_memory_region_ops,
+    int plugin_read_only_memory_region_ops_API) {
+  CheckAPIHelper(plugin_filesystem_ops_API, TF_FILESYSTEM_OPS_API,
+                 "filesystem");
 
-  if (pluginRandomAccessFileOps != nullptr)
-    CheckAPIHelper(pluginRandomAccessFileOpsAPI, TF_RANDOM_ACCESS_FILE_OPS_API,
-                   "random access file");
+  if (plugin_random_access_file_ops != nullptr)
+    CheckAPIHelper(plugin_random_access_file_ops_API,
+                   TF_RANDOM_ACCESS_FILE_OPS_API, "random access file");
 
-  if (pluginWritableFileOps != nullptr)
-    CheckAPIHelper(pluginWritableFileOpsAPI, TF_WRITABLE_FILE_OPS_API,
+  if (plugin_writable_file_ops != nullptr)
+    CheckAPIHelper(plugin_writable_file_ops_API, TF_WRITABLE_FILE_OPS_API,
                    "writable file");
 
-  if (pluginReadOnlyMemoryRegionOps != nullptr)
-    CheckAPIHelper(pluginReadOnlyMemoryRegionOpsAPI,
+  if (plugin_read_only_memory_region_ops != nullptr)
+    CheckAPIHelper(plugin_read_only_memory_region_ops_API,
                    TF_READ_ONLY_MEMORY_REGION_OPS_API,
                    "read only memory region");
 }
@@ -219,35 +221,35 @@ static bool ValidateHelper(const TF_ReadOnlyMemoryRegionOps* ops,
 // specific file type exists if the plugin offers support for creating that
 // type of files.
 static bool Validate(
-    const TF_FilesystemOps* pluginFilesystemOps,
-    const TF_RandomAccessFileOps* pluginRandomAccessFileOps,
-    const TF_WritableFileOps* pluginWritableFileOps,
-    const TF_ReadOnlyMemoryRegionOps* pluginReadOnlyMemoryRegionOps,
+    const TF_FilesystemOps* plugin_filesystem_ops,
+    const TF_RandomAccessFileOps* plugin_random_access_file_ops,
+    const TF_WritableFileOps* plugin_writable_file_ops,
+    const TF_ReadOnlyMemoryRegionOps* plugin_read_only_memory_region_ops,
     TF_Status* status) {
-  if (!ValidateHelper(pluginFilesystemOps, status)) return false;
-  if (!ValidateHelper(pluginRandomAccessFileOps, status)) return false;
-  if (!ValidateHelper(pluginWritableFileOps, status)) return false;
-  if (!ValidateHelper(pluginReadOnlyMemoryRegionOps, status)) return false;
+  if (!ValidateHelper(plugin_filesystem_ops, status)) return false;
+  if (!ValidateHelper(plugin_random_access_file_ops, status)) return false;
+  if (!ValidateHelper(plugin_writable_file_ops, status)) return false;
+  if (!ValidateHelper(plugin_read_only_memory_region_ops, status)) return false;
 
-  if (pluginFilesystemOps->new_random_access_file != nullptr &&
-      pluginRandomAccessFileOps == nullptr) {
+  if (plugin_filesystem_ops->new_random_access_file != nullptr &&
+      plugin_random_access_file_ops == nullptr) {
     TF_SetStatus(status, TF_FAILED_PRECONDITION,
                  "Filesystem allows creation of random access files but no "
                  "operations on them have been supplied.");
     return false;
   }
 
-  if ((pluginFilesystemOps->new_writable_file != nullptr ||
-       pluginFilesystemOps->new_appendable_file != nullptr) &&
-      pluginWritableFileOps == nullptr) {
+  if ((plugin_filesystem_ops->new_writable_file != nullptr ||
+       plugin_filesystem_ops->new_appendable_file != nullptr) &&
+      plugin_writable_file_ops == nullptr) {
     TF_SetStatus(status, TF_FAILED_PRECONDITION,
                  "Filesystem allows creation of writable files but no "
                  "operations on them have been supplied.");
     return false;
   }
 
-  if (pluginFilesystemOps->new_read_only_memory_region_from_file != nullptr &&
-      pluginReadOnlyMemoryRegionOps == nullptr) {
+  if (plugin_filesystem_ops->new_read_only_memory_region_from_file != nullptr &&
+      plugin_read_only_memory_region_ops == nullptr) {
     TF_SetStatus(status, TF_FAILED_PRECONDITION,
                  "Filesystem allows creation of readonly memory regions but no "
                  "operations on them have been supplied.");
@@ -272,35 +274,36 @@ static bool Validate(
 //     of memory where the copies reside to not allow any more writes to it
 //     after all copies are created.
 template <typename T>
-static std::unique_ptr<const T> CopyToCore(const T* pluginOps,
-                                           size_t pluginSize) {
-  if (pluginOps == nullptr) return nullptr;
+static std::unique_ptr<const T> CopyToCore(const T* plugin_ops,
+                                           size_t plugin_size) {
+  if (plugin_ops == nullptr) return nullptr;
 
-  size_t copySize = sizeof(T);
-  if (pluginSize < copySize) {
-    copySize = pluginSize;
+  size_t copy_size = sizeof(T);
+  if (plugin_size < copy_size) {
+    copy_size = plugin_size;
   }
 
-  auto coreOps = tensorflow::MakeUnique<T>();
-  memcpy(const_cast<T*>(coreOps.get()), pluginOps, copySize);
-  return coreOps;
+  auto core_ops = tensorflow::MakeUnique<T>();
+  memcpy(const_cast<T*>(core_ops.get()), plugin_ops, copy_size);
+  return core_ops;
 }
 
 }  // namespace
 }  // namespace tensorflow
 
 void RegisterFilesystemPlugin(
-    int pluginFilesystemOpsABI, int pluginFilesystemOpsAPI,
-    size_t pluginFilesystemOpsSize, int pluginRandomAccessFileOpsABI,
-    int pluginRandomAccessFileOpsAPI, size_t pluginRandomAccessFileOpsSize,
-    int pluginWritableFileOpsABI, int pluginWritableFileOpsAPI,
-    size_t pluginWritableFileOpsSize, int pluginReadOnlyMemoryRegionOpsABI,
-    int pluginReadOnlyMemoryRegionOpsAPI,
-    size_t pluginReadOnlyMemoryRegionOpsSize, const char* scheme,
-    const TF_FilesystemOps* pluginFilesystemOps,
-    const TF_RandomAccessFileOps* pluginRandomAccessFileOps,
-    const TF_WritableFileOps* pluginWritableFileOps,
-    const TF_ReadOnlyMemoryRegionOps* pluginReadOnlyMemoryRegionOps,
+    int plugin_filesystem_ops_ABI, int plugin_filesystem_ops_API,
+    size_t plugin_filesystem_ops_size, int plugin_random_access_file_ops_ABI,
+    int plugin_random_access_file_ops_API,
+    size_t plugin_random_access_file_ops_size, int plugin_writable_file_ops_ABI,
+    int plugin_writable_file_ops_API, size_t plugin_writable_file_ops_size,
+    int plugin_read_only_memory_region_ops_ABI,
+    int plugin_read_only_memory_region_ops_API,
+    size_t plugin_read_only_memory_region_ops_size, const char* scheme,
+    const TF_FilesystemOps* plugin_filesystem_ops,
+    const TF_RandomAccessFileOps* plugin_random_access_file_ops,
+    const TF_WritableFileOps* plugin_writable_file_ops,
+    const TF_ReadOnlyMemoryRegionOps* plugin_read_only_memory_region_ops,
     TF_Status* status) {
   if (scheme == nullptr) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
@@ -309,46 +312,55 @@ void RegisterFilesystemPlugin(
   }
 
   // ABI numbers must match exactly for plugin to be loaded
-  if (!tensorflow::CheckABI(pluginFilesystemOpsABI, pluginRandomAccessFileOps,
-                            pluginRandomAccessFileOpsABI, pluginWritableFileOps,
-                            pluginWritableFileOpsABI,
-                            pluginReadOnlyMemoryRegionOps,
-                            pluginReadOnlyMemoryRegionOpsABI, status)) {
+  if (!tensorflow::CheckABI(
+          plugin_filesystem_ops_ABI, plugin_random_access_file_ops,
+          plugin_random_access_file_ops_ABI, plugin_writable_file_ops,
+          plugin_writable_file_ops_ABI, plugin_read_only_memory_region_ops,
+          plugin_read_only_memory_region_ops_ABI, status)) {
     return;
   }
 
   // API numbers should match but mismatch doesn't block plugin load
-  tensorflow::CheckAPI(pluginFilesystemOpsAPI, pluginRandomAccessFileOps,
-                       pluginRandomAccessFileOpsAPI, pluginWritableFileOps,
-                       pluginWritableFileOpsAPI, pluginReadOnlyMemoryRegionOps,
-                       pluginReadOnlyMemoryRegionOpsAPI);
+  tensorflow::CheckAPI(plugin_filesystem_ops_API, plugin_random_access_file_ops,
+                       plugin_random_access_file_ops_API,
+                       plugin_writable_file_ops, plugin_writable_file_ops_API,
+                       plugin_read_only_memory_region_ops,
+                       plugin_read_only_memory_region_ops_API);
 
   // Plugin can only be loaded if all supplied ops are valid
-  if (!tensorflow::Validate(pluginFilesystemOps, pluginRandomAccessFileOps,
-                            pluginWritableFileOps,
-                            pluginReadOnlyMemoryRegionOps, status)) {
+  if (!tensorflow::Validate(plugin_filesystem_ops,
+                            plugin_random_access_file_ops,
+                            plugin_writable_file_ops,
+                            plugin_read_only_memory_region_ops, status)) {
     return;
   }
 
   // Copy all the function tables to core TensorFlow memory space
-  auto coreFilesystemOps = tensorflow::CopyToCore<TF_FilesystemOps>(
-      pluginFilesystemOps, pluginFilesystemOpsSize);
-  auto coreRandomAccessFileOps = tensorflow::CopyToCore<TF_RandomAccessFileOps>(
-      pluginRandomAccessFileOps, pluginRandomAccessFileOpsSize);
-  auto coreWritableFileOps = tensorflow::CopyToCore<TF_WritableFileOps>(
-      pluginWritableFileOps, pluginWritableFileOpsSize);
-  auto coreReadOnlyMemoryRegionOps =
+  auto core_filesystem_ops = tensorflow::CopyToCore<TF_FilesystemOps>(
+      plugin_filesystem_ops, plugin_filesystem_ops_size);
+  auto core_random_access_file_ops =
+      tensorflow::CopyToCore<TF_RandomAccessFileOps>(
+          plugin_random_access_file_ops, plugin_random_access_file_ops_size);
+  auto core_writable_file_ops = tensorflow::CopyToCore<TF_WritableFileOps>(
+      plugin_writable_file_ops, plugin_writable_file_ops_size);
+  auto core_read_only_memory_region_ops =
       tensorflow::CopyToCore<TF_ReadOnlyMemoryRegionOps>(
-          pluginReadOnlyMemoryRegionOps, pluginReadOnlyMemoryRegionOpsSize);
+          plugin_read_only_memory_region_ops,
+          plugin_read_only_memory_region_ops_size);
 
   // Initialize the opaque filesystem structure
   auto filesystem = tensorflow::MakeUnique<TF_Filesystem>();
-  coreFilesystemOps->init(filesystem.get(), status);
+  core_filesystem_ops->init(filesystem.get(), status);
   if (!status->status.ok()) {
-    coreFilesystemOps->cleanup(filesystem.get());
+    core_filesystem_ops->cleanup(filesystem.get());
     return;
   }
 
   // Register new filesystem
-  // TODO(mihaimaruseac): Will come in a subsequent CL
+  status->status = tensorflow::Env::Default()->RegisterFileSystem(
+      scheme, tensorflow::MakeUnique<tensorflow::ModularFileSystem>(
+                  std::move(filesystem), std::move(core_filesystem_ops),
+                  std::move(core_random_access_file_ops),
+                  std::move(core_writable_file_ops),
+                  std::move(core_read_only_memory_region_ops)));
 }

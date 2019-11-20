@@ -112,6 +112,17 @@ class BASE_HLO_ExpOp {
   }];
 }
 
+class BASE_HLO_Expm1Op {
+  string summary = "Exponential minus one operator";
+
+  string description = [{
+    Returns `e^(operand) - 1` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_FloorOp {
   string summary = "Floor operator";
 
@@ -142,11 +153,44 @@ class BASE_HLO_LogOp {
   }];
 }
 
+class BASE_HLO_Log1pOp {
+  string summary = "Log1p operator";
+
+  string description = [{
+    Returns `log(operand+1)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
   string description = [{
     Returns `-operand` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_NotOp {
+  string summary = "Not operator";
+
+  string description = [{
+    Returns `!operand` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_PopulationCountOp {
+  string summary = "PopulationCount operator";
+
+  string description = [{
+    Returns the number of bits set in each operand element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -321,6 +365,50 @@ class BASE_HLO_SubOp {
   }];
 }
 
+class BASE_HLO_ShiftLeftOp {
+  string summary = "Shift Left operator";
+
+  string description = [{
+    Returns `lhs << rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ShiftRightArithmeticOp {
+  string summary = "Shift right arithmetic operator";
+
+  string description = [{
+    Returns arithmetic `lhs >> rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ShiftRightLogicalOp {
+  string summary = "Shift right logical operator";
+
+  string description = [{
+    Returns logical `lhs >> rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_Atan2Op {
+  string summary = "Atan2 operator";
+
+  string description = [{
+    Returns `atan2(lhs/rhs)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_AndOp {
   string summary = "Logical and";
 
@@ -337,6 +425,17 @@ class BASE_HLO_OrOp {
 
   string description = [{
     Returns `lhs \/ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_XorOp {
+  string summary = "Logical xor";
+
+  string description = [{
+    Returns `lhs xor rhs` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -649,13 +748,7 @@ class BASE_HLO_SelectOp {
     Constructs an output tensor from the elements of `on_true` and `on_false`
     based on the values of `pred`.
 
-    `on_true` and `on_false` must be the same shape. For each element of `pred`,
-    `res` has the corresponding element of `on_true` or `on_false` depending on
-    the value in `pred`. `pred` must be the same shape as `on_true` and
-    `on_false` or a scalar, in which case `res` is equal to either `on_true` or
-    `on_false`.
-
-    See https://www.tensorflow.org/xla/operation_semantics#select.
+    `pred`, `on_true` and `on_false` must be broadcast compatible.
   }];
 }
 

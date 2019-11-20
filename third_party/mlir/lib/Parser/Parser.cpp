@@ -501,9 +501,19 @@ public:
     return parser.parseToken(Token::l_brace, "expected '{'");
   }
 
+  /// Parse a '{' token if present
+  ParseResult parseOptionalLBrace() override {
+    return success(parser.consumeIf(Token::l_brace));
+  }
+
   /// Parse a `}` token.
   ParseResult parseRBrace() override {
     return parser.parseToken(Token::r_brace, "expected '}'");
+  }
+
+  /// Parse a `}` token if present
+  ParseResult parseOptionalRBrace() override {
+    return success(parser.consumeIf(Token::r_brace));
   }
 
   /// Parse a `:` token.
@@ -594,6 +604,16 @@ public:
   /// Parses a ']' if present.
   ParseResult parseOptionalRSquare() override {
     return success(parser.consumeIf(Token::r_square));
+  }
+
+  /// Parses a '?' if present.
+  ParseResult parseOptionalQuestion() override {
+    return success(parser.consumeIf(Token::question));
+  }
+
+  /// Parses a '*' if present.
+  ParseResult parseOptionalStar() override {
+    return success(parser.consumeIf(Token::star));
   }
 
   /// Returns if the current token corresponds to a keyword.
@@ -847,12 +867,13 @@ static T parseSymbol(llvm::StringRef inputStr, MLIRContext *context,
 //===----------------------------------------------------------------------===//
 
 InFlightDiagnostic Parser::emitError(SMLoc loc, const Twine &message) {
+  auto diag = mlir::emitError(getEncodedSourceLocation(loc), message);
+
   // If we hit a parse error in response to a lexer error, then the lexer
   // already reported the error.
   if (getToken().is(Token::error))
-    return InFlightDiagnostic();
-
-  return mlir::emitError(getEncodedSourceLocation(loc), message);
+    diag.abandon();
+  return diag;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1400,7 +1421,7 @@ static std::string extractSymbolReference(Token tok) {
 ///                    | type
 ///                    | `[` (attribute-value (`,` attribute-value)*)? `]`
 ///                    | `{` (attribute-entry (`,` attribute-entry)*)? `}`
-///                    | symbol-ref-id
+///                    | symbol-ref-id (`::` symbol-ref-id)*
 ///                    | `dense` `<` attribute-value `>` `:`
 ///                      (tensor-type | vector-type)
 ///                    | `sparse` `<` attribute-value `,` attribute-value `>`
@@ -1509,7 +1530,31 @@ Attribute Parser::parseAttribute(Type type) {
   case Token::at_identifier: {
     std::string nameStr = extractSymbolReference(getToken());
     consumeToken(Token::at_identifier);
-    return builder.getSymbolRefAttr(nameStr);
+
+    // Parse any nested references.
+    std::vector<FlatSymbolRefAttr> nestedRefs;
+    while (getToken().is(Token::colon)) {
+      // Check for the '::' prefix.
+      const char *curPointer = getToken().getLoc().getPointer();
+      consumeToken(Token::colon);
+      if (!consumeIf(Token::colon)) {
+        state.lex.resetPointer(curPointer);
+        consumeToken();
+        break;
+      }
+      // Parse the reference itself.
+      auto curLoc = getToken().getLoc();
+      if (getToken().isNot(Token::at_identifier)) {
+        emitError(curLoc, "expected nested symbol reference identifier");
+        return Attribute();
+      }
+
+      std::string nameStr = extractSymbolReference(getToken());
+      consumeToken(Token::at_identifier);
+      nestedRefs.push_back(SymbolRefAttr::get(nameStr, getContext()));
+    }
+
+    return builder.getSymbolRefAttr(nameStr, nestedRefs);
   }
 
   // Parse a 'unit' attribute.
@@ -1533,7 +1578,7 @@ Attribute Parser::parseAttribute(Type type) {
 ///
 ParseResult
 Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
-  if (!consumeIf(Token::l_brace))
+  if (parseToken(Token::l_brace, "expected '{' in attribute dictionary"))
     return failure();
 
   auto parseElt = [&]() -> ParseResult {
@@ -3868,8 +3913,17 @@ public:
 
   /// Parse a named dictionary into 'result' if it is present.
   ParseResult
-  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) override {
+  parseOptionalAttrDict(SmallVectorImpl<NamedAttribute> &result) override {
     if (parser.getToken().isNot(Token::l_brace))
+      return success();
+    return parser.parseAttributeDict(result);
+  }
+
+  /// Parse a named dictionary into 'result' if the `attributes` keyword is
+  /// present.
+  ParseResult parseOptionalAttrDictWithKeyword(
+      SmallVectorImpl<NamedAttribute> &result) override {
+    if (failed(parseOptionalKeyword("attributes")))
       return success();
     return parser.parseAttributeDict(result);
   }
@@ -3904,10 +3958,11 @@ public:
     return success();
   }
 
-  /// Parse an @-identifier and store it (without the '@' symbol) in a string
-  /// attribute named 'attrName'.
-  ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
-                              SmallVectorImpl<NamedAttribute> &attrs) override {
+  /// Parse an optional @-identifier and store it (without the '@' symbol) in a
+  /// string attribute named 'attrName'.
+  ParseResult
+  parseOptionalSymbolName(StringAttr &result, StringRef attrName,
+                          SmallVectorImpl<NamedAttribute> &attrs) override {
     Token atToken = parser.getToken();
     if (atToken.isNot(Token::at_identifier))
       return failure();

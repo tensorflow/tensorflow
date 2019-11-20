@@ -16,16 +16,21 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_irgen_test_base.h"
 
 #include <functional>
+#include <memory>
+#include <string>
 #include <utility>
 
+#include "absl/memory/memory.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/failover_compiler.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/inject_errors_pass.h"
 #include "tensorflow/compiler/xla/service/mlir_gpu/mlir_compiler.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/filecheck.h"
+#include "tensorflow/compiler/xla/tests/verified_hlo_module.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -76,8 +81,11 @@ void MlirIrGenTestBase::CompileAndVerifyIr(const string& hlo_text,
                                            LoweringStage printing_stage) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_text, config));
+  auto module = absl::make_unique<VerifiedHloModule>(
+      "Module", config, /*verifier_layout_sensitive=*/true,
+      /*allow_mixed_precision_in_hlo_verifier=*/false,
+      /*shape_size_function=*/ShapeUtil::ByteSizeOfElements);
+  TF_ASSERT_OK(module->ParseHloStringAndVerifyModule(hlo_text));
   CompileAndVerifyIr(std::move(module), expected_llvm_ir, printing_stage);
 }
 
@@ -124,8 +132,11 @@ void MlirIrGenTestBase::CompileAndVerifyErrors(const string& hlo_text,
                                                LoweringStage breaking_stage) {
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsForTest());
-  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseAndReturnUnverifiedModule(hlo_text, config));
+  auto module = absl::make_unique<VerifiedHloModule>(
+      "Module", config, /*verifier_layout_sensitive=*/true,
+      /*allow_mixed_precision_in_hlo_verifier=*/false,
+      /*shape_size_function=*/ShapeUtil::ByteSizeOfElements);
+  TF_ASSERT_OK(module->ParseHloStringAndVerifyModule(hlo_text));
   TF_ASSERT_OK_AND_ASSIGN(
       string errors, CompileAndInjectErrors(std::move(module), breaking_stage));
   PatternMatch(errors, expected_errors);

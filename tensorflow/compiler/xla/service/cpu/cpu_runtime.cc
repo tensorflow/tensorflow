@@ -425,8 +425,8 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
 
   xla::AllReduceParticipantData participant(rendezvous_key);
 
-  CHECK_EQ(shape.dimensions_size(), 1);
-  participant.element_count = shape.dimensions(0);
+  CHECK_LE(shape.dimensions_size(), 1);
+  participant.element_count = xla::ShapeUtil::ElementsIn(shape);
   participant.device_ordinal = device_ordinal;
   participant.primitive_type = shape.element_type();
   participant.stream = run_options->stream();

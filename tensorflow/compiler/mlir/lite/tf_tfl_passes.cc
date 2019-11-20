@@ -36,7 +36,7 @@ CreateTFExecutorToControlDialectConversion();
 namespace tensorflow {
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
-                           mlir::PassManager* pass_manager) {
+                           mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   pass_manager->addPass(mlir::TFL::CreateQuantizePass());
   bool emit_quant_adaptor_ops =
@@ -46,7 +46,7 @@ void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::PassManager* pass_manager) {
+                                mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
   if (pass_config.skip_control_dialect) {
     // Merge islands.
@@ -76,6 +76,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // handle constant ops that produce `TensorList`.
     // TODO(haoliang): Add this pass by default.
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
+  }
+
+  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
   }
 
   // The ophint extractions happen before lots of other passes:

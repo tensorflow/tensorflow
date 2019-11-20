@@ -121,6 +121,7 @@ class EagerContext : public core::RefCounted {
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
                ContextMirroringPolicy default_mirroring_policy, bool async,
+               const bool lazy_copy_function_remote_inputs,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
                const CustomKernelCreator* custom_kernel_creator,
@@ -168,7 +169,7 @@ class EagerContext : public core::RefCounted {
 
   bool MirrorTensors() const;
 
-  bool LazilyCopyFunctionRemoteInputs() const;
+  bool LazyCopyFunctionRemoteInputs() const;
 
   bool FindFunctionByName(const string& name);
 
@@ -210,7 +211,6 @@ class EagerContext : public core::RefCounted {
   bool LogMemory() const { return log_memory_; }
 
   Rendezvous* GetRendezvous() const { return rendezvous_; }
-  void ResetRendezvous(Rendezvous* r) { rendezvous_ = r; }
   Rendezvous* CreateRendezvous(const int64 step_id) const {
     if (rendezvous_creator_ != nullptr) {
       return rendezvous_creator_(step_id);
@@ -305,7 +305,7 @@ class EagerContext : public core::RefCounted {
   // can still be accessed, and will automatically register existing functions
   // if there are newly added hosts.
   Status UpdateRemoteMaster(
-      WorkerEnv* worker_env, std::shared_ptr<WorkerSession> worker_session,
+      WorkerEnv* worker_env,
       std::unique_ptr<eager::EagerClientCache> remote_eager_workers,
       const std::vector<string>& add_remote_contexts,
       const std::vector<string>& remove_remote_contexts, uint64 context_id,
@@ -322,7 +322,8 @@ class EagerContext : public core::RefCounted {
       std::function<Rendezvous*(const int64)> rendezvous_creator,
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
-          remote_mgr);
+          remote_mgr,
+      std::function<void()> resource_deallocator);
 
   // Similar with InitializeRemoteWorker but will reuse existing context and
   // increment context_view_id.
@@ -375,7 +376,6 @@ class EagerContext : public core::RefCounted {
   bool OnSameTask(const Device* first, const Device* second) const;
   // Gets the CPU device on the task of device.
   Status CPUDeviceOnTask(const Device* device, Device** cpu_device) const;
-  bool IsLocalDeviceName(const DeviceNameUtils::ParsedName& device_name) const;
 
  private:
   void InitDeviceMapAndAsync();
@@ -461,7 +461,7 @@ class EagerContext : public core::RefCounted {
 
   // EagerContext owns the DistributedFunctionLibraryRuntime(
   // EagerClusterFunctionLibraryRuntime) if using EagerService for remote
-  // function execution (lazily_copy_function_remote_inputs_=true).
+  // function execution (lazy_copy_function_remote_inputs_=true).
   OwnedOrUnownedHelper<DistributedFunctionLibraryRuntime> cluster_flr_;
   // One FunctionLibraryRuntime per device.
   // func_libs[i] is the FunctionLibraryRuntime corresponding to
@@ -553,9 +553,18 @@ class EagerContext : public core::RefCounted {
   bool is_master_ GUARDED_BY(remote_state_mu_);
 #endif  // IS_MOBILE_PLATFORM
 
-  bool lazily_copy_function_remote_inputs_;
+  // For a multi device function, the target device of each input is unknown
+  // until the function is instantiated on the default function device.
+  // If false, eagerly copy all remote inputs to the default function device;
+  // if true, lazily copy remote inputs to their target devices to avoid
+  // redundant copies.
+  bool lazy_copy_function_remote_inputs_ = false;
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
+
+  // Function that will be invoked in destructor to deallocate resources related
+  // to this context.
+  std::function<void()> resource_deallocator_ = nullptr;
 };
 
 }  // namespace tensorflow

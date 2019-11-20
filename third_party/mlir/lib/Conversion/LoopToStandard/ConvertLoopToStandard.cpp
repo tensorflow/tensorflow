@@ -205,7 +205,7 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
   // With the body block done, we can fill in the condition block.
   rewriter.setInsertionPointToEnd(conditionBlock);
   auto comparison =
-      rewriter.create<CmpIOp>(loc, CmpIPredicate::SLT, iv, upperBound);
+      rewriter.create<CmpIOp>(loc, CmpIPredicate::slt, iv, upperBound);
 
   rewriter.create<CondBranchOp>(loc, comparison, firstBodyBlock,
                                 ArrayRef<Value *>(), endBlock,

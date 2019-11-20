@@ -55,20 +55,23 @@ constexpr size_t kCopyFileBufferSize = 128 * 1024;
 
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
-  Status Register(const string& scheme, Factory factory) override;
-  FileSystem* Lookup(const string& scheme) override;
-  Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes) override;
+  Status Register(const std::string& scheme, Factory factory) override;
+  Status Register(const std::string& scheme,
+                  std::unique_ptr<FileSystem> filesystem) override;
+  FileSystem* Lookup(const std::string& scheme) override;
+  Status GetRegisteredFileSystemSchemes(
+      std::vector<std::string>* schemes) override;
 
  private:
   mutable mutex mu_;
-  mutable std::unordered_map<string, std::unique_ptr<FileSystem>> registry_
+  mutable std::unordered_map<std::string, std::unique_ptr<FileSystem>> registry_
       GUARDED_BY(mu_);
 };
 
-Status FileSystemRegistryImpl::Register(const string& scheme,
+Status FileSystemRegistryImpl::Register(const std::string& scheme,
                                         FileSystemRegistry::Factory factory) {
   mutex_lock lock(mu_);
-  if (!registry_.emplace(string(scheme), std::unique_ptr<FileSystem>(factory()))
+  if (!registry_.emplace(scheme, std::unique_ptr<FileSystem>(factory()))
            .second) {
     return errors::AlreadyExists("File factory for ", scheme,
                                  " already registered");
@@ -76,7 +79,17 @@ Status FileSystemRegistryImpl::Register(const string& scheme,
   return Status::OK();
 }
 
-FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
+Status FileSystemRegistryImpl::Register(
+    const std::string& scheme, std::unique_ptr<FileSystem> filesystem) {
+  mutex_lock lock(mu_);
+  if (!registry_.emplace(scheme, std::move(filesystem)).second) {
+    return errors::AlreadyExists("File system for ", scheme,
+                                 " already registered");
+  }
+  return Status::OK();
+}
+
+FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
   mutex_lock lock(mu_);
   const auto found = registry_.find(scheme);
   if (found == registry_.end()) {
@@ -86,7 +99,7 @@ FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
 }
 
 Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
-    std::vector<string>* schemes) {
+    std::vector<std::string>* schemes) {
   mutex_lock lock(mu_);
   for (const auto& e : registry_) {
     schemes->push_back(e.first);
@@ -96,10 +109,11 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
-Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
+Status Env::GetFileSystemForFile(const std::string& fname,
+                                 FileSystem** result) {
   StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
-  FileSystem* file_system = file_system_registry_->Lookup(string(scheme));
+  FileSystem* file_system = file_system_registry_->Lookup(std::string(scheme));
   if (!file_system) {
     if (scheme.empty()) {
       scheme = "[local]";
@@ -112,13 +126,18 @@ Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   return Status::OK();
 }
 
-Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
+Status Env::GetRegisteredFileSystemSchemes(std::vector<std::string>* schemes) {
   return file_system_registry_->GetRegisteredFileSystemSchemes(schemes);
 }
 
-Status Env::RegisterFileSystem(const string& scheme,
+Status Env::RegisterFileSystem(const std::string& scheme,
                                FileSystemRegistry::Factory factory) {
   return file_system_registry_->Register(scheme, std::move(factory));
+}
+
+Status Env::RegisterFileSystem(const std::string& scheme,
+                               std::unique_ptr<FileSystem> filesystem) {
+  return file_system_registry_->Register(scheme, std::move(filesystem));
 }
 
 Status Env::FlushFileSystemCaches() {

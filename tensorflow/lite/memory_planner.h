@@ -58,6 +58,9 @@ class MemoryPlanner {
 
   // Allocates the necessary memory to contain non-persistent tensors.
   virtual TfLiteStatus AcquireNonPersistentMemory() = 0;
+
+  // Returns true if the non-persistent memory is available.
+  virtual bool HasNonPersistentMemory() = 0;
 };
 
 }  // namespace tflite

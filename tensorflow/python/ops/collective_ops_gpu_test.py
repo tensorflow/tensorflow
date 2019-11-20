@@ -59,9 +59,9 @@ class CollectiveOpGPUTest(test.TestCase):
     if len(gpus) < 1:
       self.skipTest('Expected at least 1 GPU but found {} GPUs'.format(
           len(gpus)))
-    config.set_virtual_device_configuration(gpus[0], [
-        context.VirtualDeviceConfiguration(1024),
-        context.VirtualDeviceConfiguration(1024)
+    config.set_logical_device_configuration(gpus[0], [
+        context.LogicalDeviceConfiguration(1024),
+        context.LogicalDeviceConfiguration(1024)
     ])
     context.ensure_initialized()
 

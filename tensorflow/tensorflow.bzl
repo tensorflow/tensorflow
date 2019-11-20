@@ -20,7 +20,7 @@ load(
 )
 load(
     "@local_config_cuda//cuda:build_defs.bzl",
-    "cuda_default_copts",
+    "cuda_library",
     "if_cuda",
 )
 load(
@@ -111,9 +111,9 @@ def tf_android_core_proto_headers(core_proto_sources_relative):
     ])
 
 # Wrapper for portable protos which currently just creates an empty rule.
-def tf_portable_proto_library(name, proto_deps, **kwargs):
+def tf_portable_proto_library(name, proto_deps, deps = [], **kwargs):
     _ignore = [kwargs]
-    native.cc_library(name = name, deps = proto_deps)
+    native.cc_library(name = name, deps = deps + [dep + "_cc" for dep in proto_deps])
 
 # Sanitize a dependency so that it works correctly from code that includes
 # TensorFlow as a submodule.
@@ -626,6 +626,11 @@ def tf_cc_binary(
                 [
                     clean_dep("//third_party/mkl:intel_binary_blob"),
                 ],
+            ) + if_static(
+                extra_deps = [],
+                otherwise = [
+                    clean_dep("//tensorflow:libtensorflow_framework_import_lib"),
+                ],
             ),
             data = depset(data + added_data_deps),
             linkopts = linkopts + _rpath_linkopts(name_os),
@@ -1126,20 +1131,21 @@ def tf_gpu_only_cc_test(
         kernels = [],
         linkopts = []):
     tags = tags + tf_gpu_tests_tags()
+
+    gpu_lib_name = "%s%s" % (name, "_gpu_lib")
+    tf_gpu_kernel_library(
+        name = gpu_lib_name,
+        srcs = srcs + tf_binary_additional_srcs(),
+        deps = deps,
+        testonly = 1,
+    )
     native.cc_test(
         name = "%s%s" % (name, "_gpu"),
-        srcs = srcs + tf_binary_additional_srcs(),
         size = size,
         args = args,
-        copts = _cuda_copts() + rocm_copts() + tf_copts(),
         features = if_cuda(["-use_header_modules"]),
         data = data + tf_binary_dynamic_kernel_dsos(),
-        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_cuda_is_configured([
-            clean_dep("//tensorflow/core:cuda"),
-            clean_dep("//tensorflow/core:gpu_lib"),
-        ]) + if_rocm_is_configured([
-            clean_dep("//tensorflow/core:gpu_lib"),
-        ]),
+        deps = [":" + gpu_lib_name],
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
         linkstatic = linkstatic or select({
             # cc_tests with ".so"s in srcs incorrectly link on Darwin
@@ -1293,7 +1299,7 @@ def _cuda_copts(opts = []):
         compiler.  If we're not doing CUDA compilation, returns an empty list.
 
         """
-    return cuda_default_copts() + select({
+    return select({
         "//conditions:default": [],
         "@local_config_cuda//cuda:using_nvcc": ([
             "-nvcc_options=relaxed-constexpr",
@@ -1323,7 +1329,7 @@ def tf_gpu_kernel_library(
     copts = copts + tf_copts() + _cuda_copts(opts = cuda_copts) + rocm_copts(opts = cuda_copts)
     kwargs["features"] = kwargs.get("features", []) + ["-use_header_modules"]
 
-    native.cc_library(
+    cuda_library(
         srcs = srcs,
         hdrs = hdrs,
         copts = copts,
@@ -1791,11 +1797,11 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
 
     if gpu_srcs:
         basename = name.split(".")[0]
-        native.cc_library(
+        cuda_library(
             name = basename + "_gpu",
             srcs = gpu_srcs,
-            copts = copts + _cuda_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
-            features = if_cuda(["-use_header_modules"]),
+            copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
+                    if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
             deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
             **kwargs
         )
@@ -2331,6 +2337,7 @@ def tf_generate_proto_text_sources(name, srcs_relative_dir, srcs, protodeps = []
         hdrs = out_hdrs,
         visibility = visibility,
         deps = deps,
+        alwayslink = 1,
     )
 
 def tf_genrule_cmd_append_to_srcs(to_append):
@@ -2504,7 +2511,8 @@ def tf_python_pybind_extension(
         features = [],
         copts = [],
         hdrs = [],
-        deps = []):
+        deps = [],
+        visibility = None):
     """A wrapper macro for pybind_extension that is used in tensorflow/python/BUILD.
 
     It is used for targets under //third_party/tensorflow/python that link
@@ -2518,6 +2526,7 @@ def tf_python_pybind_extension(
         copts = copts,
         hdrs = hdrs,
         deps = deps + tf_binary_pybind_deps() + mkl_deps(),
+        visibility = visibility,
     )
 
 def if_cuda_or_rocm(if_true, if_false = []):
@@ -2558,10 +2567,6 @@ def if_mlir(if_true, if_false = []):
         "//conditions:default": if_false,
         "//tensorflow:with_mlir_support": if_true,
     })
-
-# TODO(b/138724071): Remove when build is stable.
-def if_mlir_tflite(if_true, if_false = []):
-    return if_true  # Internally we always build with MLIR.
 
 def tfcompile_extra_flags():
     return ""

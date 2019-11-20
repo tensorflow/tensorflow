@@ -94,6 +94,7 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
           CpuBackendContext* context) {
   gemmlowp::ScopedProfilingLabel label("cpu_backend_gemm::Gemm");
   ValidateParams(lhs_params, rhs_params, dst_params, params);
+#ifndef TFLITE_WITH_RUY_GEMV
   if (dst_params.cols == 1) {
     // GEMV case: try a custom fast GEMV path.
     if (detail::CustomGemv(lhs_params, lhs_data, rhs_params, rhs_data,
@@ -101,10 +102,33 @@ void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
       return;
     }
   }
+#endif
   gemmlowp::ScopedProfilingLabel label2("cpu_backend_gemm::Gemm: general GEMM");
   GemmImpl<LhsScalar, RhsScalar, AccumScalar, DstScalar,
            quantization_flavor>::Run(lhs_params, lhs_data, rhs_params, rhs_data,
                                      dst_params, dst_data, params, context);
+}
+
+// Special path for gemm with raw accumulator case. i.e. AccumScalar ==
+// DstScalar == int32 case.
+template <typename LhsScalar, typename RhsScalar,
+          QuantizationFlavor quantization_flavor>
+void Gemm(const MatrixParams<LhsScalar>& lhs_params, const LhsScalar* lhs_data,
+          const MatrixParams<RhsScalar>& rhs_params, const RhsScalar* rhs_data,
+          const MatrixParams<int32_t>& dst_params, int32_t* dst_data,
+          const GemmParams<int32_t, int32_t, quantization_flavor>& params,
+          CpuBackendContext* context) {
+  gemmlowp::ScopedProfilingLabel label("cpu_backend_gemm::Gemm");
+  ValidateParams(lhs_params, rhs_params, dst_params, params);
+
+  // Currently, only Ruy backend supports get raw accumulator, so we use ruy
+  // only.
+  gemmlowp::ScopedProfilingLabel label2("cpu_backend_gemm::Gemm: general GEMM");
+  detail::GemmImplUsingRuy<LhsScalar, RhsScalar, int32_t, int32_t,
+                           quantization_flavor>::Run(lhs_params, lhs_data,
+                                                     rhs_params, rhs_data,
+                                                     dst_params, dst_data,
+                                                     params, context);
 }
 
 }  // namespace cpu_backend_gemm

@@ -252,9 +252,9 @@ typedef struct TF_WritableFileOps {
   ///
   /// Flushes all buffers and deallocates all resources.
   ///
-  /// Plugins must ensure that calling this on an already closed `*file` only
-  /// sets `status` to a non `TF_OK` value. Furthermore, calling `close` must
-  /// not result in calling `cleanup`.
+  /// Calling `close` must not result in calling `cleanup`.
+  ///
+  /// Core TensorFlow will never call `close` twice.
   void (*close)(const TF_WritableFile* file, TF_Status* status);
 } TF_WritableFileOps;
 // LINT.ThenChange(:writable_file_ops_version)
@@ -527,11 +527,13 @@ typedef struct TF_FilesystemOps {
   ///     of type `TF_Status*`.
   ///
   /// If `statuses` is not null, plugins must fill each element with detailed
-  /// status for each file, as if calling `path_exists` on each one.
+  /// status for each file, as if calling `path_exists` on each one. Core
+  /// TensorFlow initializes the `statuses` array and plugins must use
+  /// `TF_SetStatus` to set each element instead of dirrectly assigning.
   ///
   /// DEFAULT IMPLEMENTATION: Checks existence of every file. Needs
   /// `path_exists`.
-  bool (*paths_exist)(const TF_Filesystem* filesystem, const char** paths,
+  bool (*paths_exist)(const TF_Filesystem* filesystem, char** paths,
                       int num_files, TF_Status** statuses);
 
   /// Obtains statistics for the given `path`.
@@ -591,7 +593,8 @@ typedef struct TF_FilesystemOps {
   /// implemented by a filesystem registered to handle the `fs://` scheme.
   ///
   /// A new `char*` buffer must be allocated by this method. Core TensorFlow
-  /// manages the lifetime of the buffer after the call.
+  /// manages the lifetime of the buffer after the call. Thus, all callers of
+  /// this method must take ownership of the returned pointer.
   ///
   /// The implementation should clean up paths, including but not limited to,
   /// removing duplicate `/`s, and resolving `..` and `.`.
@@ -602,8 +605,7 @@ typedef struct TF_FilesystemOps {
   /// arguments for all other methods in the filesystem API.
   ///
   /// DEFAULT IMPLEMENTATION: Uses `io::CleanPath` and `io::ParseURI`.
-  const char* (*translate_name)(const TF_Filesystem* filesystem,
-                                const char* uri);
+  char* (*translate_name)(const TF_Filesystem* filesystem, const char* uri);
 
   /// Finds all entries in the directory given by `path`.
   ///

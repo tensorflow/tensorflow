@@ -87,7 +87,7 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
     auto map = maps[idx];
     LLVM_DEBUG(dbgs() << "map: " << map << "\n");
     Value *view = en.value();
-    SmallVector<SubViewOp::Range, 8> viewRanges(map.getNumResults());
+    SmallVector<SubViewOp::Range, 4> viewRanges(map.getNumResults());
     for (auto en2 : llvm::enumerate(map.getResults())) {
       unsigned d = en2.index();
       // loopToOperandRangesMaps are permutations-only.
@@ -97,15 +97,19 @@ static LinalgOp cloneWithLoopRanges(OpBuilder &b, Location loc, LinalgOp op,
                         << "\t"
                         << "loopPos: " << loopPos << "\t" << viewRanges[d]);
     }
-    // TODO(ntv): opportunities for folding/CSE here rather than build new IR.
-    SmallVector<Value *, 12> subViewOperands;
-    subViewOperands.reserve(viewRanges.size() * 3);
+    // Construct a new subview for the tile.
+    unsigned rank = viewRanges.size();
+    SmallVector<Value *, 4> offsets, sizes, strides;
+    offsets.reserve(rank);
+    sizes.reserve(rank);
+    strides.reserve(rank);
     for (auto r : viewRanges) {
-      subViewOperands.push_back(r.min);
-      subViewOperands.push_back(r.max);
-      subViewOperands.push_back(r.step);
+      offsets.push_back(r.offset);
+      sizes.push_back(r.size);
+      strides.push_back(r.stride);
     }
-    clonedViews.push_back(b.create<SubViewOp>(loc, view, subViewOperands));
+    clonedViews.push_back(
+        b.create<SubViewOp>(loc, view, offsets, sizes, strides));
   }
   auto operands = getAssumedNonViewOperands(op);
   clonedViews.append(operands.begin(), operands.end());
@@ -175,7 +179,7 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
   // This defines a subset of the loop ranges that we need to complete later.
   for (auto en : llvm::enumerate(producerMap.getResults())) {
     unsigned posInProducerLoop = en.value().cast<AffineDimExpr>().getPosition();
-    loopRanges[posInProducerLoop] = subView.getRange(en.index());
+    loopRanges[posInProducerLoop] = subView.getRanges()[en.index()];
   }
 
   OpBuilder b(consumer.getOperation());
@@ -184,7 +188,7 @@ static LinalgOp fuse(Value *producedView, LinalgOp producer, LinalgOp consumer,
   // producer map for `producerIdx`, we need to explicitly compute the view that
   // defines the loop ranges using the `producer`.
   for (unsigned i = 0, nLoops = loopRanges.size(); i < nLoops; ++i) {
-    if (loopRanges[i].min)
+    if (loopRanges[i].offset)
       LLVM_DEBUG(llvm::dbgs()
                  << "existing LoopRange: " << loopRanges[i] << "\n");
     else {

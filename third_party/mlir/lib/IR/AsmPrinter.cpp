@@ -84,6 +84,11 @@ static llvm::cl::opt<bool>
                           llvm::cl::desc("Print the generic op form"),
                           llvm::cl::init(false), llvm::cl::Hidden);
 
+static llvm::cl::opt<bool> printLocalScopeOpt(
+    "mlir-print-local-scope",
+    llvm::cl::desc("Print assuming in local scope by default"),
+    llvm::cl::init(false), llvm::cl::Hidden);
+
 /// Initialize the printing flags with default supplied by the cl::opts above.
 OpPrintingFlags::OpPrintingFlags()
     : elementsAttrElementLimit(
@@ -92,7 +97,8 @@ OpPrintingFlags::OpPrintingFlags()
               : Optional<int64_t>()),
       printDebugInfoFlag(printDebugInfoOpt),
       printDebugInfoPrettyFormFlag(printPrettyDebugInfoOpt),
-      printGenericOpFormFlag(printGenericOpFormOpt) {}
+      printGenericOpFormFlag(printGenericOpFormOpt),
+      printLocalScope(printLocalScopeOpt) {}
 
 /// Enable the elision of large elements attributes, by printing a '...'
 /// instead of the element data, when the number of elements is greater than
@@ -118,6 +124,14 @@ OpPrintingFlags &OpPrintingFlags::printGenericOpForm() {
   return *this;
 }
 
+/// Use local scope when printing the operation. This allows for using the
+/// printer in a more localized and thread-safe setting, but may not necessarily
+/// be identical of what the IR will look like when dumping the full module.
+OpPrintingFlags &OpPrintingFlags::useLocalScope() {
+  printLocalScope = true;
+  return *this;
+}
+
 /// Return if the given ElementsAttr should be elided.
 bool OpPrintingFlags::shouldElideElementsAttr(ElementsAttr attr) const {
   return elementsAttrElementLimit.hasValue() &&
@@ -138,6 +152,9 @@ bool OpPrintingFlags::shouldPrintDebugInfoPrettyForm() const {
 bool OpPrintingFlags::shouldPrintGenericOpForm() const {
   return printGenericOpFormFlag;
 }
+
+/// Return if the printer should use local scope when dumping the IR.
+bool OpPrintingFlags::shouldUseLocalScope() const { return printLocalScope; }
 
 //===----------------------------------------------------------------------===//
 // ModuleState
@@ -421,7 +438,8 @@ public:
 
 protected:
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                             ArrayRef<StringRef> elidedAttrs = {});
+                             ArrayRef<StringRef> elidedAttrs = {},
+                             bool withKeyword = false);
   void printTrailingLocation(Location loc);
   void printLocationInternal(LocationAttr loc, bool pretty = false);
   void printDenseElementsAttr(DenseElementsAttr attr);
@@ -800,9 +818,15 @@ void ModulePrinter::printAttribute(Attribute attr, bool mayElideType) {
   case StandardAttributes::Type:
     printType(attr.cast<TypeAttr>().getValue());
     break;
-  case StandardAttributes::SymbolRef:
-    printSymbolReference(attr.cast<SymbolRefAttr>().getValue(), os);
+  case StandardAttributes::SymbolRef: {
+    auto refAttr = attr.dyn_cast<SymbolRefAttr>();
+    printSymbolReference(refAttr.getRootReference(), os);
+    for (FlatSymbolRefAttr nestedRef : refAttr.getNestedReferences()) {
+      os << "::";
+      printSymbolReference(nestedRef.getValue(), os);
+    }
     break;
+  }
   case StandardAttributes::OpaqueElements: {
     auto eltsAttr = attr.cast<OpaqueElementsAttr>();
     os << "opaque<\"" << eltsAttr.getDialect()->getNamespace() << "\", ";
@@ -1181,9 +1205,12 @@ void ModulePrinter::printAffineExprInternal(
 
     // Pretty print multiplication with -1.
     auto rhsConst = rhsExpr.dyn_cast<AffineConstantExpr>();
-    if (rhsConst && rhsConst.getValue() == -1) {
+    if (rhsConst && binOp.getKind() == AffineExprKind::Mul &&
+        rhsConst.getValue() == -1) {
       os << "-";
       printAffineExprInternal(lhsExpr, BindingStrength::Strong, printValueName);
+      if (enclosingTightness == BindingStrength::Strong)
+        os << ')';
       return;
     }
 
@@ -1327,26 +1354,25 @@ void ModulePrinter::printIntegerSet(IntegerSet set) {
 //===----------------------------------------------------------------------===//
 
 void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                                          ArrayRef<StringRef> elidedAttrs) {
+                                          ArrayRef<StringRef> elidedAttrs,
+                                          bool withKeyword) {
   // If there are no attributes, then there is nothing to be done.
   if (attrs.empty())
     return;
 
   // Filter out any attributes that shouldn't be included.
-  SmallVector<NamedAttribute, 8> filteredAttrs;
-  for (auto attr : attrs) {
-    // If the caller has requested that this attribute be ignored, then drop it.
-    if (llvm::any_of(elidedAttrs,
-                     [&](StringRef elided) { return attr.first.is(elided); }))
-      continue;
-
-    // Otherwise add it to our filteredAttrs list.
-    filteredAttrs.push_back(attr);
-  }
+  SmallVector<NamedAttribute, 8> filteredAttrs(
+      llvm::make_filter_range(attrs, [&](NamedAttribute attr) {
+        return !llvm::is_contained(elidedAttrs, attr.first.strref());
+      }));
 
   // If there are no attributes left to print after filtering, then we're done.
   if (filteredAttrs.empty())
     return;
+
+  // Print the 'attributes' keyword if necessary.
+  if (withKeyword)
+    os << " attributes";
 
   // Otherwise, print them all out in braces.
   os << " {";
@@ -1389,8 +1415,14 @@ public:
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                              ArrayRef<StringRef> elidedAttrs = {}) override {
-    return ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
-  };
+    ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
+  }
+  void printOptionalAttrDictWithKeyword(
+      ArrayRef<NamedAttribute> attrs,
+      ArrayRef<StringRef> elidedAttrs = {}) override {
+    ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs,
+                                         /*withKeyword=*/true);
+  }
 
   enum { nameSentinel = ~0U };
 
@@ -1501,8 +1533,10 @@ private:
 
 OperationPrinter::OperationPrinter(Operation *op, ModulePrinter &other)
     : ModulePrinter(other) {
+  llvm::ScopedHashTable<StringRef, char>::ScopeTy usedNamesScope(usedNames);
   if (op->getNumResults() != 0)
     numberValueID(op->getResult(0));
+
   for (auto &region : op->getRegions())
     numberValuesInRegion(region);
 }
@@ -1710,7 +1744,7 @@ void OperationPrinter::printValueIDImpl(Value *value, bool printResultNo,
 
   auto it = valueIDs.find(lookupValue);
   if (it == valueIDs.end()) {
-    stream << "<<INVALID SSA VALUE>>";
+    stream << "<<UNKNOWN SSA VALUE>>";
     return;
   }
 
@@ -1928,9 +1962,10 @@ void Value::dump() {
 }
 
 void Operation::print(raw_ostream &os, OpPrintingFlags flags) {
-  // Handle top-level operations.
-  if (!getParent()) {
-    ModulePrinter modulePrinter(os, flags);
+  // Handle top-level operations or local printing.
+  if (!getParent() || flags.shouldUseLocalScope()) {
+    ModuleState state(getContext());
+    ModulePrinter modulePrinter(os, flags, &state);
     OperationPrinter(this, modulePrinter).print(this);
     return;
   }
@@ -1951,7 +1986,7 @@ void Operation::print(raw_ostream &os, OpPrintingFlags flags) {
 }
 
 void Operation::dump() {
-  print(llvm::errs());
+  print(llvm::errs(), OpPrintingFlags().useLocalScope());
   llvm::errs() << "\n";
 }
 
@@ -1991,7 +2026,9 @@ void Block::printAsOperand(raw_ostream &os, bool printType) {
 
 void ModuleOp::print(raw_ostream &os, OpPrintingFlags flags) {
   ModuleState state(getContext());
-  state.initialize(*this);
+  // Skip initializing in local scope to avoid populating aliases.
+  if (!flags.shouldUseLocalScope())
+    state.initialize(*this);
   ModulePrinter(os, flags, &state).print(*this);
 }
 

@@ -600,7 +600,7 @@ def summary_scope(name, default_name="summary", values=None):
   # Strip illegal characters from the scope name, and if that leaves nothing,
   # use None instead so we pick up the default name.
   name = _INVALID_SCOPE_CHARACTERS.sub("", name) or None
-  with ops.name_scope(name, default_name, values) as scope:
+  with ops.name_scope(name, default_name, values, skip_on_eager=False) as scope:
     yield tag, scope
 
 
@@ -615,7 +615,10 @@ def write(tag, tensor, step=None, metadata=None, name=None):
   Args:
     tag: string tag used to identify the summary (e.g. in TensorBoard), usually
       generated with `tf.summary.summary_scope`
-    tensor: the Tensor holding the summary data to write
+    tensor: the Tensor holding the summary data to write or a callable that
+      returns this Tensor. If a callable is passed, it will only be called when
+      a default SummaryWriter exists and the recording condition specified by
+      `record_if()` is met.
     step: Explicit `int64`-castable monotonic step value for this summary. If
       omitted, this defaults to `tf.summary.experimental.get_step()`, which must
       not be None.
@@ -649,22 +652,23 @@ def write(tag, tensor, step=None, metadata=None, name=None):
       """Record the actual summary and return True."""
       # Note the identity to move the tensor to the CPU.
       with ops.device("cpu:0"):
+        summary_tensor = tensor() if callable(tensor) else array_ops.identity(
+            tensor)
         write_summary_op = gen_summary_ops.write_summary(
             _summary_state.writer._resource,  # pylint: disable=protected-access
             step,
-            array_ops.identity(tensor),
+            summary_tensor,
             tag,
             serialized_metadata,
             name=scope)
         with ops.control_dependencies([write_summary_op]):
           return constant_op.constant(True)
 
-    with ops.device("cpu:0"):
-      op = smart_cond.smart_cond(
-          _should_record_summaries_v2(), record, _nothing, name="summary_cond")
-      if not context.executing_eagerly():
-        ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
-      return op
+    op = smart_cond.smart_cond(
+        _should_record_summaries_v2(), record, _nothing, name="summary_cond")
+    if not context.executing_eagerly():
+      ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
+    return op
 
 
 @tf_export("summary.experimental.write_raw_pb", v1=[])

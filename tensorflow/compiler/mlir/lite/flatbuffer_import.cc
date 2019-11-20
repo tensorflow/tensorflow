@@ -33,6 +33,7 @@ limitations under the License.
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/Casting.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "llvm/Support/Endian.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/QuantOps/QuantOps.h"  // TF:local_config_mlir
 #include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:local_config_mlir
@@ -56,6 +58,8 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
 #include "mlir/IR/Value.h"  // TF:local_config_mlir
+#include "mlir/Support/Functional.h"  // TF:local_config_mlir
+#include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Translation.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/flatbuffer_operator.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_translate.h"
@@ -151,7 +155,8 @@ StatusOr<QuantizedType> GetQuantizedType(const TensorT& tensor, Builder builder,
   uint32_t flags =
       is_signed ? mlir::quant::QuantizationFlags::FlagValue::Signed : 0;
 
-  if (0 != quant_params.quantized_dimension) {
+  // Scale size can't be zero as it is checked before.
+  if (quant_params.scale.size() != 1) {
     llvm::SmallVector<double, 4> scales(quant_params.scale.begin(),
                                         quant_params.scale.end());
     return mlir::quant::UniformQuantizedPerAxisType::get(
@@ -200,7 +205,13 @@ mlir::Operation* ConvertMinMaxToStatsOp(const TensorT& tensor, OpBuilder b,
   // If the `tensor` has scale/zero_point, it must have been quantized, then the
   // min/max stats is just for comments, so ignore it.
   if (!tensor.quantization || IsQuantized(tensor)) return nullptr;
-
+  // If the result isn't float and unquantizable, the min/max is ignored.
+  if (!res->getType()
+           .cast<mlir::ShapedType>()
+           .getElementType()
+           .isa<mlir::FloatType>()) {
+    return nullptr;
+  }
   auto mins = tensor.quantization->min;
   auto maxs = tensor.quantization->max;
   if (mins.size() != maxs.size() || mins.empty()) return nullptr;
@@ -570,14 +581,25 @@ StatusOr<llvm::SmallVector<int32_t, 4>> GetOutputTensorIndices(
   return outputs;
 }
 
+// Given a list of tensor indices, returns a string of concatenated tensor names
+// wrapped in a NamedAttribute.
+template <typename ContainerType>
+mlir::NamedAttribute BuildTFEntryFunctionAttribute(
+    const tflite::SubGraphT& subgraph, Builder* builder, const std::string name,
+    const ContainerType indices) {
+  llvm::SmallVector<std::string, 8> tensor_names = mlir::functional::map(
+      [&](int i) { return subgraph.tensors.at(i)->name; }, indices);
+  return builder->getNamedAttr(
+      name, builder->getStringAttr(llvm::join(tensor_names, ",")));
+}
+
 // Build a FuncOp from a tflite SubGraph
 // The op_names are a mapping from indexes into the TFLite operators array to
 // the operator name MLIR expects (tfl.foo_op). The buffers are directly taken
 // from the deserialized flatbuffer as we do not have the type information to
 // interpret them until this point. The base_loc parameter is the location of
-// the flatbuffer as a whole (usually a file). The add_pseudo_input_ops flag
-// controls whether we create the dummy ops for input that the TFLite dialect
-// has in the main function (and only the main function). If
+// the flatbuffer as a whole (usually a file). The is_entry_point flag
+// controls whether shapeless types are treated as scalars. If
 // ordered_output_arrays is not empty, then the imported mlir function will only
 // return nodes in ordered_output_arrays in the same order.
 StatusOr<FuncOp> ConvertSubgraph(
@@ -587,7 +609,7 @@ StatusOr<FuncOp> ConvertSubgraph(
     const std::vector<std::unique_ptr<tflite::BufferT>>& buffers,
     Location base_loc, Builder builder,
     const std::vector<std::string>& ordered_output_arrays,
-    bool add_pseudo_input_ops = false) {
+    bool is_entry_point) {
   llvm::SmallVector<mlir::Type, 2> ret_types;
   llvm::SmallVector<mlir::Type, 4> input_types;
 
@@ -600,10 +622,9 @@ StatusOr<FuncOp> ConvertSubgraph(
     // but we cannot differentiate scalars from unranked tensors.
     // Here we reverse the default assumption that shape = [] means unranked.
     // when processing main()
-    auto type_or_err =
-        GetTensorType(tensor, builder,
-                      /*shapeless_are_scalars=*/add_pseudo_input_ops,
-                      /*is_constant=*/false);
+    auto type_or_err = GetTensorType(tensor, builder,
+                                     /*shapeless_are_scalars=*/is_entry_point,
+                                     /*is_constant=*/false);
     if (!type_or_err.ok()) {
       emitError(func_loc, "error reading argument types")
           << type_or_err.status().ToString();
@@ -657,14 +678,7 @@ StatusOr<FuncOp> ConvertSubgraph(
       auto err = errors::FailedPrecondition("duplicate input arguments");
       return emitError(loc, err.ToString()), err;
     }
-    Value* input_value;
-    if (add_pseudo_input_ops) {
-      auto* input = func.getArgument(i);
-      auto op = op_builder.create<tfl::InputOp>(loc, input);
-      input_value = op.output();
-    } else {
-      input_value = func.getArgument(i);
-    }
+    Value* input_value = func.getArgument(i);
 
     // If the `tensor` has min/max and doesn't have scale/zero_point
     // information, a stats op is created to use the input_value, then the
@@ -675,6 +689,20 @@ StatusOr<FuncOp> ConvertSubgraph(
     } else {
       vals_map[input_tensor] = input_value;
     }
+  }
+
+  // Set tf.entry_function attribute
+  if (is_entry_point) {
+    llvm::SmallVector<mlir::NamedAttribute, 2> attributes;
+    if (!subgraph.inputs.empty()) {
+      attributes.push_back(BuildTFEntryFunctionAttribute(
+          subgraph, &builder, "inputs", subgraph.inputs));
+    }
+    if (!func_outputs.empty()) {
+      attributes.push_back(BuildTFEntryFunctionAttribute(
+          subgraph, &builder, "outputs", func_outputs));
+    }
+    func.setAttr("tf.entry_function", builder.getDictionaryAttr(attributes));
   }
 
   // Construct MLIR operators from TFLite operators
@@ -830,7 +858,7 @@ OwningModuleRef tflite::FlatBufferToMlir(
         // Only the entry point needs pseudo_input_ops
         // TODO(b/131175224,b/132239787) Support multiple entry points
         builder, ordered_output_arrays,
-        /* add_pseudo_input_ops = */ e.index() == 0);
+        /*is_entry_point=*/e.index() == 0);
     if (!func_or_error.ok()) {
       return emitError(base_loc, "could not translate function ")
                  << subgraph->name,
@@ -843,8 +871,10 @@ OwningModuleRef tflite::FlatBufferToMlir(
   return OwningModuleRef(module);
 }
 
-static OwningModuleRef FlatBufferFileToMlirTrans(
-    std::unique_ptr<llvm::MemoryBuffer> input, MLIRContext* context) {
+static OwningModuleRef FlatBufferFileToMlirTrans(llvm::SourceMgr* source_mgr,
+                                                 MLIRContext* context) {
+  const llvm::MemoryBuffer* input =
+      source_mgr->getMemoryBuffer(source_mgr->getMainFileID());
   std::string error;
   auto loc =
       mlir::FileLineColLoc::get(input->getBufferIdentifier(), 0, 0, context);
@@ -866,4 +896,7 @@ static OwningModuleRef FlatBufferFileToMlirTrans(
 }
 
 static mlir::TranslateToMLIRRegistration FlatBufferFileToMlirTransReg(
-    "tflite-flatbuffer-to-mlir", FlatBufferFileToMlirTrans);
+    "tflite-flatbuffer-to-mlir",
+    [](llvm::SourceMgr& source_mgr, MLIRContext* context) {
+      return FlatBufferFileToMlirTrans(&source_mgr, context);
+    });

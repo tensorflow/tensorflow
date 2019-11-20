@@ -101,12 +101,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(filter), 4);
 
-  // The parameter 'depth_multiplier' is redundant, so we check here to make
-  // sure it is consistent with the given dimensions.
-  TF_LITE_ENSURE_EQ(context,
-                    params->depth_multiplier * SizeOfDimension(input, 3),
-                    SizeOfDimension(filter, 3));
-
   const TfLiteType data_type = input->type;
   TF_LITE_ENSURE(context, data_type == kTfLiteFloat32 ||
                               data_type == kTfLiteUInt8 ||
@@ -175,11 +169,23 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, outputSize);
 }
 
+TfLiteStatus ComputeDepthMultiplier(TfLiteContext* context,
+                                    const TfLiteTensor* input,
+                                    const TfLiteTensor* filter,
+                                    int16* depth_multiplier) {
+  int num_filter_channels = SizeOfDimension(filter, 3);
+  int num_input_channels = SizeOfDimension(input, 3);
+  TF_LITE_ENSURE_EQ(context, num_filter_channels % num_input_channels, 0);
+
+  *depth_multiplier = num_filter_channels / num_input_channels;
+  return kTfLiteOk;
+}
+
 template <KernelType kernel_type>
-void EvalFloat(TfLiteContext* context, TfLiteNode* node,
-               TfLiteDepthwiseConvParams* params, OpData* data,
-               const TfLiteTensor* input, const TfLiteTensor* filter,
-               const TfLiteTensor* bias, TfLiteTensor* output) {
+TfLiteStatus EvalFloat(TfLiteContext* context, TfLiteNode* node,
+                       TfLiteDepthwiseConvParams* params, OpData* data,
+                       const TfLiteTensor* input, const TfLiteTensor* filter,
+                       const TfLiteTensor* bias, TfLiteTensor* output) {
   float output_activation_min, output_activation_max;
   CalculateActivationRange(params->activation, &output_activation_min,
                            &output_activation_max);
@@ -192,9 +198,10 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.depth_multiplier = params->depth_multiplier;
   op_params.float_activation_min = output_activation_min;
   op_params.float_activation_max = output_activation_max;
+  TF_LITE_ENSURE_STATUS(ComputeDepthMultiplier(context, input, filter,
+                                               &op_params.depth_multiplier));
   if (kernel_type == kReference) {
     reference_ops::DepthwiseConv(
         op_params, GetTensorShape(input), GetTensorData<float>(input),
@@ -209,13 +216,15 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(output), GetTensorData<float>(output),
         CpuBackendContext::GetFromContext(context));
   }
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
-void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
-                   TfLiteDepthwiseConvParams* params, OpData* data,
-                   const TfLiteTensor* input, const TfLiteTensor* filter,
-                   const TfLiteTensor* bias, TfLiteTensor* output) {
+TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
+                           TfLiteDepthwiseConvParams* params, OpData* data,
+                           const TfLiteTensor* input,
+                           const TfLiteTensor* filter, const TfLiteTensor* bias,
+                           TfLiteTensor* output) {
   auto input_offset = -input->params.zero_point;
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
@@ -228,7 +237,6 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.depth_multiplier = params->depth_multiplier;
   op_params.input_offset = input_offset;
   op_params.weights_offset = filter_offset;
   op_params.output_offset = output_offset;
@@ -236,6 +244,8 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   op_params.output_shift = -data->output_shift;
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
+  TF_LITE_ENSURE_STATUS(ComputeDepthMultiplier(context, input, filter,
+                                               &op_params.depth_multiplier));
   if (kernel_type == kReference) {
     reference_ops::DepthwiseConv(
         op_params, GetTensorShape(input), GetTensorData<uint8_t>(input),
@@ -250,14 +260,16 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
         GetTensorShape(output), GetTensorData<uint8_t>(output),
         CpuBackendContext::GetFromContext(context));
   }
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
-void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
-                             TfLiteDepthwiseConvParams* params, OpData* data,
-                             const TfLiteTensor* input,
-                             const TfLiteTensor* filter,
-                             const TfLiteTensor* bias, TfLiteTensor* output) {
+TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
+                                     TfLiteDepthwiseConvParams* params,
+                                     OpData* data, const TfLiteTensor* input,
+                                     const TfLiteTensor* filter,
+                                     const TfLiteTensor* bias,
+                                     TfLiteTensor* output) {
   DepthwiseParams op_params;
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
@@ -266,13 +278,14 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   op_params.stride_height = params->stride_height;
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.dilation_height_factor = params->dilation_height_factor;
-  op_params.depth_multiplier = params->depth_multiplier;
   op_params.input_offset = -input->params.zero_point;
   op_params.weights_offset = 0;
   op_params.output_offset = output->params.zero_point;
   // TODO(b/130439627): Use calculated value for clamping.
   op_params.quantized_activation_min = std::numeric_limits<int8_t>::min();
   op_params.quantized_activation_max = std::numeric_limits<int8_t>::max();
+  TF_LITE_ENSURE_STATUS(ComputeDepthMultiplier(context, input, filter,
+                                               &op_params.depth_multiplier));
 
   if (kernel_type == kReference) {
     reference_integer_ops::DepthwiseConvPerChannel(
@@ -292,6 +305,7 @@ void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
         GetTensorData<int8>(output),
         CpuBackendContext::GetFromContext(context));
   }
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
@@ -310,16 +324,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // separate ops to avoid dispatch overhead here.
   switch (input->type) {  // Already know in/out types are same.
     case kTfLiteFloat32:
-      EvalFloat<kernel_type>(context, node, params, data, input, filter, bias,
-                             output);
+      TF_LITE_ENSURE_STATUS(EvalFloat<kernel_type>(
+          context, node, params, data, input, filter, bias, output));
       break;
     case kTfLiteUInt8:
-      EvalQuantized<kernel_type>(context, node, params, data, input, filter,
-                                 bias, output);
+      TF_LITE_ENSURE_STATUS(EvalQuantized<kernel_type>(
+          context, node, params, data, input, filter, bias, output));
       break;
     case kTfLiteInt8: {
-      EvalQuantizedPerChannel<kernel_type>(context, node, params, data, input,
-                                           filter, bias, output);
+      TF_LITE_ENSURE_STATUS(EvalQuantizedPerChannel<kernel_type>(
+          context, node, params, data, input, filter, bias, output));
       break;
     }
     default:

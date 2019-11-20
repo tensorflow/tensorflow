@@ -778,6 +778,18 @@ rinfo_.push_back({csinfo_.tanh_grad,
          // CheckForMklOp
          FuseConv3D,
          CopyAttrsConv});
+
+    auto CheckForMaxPool3DOp =
+        std::bind(CheckForMklOp, std::placeholders::_1, csinfo_.max_pool3d);
+    auto FuseMaxPool3D =
+        std::bind(FuseTransposeMklOpTranspose, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3, "NCDHW");
+    finfo_.push_back({"transpose-elimination for MaxPool3D",
+                      {CheckForTransposeToNDHWC, CheckForMaxPool3DOp,
+                       CheckForTransposeToNCDHW},
+                      // CheckForMklOp
+                      FuseMaxPool3D,
+                      CopyAttrsPooling});
 #endif  // !ENABLE_MKLDNN_V1
   }
 
@@ -1576,10 +1588,13 @@ rinfo_.push_back({csinfo_.tanh_grad,
     int axis = -1;
     string mode_string;
     string round_mode_string;
+    DataType type;
     TryGetNodeAttr(n->def(), "narrow_range", &narrow_range);
     TryGetNodeAttr(n->def(), "axis", &axis);
     TF_CHECK_OK(GetNodeAttr(n->def(), "mode", &mode_string));
     TF_CHECK_OK(GetNodeAttr(n->def(), "round_mode", &round_mode_string));
+    TF_CHECK_OK(GetNodeAttr(n->def(), "T", &type));
+
     if (narrow_range) {
       VLOG(1) << "QuantizeOpRewrite: narrow range is enabled for quantization."
               << "This case is not optimized by Intel MKL, "
@@ -1593,8 +1608,9 @@ rinfo_.push_back({csinfo_.tanh_grad,
               << "thus using Eigen op for Quantize op ";
       return false;
     }
-    if (mode_string != "SCALED" || round_mode_string != "HALF_TO_EVEN") {
-      VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED and/or"
+    if (!((mode_string == "SCALED" && round_mode_string == "HALF_TO_EVEN") ||
+          (mode_string == "MIN_FIRST"))) {
+      VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED or MIN_FIRST and/or"
               << "rounding mode is not HALF_TO_EVEN. "
               << "This case is not optimized by Intel MKL, thus using Eigen op"
               << "for Quantize op ";
@@ -1607,6 +1623,14 @@ rinfo_.push_back({csinfo_.tanh_grad,
               << "for Quantize op ";
 
       return false;
+    }
+    if (mode_string == "MIN_FIRST") {
+      if (type != DT_QUINT8) {
+        VLOG(1) << "QuantizeOpRewrite: For MIN_FIRST mode the data type is "
+                << "not DT_UINT8. This case is not optimized by Intel MKL, "
+                << "thus using Eigen op for Quantize op ";
+        return false;
+      }
     }
     return true;
   }
@@ -1849,6 +1873,7 @@ rinfo_.push_back({csinfo_.tanh_grad,
   // NOTE: names are alphabetically sorted.
   static void CopyAttrsAll(const Node* orig_node, NodeBuilder* nb,
                            bool change_format = false);
+
   static void CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                             bool change_format = false);
   static void CopyAttrsConv2DDepthwiseCheckConstFilter(
@@ -1880,6 +1905,8 @@ rinfo_.push_back({csinfo_.tanh_grad,
   static void CopyAttrsQuantizedMatMulWithBias(const Node* orig_node,
                                                NodeBuilder* nb,
                                                bool change_format = false);
+  static void CopyAttrsPooling(const Node* orig_node, NodeBuilder* nb,
+                               bool change_format = false);
 
   // Generate a graph node in graph 'g' representing a dummy Mkl tensor node,
   // using node for original node 'orig_node' and return it in '*out'.
@@ -2776,6 +2803,60 @@ void MklLayoutRewritePass::CopyAttrsFusedConv2D(const Node* orig_node,
   nb->Attr("dilations", dilations);
   nb->Attr("fused_ops", fused_ops);
   nb->Attr("epsilon", epsilon);
+}
+
+void MklLayoutRewritePass::CopyAttrsPooling(const Node* orig_node,
+                                            NodeBuilder* nb,
+                                            bool change_format) {
+  DataType T;
+  string data_format;
+  string padding;
+  std::vector<int32> ksize, strides;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "ksize", &ksize));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "data_format", &data_format));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("padding", padding);
+
+  if (!change_format) {
+    nb->Attr("strides", strides);
+    nb->Attr("ksize", ksize);
+
+    nb->Attr("data_format", data_format);
+  } else {
+    std::vector<int32> new_strides;
+    std::vector<int32> new_ksize;
+    if (strides.size() == 5) {
+      DCHECK(data_format == "NCDHW");
+      // `strides` and `ksize` also need to be changed according to
+      // `data_format`. In this case, from `NDHWC` to `NCDHW`.
+      new_strides = {strides[NDHWC::dim::N], strides[NDHWC::dim::C],
+                     strides[NDHWC::dim::D], strides[NDHWC::dim::H],
+                     strides[NDHWC::dim::W]};
+
+      new_ksize = {ksize[NDHWC::dim::N], ksize[NDHWC::dim::C],
+                   ksize[NDHWC::dim::D], ksize[NDHWC::dim::H],
+                   ksize[NDHWC::dim::W]};
+
+    } else {
+      // `strides` and `ksize` also need to be changed according to
+      // `data_format`. In this case, from `NHWC` to `NCHW`.
+      DCHECK(data_format == "NCHW");
+      new_strides = {strides[NHWC::dim::N], strides[NHWC::dim::C],
+                     strides[NHWC::dim::H], strides[NHWC::dim::W]};
+
+      new_ksize = {ksize[NHWC::dim::N], ksize[NHWC::dim::C],
+                   ksize[NHWC::dim::H], ksize[NHWC::dim::W]};
+    }
+    nb->Attr("strides", new_strides);
+    nb->Attr("ksize", new_ksize);
+  }
 }
 
 //////////////////////////////////////////////////////////////////////////

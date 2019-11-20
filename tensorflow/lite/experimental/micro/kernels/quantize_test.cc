@@ -55,9 +55,9 @@ void TestQuantize(const int* input_dims_data, const float* input_data,
   TfLiteContext context;
   PopulateContext(tensors, tensors_size, &context);
 
-  // Version 4 ops support int8 quantization.
+  // Version 1 of quantize supports int8 and uint8 quantization.
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_QUANTIZE, 4);
+      resolver.FindOp(tflite::BuiltinOperator_QUANTIZE, 1);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 

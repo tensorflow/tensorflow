@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/tensor_handle.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/colocation_graph.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/logging.h"
 #include "tensorflow/core/framework/node_def_util.h"
@@ -111,16 +112,9 @@ int StepStatsDeviceIndex(StepStats* step_stats, EagerContext* ctx,
   return 0;
 }
 
-const char* kUnspecifiedDeviceName = "<unspecified>";
-
-const char* DeviceNameOrUnspecified(Device* device) {
-  return (device == nullptr) ? kUnspecifiedDeviceName : device->name().c_str();
-}
-
-const string DeviceNameOrUnspecified(const DeviceNameUtils::ParsedName& name) {
-  return DeviceNameUtils::HasSomeDetails(name)
-             ? DeviceNameUtils::ParsedNameToString(name)
-             : kUnspecifiedDeviceName;
+const string& DeviceNameOrUnspecified(Device* device) {
+  static string* unspecified_string = new string("<unspecified>");
+  return (device == nullptr) ? *unspecified_string : device->name();
 }
 
 // This function expects *handle to point to an existing tensor handle that is
@@ -180,7 +174,12 @@ Status CopyInputToExpectedDevice(EagerContext* ctx, EagerOperation* op,
   // We are only here if the policy is warn or silent copies, so we should
   // trigger a copy.
   TensorHandle* result_handle = nullptr;
-  profiler::TraceMe activity("_Send", profiler::TraceMeLevel::kInfo);
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat("_Send input ", i, " from ", handle_device->name(),
+                            " to ", expected_input_device->name());
+      },
+      profiler::TraceMeLevel::kInfo);
   Status status =
       EagerCopyToDevice(handle, ctx, &op->Executor(), expected_input_device,
                         ctx->MirrorTensors(), &result_handle);
@@ -211,7 +210,7 @@ Status ValidateInputTypeAndPlacement(
                                    " inputs, got ", n_inputs);
   }
   const bool skip_remote_copy =
-      ctx->LazilyCopyFunctionRemoteInputs() && kernel->IsFunction();
+      ctx->LazyCopyFunctionRemoteInputs() && kernel->IsFunction();
   for (int i = 0; i < n_inputs; ++i) {
     TensorHandle* handle = op->Inputs()[i];
     Device* expected_device = kernel->InputDevice(i);
@@ -250,8 +249,8 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
                             " :\n", KernelsRegisteredForOp(ndef.op()));
   }
 
-  if (DeviceNameUtils::HasSomeDetails(op->GetDeviceName())) {
-    ctx->pflr()->device_set()->FindMatchingDevices(op->GetDeviceName(),
+  if (DeviceNameUtils::HasSomeDetails(op->GetDeviceParsedName())) {
+    ctx->pflr()->device_set()->FindMatchingDevices(op->GetDeviceParsedName(),
                                                    &final_devices);
 
     if (!final_devices.empty()) {
@@ -260,7 +259,7 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
     }
 
     if (final_devices.empty() && ctx->AllowSoftPlacement()) {
-      DeviceNameUtils::ParsedName soft_device_name = op->GetDeviceName();
+      DeviceNameUtils::ParsedName soft_device_name = op->GetDeviceParsedName();
       soft_device_name.type.clear();
       soft_device_name.has_type = false;
       soft_device_name.has_id = false;
@@ -275,7 +274,7 @@ Status SelectDevice(EagerOperation* op, const NodeDef& ndef, EagerContext* ctx,
     }
     if (final_devices.empty()) {
       return errors::InvalidArgument(
-          "Could not satisfy device specification '", op->GetDeviceName(),
+          "Could not satisfy device specification '", op->GetDeviceParsedName(),
           "'. All available devices [",
           absl::StrJoin(DevicesToString(ctx->pflr()->device_set()->devices()),
                         ", "),
@@ -413,6 +412,14 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
     return Status::OK();
   }
 
+  if (op->remote_func_params().has_value() &&
+      op->remote_func_params().value().step_id.has_value()) {
+    // If the op is a component of a multi-device function, don't compile it
+    // with XLA.
+    *compile_with_xla = false;
+    return Status::OK();
+  }
+
   // Does node have an explicit request to compile or not?
   Status status = op->Attrs().Get(kXlaCompileAttr, compile_with_xla);
   if (status.ok()) {
@@ -438,12 +445,12 @@ Status ShouldCompileWithXLA(const EagerOperation* op, const EagerContext* ctx,
   }
 
   // No explicit requests. Compile for XLA devices by default.
-  if (op->GetDeviceName().type == "TPU" ||
-      op->GetDeviceName().type == "XLA_GPU" ||
-      op->GetDeviceName().type == "XLA_CPU") {
+  if (op->GetDeviceParsedName().type == "TPU" ||
+      op->GetDeviceParsedName().type == "XLA_GPU" ||
+      op->GetDeviceParsedName().type == "XLA_CPU") {
     DVLOG(2) << "Compiling " << op->Name()
              << " with XLA because it is running on an XLA device "
-             << op->GetDeviceName().type;
+             << op->GetDeviceParsedName().type;
     *compile_with_xla = true;
   } else {
     *compile_with_xla = false;
@@ -477,8 +484,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(executor.status());
   Device* device = op->Device();
 
-  Fprint128 cache_key = op->MutableAttrs()->CacheKey(
-      DeviceNameOrUnspecified(op->GetDeviceName()));
+  Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->GetDeviceName());
 
   bool is_multi_device_function =
       IsMultiDevice(ctx->FindFunctionDef(op->Name()));
@@ -490,14 +496,12 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
-    // When LazilyCopyFunctionRemoteInputs is disabled, all inputs need to be on
+    // When LazyCopyFunctionRemoteInputs is disabled, all inputs need to be on
     // local devices, since we execute a remote function through worker service,
     // which doesn't accept remote inputs.
-    // TODO(b/134094971): Make resource_dtypes_and_shapes avaliable without
-    // remote tensor copy.
     for (int i = 0; i < op->Inputs().size(); i++) {
       TensorHandle* input = op->Inputs()[i];
-      if (!ctx->LazilyCopyFunctionRemoteInputs() && input->IsRemote()) {
+      if (!ctx->LazyCopyFunctionRemoteInputs() && input->IsRemote()) {
         TensorHandle* handle = nullptr;
         TF_RETURN_IF_ERROR(EagerCopyToDevice(
             input, ctx, &executor, device == nullptr ? ctx->HostCPU() : device,
@@ -594,7 +598,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
                << ". Full node_def=" << ndef.DebugString();
       std::function<int64()> get_op_id = nullptr;
 #if !defined(IS_MOBILE_PLATFORM)
-      if (ctx->LazilyCopyFunctionRemoteInputs()) {
+      if (ctx->LazyCopyFunctionRemoteInputs()) {
         get_op_id = [ctx]() { return ctx->RemoteMgr()->NextOpId(); };
       }
 #endif  // IS_MOBILE_PLATFORM
@@ -616,7 +620,21 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
     TF_RETURN_IF_ERROR(kernel->Init(ndef, graph_collector));
 
-    ctx->AddKernelToCache(cache_key, kernel.get());
+    if (op->is_function()) {
+      ctx->AddKernelToCache(cache_key, kernel.get());
+    } else {
+      // Exclude tf.data op kernels from being cached. The reason for this is
+      // that tf.data op kernels that accept a user-defined function will have a
+      // unique cache key every time they are executed (because the user-defined
+      // function is traced every time). Caching such kernels provides no
+      // benefit and in some cases results in linear memory growth of use
+      // programs that build input pipeline graphs in a loop.
+      const OpDef* op_def;
+      TF_RETURN_IF_ERROR(OpDefForOp(op->Name().data(), &op_def));
+      if (!data::DatasetOpKernel::IsDatasetOp(op_def)) {
+        ctx->AddKernelToCache(cache_key, kernel.get());
+      }
+    }
   }
   const DataTypeVector& output_dtypes = kernel->output_dtypes();
   const size_t num_outputs = static_cast<int>(output_dtypes.size());
@@ -641,10 +659,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(
-      new ExecuteNode(ctx, op->Inputs(), op->remote_func_params(),
-                      std::move(kernel), graph_collector, output_dtypes,
-                      op->GetCancellationManager(), {retvals, num_outputs}));
+  std::unique_ptr<EagerNode> node(new ExecuteNode(
+      ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
+      graph_collector, output_dtypes, op->GetCancellationManager(),
+      executor.Async(), {retvals, num_outputs}));
   // Note that for async mode, execution order will make sure that all
   // input handles are ready before executing them.
   // TODO(b/137118203): Consider executing "cheap" kernels inline for
@@ -670,6 +688,7 @@ void PrepareRemoteOp(eager::Operation* remote_op, EagerOperation* op) {
 
   op->Attrs().FillAttrValueMapWithoutDefaults(remote_op->mutable_attrs());
   remote_op->set_device(op->Device()->name());
+  remote_op->set_is_function(op->is_function());
 }
 
 Status StoreResourceDtypesAndShapes(const eager::Operation& remote_op,
@@ -701,17 +720,16 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
   // TODO(fishx): Remove following code when lazy tensor copy is ready.
   if (op->Device() == nullptr) {
     tensorflow::Device* device = nullptr;
-    string device_name =
-        DeviceNameUtils::ParsedNameToString(op->GetDeviceName());
+    string device_name = op->GetDeviceName();
     TF_RETURN_IF_ERROR(ctx->FindDeviceByName(device_name, &device));
     op->SetDevice(device);
   }
 
   eager::EagerClient* eager_client = nullptr;
   uint64 context_id = ctx->GetContextId();
-  TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceName(), &eager_client));
+  TF_RETURN_IF_ERROR(ctx->GetClient(op->GetDeviceParsedName(), &eager_client));
   string remote_task;
-  if (!DeviceNameUtils::GetTaskName(op->GetDeviceName(), &remote_task)) {
+  if (!DeviceNameUtils::GetTaskName(op->GetDeviceParsedName(), &remote_task)) {
     return errors::InvalidArgument(
         "Unable to find remote task corresponding to device ",
         op->Device()->name());
@@ -726,7 +744,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     profiler::TraceMe activity("CopyInputToExpectedDevice",
                                profiler::TraceMeLevel::kInfo);
     const bool eagerly_copy_function_remote_inputs =
-        !ctx->LazilyCopyFunctionRemoteInputs() || !op->is_function();
+        !ctx->LazyCopyFunctionRemoteInputs() || !op->is_function();
     for (int i = 0; i < op->Inputs().size(); i++) {
       tensorflow::TensorHandle* input = op->Inputs()[i];
       tensorflow::Device* input_device = input->device();
@@ -762,12 +780,23 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
             handle->Unref();
           }
         } else {
-          serialize_resource_dtype_and_shape = input->dtype == DT_RESOURCE;
+          serialize_resource_dtype_and_shape =
+              (input->dtype == DT_RESOURCE) &&
+              (!input->HasResourceShapeMirror(op->Device()));
         }
       }
+      auto* input_handle = remote_op->add_inputs();
       TF_RETURN_IF_ERROR(ctx->RemoteMgr()->SerializeRemoteTensorHandle(
-          input, remote_op->add_inputs(), input_device, *input_device_name,
+          input, input_handle, input_device, *input_device_name,
           serialize_resource_dtype_and_shape));
+      if (!input_handle->resource_dtypes_and_shapes().empty()) {
+        auto tensor_handle_data =
+            absl::make_unique<UnshapedRemoteTensorHandleData>(
+                input_handle->op_id(), input_handle->output_num(), remote_task,
+                context_id, ctx);
+        TF_RETURN_IF_ERROR(input->AddResourceShapeMirror(
+            std::move(tensor_handle_data), op->Device()));
+      }
     }
   }
 
@@ -810,12 +839,12 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     }
   }
 
-  if (ctx->LazilyCopyFunctionRemoteInputs()) {
+  if (ctx->LazyCopyFunctionRemoteInputs()) {
     // Store the data type and shape of a remote resource variable on the
     // corresponding remote TensorHandle (output of 'VarHandleOp').
     // If the variable is an input of a remote function, the function may need
     // the type and shape during function instantiation. When
-    // LazilyCopyFunctionRemoteInputs is enabled, we no longer copy the resource
+    // LazyCopyFunctionRemoteInputs is enabled, we no longer copy the resource
     // handle (contains the type and shape) of the variable to the default
     // function device. Instead, we store the type and shape on eager master
     // and sent them to the default function device along with the
@@ -962,8 +991,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       profiler::TraceMeLevel::kInfo);
   TF_RETURN_IF_ERROR(MaybeUpdateOpDevice(op));
 
-  bool op_is_local = op->EagerContext()->IsLocalDeviceName(op->GetDeviceName());
-
   if (!op->Executor().Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.
     // TODO(b/141004939): Remove this.
@@ -974,7 +1001,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
   TF_RETURN_IF_ERROR(EagerOpRewriteRegistry::Global()->RunRewrite(
       EagerOpRewriteRegistry::PRE_EXECUTION, op, &out_op));
 
-  if (op_is_local) {
+  if (op->IsLocal()) {
     if (out_op) {
       op = out_op.get();
     }
@@ -984,7 +1011,7 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
   if (op->EagerContext()->LogDevicePlacement() || VLOG_IS_ON(1)) {
     string msg = strings::StrCat(
         "Executing op ", op->Name(), " on task ",
-        DeviceNameUtils::ParsedNameToString(op->GetDeviceName()));
+        DeviceNameUtils::ParsedNameToString(op->GetDeviceParsedName()));
     if (!logging::LogToListeners(msg)) {
       LOG(INFO) << msg;
     }

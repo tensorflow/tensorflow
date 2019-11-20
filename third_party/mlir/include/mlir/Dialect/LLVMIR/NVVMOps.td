@@ -130,4 +130,17 @@ def NVVM_VoteBallotOp :
   let printer = [{ printNVVMIntrinsicOp(p, this->getOperation()); }];
 }
 
+def NVVM_MmaOp :
+  NVVM_Op<"mma.sync">,
+  Results<(outs LLVM_Type:$res)>,
+  Arguments<(ins Variadic<LLVM_Type>:$args)> {
+  string llvmBuilder = [{
+    $res = createIntrinsicCall(
+        builder, llvm::Intrinsic::nvvm_mma_m8n8k4_row_row_f32_f32, $args);
+  }];
+  let parser = [{ return parseNVVMMmaOp(parser, result); }];
+  let printer = [{ printNVVMMmaOp(p, *this); }];
+  let verifier = [{ return mlir::NVVM::verify(*this); }];
+}
+
 #endif // NVVMIR_OPS

@@ -527,24 +527,29 @@ py_library(
         ":cross_device_ops",
         ":device_util",
         ":distribute_lib",
+        ":input_lib",
+        ":numpy_dataset",
+        ":reduce_util",
+        ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:device_spec",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/autograph/core",
+        "//tensorflow/python/autograph/impl",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:tape",
+        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/tpu:tpu_py",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -731,6 +736,7 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
+    shard_count = 10,
     deps = [
         ":collective_all_reduce_strategy",
         ":mirrored_strategy",
@@ -1318,17 +1324,12 @@ py_library(
     srcs = ["multi_process_runner.py"],
     deps = [
         ":multi_process_lib",
-        ":multi_process_runner_util",
         ":multi_worker_test_base",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:tf2",
+        "//tensorflow/python/compat:v2_compat",
         "@six_archive//:six",
     ],
-)
-
-py_library(
-    name = "multi_process_runner_util",
-    srcs = ["multi_process_runner_util.py"],
-    deps = [],
 )
 
 py_library(

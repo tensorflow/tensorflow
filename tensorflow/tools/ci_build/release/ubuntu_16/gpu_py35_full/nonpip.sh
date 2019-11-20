@@ -19,13 +19,15 @@ set -x
 source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_pip_deps pip3.5
+# Update bazel
+update_bazel_linux
 
 # Run configure.
 export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
 export TF_NEED_S3=1
 export TF_NEED_CUDA=1
-export TF_CUDA_VERSION=10
+export TF_CUDA_VERSION=10.1
 export TF_CUDNN_VERSION=7
 export TF_NEED_TENSORRT=1
 export TENSORRT_INSTALL_PATH=/usr/local/tensorrt
@@ -44,7 +46,7 @@ source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 tag_filters="gpu,requires-gpu,-no_gpu,-nogpu,-no_oss,-oss_serial,-no_oss_py35"
 
 bazel test --config=cuda --config=opt \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
   --test_lang_filters=py \

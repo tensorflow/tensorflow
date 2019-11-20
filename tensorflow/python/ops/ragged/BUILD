@@ -7,6 +7,7 @@ package(
         "//learning/brain/contrib/text:__pkg__",
         "//nlp/nlx/bert:__pkg__",
         "//nlp/projects/atc/tf/ops:__pkg__",
+        "//research/socrates:__subpackages__",
         "//tensorflow:internal",
     ],
     licenses = ["notice"],  # Apache 2.0

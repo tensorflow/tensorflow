@@ -93,7 +93,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/indexed_array_analysis.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
@@ -251,10 +250,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   pipeline.AddPass<DynamicIndexSplitter>();
   pipeline.AddPass<CpuHloSupportChecker>();
 
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
-
   pipeline.AddPass<ConditionalToSelect>();
   pipeline.AddPass<MapInliner>();
 
@@ -337,9 +332,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<CpuInstructionFusion>();
 
-  ReducePrecisionInsertion::AddPasses(
-      &pipeline, module->config().debug_options(),
-      ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
   return pipeline.Run(module).status();
 }
 
@@ -607,7 +599,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       CodeGenOptLevel(module->config()),
       options::OptimizeForSizeRequested(module->config()),
       module->config().debug_options().xla_llvm_disable_expensive_passes(),
-      pre_optimization_ir_hook, post_optimization_ir_hook,
+      llvm_ir::GetCpuFastMathFlags(module->config()), pre_optimization_ir_hook,
+      post_optimization_ir_hook,
       OrcJITPostCompilationHook::Create(module.get()));
   llvm_module->setDataLayout(jit->data_layout());
   llvm_module->setTargetTriple(jit->target_triple().getTriple());
@@ -918,6 +911,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
         target_machine.get(), opt_level,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
+        llvm_ir::GetCpuFastMathFlags(module->config()),
         pre_optimization_ir_hook, post_optimization_ir_hook, post_codegen_hook);
     std::unique_ptr<llvm::MemoryBuffer> object_file =
         compiler_functor(llvm_module);

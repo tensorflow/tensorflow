@@ -64,7 +64,7 @@ parseArgumentList(OpAsmParser &parser, bool allowVariadic,
 
     // Parse any argument attributes.
     SmallVector<NamedAttribute, 2> attrs;
-    if (parser.parseOptionalAttributeDict(attrs))
+    if (parser.parseOptionalAttrDict(attrs))
       return failure();
     argAttrs.push_back(attrs);
     return success();
@@ -121,7 +121,7 @@ static ParseResult parseFunctionResultList(
     resultTypes.emplace_back();
     resultAttrs.emplace_back();
     if (parser.parseType(resultTypes.back()) ||
-        parser.parseOptionalAttributeDict(resultAttrs.back())) {
+        parser.parseOptionalAttrDict(resultAttrs.back())) {
       return failure();
     }
   } while (succeeded(parser.parseOptionalComma()));
@@ -159,12 +159,10 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   auto &builder = parser.getBuilder();
 
   // Parse the name as a symbol reference attribute.
-  SymbolRefAttr nameAttr;
-  if (parser.parseAttribute(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
-                            result.attributes))
+  StringAttr nameAttr;
+  if (parser.parseSymbolName(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
+                             result.attributes))
     return failure();
-  // Convert the parsed function attr into a string attr.
-  result.attributes.back().second = builder.getStringAttr(nameAttr.getValue());
 
   // Parse the function signature.
   auto signatureLocation = parser.getCurrentLocation();
@@ -183,9 +181,8 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
            << (errorMessage.empty() ? "" : ": ") << errorMessage;
 
   // If function attributes are present, parse them.
-  if (succeeded(parser.parseOptionalKeyword("attributes")))
-    if (parser.parseOptionalAttributeDict(result.attributes))
-      return failure();
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
 
   // Add the attributes to the function arguments.
   SmallString<8> attrNameBuf;

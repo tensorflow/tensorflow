@@ -1804,6 +1804,20 @@ class DenseHashTableOpTest(test.TestCase):
             deleted_key=[1, 2, 3])
         self.assertAllEqual(0, self.evaluate(table5.size()))
 
+  @test_util.run_in_graph_and_eager_modes
+  def testStringToResource(self):
+    v = variables.Variable(1.)
+    v1 = variables.Variable(1.)
+    table = lookup_ops.DenseHashTable(
+        dtypes.string,
+        dtypes.resource,
+        default_value=v.handle,
+        empty_key="<empty>",
+        deleted_key="<deleted>")
+    self.assertEqual([], table.lookup("not_found").shape)
+    table.insert("v1", v1.handle)
+    self.assertEqual([], table.lookup("v1").shape)
+
 
 class IndexTableFromFile(test.TestCase):
 

@@ -37,8 +37,6 @@ using namespace mlir::vector;
 
 mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
     : Dialect(getDialectNamespace(), context) {
-  addOperations<VectorTransferReadOp, VectorTransferWriteOp,
-                VectorTypeCastOp>();
   addOperations<
 #define GET_OP_LIST
 #include "mlir/Dialect/VectorOps/VectorOps.cpp.inc"
@@ -46,17 +44,34 @@ mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
 }
 
 //===----------------------------------------------------------------------===//
-// ExtractElementOp
+// VectorExtractElementOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter &p, ExtractElementOp op) {
+static Type inferExtractOpResultType(VectorType vectorType,
+                                     ArrayAttr position) {
+  if (static_cast<int64_t>(position.size()) == vectorType.getRank())
+    return vectorType.getElementType();
+  return VectorType::get(vectorType.getShape().drop_front(position.size()),
+                         vectorType.getElementType());
+}
+
+void VectorExtractElementOp::build(Builder *builder, OperationState &result,
+                                   Value *source, ArrayRef<int32_t> position) {
+  result.addOperands(source);
+  auto positionAttr = builder->getI32ArrayAttr(position);
+  result.addTypes(inferExtractOpResultType(source->getType().cast<VectorType>(),
+                                           positionAttr));
+  result.addAttribute(getPositionAttrName(), positionAttr);
+}
+
+static void print(OpAsmPrinter &p, VectorExtractElementOp op) {
   p << op.getOperationName() << " " << *op.vector() << op.position();
   p.printOptionalAttrDict(op.getAttrs(), {"position"});
   p << " : " << op.vector()->getType();
 }
 
-static ParseResult parseExtractElementOp(OpAsmParser &parser,
-                                         OperationState &result) {
+static ParseResult parseVectorExtractElementOp(OpAsmParser &parser,
+                                               OperationState &result) {
   llvm::SMLoc attributeLoc, typeLoc;
   SmallVector<NamedAttribute, 4> attrs;
   OpAsmParser::OperandType vector;
@@ -64,7 +79,7 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
   Attribute attr;
   if (parser.parseOperand(vector) || parser.getCurrentLocation(&attributeLoc) ||
       parser.parseAttribute(attr, "position", attrs) ||
-      parser.parseOptionalAttributeDict(attrs) ||
+      parser.parseOptionalAttrDict(attrs) ||
       parser.getCurrentLocation(&typeLoc) || parser.parseColonType(type))
     return failure();
 
@@ -77,27 +92,21 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
       static_cast<int64_t>(positionAttr.size()) > vectorType.getRank())
     return parser.emitError(
         attributeLoc,
-        "expected position attribute of rank smaller than vector");
+        "expected position attribute of rank smaller than vector rank");
 
-  Type resType =
-      (static_cast<int64_t>(positionAttr.size()) == vectorType.getRank())
-          ? vectorType.getElementType()
-          : VectorType::get(
-                vectorType.getShape().drop_front(positionAttr.size()),
-                vectorType.getElementType());
-
+  Type resType = inferExtractOpResultType(vectorType, positionAttr);
   result.attributes = attrs;
   return failure(parser.resolveOperand(vector, type, result.operands) ||
                  parser.addTypeToList(resType, result.types));
 }
 
-static LogicalResult verify(ExtractElementOp op) {
+static LogicalResult verify(VectorExtractElementOp op) {
   auto positionAttr = op.position().getValue();
   if (positionAttr.empty())
     return op.emitOpError("expected non-empty position attribute");
   if (positionAttr.size() > static_cast<unsigned>(op.getVectorType().getRank()))
     return op.emitOpError(
-        "expected position attribute of rank smaller than vector");
+        "expected position attribute of rank smaller than vector rank");
   for (auto en : llvm::enumerate(positionAttr)) {
     auto attr = en.value().dyn_cast<IntegerAttr>();
     if (!attr || attr.getInt() < 0 ||
@@ -109,19 +118,194 @@ static LogicalResult verify(ExtractElementOp op) {
   }
   return success();
 }
+
 //===----------------------------------------------------------------------===//
-// OuterProductOp
+// VectorStridedSliceOp
 //===----------------------------------------------------------------------===//
 
-static void print(OpAsmPrinter &p, OuterProductOp op) {
+static Type inferVectorExtractRangeOpResultType(VectorType vectorType,
+                                                ArrayAttr offsets,
+                                                ArrayAttr sizes,
+                                                ArrayAttr strides) {
+  assert(offsets.size() == sizes.size() && offsets.size() == strides.size());
+  SmallVector<int64_t, 4> shape;
+  shape.reserve(vectorType.getRank());
+  unsigned idx = 0;
+  for (unsigned e = offsets.size(); idx < e; ++idx)
+    shape.push_back(sizes.getValue()[idx].cast<IntegerAttr>().getInt());
+  for (unsigned e = vectorType.getShape().size(); idx < e; ++idx)
+    shape.push_back(vectorType.getShape()[idx]);
+
+  return VectorType::get(shape, vectorType.getElementType());
+}
+
+void VectorStridedSliceOp::build(Builder *builder, OperationState &result,
+                                 Value *source, ArrayRef<int64_t> offsets,
+                                 ArrayRef<int64_t> sizes,
+                                 ArrayRef<int64_t> strides) {
+  result.addOperands(source);
+  auto offsetsAttr = builder->getI64ArrayAttr(offsets);
+  auto sizesAttr = builder->getI64ArrayAttr(sizes);
+  auto stridesAttr = builder->getI64ArrayAttr(strides);
+  result.addTypes(
+      inferVectorExtractRangeOpResultType(source->getType().cast<VectorType>(),
+                                          offsetsAttr, sizesAttr, stridesAttr));
+  result.addAttribute(getOffsetsAttrName(), offsetsAttr);
+  result.addAttribute(getSizesAttrName(), sizesAttr);
+  result.addAttribute(getStridesAttrName(), stridesAttr);
+}
+
+static void print(OpAsmPrinter &p, VectorStridedSliceOp op) {
+  p << op.getOperationName() << " " << *op.vector();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.vector()->getType() << " to " << op.getResult()->getType();
+}
+
+static ParseResult parseVectorStridedSliceOp(OpAsmParser &parser,
+                                             OperationState &result) {
+  llvm::SMLoc attributeLoc, typeLoc;
+  OpAsmParser::OperandType vector;
+  VectorType vectorType, resultVectorType;
+  return failure(parser.parseOperand(vector) ||
+                 parser.getCurrentLocation(&attributeLoc) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
+                 parser.getCurrentLocation(&typeLoc) ||
+                 parser.parseColonType(vectorType) ||
+                 parser.parseKeywordType("to", resultVectorType) ||
+                 parser.resolveOperand(vector, vectorType, result.operands) ||
+                 parser.addTypeToList(resultVectorType, result.types));
+}
+
+// TODO(ntv) Should be moved to Tablegen Confined attributes.
+static bool isIntegerArrayAttrSmallerThanShape(VectorStridedSliceOp op,
+                                               ArrayAttr arrayAttr,
+                                               ShapedType shape,
+                                               StringRef attrName) {
+  if (arrayAttr.size() > static_cast<unsigned>(shape.getRank())) {
+    op.emitOpError("expected ")
+        << attrName << " attribute of rank smaller than vector rank";
+    return false;
+  }
+  return true;
+}
+
+// Returns true if all integers in `arrayAttr` are in the half-open [min, max}
+// interval. If `halfOpen` is true then the admissible interval is [min, max).
+// Otherwise, the admissible interval is [min, max].
+static bool isIntegerArrayAttrConfinedToRange(VectorStridedSliceOp op,
+                                              ArrayAttr arrayAttr, int64_t min,
+                                              int64_t max, StringRef attrName,
+                                              bool halfOpen = true) {
+  for (auto attr : arrayAttr) {
+    auto val = attr.cast<IntegerAttr>().getInt();
+    auto upper = max;
+    if (!halfOpen)
+      upper += 1;
+    if (val < min || val >= upper) {
+      op.emitOpError("expected ")
+          << attrName << " to be confined to [" << min << ", " << upper << ")";
+      return false;
+    }
+  }
+  return true;
+}
+
+// Returns true if all integers in `arrayAttr` are in the half-open [min, max}
+// interval. If `halfOpen` is true then the admissible interval is [min, max).
+// Otherwise, the admissible interval is [min, max].
+static bool
+isIntegerArrayAttrConfinedToShape(VectorStridedSliceOp op, ArrayAttr arrayAttr,
+                                  ShapedType shape, StringRef attrName,
+                                  bool halfOpen = true, int64_t min = 0) {
+  assert(arrayAttr.size() <= static_cast<unsigned>(shape.getRank()));
+  for (auto it : llvm::zip(arrayAttr, shape.getShape())) {
+    auto val = std::get<0>(it).cast<IntegerAttr>().getInt();
+    auto max = std::get<1>(it);
+    if (!halfOpen)
+      max += 1;
+    if (val < min || val >= max) {
+      op.emitOpError("expected ")
+          << attrName << " to be confined to [" << min << ", " << max << ")";
+      return false;
+    }
+  }
+  return true;
+}
+
+// Returns true if all integers in `arrayAttr` are in the interval [min, max}.
+// interval. If `halfOpen` is true then the admissible interval is [min, max).
+// Otherwise, the admissible interval is [min, max].
+static bool isSumOfIntegerArrayAttrConfinedToShape(
+    VectorStridedSliceOp op, ArrayAttr arrayAttr1, ArrayAttr arrayAttr2,
+    ShapedType shape, StringRef attrName1, StringRef attrName2,
+    bool halfOpen = true, int64_t min = 1) {
+  assert(arrayAttr1.size() <= static_cast<unsigned>(shape.getRank()));
+  assert(arrayAttr2.size() <= static_cast<unsigned>(shape.getRank()));
+  for (auto it : llvm::zip(arrayAttr1, arrayAttr2, shape.getShape())) {
+    auto val1 = std::get<0>(it).cast<IntegerAttr>().getInt();
+    auto val2 = std::get<1>(it).cast<IntegerAttr>().getInt();
+    auto max = std::get<2>(it);
+    if (!halfOpen)
+      max += 1;
+    if (val1 + val2 < 0 || val1 + val2 >= max) {
+      op.emitOpError("expected sum(")
+          << attrName1 << ", " << attrName2 << ") to be confined to [" << min
+          << ", " << max << ")";
+      return false;
+    }
+  }
+  return true;
+}
+
+static LogicalResult verify(VectorStridedSliceOp op) {
+  auto type = op.getVectorType();
+  auto offsets = op.offsets();
+  auto sizes = op.sizes();
+  auto strides = op.strides();
+  if (offsets.size() != sizes.size() || offsets.size() != strides.size()) {
+    op.emitOpError(
+        "expected offsets, sizes and strides attributes of same size");
+    return failure();
+  }
+
+  auto offName = VectorStridedSliceOp::getOffsetsAttrName();
+  auto sizesName = VectorStridedSliceOp::getSizesAttrName();
+  auto stridesName = VectorStridedSliceOp::getStridesAttrName();
+  if (!isIntegerArrayAttrSmallerThanShape(op, offsets, type, offName) ||
+      !isIntegerArrayAttrSmallerThanShape(op, sizes, type, sizesName) ||
+      !isIntegerArrayAttrSmallerThanShape(op, strides, type, stridesName) ||
+      !isIntegerArrayAttrConfinedToShape(op, offsets, type, offName) ||
+      !isIntegerArrayAttrConfinedToShape(op, sizes, type, sizesName,
+                                         /*halfOpen=*/false, /*min=*/1) ||
+      !isIntegerArrayAttrConfinedToRange(op, strides, 1, 1, stridesName,
+                                         /*halfOpen=*/false) ||
+      !isSumOfIntegerArrayAttrConfinedToShape(op, offsets, sizes, type, offName,
+                                              sizesName, /*halfOpen=*/false))
+    return failure();
+
+  auto resultType = inferVectorExtractRangeOpResultType(
+      op.getVectorType(), op.offsets(), op.sizes(), op.strides());
+  if (op.getResult()->getType() != resultType) {
+    op.emitOpError("expected result type to be ") << resultType;
+    return failure();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// VectorOuterProductOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, VectorOuterProductOp op) {
   p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
   if (llvm::size(op.acc()) > 0)
     p << ", " << **op.acc().begin();
   p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType();
 }
 
-static ParseResult parseOuterProductOp(OpAsmParser &parser,
-                                       OperationState &result) {
+static ParseResult parseVectorOuterProductOp(OpAsmParser &parser,
+                                             OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 3> operandsInfo;
   Type tLHS, tRHS;
   if (parser.parseOperandList(operandsInfo) || parser.parseColonType(tLHS) ||
@@ -144,7 +328,7 @@ static ParseResult parseOuterProductOp(OpAsmParser &parser,
       parser.addTypeToList(resType, result.types));
 }
 
-static LogicalResult verify(OuterProductOp op) {
+static LogicalResult verify(VectorOuterProductOp op) {
   VectorType vLHS = op.getOperandVectorTypeLHS(),
              vRHS = op.getOperandVectorTypeRHS(),
              vACC = op.getOperandVectorTypeACC(), vRES = op.getVectorType();
@@ -195,354 +379,165 @@ static LogicalResult verifyPermutationMap(AffineMap permutationMap,
   return success();
 }
 
-void VectorTransferReadOp::build(Builder *builder, OperationState &result,
-                                 VectorType vectorType, Value *srcMemRef,
-                                 ArrayRef<Value *> srcIndices,
-                                 AffineMap permutationMap,
-                                 Optional<Value *> paddingValue) {
-  result.addOperands(srcMemRef);
-  result.addOperands(srcIndices);
-  if (paddingValue) {
-    result.addOperands({*paddingValue});
-  }
-  result.addAttribute(getPermutationMapAttrName(),
-                      AffineMapAttr::get(permutationMap));
-  result.addTypes(vectorType);
-}
-
-auto VectorTransferReadOp::getIndices() -> operand_range {
-  auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
-  auto end = begin + getMemRefType().getRank();
-  return {begin, end};
-}
-
-Optional<Value *> VectorTransferReadOp::getPaddingValue() {
-  auto memRefRank = getMemRefType().getRank();
-  if (getNumOperands() <= Offsets::FirstIndexOffset + memRefRank) {
-    return None;
-  }
-  return Optional<Value *>(getOperand(Offsets::FirstIndexOffset + memRefRank));
-}
-
-AffineMap VectorTransferReadOp::getPermutationMap() {
-  return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
-}
-
-void VectorTransferReadOp::print(OpAsmPrinter &p) {
-  p << getOperationName() << " ";
-  p.printOperand(getMemRef());
+static void print(OpAsmPrinter &p, VectorTransferReadOp op) {
+  p << op.getOperationName() << " ";
+  p.printOperand(op.memref());
   p << "[";
-  p.printOperands(getIndices());
-  p << "]";
-  auto optionalPaddingValue = getPaddingValue();
-  if (optionalPaddingValue) {
-    p << ", (";
-    p.printOperand(*optionalPaddingValue);
-    p << ")";
-  }
-  p.printOptionalAttrDict(getAttrs());
-  p << " : " << getMemRefType();
-  p << ", " << getResultType();
+  p.printOperands(op.indices());
+  p << "], ";
+  p.printOperand(op.padding());
+  p << " ";
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.getMemRefType();
+  p << ", " << op.getVectorType();
 }
 
-ParseResult VectorTransferReadOp::parse(OpAsmParser &parser,
-                                        OperationState &result) {
+ParseResult parseVectorTransferReadOp(OpAsmParser &parser,
+                                      OperationState &result) {
+  llvm::SMLoc typesLoc;
   OpAsmParser::OperandType memrefInfo;
   SmallVector<OpAsmParser::OperandType, 8> indexInfo;
-  SmallVector<OpAsmParser::OperandType, 8> paddingInfo;
+  OpAsmParser::OperandType paddingInfo;
   SmallVector<Type, 2> types;
-
   // Parsing with support for optional paddingValue.
   if (parser.parseOperand(memrefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseTrailingOperandList(paddingInfo,
-                                      OpAsmParser::Delimiter::Paren) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColonTypeList(types))
+      parser.parseComma() || parser.parseOperand(paddingInfo) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
-
-  // Resolution.
   if (types.size() != 2)
-    return parser.emitError(parser.getNameLoc(), "expected 2 types");
-  MemRefType memrefType = types[0].dyn_cast<MemRefType>();
-  if (!memrefType)
-    return parser.emitError(parser.getNameLoc(), "memRef type expected");
-  VectorType vectorType = types[1].dyn_cast<VectorType>();
-  if (!vectorType)
-    return parser.emitError(parser.getNameLoc(), "vector type expected");
-
-  // Extract optional paddingValue.
-  // At this point, indexInfo may contain the optional paddingValue, pop it
-  // out.
-  if (static_cast<int64_t>(indexInfo.size()) != memrefType.getRank())
-    return parser.emitError(parser.getNameLoc(),
-                            "expected " + Twine(memrefType.getRank()) +
-                                " indices to the memref");
-  if (paddingInfo.size() > 1)
-    return parser.emitError(parser.getNameLoc(),
-                            "expected at most one padding value");
-  Type paddingType;
-  bool hasOptionalPaddingValue = !paddingInfo.empty();
-  if (hasOptionalPaddingValue) {
-    paddingType = vectorType.getElementType();
-  }
+    return parser.emitError(typesLoc, "two types required");
   auto indexType = parser.getBuilder().getIndexType();
+  MemRefType memRefType = types[0].dyn_cast<MemRefType>();
+  if (!memRefType)
+    return parser.emitError(typesLoc, "memref type required"), failure();
+  Type vectorType = types[1];
   return failure(
-      parser.resolveOperand(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperand(memrefInfo, memRefType, result.operands) ||
       parser.resolveOperands(indexInfo, indexType, result.operands) ||
-      (hasOptionalPaddingValue &&
-       parser.resolveOperand(paddingInfo[0], paddingType, result.operands)) ||
+      parser.resolveOperand(paddingInfo, memRefType.getElementType(),
+                            result.operands) ||
       parser.addTypeToList(vectorType, result.types));
 }
 
-LogicalResult VectorTransferReadOp::verify() {
-  // Consistency of memref type in function type.
-  if (llvm::empty(getOperands())) {
-    return emitOpError(
-        "requires at least a memref operand followed by 'rank' indices");
-  }
-  if (!getMemRef()->getType().isa<MemRefType>()) {
-    return emitOpError("requires a memref as first operand");
-  }
-  // Consistency of vector type in function type.
-  if (!getResult()->getType().isa<VectorType>()) {
-    return emitOpError("should have a vector result type in function type: "
-                       "memref_type<...xelemental_type>, vector_type");
-  }
+static LogicalResult verify(VectorTransferReadOp op) {
   // Consistency of elemental types in memref and vector.
-  MemRefType memrefType = getMemRefType();
-  VectorType vectorType = getResultType();
+  MemRefType memrefType = op.getMemRefType();
+  VectorType vectorType = op.getVectorType();
   if (memrefType.getElementType() != vectorType.getElementType())
-    return emitOpError(
+    return op.emitOpError(
         "requires memref and vector types of the same elemental type");
-  // Consistency of number of input types.
-  auto optionalPaddingValue = getPaddingValue();
-  unsigned expectedNumOperands = Offsets::FirstIndexOffset +
-                                 memrefType.getRank() +
-                                 (optionalPaddingValue ? 1 : 0);
-  // Checks on the actual operands and their types.
-  if (getNumOperands() != expectedNumOperands) {
-    return emitOpError("expects ")
-           << expectedNumOperands << " operands (of which "
-           << memrefType.getRank() << " indices)";
-  }
-  // Consistency of padding value with vector type.
-  if (optionalPaddingValue) {
-    auto paddingValue = *optionalPaddingValue;
-    auto elementalType = paddingValue->getType();
-    if (!VectorType::isValidElementType(elementalType)) {
-      return emitOpError("requires valid padding vector elemental type");
-    }
-    if (elementalType != vectorType.getElementType()) {
-      return emitOpError(
-          "requires formal padding and vector of the same elemental type");
-    }
-  }
-  // Consistency of indices types.
-  unsigned numIndices = 0;
-  for (auto *idx : getIndices()) {
-    if (!idx->getType().isIndex()) {
-      return emitOpError(
-          "index to vector.transfer_read must have 'index' type");
-    }
-    ++numIndices;
-  }
-  if (numIndices != memrefType.getRank()) {
-    return emitOpError("requires at least a memref operand followed by ")
-           << memrefType.getRank() << " indices";
-  }
-
-  // Consistency of AffineMap attribute.
-  if (!getAttrOfType<AffineMapAttr>(getPermutationMapAttrName())) {
-    return emitOpError("requires an AffineMapAttr named 'permutation_map'");
-  }
-  auto permutationMap = getPermutationMap();
-  if (permutationMap.getNumSymbols() != 0) {
-    return emitOpError("requires a permutation_map without symbols");
-  }
-  if (permutationMap.getNumInputs() != memrefType.getRank()) {
-    return emitOpError("requires a permutation_map with input dims of the "
-                       "same rank as the memref type");
-  }
-  if (permutationMap.getNumResults() != vectorType.getRank()) {
-    return emitOpError("requires a permutation_map with result dims of the "
-                       "same rank as the vector type (")
-           << permutationMap.getNumResults() << " vs " << vectorType.getRank();
-  }
+  auto elementalType = op.padding()->getType();
+  if (!VectorType::isValidElementType(elementalType))
+    return op.emitOpError("requires valid padding vector elemental type");
+  if (elementalType != vectorType.getElementType())
+    return op.emitOpError(
+        "requires formal padding and vector of the same elemental type");
+  if (llvm::size(op.indices()) != memrefType.getRank())
+    return op.emitOpError("requires ") << memrefType.getRank() << " indices";
+  auto permutationMap = op.permutation_map();
+  if (permutationMap.getNumSymbols() != 0)
+    return op.emitOpError("requires permutation_map without symbols");
+  if (permutationMap.getNumInputs() != memrefType.getRank())
+    return op.emitOpError("requires a permutation_map with input dims of the "
+                          "same rank as the memref type");
+  if (permutationMap.getNumResults() != vectorType.getRank())
+    return op.emitOpError("requires a permutation_map with result dims of the "
+                          "same rank as the vector type");
   return verifyPermutationMap(permutationMap,
-                              [this](Twine t) { return emitOpError(t); });
+                              [&op](Twine t) { return op.emitOpError(t); });
 }
 
 //===----------------------------------------------------------------------===//
 // VectorTransferWriteOp
 //===----------------------------------------------------------------------===//
-void VectorTransferWriteOp::build(Builder *builder, OperationState &result,
-                                  Value *srcVector, Value *dstMemRef,
-                                  ArrayRef<Value *> dstIndices,
-                                  AffineMap permutationMap) {
-  result.addOperands({srcVector, dstMemRef});
-  result.addOperands(dstIndices);
-  result.addAttribute(getPermutationMapAttrName(),
-                      AffineMapAttr::get(permutationMap));
-}
-
-auto VectorTransferWriteOp::getIndices() -> operand_range {
-  auto begin = getOperation()->operand_begin() + Offsets::FirstIndexOffset;
-  auto end = begin + getMemRefType().getRank();
-  return {begin, end};
-}
-
-AffineMap VectorTransferWriteOp::getPermutationMap() {
-  return getAttrOfType<AffineMapAttr>(getPermutationMapAttrName()).getValue();
-}
-
-void VectorTransferWriteOp::print(OpAsmPrinter &p) {
-  p << getOperationName();
-  p << " " << *getVector();
-  p << ", " << *getMemRef();
+static void print(OpAsmPrinter &p, VectorTransferWriteOp op) {
+  p << op.getOperationName() << " " << *op.vector() << ", " << *op.memref();
   p << "[";
-  p.printOperands(getIndices());
+  p.printOperands(op.indices());
   p << "]";
-  p.printOptionalAttrDict(getAttrs());
+  p.printOptionalAttrDict(op.getAttrs());
   p << " : ";
-  p.printType(getVectorType());
+  p.printType(op.getVectorType());
   p << ", ";
-  p.printType(getMemRefType());
+  p.printType(op.getMemRefType());
 }
 
-ParseResult VectorTransferWriteOp::parse(OpAsmParser &parser,
-                                         OperationState &result) {
+ParseResult parseVectorTransferWriteOp(OpAsmParser &parser,
+                                       OperationState &result) {
+  llvm::SMLoc typesLoc;
   OpAsmParser::OperandType storeValueInfo;
-  OpAsmParser::OperandType memrefInfo;
+  OpAsmParser::OperandType memRefInfo;
   SmallVector<OpAsmParser::OperandType, 4> indexInfo;
   SmallVector<Type, 2> types;
-  auto indexType = parser.getBuilder().getIndexType();
   if (parser.parseOperand(storeValueInfo) || parser.parseComma() ||
-      parser.parseOperand(memrefInfo) ||
+      parser.parseOperand(memRefInfo) ||
       parser.parseOperandList(indexInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
-      parser.parseColonTypeList(types))
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.getCurrentLocation(&typesLoc) || parser.parseColonTypeList(types))
     return failure();
-
   if (types.size() != 2)
-    return parser.emitError(parser.getNameLoc(), "expected 2 types");
-  VectorType vectorType = types[Offsets::VectorOffset].dyn_cast<VectorType>();
-  if (!vectorType)
-    return parser.emitError(parser.getNameLoc(), "vector type expected");
-  MemRefType memrefType = types[Offsets::MemRefOffset].dyn_cast<MemRefType>();
-  if (!memrefType)
-    return parser.emitError(parser.getNameLoc(), "memRef type expected");
-
+    return parser.emitError(typesLoc, "two types required");
+  auto indexType = parser.getBuilder().getIndexType();
+  Type vectorType = types[0], memRefType = types[1];
   return failure(
-      parser.resolveOperands(storeValueInfo, vectorType, result.operands) ||
-      parser.resolveOperands(memrefInfo, memrefType, result.operands) ||
+      parser.resolveOperand(storeValueInfo, vectorType, result.operands) ||
+      parser.resolveOperand(memRefInfo, memRefType, result.operands) ||
       parser.resolveOperands(indexInfo, indexType, result.operands));
 }
 
-LogicalResult VectorTransferWriteOp::verify() {
-  // Consistency of memref type in function type.
-  if (llvm::empty(getOperands())) {
-    return emitOpError(
-        "requires at least a memref operand followed by 'rank' indices");
-  }
-  if (!getMemRef()->getType().isa<MemRefType>()) {
-    return emitOpError("requires a memref first operand");
-  }
-  // Consistency of vector type in function type.
-  if (!getVector()->getType().isa<VectorType>()) {
-    return emitOpError("should have a vector input type in function type: "
-                       "(vector_type, memref_type [, elemental_type]) -> ()");
-  }
+static LogicalResult verify(VectorTransferWriteOp op) {
   // Consistency of elemental types in memref and vector.
-  MemRefType memrefType = getMemRefType();
-  VectorType vectorType = getVectorType();
+  MemRefType memrefType = op.getMemRefType();
+  VectorType vectorType = op.getVectorType();
   if (memrefType.getElementType() != vectorType.getElementType())
-    return emitOpError(
+    return op.emitOpError(
         "requires memref and vector types of the same elemental type");
-  // Consistency of number of input types.
-  unsigned expectedNumOperands =
-      Offsets::FirstIndexOffset + memrefType.getRank();
-  // Checks on the actual operands and their types.
-  if (getNumOperands() != expectedNumOperands) {
-    return emitOpError() << "expects " << expectedNumOperands
-                         << " operands (of which " << memrefType.getRank()
-                         << " indices)";
-  }
-  // Consistency of indices types.
-  unsigned numIndices = 0;
-  for (auto *idx : getIndices()) {
-    if (!idx->getType().isIndex()) {
-      return emitOpError(
-          "index to vector.transfer_write must have 'index' type");
-    }
-    numIndices++;
-  }
-  if (numIndices != memrefType.getRank()) {
-    return emitOpError("requires at least a memref operand followed by ")
-           << memrefType.getRank() << " indices";
-  }
+  if (llvm::size(op.indices()) != memrefType.getRank())
+    return op.emitOpError("requires ") << memrefType.getRank() << " indices";
 
   // Consistency of AffineMap attribute.
-  if (!getAttrOfType<AffineMapAttr>(getPermutationMapAttrName())) {
-    return emitOpError("requires an AffineMapAttr named 'permutation_map'");
-  }
-  auto permutationMap = getPermutationMap();
-  if (permutationMap.getNumSymbols() != 0) {
-    return emitOpError("requires a permutation_map without symbols");
-  }
-  if (permutationMap.getNumInputs() != memrefType.getRank()) {
-    return emitOpError("requires a permutation_map with input dims of the "
-                       "same rank as the memref type");
-  }
-  if (permutationMap.getNumResults() != vectorType.getRank()) {
-    return emitOpError("requires a permutation_map with result dims of the "
-                       "same rank as the vector type (")
-           << permutationMap.getNumResults() << " vs " << vectorType.getRank();
-  }
+  auto permutationMap = op.permutation_map();
+  if (permutationMap.getNumSymbols() != 0)
+    return op.emitOpError("requires a symbol-less permutation_map");
+  if (permutationMap.getNumInputs() != memrefType.getRank())
+    return op.emitOpError("requires a permutation_map with input dims of the "
+                          "same rank as the memref type: ")
+           << permutationMap.getNumInputs() << " vs " << memrefType;
+  if (permutationMap.getNumResults() != vectorType.getRank())
+    return op.emitOpError("requires a permutation_map with result dims of the "
+                          "same rank as the vector type.")
+           << permutationMap.getNumResults() << " vs " << vectorType;
   return verifyPermutationMap(permutationMap,
-                              [this](Twine t) { return emitOpError(t); });
+                              [&op](Twine t) { return op.emitOpError(t); });
 }
 
 //===----------------------------------------------------------------------===//
 // VectorTypeCastOp
 //===----------------------------------------------------------------------===//
+
+static MemRefType inferVectorTypeCastResultType(MemRefType t) {
+  return MemRefType::get({}, VectorType::get(t.getShape(), t.getElementType()));
+}
+
 void VectorTypeCastOp::build(Builder *builder, OperationState &result,
-                             Value *srcVector, Type dstType) {
-  result.addOperands(srcVector);
-  result.addTypes(dstType);
+                             Value *source) {
+  result.addOperands(source);
+  result.addTypes(
+      inferVectorTypeCastResultType(source->getType().cast<MemRefType>()));
 }
 
-ParseResult VectorTypeCastOp::parse(OpAsmParser &parser,
-                                    OperationState &result) {
-  OpAsmParser::OperandType operand;
-  Type srcType, dstType;
-  return failure(parser.parseOperand(operand) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
-                 parser.parseColonType(srcType) || parser.parseComma() ||
-                 parser.parseType(dstType) ||
-                 parser.addTypeToList(dstType, result.types) ||
-                 parser.resolveOperand(operand, srcType, result.operands));
+static void print(OpAsmPrinter &p, VectorTypeCastOp &op) {
+  auto type = op.getOperand()->getType().cast<MemRefType>();
+  p << op.getOperationName() << ' ' << *op.memref() << " : " << type << " to "
+    << inferVectorTypeCastResultType(type);
 }
 
-void VectorTypeCastOp::print(OpAsmPrinter &p) {
-  p << getOperationName() << ' ' << *getOperand() << " : "
-    << getOperand()->getType() << ", " << getType();
-}
-
-LogicalResult VectorTypeCastOp::verify() {
-  auto dstMemrefType = getType().dyn_cast<MemRefType>();
-  if (!dstMemrefType)
-    return emitOpError("expects target type to be a memref type");
-  auto dstVectorType = dstMemrefType.getElementType().dyn_cast<VectorType>();
-  if (!dstVectorType)
-    return emitOpError(
-        "expects vector as an element of the target memref type");
-  if (!dstMemrefType.hasStaticShape())
-    return emitOpError("does not support dynamic shapes");
-
-  if (!getOperand()->getType().isa<MemRefType>())
-    return emitOpError("expects source type to be a memref type");
-
+static LogicalResult verify(VectorTypeCastOp &op) {
+  auto resultType = inferVectorTypeCastResultType(op.getMemRefType());
+  if (op.getResultMemRefType() != resultType)
+    return op.emitOpError("expects result type to be: ") << resultType;
   return success();
 }
 

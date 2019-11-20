@@ -49,15 +49,33 @@ limitations under the License.
 using namespace mlir;
 
 namespace {
-struct LegalizeTF : public FunctionPass<LegalizeTF> {
+class LegalizeTF : public FunctionPass<LegalizeTF> {
+ public:
+  struct Options : public PassOptions<Options> {
+    Option<bool> allow_partial_conversion{
+        *this, "allow-partial-conversion",
+        llvm::cl::desc("Allow operations that can't be legalized."),
+        llvm::cl::init(false)};
+  };
+
+  explicit LegalizeTF(bool allow_partial_conversion)
+      : FunctionPass<LegalizeTF>(),
+        allow_partial_conversion_(allow_partial_conversion) {}
+
+  explicit LegalizeTF(const Options &option)
+      : LegalizeTF(option.allow_partial_conversion) {}
+
   /// Performs the lowering to XLA dialect.
   void runOnFunction() override;
+
+ private:
+  bool allow_partial_conversion_;
 };
 }  // end anonymous namespace
 
 std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
-mlir::xla_hlo::createLegalizeTFPass() {
-  return std::make_unique<LegalizeTF>();
+mlir::xla_hlo::createLegalizeTFPass(bool allow_partial_conversion) {
+  return std::make_unique<LegalizeTF>(allow_partial_conversion);
 }
 
 /// Returns if the given TF data format string is the default format.
@@ -155,10 +173,11 @@ static xla_hlo::ConstOp GetMinValueForType(Type ty, Location loc,
   return rewriter->create<xla_hlo::ConstOp>(loc, attr);
 }
 
-// Returns an integer constant for the given int or float element type.
-static xla_hlo::ConstOp GetScalarForType(Type ty, Location loc,
-                                         int64_t raw_value,
-                                         PatternRewriter *rewriter) {
+// Returns int or float scalar DenseElementsAttr attribute with the given
+// element type and the value.
+static xla_hlo::ConstOp GetScalarOfType(Type ty, Location loc,
+                                        int64_t raw_value,
+                                        PatternRewriter *rewriter) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
 
   DenseElementsAttr attr;
@@ -167,7 +186,7 @@ static xla_hlo::ConstOp GetScalarForType(Type ty, Location loc,
     attr = DenseElementsAttr::get(scalar_ty, value);
   } else {
     auto int_ty = ty.cast<IntegerType>();
-    APInt value(int_ty.getWidth(), raw_value, true);
+    APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value), true);
     attr = DenseElementsAttr::get(scalar_ty, value);
   }
   return rewriter->create<xla_hlo::ConstOp>(loc, attr);
@@ -595,7 +614,7 @@ class ConvertConv : public OpRewritePattern<OpT> {
         tensorflow::int64 pad_low_int64;
         tensorflow::int64 pad_high_int64;
         tensorflow::Status status = tensorflow::GetWindowedOutputSizeVerboseV2(
-            input_ty.getDimSize(i), filter_ty.getDimSize(i), dilation, stride,
+            input_ty.getDimSize(dim), filter_ty.getDimSize(i), dilation, stride,
             padding, &output_size, &pad_low_int64, &pad_high_int64);
         if (!status.ok()) return Pattern::matchFailure();
         pad_low = pad_low_int64;
@@ -719,7 +738,7 @@ class ConvertMaxPoolOp : public OpRewritePattern<TF::MaxPoolOp> {
         /*paddings=*/DenseIntElementsAttr());
     BuildReduceBody<xla_hlo::MaxOp>(element_type, &reduce.body(), &rewriter);
 
-    rewriter.replaceOp(op, reduce.getResult(0));
+    rewriter.replaceOp(op, reduce.getResult());
     return matchSuccess();
   }
 };
@@ -1081,7 +1100,7 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
         }
       }
       auto divisor =
-          GetScalarForType(reduce_element_type, loc, divisor_count, &rewriter);
+          GetScalarOfType(reduce_element_type, loc, divisor_count, &rewriter);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
       result = rewriter.create<xla_hlo::DivOp>(loc, result, divisor.getResult(),
                                                broadcast_dims);
@@ -1115,7 +1134,7 @@ class ConvertMeanOp
 
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
-    return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
+    return GetScalarOfType(reduce_element_type, loc, 0, &rewriter);
   }
 };
 
@@ -1131,7 +1150,7 @@ class ConvertSumOp : public GenericConvertReductionOp<ConvertSumOp, TF::SumOp,
 
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
-    return GetScalarForType(reduce_element_type, loc, 0, &rewriter);
+    return GetScalarOfType(reduce_element_type, loc, 0, &rewriter);
   }
 };
 
@@ -1186,7 +1205,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     Type index_element_type = output_type.getElementType();
     Value *index_init_value =
-        GetScalarForType(index_element_type, loc, 0, &rewriter);
+        GetScalarOfType(index_element_type, loc, 0, &rewriter);
 
     RankedTensorType index_type =
         RankedTensorType::get(input_type.getShape(), index_element_type);
@@ -1330,7 +1349,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
 
     auto result = rewriter.create<xla_hlo::SelectAndScatterOp>(
         loc, op.getType(), op.orig_input(), op.grad(),
-        GetScalarForType(element_type, loc, 0, &rewriter),
+        GetScalarOfType(element_type, loc, 0, &rewriter),
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
         nullptr);
 
@@ -1766,7 +1785,8 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
 }  // end namespace xla
 }  // end namespace mlir
 
-LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
+LogicalResult mlir::xla_hlo::legalizeTF(Operation *op,
+                                        bool allow_partial_conversion) {
   MLIRContext *context = op->getContext();
 
   // Add lowering patterns to the list.
@@ -1792,13 +1812,21 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op) {
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();
 
+  if (!allow_partial_conversion) {
+    target.addLegalOp<mlir::ModuleOp, mlir::FuncOp, mlir::ModuleTerminatorOp,
+                      mlir::ReturnOp>();
+    return applyFullConversion(op, target, patterns);
+  }
+
   return applyPartialConversion(op, target, patterns);
 }
 
 /// Performs the lowering to XLA dialect.
 void LegalizeTF::runOnFunction() {
-  if (failed(mlir::xla_hlo::legalizeTF(getFunction()))) signalPassFailure();
+  if (failed(
+          mlir::xla_hlo::legalizeTF(getFunction(), allow_partial_conversion_)))
+    signalPassFailure();
 }
 
-static PassRegistration<LegalizeTF> pass(
+static PassRegistration<LegalizeTF, LegalizeTF::Options> pass(
     "xla-legalize-tf", "Legalize from TensorFlow to the XLA dialect");

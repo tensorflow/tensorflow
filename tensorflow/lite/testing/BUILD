@@ -13,7 +13,6 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
@@ -499,6 +498,7 @@ edgetpu_ops = [
     "relu6",
     "reshape",
     "resize_bilinear",
+    "resize_nearest_neighbor",
     "sigmoid",
     "slice",
     "softmax",

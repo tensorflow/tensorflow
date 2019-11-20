@@ -183,6 +183,12 @@ int64 MinVLogLevelFromEnv() {
 LogMessage::LogMessage(const char* fname, int line, int severity)
     : fname_(fname), line_(line), severity_(severity) {}
 
+LogMessage& LogMessage::AtLocation(const char* fname, int line) {
+  fname_ = fname;
+  line_ = line;
+  return *this;
+}
+
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
   static int64 min_log_level = MinLogLevelFromEnv();

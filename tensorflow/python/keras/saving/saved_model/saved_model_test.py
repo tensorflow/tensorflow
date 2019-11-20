@@ -200,7 +200,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
-    self.assertAllEqual(previous_losses, model.losses)
+
+    with previous_losses[0].graph.as_default():
+      # If we try to compare symbolic Tensors in eager mode assertAllEqual will
+      # return False even if they are the same Tensor.
+      self.assertAllEqual(previous_losses, model.losses)
 
     if context.executing_eagerly():
       # Test that eager losses are maintained.
@@ -458,6 +462,9 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
     model.save(saved_model_dir, save_format='tf')
     load = tf_load.load(saved_model_dir)
+
+    # Ensure that the Keras loader is able to load and build the model.
+    _ = keras_load.load(saved_model_dir)
 
     assert_training_default(load.__call__, False)
     assert_training_default(
