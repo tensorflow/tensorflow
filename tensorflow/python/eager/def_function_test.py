@@ -341,7 +341,7 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
 
       def make_z(self):
         if self.z is None:
-          with ops.name_scope('z_scope'):
+          with ops.name_scope('z_scope', skip_on_eager=False):
             self.z = variables.Variable(1., name='z')
 
     root = HasVars()
@@ -702,6 +702,18 @@ class DefFunctionTest(test.TestCase, parameterized.TestCase):
     msg = 'Functions cannot be decorated after they have been traced.'
     with self.assertRaisesRegexp(ValueError, msg):
       func._decorate(lambda f: f)
+
+  def testGetConcreteFunctionGraphLifetime(self):
+
+    @def_function.function
+    def func():
+      pass
+
+    graph = func.get_concrete_function().graph
+    del func
+
+    # If the graph is deleted, then an exception is raised on reading `captures`
+    self.assertEmpty(graph.captures)
 
 
 if __name__ == '__main__':

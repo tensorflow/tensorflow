@@ -80,21 +80,21 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
   When executing eagerly, map_fn does not execute in parallel even if
   `parallel_iterations` is set to a value > 1. You can still get the
   performance benefits of running a function in parallel by using the
-  `tf.contrib.eager.defun` decorator,
+  `tf.function` decorator,
 
   ```python
   # Assume the function being used in map_fn is fn.
-  # To ensure map_fn calls fn in parallel, use the defun decorator.
-  @tf.contrib.eager.defun
+  # To ensure map_fn calls fn in parallel, use the tf.function decorator.
+  @tf.function
   def func(tensor):
     return tf.map_fn(fn, tensor)
   ```
 
-  Note that if you use the defun decorator, any non-TensorFlow Python code
-  that you may have written in your function won't get executed. See
-  `tf.contrib.eager.defun` for more details. The recommendation would be to
-  debug without defun but switch to defun to get performance benefits of
-  running map_fn in parallel.
+  Note that if you use the `tf.function` decorator, any non-TensorFlow Python
+  code that you may have written in your function won't get executed. See
+  [`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function) for
+  more  details. The recommendation would be to debug without `tf.function` but
+  switch to it to get performance benefits of running `map_fn` in parallel.
 
   Args:
     fn: The callable to be performed.  It accepts one argument, which will
@@ -163,10 +163,11 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=None, back_prop=True,
     parallel_iterations = 1
 
   if not in_graph_mode and parallel_iterations > 1:
-    logging.log_first_n(logging.WARN, "Setting parallel_iterations > 1 has no "
-                        "effect when executing eagerly. Consider calling map_fn"
-                        " with tf.contrib.eager.defun to execute fn in "
-                        "parallel.", 1)
+    logging.log_first_n(
+        logging.WARN, "Setting parallel_iterations > 1 has no "
+        "effect when executing eagerly. Consider calling map_fn"
+        " with tf.function to execute fn in "
+        "parallel.", 1)
     parallel_iterations = 1
 
   input_is_sequence = nest.is_sequence(elems)

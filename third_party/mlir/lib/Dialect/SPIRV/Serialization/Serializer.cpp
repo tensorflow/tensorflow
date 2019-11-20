@@ -177,6 +177,8 @@ private:
   /// Processes a SPIR-V function op.
   LogicalResult processFuncOp(FuncOp op);
 
+  LogicalResult processVariableOp(spirv::VariableOp op);
+
   /// Process a SPIR-V GlobalVariableOp
   LogicalResult processGlobalVariableOp(spirv::GlobalVariableOp varOp);
 
@@ -238,29 +240,21 @@ private:
   /// constants.
   uint32_t prepareConstant(Location loc, Type constType, Attribute valueAttr);
 
-  /// Prepares bool ElementsAttr serialization. This method updates `opcode`
-  /// with a proper OpConstant* instruction and pushes literal values for the
-  /// constant to `operands`.
-  LogicalResult prepareBoolVectorConstant(Location loc,
-                                          DenseIntElementsAttr elementsAttr,
-                                          spirv::Opcode &opcode,
-                                          SmallVectorImpl<uint32_t> &operands);
+  /// Prepares array attribute serialization. This method emits corresponding
+  /// OpConstant* and returns the result <id> associated with it. Returns 0 if
+  /// failed.
+  uint32_t prepareArrayConstant(Location loc, Type constType, ArrayAttr attr);
 
-  /// Prepares int ElementsAttr serialization. This method updates `opcode` with
-  /// a proper OpConstant* instruction and pushes literal values for the
-  /// constant to `operands`.
-  LogicalResult prepareIntVectorConstant(Location loc,
-                                         DenseIntElementsAttr elementsAttr,
-                                         spirv::Opcode &opcode,
-                                         SmallVectorImpl<uint32_t> &operands);
-
-  /// Prepares float ElementsAttr serialization. This method updates `opcode`
-  /// with a proper OpConstant* instruction and pushes literal values for the
-  /// constant to `operands`.
-  LogicalResult prepareFloatVectorConstant(Location loc,
-                                           DenseFPElementsAttr elementsAttr,
-                                           spirv::Opcode &opcode,
-                                           SmallVectorImpl<uint32_t> &operands);
+  /// Prepares bool/int/float DenseElementsAttr serialization. This method
+  /// iterates the DenseElementsAttr to construct the constant array, and
+  /// returns the result <id>  associated with it. Returns 0 if failed. Note
+  /// that the size of `index` must match the rank.
+  /// TODO(hanchung): Consider to enhance splat elements cases. For splat cases,
+  /// we don't need to loop over all elements, especially when the splat value
+  /// is zero. We can use OpConstantNull when the value is zero.
+  uint32_t prepareDenseElementsConstant(Location loc, Type constType,
+                                        DenseElementsAttr valueAttr, int dim,
+                                        MutableArrayRef<uint64_t> index);
 
   /// Prepares scalar attribute serialization. This method emits corresponding
   /// OpConstant* and returns the result <id> associated with it. Returns 0 if
@@ -373,6 +367,19 @@ private:
   SmallVector<uint32_t, 0> decorations;
   SmallVector<uint32_t, 0> typesGlobalValues;
   SmallVector<uint32_t, 0> functions;
+
+  /// `functionHeader` contains all the instructions that must be in the first
+  /// block in the function, and `functionBody` contains the rest. After
+  /// processing FuncOp, the encoded instructions of a function are appended to
+  /// `functions`. An example of instructions in `functionHeader` in order:
+  /// OpFunction ...
+  /// OpFunctionParameter ...
+  /// OpFunctionParameter ...
+  /// OpLabel ...
+  /// OpVariable ...
+  /// OpVariable ...
+  SmallVector<uint32_t, 0> functionHeader;
+  SmallVector<uint32_t, 0> functionBody;
 
   /// Map from type used in SPIR-V module to their <id>s.
   DenseMap<Type, uint32_t> typeIDMap;
@@ -671,6 +678,7 @@ Serializer::processMemberDecoration(uint32_t structID, uint32_t memberIndex,
 
 LogicalResult Serializer::processFuncOp(FuncOp op) {
   LLVM_DEBUG(llvm::dbgs() << "-- start function '" << op.getName() << "' --\n");
+  assert(functionHeader.empty() && functionBody.empty());
 
   uint32_t fnTypeID = 0;
   // Generate type of the function.
@@ -694,7 +702,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
   // TODO : Support other function control options.
   operands.push_back(static_cast<uint32_t>(spirv::FunctionControl::None));
   operands.push_back(fnTypeID);
-  encodeInstructionInto(functions, spirv::Opcode::OpFunction, operands);
+  encodeInstructionInto(functionHeader, spirv::Opcode::OpFunction, operands);
 
   // Add function name.
   if (failed(processName(funcID, op.getName()))) {
@@ -709,7 +717,7 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
     }
     auto argValueID = getNextID();
     valueIDMap[arg] = argValueID;
-    encodeInstructionInto(functions, spirv::Opcode::OpFunctionParameter,
+    encodeInstructionInto(functionHeader, spirv::Opcode::OpFunctionParameter,
                           {argTypeID, argValueID});
   }
 
@@ -718,9 +726,18 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
     return op.emitError("external function is unhandled");
   }
 
+  // Some instructions (e.g., OpVariable) in a function must be in the first
+  // block in the function. These instructions will be put in functionHeader.
+  // Thus, we put the label in functionHeader first, and omit it from the first
+  // block.
+  encodeInstructionInto(functionHeader, spirv::Opcode::OpLabel,
+                        {getOrCreateBlockID(&op.front())});
+  processBlock(&op.front(), /*omitLabel=*/true);
   if (failed(visitInPrettyBlockOrder(
-          &op.front(), [&](Block *block) { return processBlock(block); })))
+          &op.front(), [&](Block *block) { return processBlock(block); },
+          /*skipHeader=*/true))) {
     return failure();
+  }
 
   // There might be OpPhi instructions who have value references needing to fix.
   for (auto deferredValue : deferredPhiValues) {
@@ -730,14 +747,63 @@ LogicalResult Serializer::processFuncOp(FuncOp op) {
                             << " to id = " << id << '\n');
     assert(id && "OpPhi references undefined value!");
     for (size_t offset : deferredValue.second)
-      functions[offset] = id;
+      functionBody[offset] = id;
   }
   deferredPhiValues.clear();
 
   LLVM_DEBUG(llvm::dbgs() << "-- completed function '" << op.getName()
                           << "' --\n");
   // Insert OpFunctionEnd.
-  return encodeInstructionInto(functions, spirv::Opcode::OpFunctionEnd, {});
+  if (failed(encodeInstructionInto(functionBody, spirv::Opcode::OpFunctionEnd,
+                                   {}))) {
+    return failure();
+  }
+
+  functions.append(functionHeader.begin(), functionHeader.end());
+  functions.append(functionBody.begin(), functionBody.end());
+  functionHeader.clear();
+  functionBody.clear();
+
+  return success();
+}
+
+LogicalResult Serializer::processVariableOp(spirv::VariableOp op) {
+  SmallVector<uint32_t, 4> operands;
+  SmallVector<StringRef, 2> elidedAttrs;
+  uint32_t resultID = 0;
+  uint32_t resultTypeID = 0;
+  if (failed(processType(op.getLoc(), op.getType(), resultTypeID))) {
+    return failure();
+  }
+  operands.push_back(resultTypeID);
+  resultID = getNextID();
+  valueIDMap[op.getResult()] = resultID;
+  operands.push_back(resultID);
+  auto attr = op.getAttr(spirv::attributeName<spirv::StorageClass>());
+  if (attr) {
+    operands.push_back(static_cast<uint32_t>(
+        attr.cast<IntegerAttr>().getValue().getZExtValue()));
+  }
+  elidedAttrs.push_back(spirv::attributeName<spirv::StorageClass>());
+  for (auto arg : op.getODSOperands(0)) {
+    auto argID = getValueID(arg);
+    if (!argID) {
+      return emitError(op.getLoc(), "operand 0 has a use before def");
+    }
+    operands.push_back(argID);
+  }
+  encodeInstructionInto(functionHeader, spirv::getOpcode<spirv::VariableOp>(),
+                        operands);
+  for (auto attr : op.getAttrs()) {
+    if (llvm::any_of(elidedAttrs,
+                     [&](StringRef elided) { return attr.first.is(elided); })) {
+      continue;
+    }
+    if (failed(processDecoration(op.getLoc(), resultID, attr))) {
+      return failure();
+    }
+  }
+  return success();
 }
 
 LogicalResult
@@ -789,7 +855,7 @@ Serializer::processGlobalVariableOp(spirv::GlobalVariableOp varOp) {
     elidedAttrs.push_back("initializer");
   }
 
-  if (failed(encodeInstructionInto(functions, spirv::Opcode::OpVariable,
+  if (failed(encodeInstructionInto(typesGlobalValues, spirv::Opcode::OpVariable,
                                    operands))) {
     elidedAttrs.push_back("initializer");
     return failure();
@@ -990,6 +1056,7 @@ uint32_t Serializer::prepareConstant(Location loc, Type constType,
   if (auto id = prepareConstantScalar(loc, valueAttr)) {
     return id;
   }
+
   // This is a composite literal. We need to handle each component separately
   // and then emit an OpConstantComposite for the whole.
 
@@ -1001,179 +1068,92 @@ uint32_t Serializer::prepareConstant(Location loc, Type constType,
   if (failed(processType(loc, constType, typeID))) {
     return 0;
   }
-  auto resultID = getNextID();
 
-  spirv::Opcode opcode = spirv::Opcode::OpNop;
-  SmallVector<uint32_t, 4> operands;
-  operands.push_back(typeID);
-  operands.push_back(resultID);
-
-  if (auto vectorAttr = valueAttr.dyn_cast<DenseIntElementsAttr>()) {
-    if (vectorAttr.getType().getElementType().isInteger(1)) {
-      if (failed(prepareBoolVectorConstant(loc, vectorAttr, opcode, operands)))
-        return 0;
-    } else if (failed(
-                   prepareIntVectorConstant(loc, vectorAttr, opcode, operands)))
-      return 0;
-  } else if (auto vectorAttr = valueAttr.dyn_cast<DenseFPElementsAttr>()) {
-    if (failed(prepareFloatVectorConstant(loc, vectorAttr, opcode, operands)))
-      return 0;
+  uint32_t resultID = 0;
+  if (auto attr = valueAttr.dyn_cast<DenseElementsAttr>()) {
+    int rank = attr.getType().dyn_cast<ShapedType>().getRank();
+    SmallVector<uint64_t, 4> index(rank);
+    resultID = prepareDenseElementsConstant(loc, constType, attr,
+                                            /*dim=*/0, index);
   } else if (auto arrayAttr = valueAttr.dyn_cast<ArrayAttr>()) {
-    opcode = spirv::Opcode::OpConstantComposite;
-    operands.reserve(arrayAttr.size() + 2);
+    resultID = prepareArrayConstant(loc, constType, arrayAttr);
+  }
 
-    auto elementType = constType.cast<spirv::ArrayType>().getElementType();
-    for (Attribute elementAttr : arrayAttr)
-      if (auto elementID = prepareConstant(loc, elementType, elementAttr)) {
-        operands.push_back(elementID);
-      } else {
-        return 0;
-      }
-  } else {
+  if (resultID == 0) {
     emitError(loc, "cannot serialize attribute: ") << valueAttr;
     return 0;
   }
 
-  encodeInstructionInto(typesGlobalValues, opcode, operands);
   constIDMap[valueAttr] = resultID;
   return resultID;
 }
 
-LogicalResult Serializer::prepareBoolVectorConstant(
-    Location loc, DenseIntElementsAttr elementsAttr, spirv::Opcode &opcode,
-    SmallVectorImpl<uint32_t> &operands) {
-  auto type = elementsAttr.getType();
-  assert(type.hasRank() && type.getRank() == 1 &&
-         "spv.constant should have verified only vector literal uses "
-         "ElementsAttr");
-  assert(type.getElementType().isInteger(1) && "must be bool ElementsAttr");
-  auto count = type.getNumElements();
-
-  // Operands for constructing the SPIR-V OpConstant* instruction
-  operands.reserve(count + 2);
-
-  // For splat cases, we don't need to loop over all elements, especially when
-  // the splat value is zero.
-  if (elementsAttr.isSplat()) {
-    // We can use OpConstantNull if this bool ElementsAttr is splatting false.
-    if (!elementsAttr.getSplatValue<bool>()) {
-      opcode = spirv::Opcode::OpConstantNull;
-      return success();
-    }
-
-    if (auto id =
-            prepareConstantBool(loc, elementsAttr.getSplatValue<BoolAttr>())) {
-      opcode = spirv::Opcode::OpConstantComposite;
-      operands.append(count, id);
-      return success();
-    }
-
-    return failure();
+uint32_t Serializer::prepareArrayConstant(Location loc, Type constType,
+                                          ArrayAttr attr) {
+  uint32_t typeID = 0;
+  if (failed(processType(loc, constType, typeID))) {
+    return 0;
   }
 
-  // Otherwise, we need to process each element and compose them with
-  // OpConstantComposite.
-  opcode = spirv::Opcode::OpConstantComposite;
-  for (auto boolAttr : elementsAttr.getValues<BoolAttr>()) {
-    // We are constructing an BoolAttr for each value here. But given that
-    // we only use ElementsAttr for vectors with no more than 4 elements, it
-    // should be fine here.
-    if (auto elementID = prepareConstantBool(loc, boolAttr)) {
+  uint32_t resultID = getNextID();
+  SmallVector<uint32_t, 4> operands = {typeID, resultID};
+  operands.reserve(attr.size() + 2);
+  auto elementType = constType.cast<spirv::ArrayType>().getElementType();
+  for (Attribute elementAttr : attr) {
+    if (auto elementID = prepareConstant(loc, elementType, elementAttr)) {
       operands.push_back(elementID);
     } else {
-      return failure();
+      return 0;
     }
   }
-  return success();
+  spirv::Opcode opcode = spirv::Opcode::OpConstantComposite;
+  encodeInstructionInto(typesGlobalValues, opcode, operands);
+
+  return resultID;
 }
 
-LogicalResult Serializer::prepareIntVectorConstant(
-    Location loc, DenseIntElementsAttr elementsAttr, spirv::Opcode &opcode,
-    SmallVectorImpl<uint32_t> &operands) {
-  auto type = elementsAttr.getType();
-  assert(type.hasRank() && type.getRank() == 1 &&
-         "spv.constant should have verified only vector literal uses "
-         "ElementsAttr");
-  assert(!type.getElementType().isInteger(1) &&
-         "must be non-bool ElementsAttr");
-  auto count = type.getNumElements();
-
-  // Operands for constructing the SPIR-V OpConstant* instruction
-  operands.reserve(count + 2);
-
-  // For splat cases, we don't need to loop over all elements, especially when
-  // the splat value is zero.
-  if (elementsAttr.isSplat()) {
-    auto splatAttr = elementsAttr.getSplatValue<IntegerAttr>();
-
-    // We can use OpConstantNull if this int ElementsAttr is splatting 0.
-    if (splatAttr.getValue().isNullValue()) {
-      opcode = spirv::Opcode::OpConstantNull;
-      return success();
+// TODO(hanchung): Turn the below function into iterative function, instead of
+// recursive function.
+uint32_t
+Serializer::prepareDenseElementsConstant(Location loc, Type constType,
+                                         DenseElementsAttr valueAttr, int dim,
+                                         MutableArrayRef<uint64_t> index) {
+  auto shapedType = valueAttr.getType().dyn_cast<ShapedType>();
+  assert(dim <= shapedType.getRank());
+  if (shapedType.getRank() == dim) {
+    if (auto attr = valueAttr.dyn_cast<DenseIntElementsAttr>()) {
+      return attr.getType().getElementType().isInteger(1)
+                 ? prepareConstantBool(loc, attr.getValue<BoolAttr>(index))
+                 : prepareConstantInt(loc, attr.getValue<IntegerAttr>(index));
     }
-
-    if (auto id = prepareConstantInt(loc, splatAttr)) {
-      opcode = spirv::Opcode::OpConstantComposite;
-      operands.append(count, id);
-      return success();
+    if (auto attr = valueAttr.dyn_cast<DenseFPElementsAttr>()) {
+      return prepareConstantFp(loc, attr.getValue<FloatAttr>(index));
     }
-    return failure();
+    return 0;
   }
 
-  // Otherwise, we need to process each element and compose them with
-  // OpConstantComposite.
-  opcode = spirv::Opcode::OpConstantComposite;
-  for (auto intAttr : elementsAttr.getValues<IntegerAttr>()) {
-    // We are constructing an IntegerAttr for each value here. But given that
-    // we only use ElementsAttr for vectors with no more than 4 elements, it
-    // should be fine here.
-    // TODO(antiagainst): revisit this if special extensions enabling large
-    // vectors are supported.
-    if (auto elementID = prepareConstantInt(loc, intAttr)) {
+  uint32_t typeID = 0;
+  if (failed(processType(loc, constType, typeID))) {
+    return 0;
+  }
+
+  uint32_t resultID = getNextID();
+  SmallVector<uint32_t, 4> operands = {typeID, resultID};
+  operands.reserve(shapedType.getDimSize(dim) + 2);
+  auto elementType = constType.cast<spirv::CompositeType>().getElementType(0);
+  for (int i = 0; i < shapedType.getDimSize(dim); ++i) {
+    index[dim] = i;
+    if (auto elementID = prepareDenseElementsConstant(
+            loc, elementType, valueAttr, dim + 1, index)) {
       operands.push_back(elementID);
     } else {
-      return failure();
+      return 0;
     }
   }
-  return success();
-}
+  spirv::Opcode opcode = spirv::Opcode::OpConstantComposite;
+  encodeInstructionInto(typesGlobalValues, opcode, operands);
 
-LogicalResult Serializer::prepareFloatVectorConstant(
-    Location loc, DenseFPElementsAttr elementsAttr, spirv::Opcode &opcode,
-    SmallVectorImpl<uint32_t> &operands) {
-  auto type = elementsAttr.getType();
-  assert(type.hasRank() && type.getRank() == 1 &&
-         "spv.constant should have verified only vector literal uses "
-         "ElementsAttr");
-  auto count = type.getNumElements();
-
-  operands.reserve(count + 2);
-
-  if (elementsAttr.isSplat()) {
-    FloatAttr splatAttr = elementsAttr.getSplatValue<FloatAttr>();
-    if (splatAttr.getValue().isZero()) {
-      opcode = spirv::Opcode::OpConstantNull;
-      return success();
-    }
-
-    if (auto id = prepareConstantFp(loc, splatAttr)) {
-      opcode = spirv::Opcode::OpConstantComposite;
-      operands.append(count, id);
-      return success();
-    }
-
-    return failure();
-  }
-
-  opcode = spirv::Opcode::OpConstantComposite;
-  for (auto fpAttr : elementsAttr.getValues<FloatAttr>()) {
-    if (auto elementID = prepareConstantFp(loc, fpAttr)) {
-      operands.push_back(elementID);
-    } else {
-      return failure();
-    }
-  }
-  return success();
+  return resultID;
 }
 
 uint32_t Serializer::prepareConstantScalar(Location loc, Attribute valueAttr,
@@ -1360,7 +1340,7 @@ Serializer::processBlock(Block *block, bool omitLabel,
                << "[block] " << block << " (id = " << blockID << ")\n");
 
     // Emit OpLabel for this block.
-    encodeInstructionInto(functions, spirv::Opcode::OpLabel, {blockID});
+    encodeInstructionInto(functionBody, spirv::Opcode::OpLabel, {blockID});
   }
 
   // Emit OpPhi instructions for block arguments, if any.
@@ -1431,7 +1411,7 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
         // The op generating this value hasn't been visited yet so we don't have
         // an <id> assigned yet. Record this to fix up later.
         LLVM_DEBUG(llvm::dbgs() << "(need to fix)\n");
-        deferredPhiValues[value].push_back(functions.size() + 1 +
+        deferredPhiValues[value].push_back(functionBody.size() + 1 +
                                            phiArgs.size());
       } else {
         LLVM_DEBUG(llvm::dbgs() << "(id = " << valueId << ")\n");
@@ -1441,7 +1421,7 @@ LogicalResult Serializer::emitPhiForBlockArguments(Block *block) {
       phiArgs.push_back(predBlockId);
     }
 
-    encodeInstructionInto(functions, spirv::Opcode::OpPhi, phiArgs);
+    encodeInstructionInto(functionBody, spirv::Opcode::OpPhi, phiArgs);
     valueIDMap[arg] = phiID;
   }
 
@@ -1465,7 +1445,7 @@ LogicalResult Serializer::processSelectionOp(spirv::SelectionOp selectionOp) {
   auto emitSelectionMerge = [&]() {
     // TODO(antiagainst): properly support loop control here
     encodeInstructionInto(
-        functions, spirv::Opcode::OpSelectionMerge,
+        functionBody, spirv::Opcode::OpSelectionMerge,
         {mergeID, static_cast<uint32_t>(spirv::LoopControl::None)});
   };
   // For structured selection, we cannot have blocks in the selection construct
@@ -1489,7 +1469,7 @@ LogicalResult Serializer::processSelectionOp(spirv::SelectionOp selectionOp) {
   // contains a spv._merge op, itself. But we need to have an OpLabel
   // instruction to start a new SPIR-V block for ops following this SelectionOp.
   // The block should use the <id> for the merge block.
-  return encodeInstructionInto(functions, spirv::Opcode::OpLabel, {mergeID});
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpLabel, {mergeID});
 }
 
 LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
@@ -1513,7 +1493,18 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   // preceding and following ops. So we need to emit unconditional branches to
   // jump to this LoopOp's SPIR-V blocks and jumping back to the normal flow
   // afterwards.
-  encodeInstructionInto(functions, spirv::Opcode::OpBranch, {headerID});
+  encodeInstructionInto(functionBody, spirv::Opcode::OpBranch, {headerID});
+
+  // We omit the LoopOp's entry block and start serialization from the loop
+  // header block. The entry block should not contain any additional ops other
+  // than a single spv.Branch that jumps to the loop header block. However,
+  // the spv.Branch can contain additional block arguments. Those block
+  // arguments must come from out of the loop using implicit capture. We will
+  // need to query the <id> for the value sent and the <id> for the incoming
+  // parent block. For the latter, we need to make sure this block is
+  // registered. The value sent should come from the block this loop resides in.
+  blockIDMap[loopOp.getEntryBlock()] =
+      getBlockID(loopOp.getOperation()->getBlock());
 
   // Emit the loop header block, which dominates all other blocks, first. We
   // need to emit an OpLoopMerge instruction before the loop header block's
@@ -1521,7 +1512,7 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   auto emitLoopMerge = [&]() {
     // TODO(antiagainst): properly support loop control here
     encodeInstructionInto(
-        functions, spirv::Opcode::OpLoopMerge,
+        functionBody, spirv::Opcode::OpLoopMerge,
         {mergeID, continueID, static_cast<uint32_t>(spirv::LoopControl::None)});
   };
   if (failed(processBlock(headerBlock, /*omitLabel=*/false, emitLoopMerge)))
@@ -1543,7 +1534,7 @@ LogicalResult Serializer::processLoopOp(spirv::LoopOp loopOp) {
   // a spv._merge op, itself. But we need to have an OpLabel instruction to
   // start a new SPIR-V block for ops following this LoopOp. The block should
   // use the <id> for the merge block.
-  return encodeInstructionInto(functions, spirv::Opcode::OpLabel, {mergeID});
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpLabel, {mergeID});
 }
 
 LogicalResult Serializer::processBranchConditionalOp(
@@ -1558,12 +1549,12 @@ LogicalResult Serializer::processBranchConditionalOp(
       arguments.push_back(val.cast<IntegerAttr>().getInt());
   }
 
-  return encodeInstructionInto(functions, spirv::Opcode::OpBranchConditional,
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpBranchConditional,
                                arguments);
 }
 
 LogicalResult Serializer::processBranchOp(spirv::BranchOp branchOp) {
-  return encodeInstructionInto(functions, spirv::Opcode::OpBranch,
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpBranch,
                                {getOrCreateBlockID(branchOp.getTarget())});
 }
 
@@ -1599,7 +1590,7 @@ LogicalResult Serializer::encodeExtensionInstruction(
   extInstOperands.push_back(setID);
   extInstOperands.push_back(extensionOpcode);
   extInstOperands.append(std::next(operands.begin(), 2), operands.end());
-  return encodeInstructionInto(functions, spirv::Opcode::OpExtInst,
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpExtInst,
                                extInstOperands);
 }
 
@@ -1646,6 +1637,9 @@ LogicalResult Serializer::processOperation(Operation *op) {
   }
   if (auto fnOp = dyn_cast<FuncOp>(op)) {
     return processFuncOp(fnOp);
+  }
+  if (auto varOp = dyn_cast<spirv::VariableOp>(op)) {
+    return processVariableOp(varOp);
   }
   if (auto varOp = dyn_cast<spirv::GlobalVariableOp>(op)) {
     return processGlobalVariableOp(varOp);
@@ -1696,7 +1690,7 @@ Serializer::processOp<spirv::EntryPointOp>(spirv::EntryPointOp op) {
   // Add the interface values.
   if (auto interface = op.interface()) {
     for (auto var : interface.getValue()) {
-      auto id = getVariableID(var.cast<SymbolRefAttr>().getValue());
+      auto id = getVariableID(var.cast<FlatSymbolRefAttr>().getValue());
       if (!id) {
         return op.emitError("referencing undefined global variable."
                             "spv.EntryPoint is at the end of spv.module. All "
@@ -1725,7 +1719,7 @@ Serializer::processOp<spirv::ControlBarrierOp>(spirv::ControlBarrierOp op) {
     operands.push_back(operand);
   }
 
-  return encodeInstructionInto(functions, spirv::Opcode::OpControlBarrier,
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpControlBarrier,
                                operands);
 }
 
@@ -1772,7 +1766,7 @@ Serializer::processOp<spirv::MemoryBarrierOp>(spirv::MemoryBarrierOp op) {
     operands.push_back(operand);
   }
 
-  return encodeInstructionInto(functions, spirv::Opcode::OpMemoryBarrier,
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpMemoryBarrier,
                                operands);
 }
 
@@ -1803,7 +1797,7 @@ Serializer::processOp<spirv::FunctionCallOp>(spirv::FunctionCallOp op) {
     valueIDMap[op.getResult(0)] = funcCallID;
   }
 
-  return encodeInstructionInto(functions, spirv::Opcode::OpFunctionCall,
+  return encodeInstructionInto(functionBody, spirv::Opcode::OpFunctionCall,
                                operands);
 }
 

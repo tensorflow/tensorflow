@@ -96,14 +96,17 @@ class MemorySpaceAssignmentTest : public HloTestBase {
       return true;
     };
 
+    MemorySpaceAssignment::Options options;
+    options.alternate_memory_space = kAlternateMemorySpace;
+    options.max_size_in_bytes = 128;
+    options.alignment_in_bytes = 8;
+    options.buffer_interval_compare = buffer_interval_compare;
+    options.prefetch_interval_picker = prefetch_interval_picker;
+    options.size_fn = size_fn;
+    options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
+    options.max_outstanding_async_copies = max_outstanding_async_copies;
     std::unique_ptr<PresetAssignments> preset_assignments =
-        MemorySpaceAssignment::Run(
-            module, kAlternateMemorySpace,
-            /*max_size_in_bytes=*/128, buffer_interval_compare,
-            prefetch_interval_picker,
-            /*alternate_memory_space_alignment_in_bytes=*/8, size_fn,
-            is_allowed_in_alternate_mem, max_outstanding_async_copies)
-            .ValueOrDie();
+        MemorySpaceAssignment::Run(module, options).ValueOrDie();
     CheckPresetAssignments(preset_assignments.get());
     return preset_assignments;
   }

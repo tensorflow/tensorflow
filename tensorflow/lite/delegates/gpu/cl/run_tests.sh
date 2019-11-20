@@ -16,6 +16,8 @@
 
 shopt -s expand_aliases  # to work with commands aliases in .sh
 
+set -e  # Exit immediately if a command exits with a non-zero status.
+
 description="Script for running tests on android devices
 How to use:
 [-h or --help, print instructions]

@@ -1,15 +1,15 @@
-# Conversion to the LLVM IR Dialect
+# Conversion to the LLVM Dialect
 
-Conversion to the [LLVM IR Dialect](Dialects/LLVM.md) can be performed by the
-specialized dialect conversion pass by running
+Conversion from the Standard to the [LLVM Dialect](Dialects/LLVM.md) can be
+performed by the specialized dialect conversion pass by running
 
 ```sh
-mlir-opt -lower-to-llvm <filename.mlir>
+mlir-opt -convert-std-to-llvm <filename.mlir>
 ```
 
 It performs type and operation conversions for a subset of operations from
-standard, built-in and super-vector dialects as described in this document. We
-use the terminology defined by the
+standard dialect (operations on scalars and vectors, control flow operations) as
+described in this document. We use the terminology defined by the
 [LLVM IR Dialect description](Dialects/LLVM.md) throughout this document.
 
 [TOC]
@@ -57,15 +57,17 @@ converted to a descriptor that is only dependent on the rank of the memref. The
 descriptor contains:
 
 1.  the pointer to the data buffer, followed by
-2.  a lowered `index`-type integer containing the distance between the beginning
+2.  the pointer to properly aligned data payload that the memref indexes,
+    followed by
+3.  a lowered `index`-type integer containing the distance between the beginning
     of the buffer and the first element to be accessed through the memref,
     followed by
-3.  an array containing as many `index`-type integers as the rank of the memref:
+4.  an array containing as many `index`-type integers as the rank of the memref:
     the array represents the size, in number of elements, of the memref along
     the given dimension. For constant MemRef dimensions, the corresponding size
     entry is a constant whose runtime value must match the static value,
     followed by
-4.  a second array containing as many 64-bit integers as the rank of the MemRef:
+5.  a second array containing as many 64-bit integers as the rank of the MemRef:
     the second array represents the "stride" (in tensor abstraction sense), i.e.
     the number of consecutive elements of the underlying buffer.
 
@@ -73,19 +75,19 @@ For constant memref dimensions, the corresponding size entry is a constant whose
 runtime value matches the static value. This normalization serves as an ABI for
 the memref type to interoperate with externally linked functions. In the
 particular case of rank `0` memrefs, the size and stride arrays are omitted,
-resulting in a struct containing a pointer + offset.
+resulting in a struct containing two pointers + offset.
 
 Examples:
 
 ```mlir {.mlir}
-memref<f32> -> !llvm.type<"{ float*, i64 }">
-memref<1 x f32> -> !llvm.type<"{ float*, i64, [1 x i64], [1 x i64] }">
-memref<? x f32> -> !llvm.type<"{ float*, i64, [1 x i64], [1 x i64] }">
-memref<10x42x42x43x123 x f32> -> !llvm.type<"{ float*, i64, [5 x i64], [5 x i64] }">
-memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, i64, [5 x i64], [5 x i64]  }">
+memref<f32> -> !llvm.type<"{ float*, float*, i64 }">
+memref<1 x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+memref<? x f32> -> !llvm.type<"{ float*, float*, i64, [1 x i64], [1 x i64] }">
+memref<10x42x42x43x123 x f32> -> !llvm.type<"{ float*, float*, i64, [5 x i64], [5 x i64] }">
+memref<10x?x42x?x123 x f32> -> !llvm.type<"{ float*, float*, i64, [5 x i64], [5 x i64]  }">
 
 // Memref types can have vectors as element types
-memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, i64, [1 x i64], [1 x i64] }">
+memref<1x? x vector<4xf32>> -> !llvm.type<"{ <4 x float>*, <4 x float>*, i64, [1 x i64], [1 x i64] }">
 ```
 
 ### Function Types

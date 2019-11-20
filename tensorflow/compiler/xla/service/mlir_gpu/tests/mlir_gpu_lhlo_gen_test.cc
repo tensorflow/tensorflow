@@ -131,17 +131,17 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
-;CHECK: %[[LD0:.*]] = llvm.load %[[ARG0]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, i64, [2 x i64], [2 x i64] }*">
-;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][0 : index]
+;CHECK: %[[LD0:.*]] = llvm.load %[[ARG0]] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[LD1:.*]] = llvm.load %[[ARG1]] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[LD2:.*]] = llvm.load %[[ARG2]] : !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }*">
+;CHECK: %[[PTR0:.*]] = llvm.extractvalue %[[LD0]][1]
 ;CHECK: %[[GEP0:.*]] = llvm.getelementptr %[[PTR0]]
 ;CHECK: %[[VAL0:.*]] = llvm.load %[[GEP0]]
-;CHECK: %[[PTR1:.*]] = llvm.extractvalue %[[LD1]][0 : index]
+;CHECK: %[[PTR1:.*]] = llvm.extractvalue %[[LD1]][1]
 ;CHECK: %[[GEP1:.*]] = llvm.getelementptr %[[PTR1]]
 ;CHECK: %[[VAL1:.*]] = llvm.load %[[GEP1]]
 ;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
-;CHECK: %[[PTR2:.*]] = llvm.extractvalue %[[LD2]][0 : index]
+;CHECK: %[[PTR2:.*]] = llvm.extractvalue %[[LD2]][1]
 ;CHECK: %[[GEP2:.*]] = llvm.getelementptr %[[PTR2]]
 ;CHECK: llvm.store %[[VAL2]], %[[GEP2]]
       )",
@@ -160,7 +160,10 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
                      R"(
 ;CHECK: func @add_kernel(%[[ARG0:.*]]: [[TYPE:!llvm<.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]
 
-;CHECK: %[[DESC0:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC0:.*]] = llvm.alloca %1 x !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP0P:.*]] = llvm.getelementptr %[[DESC0]]
+;CHECK: llvm.store %[[CAST0]], %[[GEP0P]]
 ;CHECK: %[[CAST0:.*]] = llvm.bitcast %[[ARG0]] : [[TYPE]] to !llvm<"float*">
 ;CHECK: %[[GEP0P:.*]] = llvm.getelementptr %[[DESC0]]
 ;CHECK: llvm.store %[[CAST0]], %[[GEP0P]]
@@ -177,7 +180,10 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ;CHECK: %[[GEP0ST1:.*]] = llvm.getelementptr %[[DESC0]]
 ;CHECK: llvm.store %{{.*}}, %[[GEP0ST1]]
 
-;CHECK: %[[DESC1:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC1:.*]] = llvm.alloca %1 x !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP1P:.*]] = llvm.getelementptr %[[DESC1]]
+;CHECK: llvm.store %[[CAST1]], %[[GEP1P]]
 ;CHECK: %[[CAST1:.*]] = llvm.bitcast %[[ARG1]] : [[TYPE]] to !llvm<"float*">
 ;CHECK: %[[GEP1P:.*]] = llvm.getelementptr %[[DESC1]]
 ;CHECK: llvm.store %[[CAST1]], %[[GEP1P]]
@@ -194,7 +200,10 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ;CHECK: %[[GEP1ST1:.*]] = llvm.getelementptr %[[DESC1]]
 ;CHECK: llvm.store %{{.*}}, %[[GEP1ST1]]
 
-;CHECK: %[[DESC2:.*]] = llvm.alloca %1 x !llvm<"{ float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[DESC2:.*]] = llvm.alloca %1 x !llvm<"{ float*, float*, i64, [2 x i64], [2 x i64] }">
+;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2]] : [[TYPE]] to !llvm<"float*">
+;CHECK: %[[GEP2P:.*]] = llvm.getelementptr %[[DESC2]]
+;CHECK: llvm.store %[[CAST2]], %[[GEP2P]]
 ;CHECK: %[[CAST2:.*]] = llvm.bitcast %[[ARG2]] : [[TYPE]] to !llvm<"float*">
 ;CHECK: %[[GEP2P:.*]] = llvm.getelementptr %[[DESC2]]
 ;CHECK: llvm.store %[[CAST2]], %[[GEP2P]]
@@ -214,14 +223,14 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 ;CHECK: %[[VL0:.*]] = llvm.load %[[DESC0]]
 ;CHECK: %[[VL1:.*]] = llvm.load %[[DESC1]]
 ;CHECK: %[[VL2:.*]] = llvm.load %[[DESC2]]
-;CHECK: %[[EV0:.*]] = llvm.extractvalue %[[VL0]][0 : index]
+;CHECK: %[[EV0:.*]] = llvm.extractvalue %[[VL0]][1]
 ;CHECK: %[[VGEP0:.*]] = llvm.getelementptr %[[EV0]]
 ;CHECK: %[[VAL0:.*]] = llvm.load %[[VGEP0]]
-;CHECK: %[[EV1:.*]] = llvm.extractvalue %[[VL1]][0 : index]
+;CHECK: %[[EV1:.*]] = llvm.extractvalue %[[VL1]][1]
 ;CHECK: %[[VGEP1:.*]] = llvm.getelementptr %[[EV1]]
 ;CHECK: %[[VAL1:.*]] = llvm.load %[[VGEP1]]
 ;CHECK: %[[VAL2:.*]] = llvm.fadd %[[VAL0]], %[[VAL1]]
-;CHECK: %[[EV2:.*]] = llvm.extractvalue %[[VL2]][0 : index]
+;CHECK: %[[EV2:.*]] = llvm.extractvalue %[[VL2]][1]
 ;CHECK: %[[SGEP:.*]] = llvm.getelementptr %[[EV2]]
 ;CHECK: llvm.store %[[VAL2]], %[[SGEP]]
       )",
@@ -243,10 +252,10 @@ ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
 ;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]], %[[RESULT:.*]]: [[TYPE]])
 ;CHECK: "xla_lhlo.fusion"() ( {
 ;CHECK:   %[[REF0:.*]] = tensor_load %[[ARG0]] : [[TYPE]]
-;CHECK:   %[[REF1:.*]] = tensor_load %[[ARG1]] : [[TYPE:.*]]
+;CHECK:   %[[REF1:.*]] = tensor_load %[[ARG1]] : [[TYPE]]
 ;CHECK:   %[[REF2:.*]] = tensor_load %[[ARG2]] : [[TYPE]]
-;CHECK:   %[[ADD:.*]] = "xla_hlo.add"(%[[REF1]], %[[REF2]]) {name = "add"}
-;CHECK:   %[[MUL:.*]] = "xla_hlo.mul"(%[[ADD]], %[[REF0]]) {name = "multiply"}
+;CHECK:   %[[ADD:.*]] = xla_hlo.add %[[REF1]], %[[REF2]] {name = "add"}
+;CHECK:   %[[MUL:.*]] = xla_hlo.mul %[[ADD]], %[[REF0]] {name = "multiply"}
 ;CHECK:   tensor_store %[[MUL]], %[[RESULT]]
 ;CHECK:   "xla_lhlo.terminator"()
 ;CHECK-NEXT: }
@@ -278,10 +287,10 @@ ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
 ;CHECK: func @fusion(%[[ARG0:.*]]: [[TYPE:.*]], %[[RESULT:.*]]: [[RTYPE:.*]])
 ;CHECK: "xla_lhlo.fusion"() ( {
 ;CHECK:   %[[REF0:.*]] = tensor_load %arg0 : [[TYPE]]
-;CHECK:   %[[CT0:.*]] = "xla_hlo.constant"()
+;CHECK:   %[[CT0:.*]] = xla_hlo.constant dense<0.000000e+00>
 ;CHECK:   %[[RED:.*]] = "xla_hlo.reduce"(%0, %1) ( {
 ;CHECK:     ^bb0(%[[BARG0:.*]]: [[ETYPE:.*]], %[[BARG1:.*]]: [[ETYPE]])
-;CHECK:       %[[ADD:.*]] = "xla_hlo.add"(%[[BARG0]], %[[BARG1]]) {name = "add"} : ([[ETYPE]], [[ETYPE]]) -> [[ETYPE]]
+;CHECK:       %[[ADD:.*]] = xla_hlo.add %[[BARG0]], %[[BARG1]] {name = "add"} : [[ETYPE]]
 ;CHECK:       "xla_hlo.return"(%[[ADD]])
 ;CHECK:     })
 ;CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
@@ -344,7 +353,7 @@ ENTRY %AddReduce (x: f32[100,10], c: f32[]) -> f32[100] {
 ;CHECK:   ^bb0(%[[FARG0:.*]]: memref<f32>, %[[FARG1:.*]]: memref<f32>, %[[FRES:.*]]: memref<f32>):
 ;CHECK:      %[[LHS:.*]] = tensor_load %[[FARG0]] : memref<f32>
 ;CHECK:      %[[RHS:.*]] = tensor_load %[[FARG1]] : memref<f32>
-;CHECK:      %[[RES:.*]] = "xla_hlo.add"(%[[LHS]], %[[RHS]]) {name = "add"} : (tensor<f32>, tensor<f32>) -> tensor<f32>
+;CHECK:      %[[RES:.*]] = xla_hlo.add %[[LHS]], %[[RHS]] {name = "add"} : tensor<f32>
 ;CHECK:      tensor_store %[[RES]], %[[FRES]] : memref<f32>
 ;CHECK:     "xla_lhlo.terminator"() : () -> ()
 ;CHECK-NEXT: }) {dimensions = dense<1> : tensor<1xi64>, name = "reduce"} : ([[ARGT]], memref<f32>, [[REST]]) -> ()

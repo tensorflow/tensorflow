@@ -328,6 +328,9 @@ tflite_micro_cc_test(
     srcs = [
         "mul_test.cc",
     ],
+    tags = [
+        "noasan",  # b/144450349
+    ],
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:c_api_internal",

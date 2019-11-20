@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 import six
 
@@ -31,6 +32,8 @@ from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.util.tf_export import keras_export
 
 # pylint: disable=g-import-not-at-top
+if sys.version >= '3.4':
+  import pathlib
 try:
   import h5py
 except ImportError:
@@ -71,7 +74,7 @@ def save_model(model,
   Arguments:
       model: Keras model instance to be saved.
       filepath: One of the following:
-        - String, path where to save the model
+        - String or `pathlib.Path` object, path where to save the model
         - `h5py.File` object where to save the model
       overwrite: Whether we should overwrite any existing model at the target
         location, or instead ask the user with a manual prompt.
@@ -90,12 +93,15 @@ def save_model(model,
   """
   from tensorflow.python.keras.engine import sequential  # pylint: disable=g-import-not-at-top
 
-  if type(filepath) != str and not isinstance(filepath, h5py.File):
-      raise ValueError(
-          'Expected `filepath` to be a String or `h5py.File` object. Got'
-          'unsupported value %s of type %s'
-          % (filepath, type(filepath)))
+  
+  if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
+    filepath = str(filepath)
 
+  if type(filepath) != str and not isinstance(filepath, h5py.File):
+    raise ValueError(
+      'Expected `filepath` to be a String or `h5py.File` object. Got'
+      'unsupported value %s of type %s'
+      % (filepath, type(filepath)))
   save_format = network.validate_save_format(filepath, save_format)
 
   if save_format == 'h5':
@@ -122,7 +128,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
 
   Arguments:
       filepath: One of the following:
-          - String, path to the saved model
+          - String or `pathlib.Path` object, path to the saved model
           - `h5py.File` object from which to load the model
       custom_objects: Optional dictionary mapping names
           (strings) to custom classes or functions to be
@@ -146,6 +152,8 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       isinstance(filepath, h5py.File) or h5py.is_hdf5(filepath))):
     return hdf5_format.load_model_from_hdf5(filepath, custom_objects, compile)
 
+  if sys.version >= '3.4' and isinstance(filepath, pathlib.Path):
+    filepath = str(filepath)
   if isinstance(filepath, six.string_types):
     loader_impl.parse_saved_model(filepath)
     return saved_model_load.load(filepath, compile)

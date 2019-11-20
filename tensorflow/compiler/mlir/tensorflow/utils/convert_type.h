@@ -18,14 +18,17 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Types.h"  // TF:local_config_mlir
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
+using stream_executor::port::StatusOr;
+
 // Converts the TensorFlow DataType 'dtype' into an MLIR (scalar) type.
-Status ConvertDataType(const DataType& dtype, mlir::Builder builder,
-                       mlir::Type* type);
+Status ConvertDataType(DataType dtype, mlir::Builder builder, mlir::Type* type);
 
 // Converts a scalar MLIR type to a TensorFlow Datatype.
 Status ConvertScalarTypeToDataType(mlir::Type type, DataType* dtype);
@@ -33,6 +36,19 @@ Status ConvertScalarTypeToDataType(mlir::Type type, DataType* dtype);
 // Converts an MLIR type to TensorFlow DataType. If 'type' is a scalar type, it
 // is converted directly. If it is a shaped type, the element type is converted.
 Status ConvertToDataType(mlir::Type type, DataType* dtype);
+
+// Converts an TensorFlow shape to the one used in MLIR.
+void ConvertToMlirShape(const TensorShape& input_shape,
+                        llvm::SmallVectorImpl<int64_t>* shape);
+
+// Converts an TensorFlow shape proto to the one used in MLIR.
+Status ConvertToMlirShape(const TensorShapeProto& input_shape,
+                          llvm::SmallVectorImpl<int64_t>* shape);
+
+// Given a tensor shape and dtype, get the corresponding MLIR tensor type.
+StatusOr<mlir::Type> ConvertToMlirTensorType(const TensorShapeProto& shape,
+                                             DataType dtype,
+                                             mlir::Builder* builder);
 
 }  // namespace tensorflow
 

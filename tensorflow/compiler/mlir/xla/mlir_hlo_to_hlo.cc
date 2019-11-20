@@ -297,6 +297,11 @@ class ConvertToHloModule {
         .proto();
   }
 
+  // Lower function call to HLO call instruction
+  LogicalResult LowerFunctionCall(
+      mlir::CallOp* call_op, xla::XlaBuilder* builder,
+      ConvertToHloModule::ValueLoweringMap* value_lowering);
+
  private:
   LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
                       ConvertToHloModule::ValueLoweringMap* value_lowering,
@@ -364,6 +369,24 @@ LogicalResult ExportXlaOp(ConcatenateOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(ConditionalOp op, OpLoweringContext ctx) {
+  xla::XlaComputation true_branch;
+  xla::XlaComputation false_branch;
+  auto& value_map = *ctx.values;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.true_branch(),
+                                                     &true_branch)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.false_branch(),
+                                                     &false_branch))) {
+    return failure();
+  }
+
+  value_map[op] =
+      xla::Conditional(value_map[op.pred()], value_map[op.true_arg()],
+                       true_branch, value_map[op.false_arg()], false_branch);
+
+  return success();
+}
+
 LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
   return failure();
 }
@@ -423,7 +446,22 @@ LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   return success();
 }
 
-LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) { return failure(); }
+LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::PaddingConfig padding_config;
+  auto edge_padding_low = ConvertDenseIntAttr(op.edge_padding_low());
+  auto edge_padding_high = ConvertDenseIntAttr(op.edge_padding_high());
+  auto interior_padding = ConvertDenseIntAttr(op.interior_padding());
+  for (xla::int64 i = 0; i < edge_padding_low.size(); ++i) {
+    auto* dims = padding_config.add_dimensions();
+    dims->set_edge_padding_low(edge_padding_low[i]);
+    dims->set_edge_padding_high(edge_padding_high[i]);
+    dims->set_interior_padding(interior_padding[i]);
+  }
+  value_map[op] = xla::Pad(value_map[op.getOperand(0)],
+                           value_map[op.getOperand(1)], padding_config);
+  return success();
+}
 
 LogicalResult ExportXlaOp(ReduceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
@@ -517,7 +555,16 @@ LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
-  return failure();
+  xla::XlaComputation condition;
+  xla::XlaComputation body;
+  auto& value_map = *ctx.values;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body)) ||
+      failed(ctx.converter->LowerRegionAsComputation(&op.cond(), &condition))) {
+    return failure();
+  }
+
+  value_map[op] = xla::While(condition, body, value_map[op.getOperand()]);
+  return success();
 }
 
 }  // namespace
@@ -569,6 +616,11 @@ LogicalResult ConvertToHloModule::Lower(
 
   auto& value_map = *value_lowering;
   ElementsAttr const_attr;
+
+  if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
+    return LowerFunctionCall(&call_op, builder, &value_map);
+  }
+
   // TODO(jpienaar): This doesn't support layouts yet.
   if (matchPattern(inst, m_Constant(&const_attr))) {
     auto literal_or =
@@ -610,7 +662,38 @@ LogicalResult ConvertToHloModule::Lower(
   return failure();
 }
 
+LogicalResult ConvertToHloModule::LowerFunctionCall(
+    mlir::CallOp* call_op, xla::XlaBuilder* builder,
+    ConvertToHloModule::ValueLoweringMap* value_lowering) {
+  auto& value_map = *value_lowering;
+  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op->callee());
+  if (failed(RunOnFunction(callee))) return failure();
+  std::vector<xla::XlaOp> operands;
+  for (auto operand : call_op->getOperands()) {
+    operands.push_back(value_map[operand]);
+  }
+  // Each call to xla::Call would insert a copy of the computation to
+  // the HLO. Thus each callsite would have a unique callee in the
+  // exported HLO. HLO syntactically does not require all calls to have unique
+  // callees, but eventually before lowering call graph is "flattened" to
+  // make that true. This is done before lowering because buffer assignment
+  // needs this invariant.
+  xla::XlaOp call_result =
+      xla::Call(builder, lowered_computation_[callee], operands);
+  // Use GetTupleElement for multiple outputs
+  unsigned num_results = call_op->getNumResults();
+  if (num_results > 1) {
+    for (unsigned i = 0; i != num_results; ++i) {
+      value_map[call_op->getResult(i)] = xla::GetTupleElement(call_result, i);
+    }
+  } else if (num_results == 1) {
+    value_map[call_op->getResult(0)] = call_result;
+  }
+  return success();
+}
+
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
+  if (lowered_computation_.count(f)) return success();
   if (f.getBlocks().size() != 1) {
     return f.emitError("only single block Function suppored");
   }

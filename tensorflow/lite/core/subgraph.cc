@@ -493,6 +493,13 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // allocation as the client may have done the resize manually.
   if (state_ != kStateUninvokable &&
       !HasDynamicTensorImpl(context_, inputs())) {
+    if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
+      // If the only change was the release of non-persistent memory via
+      // ReleaseNonPersistentMemory(), just re-allocate it. For any other type
+      // of memory-planning change (for eg, ResizeInputTensor), the state would
+      // be kStateUninvokable.
+      memory_planner_->AcquireNonPersistentMemory();
+    }
     return kTfLiteOk;
   }
 
@@ -631,6 +638,13 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
 }
 
+TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
+  if (memory_planner_) {
+    TF_LITE_ENSURE_STATUS(memory_planner_->ReleaseNonPersistentMemory());
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.prepare == nullptr) {
@@ -714,6 +728,9 @@ TfLiteStatus Subgraph::Invoke() {
   TfLiteStatus status = kTfLiteOk;
   if (state_ == kStateUninvokable) {
     ReportError("Invoke called on model that is not ready.");
+    return kTfLiteError;
+  } else if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
+    ReportError("Non-persistent memory is not available.");
     return kTfLiteError;
   }
 

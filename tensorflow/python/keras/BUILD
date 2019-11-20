@@ -201,6 +201,7 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python:composite_tensor_utils",
+        "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -215,6 +216,7 @@ py_library(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
         "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -615,7 +617,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_adapter_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/data_adapter_test.py"],
     additional_deps = [
         ":data_adapter",
@@ -1421,8 +1423,10 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_oss",

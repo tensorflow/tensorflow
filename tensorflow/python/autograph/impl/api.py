@@ -179,17 +179,28 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
   decorators, f = tf_decorator.unwrap(f)
 
   # TODO(mdan): Grab features from context.
+  # Note: we pass the original context through to convert to properly handle the
+  # following scenario, which can be used insite TF implementations:
+  #
+  #   ctx = ag_ctx.control_status_ctx()
+  #   @function(autograph=False)  # Low-level graph code
+  #   def inner_fn():
+  #     # The context is disabled here, but should be enabled in user user_fn
+  #     tf_convert(user_fn, ctx=ctx)
   if ctx.status == ag_ctx.Status.ENABLED:
-    wrapper = convert(recursive=True, user_requested=user_requested)(f)
+    wrapper_factory = convert(
+        recursive=True, user_requested=user_requested, conversion_ctx=ctx)
   elif ctx.status == ag_ctx.Status.DISABLED:
-    wrapper = do_not_convert(f)
+    wrapper_factory = do_not_convert
   elif ctx.status == ag_ctx.Status.UNSPECIFIED:
     if convert_by_default:
-      wrapper = convert(recursive=True, user_requested=user_requested)(f)
+      wrapper_factory = convert(
+          recursive=True, user_requested=user_requested, conversion_ctx=ctx)
     else:
-      wrapper = call_with_unspecified_conversion_status(f)
+      wrapper_factory = call_with_unspecified_conversion_status
   else:
-    raise ValueError(ctx.status)
+    assert False, 'This switch contains all possible cases!'
+  wrapper = wrapper_factory(f)
 
   if decorators:
     wrapper = tf_decorator.rewrap(f_wrapper, f, wrapper)
@@ -199,7 +210,10 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
 
 
 # TODO(mdan): Make private.
-def convert(recursive=False, optional_features=None, user_requested=True):
+def convert(recursive=False,
+            optional_features=None,
+            user_requested=True,
+            conversion_ctx=ag_ctx.NullCtx()):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -213,8 +227,10 @@ def convert(recursive=False, optional_features=None, user_requested=True):
     optional_features: converted.Feature, allows toggling optional or
       experimental features. When set to None, only the core features are
       enabled.
-    user_requested: bool, whether to ignore the conversion whitelist. See
-      ConversionOptions.user_requested.
+    user_requested: bool, whether this is a function that the user explicitly
+      asked to be converted. See ConversionOptions.user_requested.
+    conversion_ctx: Optional ag_ctx.ControlStatusCtx, the Autograph context in
+      which `f` is used.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -231,7 +247,8 @@ def convert(recursive=False, optional_features=None, user_requested=True):
           user_requested=user_requested,
           optional_features=optional_features)
       try:
-        return converted_call(f, args, kwargs, options=options)
+        with conversion_ctx:
+          return converted_call(f, args, kwargs, options=options)
       except Exception as e:  # pylint:disable=broad-except
         if hasattr(e, 'ag_error_metadata'):
           raise e.ag_error_metadata.to_exception(e)
@@ -368,7 +385,11 @@ def _errors_are_normally_possible(entity, error):
   return False
 
 
-def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
+def converted_call(f,
+                   args,
+                   kwargs,
+                   caller_fn_scope=None,
+                   options=None):
   """Compiles a function call inline.
 
   For internal use only.
@@ -403,6 +424,10 @@ def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
     options = caller_fn_scope.callopts
 
   if conversion.check_cached_unconverted(f, options):
+    return _call_unconverted(f, args, kwargs, options, False)
+
+  if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+    logging.log(2, 'Whitelisted: %s: AutoGraph is disabled in context', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
   if inspect_utils.isbuiltin(f):

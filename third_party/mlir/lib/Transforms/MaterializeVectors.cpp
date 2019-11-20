@@ -465,7 +465,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
         ++dim;
       },
       superVectorType.getShape(), *optionalRatio);
-  auto permutationMap = transfer.getPermutationMap();
+  auto permutationMap = transfer.permutation_map();
   LLVM_DEBUG(permutationMap.print(dbgs() << "\npermutationMap: "));
   if (keep.empty()) {
     return permutationMap;
@@ -486,16 +486,16 @@ static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
                               ArrayRef<unsigned> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), read.getIndices());
+      map(makePtrDynCaster<Value>(), read.indices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto map = projectedPermutationMap(read, hwVectorType);
   if (!map) {
     return nullptr;
   }
-  auto cloned = b.create<VectorTransferReadOp>(read.getLoc(), hwVectorType,
-                                               read.getMemRef(), affineIndices,
-                                               map, read.getPaddingValue());
+  auto cloned = b.create<VectorTransferReadOp>(
+      read.getLoc(), hwVectorType, read.memref(), affineIndices,
+      AffineMapAttr::get(map), read.padding());
   return cloned.getOperation();
 }
 
@@ -510,14 +510,14 @@ static Operation *instantiate(OpBuilder b, VectorTransferWriteOp write,
                               ArrayRef<unsigned> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), write.getIndices());
+      map(makePtrDynCaster<Value>(), write.indices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto cloned = b.create<VectorTransferWriteOp>(
       write.getLoc(),
-      substitute(write.getVector(), hwVectorType, substitutionsMap),
-      write.getMemRef(), affineIndices,
-      projectedPermutationMap(write, hwVectorType));
+      substitute(write.vector(), hwVectorType, substitutionsMap),
+      write.memref(), affineIndices,
+      AffineMapAttr::get(projectedPermutationMap(write, hwVectorType)));
   return cloned.getOperation();
 }
 

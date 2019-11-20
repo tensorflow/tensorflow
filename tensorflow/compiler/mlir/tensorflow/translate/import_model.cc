@@ -84,6 +84,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
 #include "tensorflow/core/protobuf/trackable_object_graph.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
 
 static inline absl::string_view StringRefToView(llvm::StringRef ref) {
   return {ref.data(), ref.size()};
@@ -110,9 +111,7 @@ class NameUniquifier : public OpOrArgNameMapper {
       : flib_(flib) {}
 
  private:
-  bool IsUnique(llvm::StringRef name) override {
-    return OpOrArgNameMapper::IsUnique(name) && !flib_.Contains(name);
-  }
+  bool IsUnique(llvm::StringRef name) override { return !flib_.Contains(name); }
 
   std::string GetName(OpOrArg op_or_arg) override {
     DCHECK(false) << "Unimplemented";
@@ -229,7 +228,7 @@ class ImporterBase {
   }
 
   // Converts func name in graphdef to mlir::SymbolRefAttribute.
-  StatusOr<mlir::SymbolRefAttr> ConvertFunctionCallName(
+  StatusOr<mlir::FlatSymbolRefAttr> ConvertFunctionCallName(
       const std::string& func_name);
 
   // Converts the given non-function-call AttrValue to an MLIR Attribute.
@@ -808,7 +807,7 @@ Status ImporterBase::ConvertFunctionCallAttribute(
   return Status::OK();
 }
 
-StatusOr<mlir::SymbolRefAttr> ImporterBase::ConvertFunctionCallName(
+StatusOr<mlir::FlatSymbolRefAttr> ImporterBase::ConvertFunctionCallName(
     const std::string& func_name) {
   TF_RETURN_IF_ERROR(ConvertLibFunction(func_name));
   auto mlir_func_name = (*tf_name_to_mlir_name_)[func_name];
@@ -1702,22 +1701,28 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   arg_types.reserve(specs.inputs.size());
   int i = 0;
   for (auto it : specs.inputs) {
-    if (arg_nodes->at(i++).node == nullptr) {
+    Node* arg_node = arg_nodes->at(i).node;
+    if (arg_node == nullptr) {
       return errors::InvalidArgument("Input ", it.first,
                                      " was not found in graph");
     }
     mlir::Type element_type;
     const auto& node_info = it.second;
     DataType imported_dtype = node_info.imported_dtype;
-    // Uses the existing output type if it isn't specified by the user.
+    // Uses the existing output type of the arg node if the data type of the
+    // the node isn't specified through the import configuration.
     if (imported_dtype == DT_INVALID) {
-      imported_dtype = arg_nodes->back().node->output_type(0);
+      imported_dtype = arg_node->output_type(0);
+      if (imported_dtype == DT_INVALID) {
+        return errors::InvalidArgument("Input ", i, "has invalid data type");
+      }
     }
     TF_RETURN_IF_ERROR(
         ::tensorflow::ConvertDataType(imported_dtype, builder, &element_type));
     llvm::SmallVector<int64_t, 4> shape;
     TF_RETURN_IF_ERROR(ConvertToMlirShape(node_info.shape, &shape));
     arg_types.push_back(mlir::RankedTensorType::get(shape, element_type));
+    i++;
   }
 
   llvm::SmallVector<mlir::Type, 4> ret_types;
@@ -2337,11 +2342,16 @@ Status CreateSavedModelIR(
       TF_ASSIGN_OR_RETURN(
           Tensor value, ReadVariableFromSession(saved_model, variable.name()));
       TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
-
+      // A variable can have a partially known type, such as tensor<?x27x?xf32>,
+      // even if the initializer is a specific static shape.
+      TF_ASSIGN_OR_RETURN(
+          auto type, ConvertToMlirTensorType(variable.shape(), variable.dtype(),
+                                             &builder));
       auto op = builder.create<mlir::tf_saved_model::GlobalTensorOp>(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
+          /*type=*/mlir::TypeAttr::get(type),
           /*is_mutable=*/builder.getUnitAttr());
       op.setAttr(
           "tf_saved_model.exported_names",
@@ -2356,6 +2366,7 @@ Status CreateSavedModelIR(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
           value_attr,
+          /*type=*/mlir::TypeAttr::get(value_attr.Attribute::getType()),
           /*is_mutable=*/nullptr);
       op.setAttr(
           "tf_saved_model.exported_names",

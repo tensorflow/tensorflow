@@ -29,6 +29,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -481,12 +482,20 @@ class PyFuncTest(PyFuncTestBase):
 class PyFuncAndEagerPyFuncTest(PyFuncTestBase):
   """Encapsulates tests shared between py_func and eager_py_func."""
 
-  def testCleanup(self):
-    # Delete everything created by previous tests to avoid side effects.
+  def verifyPyFuncsNoIncrease(self, make_graph):
     ops.reset_default_graph()
     gc.collect()
     initial_size = script_ops._py_funcs.size()
-    # Encapsulate the graph generation, so locals can be deleted.
+
+    for _ in xrange(1000):
+      make_graph()
+
+    ops.reset_default_graph()
+    gc.collect()
+    self.assertEqual(initial_size, script_ops._py_funcs.size())
+
+  def testCleanup(self):
+
     def make_graph():
       g = ops.Graph()
       with g.as_default():
@@ -497,17 +506,36 @@ class PyFuncAndEagerPyFuncTest(PyFuncTestBase):
         # graph.
         # Checks if the functions are being deleted though the graph is
         # referenced from them (see #18292).
-        _ = script_ops.py_func(
+        script_ops.py_func(
             lambda x: x + c.shape[0], [c], [dtypes.float32])
-        _ = script_ops.eager_py_func(
+        script_ops.eager_py_func(
             lambda x: x + c.shape[0], [c], [dtypes.float32])
 
-    # Call garbage collector to enforce deletion.
-    for _ in xrange(1000):
-      make_graph()
-    ops.reset_default_graph()
-    gc.collect()
-    self.assertEqual(initial_size, script_ops._py_funcs.size())
+    self.verifyPyFuncsNoIncrease(make_graph)
+
+  def testCleanupInTfFunction(self):
+
+    self.skipTest("b/144098211")
+
+    def make_graph():
+      g = ops.Graph()
+      with g.as_default():
+        @def_function.function
+        def fn():
+          c = constant_op.constant([1.], dtypes.float32)
+          _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
+          _ = script_ops.eager_py_func(lambda x: x + 1, [c], [dtypes.float32])
+          # These ops have a reference to 'c' which has a reference to the
+          # graph.
+          # Checks if the functions are being deleted though the graph is
+          # referenced from them (see #18292).
+          script_ops.py_func(
+              lambda x: x + c.shape[0], [c], [dtypes.float32])
+          script_ops.eager_py_func(
+              lambda x: x + c.shape[0], [c], [dtypes.float32])
+        fn()
+
+    self.verifyPyFuncsNoIncrease(make_graph)
 
 
 class EagerPyFuncTest(PyFuncTestBase):

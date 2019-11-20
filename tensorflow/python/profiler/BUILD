@@ -170,7 +170,8 @@ py_library(
     srcs = ["traceme.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "@six_archive//:six",
     ],
 )
 
@@ -179,6 +180,7 @@ py_library(
     srcs = ["scoped_annotation.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:platform",
+        "//tensorflow/python/profiler/internal:_pywrap_scoped_annotation",
+        "@six_archive//:six",
     ],
 )

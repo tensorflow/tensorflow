@@ -98,6 +98,8 @@ def SPV_BitcastOp : SPV_Op<"Bitcast", [NoSideEffect]> {
 
   let parser = [{ return mlir::impl::parseCastOp(parser, result); }];
   let printer = [{ mlir::impl::printCastOp(this->getOperation(), p); }];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----

@@ -98,7 +98,7 @@ struct constant_int_op_binder {
       return false;
     auto type = op->getResult(0)->getType();
 
-    if (type.isa<IntegerType>()) {
+    if (type.isIntOrIndex()) {
       return attr_value_binder<IntegerAttr>(bind_value).match(attr);
     }
     if (type.isa<VectorType>() || type.isa<RankedTensorType>()) {

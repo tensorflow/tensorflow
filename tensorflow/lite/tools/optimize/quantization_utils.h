@@ -138,6 +138,9 @@ float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
 // Quantize activation.
 void QuantizeActivation(TensorT* tensor);
 
+// Quantize activation to 16bit.
+TfLiteStatus QuantizeActivationToInt16(TensorT* tensor, float scale);
+
 // Get the power of two scale for min and max for symmetric quantization case.
 int GetPowerOfTwoScale(float min, float max);
 

@@ -748,7 +748,7 @@ def auc(labels,
     epsilon = 1.0e-6
 
     def interpolate_pr_auc(tp, fp, fn):
-      """Interpolation formula inspired by section 4 of Davis & Goadrich 2006.
+      """Interpolation formula inspired by section 4 of (Davis et al., 2006).
 
       Note here we derive & use a closed formula not present in the paper
       - as follows:
@@ -775,8 +775,14 @@ def auc(labels,
         tp: true positive counts
         fp: false positive counts
         fn: false negative counts
+
       Returns:
         pr_auc: an approximation of the area under the P-R curve.
+
+      References:
+        The Relationship Between Precision-Recall and ROC Curves:
+          [Davis et al., 2006](https://dl.acm.org/citation.cfm?id=1143874)
+          ([pdf](https://www.biostat.wisc.edu/~page/rocpr.pdf))
       """
       dtp = tp[:num_thresholds - 1] - tp[1:]
       p = tp + fp

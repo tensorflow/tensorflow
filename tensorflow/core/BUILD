@@ -175,6 +175,24 @@ package_group(name = "experimental_access")
 COMMON_PROTO_SRCS = [
     "example/example.proto",
     "example/feature.proto",
+    "protobuf/bfc_memory_map.proto",
+    "protobuf/config.proto",
+    "protobuf/cluster.proto",
+    "protobuf/debug.proto",
+    "protobuf/device_properties.proto",
+    "protobuf/graph_debug_info.proto",
+    "protobuf/queue_runner.proto",
+    "protobuf/rewriter_config.proto",
+    "protobuf/tensor_bundle.proto",
+    "protobuf/saver.proto",
+    "protobuf/verifier_config.proto",
+    "protobuf/trace_events.proto",
+    "util/event.proto",
+    "util/memmapped_file_system.proto",
+    "util/saved_tensor_slice.proto",
+]
+
+FRAMEWORK_PROTO_SRCS = [
     "framework/allocation_description.proto",
     "framework/api_def.proto",
     "framework/attr_value.proto",
@@ -199,21 +217,10 @@ COMMON_PROTO_SRCS = [
     "framework/types.proto",
     "framework/variable.proto",
     "framework/versions.proto",
-    "protobuf/bfc_memory_map.proto",
-    "protobuf/config.proto",
-    "protobuf/cluster.proto",
-    "protobuf/debug.proto",
-    "protobuf/device_properties.proto",
-    "protobuf/graph_debug_info.proto",
-    "protobuf/queue_runner.proto",
-    "protobuf/rewriter_config.proto",
-    "protobuf/tensor_bundle.proto",
-    "protobuf/saver.proto",
-    "protobuf/verifier_config.proto",
-    "protobuf/trace_events.proto",
-    "util/event.proto",
-    "util/memmapped_file_system.proto",
-    "util/saved_tensor_slice.proto",
+]
+
+PROFILER_PROTO_SRCS = [
+    "//tensorflow/core/profiler/protobuf:xplane.proto",
 ]
 
 ERROR_CODES_PROTO_SRCS = [
@@ -222,7 +229,7 @@ ERROR_CODES_PROTO_SRCS = [
 ]
 # LINT.ThenChange(//tensorflow/core/android_proto_config.asciipb)
 
-CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
+CORE_PROTO_SRCS = COMMON_PROTO_SRCS + FRAMEWORK_PROTO_SRCS + PROFILER_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 
 tf_proto_library(
     name = "protos_all",
@@ -231,7 +238,8 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
-        ":protos_all_proto",
+        ":framework_protos",
+        ":core_protos",
         "//tensorflow/core/lib/core:error_codes_proto",
     ],
     visibility = ["//visibility:public"],
@@ -248,8 +256,9 @@ tf_generate_proto_text_sources(
     ],
     srcs_relative_dir = "tensorflow/core/",
     deps = [
+        ":core_protos_cc",
+        ":framework_protos_cc",
         ":lib_internal",
-        ":protos_all_proto_cc",
     ],
 )
 
@@ -2184,12 +2193,12 @@ cc_library(
         ],
     }),
     deps = tf_additional_lib_deps() + [
-        "//tensorflow/core/platform:annotation",
         "@com_google_absl//absl/meta:type_traits",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/core/platform:regexp",
+        "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
@@ -2287,7 +2296,6 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
-        "//tensorflow/core/platform:annotation",
         "//tensorflow/core/platform:context",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:cpu_feature_guard",
@@ -2497,7 +2505,7 @@ tf_proto_library(
 )
 
 tf_proto_library(
-    name = "protos_all_proto",
+    name = "core_protos",
     srcs = COMMON_PROTO_SRCS + [
         # Protos which are not needed on mobile builds, but should be included
         # in protos_all.
@@ -2505,11 +2513,10 @@ tf_proto_library(
         # Note that some protos are in neither core_proto_srcs nor this
         # filegroup; e.g. ones with individual proto_library targets.
         "example/example_parser_configuration.proto",
-        "protobuf/trackable_object_graph.proto",
         "protobuf/control_flow.proto",
-        "protobuf/data/experimental/snapshot.proto",
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "protobuf/critical_section.proto",
+        "protobuf/data/experimental/snapshot.proto",
         "protobuf/debug_event.proto",
         "protobuf/meta_graph.proto",
         "protobuf/named_tensor.proto",
@@ -2518,6 +2525,7 @@ tf_proto_library(
         "protobuf/saved_object_graph.proto",
         "protobuf/struct.proto",
         "protobuf/tensorflow_server.proto",
+        "protobuf/trackable_object_graph.proto",
         "protobuf/transport_options.proto",
         "util/test_log.proto",
     ],
@@ -2525,8 +2533,19 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
+        ":framework_protos",
         "//tensorflow/core/lib/core:error_codes_proto",
+        "//tensorflow/core/profiler/protobuf:xplane_proto",
     ],
+    visibility = ["//visibility:private"],
+)
+
+tf_proto_library(
+    name = "framework_protos",
+    srcs = FRAMEWORK_PROTO_SRCS,
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    visibility = ["//visibility:private"],
 )
 
 alias(
@@ -3063,8 +3082,8 @@ tf_cuda_library(
         "@com_google_absl//absl/types:optional",
         "//third_party/eigen3",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//tensorflow/core/profiler/lib:traceme",
-        "//tensorflow/core/profiler/internal:traceme_recorder",
     ] + mkl_deps(),
     alwayslink = 1,
 )
@@ -3296,6 +3315,7 @@ tf_cuda_library(
         ":lib_internal",
         ":protos_all_cc",
         ":stream_executor",
+        "//tensorflow/core/profiler/lib:scoped_annotation",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -4543,6 +4563,7 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:queue_ops",
         "//tensorflow/core/kernels:session_ops",
         "//tensorflow/core/kernels:variable_ops",
+        "//tensorflow/core/kernels/data:single_threaded_executor",
     ] + if_cuda([":cuda"]),
 )
 
@@ -5251,11 +5272,9 @@ tf_portable_proto_library(
     header_outs = tf_android_core_proto_headers(CORE_PROTO_SRCS) + ["//google/protobuf/any.proto.h"],
     link_full_protobuf = False,
     prefix_dir = "emscripten_proto_no_rtti",
-    proto_deps = [
-        ":protos_all",
-        "@com_google_protobuf//:protobuf",
-    ],
+    proto_deps = [":protos_all"],
     visibility = ["//visibility:public"],
+    deps = ["@com_google_protobuf//:protobuf"],
 )
 
 # There is currently no need for a full proto version of emscripten tf lib lite.

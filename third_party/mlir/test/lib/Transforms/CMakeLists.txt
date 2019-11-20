@@ -5,6 +5,7 @@ add_llvm_library(MLIRTestTransforms
   TestInlining.cpp
   TestLoopMapping.cpp
   TestLoopParametricTiling.cpp
+  TestLowerVectorTransfers.cpp
   TestOpaqueLoc.cpp
   TestMemRefStrideCalculation.cpp
   TestVectorizationUtils.cpp

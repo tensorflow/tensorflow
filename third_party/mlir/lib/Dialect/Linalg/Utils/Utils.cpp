@@ -59,7 +59,7 @@ mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
 mlir::edsc::LoopRangeBuilder::LoopRangeBuilder(ValueHandle *iv,
                                                SubViewOp::Range range) {
   auto forOp =
-      OperationHandle::createOp<ForOp>(range.min, range.max, range.step);
+      OperationHandle::createOp<ForOp>(range.offset, range.size, range.stride);
   *iv = ValueHandle(forOp.getInductionVar());
   auto *body = forOp.getBody();
   enter(body, /*prev=*/1);

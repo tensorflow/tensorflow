@@ -210,10 +210,10 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
       GetSortedBufferIntervals();
 
   VLOG(1) << "Assigning buffers to alternate memory. Max heap size = "
-          << max_size_in_bytes_;
+          << options_.max_size_in_bytes;
 
   AddInputAndOutputRequiredAssignments();
-  prefetch_interval_picker_->SetInstructionSchedule(
+  options_.prefetch_interval_picker->SetInstructionSchedule(
       hlo_live_range_.instruction_schedule());
 
   for (auto& interval : sorted_buffer_intervals) {
@@ -373,7 +373,7 @@ void AlternateMemoryBestFitHeap::CommitPendingChunks() {
   }
   pending_chunks_.clear();
   // Also add the pending async copies to the interval tree.
-  if (max_outstanding_async_copies_ >= 0) {
+  if (options_.max_outstanding_async_copies >= 0) {
     for (auto interval : pending_async_copies_) {
       async_copy_interval_tree_.Add(interval.first, interval.second,
                                     kDummyChunk);
@@ -558,9 +558,9 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
   //                                     ^      ^
   //                                   Copy    Copy
   //                                   Start   Done
-  prefetch_interval_picker_->Begin(use, start_time, end_time);
-  while (!prefetch_interval_picker_->Done()) {
-    alternate_mem_interval.start = prefetch_interval_picker_->Next();
+  options_.prefetch_interval_picker->Begin(use, start_time, end_time);
+  while (!options_.prefetch_interval_picker->Done()) {
+    alternate_mem_interval.start = options_.prefetch_interval_picker->Next();
     VLOG(4) << "Trying alternate memory allocation ("
             << alternate_mem_interval.start << ", "
             << alternate_mem_interval.end << ")";
@@ -573,7 +573,7 @@ bool AlternateMemoryBestFitHeap::FindAllocation(
     }
     ChunkCandidate chunk_candidate = FindChunkCandidate(alternate_mem_interval);
     // Check if the new heap size fits within limits.
-    if (chunk_candidate.heap_size < max_size_in_bytes_) {
+    if (chunk_candidate.heap_size < options_.max_size_in_bytes) {
       VLOG(3) << "Move the buffer to alternate memory at "
               << alternate_mem_interval.start
               << ". Offset = " << chunk_candidate.chunk.offset
@@ -616,7 +616,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
 
 bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
     int64 start_time, int64 end_time) const {
-  if (max_outstanding_async_copies_ < 0) {
+  if (options_.max_outstanding_async_copies < 0) {
     return false;
   }
 
@@ -633,7 +633,7 @@ bool AlternateMemoryBestFitHeap::ViolatesMaximumOutstandingAsyncCopies(
   }
   // Add one because we are checking if adding an additional asynchronous copy
   // would violate the limit.
-  return num_async_copies + 1 > max_outstanding_async_copies_;
+  return num_async_copies + 1 > options_.max_outstanding_async_copies;
 }
 
 bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
@@ -647,7 +647,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
     // There hasn't been any allocations for this interval so far. We can
     // eliminate copy if the value can be placed in the alternate memory.
     can_eliminate_copy =
-        is_allowed_in_alternate_mem_(*alternate_mem_interval.buffer);
+        options_.is_allowed_in_alternate_mem_fn(*alternate_mem_interval.buffer);
   } else {
     // If there has been a previous allocation, we can eliminate the copy if the
     // previous allocation was also in the alternate memory.
@@ -660,7 +660,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
     return false;
   }
 
-  if (!prefetch_interval_picker_->CanAllocateInAlternateMemoryNoCopy(
+  if (!options_.prefetch_interval_picker->CanAllocateInAlternateMemoryNoCopy(
           non_bitcast_operand->shape(), start_time, end_time)) {
     return false;
   }
@@ -705,7 +705,7 @@ bool AlternateMemoryBestFitHeap::TryAllocatingInAlternateMemoryNoCopy(
   alternate_mem_interval.end = end_time;
   // Check if the new heap size fits within limits. Also ensure if a
   // preferred offset was provided, that offset was used.
-  if (chunk_candidate.heap_size < max_size_in_bytes_ &&
+  if (chunk_candidate.heap_size <= options_.max_size_in_bytes &&
       (preferred_offset == -1 ||
        preferred_offset == chunk_candidate.chunk.offset)) {
     VLOG(3) << "Keep the buffer in alternate memory. Offset = "
@@ -810,36 +810,27 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
 }
 
 /*static*/ StatusOr<std::unique_ptr<PresetAssignments>>
-MemorySpaceAssignment::Run(
-    HloModule* module, int64 alternate_memory_space, int64 max_size_in_bytes,
-    absl::optional<BufferIntervalCompare> buffer_interval_compare,
-    PrefetchIntervalPicker* prefetch_interval_picker,
-    int64 alternate_memory_space_alignment_in_bytes,
-    BufferValue::SizeFunction size_fn,
-    AlternateMemoryBestFitHeap::IsAllowedInAlternateMemoryFunction
-        is_allowed_in_alternate_mem,
-    int64 max_outstanding_async_copies) {
+MemorySpaceAssignment::Run(HloModule* module, const Options& options) {
   CHECK(module->has_schedule());
   VLOG(4) << "Module before memory space assignment: ";
   XLA_VLOG_LINES(4, module->ToString());
   VLOG(4) << "Schedule: " << module->schedule().ToString();
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
 
-  MemorySpaceAssignment memory_space_assignment(module, alternate_memory_space);
   const HloComputation* entry_computation = module->entry_computation();
-  TF_ASSIGN_OR_RETURN(memory_space_assignment.hlo_live_range_,
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloLiveRange> hlo_live_range,
                       HloLiveRange::Run(module->schedule(), *alias_analysis,
                                         entry_computation));
+  MemorySpaceAssignment memory_space_assignment(
+      module, options.alternate_memory_space,
+      hlo_live_range->flattened_instruction_sequence().instructions());
   auto algorithm = absl::make_unique<AlternateMemoryBestFitHeap>(
-      &memory_space_assignment.allocation_map_, max_size_in_bytes,
-      buffer_interval_compare, prefetch_interval_picker, *alias_analysis,
-      *memory_space_assignment.hlo_live_range_,
-      alternate_memory_space_alignment_in_bytes, is_allowed_in_alternate_mem,
-      max_outstanding_async_copies);
+      &memory_space_assignment.allocation_map_, options, *alias_analysis,
+      *hlo_live_range);
 
   TF_RETURN_IF_ERROR(HeapSimulator::Run(std::move(algorithm), *module,
                                         module->schedule(),
-                                        *alias_analysis.get(), size_fn)
+                                        *alias_analysis.get(), options.size_fn)
                          .status());
 
   TF_RETURN_IF_ERROR(memory_space_assignment.Process());
@@ -877,12 +868,6 @@ void MemorySpaceAssignment::Allocation::AddUse(HloUse use) {
 
 Status MemorySpaceAssignment::Allocation::Process(
     MemorySpaceAssignment* memory_space_assignment) {
-  // For non-copy allocations, all we need to do is to update the output memory
-  // space if placed in the alternate memory.
-  if (memory_space_ == MemorySpace::kAlternate) {
-    memory_space_assignment->AddPositionInAlternateMemorySpace(
-        defining_position());
-  }
   return Status::OK();
 }
 
@@ -1000,10 +985,6 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
         /*operand_num=*/0, copy_done_));
   }
 
-  if (memory_space_ == MemorySpace::kAlternate) {
-    memory_space_assignment->AddPositionInAlternateMemorySpace({copy_done_});
-  }
-
   return Status::OK();
 }
 
@@ -1045,7 +1026,9 @@ Status MemorySpaceAssignment::Process() {
 
   // Color the pending positions and all of their aliased buffers.
   TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module_));
-  for (HloPosition defining_position : pending_positions_in_alternate_mem_) {
+  for (const auto& defining_position_and_chunk :
+       preset_assignments_->chunks()) {
+    const HloPosition& defining_position = defining_position_and_chunk.first;
     for (auto& buffer : alias_analysis->ComputeBuffersAt(
              defining_position.instruction, defining_position.index)) {
       for (auto& value : buffer->values()) {
@@ -1101,6 +1084,7 @@ Status MemorySpaceAssignment::SimplifyGraph() {
           // Ensure the exported preset assignments don't contain a refence to
           // the removed instruction.
           preset_assignments_->RemoveAssignmentForInstruction(instruction);
+          flattened_instruction_sequence_.remove_instruction(instruction);
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -1135,11 +1119,6 @@ void MemorySpaceAssignment::EnsureInstructionAndOperandsInserted(
   VLOG(4) << "inserting: " << new_instruction->ToShortString();
   new_sequence->push_back(new_instruction);
   inserted_instructions->insert(new_instruction);
-}
-
-void MemorySpaceAssignment::AddPositionInAlternateMemorySpace(
-    HloPosition position) {
-  pending_positions_in_alternate_mem_.push_back(position);
 }
 
 void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
@@ -1204,7 +1183,7 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
       // If the copy start doesn't happen to be scheduled at the correct
       // computation, delay it until the correct computation starts.
       const auto& flattened_instructions =
-          hlo_live_range_->flattened_instruction_sequence().instructions();
+          flattened_instruction_sequence_.instructions();
       int64 copy_start_schedule_after =
           copy_allocation->copy_start_schedule_after();
       while (copy_allocation->instruction()->parent() !=
@@ -1232,8 +1211,6 @@ Status MemorySpaceAssignment::FixSchedule() {
   for (const HloComputation* computation :
        module_->MakeNonfusionComputations()) {
     CHECK(schedule.is_computation_scheduled(computation));
-    const HloInstructionSequence& sequence =
-        hlo_live_range_->flattened_instruction_sequence();
     HloInstructionSequence new_sequence;
 
     absl::flat_hash_set<HloInstruction*> inserted_instructions;
@@ -1241,10 +1218,12 @@ Status MemorySpaceAssignment::FixSchedule() {
     VLOG(4) << "Scheduling: " << computation->ToString();
 
     for (int64 instruction_index = 0;
-         instruction_index < sequence.instructions().size();
+         instruction_index <
+         flattened_instruction_sequence_.instructions().size();
          ++instruction_index) {
-      HloInstruction* instruction = sequence.instructions()[instruction_index];
-      if (!computation->ContainsInstruction(instruction)) {
+      HloInstruction* instruction =
+          flattened_instruction_sequence_.instructions()[instruction_index];
+      if (instruction->parent() != computation) {
         continue;
       }
       auto insts_before_iter = schedule_before_.find(instruction_index);

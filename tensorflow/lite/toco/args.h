@@ -173,6 +173,7 @@ struct ParsedTocoFlags {
   Arg<bool> reorder_across_fake_quant = Arg<bool>(false);
   Arg<bool> allow_custom_ops = Arg<bool>(false);
   Arg<bool> allow_dynamic_tensors = Arg<bool>(true);
+  Arg<string> custom_opdefs;
   Arg<bool> post_training_quantize = Arg<bool>(false);
   Arg<bool> quantize_to_float16 = Arg<bool>(false);
   // Deprecated flags

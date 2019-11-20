@@ -2300,40 +2300,40 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNames(self):
-    with ops.name_scope("foo") as foo:
+    with ops.name_scope("foo", skip_on_eager=False) as foo:
       self.assertEqual("foo/", foo)
-      with ops.name_scope("foo2") as foo2:
+      with ops.name_scope("foo2", skip_on_eager=False) as foo2:
         self.assertEqual("foo/foo2/", foo2)
-      with ops.name_scope(None) as empty1:
+      with ops.name_scope(None, skip_on_eager=False) as empty1:
         self.assertEqual("", empty1)
-        with ops.name_scope("foo3") as foo3:
+        with ops.name_scope("foo3", skip_on_eager=False) as foo3:
           self.assertEqual("foo3/", foo3)
-      with ops.name_scope("") as empty2:
+      with ops.name_scope("", skip_on_eager=False) as empty2:
         self.assertEqual("", empty2)
-    with ops.name_scope("foo/") as outer_foo:
+    with ops.name_scope("foo/", skip_on_eager=False) as outer_foo:
       self.assertEqual("foo/", outer_foo)
-      with ops.name_scope("") as empty3:
+      with ops.name_scope("", skip_on_eager=False) as empty3:
         self.assertEqual("", empty3)
-      with ops.name_scope("foo4") as foo4:
+      with ops.name_scope("foo4", skip_on_eager=False) as foo4:
         self.assertEqual("foo/foo4/", foo4)
-      with ops.name_scope("foo5//") as foo5:
+      with ops.name_scope("foo5//", skip_on_eager=False) as foo5:
         self.assertEqual("foo5//", foo5)
-        with ops.name_scope("foo6") as foo6:
+        with ops.name_scope("foo6", skip_on_eager=False) as foo6:
           self.assertEqual("foo5//foo6/", foo6)
-      with ops.name_scope("/") as foo7:
+      with ops.name_scope("/", skip_on_eager=False) as foo7:
         self.assertEqual("/", foo7)
-      with ops.name_scope("//") as foo8:
+      with ops.name_scope("//", skip_on_eager=False) as foo8:
         self.assertEqual("//", foo8)
-      with ops.name_scope("a//b/c") as foo9:
+      with ops.name_scope("a//b/c", skip_on_eager=False) as foo9:
         self.assertEqual("foo/a//b/c/", foo9)
-    with ops.name_scope("a//b/c") as foo10:
+    with ops.name_scope("a//b/c", skip_on_eager=False) as foo10:
       self.assertEqual("a//b/c/", foo10)
 
   @test_util.run_in_graph_and_eager_modes
   def testEagerDefaultScopeName(self):
-    with ops.name_scope(None, "default") as scope:
+    with ops.name_scope(None, "default", skip_on_eager=False) as scope:
       self.assertEqual(scope, "default/")
-      with ops.name_scope(None, "default2") as scope2:
+      with ops.name_scope(None, "default2", skip_on_eager=False) as scope2:
         self.assertEqual(scope2, "default/default2/")
 
   @test_util.run_in_graph_and_eager_modes
@@ -2671,7 +2671,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with ops.Graph().as_default():
       function_graph = ops.Graph()
       with function_graph.as_default():
-        with ops.name_scope("inner"), ops.init_scope():
+        with ops.name_scope("inner", skip_on_eager=False), ops.init_scope():
           self.assertEqual(ops.get_name_scope(), "inner")
       self.assertEqual(ops.get_name_scope(), "")
 
@@ -2698,7 +2698,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
   def testPreservesNameScopeInEagerExecution(self):
     with context.eager_mode():
       def foo():
-        with ops.name_scope("inner"), ops.init_scope():
+        with ops.name_scope("inner", skip_on_eager=False), ops.init_scope():
           if context.executing_eagerly():
             # A trailing slash is always appended when eager execution is
             # enabled.

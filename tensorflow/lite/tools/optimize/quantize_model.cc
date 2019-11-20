@@ -421,6 +421,10 @@ TfLiteStatus QuantizeOpInput(
     return kTfLiteError;
   }
   const int32_t tensor_idx = op->inputs[input_idx];
+  if (tensor_idx == -1) {
+    // Skip optional tensor.
+    return kTfLiteOk;
+  }
   TensorT* tensor = subgraph->tensors[tensor_idx].get();
   // Assumes op is quantized to int8.
   const bool is_input_quantized = utils::QuantizationParametersExist(tensor);
@@ -429,9 +433,59 @@ TfLiteStatus QuantizeOpInput(
     if (utils::HasBuffer(model, subgraph, tensor_idx)) {
       // TODO(suharshs): Look at consumers, throw error if one consumer is
       // per-channel and one per-layer.
-      if (utils::QuantizeWeight(model, tensor, tensor_property.per_axis,
-                                tensor_property.per_axis_index,
-                                error_reporter) == kTfLiteError) {
+      if (tensor_property.number_of_bits == 8) {
+        if (tensor_property.use_derived_scale) {
+          // Currently 8bit tensors in input do not accept derived scale.
+          return kTfLiteError;
+        }
+        if (utils::QuantizeWeight(model, tensor, tensor_property.per_axis,
+                                  tensor_property.per_axis_index,
+                                  error_reporter) == kTfLiteError) {
+          error_reporter->Report(
+              "Unable to quantize buffer or min/max value for input %d "
+              "in op %s in subgraph %d, node: %d",
+              input_idx, EnumNameBuiltinOperator(op_code), subgraph_idx,
+              *op_idx);
+          return kTfLiteError;
+        }
+      } else if (tensor_property.number_of_bits == 16) {
+        if (tensor_property.use_derived_scale) {
+          // Currently 16bit tensors in input do not accept derived scale.
+          return kTfLiteError;
+        }
+        TensorT* tensor = subgraph->tensors[tensor_idx].get();
+        int total_size = 1;
+        for (int i = 0; i < tensor->shape.size(); ++i) {
+          total_size *= tensor->shape[i];
+        }
+        BufferT* buffer = model->buffers[tensor->buffer].get();
+        float* float_data = reinterpret_cast<float*>(buffer->data.data());
+        auto minmax = std::minmax_element(float_data, float_data + total_size);
+        const float min = *minmax.first;
+        const float max = *minmax.second;
+        const float range = std::max(std::abs(min), std::abs(max));
+        // The narrow range quantized value for int16.
+        const float quantize_range = 32767.0;
+        const float scale = range / quantize_range;
+        return utils::SymmetricQuantizeFloatsToInt16(model, tensor, scale,
+                                                     error_reporter);
+      } else if (tensor_property.number_of_bits == 32) {
+        if (!tensor_property.use_derived_scale) {
+          // Currently 32 bit tensors in input only accept derived scale.
+          return kTfLiteError;
+        }
+        TensorT* tensor = subgraph->tensors[tensor_idx].get();
+        const float scale = utils::GetEffectiveScale(
+            model, subgraph, *op_idx,
+            tensor_property.derived_scale.input_tensors,
+            tensor_property.derived_scale.intermediate_tensors,
+            tensor_property.derived_scale.factors);
+        return utils::SymmetricPerLayerBiasQuantize(model, tensor, scale,
+                                                    error_reporter);
+
+      } else {
+        // Only 8, 16, 32 are supported.
+        // TODO(jianlijianli): extend this to support arbitrary bits.
         error_reporter->Report(
             "Unable to quantize buffer or min/max value for input %d "
             "in op %s in subgraph %d, node: %d",
@@ -439,9 +493,27 @@ TfLiteStatus QuantizeOpInput(
         return kTfLiteError;
       }
     } else if (utils::HasMinMax(tensor)) {
-      // TODO(suharshs): Handle per-channel dynamic tensor.
-      if (IsSubgraphInput(subgraph, tensor_idx)) {
-        utils::QuantizeActivation(tensor);
+      if (IsSubgraphInput(subgraph, tensor_idx) ||
+          tensor_property.state_tensor) {
+        if (tensor_property.number_of_bits == 8) {
+          if (tensor_property.use_derived_scale) {
+            // Currently 8bit tensors in input do not accept derived scale.
+            return kTfLiteError;
+          }
+          utils::QuantizeActivation(tensor);
+        } else if (tensor_property.number_of_bits == 16) {
+          TensorT* tensor = subgraph->tensors[tensor_idx].get();
+          float range = std::max(std::abs(tensor->quantization->min[0]),
+                                 std::abs(tensor->quantization->max[0]));
+          if (tensor_property.extend_to_power_of_two) {
+            const int power_of_two_scale = utils::GetPowerOfTwoScale(
+                tensor->quantization->min[0], tensor->quantization->max[0]);
+            range = std::pow(2, power_of_two_scale);
+          }
+          const float quantized_range = 32768.0;
+          const float scale = range / quantized_range;
+          utils::QuantizeActivationToInt16(tensor, scale);
+        }
       } else {
         // If the tensor is not a model input, we need to add a Quantize
         // operation since the preceding op may require a float output.
@@ -515,6 +587,10 @@ TfLiteStatus QuantizeOpOutput(
   }
 
   TensorT* output_tensor = subgraph->tensors[op->outputs[output_idx]].get();
+  if (utils::QuantizationParametersExist(output_tensor)) {
+    // Skip output if it has been quantized.
+    return kTfLiteOk;
+  }
   if (ShouldRestrictSameInputOutputScale(property)) {
     // Copy quantization parameter. For average pool, max pool, etc
     // min/max can be different but we want them to be the same.
@@ -571,6 +647,122 @@ TfLiteStatus QuantizeOpOutput(
           "subgraph %d, node: %d",
           output_idx, EnumNameBuiltinOperator(op_code), subgraph_idx, op_idx);
       return kTfLiteError;
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus QuantizeIntemediateTensors(ModelT* model,
+                                        ErrorReporter* error_reporter) {
+  for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+      operator_property::OperatorProperty property =
+          operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
+      if (!property.intermediates.empty()) {
+        OperatorT* op = subgraph->operators[op_idx].get();
+        const BuiltinOperator op_code =
+            model->operator_codes[op->opcode_index]->builtin_code;
+        for (const std::pair<int, operator_property::TensorProperty>& input :
+             property.intermediates) {
+          const int index_local = input.first;
+          const int index_global = op->intermediates[index_local];
+          if (index_global == -1) {
+            // Skip optional tensor.
+            continue;
+          }
+          if (input.second.number_of_bits == 8 &&
+              input.second.symmetric == false) {
+            TensorT* tensor = subgraph->tensors[index_global].get();
+            if (utils::HasMinMax(tensor)) {
+              utils::QuantizeActivation(tensor);
+            } else {
+              error_reporter->Report(
+                  "Unable to find min/max value for output %d in %s in "
+                  "subgraph %d, node: %d",
+                  tensor, EnumNameBuiltinOperator(op_code), subgraph_idx,
+                  op_idx);
+              return kTfLiteError;
+            }
+          } else if (input.second.number_of_bits == 16 &&
+                     input.second.symmetric == true) {
+            TensorT* tensor = subgraph->tensors[index_global].get();
+            if (tensor->quantization == nullptr) {
+              continue;
+            }
+            const float min = tensor->quantization->min[0];
+            const float max = tensor->quantization->max[0];
+            const float range = std::max(std::abs(min), std::abs(max));
+            if (range < 1e-8) {
+              return kTfLiteError;
+            }
+
+            // Get scale and zero point.
+            const float quantized_range = 32767.0;
+            const float scale = range / quantized_range;
+            utils::QuantizeActivationToInt16(tensor, scale);
+          } else {
+            return kTfLiteError;
+          }
+        }
+      }
+    }
+  }
+  return kTfLiteOk;
+}
+
+// Quantize tensros that have shared range. For example, in LSTM, the output
+// tensor and input state tensor should share the same range because they are
+// using the same scale and zero point.
+TfLiteStatus QuantizeSharedRange(ModelT* model, ErrorReporter* error_reporter) {
+  for (size_t subgraph_idx = 0; subgraph_idx < model->subgraphs.size();
+       subgraph_idx++) {
+    SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+      operator_property::OperatorProperty property =
+          operator_property::GetOperatorProperty(model, subgraph_idx, op_idx);
+      if (!property.intermediates.empty()) {
+        OperatorT* op = subgraph->operators[op_idx].get();
+        for (const std::vector<int>& input : property.restrict_scale) {
+          if (input.empty()) {
+            continue;
+          }
+          // Currently only support pair of twos.
+          // TODO(jianlijianli): extend to arbitrary number of tensors.
+          if (input.size() != 2) {
+            return kTfLiteError;
+          }
+          const int index_1 = input[0];
+          const int index_2 = input[1];
+          // TODO(jianlijianli): model input/output.
+          TensorT* tensor_1 = subgraph->tensors[op->inputs[index_1]].get();
+          TensorT* tensor_2 = subgraph->tensors[op->outputs[index_2]].get();
+          const float min_of_min = std::min(tensor_1->quantization->min[0],
+                                            tensor_2->quantization->min[0]);
+          const float max_of_max = std::max(tensor_1->quantization->max[0],
+                                            tensor_2->quantization->max[0]);
+          if (min_of_min == 0.0 && max_of_max == 0.0) {
+            return kTfLiteError;
+          }
+
+          // Asmmetric quantization to 8 bit.
+          auto quantization_params =
+              absl::make_unique<QuantizationParametersT>();
+          utils::GetAsymmetricQuantizationParams(
+              min_of_min, max_of_max, -128, 127, quantization_params.get());
+
+          // Populate both tensors with the same parameters.
+          const float scale = quantization_params->scale[0];
+          const int32 zero_point = quantization_params->zero_point[0];
+          for (TensorT* tensor : {tensor_1, tensor_2}) {
+            tensor->quantization = absl::make_unique<QuantizationParametersT>();
+            tensor->quantization->scale.push_back(scale);
+            tensor->quantization->zero_point.push_back(zero_point);
+            tensor->type = TensorType_INT8;
+          }
+        }
+      }
     }
   }
   return kTfLiteOk;
@@ -713,6 +905,10 @@ TfLiteStatus FillQuantizationParams(
         // Get tensor.
         const int32_t input_idx = input.first;
         const int32_t tensor_idx = op->inputs[input_idx];
+        if (tensor_idx == -1) {
+          // Skip optional tensor.
+          continue;
+        }
         TensorT* tensor = subgraph->tensors[tensor_idx].get();
 
         // Static tensor.
@@ -918,6 +1114,8 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
       FillQuantizationParams(model, operator_names, error_reporter));
   TF_LITE_ENSURE_STATUS(
       EnsureBiasScaleCompatibility(model, operator_names, error_reporter));
+  TF_LITE_ENSURE_STATUS(QuantizeIntemediateTensors(model, error_reporter));
+  TF_LITE_ENSURE_STATUS(QuantizeSharedRange(model, error_reporter));
   TF_LITE_ENSURE_STATUS(QuantizeWeightsInputOutput(
       model, allow_float, operator_names, error_reporter));
   TF_LITE_ENSURE_STATUS(

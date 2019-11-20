@@ -560,6 +560,29 @@ Example:
 
 ```
 
+#### 'affine.min' operation
+
+Syntax:
+
+``` {.ebnf}
+operation ::= ssa-id `=` `affine.min` affine-map dim-and-symbol-use-list
+```
+
+The `affine.min` operation applies an
+[affine mapping](#affine-expressions) to a list of SSA values, and returns the
+minimum value of all result expressions. The number of dimension and symbol
+arguments to affine.min must be equal to the respective number of dimensional
+and symbolic inputs to the affine mapping; the `affine.min` operation always
+returns one value. The input operands and result must all have 'index' type.
+
+Example:
+
+```mlir {.mlir}
+
+%0 = affine.min (d0)[s0] -> (1000, d0 + 512, s0) (%arg0)[%arg1]
+
+```
+
 #### `affine.terminator` operation
 
 Syntax:

@@ -12,20 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <fcntl.h>
-#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <limits>
-#include <vector>
+#include <utility>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/experimental/ruy/detect_arm.h"
 #include "tensorflow/lite/experimental/ruy/ruy.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
@@ -1940,8 +1940,7 @@ void NeonClipVector(const float* vector, int v_size, float abs_limit,
   }
   // Postamble loop.
   for (; v < v_size; v++) {
-    result[v] = (abs_limit < vector[v]) ? abs_limit : vector[v];
-    result[v] = (-abs_limit > result[v]) ? -abs_limit : result[v];
+    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
   }
 }
 

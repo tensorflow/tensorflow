@@ -132,7 +132,7 @@ cc_library(
         ":captured_function",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/lib/core:status",
     ],
 )
@@ -161,6 +161,7 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels:variable_ops",
+        "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/time",
     ],
 )
@@ -606,6 +607,7 @@ tf_kernel_library(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 

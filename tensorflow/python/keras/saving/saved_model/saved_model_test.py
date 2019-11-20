@@ -463,6 +463,9 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.save(saved_model_dir, save_format='tf')
     load = tf_load.load(saved_model_dir)
 
+    # Ensure that the Keras loader is able to load and build the model.
+    _ = keras_load.load(saved_model_dir)
+
     assert_training_default(load.__call__, False)
     assert_training_default(
         load.layer_with_training_default_none.__call__, False)

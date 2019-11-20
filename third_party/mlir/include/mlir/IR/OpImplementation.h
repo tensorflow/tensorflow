@@ -318,6 +318,13 @@ public:
     return parseAttribute(result, Type(), attrName, attrs);
   }
 
+  /// Parse an attribute of a specific kind and type.
+  template <typename AttrType>
+  ParseResult parseAttribute(AttrType &result, StringRef attrName,
+                             SmallVectorImpl<NamedAttribute> &attrs) {
+    return parseAttribute(result, Type(), attrName, attrs);
+  }
+
   /// Parse an arbitrary attribute of a given type and return it in result. This
   /// also adds the attribute to the specified attribute list with the specified
   /// name.
@@ -339,7 +346,7 @@ public:
     // Check for the right kind of attribute.
     result = attr.dyn_cast<AttrType>();
     if (!result)
-      return emitError(loc, "invalid kind of constant specified");
+      return emitError(loc, "invalid kind of attribute specified");
 
     return success();
   }
@@ -357,9 +364,21 @@ public:
   // Identifier Parsing
   //===--------------------------------------------------------------------===//
 
+  /// Parse an @-identifier and store it (without the '@' symbol) in a string
+  /// attribute named 'attrName'.
+  ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
+                              SmallVectorImpl<NamedAttribute> &attrs) {
+    if (failed(parseOptionalSymbolName(result, attrName, attrs)))
+      return emitError(getCurrentLocation())
+             << "expected valid '@'-identifier for symbol name";
+    return success();
+  }
+
+  /// Parse an optional @-identifier and store it (without the '@' symbol) in a
+  /// string attribute named 'attrName'.
   virtual ParseResult
-  parseSymbolName(StringAttr &result, StringRef attrName,
-                  SmallVectorImpl<NamedAttribute> &attrs) = 0;
+  parseOptionalSymbolName(StringAttr &result, StringRef attrName,
+                          SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   //===--------------------------------------------------------------------===//
   // Operand Parsing

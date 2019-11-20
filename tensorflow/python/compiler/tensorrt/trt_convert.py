@@ -25,7 +25,6 @@ import tempfile
 
 import six as _six
 
-from tensorflow.compiler.tf2tensorrt import wrap_py_utils
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -54,6 +53,9 @@ from tensorflow.python.util import nest
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+if platform.system() == "Windows":
+  raise RuntimeError("Windows platform is not supported")
+
 # Lazily load the op, since it's not available in cpu-only builds. Importing
 # this at top will cause tests that imports TF-TRT fail when they're built
 # and run without CUDA/GPU.
@@ -61,17 +63,21 @@ gen_trt_ops = LazyLoader(
     "gen_trt_ops", globals(),
     "tensorflow.compiler.tf2tensorrt.ops.gen_trt_ops")
 
+wrap_py_utils = LazyLoader(
+    "wrap_py_utils", globals(),
+    "tensorflow.compiler.tf2tensorrt.wrap_py_utils")
+
 # Register TRT ops in python, so that when users import this module they can
 # execute a TRT-converted graph without calling any of the methods in this
 # module.
-if wrap_py_utils.is_tensorrt_enabled():
-  if platform.system() == "Windows":
-    raise RuntimeError("Windows platform is not supported")
-
-  # This will call register_op_list() in
-  # tensorflow/python/framework/op_def_registry.py, but it doesn't register
-  # the op or the op kernel in C++ runtime.
+#
+# This will call register_op_list() in
+# tensorflow/python/framework/op_def_registry.py, but it doesn't register
+# the op or the op kernel in C++ runtime.
+try:
   gen_trt_ops.trt_engine_op  # pylint: disable=pointless-statement
+except AttributeError:
+  pass
 
 
 def _to_bytes(s):

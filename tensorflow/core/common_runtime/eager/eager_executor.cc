@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 
+#include <forward_list>
+
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 
@@ -22,6 +24,7 @@ namespace tensorflow {
 
 EagerExecutor::EagerExecutor(bool async)
     : next_node_id_(0),
+      ok_(true),
       thread_(async ? tensorflow::Env::Default()->StartThread(
                           tensorflow::ThreadOptions(), "eager_async_executor",
                           std::bind(&EagerExecutor::Run, this))
@@ -157,33 +160,31 @@ tensorflow::Status EagerExecutor::WaitForAllPendingNodesLocked(
 }
 
 void EagerExecutor::ClearError() {
-  tensorflow::mutex_lock l(node_queue_mutex_);
   // TODO(iga): Check state_ and return an error if it is not kActive.
-  if (status_.ok()) return;
+  if (ok()) return;
+
+  tensorflow::mutex_lock l(node_queue_mutex_);
   // If an error was set, node_done_notifications_ and node_queue_ should have
   // been cleared, and no new entries should have been added since.
   DCHECK(node_done_notifications_.empty());
   DCHECK(node_queue_.empty());
   status_ = tensorflow::Status::OK();
+  ok_ = true;
   nodes_pending_.notify_all();
-}
-
-tensorflow::Status EagerExecutor::status() const {
-  tf_shared_lock l(node_queue_mutex_);
-  return status_;
 }
 
 void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
                              const Status& status) {
   DVLOG(3) << "Node Done: [id " << item->id << "] " << item->node->DebugString()
            << " with status: " << status.ToString();
-  std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
+  DCHECK(item->state != NodeState::kDONE);
+  auto previous_state = item->state;
+  item->state = NodeState::kDONE;
+  if (!ok()) return;
+
+  std::forward_list<core::RefCountPtr<NodeItem>> items_to_destroy;
   {
     mutex_lock l(node_queue_mutex_);
-    DCHECK(item->state != NodeState::kDONE);
-    auto previous_state = item->state;
-    item->state = NodeState::kDONE;
-    if (!status_.ok()) return;
     bool need_notification = false;
     if (previous_state == NodeState::kPENDING) {
       if (Async()) {
@@ -201,6 +202,7 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
     if (!status.ok()) {
       need_notification = true;
       status_ = status;
+      ok_ = false;
       if (Async()) {
         // We remove any pending ops so that we don't try to execute them if
         // ClearError is called.
@@ -210,11 +212,11 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
                                 "operations and poisons their output tensors.");
       }
       while (!node_queue_.empty()) {
-        items_to_destroy.push_back(std::move(node_queue_.front()));
+        items_to_destroy.push_front(std::move(node_queue_.front()));
         node_queue_.pop();
       }
       for (auto& it : unfinished_nodes_) {
-        items_to_destroy.push_back(std::move(it.second));
+        items_to_destroy.push_front(std::move(it.second));
       }
       unfinished_nodes_.clear();
     }

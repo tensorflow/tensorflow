@@ -2167,7 +2167,11 @@ class TensorFlowTestCase(googletest.TestCase):
                    force_gpu=False):
     """Use cached_session instead."""
     if self.id().endswith(".test_session"):
-      self.skipTest("Not a test.")
+      self.skipTest(
+          "Tests that have the name \"test_session\" are automatically skipped "
+          "by TensorFlow test fixture, as the name is reserved for creating "
+          "sessions within tests. Please rename your test if you have a test "
+          "with this name.")
     if context.executing_eagerly():
       yield None
     else:
@@ -2604,6 +2608,8 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       msgs.append("not equal lhs = {}".format(x))
       msgs.append("not equal rhs = {}".format(y))
+      # With Python 3, we need to make sure the dtype matches between a and b.
+      b = b.astype(a.dtype)
       np.testing.assert_array_equal(a, b, err_msg="\n".join(msgs))
 
   @py_func_if_in_function

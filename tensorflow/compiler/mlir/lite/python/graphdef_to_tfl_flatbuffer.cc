@@ -43,6 +43,23 @@ using stream_executor::port::StatusOr;
 namespace tensorflow {
 
 namespace {
+// Op def string for TFLite_Detection_PostProcess Op.
+const char kDetectionPostProcessOp[] =
+    "name: 'TFLite_Detection_PostProcess' input_arg: { name: "
+    "'raw_outputs/box_encodings' type: DT_FLOAT } input_arg: { name: "
+    "'raw_outputs/class_predictions' type: DT_FLOAT } input_arg: { name: "
+    "'anchors' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess:1' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess:2' type: DT_FLOAT } output_arg: { name: "
+    "'TFLite_Detection_PostProcess:3' type: DT_FLOAT } attr : { name: "
+    "'h_scale' type: 'float'} attr : { name: 'max_classes_per_detection' "
+    "type: 'int'} attr : { name: 'max_detections' type: 'int'} attr : { "
+    "name: 'nms_iou_threshold' type: 'float'} attr : { name: "
+    "'nms_score_threshold' type: 'float'} attr : { name: 'num_classes' type: "
+    "'int'} attr : { name: 'w_scale' type: 'int'} attr : { name: 'x_scale' "
+    "type: 'int'} attr : { name: 'y_scale' type: 'int'}";
+
 // Converts the toco::IODataType to tensorflow::DataType. Only contains the
 // conversion mapping for constants defined in TFLite Python API.
 DataType ConvertIODataTypeToDataType(toco::IODataType dtype) {
@@ -121,6 +138,28 @@ Status DumpOpGraphToFile(mlir::ModuleOp module, const std::string& filename) {
     return errors::Unknown("Failed to dump Op Graph from MLIR module.");
   }
   output->keep();
+  return Status::OK();
+}
+
+Status RegisterCustomBuiltinOps(const std::vector<string> extra_tf_opdefs) {
+  for (const auto& tf_opdefs_string : extra_tf_opdefs) {
+    tensorflow::OpDef opdef;
+    if (!tensorflow::protobuf::TextFormat::ParseFromString(tf_opdefs_string,
+                                                           &opdef)) {
+      return errors::InvalidArgument("fail to parse extra OpDef");
+    }
+    // Make sure the op is not already registered. If registered continue.
+    const OpRegistrationData* op_reg = nullptr;
+    auto status =
+        tensorflow::OpRegistry::Global()->LookUp(opdef.name(), &op_reg);
+    if (status.ok()) continue;
+
+    tensorflow::OpRegistry::Global()->Register(
+        [opdef](tensorflow::OpRegistrationData* op_reg_data) -> Status {
+          *op_reg_data = tensorflow::OpRegistrationData(opdef);
+          return Status::OK();
+        });
+  }
   return Status::OK();
 }
 
@@ -210,6 +249,12 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
   specs.graph_as_function = false;
   specs.upgrade_legacy = true;
   WarningUnusedFlags(model_flags, toco_flags);
+
+  // Register any custom OpDefs.
+  std::vector<string> extra_tf_opdefs(toco_flags.custom_opdefs().begin(),
+                                      toco_flags.custom_opdefs().end());
+  extra_tf_opdefs.push_back(kDetectionPostProcessOp);
+  TF_RETURN_IF_ERROR(RegisterCustomBuiltinOps(extra_tf_opdefs));
 
   TF_ASSIGN_OR_RETURN(
       auto module, ConvertGraphdefToMlir(input, debug_info, specs, &context));

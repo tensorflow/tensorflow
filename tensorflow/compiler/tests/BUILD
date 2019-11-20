@@ -1034,10 +1034,6 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
-    tags = [
-        "noasan",  # b/143400367
-        "nomsan",  # b/142562986
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1213,11 +1209,6 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
-    tags = [
-        # TODO(b/134780716): Re-enable this test.
-        "nogpu",
-        "no_cuda_on_cpu_tap",
-    ],
     xla_enable_strict_auto_jit = False,
 )
 

@@ -129,7 +129,7 @@ Status ConvertAttribute(const mlir::UnitAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-Status ConvertAttribute(const mlir::SymbolRefAttr& attr, AttrValue* value) {
+Status ConvertAttribute(const mlir::FlatSymbolRefAttr& attr, AttrValue* value) {
   value->mutable_func()->set_name(attr.getValue());
   return Status::OK();
 }
@@ -163,7 +163,7 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
       TensorProto tensor;
       TF_RETURN_IF_ERROR(ConvertToTensorProto(attr, &tensor));
       *list->add_tensor() = tensor;
-    } else if (auto attr = a.dyn_cast<mlir::SymbolRefAttr>()) {
+    } else if (auto attr = a.dyn_cast<mlir::FlatSymbolRefAttr>()) {
       AttrValue attr_val;
       TF_RETURN_IF_ERROR(ConvertAttribute(attr, &attr_val));
       *list->add_func() = attr_val.func();
@@ -318,7 +318,7 @@ Status ConvertAttributes(
     AttrValue value;
     switch (attr.getKind()) {
       case mlir::StandardAttributes::SymbolRef: {
-        auto func_attr = attr.cast<mlir::SymbolRefAttr>();
+        auto func_attr = attr.cast<mlir::FlatSymbolRefAttr>();
         value.mutable_func()->set_name(func_attr.getValue());
         func_call_attrs[string(name)] = value;
         continue;
@@ -430,6 +430,26 @@ Status SetShapeAttribute(absl::string_view name, mlir::ShapedType shaped_type,
                                      " '", name, "' attribute but found ",
                                      actual_shape.ShortDebugString());
     }
+  }
+  return Status::OK();
+}
+
+Status SetSizeAttribute(absl::string_view name, size_t size,
+                        AttrValueMap* values) {
+  AttrValue value;
+  value.set_i(size);
+
+  auto result = values->insert({string(name), value});
+  if (!result.second) {
+    // This should be extremely rare as it means we are adding the same
+    // attribute multiple times/have some redundancy in representing this
+    // attribute.
+    int64 actual_size = result.first->second.i();
+    // Just check via string output as we shouldn't get here and if we do they
+    // should be trivially the same, else fail.
+    if (actual_size != size)
+      return errors::InvalidArgument("Expected '", name, "' attribute to be ",
+                                     size, " but found ", actual_size);
   }
   return Status::OK();
 }

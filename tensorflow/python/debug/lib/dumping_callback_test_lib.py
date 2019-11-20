@@ -123,6 +123,7 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
     op_types = []
     op_name_to_op_type = dict()
     context_ids = set()
+    symbolic_tensor_ids = set()
     for debug_event in graphs_iter:
       self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
       prev_wall_time = debug_event.wall_time
@@ -134,6 +135,13 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       self.assertTrue(graph_op_creation.graph_id)
       context_ids.add(graph_op_creation.graph_id)
       self.assertTrue(graph_op_creation.code_location)
+      if graph_op_creation.num_outputs:
+        self.assertLen(graph_op_creation.output_tensor_ids,
+                       graph_op_creation.num_outputs)
+        # Check that all symblic tensor IDs are unique.
+        for tensor_id in graph_op_creation.output_tensor_ids:
+          self.assertNotIn(tensor_id, symbolic_tensor_ids)
+          symbolic_tensor_ids.add(tensor_id)
       for stack_frame_id in graph_op_creation.code_location.stack_frame_ids:
         self.assertIn(stack_frame_id, stack_frame_by_id)
     return context_ids, op_types, op_name_to_op_type
