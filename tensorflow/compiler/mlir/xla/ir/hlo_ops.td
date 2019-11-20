@@ -218,6 +218,7 @@ def HLO_ComplexOp: HLO_Op<"complex",
 
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
   let results = (outs HLO_ComplexTensor);
+  let hasFolder = 1;
 }
 
 def HLO_ImagOp: HLO_Op<
@@ -227,6 +228,7 @@ def HLO_ImagOp: HLO_Op<
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
 }
 
 def HLO_RealOp: HLO_Op<
@@ -236,6 +238,7 @@ def HLO_RealOp: HLO_Op<
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//

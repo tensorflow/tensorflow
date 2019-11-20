@@ -450,6 +450,18 @@ void ComplexOp::build(Builder* builder, OperationState& state, Value* lhs,
   build(builder, state, result_ty, lhs, rhs);
 }
 
+OpFoldResult ComplexOp::fold(ArrayRef<Attribute> operands) {
+  auto real_op =
+      dyn_cast_or_null<xla_hlo::RealOp>(getOperand(0)->getDefiningOp());
+  auto imag_op =
+      dyn_cast_or_null<xla_hlo::ImagOp>(getOperand(1)->getDefiningOp());
+  if (real_op && imag_op && real_op.getOperand() == imag_op.getOperand()) {
+    return real_op.getOperand();
+  }
+
+  return {};
+}
+
 namespace {
 Type CreateRealType(Type type) {
   auto element_ty = getElementTypeOrSelf(type);
@@ -471,8 +483,26 @@ void ImagOp::build(Builder* builder, OperationState& state, Value* val) {
   build(builder, state, CreateRealType(val->getType()), val);
 }
 
+OpFoldResult ImagOp::fold(ArrayRef<Attribute> operands) {
+  if (auto complex_op =
+          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand()->getDefiningOp())) {
+    return complex_op.getOperand(1);
+  }
+
+  return {};
+}
+
 void RealOp::build(Builder* builder, OperationState& state, Value* val) {
   build(builder, state, CreateRealType(val->getType()), val);
+}
+
+OpFoldResult RealOp::fold(ArrayRef<Attribute> operands) {
+  if (auto complex_op =
+          dyn_cast_or_null<xla_hlo::ComplexOp>(getOperand()->getDefiningOp())) {
+    return complex_op.getOperand(0);
+  }
+
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
