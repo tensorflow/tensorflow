@@ -121,7 +121,7 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
 // Creates a pass that merges device variable reads/updates into the surrounded
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
-std::unique_ptr<OpPassBase<ModuleOp>> CreateTPUMergeVariablesWithExecutePass();
+std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
