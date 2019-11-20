@@ -77,7 +77,7 @@ FP16ConvMode CudnnConvComputeMode() {
   if (!status.ok()) {
     LOG(ERROR) << status;
   }
-  string lowercase_value = str_util::Lowercase(value);
+  string lowercase_value = absl::AsciiStrToLower(value);
   if (lowercase_value == "accurate") {
     return FP16ConvMode::kAccurate;
   } else if (lowercase_value == "fast") {

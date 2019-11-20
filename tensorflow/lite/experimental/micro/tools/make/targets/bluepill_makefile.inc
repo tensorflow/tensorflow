@@ -1,7 +1,12 @@
 # Settings for Blue Pill platforms.
 ifeq ($(TARGET), bluepill)
+  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m3
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
+
+  $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
+  $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
+  $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
   PLATFORM_FLAGS = \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
@@ -35,10 +40,10 @@ ifeq ($(TARGET), bluepill)
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
-    -T $(MAKEFILE_DIR)/downloads/stm32_bare_lib/stm32_linker_layout.lds \
+    -T $(MAKEFILE_DIR)/targets/bluepill/bluepill.lds \
     -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref \
     -Wl,--gc-sections
-	BUILD_TYPE := micro
+  BUILD_TYPE := micro
   MICROLITE_LIBS := \
     -lm
   INCLUDES += \

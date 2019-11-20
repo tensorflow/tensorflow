@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "cuda/include/cublas_v2.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 
 #define SE_CUDA_DATA_HALF CUDA_R_16F
 
@@ -40,16 +40,17 @@ limitations under the License.
 // TODO(b/73793421): Remove the following code block to switch to the second
 // approach when the issue is fixed.
 #if CUDA_VERSION < 9000
-#include "cuda/include/cuda_fp16.h"
+#include "third_party/gpus/cuda/include/cuda_fp16.h"
 #define EIGEN_HAS_CUDA_FP16
 #endif
 
-#include "third_party/eigen3/Eigen/Core"
-
 #include <assert.h>
+
 #include <complex>
 
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_gpu_executor.h"
@@ -62,7 +63,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
-#include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -402,7 +402,7 @@ template <typename FuncT, typename... Args>
 bool CUDABlas::DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                                   bool pointer_mode_host, bool err_on_failure,
                                   bool use_tensor_op_math, Args... args) {
-  mutex_lock lock(mu_);
+  absl::MutexLock lock(&mu_);
 
   CHECK(blas_ != nullptr);
   if (!SetStream(stream)) {
@@ -1564,9 +1564,9 @@ bool CUDABlas::DoBlasGemm(
     const DeviceMemory<Eigen::half> &b, int ldb, float beta,
     DeviceMemory<Eigen::half> *c, int ldc) {
 #if CUDA_VERSION >= 7050
-  VLOG(1) << port::Printf(
-      "doing cuBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
-      "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
+  VLOG(1) << absl::StrFormat(
+      "doing cuBLAS SGEMM: at=%d bt=%d m=%u n=%u "
+      "k=%u alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
       a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc);
@@ -1624,9 +1624,9 @@ bool CUDABlas::DoBlasGemm(Stream *stream, blas::Transpose transa,
                           float alpha, const DeviceMemory<float> &a, int lda,
                           const DeviceMemory<float> &b, int ldb, float beta,
                           DeviceMemory<float> *c, int ldc) {
-  VLOG(1) << port::Printf(
-      "doing cuBLAS SGEMM: at=%d bt=%d m=%llu n=%llu "
-      "k=%llu alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
+  VLOG(1) << absl::StrFormat(
+      "doing cuBLAS SGEMM: at=%d bt=%d m=%u n=%u "
+      "k=%u alpha=%f a=%p lda=%d b=%p ldb=%d beta=%f "
       "c=%p ldc=%d",
       static_cast<int>(transa), static_cast<int>(transb), m, n, k, alpha,
       a.opaque(), lda, b.opaque(), ldb, beta, c->opaque(), ldc);
@@ -2179,11 +2179,11 @@ port::Status CUDABlas::DoBlasGemmBatchedInternal(
   // whether a scratch allocator was passed.
   if (scratch_allocator != nullptr) {
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> a_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
+                        scratch_allocator->AllocateBytes(size));
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> b_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
+                        scratch_allocator->AllocateBytes(size));
     SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> c_bytes,
-                        scratch_allocator->AllocateBytes(stream, size));
+                        scratch_allocator->AllocateBytes(size));
     a = DeviceMemory<CUDA_T *>(a_bytes);
     b = DeviceMemory<CUDA_T *>(b_bytes);
     c = DeviceMemory<CUDA_T *>(c_bytes);
@@ -2792,6 +2792,18 @@ bool CUDABlas::DoBlasTrsm(Stream *stream, blas::Side side,
                         CUDABlasTranspose(transa), CUDABlasDiagonal(diag), m, n,
                         GpuComplex(&alpha), GpuComplex(GpuMemory(a)), lda,
                         GpuComplex(GpuMemoryMutable(b)), ldb);
+}
+
+port::Status CUDABlas::GetVersion(string *version) {
+  absl::MutexLock lock(&mu_);
+
+  int v;
+  auto status = cublasGetVersion(blas_, &v);
+  if (status != CUBLAS_STATUS_SUCCESS) {
+    return port::InternalError(ToString(status));
+  }
+  *version = std::to_string(v);
+  return port::Status::OK();
 }
 
 }  // namespace gpu

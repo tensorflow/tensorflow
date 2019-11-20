@@ -21,40 +21,64 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/tools/optimization/optimization_pass_runner.h"
 
-int main(int argc, char** argv) {
+namespace tensorflow {
+namespace {
+Status RealMain(int argc, char** argv) {
+  string input_file_path;
+  string output_file_path;
+  string optimization_pass;
+
+  const std::vector<Flag> flag_list = {
+      Flag("input_file_path", &input_file_path, "Location of the input graph."),
+      Flag("output_file_path", &output_file_path,
+           "Location to write the resulting graph."),
+      // For now only a single optimization pass can be run.
+      Flag("optimization_pass", &optimization_pass,
+           "Which optimization pass to run."),
+  };
+  if (!Flags::Parse(&argc, argv, flag_list)) {
+    return errors::FailedPrecondition("Invalid flags passed");
+  }
+  port::InitMain(argv[0], &argc, &argv);
+
+  if (input_file_path.empty()) {
+    return errors::FailedPrecondition("input_file_path is a required flag.");
+  }
+  if (output_file_path.empty()) {
+    return errors::FailedPrecondition("output_file_path is a required flag.");
+  }
+  if (optimization_pass.empty()) {
+    return errors::FailedPrecondition("optimization_pass is a required flag.");
+  }
+
+  GraphDef graphdef_input;
+  TF_RETURN_IF_ERROR(
+      ReadTextProto(Env::Default(), input_file_path, &graphdef_input));
+
   tensorflow::OptimizationPassRunner runner;
-  // Add fake devices for CPU, GPU, and XLA to ensure we have all devices we
-  // need.
+
   // Most machines in our servers currently use 8 gpus. There is nothing special
   // about this number and it can be decreased or increased to test other
   // configurations.
-  int num_gpus_per_machine = 8;
-  for (int i = 0; i < num_gpus_per_machine; i++) {
-    TF_CHECK_OK(runner.AddDevice(
-        absl::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i),
-        tensorflow::DEVICE_CPU));
-    TF_CHECK_OK(runner.AddDevice(
-        absl::StrCat("/job:localhost/replica:0/task:0/device:GPU:", i),
-        tensorflow::DEVICE_GPU));
-    TF_CHECK_OK(runner.AddDevice(
-        absl::StrCat("/job:localhost/replica:0/task:0/device:XLA_CPU:", i),
-        tensorflow::DEVICE_XLA_CPU));
-    TF_CHECK_OK(runner.AddDevice(
-        absl::StrCat("/job:localhost/replica:0/task:0/device:XLA_GPU:", i),
-        tensorflow::DEVICE_XLA_GPU));
-    TF_CHECK_OK(runner.AddDevice(
-        absl::StrCat("/job:localhost/replica:0/task:0/device:CPU_XLA_JIT:", i),
-        tensorflow::DEVICE_CPU_XLA_JIT));
-    TF_CHECK_OK(runner.AddDevice(
-        absl::StrCat("/job:localhost/replica:0/task:0/device:GPU_XLA_JIT:", i),
-        tensorflow::DEVICE_GPU_XLA_JIT));
-  }
+  TF_RETURN_IF_ERROR(runner.AddCpus(8));
+  TF_RETURN_IF_ERROR(runner.AddGpus(8));
+
   // This binary is used to test TF:XLA behavior, so turn on auto_jit.
-  TF_CHECK_OK(runner.SetJitLevel(tensorflow::OptimizerOptions::GlobalJitLevel::
-                                     OptimizerOptions_GlobalJitLevel_ON_2));
-  // Run the actual "main" function.
-  TF_CHECK_OK(runner.RunMain(argc, argv));
+  TF_RETURN_IF_ERROR(runner.SetJitLevel(tensorflow::OptimizerOptions::ON_2));
+  GraphDef graphdef_output;
+  TF_RETURN_IF_ERROR(runner.Run(optimization_pass, std::move(graphdef_input),
+                                &graphdef_output));
+  return WriteTextProto(Env::Default(), output_file_path, graphdef_output);
+}
+}  // namespace
+}  // namespace tensorflow
+
+int main(int argc, char** argv) {
+  TF_CHECK_OK(tensorflow::RealMain(argc, argv));
+  return 0;
 }

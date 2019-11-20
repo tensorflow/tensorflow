@@ -558,6 +558,19 @@ class CheckpointManagerTest(test.TestCase):
     # Only the most recent two checkpoints are saved
     self.assertEqual([path, last_path], state.all_model_checkpoint_paths)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testCustomCheckpointPrefix(self):
+    directory = self.get_temp_dir()
+    checkpoint = util.Checkpoint()
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2, checkpoint_name="ckpt_name")
+    path = manager.save(checkpoint_number=5)
+    self.assertEqual(os.path.basename(path), "ckpt_name-5")
+    manager = checkpoint_management.CheckpointManager(
+        checkpoint, directory, max_to_keep=2)
+    path = manager.save(checkpoint_number=5)
+    self.assertEqual(os.path.basename(path), "ckpt-5")
+
 
 if __name__ == "__main__":
   test.main()

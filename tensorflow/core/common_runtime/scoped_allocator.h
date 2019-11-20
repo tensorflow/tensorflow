@@ -35,7 +35,8 @@ class ScopedAllocator {
   struct Field {
     int32 scope_id;
     size_t offset;
-    size_t bytes;
+    size_t bytes_requested;
+    size_t bytes_allocated;
   };
   // Field index that refers to backing tensor, not any aliased field.
   static const int32 kBackingIndex = -1;
@@ -44,7 +45,7 @@ class ScopedAllocator {
   // instance.  It must be large enough to back all of the specified
   // (offset, byte) ranges of the fields.
   ScopedAllocator(const Tensor& backing_tensor, int32 scope_id,
-                  const string& name, const gtl::ArraySlice<Field>& fields,
+                  const string& name, const gtl::ArraySlice<Field> fields,
                   int32 expected_call_count,
                   ScopedAllocatorContainer* container);
 
@@ -89,7 +90,9 @@ class ScopedAllocatorInstance : public Allocator {
   explicit ScopedAllocatorInstance(ScopedAllocator* sa, int32 field_index);
 
  private:
-  ~ScopedAllocatorInstance() { VLOG(1) << "~ScopedAllocatorInstance " << this; }
+  ~ScopedAllocatorInstance() override {
+    VLOG(1) << "~ScopedAllocatorInstance " << this;
+  }
 
  public:
   // When a ScopedAllocatorContainer "Drops" a scope_id, it calls DropFromTable
@@ -103,12 +106,11 @@ class ScopedAllocatorInstance : public Allocator {
     return AllocateRaw(alignment, num_bytes);
   }
   void DeallocateRaw(void* p) LOCKS_EXCLUDED(mu_) override;
-  bool TracksAllocationSizes() override { return false; }
-  bool ShouldAllocateEmptyTensors() override { return false; }
-  size_t RequestedSize(const void* ptr) override { return 0; }
-  size_t AllocatedSize(const void* ptr) override { return 0; }
-  int64 AllocationId(const void* ptr) override { return 0; }
-  size_t AllocatedSizeSlow(const void* ptr) override { return 0; }
+  bool TracksAllocationSizes() const override { return false; }
+  size_t RequestedSize(const void* ptr) const override { return 0; }
+  size_t AllocatedSize(const void* ptr) const override { return 0; }
+  int64 AllocationId(const void* ptr) const override { return 0; }
+  size_t AllocatedSizeSlow(const void* ptr) const override { return 0; }
   string Name() override;
 
  private:

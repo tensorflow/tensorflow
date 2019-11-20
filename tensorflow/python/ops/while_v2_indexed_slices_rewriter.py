@@ -207,7 +207,7 @@ def _rewrite_grad_indexed_slices_output(old_output_slices, new_input_slices):
   This method assumes that old_output_slices.{values,indices} are produced by
   concatenating the incoming gradient Tensor input with the IndexedSlices
   produced by the gradient computation of the while body. See
-  gradients_impl._AggregateIndexedSlicesGradients for where these concats are
+  backprop.aggregate_indexed_slices_gradients for where these concats are
   constructed. We build new concats that use new_input_slices instead of the
   original Tensor input.
 

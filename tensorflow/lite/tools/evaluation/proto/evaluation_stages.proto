@@ -17,22 +17,309 @@ syntax = "proto2";
 
 package tflite.evaluation;
 
-// All EvaluationStage sub-classes must add a value here.
-// A corresponding entry must also be present in EvaluationStage.FromConfig
-enum ProcessClass {
-  // Default/Unknown
-  UNKNOWN = 0;
-  // Identity
-  IDENTITY = 1;
-}
+option cc_enable_arenas = true;
+option java_multiple_files = true;
+option java_package = "tflite.evaluation";
 
 // Defines the functionality executed by an EvaluationStage.
-// TODO(b/122482115): Add stage-specific options using oneof.
+//
+// Next ID: 7
 message ProcessSpecification {
-  optional ProcessClass process_class = 1;
+  oneof params {
+    ImagePreprocessingParams image_preprocessing_params = 1;
+    TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
+    TfliteInferenceParams tflite_inference_params = 3;
+    ImageClassificationParams image_classification_params = 4;
+    ObjectDetectionAveragePrecisionParams
+        object_detection_average_precision_params = 5;
+    ObjectDetectionParams object_detection_params = 6;
+  }
 }
 
-// Contains specific metrics, which may differ based on what an EvaluationStage
-// does.
-// TODO(b/122482115): Add stage-specific metrics using oneof.
-message ProcessMetrics {}
+// Latency numbers in microseconds, based on all EvaluationStage::Run() calls so
+// far.
+//
+// Next ID: 7
+message LatencyMetrics {
+  // Latency for the last Run.
+  optional int64 last_us = 1;
+  // Maximum latency observed for any Run.
+  optional int64 max_us = 2;
+  // Minimum latency observed for any Run.
+  optional int64 min_us = 3;
+  // Sum of all Run latencies.
+  optional int64 sum_us = 4;
+  // Average latency across all Runs.
+  optional double avg_us = 5;
+  // Standard deviation for latency across all Runs.
+  optional int64 std_deviation_us = 6;
+}
+
+// Statistics for an accuracy value over multiple runs of evaluation.
+//
+// Next ID: 5
+message AccuracyMetrics {
+  // Maximum value observed for any Run.
+  optional float max_value = 1;
+  // Minimum value observed for any Run.
+  optional float min_value = 2;
+  // Average value across all Runs.
+  optional double avg_value = 3;
+  // Standard deviation across all Runs.
+  optional float std_deviation = 4;
+}
+
+// Contains process-specific metrics, which may differ based on what an
+// EvaluationStage does.
+//
+// Next ID: 8
+message ProcessMetrics {
+  optional LatencyMetrics total_latency = 1;
+
+  oneof stage_metrics {
+    TopkAccuracyEvalMetrics topk_accuracy_metrics = 2;
+    TfliteInferenceMetrics tflite_inference_metrics = 3;
+    ImageClassificationMetrics image_classification_metrics = 4;
+    InferenceProfilerMetrics inference_profiler_metrics = 5;
+    ObjectDetectionAveragePrecisionMetrics
+        object_detection_average_precision_metrics = 6;
+    ObjectDetectionMetrics object_detection_metrics = 7;
+  }
+}
+
+// Parameters that define how images are preprocessed.
+//
+// Next ID: 7
+message ImagePreprocessingParams {
+  // Required.
+  optional int32 image_height = 1;
+  // Required.
+  optional int32 image_width = 2;
+  // Same as tflite::TfLiteType.
+  optional int32 output_type = 3;
+  // Fraction for central-cropping.
+  // A central cropping-fraction of 0.875 is considered best for Inception
+  // models, hence the default value. See:
+  // https://github.com/tensorflow/tpu/blob/master/models/experimental/inception/inception_preprocessing.py#L296
+  // Set to 0 to disable cropping.
+  optional float cropping_fraction = 4 [default = 0.875];
+  // Set this flag if the image is preprocessed and saved as binary file.
+  // In that case, we only do the quantization if needed.
+  optional bool load_raw_images = 5 [default = false];
+  // If this flag is true, the resize function will preserve the image's
+  // aspect ratio.
+  optional bool aspect_preserving = 6 [default = false];
+}
+
+// Parameters that control TFLite inference.
+//
+// Next ID: 5
+message TfliteInferenceParams {
+  // Required
+  optional string model_file_path = 1;
+
+  enum Delegate {
+    NONE = 0;
+    NNAPI = 1;
+    GPU = 2;
+  }
+  optional Delegate delegate = 2;
+  // Number of threads available to the TFLite Interpreter.
+  optional int32 num_threads = 3 [default = 1];
+
+  // Defines how many times the TFLite Interpreter is invoked for every input.
+  // This helps benchmark cases where extensive pre-processing might not be
+  // required for every input.
+  optional int32 invocations_per_run = 4 [default = 1];
+}
+
+// Metrics specific to TFLite inference.
+//
+// Next ID: 2
+message TfliteInferenceMetrics {
+  // Number of times the interpreter is invoked.
+  optional int32 num_inferences = 1;
+}
+
+// Parameters that define how top-K accuracy is evaluated.
+//
+// Next ID: 2
+message TopkAccuracyEvalParams {
+  // Required.
+  optional int32 k = 1;
+}
+
+// Metrics from top-K accuracy evaluation.
+//
+// Next ID: 2
+message TopkAccuracyEvalMetrics {
+  // A repeated field of size |k| where the ith element denotes the fraction of
+  // samples for which the correct label was present in the top (i + 1) model
+  // outputs.
+  // For example, topk_accuracies(1) will contain the fraction of
+  // samples for which the model returned the correct label as the top first or
+  // second output.
+  repeated float topk_accuracies = 1;
+}
+
+// Parameters that define how the Image Classification task is evaluated
+// end-to-end.
+//
+// Next ID: 3
+message ImageClassificationParams {
+  // Required.
+  // TfLite model should have 1 input & 1 output tensor.
+  // Input shape: {1, image_height, image_width, 3}
+  // Output shape: {1, num_total_labels}
+  optional TfliteInferenceParams inference_params = 1;
+
+  // Optional.
+  // If not set, accuracy evaluation is not performed.
+  optional TopkAccuracyEvalParams topk_accuracy_eval_params = 2;
+}
+
+// Metrics from evaluation of the image classification task.
+//
+// Next ID: 5
+message ImageClassificationMetrics {
+  optional LatencyMetrics pre_processing_latency = 1;
+  optional LatencyMetrics inference_latency = 2;
+  optional TfliteInferenceMetrics inference_metrics = 3;
+  // Not set if topk_accuracy_eval_params was not populated in
+  // ImageClassificationParams.
+  optional TopkAccuracyEvalMetrics topk_accuracy_metrics = 4;
+}
+
+// Metrics computed from comparing TFLite execution in two settings:
+// 1. User-defined TfliteInferenceParams (The 'test' setting)
+// 2. Default TfliteInferenceParams (The 'reference' setting)
+//
+// Next ID: 4
+message InferenceProfilerMetrics {
+  // Latency metrics from Single-thread CPU inference.
+  optional LatencyMetrics reference_latency = 1;
+  // Latency from TfliteInferenceParams under test.
+  optional LatencyMetrics test_latency = 2;
+  // For reference & test output vectors {R, T}, the error is computed as:
+  // Mean([Abs(R[i] - T[i]) for i in num_elements])
+  // output_errors[v] : statistics for the error value of the vth output vector
+  //   across all Runs.
+  repeated AccuracyMetrics output_errors = 3;
+}
+
+// Proto containing information about all the objects (predicted or
+// ground-truth) contained in an image.
+//
+// Next ID: 4
+message ObjectDetectionResult {
+  // One instance of an object detected in an image.
+  // Next ID: 4
+  message ObjectInstance {
+    // Defines the bounding box for a detected object.
+    // Next ID: 5
+    message NormalizedBoundingBox {
+      // All boundaries defined below are required.
+      // Each boundary value should be normalized with respect to the image
+      // dimensions. This helps evaluate detections independent of image size.
+      // For example, normalized_top = top_boundary / image_height.
+      optional float normalized_top = 1;
+      optional float normalized_bottom = 2;
+      optional float normalized_left = 3;
+      optional float normalized_right = 4;
+    }
+
+    // Required.
+    optional int32 class_id = 1;
+    // Required
+    optional NormalizedBoundingBox bounding_box = 2;
+    // Value in (0, 1.0] denoting confidence in this prediction.
+    // Default value of 1.0 for ground-truth data.
+    optional float score = 3 [default = 1.0];
+  }
+
+  repeated ObjectInstance objects = 1;
+  // Filename of the image.
+  optional string image_name = 2;
+  // Unique id for the image.
+  optional int64 image_id = 3;
+}
+
+// Proto containing ground-truth ObjectsSets for all images in a COCO validation
+// set.
+//
+// Next ID: 2
+message ObjectDetectionGroundTruth {
+  repeated ObjectDetectionResult detection_results = 1;
+}
+
+// Parameters that define how Average Precision is computed for Object Detection
+// task.
+// Refer for details: http://cocodataset.org/#detection-eval
+//
+// Next ID: 4
+message ObjectDetectionAveragePrecisionParams {
+  // Total object classes. The AP value returned for each IoU threshold is an
+  // average over all classes encountered in predicted/ground truth sets.
+  optional int32 num_classes = 1;
+  // A predicted box matches a ground truth box if and only if
+  // IoU between these two are larger than an IoU threshold.
+  // AP is computed for all relevant {IoU threshold, class} combinations and
+  // averaged to get mAP.
+  // If left empty, evaluation is done for all IoU threshods in the range
+  // 0.5:0.05:0.95 (min:increment:max).
+  repeated float iou_thresholds = 2;
+  // AP is computed as the average of maximum precision at (1
+  // + num_recall_points) recall levels. E.g., if num_recall_points is 10,
+  // recall levels are 0., 0.1, 0.2, ..., 0.9, 1.0.
+  // Default: 100
+  optional int32 num_recall_points = 3 [default = 100];
+}
+
+// Average Precision metrics from Object Detection task.
+//
+// Next ID: 3
+message ObjectDetectionAveragePrecisionMetrics {
+  // Average Precision value for a particular IoU threshold.
+  // Next ID: 3
+  message AveragePrecision {
+    optional float iou_threshold = 1;
+    optional float average_precision = 2;
+  }
+
+  // One entry for each in
+  // ObjectDetectionAveragePrecisionParams::iou_thresholds, averaged over all
+  // classes.
+  repeated AveragePrecision individual_average_precisions = 1;
+  // Average of Average Precision across all IoU thresholds.
+  optional float overall_mean_average_precision = 2;
+}
+
+// Parameters that define how the Object Detection task is evaluated
+// end-to-end.
+//
+// Next ID: 4
+message ObjectDetectionParams {
+  // Required.
+  // Model's outputs should be same as a TFLite-compatible SSD model.
+  // Refer:
+  // https://www.tensorflow.org/lite/models/object_detection/overview#output
+  // TODO(b/133772912): Generalize support for other types of object detection
+  // models.
+  optional TfliteInferenceParams inference_params = 1;
+  // Optional. Used to match ground-truth categories with model output.
+  // SSD Mobilenet V1 Model trained on COCO assumes class 0 is background class
+  // in the label file and class labels start from 1 to number_of_classes+1.
+  // Therefore, default value is set as 1.
+  optional int32 class_offset = 2 [default = 1];
+  optional ObjectDetectionAveragePrecisionParams ap_params = 3;
+}
+
+// Metrics from evaluation of the object detection task.
+//
+// Next ID: 5
+message ObjectDetectionMetrics {
+  optional LatencyMetrics pre_processing_latency = 1;
+  optional LatencyMetrics inference_latency = 2;
+  optional TfliteInferenceMetrics inference_metrics = 3;
+  optional ObjectDetectionAveragePrecisionMetrics average_precision_metrics = 4;
+}

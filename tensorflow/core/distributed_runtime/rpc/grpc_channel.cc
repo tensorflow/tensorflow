@@ -15,12 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/rpc/grpc_channel.h"
 
+#include <cstdlib>
 #include <limits>
 #include <map>
 #include <unordered_map>
 
 #include "grpcpp/create_channel.h"
-
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -44,6 +46,10 @@ string MakeAddress(const string& job, int task) {
 
 // Allows the host to be a raw IP (either v4 or v6).
 Status ValidateHostPortPair(const string& host_port) {
+  string bns_prefix = "/bns/";
+  if (host_port.substr(0, bns_prefix.length()) == bns_prefix) {
+    return Status::OK();
+  }
   uint32 port;
   auto colon_index = host_port.find_last_of(':');
   if (!strings::safe_strtou32(host_port.substr(colon_index + 1), &port) ||
@@ -54,11 +60,51 @@ Status ValidateHostPortPair(const string& host_port) {
   return Status::OK();
 }
 
+::grpc::ChannelArguments* CreateDefaultChannelArguments() {
+  ::grpc::ChannelArguments* args = new ::grpc::ChannelArguments();
+  const char* env = std::getenv("TF_GRPC_DEFAULT_OPTIONS");
+  if (env != nullptr) {
+    for (auto& grpc_option : absl::StrSplit(env, ',')) {
+      std::vector<string> name_value = absl::StrSplit(grpc_option, '=');
+      if (name_value.size() != 2) {
+        LOG(ERROR) << "Invalid GRPC options format: " << grpc_option;
+        continue;
+      }
+      VLOG(3) << "Setting GRPC default for '" << name_value[0] << "' to '"
+              << name_value[1] << "'";
+      if (name_value[1].size() >= 2 && name_value[1][0] == '"') {
+        string ue_value = name_value[1].substr(1, name_value[1].size() - 2);
+        string value;
+        string error;
+        if (!absl::CUnescape(ue_value, &value, &error)) {
+          LOG(ERROR) << "Failed to parse escaped string for " << grpc_option
+                     << ": " << error;
+        } else {
+          args->SetString(name_value[0], value);
+        }
+      } else {
+        int64 value;
+        if (strings::safe_strto64(name_value[1], &value)) {
+          args->SetInt(name_value[0], value);
+        } else {
+          LOG(ERROR) << "Invalid integer value: " << grpc_option;
+        }
+      }
+    }
+  }
+  return args;
+}
+
+const ::grpc::ChannelArguments* GetDefaultChannelArguments() {
+  static const ::grpc::ChannelArguments* args = CreateDefaultChannelArguments();
+  return args;
+}
+
 }  // namespace
 
 ::grpc::ChannelArguments GetChannelArguments(const RPCOptions* rpc_options) {
   // TODO(mrry): Implement secure channels.
-  ::grpc::ChannelArguments args;
+  ::grpc::ChannelArguments args = *GetDefaultChannelArguments();
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
   // on connection failure, which makes our tests time out.
@@ -81,6 +127,10 @@ Status ValidateHostPortPair(const string& host_port) {
     } else if (!rpc_options->compression_algorithm().empty()) {
       LOG(ERROR) << "Invalid compression algorithm: "
                  << rpc_options->compression_algorithm();
+    }
+    if (rpc_options->disable_session_connection_sharing()) {
+      VLOG(5) << "Disabling TCP connection sharing";
+      args.SetInt(GRPC_ARG_USE_LOCAL_SUBCHANNEL_POOL, true);
     }
   }
   return args;
@@ -306,7 +356,7 @@ class SparseGrpcChannelCache : public CachingGrpcChannelCache {
       task_strings.emplace_back(
           strings::StrCat(id_host_port.first, " -> ", id_host_port.second));
     }
-    return strings::StrCat(job_id_, " -> {", str_util::Join(task_strings, ", "),
+    return strings::StrCat(job_id_, " -> {", absl::StrJoin(task_strings, ", "),
                            "}");
   }
 

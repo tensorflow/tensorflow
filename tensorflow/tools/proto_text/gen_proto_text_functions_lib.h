@@ -38,7 +38,7 @@ struct ProtoTextFunctionCode {
 // 1. For each message:
 //    * ProtoDebugString(m): same as msg.DebugString(), except that google.any
 //      is not expanded.
-//    * ProtoShortDebugString(m): same as msg.ShorDebugString(), except that
+//    * ProtoShortDebugString(m): same as msg.ShortDebugString(), except that
 //      google.any is not expanded.
 //    * ProtoParseFromString(s, m): same as TextFormat.ParseFromString(s, &m);
 // 2. For each enum:

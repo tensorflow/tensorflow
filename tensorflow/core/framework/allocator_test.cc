@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/framework/typed_allocator.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
@@ -85,6 +86,52 @@ TEST(AllocatorAttributesTest, IsEqualOrLessRestrictiveThan) {
   EXPECT_FALSE(a.IsEqualOrLessRestrictiveThan(b));
 }
 
+TEST(AllocatorAttributesTest, Merge) {
+  AllocatorAttributes a, b;
+
+  // Merging nic_compatible=True and nic_compatible=False results in
+  // nic_compatible=True.
+  EXPECT_EQ(a.value, 0);
+  EXPECT_EQ(b.value, 0);
+  EXPECT_FALSE(a.nic_compatible());
+  EXPECT_FALSE(b.nic_compatible());
+  b.set_nic_compatible(true);
+  a.Merge(b);
+  EXPECT_TRUE(a.nic_compatible());
+  EXPECT_TRUE(b.nic_compatible());
+
+  // a.Merge(b) does not change b.
+  EXPECT_EQ(a.scope_id, 0);
+  EXPECT_EQ(b.scope_id, 0);
+  a.scope_id = 1;
+  a.Merge(b);
+  EXPECT_EQ(a.scope_id, 1);
+  EXPECT_EQ(b.scope_id, 0);
+
+  // If a.scope_id=1 and b.scope_id=0, then b.Merge(a) results in b.scope_id=1.
+  a.scope_id = 1;
+  b.scope_id = 0;
+  b.Merge(a);
+  EXPECT_EQ(a.scope_id, 1);
+  EXPECT_EQ(b.scope_id, 1);
+
+  // If a.scope_id and b.scope_id are same, then merge leaves them unchanged.
+  a.scope_id = 2;
+  b.scope_id = 2;
+  a.Merge(b);
+  EXPECT_EQ(a.scope_id, 2);
+  EXPECT_EQ(b.scope_id, 2);
+}
+
+TEST(AllocatorAttributesDeathTest, MergeDifferentScopeIds) {
+  AllocatorAttributes a, b;
+  // If a.scope_id and b.scope_id are both positive but different, then
+  // a.Merge(b) should cause a CHECK failure.
+  a.scope_id = 3;
+  b.scope_id = 4;
+  EXPECT_DEATH({ a.Merge(b); }, "");
+}
+
 TEST(CPUAllocatorTest, Simple) {
   EnableCPUAllocatorStats(true);
   Allocator* a = cpu_allocator();
@@ -102,14 +149,14 @@ TEST(CPUAllocatorTest, Simple) {
     a->DeallocateRaw(ptrs[i]);
   }
   CheckStats(a, 1023, 0, 552640, 1024);
-  float* t1 = a->Allocate<float>(1024);
-  double* t2 = a->Allocate<double>(1048576);
+  float* t1 = TypedAllocator::Allocate<float>(a, 1024, {});
+  double* t2 = TypedAllocator::Allocate<double>(a, 1048576, {});
   CheckStats(a, 1025, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
 
-  a->Deallocate(t1, 1024);
-  a->Deallocate(t2, 1048576);
+  TypedAllocator::Deallocate(a, t1, 1024);
+  TypedAllocator::Deallocate(a, t2, 1048576);
 
   CheckStats(a, 1025, 0, 1048576 * sizeof(double) + 1024 * sizeof(float),
              1048576 * sizeof(double));
@@ -130,7 +177,8 @@ TEST(CPUAllocatorTest, AllocateOverflowMaxSizeT) {
 
   // The maximum size_t value will definitely overflow.
   size_t count_to_allocate = std::numeric_limits<size_t>::max();
-  TestStruct* const test_pointer = a->Allocate<TestStruct>(count_to_allocate);
+  TestStruct* const test_pointer =
+      TypedAllocator::Allocate<TestStruct>(a, count_to_allocate, {});
 
   CHECK_EQ(test_pointer, reinterpret_cast<TestStruct*>(NULL));
 }
@@ -141,7 +189,8 @@ TEST(CPUAllocatorTest, AllocateOverflowSmallest) {
   // count_to_allocate is the smallest count that will cause overflow.
   const size_t count_to_allocate =
       (std::numeric_limits<size_t>::max() / sizeof(TestStruct)) + 1;
-  TestStruct* const test_pointer = a->Allocate<TestStruct>(count_to_allocate);
+  TestStruct* const test_pointer =
+      TypedAllocator::Allocate<TestStruct>(a, count_to_allocate, {});
 
   CHECK_EQ(test_pointer, reinterpret_cast<TestStruct*>(NULL));
 }

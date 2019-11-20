@@ -149,21 +149,6 @@ TEST_F(ShapeRefinerTest, MatMul) {
   EXPECT_SHAPE("[2,2]", m, mm, 0);
 }
 
-TEST_F(ShapeRefinerTest, InvalidOrder) {
-  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
-  Scope root = Scope::NewRootScope();
-  auto a = ops::Const(root, {{1.0f}, {2.0f}});
-  auto b = ops::Const(root, {{1.0f, 2.0f}});
-  auto mm = ops::MatMul(root, a, b);
-
-  Status s = m.AddNode(mm.node());
-  ASSERT_FALSE(s.ok());
-  ASSERT_EQ(
-      "Input 0 ('Const') for 'MatMul' was not previously added to "
-      "ShapeRefiner.",
-      s.error_message());
-}
-
 TEST_F(ShapeRefinerTest, BadShapes) {
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
   Scope root = Scope::NewRootScope();
@@ -177,8 +162,8 @@ TEST_F(ShapeRefinerTest, BadShapes) {
   // an error.
   Status s = m.AddNode(mm.node());
   ASSERT_FALSE(s.ok());
-  ASSERT_TRUE(str_util::StrContains(
-      s.error_message(), "Dimensions must be equal, but are 1 and 2"));
+  ASSERT_TRUE(absl::StrContains(s.error_message(),
+                                "Dimensions must be equal, but are 1 and 2"));
 }
 
 TEST_F(ShapeRefinerTest, SetShape) {
@@ -1066,8 +1051,8 @@ TEST_F(ShapeRefinerTest, ConstantValueAsShape_PackInvalidInput) {
     TF_ASSERT_OK(m.AddNode(input.node()));
   }
   TF_ASSERT_OK(m.AddNode(pack.node()));
-  EXPECT_TRUE(str_util::StrContains(m.AddNode(result).error_message(),
-                                    "but is rank 2"));
+  EXPECT_TRUE(
+      absl::StrContains(m.AddNode(result).error_message(), "but is rank 2"));
 }
 
 TEST_F(ShapeRefinerTest, ConstantValueAsShape_Concat) {
@@ -1395,8 +1380,7 @@ TEST_F(ShapeRefinerTest, IncrementalUpdates) {
   EXPECT_TRUE(SameHandle(ctx->Dim(shp, 0), ctx->Dim(shp2, 0)));
 }
 
-void TestSimpleFunctionInference(bool enable_function_inference,
-                                 bool keep_nested_inferences) {
+void TestSimpleFunctionInference(bool enable_function_inference) {
   FunctionDefLibrary f_lib_proto;
   *(f_lib_proto.add_function()) = test::function::XTimesTwo();
   FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
@@ -1410,7 +1394,6 @@ void TestSimpleFunctionInference(bool enable_function_inference,
   if (enable_function_inference) {
     m.set_function_library_for_shape_inference(&f_lib);
   }
-  if (keep_nested_inferences) m.set_keep_nested_shape_inferences();
 
   TF_ASSERT_OK(m.AddNode(x.node()));
   TF_ASSERT_OK(m.AddNode(x2.node()));
@@ -1419,34 +1402,19 @@ void TestSimpleFunctionInference(bool enable_function_inference,
 
   if (enable_function_inference) {
     EXPECT_SHAPE("[1,2]", m, x2, 0);
-
-    if (keep_nested_inferences) {
-      EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(),
-                test::function::XTimesTwo().node_def_size());
-    } else {
-      EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(), 0);
-    }
   } else {
     // Default inference behavior: functions output shapes are unknown.
     EXPECT_SHAPE("?", m, x2, 0);
-    EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(), 0);
   }
 }
 
 TEST_F(ShapeRefinerTest, SimpleFunctionShapeInference_Disabled) {
   // Nesting flag doesn't matter, when function inference is disabled.
-  TestSimpleFunctionInference(false /* enable_function_inference */,
-                              false /* keep_nested_inferences */);
+  TestSimpleFunctionInference(false /* enable_function_inference */);
 }
 
-TEST_F(ShapeRefinerTest, SimpleFunctionShapeInference_NoNesting) {
-  TestSimpleFunctionInference(true /* enable_function_inference */,
-                              false /* keep_nested_inferences */);
-}
-
-TEST_F(ShapeRefinerTest, SimpleFunctionShapeInference_WithNesting) {
-  TestSimpleFunctionInference(true /* enable_function_inference */,
-                              true /* keep_nested_inferences */);
+TEST_F(ShapeRefinerTest, SimpleFunctionShapeInference) {
+  TestSimpleFunctionInference(true /* enable_function_inference */);
 }
 
 TEST_F(ShapeRefinerTest, FunctionShapeInferenceFallback) {
@@ -1468,7 +1436,6 @@ TEST_F(ShapeRefinerTest, FunctionShapeInferenceFallback) {
 
   ShapeRefiner m(TF_GRAPH_DEF_VERSION, &f_lib);
   m.set_function_library_for_shape_inference(&empty_f_lib);
-  m.set_keep_nested_shape_inferences();
 
   TF_ASSERT_OK(m.AddNode(x.node()));
   TF_ASSERT_OK(m.AddNode(x2.node()));
@@ -1477,43 +1444,6 @@ TEST_F(ShapeRefinerTest, FunctionShapeInferenceFallback) {
 
   // Default inference behavior: functions output shapes are unknown.
   EXPECT_SHAPE("?", m, x2, 0);
-  EXPECT_EQ(m.GetExtendedContext(x2.node())->nested_inferences().size(), 0);
-}
-
-TEST_F(ShapeRefinerTest, NestedFunctionShapeInference) {
-  FunctionDefLibrary f_lib_proto;
-  *(f_lib_proto.add_function()) = test::function::XTimesTwo();
-  *(f_lib_proto.add_function()) = test::function::XTimesFour();
-  // XTimes16 is defined with a bunch of nesting
-  *(f_lib_proto.add_function()) = test::function::XTimes16();
-  FunctionLibraryDefinition f_lib(OpRegistry::Global(), f_lib_proto);
-
-  Scope root = Scope::NewRootScope();
-  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(f_lib_proto));
-  auto x = ops::Const(root, {{.0f, .0f}});
-  auto x16 = test::function::Call(&root, "x16", "XTimes16", {x});
-  auto x256 = test::function::Call(&root, "x256", "XTimes16", {x16});
-
-  ShapeRefiner m(TF_GRAPH_DEF_VERSION, &f_lib);
-  m.set_function_library_for_shape_inference(&f_lib);
-  m.set_keep_nested_shape_inferences();
-
-  TF_ASSERT_OK(m.AddNode(x.node()));
-  TF_ASSERT_OK(m.AddNode(x16.node()));
-  TF_ASSERT_OK(m.AddNode(x256.node()));
-
-  EXPECT_SHAPE("[1,2]", m, x, 0);
-  EXPECT_SHAPE("[1,2]", m, x16, 0);
-  EXPECT_SHAPE("[1,2]", m, x256, 0);
-
-  EXPECT_EQ(m.GetExtendedContext(x16.node())->nested_inferences().size(),
-            test::function::XTimesFour().node_def_size());
-  auto* x4 =
-      m.GetExtendedContext(x16.node())->nested_inferences().at("x4").get();
-  auto* x4c = x4->get_context();
-  EXPECT_EQ("[1,2]", x4c->DebugString(x4c->output(0)));
-  auto* x2c = x4->nested_inferences().at("x2")->get_context();
-  EXPECT_EQ("[1,2]", x2c->DebugString(x2c->output(0)));
 }
 
 TEST_F(ShapeRefinerTest, ChainedFunctionShapeInferenceWithMultipleInputs) {

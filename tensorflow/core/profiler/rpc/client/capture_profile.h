@@ -25,10 +25,10 @@ namespace client {
 
 Status ValidateHostPortPair(const string& host_port);
 
-// Repeatedly collects profiles and shows user-friendly metrics for
-// 'num_queries' time(s).
-void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
-                     int monitoring_level, int num_queries);
+// Collects one sample of monitoring profile and shows user-friendly metrics.
+// If timestamp flag is true, timestamp will be displayed in "%H:%M:%S" format.
+Status Monitor(const tensorflow::string& service_addr, int duration_ms,
+               int monitoring_level, bool display_timestamp, string* result);
 
 // Starts tracing on a single or multiple hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for

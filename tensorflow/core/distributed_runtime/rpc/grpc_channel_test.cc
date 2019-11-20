@@ -217,6 +217,10 @@ TEST(GrpcChannelTest, NewHostPortGrpcChannelValidation) {
           .ok());
   EXPECT_FALSE(
       NewHostPortGrpcChannel("[::]:", /*rpc_options=*/nullptr, &mock_ptr).ok());
+
+  EXPECT_TRUE(
+      NewHostPortGrpcChannel("/bns/example", /*rpc_options=*/nullptr, &mock_ptr)
+          .ok());
 }
 
 }  // namespace tensorflow

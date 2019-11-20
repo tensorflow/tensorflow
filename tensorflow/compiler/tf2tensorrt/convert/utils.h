@@ -23,6 +23,12 @@ limitations under the License.
 namespace tensorflow {
 namespace tensorrt {
 
+class IONamePrefixes {
+ public:
+  static constexpr const char* const kInputPHName = "TensorRTInputPH_";
+  static constexpr const char* const kOutputPHName = "TensorRTOutputPH_";
+};
+
 template <typename T>
 struct TrtDestroyer {
   void operator()(T* t) {

@@ -135,7 +135,11 @@ GraphDef CreateRandomGraph(int size) {
   return graph;
 }
 
-GraphDef CreateFaninFanoutNodeGraph(int num_fanins, int num_fanouts) {
+GraphDef CreateFaninFanoutNodeGraph(int num_regular_fanins,
+                                    int num_regular_fanouts,
+                                    int num_controlling_fanins,
+                                    int num_controlled_fanouts,
+                                    bool fanout_unique_index) {
   GraphDef graph;
 
   auto create_node = [](const string& name) {
@@ -146,16 +150,33 @@ GraphDef CreateFaninFanoutNodeGraph(int num_fanins, int num_fanouts) {
 
   NodeDef node = create_node(/*name=*/"node");
 
-  for (int i = 0; i < num_fanins; ++i) {
+  for (int i = 0; i < num_regular_fanins; ++i) {
     const string input_node_name = absl::StrFormat("in%05d", i);
     NodeDef input_node = create_node(/*name=*/input_node_name);
     *graph.add_node() = std::move(input_node);
     node.add_input(input_node_name);
   }
 
-  for (int i = 0; i < num_fanouts; ++i) {
+  for (int i = 0; i < num_controlling_fanins; ++i) {
+    const string input_node_name = absl::StrFormat("control_in%05d", i);
+    NodeDef input_node = create_node(/*name=*/input_node_name);
+    *graph.add_node() = std::move(input_node);
+    node.add_input(absl::StrCat("^", input_node_name));
+  }
+
+  for (int i = 0; i < num_regular_fanouts; ++i) {
     NodeDef output_node = create_node(/*name=*/absl::StrFormat("out%05d", i));
-    output_node.add_input(absl::StrCat(node.name(), ":", i));
+    const string input_node_index =
+        fanout_unique_index ? absl::StrCat(node.name(), ":", i) : node.name();
+    output_node.add_input(input_node_index);
+    *graph.add_node() = std::move(output_node);
+  }
+
+  const string controlled_fanout_input = absl::StrCat("^", node.name());
+  for (int i = 0; i < num_controlled_fanouts; ++i) {
+    NodeDef output_node =
+        create_node(/*name=*/absl::StrFormat("control_out%05d", i));
+    output_node.add_input(controlled_fanout_input);
     *graph.add_node() = std::move(output_node);
   }
 

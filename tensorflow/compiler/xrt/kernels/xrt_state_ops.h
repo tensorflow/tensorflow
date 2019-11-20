@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/compiler/xrt/xrt.pb.h"
 #include "tensorflow/compiler/xrt/xrt_device.h"
+#include "tensorflow/compiler/xrt/xrt_memory_manager.h"
 #include "tensorflow/compiler/xrt/xrt_state.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -103,8 +104,8 @@ class XRTStateHelpers {
         TF_RET_CHECK(
             TensorShapeUtils::IsScalar(input_tensor_list[input_index].shape()));
         int64 key = input_tensor_list[input_index].scalar<int64>()();
-        TF_RETURN_IF_ERROR(
-            XRTTupleAllocation::Lookup(rm, key, &input.allocation));
+        TF_ASSIGN_OR_RETURN(input.allocation,
+                            XRTMemoryManager::Get(rm)->Lookup(key));
         input.release_allocation_after_use = release_this_input;
       }
     }
@@ -176,7 +177,7 @@ class XRTAllocateOp : public OpKernel {
     xrt::XLAAllocation allocation_proto;
     OP_REQUIRES(
         ctx,
-        allocation_proto.ParseFromString(allocation_info.scalar<string>()()),
+        allocation_proto.ParseFromString(allocation_info.scalar<tstring>()()),
         errors::InvalidArgument(
             "Unable to parse allocation input to XLAAllocation"));
 
@@ -192,19 +193,60 @@ class XRTAllocateOp : public OpKernel {
     class DeviceAccessor::ScopedRef device_ref;
     OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
 
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
     XRTTupleAllocation* allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateAndTransfer(
-                            literal, device_ref.backend(),
+                            literal, memory_manager.get(), device_ref.backend(),
                             device_ref.device_ordinal(), &allocation));
 
-    // Intern takes ownership of our reference to allocation.
-    int64 key;
-    OP_REQUIRES_OK(ctx, allocation->Intern(rm, &key));
-
     Tensor output(DT_INT64, TensorShape({}));
-    output.scalar<int64>()() = key;
+    output.scalar<int64>()() = memory_manager->Register(allocation);
     ctx->set_output(0, output);
   }
+};
+
+// Op that allocates uninitialized memory on the device for a tensor of
+// a particular shape.
+template <class DeviceAccessor>
+class XRTAllocateUninitializedOp : public OpKernel {
+ public:
+  explicit XRTAllocateUninitializedOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("shape", &tf_shape_));
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, tf_shape_, &xla_shape_));
+  }
+  ~XRTAllocateUninitializedOp() override = default;
+  XRTAllocateUninitializedOp(const XRTAllocateUninitializedOp&) = delete;
+  XRTAllocateUninitializedOp& operator=(const XRTAllocateUninitializedOp&) =
+      delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTAllocateUninitializedOp::Compute";
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+
+    // We are guaranteed that the underlying device object won't be deleted out
+    // from under us, while the ScopedRef is live.
+    class DeviceAccessor::ScopedRef device_ref;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
+
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+    XRTTupleAllocation* allocation;
+    OP_REQUIRES_OK(ctx,
+                   XRTTupleAllocation::CreateUninitialized(
+                       xla_shape_, memory_manager.get(), device_ref.backend(),
+                       device_ref.device_ordinal(), &allocation));
+
+    Tensor output(DT_INT64, TensorShape({}));
+    output.scalar<int64>()() = memory_manager->Register(allocation);
+    ctx->set_output(0, output);
+  }
+
+ private:
+  DataType dtype_;
+  TensorShape tf_shape_;
+  xla::Shape xla_shape_;
 };
 
 // Op that allocates memory for a tensor (with optional layout) and transfers it
@@ -291,17 +333,14 @@ class XRTAllocateFromTensorOp : public OpKernel {
     class DeviceAccessor::ScopedRef device_ref;
     OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
 
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
     XRTTupleAllocation* allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::CreateAndTransfer(
-                            literal, device_ref.backend(),
+                            literal, memory_manager.get(), device_ref.backend(),
                             device_ref.device_ordinal(), &allocation));
 
-    // Intern takes ownership of our reference to allocation.
-    int64 key;
-    OP_REQUIRES_OK(ctx, allocation->Intern(rm, &key));
-
     Tensor output(DT_INT64, TensorShape({}));
-    output.scalar<int64>()() = key;
+    output.scalar<int64>()() = memory_manager->Register(allocation);
     ctx->set_output(0, output);
   }
 
@@ -342,28 +381,22 @@ class XRTSubTupleOp : public OpKernel {
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
-    XRTTupleAllocation* allocation;
-    OP_REQUIRES_OK(
-        ctx, XRTTupleAllocation::Lookup(rm, allocation_handle, &allocation));
-    core::ScopedUnref allocation_unref(allocation);
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+    RefPtr<XRTTupleAllocation> allocation;
+    OP_REQUIRES_OK(ctx, memory_manager->Lookup(allocation_handle, &allocation));
 
     if (discard_) {
       VLOG(2) << "Releasing handle " << allocation_handle;
-      OP_REQUIRES_OK(ctx, XRTTupleAllocation::DeleteFromResourceManager(
-                              rm, allocation_handle));
+      OP_REQUIRES_OK(ctx, memory_manager->Release(allocation_handle));
     }
 
     XRTTupleAllocation* suballocation;
     OP_REQUIRES_OK(
-        ctx, XRTTupleAllocation::MakeSubBuffer(allocation, shape_index,
+        ctx, XRTTupleAllocation::MakeSubBuffer(allocation.get(), shape_index,
                                                &suballocation, !discard_));
 
-    // Intern takes ownership of our reference to suballocation.
-    int64 key;
-    OP_REQUIRES_OK(ctx, suballocation->Intern(rm, &key));
-
     Tensor output(DT_INT64, TensorShape({}));
-    output.scalar<int64>()() = key;
+    output.scalar<int64>()() = memory_manager->Register(suballocation);
     ctx->set_output(0, output);
   }
 };
@@ -386,7 +419,7 @@ class XRTMakeTupleOp : public OpKernel {
         errors::Internal("tuple description input should be a string scalar"));
     xrt::XLATupleNode tuple_proto;
     OP_REQUIRES(
-        ctx, tuple_proto.ParseFromString(tuple_info.scalar<string>()()),
+        ctx, tuple_proto.ParseFromString(tuple_info.scalar<tstring>()()),
         errors::InvalidArgument("Unable to parse tuple input to XLATupleNode"));
 
     OpInputList arg_list;
@@ -398,14 +431,6 @@ class XRTMakeTupleOp : public OpKernel {
     // exit.
     std::vector<XRTTupleAllocation::ExpandedTupleInput> input_vector(
         arg_list.size());
-    auto cleanup = gtl::MakeCleanup([&input_vector] {
-      for (auto& input : input_vector) {
-        if (input.allocation != nullptr) {
-          input.allocation->Unref();
-        }
-      }
-    });
-
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
@@ -425,28 +450,22 @@ class XRTMakeTupleOp : public OpKernel {
     OP_REQUIRES_OK(
         ctx, DeviceAccessor::InitScopedRef(ctx, device_ordinal, &device_ref));
 
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
     XRTTupleAllocation* output_allocation;
     OP_REQUIRES_OK(ctx, XRTTupleAllocation::MakeTuple(
-                            device_ref.backend(), device_ref.device_ordinal(),
-                            tuple_shape_tree, &output_allocation));
-    // Add a ScopedUnref to simplify the error path while calling
-    // DeleteFromResourceManager.
-    core::ScopedUnref unref(output_allocation);
+                            memory_manager.get(), device_ref.backend(),
+                            device_ref.device_ordinal(), tuple_shape_tree,
+                            &output_allocation));
+    RefPtr<XRTTupleAllocation> output_ptr(output_allocation);
     for (int i = 0; i < input_vector.size(); ++i) {
       if (input_vector[i].release_allocation_after_use) {
-        OP_REQUIRES_OK(ctx, XRTTupleAllocation::DeleteFromResourceManager(
-                                rm, arg_list[i].scalar<int64>()()));
+        OP_REQUIRES_OK(ctx,
+                       memory_manager->Release(arg_list[i].scalar<int64>()()));
       }
     }
 
-    // Intern takes ownership of a reference to output_allocation, so add
-    // another since the ScopedUnref will release one when this method exits.
-    output_allocation->Ref();
-    int64 key;
-    OP_REQUIRES_OK(ctx, output_allocation->Intern(rm, &key));
-
     Tensor output(DT_INT64, TensorShape({}));
-    output.scalar<int64>()() = key;
+    output.scalar<int64>()() = memory_manager->Register(std::move(output_ptr));
     ctx->set_output(0, output);
   }
 };
@@ -473,15 +492,13 @@ class XRTReadLiteralOp : public OpKernel {
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
-    XRTTupleAllocation* allocation;
-    OP_REQUIRES_OK(
-        ctx, XRTTupleAllocation::Lookup(rm, allocation_handle, &allocation));
-    core::ScopedUnref allocation_unref(allocation);
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+    RefPtr<XRTTupleAllocation> allocation;
+    OP_REQUIRES_OK(ctx, memory_manager->Lookup(allocation_handle, &allocation));
 
     if (discard_) {
       VLOG(2) << "Releasing handle " << allocation_handle;
-      OP_REQUIRES_OK(ctx, XRTTupleAllocation::DeleteFromResourceManager(
-                              rm, allocation_handle));
+      OP_REQUIRES_OK(ctx, memory_manager->Release(allocation_handle));
     }
 
     // We are guaranteed that the underlying device object won't be deleted out
@@ -491,13 +508,11 @@ class XRTReadLiteralOp : public OpKernel {
                             ctx, allocation->device_ordinal(), &device_ref));
 
     xla::Literal literal(allocation->on_host_shape());
-    OP_REQUIRES_OK(
-        ctx, allocation->ToLiteral(device_ref.backend(),
-                                   device_ref.device_ordinal(), &literal));
+    OP_REQUIRES_OK(ctx, allocation->ToLiteral(device_ref.backend(), &literal));
     xla::LiteralProto literal_proto = literal.ToProto();
 
     Tensor output(DT_STRING, TensorShape({}));
-    literal_proto.SerializeToString(&output.scalar<string>()());
+    SerializeToTString(literal_proto, &output.scalar<tstring>()());
     ctx->set_output(0, output);
   }
 };
@@ -529,15 +544,13 @@ class XRTReadToTensorOp : public OpKernel {
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
-    XRTTupleAllocation* allocation;
-    OP_REQUIRES_OK(
-        ctx, XRTTupleAllocation::Lookup(rm, allocation_handle, &allocation));
-    core::ScopedUnref allocation_unref(allocation);
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+    RefPtr<XRTTupleAllocation> allocation;
+    OP_REQUIRES_OK(ctx, memory_manager->Lookup(allocation_handle, &allocation));
 
     if (discard_) {
       VLOG(2) << "Releasing handle " << allocation_handle;
-      OP_REQUIRES_OK(ctx, XRTTupleAllocation::DeleteFromResourceManager(
-                              rm, allocation_handle));
+      OP_REQUIRES_OK(ctx, memory_manager->Release(allocation_handle));
     }
 
     // We are guaranteed that the underlying device object won't be deleted out
@@ -573,15 +586,14 @@ class XRTReadToTensorOp : public OpKernel {
 
           XRTTupleAllocation* sub;
           TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
-              allocation, index, &sub, /*alias_parent_allocation=*/true));
+              allocation.get(), index, &sub, /*alias_parent_allocation=*/true));
           core::ScopedUnref sub_unref(sub);
 
           xla::MutableBorrowingLiteral literal;
           TF_RETURN_IF_ERROR(HostTensorToMutableBorrowingLiteral(
               xla::LayoutUtil::GetWithDefaultLayout(*subshape), output_tensor,
               &literal));
-          TF_RETURN_IF_ERROR(sub->ToLiteral(
-              device_ref.backend(), device_ref.device_ordinal(), &literal));
+          TF_RETURN_IF_ERROR(sub->ToLiteral(device_ref.backend(), &literal));
 
           ++output;
           return Status::OK();
@@ -615,7 +627,7 @@ class XRTWriteLiteralOp : public OpKernel {
                 errors::Internal("literal input should be a string scalar"));
     xla::LiteralProto literal_proto;
     OP_REQUIRES(ctx,
-                literal_proto.ParseFromString(literal_info.scalar<string>()()),
+                literal_proto.ParseFromString(literal_info.scalar<tstring>()()),
                 errors::InvalidArgument(
                     "Unable to parse allocation input to LiteralProto"));
     xla::Literal literal;
@@ -624,10 +636,10 @@ class XRTWriteLiteralOp : public OpKernel {
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
-    XRTTupleAllocation* allocation;
-    OP_REQUIRES_OK(
-        ctx, XRTTupleAllocation::Lookup(rm, allocation_handle, &allocation));
-    core::ScopedUnref allocation_unref(allocation);
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+    RefPtr<XRTTupleAllocation> allocation;
+    OP_REQUIRES_OK(ctx, memory_manager->Lookup(allocation_handle, &allocation));
+
     // We are guaranteed that the underlying device object won't be deleted out
     // from under us, while the ScopedRef is live.
     typename DeviceAccessor::ScopedRef device_ref;
@@ -657,12 +669,12 @@ class XRTReleaseAllocationOp : public OpKernel {
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
 
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
     const Tensor& allocation_handle = ctx->input(0);
     auto flat_keys = allocation_handle.flat<int64>();
     for (int64 i = 0; i < flat_keys.size(); ++i) {
       int64 key = flat_keys(i);
-      OP_REQUIRES_OK(ctx,
-                     XRTTupleAllocation::DeleteFromResourceManager(rm, key));
+      OP_REQUIRES_OK(ctx, memory_manager->Release(key));
       VLOG(2) << "Released allocation handle " << key;
     }
   }
@@ -684,7 +696,28 @@ class XRTReleaseAllAllocationsOp : public OpKernel {
 
     ResourceMgr* rm;
     OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
-    OP_REQUIRES_OK(ctx, XRTTupleAllocation::ReleaseAllAllocations(rm));
+    XRTMemoryManager::Get(rm)->ReleaseAllAllocations();
+  }
+};
+
+template <class DeviceAccessor>
+class XRTCompactAllocationsOp : public OpKernel {
+ public:
+  explicit XRTCompactAllocationsOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  ~XRTCompactAllocationsOp() override = default;
+  XRTCompactAllocationsOp(const XRTCompactAllocationsOp&) = delete;
+  XRTCompactAllocationsOp& operator=(const XRTCompactAllocationsOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTCompactAllocationsOp::Compute";
+
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+    RefPtr<XRTMemoryManager> memory_manager = XRTMemoryManager::Get(rm);
+    class DeviceAccessor::ScopedRef device_ref;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(ctx, &device_ref));
+    OP_REQUIRES_OK(ctx, memory_manager->CompactAllocations(
+                            device_ref.backend(), device_ref.device_ordinal()));
   }
 };
 

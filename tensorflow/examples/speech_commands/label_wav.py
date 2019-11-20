@@ -36,30 +36,27 @@ import sys
 
 import tensorflow as tf
 
-# pylint: disable=unused-import
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
-# pylint: enable=unused-import
 
 FLAGS = None
 
 
 def load_graph(filename):
   """Unpersists graph from file as default graph."""
-  with tf.gfile.GFile(filename, 'rb') as f:
-    graph_def = tf.GraphDef()
+  with tf.io.gfile.GFile(filename, 'rb') as f:
+    graph_def = tf.compat.v1.GraphDef()
     graph_def.ParseFromString(f.read())
     tf.import_graph_def(graph_def, name='')
 
 
 def load_labels(filename):
   """Read in labels, one label per line."""
-  return [line.rstrip() for line in tf.gfile.GFile(filename)]
+  return [line.rstrip() for line in tf.io.gfile.GFile(filename)]
 
 
 def run_graph(wav_data, labels, input_layer_name, output_layer_name,
               num_top_predictions):
   """Runs the audio data through the graph and prints predictions."""
-  with tf.Session() as sess:
+  with tf.compat.v1.Session() as sess:
     # Feed the audio data as input to the graph.
     #   predictions  will contain a two-dimensional array, where one
     #   dimension represents the input image count, and the other has
@@ -79,14 +76,14 @@ def run_graph(wav_data, labels, input_layer_name, output_layer_name,
 
 def label_wav(wav, labels, graph, input_name, output_name, how_many_labels):
   """Loads the model and labels, and runs the inference to print predictions."""
-  if not wav or not tf.gfile.Exists(wav):
-    tf.logging.fatal('Audio file does not exist %s', wav)
+  if not wav or not tf.io.gfile.exists(wav):
+    tf.compat.v1.logging.fatal('Audio file does not exist %s', wav)
 
-  if not labels or not tf.gfile.Exists(labels):
-    tf.logging.fatal('Labels file does not exist %s', labels)
+  if not labels or not tf.io.gfile.exists(labels):
+    tf.compat.v1.logging.fatal('Labels file does not exist %s', labels)
 
-  if not graph or not tf.gfile.Exists(graph):
-    tf.logging.fatal('Graph file does not exist %s', graph)
+  if not graph or not tf.io.gfile.exists(graph):
+    tf.compat.v1.logging.fatal('Graph file does not exist %s', graph)
 
   labels_list = load_labels(labels)
 
@@ -130,4 +127,4 @@ if __name__ == '__main__':
       help='Number of results to show.')
 
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

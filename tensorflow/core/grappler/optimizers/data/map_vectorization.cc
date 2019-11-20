@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/data/map_vectorization.h"
-#include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
+#include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -48,11 +49,11 @@ constexpr char kCeilOp[] = "Ceil";
 constexpr char kBatchOp[] = "BatchDataset";
 constexpr char kBatchV2Op[] = "BatchDatasetV2";
 constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
+constexpr char kMapAndBatchOp[] = "MapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
 constexpr char kChooseFastestOp[] = "ChooseFastestBranchDataset";
 constexpr char kPrefetchOp[] = "PrefetchDataset";
-constexpr int kAutotune = -1;
 
 // Returns a FunctionDef containing a MapDefun op that wraps the original
 // function.
@@ -267,12 +268,12 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
 
   // Set the `num_parallel_calls` input argument
   if (old_map_node.op() != kMapOp) {
-    // `num_parallel_calls` = kAutotune
+    // `num_parallel_calls` = `kAutotune`
     // TODO(rachelim): Evaluate the performance of other potential
     // transformations to `num_parallel_calls`,
     // e.g. ceil(old num_parallel_calls // batch size)
-    auto autotune_val =
-        graph_utils::AddScalarConstNode(static_cast<int32>(kAutotune), graph);
+    auto autotune_val = graph_utils::AddScalarConstNode(
+        static_cast<int32>(data::model::kAutotune), graph);
     map_node.add_input(autotune_val->name());
   }
 
@@ -302,11 +303,11 @@ Status AddNewPrefetchNode(const NodeDef& old_prefetch_node,
   // `input_dataset`
   prefetch_node.add_input(new_map_node.name());
 
-  // `buffer_size` = kAutotune
+  // `buffer_size` == `kAutotune`
   // TODO(rachelim): Evaluate the performance of other potential transformations
   // to `buffer_size`, e.g. ceil(old buffer size // batch size)
-  auto autotune_val =
-      graph_utils::AddScalarConstNode(static_cast<int64>(kAutotune), graph);
+  auto autotune_val = graph_utils::AddScalarConstNode(
+      static_cast<int64>(data::model::kAutotune), graph);
   prefetch_node.add_input(autotune_val->name());
 
   for (const auto& key : {"output_shapes", "output_types"}) {
@@ -425,7 +426,7 @@ Status AddNewChooseFastestNode(const NodeDef* input_dataset_node,
   DCHECK_EQ(branches.size(), other_arguments_lengths.size());
 
   AddNodeAttr("Targuments", t_arguments, &choose_fastest_node);
-  AddNodeAttr("num_elements_per_branch", 10, &choose_fastest_node);
+  AddNodeAttr("num_elements_per_branch", 100, &choose_fastest_node);
   AddNodeAttr("branches", branches, &choose_fastest_node);
   AddNodeAttr("other_arguments_lengths", other_arguments_lengths,
               &choose_fastest_node);
@@ -456,7 +457,7 @@ bool FindMapAndBatchPattern(const MutableGraphView& graph, const NodeDef& node,
   const NodeDef*& map_node = *map_node_output;
   const NodeDef*& input_node = *input_node_output;
 
-  if (node.op() == kExperimentalMapAndBatchOp) {
+  if (node.op() == kMapAndBatchOp || node.op() == kExperimentalMapAndBatchOp) {
     batch_node = &node;
     map_node = &node;
   } else if (node.op() == kBatchOp || node.op() == kBatchV2Op) {
@@ -534,44 +535,67 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
         AddVectorizedFunction(*map_node, *map_func, library);
     CHECK_NOTNULL(vectorized_func);
 
-    std::vector<const NodeDef*> vectorized_branch;
     NodeDef* new_batch_node;
     TF_RETURN_IF_ERROR(AddNewBatchNode(
         *batch_node, *input_node, *vectorized_func, &graph, &new_batch_node));
-    vectorized_branch.push_back(new_batch_node);
 
     NodeDef* new_map_node;
     TF_RETURN_IF_ERROR(AddNewMapNode(*map_node, *batch_node, *new_batch_node,
                                      *vectorized_func, &graph, &new_map_node));
-    vectorized_branch.push_back(new_map_node);
 
+    NodeDef* optional_new_prefetch_node = nullptr;
     if (optional_prefetch_node) {
       // If the original pipeline was .map().prefetch().batch(), the new
       // pipeline is .batch().map().prefetch()
-      NodeDef* new_prefetch_node;
       TF_RETURN_IF_ERROR(AddNewPrefetchNode(*optional_prefetch_node,
                                             *batch_node, *new_map_node, &graph,
-                                            &new_prefetch_node));
-      vectorized_branch.push_back(new_prefetch_node);
+                                            &optional_new_prefetch_node));
     }
+
+    std::vector<const NodeDef*> vectorized_branch(
+        {new_batch_node, new_map_node});
 
     std::vector<const NodeDef*> original_branch({map_node});
     if (optional_prefetch_node) {
       original_branch.push_back(optional_prefetch_node);
+      vectorized_branch.push_back(optional_new_prefetch_node);
     }
-    if (map_node->op() != kExperimentalMapAndBatchOp) {
+    if (batch_node->op() != kMapAndBatchOp &&
+        batch_node->op() != kExperimentalMapAndBatchOp) {
       original_branch.push_back(batch_node);
     }
 
-    NodeDef* new_choose_fastest_node;
-    TF_RETURN_IF_ERROR(AddNewChooseFastestNode(
-        input_node, /*ratio_numerator_name=*/new_batch_node->input(1),
-        std::move(original_branch), std::move(vectorized_branch), &graph,
-        library, &new_choose_fastest_node));
+    // Mark the original nodes for deletion.
+    for (const auto& n : original_branch) {
+      nodes_to_delete.insert(n->name());
+    }
 
-    // Make output of Batch point to ChooseFastest instead.
-    TF_RETURN_IF_ERROR(graph.UpdateFanouts(batch_node->name(),
-                                           new_choose_fastest_node->name()));
+    if (use_choose_fastest_) {
+      // Optionally, use ChooseFastestBranch node to mitigate potential
+      // regressions caused by vectorization.
+      for (const auto& n : vectorized_branch) {
+        // Mark the vectorized nodes for deletion, since they will be added in
+        // the choose fastest dataset branch function separately.
+        nodes_to_delete.insert(n->name());
+      }
+      NodeDef* new_choose_fastest_node;
+      TF_RETURN_IF_ERROR(AddNewChooseFastestNode(
+          input_node, /*ratio_numerator_name=*/new_batch_node->input(1),
+          std::move(original_branch), std::move(vectorized_branch), &graph,
+          library, &new_choose_fastest_node));
+      // Make output of Batch point to ChooseFastest instead.
+      TF_RETURN_IF_ERROR(graph.UpdateFanouts(batch_node->name(),
+                                             new_choose_fastest_node->name()));
+
+    } else {
+      // Make output of Batch point to the new Map (or Prefetch) node instead.
+      TF_RETURN_IF_ERROR(graph.UpdateFanouts(
+          batch_node->name(), optional_new_prefetch_node
+                                  ? optional_new_prefetch_node->name()
+                                  : new_map_node->name()));
+    }
+
+    TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
     stats->num_changes++;
   }
   return Status::OK();

@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_reducer.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -37,7 +38,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 
@@ -53,6 +56,10 @@ Status RingReducer::InitializeCollectiveParams(CollectiveParams* col_params) {
 void RingReducer::Run(StatusCallback done) {
   CHECK(col_ctx_);
   CHECK(col_params_);
+  // Since `RingReducer` doesn't require non-overlapping collectives, unblock
+  // any collective that is blocked on this instance.
+  col_ctx_->col_exec->UnblockDependencies(*col_params_);
+
   done_ = std::move(done);
   group_size_ = col_params_->group.group_size;
   num_subdivs_ = static_cast<int>(
@@ -87,8 +94,9 @@ void RingReducer::Run(StatusCallback done) {
     // just wait here on the copy.
     Notification note;
     Status status;
+    profiler::TraceMe activity("MemCpyAsync", profiler::TraceMeLevel::kInfo);
     CollectiveRemoteAccessLocal::MemCpyAsync(
-        col_ctx_->op_ctx->input_device_context(0),
+        col_ctx_->op_ctx->op_device_context(),
         col_ctx_->op_ctx->op_device_context(), col_ctx_->device,
         col_ctx_->device, col_ctx_->op_ctx->input_alloc_attr(0),
         col_ctx_->op_ctx->output_alloc_attr(0), col_ctx_->input,
@@ -120,17 +128,29 @@ void RingReducer::ContinueAfterInputCopy() {
     // can be provided to the kernel in host memory?
     Tensor group_size_val = ca_->Scalar(group_size_);
     if (col_params_->group.device_type != "CPU") {
-      group_size_tensor_ = ca_->Scalar(col_ctx_->device->GetAllocator(
-          col_ctx_->op_ctx->input_alloc_attr(0)));
+      uint64 safe_alloc_frontier = col_ctx_->device->SafeAllocFrontier(0);
+      AllocationAttributes aa;
+      std::function<uint64()> freed_by_func = [this, &safe_alloc_frontier]() {
+        safe_alloc_frontier =
+            col_ctx_->device->SafeAllocFrontier(safe_alloc_frontier);
+        return safe_alloc_frontier;
+      };
+      if (safe_alloc_frontier > 0) {
+        aa.freed_by_func = &freed_by_func;
+      }
+      group_size_tensor_ = ca_->Scalar(
+          col_ctx_->device->GetAllocator(col_ctx_->op_ctx->input_alloc_attr(0)),
+          aa);
       DeviceContext* op_dev_ctx = col_ctx_->op_ctx->op_device_context();
-      op_dev_ctx->CopyCPUTensorToDevice(&group_size_val, col_ctx_->device,
-                                        &group_size_tensor_,
-                                        [this](const Status& s) {
-                                          if (!s.ok()) {
-                                            StartAbort(s);
-                                          }
-                                          group_size_tensor_ready_.Notify();
-                                        });
+      op_dev_ctx->CopyCPUTensorToDevice(
+          &group_size_val, col_ctx_->device, &group_size_tensor_,
+          [this](const Status& s) {
+            if (!s.ok()) {
+              StartAbort(s);
+            }
+            group_size_tensor_ready_.Notify();
+          },
+          (safe_alloc_frontier == 0));
     } else {
       group_size_tensor_ = group_size_val;
       group_size_tensor_ready_.Notify();
@@ -175,6 +195,8 @@ bool RingReducer::RunAsyncParts() {
     // complete before proceeding.  The previous InitRingField calls allocated
     // temp memory buffers that are not guaranteed to be valid (e.g. for RDMA
     // write) unless we do.
+    profiler::TraceMe activity("WaitForQueuedEvents",
+                               profiler::TraceMeLevel::kInfo);
     Notification note;
     Status s = gpu_info->default_context->ThenExecute(
         col_ctx_->device, gpu_info->stream, [&note]() { note.Notify(); });
@@ -193,124 +215,129 @@ bool RingReducer::RunAsyncParts() {
   int recv_pending_count = 0;
   std::atomic<bool> aborted(false);
 
-  // Loop until all RingFields have advanced to completion.
-  while (field_done_count < rfv_.size()) {
-    VLOG(4) << FieldState();
-    // Wait for a RingField to appear in the ready_queue.
-    RingField* rf = ready_queue.Dequeue();
-    // Advance the RingField to its next action and execute, repeating
-    // until either an async action has been started or the RingField
-    // is done.
-    bool dispatched = false;  // true if async action was initiated
-    do {
-      if (aborted) {
-        // Requeue this RingField to be counted off below.
-        ready_queue.Enqueue(rf);
-        break;
-      }
-      switch (rf->action) {
-        case RF_INIT:
-          if (rf->do_recv) {
-            rf->action = RF_RECV;
-            auto requeue = [this, rf, &ready_queue, &aborted](Status s) {
-              if (!s.ok()) {
-                aborted = true;
-                StartAbort(s);
-              }
-              ready_queue.Enqueue(rf);
-            };
-            DispatchRecv(rf, requeue);
-            dispatched = true;
-            ++recv_pending_count;
-          } else {
-            rf->action = RF_SEND_READY;
-          }
-          break;
-        case RF_RECV:
-          CHECK_GT(recv_pending_count, 0);
-          --recv_pending_count;
-          if (!rf->second_pass) {
-            rf->action = RF_REDUCE;
-            Status s = collective_util::ComputeBinOp(
-                col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
-                col_params_->merge_op.get(), &rf->chunk, &rf->tmp_chunk);
-            if (!s.ok()) {
-              aborted = true;
-              StartAbort(s);
-            }
-          } else {
-            rf->action = RF_SEND_READY;
-          }
-          break;
-        case RF_REDUCE:
-          if (!rf->second_pass && col_params_->final_op.get() && rf->is_final) {
-            rf->action = RF_FINALIZE;
-            group_size_tensor_ready_.WaitForNotification();
-            Status s = collective_util::ComputeBinOp(
-                col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
-                col_params_->final_op.get(), &rf->chunk, &group_size_tensor_);
-            if (!s.ok()) {
-              aborted = true;
-              StartAbort(s);
-            }
-          } else {
-            rf->action = RF_SEND_READY;
-          }
-          break;
-        case RF_FINALIZE:
-          rf->action = RF_DONE;
-          break;
-        case RF_SEND_READY:
-          if (rf->do_send) {
-            rf->action = RF_SEND;
-            auto send_complete = [this, rf, &ready_queue, &aborted](Status s) {
-              if (!s.ok()) {
-                aborted = true;
-                StartAbort(s);
-              }
-              ready_queue.Enqueue(rf);
-            };
-            DispatchSend(rf, send_complete);
-            dispatched = true;
-            ++send_pending_count;
-          } else {
-            rf->action = RF_DONE;
-          }
-          break;
-        case RF_SEND:
-          CHECK_GT(send_pending_count, 0);
-          --send_pending_count;
-          rf->action = RF_DONE;
-          break;
-        case RF_DONE:
-          break;
-      }
-      if (rf->action == RF_DONE) {
-        if (rf->second_pass) {
-          ++field_done_count;
-          break;  // from do while(!dispatched)
-        } else {
-          AdvanceToSecondPass(rf);
-        }
-      }
-    } while (!dispatched);
-    if (aborted) break;
-  }  // while (field_done_count < number of fields)
-
-  if (aborted) {
-    // All of the pending data actions should be aborted; field the
-    // callbacks and clear the queue before quitting.
-    while ((send_pending_count > 0) || (recv_pending_count > 0)) {
+  {
+    profiler::TraceMe activity("Loop", profiler::TraceMeLevel::kInfo);
+    // Loop until all RingFields have advanced to completion.
+    while (field_done_count < rfv_.size()) {
+      VLOG(4) << FieldState();
+      // Wait for a RingField to appear in the ready_queue.
       RingField* rf = ready_queue.Dequeue();
-      switch (rf->action) {
-        case RF_RECV:
-          --recv_pending_count;
+      // Advance the RingField to its next action and execute, repeating
+      // until either an async action has been started or the RingField
+      // is done.
+      bool dispatched = false;  // true if async action was initiated
+      do {
+        if (aborted) {
+          // Requeue this RingField to be counted off below.
+          ready_queue.Enqueue(rf);
           break;
-        case RF_SEND:
-          --send_pending_count;
-          break;
-        default: {
-        }  // Ignore any other actions
+        }
+        switch (rf->action) {
+          case RF_INIT:
+            if (rf->do_recv) {
+              rf->action = RF_RECV;
+              auto requeue = [this, rf, &ready_queue, &aborted](Status s) {
+                if (!s.ok()) {
+                  aborted = true;
+                  StartAbort(s);
+                }
+                ready_queue.Enqueue(rf);
+              };
+              DispatchRecv(rf, requeue);
+              dispatched = true;
+              ++recv_pending_count;
+            } else {
+              rf->action = RF_SEND_READY;
+            }
+            break;
+          case RF_RECV:
+            CHECK_GT(recv_pending_count, 0);
+            --recv_pending_count;
+            if (!rf->second_pass) {
+              rf->action = RF_REDUCE;
+              Status s = collective_util::ComputeBinOp(
+                  col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
+                  col_params_->merge_op.get(), &rf->chunk, &rf->tmp_chunk);
+              if (!s.ok()) {
+                aborted = true;
+                StartAbort(s);
+              }
+            } else {
+              rf->action = RF_SEND_READY;
+            }
+            break;
+          case RF_REDUCE:
+            if (!rf->second_pass && col_params_->final_op.get() &&
+                rf->is_final) {
+              rf->action = RF_FINALIZE;
+              group_size_tensor_ready_.WaitForNotification();
+              Status s = collective_util::ComputeBinOp(
+                  col_ctx_->op_ctx, col_ctx_->op_params, col_ctx_->device,
+                  col_params_->final_op.get(), &rf->chunk, &group_size_tensor_);
+              if (!s.ok()) {
+                aborted = true;
+                StartAbort(s);
+              }
+            } else {
+              rf->action = RF_SEND_READY;
+            }
+            break;
+          case RF_FINALIZE:
+            rf->action = RF_DONE;
+            break;
+          case RF_SEND_READY:
+            if (rf->do_send) {
+              rf->action = RF_SEND;
+              auto send_complete = [this, rf, &ready_queue,
+                                    &aborted](Status s) {
+                if (!s.ok()) {
+                  aborted = true;
+                  StartAbort(s);
+                }
+                ready_queue.Enqueue(rf);
+              };
+              DispatchSend(rf, send_complete);
+              dispatched = true;
+              ++send_pending_count;
+            } else {
+              rf->action = RF_DONE;
+            }
+            break;
+          case RF_SEND:
+            CHECK_GT(send_pending_count, 0);
+            --send_pending_count;
+            rf->action = RF_DONE;
+            break;
+          case RF_DONE:
+            break;
+        }
+        if (rf->action == RF_DONE) {
+          if (rf->second_pass) {
+            ++field_done_count;
+            break;  // from do while(!dispatched)
+          } else {
+            AdvanceToSecondPass(rf);
+          }
+        }
+      } while (!dispatched);
+      if (aborted) break;
+    }  // while (field_done_count < number of fields)
+
+    if (aborted) {
+      // All of the pending data actions should be aborted; field the
+      // callbacks and clear the queue before quitting.
+      while ((send_pending_count > 0) || (recv_pending_count > 0)) {
+        RingField* rf = ready_queue.Dequeue();
+        switch (rf->action) {
+          case RF_RECV:
+            --recv_pending_count;
+            break;
+          case RF_SEND:
+            --send_pending_count;
+            break;
+          default: {
+          }  // Ignore any other actions
+        }
       }
     }
   }

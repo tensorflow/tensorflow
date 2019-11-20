@@ -64,16 +64,5 @@ Status RecentRequestIds::TrackUnique(int64 request_id,
                            request.ShortDebugString());
   }
 }
-Status RecentRequestIds::TrackUnique(int64 request_id,
-                                     const string& method_name,
-                                     const RunStepRequestWrapper* wrapper) {
-  if (Insert(request_id)) {
-    return Status::OK();
-  } else {
-    return errors::Aborted("The same ", method_name,
-                           " request was received twice. ",
-                           wrapper->ToProto().ShortDebugString());
-  }
-}
 
 }  // namespace tensorflow

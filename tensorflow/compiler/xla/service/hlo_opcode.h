@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <iosfwd>
 #include <string>
+
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -34,11 +35,6 @@ namespace xla {
 //
 // Each entry has the format:
 // (enum_name, opcode_name, arity)
-// or
-// (enum_name, opcode_name, arity, p1 | p2 | ...)
-//
-// with p1, p2, ... are members of HloOpcodeProperty. They are combined
-// using bitwise-or.
 //
 // Note: Do not use ':' in opcode names. It is used as a special character
 // in these places:
@@ -75,6 +71,8 @@ namespace xla {
   V(kConvert, "convert", 1)                                            \
   V(kConvolution, "convolution", 2)                                    \
   V(kCopy, "copy", 1)                                                  \
+  V(kCopyDone, "copy-done", 1)                                         \
+  V(kCopyStart, "copy-start", 1)                                       \
   V(kCos, "cosine", 1)                                                 \
   V(kCustomCall, "custom-call", kHloOpcodeIsVariadic)                  \
   V(kDivide, "divide", 2)                                              \
@@ -89,6 +87,7 @@ namespace xla {
   V(kFusion, "fusion", kHloOpcodeIsVariadic)                           \
   V(kGather, "gather", 2)                                              \
   V(kGetDimensionSize, "get-dimension-size", 1)                        \
+  V(kSetDimensionSize, "set-dimension-size", 2)                        \
   V(kGetTupleElement, "get-tuple-element", 1)                          \
   V(kImag, "imag", 1)                                                  \
   V(kInfeed, "infeed", 1)                                              \
@@ -108,6 +107,8 @@ namespace xla {
   V(kOutfeed, "outfeed", 2)                                            \
   V(kPad, "pad", 2)                                                    \
   V(kParameter, "parameter", 0)                                        \
+  V(kPartitionId, "partition-id", 0)                                   \
+  V(kPopulationCount, "popcnt", 1)                                     \
   V(kPower, "power", 2)                                                \
   V(kReal, "real", 1)                                                  \
   V(kRecv, "recv", 1)                                                  \
@@ -120,6 +121,7 @@ namespace xla {
   V(kReshape, "reshape", 1)                                            \
   V(kReverse, "reverse", 1)                                            \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                 \
+  V(kRngGetAndUpdateState, "rng-get-and-update-state", 0)              \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                          \
   V(kRsqrt, "rsqrt", 1)                                                \
   V(kScatter, "scatter", 3)                                            \
@@ -153,13 +155,6 @@ enum class HloOpcode {
 // Arity value that denotes that an operator is variadic.
 enum {
   kHloOpcodeIsVariadic = -1,
-};
-
-// List of properties associated with opcodes.
-// Properties are defined as increasing powers of two, so that we can use
-// bitwise-or to combine properties, and bitwise-and to test for them.
-enum HloOpcodeProperty {
-  kHloOpcodeIsComparison = 1 << 0,
 };
 
 // Returns a string representation of the opcode.

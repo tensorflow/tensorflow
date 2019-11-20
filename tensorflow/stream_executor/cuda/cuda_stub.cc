@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 
@@ -93,7 +93,7 @@ typedef struct CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS_st
     CUDA_EXTERNAL_SEMAPHORE_WAIT_PARAMS;
 typedef void(CUDA_CB* CUhostFn)(void* userData);
 
-// We only need one stub implementation. Calling a function that is not yet
-// available in the given CUDA version will return
+// For now only one stub implementation is needed. If a function that is not
+// available in the given CUDA release, the corresponding wrapper returns
 // CUDA_ERROR_SHARED_OBJECT_INIT_FAILED.
 #include "tensorflow/stream_executor/cuda/cuda_10_0.inc"

@@ -99,7 +99,7 @@ def _validate_deprecation_args(date, instructions):
 
 def _call_location(outer=False):
   """Returns call location given level up from current call."""
-  stack = tf_stack.extract_stack()
+  stack = tf_stack.extract_stack(limit=4)
   length = len(stack)
   if length == 0:  # should never happen as we're in a function
     return 'UNKNOWN'
@@ -107,7 +107,7 @@ def _call_location(outer=False):
   if index < 0:
     index = 0
   frame = stack[index]
-  return '{filename}:{lineno}'.format(filename=frame[0], lineno=frame[1])
+  return '{}:{}'.format(frame.filename, frame.lineno)
 
 
 def _wrap_decorator(wrapped_function):
@@ -149,7 +149,7 @@ def deprecated_alias(deprecated_name, name, func_or_class, warn_once=True):
   DeprecatedNameForClass = deprecated_alias(
     deprecated_name='module2.DeprecatedNameForClass',
     name='module1.NewNameForClass',
-    module1.NewNameForClass)
+    func_or_class=module1.NewNameForClass)
   ```
 
   This function works for classes and functions.
@@ -614,3 +614,30 @@ def silence():
   _PRINT_DEPRECATION_WARNINGS = False
   yield
   _PRINT_DEPRECATION_WARNINGS = print_deprecation_warnings
+
+
+class HiddenTfApiAttribute(property):
+  """Hides a class attribute from the public API.
+
+  Attributes in public classes can be hidden from the API by having an '_' in
+  front of the name (e.g. ClassName._variables). This doesn't work when
+  attributes or methods are inherited from a parent class. To hide inherited
+  attributes, set their values to be `deprecation.hide_attribute_from_api`.
+  For example, this is used in V2 Estimator to hide the deprecated
+  export_savedmodel method:
+    class EstimatorV2(Estimator):
+       export_savedmodel = deprecation.hide_attribute_from_api('...')
+  """
+
+  def __init__(self, deprecation_message):
+
+    def raise_error(unused_self):
+      raise AttributeError(deprecation_message)
+
+    super(HiddenTfApiAttribute, self).__init__(raise_error)
+
+
+hide_attribute_from_api = HiddenTfApiAttribute  # pylint: disable=invalid-name
+
+# TODO(kathywu): Remove once cl/246395236 is submitted.
+HIDDEN_ATTRIBUTE = HiddenTfApiAttribute('This attribute has been deprecated.')

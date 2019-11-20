@@ -53,16 +53,16 @@ Status ReaderBase::ResetLocked() {
   return Status::OK();
 }
 
-Status ReaderBase::SerializeState(string* state) {
+Status ReaderBase::SerializeState(tstring* state) {
   mutex_lock lock(mu_);
   return SerializeStateLocked(state);
 }
 
-Status ReaderBase::SerializeStateLocked(string* state) {
+Status ReaderBase::SerializeStateLocked(tstring* state) {
   return errors::Unimplemented("Reader SerializeState");
 }
 
-Status ReaderBase::RestoreState(const string& state) {
+Status ReaderBase::RestoreState(const tstring& state) {
   mutex_lock lock(mu_);
   Status status = RestoreStateLocked(state);
   if (!status.ok()) {
@@ -71,13 +71,13 @@ Status ReaderBase::RestoreState(const string& state) {
   return status;
 }
 
-Status ReaderBase::RestoreStateLocked(const string& state) {
+Status ReaderBase::RestoreStateLocked(const tstring& state) {
   return errors::Unimplemented("Reader RestoreState");
 }
 
 int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
-                           std::vector<string>* keys,
-                           std::vector<string>* values,
+                           std::vector<tstring>* keys,
+                           std::vector<tstring>* values,
                            OpKernelContext* context) {
   mutex_lock lock(mu_);
   int64 records_produced_this_call = 0;
@@ -133,16 +133,16 @@ int64 ReaderBase::ReadUpTo(const int64 num_records, QueueInterface* queue,
 }
 
 // Default implementation just reads one record at a time.
-Status ReaderBase::ReadUpToLocked(int64 num_records, std::vector<string>* keys,
-                                  std::vector<string>* values, int64* num_read,
+Status ReaderBase::ReadUpToLocked(int64 num_records, std::vector<tstring>* keys,
+                                  std::vector<tstring>* values, int64* num_read,
                                   bool* at_end) {
   bool produced = false;
-  string key;
-  string value;
+  tstring key;
+  tstring value;
   Status status = ReadLocked(&key, &value, &produced, at_end);
   if (produced) {
-    keys->emplace_back(key);
-    values->emplace_back(value);
+    keys->push_back(std::move(key));
+    values->push_back(std::move(value));
     *num_read = 1;
   } else {
     *num_read = 0;
@@ -150,7 +150,7 @@ Status ReaderBase::ReadUpToLocked(int64 num_records, std::vector<string>* keys,
   return status;
 }
 
-void ReaderBase::Read(QueueInterface* queue, string* key, string* value,
+void ReaderBase::Read(QueueInterface* queue, tstring* key, tstring* value,
                       OpKernelContext* context) {
   mutex_lock lock(mu_);
   while (true) {
@@ -202,7 +202,7 @@ string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
   string work;
   Notification n;
   queue->TryDequeue(
-      context, [this, context, &n, &work](const QueueInterface::Tuple& tuple) {
+      context, [context, &n, &work](const QueueInterface::Tuple& tuple) {
         if (context->status().ok()) {
           if (tuple.size() != 1) {
             context->SetStatus(
@@ -214,7 +214,7 @@ string ReaderBase::GetNextWorkLocked(QueueInterface* queue,
             context->SetStatus(errors::InvalidArgument(
                 "Expected to dequeue a one-element string tensor"));
           } else {
-            work = tuple[0].flat<string>()(0);
+            work = tuple[0].flat<tstring>()(0);
           }
         }
         n.Notify();
@@ -228,10 +228,19 @@ void ReaderBase::SaveBaseState(ReaderBaseState* state) const {
   state->set_work_started(work_started_);
   state->set_work_finished(work_finished_);
   state->set_num_records_produced(num_records_produced_);
-  state->set_current_work(work_);
+  // Unfortunately, external proto does not accept string_view.
+#if defined(PLATFORM_GOOGLE)
+  // TODO(dero): Remove NOLINT after USE_TSTRING is enabled.  The external proto
+  // compiler does not create an overloaded set method that accepts
+  // absl::string_view, and string_view to std::string is an explicit
+  // conversion.
+  state->set_current_work(StringPiece(work_));  // NOLINT
+#else
+  state->set_current_work(string(work_));
+#endif
 }
 
-string ReaderBase::KeyName(const string& key) const {
+tstring ReaderBase::KeyName(const tstring& key) const {
   return strings::StrCat(current_work(), ":", key);
 }
 

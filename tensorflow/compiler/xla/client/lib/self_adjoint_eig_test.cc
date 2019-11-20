@@ -102,7 +102,7 @@ class SelfAdjointEigTest : public ClientLibraryTestBase {
 
   XlaOp ComputeMatmulVWVt(SelfAdjointEigResult result, XlaBuilder* builder) {
     Shape shape = builder->GetShape(result.v).ValueOrDie();
-    std::vector<int64> out_dims = shape.dimensions();
+    absl::Span<const int64> out_dims = shape.dimensions();
     std::vector<int64> broadcast_dims(shape.rank() - 1);
     std::iota(broadcast_dims.begin(), broadcast_dims.end(), 0);
 

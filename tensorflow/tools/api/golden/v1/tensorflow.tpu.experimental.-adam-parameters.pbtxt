@@ -1,0 +1,10 @@
+path: "tensorflow.tpu.experimental.AdamParameters"
+tf_class {
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding.AdamParameters\'>"
+  is_instance: "<class \'tensorflow.python.tpu.tpu_embedding._OptimizationParameters\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'learning_rate\', \'beta1\', \'beta2\', \'epsilon\', \'lazy_adam\', \'sum_inside_sqrt\', \'use_gradient_accumulation\', \'clip_weight_min\', \'clip_weight_max\'], varargs=None, keywords=None, defaults=[\'0.9\', \'0.999\', \'1e-08\', \'True\', \'True\', \'True\', \'None\', \'None\'], "
+  }
+}

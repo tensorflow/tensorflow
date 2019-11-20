@@ -143,6 +143,30 @@ tensorflow::ImportNumpy();
   $result = PyLong_FromUnsignedLongLong($1);
 }
 
+// Convert TF_OperationGetAttrType TF_DataType* out-argument to Python integer.
+%typemap(in, numinputs=0) TF_DataType *value (TF_DataType temp) {
+  $1 = &temp;
+}
+%typemap(argout) TF_DataType *value {
+  $result = PyInt_FromLong(*$1);
+}
+
+// Convert TF_OperationGetAttrBool unsigned char* out-argument to Python bool.
+%typemap(in, numinputs=0) unsigned char *value (unsigned char temp) {
+  $1 = &temp;
+}
+%typemap(argout) unsigned char *value {
+  $result = PyBool_FromLong(*$1);
+}
+
+// Convert TF_OperationGetAttrInt int64_t* out-argument to Python bool.
+%typemap(in, numinputs=0) int64_t *value (int64_t temp) {
+  $1 = &temp;
+}
+%typemap(argout) int64_t *value {
+  $result = PyLong_FromLongLong(*$1);
+}
+
 // We use TF_OperationGetControlInputs_wrapper instead of
 // TF_OperationGetControlInputs
 %ignore TF_OperationGetControlInputs;
@@ -516,6 +540,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 %rename("_TF_NewSessionOptions") TF_NewSessionOptions;
 
 %include "tensorflow/c/c_api.h"
+%include "tensorflow/c/tf_attrtype.h"
 %include "tensorflow/c/python_api.h"
 
 
@@ -571,8 +596,7 @@ def TF_Reset(target, containers=None, config=None):
   from tensorflow.python.framework import errors
   opts = TF_NewSessionOptions(target=target, config=config)
   try:
-    with errors.raise_exception_on_not_ok_status() as status:
-      TF_Reset_wrapper(opts, containers, status)
+    TF_Reset_wrapper(opts, containers)
   finally:
     TF_DeleteSessionOptions(opts)
 %}
@@ -796,6 +820,24 @@ def TF_Reset(target, containers=None, config=None):
 
   Py_DECREF(seq);
   $1 = &types_local;
+}
+
+%unignore TF_CreatePlaceholders;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_CreatePlaceholders;
+
+// Build a Python list of TF_Output and return it.
+%typemap(out) std::vector<TF_Output> tensorflow::TF_CreatePlaceholders {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>>
+  const std::vector<TF_Output>& tf_outputs = $1;
+  for (size_t i = 0; i < tf_outputs.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(tf_outputs[i]));
+  }
 }
 
 %unignore TF_NewSessionRef;

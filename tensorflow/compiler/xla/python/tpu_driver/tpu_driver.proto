@@ -1,0 +1,58 @@
+// Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// ==============================================================================
+
+syntax = "proto2";
+
+package tpu_driver;
+
+enum MemoryRegion { HBM = 1; }
+
+message TpuCoreInfo {
+  required int32 id = 1;
+
+  required int64 hbm_bytes_available = 100;
+  required int64 hbm_bytes_allocatable = 101;
+}
+
+message TpuChipInfo {
+  repeated TpuCoreInfo core = 1;
+}
+
+message CpuInfo {
+  required int32 num_cpu_cores = 1;
+  required float cpu_load_average_1min = 2;
+  required int64 ram_bytes_total = 100;
+  required int64 ram_bytes_available = 101;
+}
+
+message SystemInfo {
+  repeated TpuChipInfo tpu_chip = 1;
+  required CpuInfo cpu = 2;
+}
+
+message TpuDriverConfig {
+  optional string worker = 1;
+
+  message GrpcConfig {
+    // Time in seconds before the initial connection to the server will timeout.
+    optional int64 connection_timeout_secs = 1 [default = 30];
+
+    // Time in seconds the server may be unresponsive before terminating the
+    // connection.
+    optional int64 keepalive_timeout_secs = 2 [default = 30];
+  }
+
+  optional GrpcConfig grpc = 2;
+}

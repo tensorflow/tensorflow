@@ -1,5 +1,3 @@
-# -*- Python -*-
-
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # Create a benchmark test target of a TensorFlow C++ test (tf_cc_*_test)
@@ -23,11 +21,7 @@ def tf_cc_logged_benchmark(
             "//path/to:test. Received: %s" % target,
         )))
 
-    all_tags = (
-        depset(tags) + depset(
-            ["benchmark-test", "local", "manual", "regression-test"],
-        )
-    ).to_list()
+    all_tags = tags + ["benchmark-test", "local", "manual", "regression-test"]
 
     tf_py_test(
         name = name,

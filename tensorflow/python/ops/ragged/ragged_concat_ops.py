@@ -24,10 +24,10 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
-from tensorflow.python.ops.ragged import ragged_conversion_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 def concat(values, axis, name=None):
@@ -56,14 +56,13 @@ def concat(values, axis, name=None):
       the input tensors have different ranks.
 
   #### Example:
-    ```python
-    >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
-    >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
-    >>> ragged.concat([t1, t2], axis=0)
-    [[1, 2], [3, 4, 5], [6], [7, 8, 9]]
-    >>> ragged.concat([t1, t2], axis=1)
-    [[1, 2, 6], [3, 4, 5, 7, 8, 9]]
-    ```
+
+  >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
+  >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
+  >>> tf.concat([t1, t2], axis=0)
+  <tf.RaggedTensor [[1, 2], [3, 4, 5], [6], [7, 8, 9]]>
+  >>> tf.concat([t1, t2], axis=1)
+  <tf.RaggedTensor [[1, 2, 6], [3, 4, 5, 7, 8, 9]]>
   """
   if not isinstance(values, (list, tuple)):
     values = [values]
@@ -71,40 +70,47 @@ def concat(values, axis, name=None):
     return _ragged_stack_concat_helper(values, axis, stack_values=False)
 
 
+@tf_export('ragged.stack')
 def stack(values, axis=0, name=None):
-  """Stacks potentially ragged tensors along one dimension.
+  """Stacks a list of rank-`R` tensors into one rank-`(R+1)` `RaggedTensor`.
 
-  Given a list of tensors with the same rank `K` (`K >= axis`), returns a
-  rank-`K+1` `RaggedTensor` `result` such that `result[i0...iaxis]` is the
-  list `[rt[i0...iaxis] for rt in values]`.
+  Given a list of tensors or ragged tensors with the same rank `R`
+  (`R >= axis`), returns a rank-`R+1` `RaggedTensor` `result` such that
+  `result[i0...iaxis]` is `[value[i0...iaxis] for value in values]`.
+
+  #### Examples:
+
+  >>> # Stacking two ragged tensors.
+  >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
+  >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
+  >>> tf.ragged.stack([t1, t2], axis=0)
+  <tf.RaggedTensor [[[1, 2], [3, 4, 5]], [[6], [7, 8, 9]]]>
+  >>> tf.ragged.stack([t1, t2], axis=1)
+  <tf.RaggedTensor [[[1, 2], [6]], [[3, 4, 5], [7, 8, 9]]]>
+
+  >>> # Stacking two dense tensors with different sizes.
+  >>> t3 = tf.constant([[1, 2, 3], [4, 5, 6]])
+  >>> t4 = tf.constant([[5], [6], [7]])
+  >>> tf.ragged.stack([t3, t4], axis=0)
+  <tf.RaggedTensor [[[1, 2, 3], [4, 5, 6]], [[5], [6], [7]]]>
 
   Args:
-    values: A list of potentially ragged tensors.  May not be empty. All
+    values: A list of `tf.Tensor` or `tf.RaggedTensor`.  May not be empty. All
       `values` must have the same rank and the same dtype; but unlike
-      `tf.concat`, they can have arbitrary shapes.
+      `tf.stack`, they can have arbitrary dimension sizes.
     axis: A python integer, indicating the dimension along which to stack.
       (Note: Unlike `tf.stack`, the `axis` parameter must be statically known.)
-        Negative values are supported only if the rank of at least one
-        `values` value is statically known.
+      Negative values are supported only if the rank of at least one
+      `values` value is statically known.
     name: A name prefix for the returned tensor (optional).
 
   Returns:
-    A `RaggedTensor` with rank `K+1`.
-    `result.ragged_rank=max(axis, max(rt.ragged_rank for rt in values]))`.
+    A `RaggedTensor` with rank `R+1`.
+    `result.ragged_rank=1+max(axis, max(rt.ragged_rank for rt in values]))`.
 
   Raises:
     ValueError: If `values` is empty, if `axis` is out of bounds or if
       the input tensors have different ranks.
-
-  #### Example:
-    ```python
-    >>> t1 = tf.ragged.constant([[1, 2], [3, 4, 5]])
-    >>> t2 = tf.ragged.constant([[6], [7, 8, 9]])
-    >>> ragged.stack([t1, t2], axis=0)
-    [[[1, 2], [3, 4, 5]], [[6], [7, 9, 0]]]
-    >>> ragged.stack([t1, t2], axis=1)
-    [[[1, 2], [6]], [[3, 4, 5], [7, 8, 9]]]
-    ```
   """
   if not isinstance(values, (list, tuple)):
     values = [values]
@@ -135,6 +141,9 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
       ragged_tensor.convert_to_tensor_or_ragged_tensor(
           rt_input, name='rt_input') for rt_input in rt_inputs
   ]
+  row_splits_dtype, rt_inputs = ragged_tensor.match_row_splits_dtypes(
+      *rt_inputs, return_dtype=True)
+  rt_inputs = list(rt_inputs)
 
   # Special case: if there's only one input, then return it as-is.
   if len(rt_inputs) == 1:
@@ -154,6 +163,12 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   out_ndims = ndims if (ndims is None or not stack_values) else ndims + 1
   axis = ragged_util.get_positive_axis(axis, out_ndims)
 
+  if stack_values and ndims == 1 and axis == 0:
+    return ragged_tensor.RaggedTensor.from_row_lengths(
+        values=array_ops.concat(rt_inputs, axis=0),
+        row_lengths=array_ops.concat([array_ops.shape(r) for r in rt_inputs],
+                                     axis=0))
+
   # If all the inputs are Tensors, and we're combining the final dimension,
   # then we can delegate to the tf.stack/tf.concat operation, and return a
   # Tensor.
@@ -168,12 +183,13 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
   # possible to concatenate Tensors and RaggedTensors together.
   for i in range(len(rt_inputs)):
     if not ragged_tensor.is_ragged(rt_inputs[i]):
-      rt_inputs[i] = ragged_conversion_ops.from_tensor(
-          rt_inputs[i], ragged_rank=1)
+      rt_inputs[i] = ragged_tensor.RaggedTensor.from_tensor(
+          rt_inputs[i], ragged_rank=1, row_splits_dtype=row_splits_dtype)
 
   # Convert the input tensors to all have the same ragged_rank.
   ragged_rank = max(max(rt.ragged_rank for rt in rt_inputs), 1)
-  rt_inputs = [_increase_ragged_rank_to(rt, ragged_rank) for rt in rt_inputs]
+  rt_inputs = [_increase_ragged_rank_to(rt, ragged_rank, row_splits_dtype)
+               for rt in rt_inputs]
 
   if axis == 0:
     return _ragged_stack_concat_axis_0(rt_inputs, stack_values)
@@ -185,7 +201,7 @@ def _ragged_stack_concat_helper(rt_inputs, axis, stack_values):
     with ops.control_dependencies(ragged_util.assert_splits_match(splits)):
       return ragged_tensor.RaggedTensor.from_row_splits(
           _ragged_stack_concat_helper(values, axis - 1, stack_values),
-          splits[0][0])
+          splits[0][0], validate=False)
 
 
 def _ragged_stack_concat_axis_0(rt_inputs, stack_values):
@@ -220,7 +236,7 @@ def _ragged_stack_concat_axis_0(rt_inputs, stack_values):
     concatenated_nested_splits.insert(0, stack_splits)
 
   return ragged_tensor.RaggedTensor.from_nested_row_splits(
-      concatenated_flat_values, concatenated_nested_splits)
+      concatenated_flat_values, concatenated_nested_splits, validate=False)
 
 
 def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
@@ -263,15 +279,15 @@ def _ragged_stack_concat_axis_1(rt_inputs, stack_values):
       # Add a new splits tensor to group together the values.
       stack_splits = math_ops.range(0, rt_nrows * num_inputs + 1, num_inputs)
       _copy_row_shape(rt_inputs, stack_splits)
-      return ragged_tensor.RaggedTensor.from_row_splits(permuted_rt,
-                                                        stack_splits)
+      return ragged_tensor.RaggedTensor.from_row_splits(
+          permuted_rt, stack_splits, validate=False)
     else:
       # Merge together adjacent rows by dropping the row-split indices that
       # separate them.
       concat_splits = permuted_rt.row_splits[::num_inputs]
       _copy_row_shape(rt_inputs, concat_splits)
-      return ragged_tensor.RaggedTensor.from_row_splits(permuted_rt.values,
-                                                        concat_splits)
+      return ragged_tensor.RaggedTensor.from_row_splits(
+          permuted_rt.values, concat_splits, validate=False)
 
 
 def _copy_row_shape(rt_inputs, splits):
@@ -281,14 +297,16 @@ def _copy_row_shape(rt_inputs, splits):
       splits.set_shape(tensor_shape.TensorShape(rt.shape[0] + 1))
 
 
-def _increase_ragged_rank_to(rt_input, ragged_rank):
+def _increase_ragged_rank_to(rt_input, ragged_rank, row_splits_dtype):
   """Adds ragged dimensions to `rt_input` so it has the desired ragged rank."""
   if ragged_rank > 0:
     if not ragged_tensor.is_ragged(rt_input):
-      rt_input = ragged_conversion_ops.from_tensor(rt_input)
+      rt_input = ragged_tensor.RaggedTensor.from_tensor(
+          rt_input, row_splits_dtype=row_splits_dtype)
     if rt_input.ragged_rank < ragged_rank:
       rt_input = rt_input.with_values(
-          _increase_ragged_rank_to(rt_input.values, ragged_rank - 1))
+          _increase_ragged_rank_to(rt_input.values, ragged_rank - 1,
+                                   row_splits_dtype))
   return rt_input
 
 

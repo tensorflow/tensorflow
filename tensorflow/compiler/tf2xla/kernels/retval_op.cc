@@ -37,9 +37,11 @@ class RetvalOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     const Tensor& input = ctx->op_kernel_context()->input(0);
 
-    // DT_VARIANT types represent Tensor Lists and are wrapped in a DT_UINT8
-    // tensor so we skip the check here.
-    if (dtype_ != DT_VARIANT) {
+    // Types that cannot be copied using memcpy (like DT_VARIANT types that
+    // represent Tensor Lists) are wrapped in a DT_UINT8 and hence the type
+    // mismatches. Skip the test in such cases. See
+    // XlaOpKernelContext::SetOutputExpression for details.
+    if (DataTypeCanUseMemcpy(dtype_)) {
       OP_REQUIRES(ctx, input.dtype() == dtype_,
                   errors::InvalidArgument(
                       "Type mismatch: actual ", DataTypeString(input.dtype()),

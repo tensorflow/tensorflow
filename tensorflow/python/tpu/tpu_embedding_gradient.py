@@ -22,8 +22,10 @@ import collections
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu.ops import tpu_ops
 
 
@@ -115,11 +117,11 @@ def hook_dummy_table_variables_to_activations(tpu_embedding, activations,
   """
   new_activations = collections.OrderedDict()
   for feature in activations:
-    table = tpu_embedding.feature_to_table_dict[feature]
+    table = tpu_embedding.feature_to_config_dict[feature].table_id
     new_activations[feature] = tpu_ops.tpu_embedding_activations(
         dummy_table_variables[table],
         activations[feature],
-        table_id=tpu_embedding.table_to_config_dict.keys().index(table),
+        table_id=list(tpu_embedding.table_to_config_dict).index(table),
         lookup_id=tpu_embedding.table_to_features_dict[table].index(feature))
   return new_activations
 
@@ -142,12 +144,37 @@ def get_gradients_through_dummy_table_variables(tpu_embedding):
   for table_id, table in enumerate(tpu_embedding.table_to_config_dict):
     table_gradients = g.get_collection(
         'tpu_embedding_gradients_table_{}'.format(table_id))
-    if any(gradient is None for gradient in table_gradients):
+    if all(gradient is None for gradient in table_gradients):
       raise ValueError(
           'Table {} with id {} has undefined gradients: this is probably '
           'because the model asked TPUEmbedding to compute activations that '
           'were not used.'.format(table, table_id))
+    if any(gradient is None for gradient in table_gradients):
+      # TODO(bfontain): create a white-list for optimizers which are compatible
+      # with `tf.stop_gradient`.
+      logging.warn(
+          'Table {} with id {} has undefined gradients: this is probably '
+          'because the model asked TPUEmbedding to compute activations that '
+          'were not used, or tf.stop_gradient() is applied. Gradients of zeros '
+          'are sent back to TPUEmbedding instead. Gradients of zeros and no '
+          'gradients are equivalent for SGD, AdaGrad, FTRL, momentum, etc, but '
+          'might differ for other optimizers due to implementation of tpu '
+          'embedding optimziers.'
+          .format(table, table_id))
     for feature, gradient in zip(tpu_embedding.table_to_features_dict[table],
                                  table_gradients):
-      feature_to_gradient_dict[feature] = gradient
+      if gradient is not None:
+        feature_to_gradient_dict[feature] = gradient
+      else:
+        dimension = tpu_embedding.table_to_config_dict[table].dimension
+        batch_size = tpu_embedding.batch_size_per_core
+        max_sequence_length = (
+            tpu_embedding.feature_to_config_dict[feature].max_sequence_length)
+        if max_sequence_length:
+          feature_to_gradient_dict[feature] = array_ops.zeros(
+              [batch_size, max_sequence_length, dimension])
+        else:
+          feature_to_gradient_dict[feature] = array_ops.zeros(
+              [batch_size, dimension])
+
   return feature_to_gradient_dict

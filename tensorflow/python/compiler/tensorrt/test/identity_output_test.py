@@ -28,42 +28,32 @@ import numpy as np
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
 class IdentityTest(trt_test.TfTrtIntegrationTestBase):
+  """Testing engine with the same tensor repeated as output via identity."""
 
   def _ConstOp(self, shape):
     return constant_op.constant(np.random.randn(*shape), dtype=dtypes.float32)
 
+  def GraphFn(self, x):
+    b = self._ConstOp((32, 4))
+    x1 = math_ops.matmul(x, b)
+    b = self._ConstOp((1, 4))
+    x1 = x1 + b
+
+    out1 = array_ops.identity(x1, name='output_0')
+    out2 = array_ops.identity(x1, name='output_1')
+    iden1 = array_ops.identity(x1)
+    out3 = array_ops.identity(iden1, name='output_2')
+    return [out1, out2, out3]
+
   def GetParams(self):
-    """Testing engine with the same tensor repeated as output via identity."""
-    input_name = 'input'
-    input_dims = [100, 32]
-    g = ops.Graph()
-    with g.as_default():
-      x = array_ops.placeholder(
-          dtype=dtypes.float32, shape=input_dims, name=input_name)
-
-      b = self._ConstOp((32, 4))
-      x1 = math_ops.matmul(x, b)
-      b = self._ConstOp((1, 4))
-      x1 = x1 + b
-
-      out1 = array_ops.identity(x1, name='output1')
-      out2 = array_ops.identity(x1, name='output2')
-      iden1 = array_ops.identity(x1)
-      out3 = array_ops.identity(iden1, name='output3')
-
-    return trt_test.TfTrtIntegrationTestParams(
-        gdef=g.as_graph_def(),
-        input_names=[input_name],
-        input_dims=[[input_dims]],
-        output_names=['output1', 'output2', 'output3'],
-        expected_output_dims=[[[100, 4]] * 3])
+    return self.BuildParams(self.GraphFn, dtypes.float32, [[100, 32]],
+                            [[100, 4]] * 3)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

@@ -24,12 +24,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
+class RaggedStackOpTest(test_util.TensorFlowTestCase,
                         parameterized.TestCase):
 
   @parameterized.parameters(
@@ -264,6 +263,12 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
               [[b'a00', b'a01'], [b'a10', b'a11'], [b'a20', b'a21']],
               [[b'b00', b'b01', b'b02'], [b'b10', b'b11', b'b12']]]),
       dict(
+          descr='ragged_stack([1D, 1D], axis=0)',
+          ragged_ranks=[0, 0],
+          rt_inputs=(['a', 'b'], ['c', 'd', 'e']),
+          axis=0,
+          expected=[[b'a', b'b'], [b'c', b'd', b'e']]),
+      dict(
           descr='ragged_stack([uniform, ragged], axis=0)',
           ragged_ranks=[0, 1],
           rt_inputs=(
@@ -335,7 +340,7 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
       self.assertEqual(stacked.ragged_rank, expected_ragged_rank)
     if expected_shape is not None:
       self.assertEqual(stacked.shape.as_list(), expected_shape)
-    self.assertRaggedEqual(stacked, expected)
+    self.assertAllEqual(stacked, expected)
 
   @parameterized.parameters(
       dict(
@@ -372,7 +377,7 @@ class RaggedStackOpTest(ragged_test_util.RaggedTensorTestCase,
     """
     rt_inputs = ragged_factory_ops.constant([[1, 2], [3, 4]])
     stacked = ragged_concat_ops.stack(rt_inputs, 0)
-    self.assertRaggedEqual(stacked, [[[1, 2], [3, 4]]])
+    self.assertAllEqual(stacked, [[[1, 2], [3, 4]]])
 
 
 if __name__ == '__main__':

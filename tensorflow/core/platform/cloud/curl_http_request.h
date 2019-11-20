@@ -224,7 +224,7 @@ class CurlHttpRequest : public HttpRequest {
   string uri_;
   RequestMethod method_ = RequestMethod::kGet;
 
-  // Limit the size of a http response that is copied into an error message.
+  // Limit the size of an http response that is copied into an error message.
   const size_t response_to_error_limit_ = 500;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CurlHttpRequest);

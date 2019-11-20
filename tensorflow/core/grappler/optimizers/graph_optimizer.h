@@ -36,10 +36,22 @@ class GraphOptimizer {
 
   virtual string name() const = 0;
 
+  // Returns true if the optimizer requires a valid function library to perform
+  // graph optimization. If false, optimized GrapplerItem will have a stub
+  // instead of real function library (all function signatures and attributes
+  // will be valid, but function body will be empty). Most of the optimizers
+  // that do not instantiate functions should return true.
+  virtual bool UsesFunctionLibrary() const = 0;
+
   // Routine called to allow an algorithm to propose a rewritten graph
   // for the graph, feeds and fetches in "item" to run more efficiently
-  // on "cluster".
+  // on "cluster". If the returned status is Status::OK() then
+  // *optimized_graph contains the rewritten graph.
   // Returns an error status if it failed to generate a solution.
+  //
+  // A return value of error::Aborted() can be used signal early termination of
+  // the optimizer, e.g. if the optimization turned out to be a no-op. In this
+  // case the content of *optimized_graph is undefined.
   virtual Status Optimize(Cluster* cluster, const GrapplerItem& item,
                           GraphDef* optimized_graph) = 0;
 

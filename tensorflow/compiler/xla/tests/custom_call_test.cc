@@ -19,7 +19,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -64,10 +64,10 @@ void F32TupleSwap(float** out, float** in) {
 
 }  // namespace
 
-REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
-REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
-REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
-REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R0F32Add2);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(R2F32ReduceSum);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(Add1ToValues);
+XLA_CPU_REGISTER_CUSTOM_CALL_TARGET(F32TupleSwap);
 
 namespace xla {
 namespace {
@@ -79,7 +79,7 @@ class CustomCallTest : public HloTestBase {
 };
 
 XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto constant = builder.AddInstruction(
@@ -94,7 +94,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR0F32Add2) {
 }
 
 XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   Array2D<float> array(2, 2);
@@ -115,7 +115,7 @@ XLA_TEST_F(CustomCallTest, CustomCallR2F32Reduce) {
 }
 
 XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input = b.AddInstruction(
@@ -139,7 +139,7 @@ XLA_TEST_F(CustomCallTest, UsedInOtherComputations) {
 }
 
 XLA_TEST_F(CustomCallTest, InputAndOutputLayoutDiffer) {
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input =
@@ -164,7 +164,7 @@ XLA_TEST_F(CustomCallTest, LayoutConstrained) {
   // The argument and result of the computation are set to different layouts,
   // but the custom call is layout constrained to a fixed operand and result
   // layout, so the correct result should be produced.
-  auto module = CreateNewUnverifiedModule();
+  auto module = CreateNewVerifiedModule();
   auto b = HloComputation::Builder(TestName());
 
   auto input =

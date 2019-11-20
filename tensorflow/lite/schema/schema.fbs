@@ -111,7 +111,7 @@ enum BuiltinOperator : byte {
   CONCATENATION = 2,
   CONV_2D = 3,
   DEPTHWISE_CONV_2D = 4,
-  // DEPTH_TO_SPACE = 5,
+  DEPTH_TO_SPACE = 5,
   DEQUANTIZE = 6,
   EMBEDDING_LOOKUP = 7,
   FLOOR = 8,
@@ -226,6 +226,16 @@ enum BuiltinOperator : byte {
   RANK = 110,
   ELU = 111,
   REVERSE_SEQUENCE = 112,
+  MATRIX_DIAG = 113,
+  QUANTIZE = 114,
+  MATRIX_SET_DIAG = 115,
+  ROUND = 116,
+  HARD_SWISH = 117,
+  IF = 118,
+  WHILE = 119,
+  NON_MAX_SUPPRESSION_V4 = 120,
+  NON_MAX_SUPPRESSION_V5 = 121,
+  SCATTER_ND = 122
 }
 
 // Options for the builtin operators.
@@ -317,6 +327,16 @@ union BuiltinOptions {
   WhereOptions,
   RankOptions,
   ReverseSequenceOptions,
+  MatrixDiagOptions,
+  QuantizeOptions,
+  MatrixSetDiagOptions,
+  HardSwishOptions,
+  IfOptions,
+  WhileOptions,
+  DepthToSpaceOptions,
+  NonMaxSuppressionV4Options,
+  NonMaxSuppressionV5Options,
+  ScatterNdOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -353,6 +373,9 @@ table DepthwiseConv2DOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+  // `depth_multiplier` is redundant. It's used by CPU kernels in
+  // TensorFlow 2.0 or below, but ignored in versions above.
+  // See comments in lite/c/builtin_op_data.h for more details.
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
   // Parameters for DepthwiseConv version 2 or above.
@@ -411,6 +434,11 @@ table FullyConnectedOptions {
 
   // Parameters for FullyConnected version 2 or above.
   weights_format:FullyConnectedOptionsWeightsFormat = DEFAULT;
+
+  // Parameters for FullyConnected version 5 or above.
+  // If set to true, then the number of dimension is preserved. Furthermore,
+  // all but the last dimension of the input and output shapes will be equal.
+  keep_num_dims: bool;
 }
 
 table SoftmaxOptions {
@@ -526,6 +554,10 @@ table SkipGramOptions {
 }
 
 table SpaceToDepthOptions {
+  block_size: int;
+}
+
+table DepthToSpaceOptions {
   block_size: int;
 }
 
@@ -689,6 +721,9 @@ table AbsOptions {
 }
 
 
+table HardSwishOptions {
+}
+
 table LogicalAndOptions {
 }
 
@@ -756,6 +791,35 @@ table ReverseSequenceOptions {
   seq_dim:int;
   batch_dim:int = 0;
 }
+
+table MatrixDiagOptions {
+}
+
+table QuantizeOptions {
+}
+
+table MatrixSetDiagOptions {
+}
+
+table IfOptions {
+  then_subgraph_index:int;
+  else_subgraph_index:int;
+}
+
+table WhileOptions {
+  cond_subgraph_index:int;
+  body_subgraph_index:int;
+}
+
+table NonMaxSuppressionV4Options {
+}
+
+table NonMaxSuppressionV5Options {
+}
+
+table ScatterNdOptions {
+}
+
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {
@@ -797,6 +861,15 @@ table Operator {
   // If the list is empty, no variable is mutated in this operator.
   // The list either has the same length as `inputs`, or is empty.
   mutating_variable_inputs:[bool];
+
+  // A list of indices to the subgraph's "tensors" that are internal to an Op.
+  // Internal tensors are those that do not flow in or out of the operation,
+  // but instead are part of internal computation. As such, the operation's
+  // implementation may manage its memory more efficiently. They are needed
+  // however (i.e. not just an implementation detail) since they are part of the
+  // computation, which may require relevant metadata such as quantization
+  // parameters.
+  intermediates:[int];
 }
 
 // The root type, defining a subgraph, which typically represents an entire
@@ -827,6 +900,13 @@ table Buffer {
   data:[ubyte] (force_align: 16);
 }
 
+table Metadata {
+  // A human readable string to uniquely identify a Metadata.
+  name:string;
+  // An index to the buffers table.
+  buffer:uint;
+}
+
 table Model {
   // Version of the schema.
   version:uint;
@@ -849,8 +929,12 @@ table Model {
   // their buffer.
   buffers:[Buffer];
 
-  // Metadata about the model.  Indirects into the existings buffers list.
+  // Metadata about the model. Indirects into the existings buffers list.
+  // Deprecated, prefer to use metadata field.
   metadata_buffer:[int];
+
+  // Metadata about the model.
+  metadata:[Metadata];
 }
 
 root_type Model;

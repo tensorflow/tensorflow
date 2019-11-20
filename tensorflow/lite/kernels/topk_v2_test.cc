@@ -25,61 +25,42 @@ namespace {
 
 using ::testing::ElementsAreArray;
 
+enum class TestType {
+  CONST = 0,
+  DYNAMIC = 1,
+};
+
+template <typename InputType>
 class TopKV2OpModel : public SingleOpModel {
  public:
-  TopKV2OpModel(std::initializer_list<int> input_shape, TensorType input_type,
-                int top_k) {
-    input_ = AddInput(input_type);
-    top_k_ = AddInput(TensorType_INT32);
-    output_values_ = AddOutput(input_type);
+  TopKV2OpModel(int top_k, std::initializer_list<int> input_shape,
+                std::initializer_list<InputType> input_data,
+                TestType input_tensor_types) {
+    if (input_tensor_types == TestType::DYNAMIC) {
+      input_ = AddInput(GetTensorType<InputType>());
+      top_k_ = AddInput(TensorType_INT32);
+    } else {
+      input_ =
+          AddConstInput(GetTensorType<InputType>(), input_data, input_shape);
+      top_k_ = AddConstInput(TensorType_INT32, {top_k}, {1});
+    }
+    output_values_ = AddOutput(GetTensorType<InputType>());
     output_indexes_ = AddOutput(TensorType_INT32);
     SetBuiltinOp(BuiltinOperator_TOPK_V2, BuiltinOptions_TopKV2Options, 0);
     BuildInterpreter({input_shape, {1}});
-    PopulateTensor<int32_t>(top_k_, {top_k});
-  }
 
-  void SetInputFloat(std::initializer_list<float> data) {
-    PopulateTensor<float>(input_, data);
-  }
-
-  void SetInputUInt8(std::initializer_list<uint8_t> data) {
-    PopulateTensor<uint8_t>(input_, data);
-  }
-
-  void SetInputInt8(std::initializer_list<int8_t> data) {
-    PopulateTensor<int8_t>(input_, data);
-  }
-
-  void SetInputInt32(std::initializer_list<int32_t> data) {
-    PopulateTensor<int32_t>(input_, data);
-  }
-
-  void SetInputInt64(std::initializer_list<int64_t> data) {
-    PopulateTensor<int64_t>(input_, data);
+    if (input_tensor_types == TestType::DYNAMIC) {
+      PopulateTensor<InputType>(input_, input_data);
+      PopulateTensor<int32_t>(top_k_, {top_k});
+    }
   }
 
   std::vector<int32_t> GetIndexes() {
     return ExtractVector<int32_t>(output_indexes_);
   }
 
-  std::vector<float> GetValuesFloat() {
-    return ExtractVector<float>(output_values_);
-  }
-
-  std::vector<uint8_t> GetValuesUInt8() {
-    return ExtractVector<uint8_t>(output_values_);
-  }
-
-  std::vector<int8_t> GetValuesInt8() {
-    return ExtractVector<int8_t>(output_values_);
-  }
-
-  std::vector<int32_t> GetValuesInt32() {
-    return ExtractVector<int32_t>(output_values_);
-  }
-
-  std::vector<int64_t> GetValuesInt64() {
-    return ExtractVector<int64_t>(output_values_);
+  std::vector<InputType> GetValues() {
+    return ExtractVector<InputType>(output_values_);
   }
 
  protected:
@@ -89,83 +70,79 @@ class TopKV2OpModel : public SingleOpModel {
   int output_values_;
 };
 
+class TopKV2OpTest : public ::testing::TestWithParam<TestType> {};
+
 // The test where the tensor dimension is equal to top.
-TEST(TopKV2OpTest, EqualFloat) {
-  TopKV2OpModel m({2, 2}, TensorType_FLOAT32, 2);
-  m.SetInputFloat({-2.0, 0.2, 0.8, 0.1});
+TEST_P(TopKV2OpTest, EqualFloat) {
+  TopKV2OpModel<float> m(2, {2, 2}, {-2.0, 0.2, 0.8, 0.1}, GetParam());
   m.Invoke();
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({1, 0, 0, 1}));
-  EXPECT_THAT(m.GetValuesFloat(),
+  EXPECT_THAT(m.GetValues(),
               ElementsAreArray(ArrayFloatNear({0.2, -2.0, 0.8, 0.1})));
 }
 
 // Test when internal dimension is k+1.
-TEST(TopKV2OpTest, BorderFloat) {
-  TopKV2OpModel m({2, 3}, TensorType_FLOAT32, 2);
-  m.SetInputFloat({-2.0, -3.0, 0.2, 0.8, 0.1, -0.1});
+TEST_P(TopKV2OpTest, BorderFloat) {
+  TopKV2OpModel<float> m(2, {2, 3}, {-2.0, -3.0, 0.2, 0.8, 0.1, -0.1},
+                         GetParam());
   m.Invoke();
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 0, 0, 1}));
-  EXPECT_THAT(m.GetValuesFloat(),
+  EXPECT_THAT(m.GetValues(),
               ElementsAreArray(ArrayFloatNear({0.2, -2.0, 0.8, 0.1})));
 }
 // Test when internal dimension is higher than k.
-TEST(TopKV2OpTest, LargeFloat) {
-  TopKV2OpModel m({2, 4}, TensorType_FLOAT32, 2);
-  m.SetInputFloat({-2.0, -3.0, -4.0, 0.2, 0.8, 0.1, -0.1, -0.8});
+TEST_P(TopKV2OpTest, LargeFloat) {
+  TopKV2OpModel<float> m(
+      2, {2, 4}, {-2.0, -3.0, -4.0, 0.2, 0.8, 0.1, -0.1, -0.8}, GetParam());
   m.Invoke();
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({3, 0, 0, 1}));
-  EXPECT_THAT(m.GetValuesFloat(),
+  EXPECT_THAT(m.GetValues(),
               ElementsAreArray(ArrayFloatNear({0.2, -2.0, 0.8, 0.1})));
 }
 
 // Test 1D case.
-TEST(TopKV2OpTest, VectorFloat) {
-  TopKV2OpModel m({8}, TensorType_FLOAT32, 2);
-  m.SetInputFloat({-2.0, -3.0, -4.0, 0.2, 0.8, 0.1, -0.1, -0.8});
+TEST_P(TopKV2OpTest, VectorFloat) {
+  TopKV2OpModel<float> m(2, {8}, {-2.0, -3.0, -4.0, 0.2, 0.8, 0.1, -0.1, -0.8},
+                         GetParam());
   m.Invoke();
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({4, 3}));
-  EXPECT_THAT(m.GetValuesFloat(), ElementsAreArray(ArrayFloatNear({0.8, 0.2})));
-}
-
-// Check that uint8_t works.
-TEST(TopKV2OpTest, TypeUint8) {
-  TopKV2OpModel m({2, 3}, TensorType_UINT8, 2);
-  m.SetInputUInt8({1, 2, 3, 251, 250, 249});
-  m.Invoke();
-  EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 0, 1}));
-  EXPECT_THAT(m.GetValuesUInt8(), ElementsAreArray({3, 2, 251, 250}));
-}
-
-TEST(TopKV2OpTest, TypeInt8) {
-  TopKV2OpModel m({2, 3}, TensorType_INT8, 2);
-  m.SetInputInt8({1, 2, 3, -126, 125, -24});
-  m.Invoke();
-  EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 1, 2}));
-  EXPECT_THAT(m.GetValuesInt8(), ElementsAreArray({3, 2, 125, -24}));
+  EXPECT_THAT(m.GetValues(), ElementsAreArray(ArrayFloatNear({0.8, 0.2})));
 }
 
 // Check that int32_t works.
-TEST(TopKV2OpTest, TypeInt32) {
-  TopKV2OpModel m({2, 3}, TensorType_INT32, 2);
-  m.SetInputInt32({1, 2, 3, 10251, 10250, 10249});
+TEST_P(TopKV2OpTest, TypeInt32) {
+  TopKV2OpModel<int32_t> m(2, {2, 3}, {1, 2, 3, 10251, 10250, 10249},
+                           GetParam());
   m.Invoke();
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 0, 1}));
-  EXPECT_THAT(m.GetValuesInt32(), ElementsAreArray({3, 2, 10251, 10250}));
+  EXPECT_THAT(m.GetValues(), ElementsAreArray({3, 2, 10251, 10250}));
+}
+
+INSTANTIATE_TEST_SUITE_P(TopKV2OpTest, TopKV2OpTest,
+                         ::testing::Values(TestType::CONST, TestType::DYNAMIC));
+
+// Check that uint8_t works.
+TEST_P(TopKV2OpTest, TypeUint8) {
+  TopKV2OpModel<uint8_t> m(2, {2, 3}, {1, 2, 3, 251, 250, 249}, GetParam());
+  m.Invoke();
+  EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 0, 1}));
+  EXPECT_THAT(m.GetValues(), ElementsAreArray({3, 2, 251, 250}));
+}
+
+TEST_P(TopKV2OpTest, TypeInt8) {
+  TopKV2OpModel<int8_t> m(2, {2, 3}, {1, 2, 3, -126, 125, -24}, GetParam());
+  m.Invoke();
+  EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 1, 2}));
+  EXPECT_THAT(m.GetValues(), ElementsAreArray({3, 2, 125, -24}));
 }
 
 // Check that int64 works.
-TEST(TopKV2OpTest, TypeInt64) {
-  TopKV2OpModel m({2, 3}, TensorType_INT64, 2);
-  m.SetInputInt64({1, 2, 3, -1, -2, -3});
+TEST_P(TopKV2OpTest, TypeInt64) {
+  TopKV2OpModel<int64_t> m(2, {2, 3}, {1, 2, 3, -1, -2, -3}, GetParam());
   m.Invoke();
   EXPECT_THAT(m.GetIndexes(), ElementsAreArray({2, 1, 0, 1}));
-  EXPECT_THAT(m.GetValuesInt64(), ElementsAreArray({3, 2, -1, -2}));
+  EXPECT_THAT(m.GetValues(), ElementsAreArray({3, 2, -1, -2}));
 }
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

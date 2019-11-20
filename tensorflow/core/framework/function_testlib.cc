@@ -81,7 +81,7 @@ FunctionDef IsZero() {
       // Args
       {"x: T"},
       // Return values
-      {"equal: T"},
+      {"equal: bool"},
       // Attr def
       {"T:{float, double, int32, int64, string}"},
       {
@@ -259,6 +259,22 @@ FunctionDef XAddX() {
       });
 }
 
+FunctionDef XAddY() {
+  return FDH::Define(
+      // Name
+      "XAddY",
+      // Args
+      {"x: T", "y: T"},
+      // Return values
+      {"z: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"z"}, "Add", {"x", "y"}, {{"T", "$T"}}},
+      });
+}
+
 FunctionDef XTimesTwoInt32() {
   const Tensor kTwo = test::AsScalar<int64>(2);
   return FDH::Define(
@@ -345,7 +361,7 @@ FunctionDef Swap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {{{"o0"}, "Identity", {"i1"}, {{"T", "$T"}}},
        {{"o1"}, "Identity", {"i0"}, {{"T", "$T"}}}});
@@ -360,7 +376,7 @@ FunctionDef EmptyBodySwap() {
       // Return values
       {"o0: T", "o1: T"},
       // Attr def
-      {"T: {float, double}"},
+      {"T: {float, double, resource}"},
       // Nodes
       {},
       // Output mapping
@@ -384,6 +400,22 @@ FunctionDef ResourceOutput() {
           {{"mul"}, "Mul", {"x", "two:output:0"}, {{"T", DT_FLOAT}}, {}},
       },
       {{"y_out", "y"}, {"two_x", "mul:z:0"}});
+}
+
+FunctionDef ResourceIdentity() {
+  return FDH::Create(
+      // Name
+      "ResourceIdentity",
+      // Args
+      {"x: resource"},
+      // Return values
+      {"y: resource"},
+      // Attr def
+      {},
+      // Nodes
+      {},
+      // Output mapping
+      {{"y", "x"}});
 }
 
 FunctionDef ReadResourceVariable() {
@@ -474,6 +506,184 @@ FunctionDef XYXLessThanOrEqualToN(int64 N) {
           {{"N1"}, "Cast", {"N"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
           {{"z"}, "LessEqual", {"x", "N1"}, {{"T", "$T"}}},
       });
+}
+
+FunctionDef RandomUniformLess() {
+  const Tensor kZero = test::AsScalar<int32>(0);
+  const Tensor kOne = test::AsScalar<int32>(1);
+  const Tensor k005 = test::AsScalar<float>(0.05);
+
+  return FDH::Define(
+      // Name
+      "RandomUniformLess",
+      // Args
+      {"arg0: int64"},
+      // Return values
+      {"strided_slice: bool"},
+      // Attr def
+      {"T:{float, double, int32, int64, string}"},
+      {{{"random_uniform/shape"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT32}}},
+
+       {{"random_uniform/RandomUniform"},
+        "RandomUniform",
+        {"random_uniform/shape"},
+        {{"T", DT_INT32}, {"Tout", DT_FLOAT}, {"seed", 0}, {"seed2", 0}}},
+
+       {{"Less/y"}, "Const", {}, {{"value", k005}, {"dtype", DT_FLOAT}}},
+
+       {{"Less"},
+        "Less",
+        {"random_uniform/RandomUniform", "Less/y"},
+        {{"T", DT_FLOAT}}},
+
+       {{"strided_slice/stack"},
+        "Const",
+        {},
+        {{"value", kZero}, {"dtype", DT_INT32}}},
+
+       {{"strided_slice/stack_1"},
+        "Const",
+        {},
+        {{"value", kOne}, {"dtype", DT_INT32}}},
+
+       {{"strided_slice/stack_2"},
+        "Const",
+        {},
+        {{"value", kOne}, {"dtype", DT_INT32}}},
+
+       {{"strided_slice"},
+        "StridedSlice",
+        {"Less", "strided_slice/stack", "strided_slice/stack_1",
+         "strided_slice/stack_2"},
+        {{"Index", DT_INT32},
+         {"T", DT_BOOL},
+         {"begin_mask", 0},
+         {"ellipsis_mask", 0},
+         {"end_mask", 0},
+         {"new_axis_mask", 0},
+         {"shrink_axis_mask", 0}}}});
+}
+
+FunctionDef MakeRangeDataset() {
+  return FDH::Define(
+      /*name=*/"MakeRangeDataset",
+      /*arg_def=*/{"start: int64", "stop: int64", "step: int64"},
+      /*ret_def=*/{"y:variant"},
+      /*attr_def=*/
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      /*node_def=*/
+      {{/*ret=*/{"y"},
+        /*op=*/"RangeDataset",
+        /*arg=*/{"start", "stop", "step"},
+        /*attr=*/
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeBatchDataset() {
+  return FDH::Define(
+      /*name=*/"MakeBatchDataset",
+      /*arg_def=*/
+      {"input_dataset: variant", "batch_size: int64", "drop_remainder: bool"},
+      /*ret_def=*/{"y: variant"},
+      /*attr_def=*/
+      {"parallel_copy: bool = false", "output_types: list(type) >= 1",
+       "output_shapes: list(shape) >= 1"},
+      /*node_def=*/
+      {{/*ret=*/{"y"},
+        /*op=*/"BatchDatasetV2",
+        /*arg=*/{"input_dataset", "batch_size", "drop_remainder"},
+        /*attr=*/
+        {{"parallel_copy", "$parallel_copy"},
+         {"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeMapDataset(bool has_other_args) {
+  std::vector<string> args = {"input_dataset: variant"};
+  std::vector<string> inputs = {"input_dataset"};
+  if (has_other_args) {
+    args.emplace_back("other_arguments: Targuments");
+    inputs.emplace_back("other_arguments");
+  }
+
+  return FDH::Define(
+      /*name=*/"MakeMapDataset",
+      /*arg_def=*/args,
+      /*ret_def=*/
+      {"y: variant"},
+      /*attr_def=*/
+      {"f: func", "Targuments: list(type) >= 0",
+       "output_types: list(type) >= 1", "output_shapes: list(shape) >= 1",
+       "use_inter_op_parallelism: bool = true",
+       "preserve_cardinality: bool = false"},
+      /*node_def=*/
+      {{/*ret=*/{"y"},
+        /*op=*/"MapDataset",
+        /*arg=*/inputs,
+        /*attr=*/
+        {{"f", "$f"},
+         {"Targuments", "$Targuments"},
+         {"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"},
+         {"use_inter_op_parallelism", "$use_inter_op_parallelism"},
+         {"preserve_cardinality", "$preserve_cardinality"}}}});
+}
+
+FunctionDef MakeTakeDataset() {
+  return FDH::Define(
+      // Name
+      "TakeDataset",
+      // Args
+      {"input_dataset: variant", "count: int64"},
+      // Return values
+      {"y:variant"},
+      // Attr def
+      {"output_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "TakeDataset",
+        {"input_dataset", "count"},
+        {{"output_types", "$output_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef MakeTensorSliceDataset() {
+  return FDH::Define(
+      // Name
+      "MakeTensorSliceDataset",
+      // Args
+      {"x: Toutput_types"},
+      // Return values
+      {"y: variant"},
+      // Attr def
+      {"Toutput_types: list(type) >= 1", "output_shapes: list(shape) >= 1"},
+      // Nodes
+      {{{"y"},
+        "TensorSliceDataset",
+        {"x"},
+        {{"Toutput_types", "$Toutput_types"},
+         {"output_shapes", "$output_shapes"}}}});
+}
+
+FunctionDef Unique() {
+  return FDH::Create(
+      // Name
+      "GetUnique",
+      // Args
+      {"x:T"},
+      // Return values
+      {"y:T", "idx: out_idx"},
+      // Attr def
+      {"T: type", "out_idx: {int32, int64} = DT_INT32"},
+      // Nodes
+      {
+          {{"result"}, "Unique", {"x"}, {{"T", "$T"}, {"out_idx", "$out_idx"}}},
+      },
+      {{"y", "result:y:0"}, {"idx", "result:idx:0"}});
 }
 
 void FunctionTestSchedClosure(std::function<void()> fn) {

@@ -25,6 +25,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
@@ -33,17 +34,18 @@ from tensorflow.python.platform import test
 rng = np.random.RandomState(2016)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _dtypes_to_test(self):
-    # TODO(langmore) Test tf.float16 once tf.matrix_solve works in
+  @staticmethod
+  def dtypes_to_test():
+    # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
     # Identity matrix is already Hermitian Positive Definite.
@@ -61,26 +63,23 @@ class LinearOperatorIdentityTest(
 
     return operator, mat
 
-  @test_util.run_deprecated_v1
   def test_assert_positive_definite(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
-      operator.assert_positive_definite().run()  # Should not fail
+      self.evaluate(operator.assert_positive_definite())  # Should not fail
 
-  @test_util.run_deprecated_v1
   def test_assert_non_singular(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
-      operator.assert_non_singular().run()  # Should not fail
+      self.evaluate(operator.assert_non_singular())  # Should not fail
 
-  @test_util.run_deprecated_v1
   def test_assert_self_adjoint(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
-      operator.assert_self_adjoint().run()  # Should not fail
+      self.evaluate(operator.assert_self_adjoint())  # Should not fail
 
   def test_float16_matmul(self):
-    # float16 cannot be tested by base test class because tf.matrix_solve does
+    # float16 cannot be tested by base test class because tf.linalg.solve does
     # not work with float16.
     with self.cached_session():
       operator = linalg_lib.LinearOperatorIdentity(
@@ -113,41 +112,38 @@ class LinearOperatorIdentityTest(
     with self.assertRaisesRegexp(ValueError, "must be non-negative"):
       linalg_lib.LinearOperatorIdentity(num_rows=2, batch_shape=[-2])
 
-  @test_util.run_deprecated_v1
   def test_non_scalar_num_rows_raises_dynamic(self):
     with self.cached_session():
-      num_rows = array_ops.placeholder(dtypes.int32)
-      operator = linalg_lib.LinearOperatorIdentity(
-          num_rows, assert_proper_shapes=True)
-      with self.assertRaisesOpError("must be a 0-D Tensor"):
-        operator.to_dense().eval(feed_dict={num_rows: [2]})
+      num_rows = array_ops.placeholder_with_default([2], shape=None)
 
-  @test_util.run_deprecated_v1
+      with self.assertRaisesError("must be a 0-D Tensor"):
+        operator = linalg_lib.LinearOperatorIdentity(
+            num_rows, assert_proper_shapes=True)
+        self.evaluate(operator.to_dense())
+
   def test_negative_num_rows_raises_dynamic(self):
     with self.cached_session():
-      num_rows = array_ops.placeholder(dtypes.int32)
-      operator = linalg_lib.LinearOperatorIdentity(
-          num_rows, assert_proper_shapes=True)
-      with self.assertRaisesOpError("must be non-negative"):
-        operator.to_dense().eval(feed_dict={num_rows: -2})
+      num_rows = array_ops.placeholder_with_default(-2, shape=None)
+      with self.assertRaisesError("must be non-negative"):
+        operator = linalg_lib.LinearOperatorIdentity(
+            num_rows, assert_proper_shapes=True)
+        self.evaluate(operator.to_dense())
 
-  @test_util.run_deprecated_v1
   def test_non_1d_batch_shape_raises_dynamic(self):
     with self.cached_session():
-      batch_shape = array_ops.placeholder(dtypes.int32)
-      operator = linalg_lib.LinearOperatorIdentity(
-          num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
-      with self.assertRaisesOpError("must be a 1-D"):
-        operator.to_dense().eval(feed_dict={batch_shape: 2})
+      batch_shape = array_ops.placeholder_with_default(2, shape=None)
+      with self.assertRaisesError("must be a 1-D"):
+        operator = linalg_lib.LinearOperatorIdentity(
+            num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
+        self.evaluate(operator.to_dense())
 
-  @test_util.run_deprecated_v1
   def test_negative_batch_shape_raises_dynamic(self):
     with self.cached_session():
-      batch_shape = array_ops.placeholder(dtypes.int32)
-      operator = linalg_lib.LinearOperatorIdentity(
-          num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
-      with self.assertRaisesOpError("must be non-negative"):
-        operator.to_dense().eval(feed_dict={batch_shape: [-2]})
+      batch_shape = array_ops.placeholder_with_default([-2], shape=None)
+      with self.assertRaisesError("must be non-negative"):
+        operator = linalg_lib.LinearOperatorIdentity(
+            num_rows=2, batch_shape=batch_shape, assert_proper_shapes=True)
+        self.evaluate(operator.to_dense())
 
   def test_wrong_matrix_dimensions_raises_static(self):
     operator = linalg_lib.LinearOperatorIdentity(num_rows=2)
@@ -155,17 +151,16 @@ class LinearOperatorIdentityTest(
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
-  @test_util.run_deprecated_v1
   def test_wrong_matrix_dimensions_raises_dynamic(self):
-    num_rows = array_ops.placeholder(dtypes.int32)
-    x = array_ops.placeholder(dtypes.float32)
+    num_rows = array_ops.placeholder_with_default(2, shape=None)
+    x = array_ops.placeholder_with_default(
+        rng.rand(3, 3).astype(np.float32), shape=None)
 
     with self.cached_session():
-      operator = linalg_lib.LinearOperatorIdentity(
-          num_rows, assert_proper_shapes=True)
-      y = operator.matmul(x)
-      with self.assertRaisesOpError("Incompatible.*dimensions"):
-        y.eval(feed_dict={num_rows: 2, x: rng.rand(3, 3)})
+      with self.assertRaisesError("Dimensions.*not.compatible"):
+        operator = linalg_lib.LinearOperatorIdentity(
+            num_rows, assert_proper_shapes=True)
+        self.evaluate(operator.matmul(x))
 
   def test_default_batch_shape_broadcasts_with_everything_static(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -178,25 +173,21 @@ class LinearOperatorIdentityTest(
       operator_matmul = operator.matmul(x)
       expected = x
 
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
-  @test_util.run_deprecated_v1
   def test_default_batch_shape_broadcasts_with_everything_dynamic(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.cached_session() as sess:
-      x = array_ops.placeholder(dtypes.float32)
+    with self.cached_session():
+      x = array_ops.placeholder_with_default(rng.randn(1, 2, 3, 4), shape=None)
       operator = linalg_lib.LinearOperatorIdentity(num_rows=3, dtype=x.dtype)
 
       operator_matmul = operator.matmul(x)
       expected = x
 
-      feed_dict = {x: rng.randn(1, 2, 3, 4)}
-
-      self.assertAllClose(
-          *sess.run([operator_matmul, expected], feed_dict=feed_dict))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_broadcast_matmul_static_shapes(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -216,24 +207,22 @@ class LinearOperatorIdentityTest(
       expected = x + zeros
 
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
-  @test_util.run_deprecated_v1
   def test_broadcast_matmul_dynamic_shapes(self):
     # These cannot be done in the automated (base test class) tests since they
     # test shapes that tf.batch_matmul cannot handle.
     # In particular, tf.batch_matmul does not broadcast.
-    with self.cached_session() as sess:
+    with self.cached_session():
       # Given this x and LinearOperatorIdentity shape of (2, 1, 3, 3), the
       # broadcast shape of operator and 'x' is (2, 2, 3, 4)
-      x = array_ops.placeholder(dtypes.float32)
-      num_rows = array_ops.placeholder(dtypes.int32)
-      batch_shape = array_ops.placeholder(dtypes.int32)
+      x = array_ops.placeholder_with_default(rng.rand(1, 2, 3, 4), shape=None)
+      num_rows = array_ops.placeholder_with_default(3, shape=None)
+      batch_shape = array_ops.placeholder_with_default((2, 1), shape=None)
 
       operator = linalg_lib.LinearOperatorIdentity(
-          num_rows, batch_shape=batch_shape)
-      feed_dict = {x: rng.rand(1, 2, 3, 4), num_rows: 3, batch_shape: (2, 1)}
+          num_rows, batch_shape=batch_shape, dtype=dtypes.float64)
 
       # Batch matrix of zeros with the broadcast shape of x and operator.
       zeros = array_ops.zeros(shape=(2, 2, 3, 4), dtype=x.dtype)
@@ -242,8 +231,7 @@ class LinearOperatorIdentityTest(
       expected = x + zeros
 
       operator_matmul = operator.matmul(x)
-      self.assertAllClose(
-          *sess.run([operator_matmul, expected], feed_dict=feed_dict))
+      self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
   def test_is_x_flags(self):
     # The is_x flags are by default all True.
@@ -280,18 +268,27 @@ class LinearOperatorIdentityTest(
     self.assertIsInstance(
         operator.inverse(), linalg_lib.LinearOperatorIdentity)
 
+  def test_ref_type_shape_args_raises(self):
+    with self.assertRaisesRegexp(TypeError, "num_rows.*reference"):
+      linalg_lib.LinearOperatorIdentity(num_rows=variables_module.Variable(2))
 
+    with self.assertRaisesRegexp(TypeError, "batch_shape.*reference"):
+      linalg_lib.LinearOperatorIdentity(
+          num_rows=2, batch_shape=variables_module.Variable([3]))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class LinearOperatorScaledIdentityTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
 
-  @property
-  def _dtypes_to_test(self):
-    # TODO(langmore) Test tf.float16 once tf.matrix_solve works in
+  @staticmethod
+  def dtypes_to_test():
+    # TODO(langmore) Test tf.float16 once tf.linalg.solve works in
     # 16bit.
     return [dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
 
-  def _operator_and_matrix(
+  def operator_and_matrix(
       self, build_info, dtype, use_placeholder,
       ensure_self_adjoint_and_pd=False):
 
@@ -331,50 +328,47 @@ class LinearOperatorScaledIdentityTest(
 
     return operator, matrix
 
-  @test_util.run_deprecated_v1
   def test_assert_positive_definite_does_not_raise_when_positive(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=1.)
-      operator.assert_positive_definite().run()  # Should not fail
+      self.evaluate(operator.assert_positive_definite())  # Should not fail
 
   def test_assert_positive_definite_raises_when_negative(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=-1.)
       with self.assertRaisesOpError("not positive definite"):
-        operator.assert_positive_definite().run()
+        self.evaluate(operator.assert_positive_definite())
 
-  @test_util.run_deprecated_v1
   def test_assert_non_singular_does_not_raise_when_non_singular(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1., 2., 3.])
-      operator.assert_non_singular().run()  # Should not fail
+      self.evaluate(operator.assert_non_singular())  # Should not fail
 
   def test_assert_non_singular_raises_when_singular(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1., 2., 0.])
       with self.assertRaisesOpError("was singular"):
-        operator.assert_non_singular().run()
+        self.evaluate(operator.assert_non_singular())
 
-  @test_util.run_deprecated_v1
   def test_assert_self_adjoint_does_not_raise_when_self_adjoint(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1. + 0J])
-      operator.assert_self_adjoint().run()  # Should not fail
+      self.evaluate(operator.assert_self_adjoint())  # Should not fail
 
   def test_assert_self_adjoint_raises_when_not_self_adjoint(self):
     with self.cached_session():
       operator = linalg_lib.LinearOperatorScaledIdentity(
           num_rows=2, multiplier=[1. + 1J])
       with self.assertRaisesOpError("not self-adjoint"):
-        operator.assert_self_adjoint().run()
+        self.evaluate(operator.assert_self_adjoint())
 
   def test_float16_matmul(self):
-    # float16 cannot be tested by base test class because tf.matrix_solve does
+    # float16 cannot be tested by base test class because tf.linalg.solve does
     # not work with float16.
     with self.cached_session():
       multiplier = rng.rand(3).astype(np.float16)
@@ -397,17 +391,18 @@ class LinearOperatorScaledIdentityTest(
     with self.assertRaisesRegexp(ValueError, "Dimensions.*not compatible"):
       operator.matmul(x)
 
-  @test_util.run_deprecated_v1
   def test_wrong_matrix_dimensions_raises_dynamic(self):
-    num_rows = array_ops.placeholder(dtypes.int32)
-    x = array_ops.placeholder(dtypes.float32)
+    num_rows = array_ops.placeholder_with_default(2, shape=None)
+    x = array_ops.placeholder_with_default(
+        rng.rand(3, 3).astype(np.float32), shape=None)
 
     with self.cached_session():
-      operator = linalg_lib.LinearOperatorScaledIdentity(
-          num_rows, multiplier=[1., 2], assert_proper_shapes=True)
-      y = operator.matmul(x)
-      with self.assertRaisesOpError("Incompatible.*dimensions"):
-        y.eval(feed_dict={num_rows: 2, x: rng.rand(3, 3)})
+      with self.assertRaisesError("Dimensions.*not.compatible"):
+        operator = linalg_lib.LinearOperatorScaledIdentity(
+            num_rows,
+            multiplier=[1., 2],
+            assert_proper_shapes=True)
+        self.evaluate(operator.matmul(x))
 
   def test_broadcast_matmul_and_solve(self):
     # These cannot be done in the automated (base test class) tests since they
@@ -428,13 +423,13 @@ class LinearOperatorScaledIdentityTest(
       # Test matmul
       expected = x * 2.2 + zeros
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2 + zeros
       operator_solve = operator.solve(x)
-      self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_solve.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_broadcast_matmul_and_solve_scalar_scale_multiplier(self):
@@ -454,13 +449,13 @@ class LinearOperatorScaledIdentityTest(
       # Test matmul
       expected = x * 2.2
       operator_matmul = operator.matmul(x)
-      self.assertAllEqual(operator_matmul.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_matmul.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, expected]))
 
       # Test solve
       expected = x / 2.2
       operator_solve = operator.solve(x)
-      self.assertAllEqual(operator_solve.get_shape(), expected.get_shape())
+      self.assertAllEqual(operator_solve.shape, expected.shape)
       self.assertAllClose(*self.evaluate([operator_solve, expected]))
 
   def test_is_x_flags(self):
@@ -475,25 +470,53 @@ class LinearOperatorScaledIdentityTest(
     operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
     operator2 = linalg_lib.LinearOperatorScaledIdentity(
         num_rows=2, multiplier=3.)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.matmul(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
 
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator1.matmul(operator1),
-        linalg_lib.LinearOperatorIdentity))
+        linalg_lib.LinearOperatorIdentity)
+
+    self.assertIsInstance(
+        operator2.matmul(operator2),
+        linalg_lib.LinearOperatorScaledIdentity)
 
     operator_matmul = operator1.matmul(operator2)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_matmul,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
 
     operator_matmul = operator2.matmul(operator1)
-    self.assertTrue(isinstance(
+    self.assertIsInstance(
         operator_matmul,
-        linalg_lib.LinearOperatorScaledIdentity))
+        linalg_lib.LinearOperatorScaledIdentity)
     self.assertAllClose(3., self.evaluate(operator_matmul.multiplier))
+
+  def test_identity_solve(self):
+    operator1 = linalg_lib.LinearOperatorIdentity(num_rows=2)
+    operator2 = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=3.)
+    self.assertIsInstance(
+        operator1.solve(operator1),
+        linalg_lib.LinearOperatorIdentity)
+
+    self.assertIsInstance(
+        operator2.solve(operator2),
+        linalg_lib.LinearOperatorScaledIdentity)
+
+    operator_solve = operator1.solve(operator2)
+    self.assertIsInstance(
+        operator_solve,
+        linalg_lib.LinearOperatorScaledIdentity)
+    self.assertAllClose(3., self.evaluate(operator_solve.multiplier))
+
+    operator_solve = operator2.solve(operator1)
+    self.assertIsInstance(
+        operator_solve,
+        linalg_lib.LinearOperatorScaledIdentity)
+    self.assertAllClose(1. / 3., self.evaluate(operator_solve.multiplier))
 
   def test_scaled_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorScaledIdentity(
@@ -516,6 +539,19 @@ class LinearOperatorScaledIdentityTest(
         operator.inverse(),
         linalg_lib.LinearOperatorScaledIdentity)
 
+  def test_ref_type_shape_args_raises(self):
+    with self.assertRaisesRegexp(TypeError, "num_rows.*reference"):
+      linalg_lib.LinearOperatorScaledIdentity(
+          num_rows=variables_module.Variable(2), multiplier=1.23)
+
+  def test_tape_safe(self):
+    multiplier = variables_module.Variable(1.23)
+    operator = linalg_lib.LinearOperatorScaledIdentity(
+        num_rows=2, multiplier=multiplier)
+    self.check_tape_safe(operator)
+
 
 if __name__ == "__main__":
+  linear_operator_test_util.add_tests(LinearOperatorIdentityTest)
+  linear_operator_test_util.add_tests(LinearOperatorScaledIdentityTest)
   test.main()

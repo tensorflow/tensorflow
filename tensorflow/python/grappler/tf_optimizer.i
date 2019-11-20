@@ -60,6 +60,7 @@ limitations under the License.
   #include "tensorflow/core/framework/device_base.h"
   #include "tensorflow/core/common_runtime/device_factory.h"
   #include "tensorflow/core/framework/device_attributes.pb.h"
+  #include "tensorflow/core/framework/graph_def_util.h"
   #include "tensorflow/core/framework/graph.pb.h"
   #include "tensorflow/core/grappler/grappler_item.h"
   #include "tensorflow/core/grappler/grappler_item_builder.h"
@@ -95,7 +96,9 @@ PyObject* TF_OptimizeGraph(
       GCluster cluster,
       const tensorflow::ConfigProto& config_proto,
       const tensorflow::MetaGraphDef& metagraph,
-      bool verbose, const string& graph_id, TF_Status* out_status) {
+      bool verbose, const string& graph_id,
+      bool strip_default_attributes,
+      TF_Status* status) {
     tensorflow::grappler::ItemConfig item_config;
     item_config.apply_optimizations = false;
     item_config.ignore_user_placement = false;
@@ -103,18 +106,25 @@ PyObject* TF_OptimizeGraph(
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
 
     if (!grappler_item) {
-      TF_SetStatus(out_status, TF_INVALID_ARGUMENT, "Failed to import metagraph, check error log for more info.");
+      TF_SetStatus(status, TF_INVALID_ARGUMENT, "Failed to import metagraph, check error log for more info.");
       return nullptr;
     }
 
     tensorflow::DeviceBase* cpu_device = nullptr;
     tensorflow::GraphDef out_graph;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, config_proto);
-    tensorflow::Status status = optimizer.Optimize(cluster.get(), *grappler_item, &out_graph);
+    tensorflow::Status s = optimizer.Optimize(cluster.get(), *grappler_item, &out_graph);
+    tensorflow::Set_TF_Status_from_Status(status, s);
+    if (!s.ok()) {
+       Py_RETURN_NONE;
+    }
+    if (strip_default_attributes) {
+      tensorflow::StripDefaultAttributes(*tensorflow::OpRegistry::Global(),
+                                         out_graph.mutable_node());
+    }
     if (verbose) {
       optimizer.PrintResult();
     }
-    tensorflow::Set_TF_Status_from_Status(out_status, status);
     string out_graph_str = out_graph.SerializeAsString();
     PyObject* ret = PyBytes_FromStringAndSize(out_graph_str.data(),
                                               out_graph_str.size());
@@ -128,7 +138,7 @@ PyObject* TF_OptimizeGraph(
     GCluster cluster,
     const tensorflow::ConfigProto& config_proto,
     const tensorflow::MetaGraphDef& metagraph, bool verbose,
-    const string& graph_id, TF_Status* out_status);
+    const string& graph_id, bool strip_default_attributes, TF_Status* status);
 
 
 

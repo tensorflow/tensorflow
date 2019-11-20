@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_H_
 
+#define _USE_MATH_DEFINES
+
 #include <functional>
 #include <memory>
 
@@ -158,6 +160,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
       const Array2D<float>& lhs, const Array2D<float>& rhs);
   static std::unique_ptr<Array2D<double>> MatmulArray2D(
       const Array2D<double>& lhs, const Array2D<double>& rhs);
+  static std::unique_ptr<Array2D<int32>> MatmulArray2D(
+      const Array2D<int32>& lhs, const Array2D<int32>& rhs);
 
  protected:
   // Make HloEvaluatorTypedVisitor a friend because it is logically part of this
@@ -188,6 +192,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleGetDimensionSize(HloInstruction* get_dimension_size) override;
 
+  Status HandleSetDimensionSize(HloInstruction* set_dimension_size) override;
+
   Status HandleParameter(HloInstruction* parameter) override;
 
   Status HandleConstant(HloInstruction* constant) override;
@@ -203,6 +209,8 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   Status HandleCompare(HloInstruction* compare) override;
 
   Status HandleTuple(HloInstruction* tuple) override;
+
+  Status HandleFft(HloInstruction* fft) override;
 
   Status HandleGather(HloInstruction* gather) override;
 

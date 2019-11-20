@@ -68,6 +68,12 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilder<>* b);
 
+// Emits one alloca for each element in the tuple of shape tuple_shape,
+// returns the emitted allocas.
+// Precondition: tuple_shape should be a tuple of scalars.
+std::vector<llvm::Value*> EmitTupleAllocasAtFunctionEntry(
+    const Shape& tuple_shape, llvm::IRBuilder<>* b);
+
 // Similar to EmitTuple above, except that the output buffers are provided in
 // the form of IrArray.
 void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,

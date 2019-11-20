@@ -17,13 +17,10 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_PATH_H_
 
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
 namespace port {
-
-using tensorflow::io::Dirname;
 
 namespace internal {
 // TODO(rspringer): Move to cc/implementation file.

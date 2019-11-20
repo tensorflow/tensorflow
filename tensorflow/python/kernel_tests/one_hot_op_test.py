@@ -420,6 +420,13 @@ class OneHotTest(test.TestCase):
         truth=None,
         raises=TypeError)
 
+  def testOneHotUint8WithLargeArray(self):
+    with self.cached_session(use_gpu=False) as sess:
+      matrix = np.random.rand(256) * 10
+      tensor = constant_op.constant(matrix, dtypes.uint8, shape=matrix.shape)
+      tensor_one_hot = array_ops.one_hot(tensor, depth=10, axis=0)
+      self.assertEqual(sess.run(tensor_one_hot).shape, (10, 256))
+
 
 if __name__ == "__main__":
   test.main()

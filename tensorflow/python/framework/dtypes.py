@@ -57,12 +57,10 @@ class DType(object):
   * `tf.resource`: Handle to a mutable resource.
   * `tf.variant`: Values of arbitrary types.
 
-  In addition, variants of these types with the `_ref` suffix are
-  defined for reference-typed tensors.
-
   The `tf.as_dtype()` function converts numpy types and string type
   names to a `DType` object.
   """
+  __slots__ = ["_type_enum"]
 
   def __init__(self, type_enum):
     """Creates a new `DataType`.
@@ -83,8 +81,8 @@ class DType(object):
     type_enum = int(type_enum)
     if (type_enum not in types_pb2.DataType.values() or
         type_enum == types_pb2.DT_INVALID):
-      raise TypeError(
-          "type_enum is not a valid types_pb2.DataType: %s" % type_enum)
+      raise TypeError("type_enum is not a valid types_pb2.DataType: %s" %
+                      type_enum)
     self._type_enum = type_enum
 
   @property
@@ -135,7 +133,7 @@ class DType(object):
 
   @property
   def is_bool(self):
-    """Returns whether this is a boolean data type"""
+    """Returns whether this is a boolean data type."""
     return self.base_dtype == bool
 
   @property
@@ -191,10 +189,10 @@ class DType(object):
     # there is no simple way to get the min value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype()).min
+      return np.finfo(self.as_numpy_dtype).min
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype()).min
+        return np.iinfo(self.as_numpy_dtype).min
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("-0x1.FEp127"))
@@ -215,10 +213,10 @@ class DType(object):
     # there is no simple way to get the max value of a dtype, we have to check
     # float and int types separately
     try:
-      return np.finfo(self.as_numpy_dtype()).max
+      return np.finfo(self.as_numpy_dtype).max
     except:  # bare except as possible raises by finfo not documented
       try:
-        return np.iinfo(self.as_numpy_dtype()).max
+        return np.iinfo(self.as_numpy_dtype).max
       except:
         if self.base_dtype == bfloat16:
           return _np_bfloat16(float.fromhex("0x1.FEp127"))
@@ -226,14 +224,14 @@ class DType(object):
 
   @property
   def limits(self, clip_negative=True):
-    """Return intensity limits, i.e. (min, max) tuple, of the dtype.
+    """Return intensity limits, i.e.
+
+    (min, max) tuple, of the dtype.
     Args:
-      clip_negative : bool, optional
-          If True, clip the negative range (i.e. return 0 for min intensity)
-          even if the image dtype allows negative values.
-    Returns
-      min, max : tuple
-        Lower and upper intensity limits.
+      clip_negative : bool, optional If True, clip the negative range (i.e.
+        return 0 for min intensity) even if the image dtype allows negative
+        values. Returns
+      min, max : tuple Lower and upper intensity limits.
     """
     min, max = dtype_range[self.as_numpy_dtype]  # pylint: disable=redefined-builtin
     if clip_negative:
@@ -247,9 +245,6 @@ class DType(object):
 
     ```python
     DType(T)       .is_compatible_with(DType(T))        == True
-    DType(T)       .is_compatible_with(DType(T).as_ref) == True
-    DType(T).as_ref.is_compatible_with(DType(T))        == False
-    DType(T).as_ref.is_compatible_with(DType(T).as_ref) == True
     ```
 
     Args:
@@ -267,11 +262,14 @@ class DType(object):
     """Returns True iff this DType refers to the same type as `other`."""
     if other is None:
       return False
-    try:
-      dtype = as_dtype(other).as_datatype_enum
-      return self._type_enum == dtype  # pylint: disable=protected-access
-    except TypeError:
-      return False
+
+    if type(other) != DType:  # pylint: disable=unidiomatic-typecheck
+      try:
+        other = as_dtype(other)
+      except TypeError:
+        return False
+
+    return self._type_enum == other._type_enum  # pylint: disable=protected-access
 
   def __ne__(self, other):
     """Returns True iff self != other."""
@@ -350,11 +348,11 @@ tf_export("dtypes.int8", "int8").export_constant(__name__, "int8")
 string = DType(types_pb2.DT_STRING)
 tf_export("dtypes.string", "string").export_constant(__name__, "string")
 complex64 = DType(types_pb2.DT_COMPLEX64)
-tf_export("dtypes.complex64", "complex64").export_constant(
-    __name__, "complex64")
+tf_export("dtypes.complex64",
+          "complex64").export_constant(__name__, "complex64")
 complex128 = DType(types_pb2.DT_COMPLEX128)
-tf_export("dtypes.complex128", "complex128").export_constant(
-    __name__, "complex128")
+tf_export("dtypes.complex128",
+          "complex128").export_constant(__name__, "complex128")
 int64 = DType(types_pb2.DT_INT64)
 tf_export("dtypes.int64", "int64").export_constant(__name__, "int64")
 bool = DType(types_pb2.DT_BOOL)  # pylint: disable=redefined-builtin
@@ -503,8 +501,7 @@ _TYPE_TO_STRING = {
     types_pb2.DT_VARIANT_REF: "variant_ref",
 }
 _STRING_TO_TF = {
-    value: _INTERN_TABLE[key]
-    for key, value in _TYPE_TO_STRING.items()
+    value: _INTERN_TABLE[key] for key, value in _TYPE_TO_STRING.items()
 }
 # Add non-canonical aliases.
 _STRING_TO_TF["half"] = float16
@@ -520,16 +517,16 @@ _STRING_TO_TF["double_ref"] = float64_ref
 # quantized types.
 # TODO(mrry,keveman): Investigate Numpy type registration to replace this
 # hard-coding of names.
-_np_qint8 = np.dtype([("qint8", np.int8, 1)])
-_np_quint8 = np.dtype([("quint8", np.uint8, 1)])
-_np_qint16 = np.dtype([("qint16", np.int16, 1)])
-_np_quint16 = np.dtype([("quint16", np.uint16, 1)])
-_np_qint32 = np.dtype([("qint32", np.int32, 1)])
+_np_qint8 = np.dtype([("qint8", np.int8)])
+_np_quint8 = np.dtype([("quint8", np.uint8)])
+_np_qint16 = np.dtype([("qint16", np.int16)])
+_np_quint16 = np.dtype([("quint16", np.uint16)])
+_np_qint32 = np.dtype([("qint32", np.int32)])
 
 # _np_bfloat16 is defined by a module import.
 
 # Custom struct dtype for directly-fed ResourceHandles of supported type(s).
-np_resource = np.dtype([("resource", np.ubyte, 1)])
+np_resource = np.dtype([("resource", np.ubyte)])
 
 # Standard mappings between types_pb2.DataType values and numpy.dtypes.
 _NP_TO_TF = {
@@ -572,6 +569,10 @@ for pdt in [
   if pdt not in _NP_TO_TF:
     _NP_TO_TF[pdt] = next(
         _NP_TO_TF[dt] for dt in _NP_TO_TF if dt == pdt().dtype)
+
+
+TF_VALUE_DTYPES = set(_NP_TO_TF.values())
+
 
 _TF_TO_NP = {
     types_pb2.DT_HALF:
@@ -670,8 +671,8 @@ _QUANTIZED_DTYPES_REF = frozenset(
 QUANTIZED_DTYPES = _QUANTIZED_DTYPES_REF.union(_QUANTIZED_DTYPES_NO_REF)
 tf_export(
     "dtypes.QUANTIZED_DTYPES",
-    v1=["dtypes.QUANTIZED_DTYPES", "QUANTIZED_DTYPES"]).export_constant(
-        __name__, "QUANTIZED_DTYPES")
+    v1=["dtypes.QUANTIZED_DTYPES",
+        "QUANTIZED_DTYPES"]).export_constant(__name__, "QUANTIZED_DTYPES")
 
 _PYTHON_TO_TF = {
     builtins.float: float32,
@@ -686,12 +687,8 @@ _ANY_TO_TF.update(_PYTHON_TO_TF)
 _ANY_TO_TF.update(_NP_TO_TF)
 
 # Ensure no collisions.
-assert len(_ANY_TO_TF) == sum(len(d) for d in [
-    _INTERN_TABLE,
-    _STRING_TO_TF,
-    _PYTHON_TO_TF,
-    _NP_TO_TF
-])
+assert len(_ANY_TO_TF) == sum(
+    len(d) for d in [_INTERN_TABLE, _STRING_TO_TF, _PYTHON_TO_TF, _NP_TO_TF])
 
 
 @tf_export("dtypes.as_dtype", "as_dtype")
@@ -702,7 +699,7 @@ def as_dtype(type_value):
     type_value: A value that can be converted to a `tf.DType` object. This may
       currently be a `tf.DType` object, a [`DataType`
       enum](https://www.tensorflow.org/code/tensorflow/core/framework/types.proto),
-      a string type name, or a `numpy.dtype`.
+        a string type name, or a `numpy.dtype`.
 
   Returns:
     A `DType` corresponding to `type_value`.
@@ -724,5 +721,5 @@ def as_dtype(type_value):
   except KeyError:
     pass
 
-  raise TypeError(
-      "Cannot convert value %r to a TensorFlow DType." % (type_value,))
+  raise TypeError("Cannot convert value %r to a TensorFlow DType." %
+                  (type_value,))

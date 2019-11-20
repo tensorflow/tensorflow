@@ -40,9 +40,12 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* input,
                                 const TfLiteTensor* size,
                                 TfLiteTensor* output) {
+  const int32* size_data = GetTensorData<int32>(size);
+  // Sanity check, the up/down sampling size should always be positive.
+  TF_LITE_ENSURE(context, size_data[0] > 0);
+  TF_LITE_ENSURE(context, size_data[1] > 0);
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = input->dims->data[0];
-  const int32* size_data = GetTensorData<int32>(size);
   output_size->data[1] = size_data[0];
   output_size->data[2] = size_data[1];
   output_size->data[3] = input->dims->data[3];

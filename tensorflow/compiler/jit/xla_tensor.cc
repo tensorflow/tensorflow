@@ -59,11 +59,12 @@ Status XlaTensor::AllocateShapedBuffer(DataType dtype,
         xla::ShapeUtil::GetSubshape(on_device_shape, index_to_buffer.first);
     uint64 size =
         client->backend().transfer_manager()->GetByteSizeRequirement(subshape);
-    TF_ASSIGN_OR_RETURN(xla::OwningDeviceMemory buffer,
+    TF_ASSIGN_OR_RETURN(se::OwningDeviceMemory buffer,
                         client->backend().memory_allocator()->Allocate(
-                            device_ordinal, size, /*retry_on_failure=*/false));
+                            device_ordinal, size, /*retry_on_failure=*/false,
+                            subshape.layout().memory_space()));
     // Move our buffer into shaped_buffer, which takes ownership of it.
-    index_to_buffer.second = buffer.Forget();
+    index_to_buffer.second = buffer.Release();
   }
 
   VLOG(4) << shaped_buffer.ToString();
@@ -95,6 +96,15 @@ void XlaTensor::ResetDefinitionEvent(std::shared_ptr<se::Event> event,
   mutex_lock lock(mu_);
   definition_event_ = std::move(event);
   streams_defined_on_ = {stream};
+}
+
+Status XlaTensor::RefreshStatusOfStreams() {
+  mutex_lock lock(mu_);
+  Status status;
+  for (se::Stream* stream : streams_defined_on_) {
+    status.Update(stream->RefreshStatus());
+  }
+  return status;
 }
 
 // The pointer tag, OR-ed into the XlaTensor's address to distinguish it from

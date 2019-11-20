@@ -61,6 +61,10 @@ class OpLevelCostEstimator {
     int n;
     int k;
   };
+  struct BatchMatMulDimensions {
+    std::vector<int> batch_dims;
+    MatMulDimensions matmul_dims;
+  };
   struct ConvolutionDimensions {
     int64 batch;      // Batch size.
     int64 ix;         // Input size x.
@@ -68,6 +72,8 @@ class OpLevelCostEstimator {
     int64 iz;         // Input depth.
     int64 kx;         // Kernel x.
     int64 ky;         // Kernel y.
+    int64 kz;  // Kernel depth (in case of group convolution, this will be
+               // smaller than input depth).
     int64 oz;         // Output depth.
     int64 ox;         // Output size x.
     int64 oy;         // Output size y.
@@ -85,6 +91,9 @@ class OpLevelCostEstimator {
   int64 CountMatMulOperations(const OpInfo& op_info, MatMulDimensions* mat_mul,
                               bool* found_unknown_shapes) const;
   int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const;
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   BatchMatMulDimensions* batch_mat_mul,
                                    bool* found_unknown_shapes) const;
   int64 CountConv2DBackpropInputOperations(
       const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
@@ -139,12 +148,14 @@ class OpLevelCostEstimator {
   Costs PredictBatchMatMul(const OpContext& op_context) const;
   Costs PredictMetadata(const OpContext& op_context) const;
   Costs PredictGatherOrSlice(const OpContext& op_context) const;
+  Costs PredictScatter(const OpContext& op_context) const;
   Costs PredictMaxPool(const OpContext& op_context) const;
   Costs PredictMaxPoolGrad(const OpContext& op_context) const;
   Costs PredictAvgPool(const OpContext& op_context) const;
   Costs PredictAvgPoolGrad(const OpContext& op_context) const;
   Costs PredictFusedBatchNorm(const OpContext& op_context) const;
   Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
+  Costs PredictEinsum(const OpContext& op_context) const;
 
   // Generic cost prediction method for fused operations.
   Costs PredictFusedOp(const OpContext& op_context,

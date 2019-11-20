@@ -46,6 +46,7 @@ class TestOptimizer : public CustomGraphOptimizer {
 
   TestOptimizer() {}
   string name() const override { return "test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer* config =
                   nullptr) override {
@@ -102,6 +103,7 @@ class GrapplerItemPropertiesAccumulator : public CustomGraphOptimizer {
   string name() const override {
     return "grappler_item_properties_accumulator";
   }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -135,7 +137,7 @@ class MetaOptimizerTest : public GrapplerTest {};
 TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   TestOptimizer::SetOptimized(false);
   ConfigProto config_proto;
@@ -154,7 +156,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizer) {
 TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   TestOptimizer::SetOptimized(false);
   ConfigProto config_proto;
@@ -175,7 +177,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerWithParams) {
 TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   TestOptimizer::SetOptimized(false);
   TestGraphOptimizer::SetOptimized(false);
@@ -198,7 +200,7 @@ TEST_F(MetaOptimizerTest, RunsCustomOptimizerAndCustomGraphOptimizer) {
 TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   ConfigProto config_proto;
   auto& rewriter_config =
@@ -215,7 +217,7 @@ TEST_F(MetaOptimizerTest, RunOptimizersTwice) {
 TEST_F(MetaOptimizerTest, RunToggleOptimizersAndCustomGraphOptimizerTwice) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   ConfigProto config_proto;
   auto& rewriter_config =
@@ -364,32 +366,25 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibrary) {
   for (const FunctionDef* optimized_func : optimized_funcs) {
     count = 0;
     for (const NodeDef& node : optimized_func->node_def()) {
-      if (node.name() == "my_mul/inlined_inputs" && ++count) {
-        EXPECT_EQ("IdentityN", node.op());
-        EXPECT_EQ(2, node.input_size());
-        EXPECT_EQ("x:0", node.input(0));
-        EXPECT_EQ("x:0", node.input(1));
-      } else if (node.name() == "my_mul/x" && ++count) {
+      if (node.name() == "Func/my_mul/input/_0" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
-        EXPECT_EQ("my_mul/inlined_inputs:output:0", node.input(0));
-      } else if (node.name() == "my_mul/y" && ++count) {
+        EXPECT_EQ("x", node.input(0));
+      } else if (node.name() == "Func/my_mul/input/_1" && ++count) {
         EXPECT_EQ("Identity", node.op());
         EXPECT_EQ(1, node.input_size());
-        EXPECT_EQ("my_mul/inlined_inputs:output:1", node.input(0));
+        EXPECT_EQ("x", node.input(0));
       } else if (node.name() == "my_mul/mul" && ++count) {
         EXPECT_EQ("Mul", node.op());
         EXPECT_EQ(2, node.input_size());
-        EXPECT_EQ("my_mul/x:output:0", node.input(0));
-        EXPECT_EQ("my_mul/y:output:0", node.input(1));
-      } else if (node.name() == "my_mul" && ++count) {
-        EXPECT_EQ("IdentityN", node.op());
-        EXPECT_EQ(1, node.input_size());
-        EXPECT_EQ("my_mul/mul:z:0", node.input(0));
+        EXPECT_EQ("Func/my_mul/input/_0:output:0", node.input(0));
+        EXPECT_EQ("Func/my_mul/input/_1:output:0", node.input(1));
       }
       EXPECT_TRUE(node.device().empty());
     }
-    EXPECT_EQ(5, count);
+    EXPECT_EQ(3, count);
+    ASSERT_EQ(1, optimized_func->ret().size());
+    EXPECT_EQ("Func/my_mul/output/_2:output:0", optimized_func->ret().at("z"));
   }
 
   item.fetch = {"out_s", "out_q"};
@@ -623,17 +618,17 @@ TEST_F(MetaOptimizerTest, OptimizeFunctionLibraryWithRestrictions) {
   MetaOptimizer optimizer(nullptr, config_proto);
 
   // Define simple function library with two identical mul functions.
-  FunctionDef mul_func_1 =
-      FunctionDefHelper::Create("MyMul1", {"x:float", "y:float"}, {"z:float"},
-                                {}, {{{"mul"}, "Mul", {"x", "y"}, {}}},
-                                /*ret_def=*/
-                                {{"z", "mul:z:0"}});
+  FunctionDef mul_func_1 = FunctionDefHelper::Create(
+      "MyMul1", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
 
-  FunctionDef mul_func_2 =
-      FunctionDefHelper::Create("MyMul2", {"x:float", "y:float"}, {"z:float"},
-                                {}, {{{"mul"}, "Mul", {"x", "y"}, {}}},
-                                /*ret_def=*/
-                                {{"z", "mul:z:0"}});
+  FunctionDef mul_func_2 = FunctionDefHelper::Create(
+      "MyMul2", {"x:float", "y:float"}, {"z:float"}, {},
+      {{{"mul"}, "Mul", {"x", "y"}, {{"T", DT_FLOAT}}}},
+      /*ret_def=*/
+      {{"z", "mul:z:0"}});
 
   // Tensorflow graph:
   //
@@ -691,6 +686,7 @@ class SleepingOptimizer : public CustomGraphOptimizer {
  public:
   SleepingOptimizer() {}
   string name() const override { return "test_optimizer"; }
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -700,8 +696,9 @@ class SleepingOptimizer : public CustomGraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override {
     *optimized_graph = item.graph;
-    optimized_graph->add_node();
     sleep(1);
+    GRAPPLER_RETURN_IF_DEADLINE_EXCEEDED();
+    optimized_graph->add_node();
     return Status::OK();
   }
 
@@ -714,7 +711,29 @@ REGISTER_GRAPH_OPTIMIZER(SleepingOptimizer);
 TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
+
+  ConfigProto config;
+  RewriterConfig& rewriter_config =
+      *config.mutable_graph_options()->mutable_rewrite_options();
+  rewriter_config.add_optimizers("SleepingOptimizer");
+  rewriter_config.set_min_graph_nodes(-1);
+  rewriter_config.set_meta_optimizer_timeout_ms(500);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+
+  GraphDef output;
+  const Status status =
+      RunMetaOptimizer(item, config, nullptr, nullptr, &output);
+  EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
+  // Make sure the graph was reverted to the original regardless of when the
+  // optimizer timed out.
+  CompareGraphs(item.graph, output);
+}
+
+TEST_F(MetaOptimizerTest, MetaOptimizerTimesOut) {
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   ConfigProto config;
   RewriterConfig& rewriter_config =
@@ -728,34 +747,34 @@ TEST_F(MetaOptimizerTest, OptimizerTimesOut) {
   const Status status =
       RunMetaOptimizer(item, config, nullptr, nullptr, &output);
   EXPECT_EQ(status.error_message(), "meta_optimizer exceeded deadline.");
-  // Make sure the graph was reverted to the original regardless of when the
-  // optimizer timed out.
-  CompareGraphs(item.graph, output);
+  // The meta optimizer should manage to finish one iteration.
+  EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
 }
 
 TEST_F(MetaOptimizerTest, OptimizerDoesNotTimeOut) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   ConfigProto config;
   RewriterConfig& rewriter_config =
       *config.mutable_graph_options()->mutable_rewrite_options();
   rewriter_config.add_optimizers("SleepingOptimizer");
   rewriter_config.set_min_graph_nodes(-1);
-  rewriter_config.set_meta_optimizer_timeout_ms(1500);
-  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::ONE);
+  rewriter_config.set_meta_optimizer_timeout_ms(2500);
+  rewriter_config.set_meta_optimizer_iterations(RewriterConfig::TWO);
   GraphDef output;
   const Status status =
       RunMetaOptimizer(item, config, nullptr, nullptr, &output);
   TF_EXPECT_OK(status);
-  EXPECT_EQ(item.graph.node_size() + 1, output.node_size());
+  // The meta optimizer should manage to finish two iterations.
+  EXPECT_EQ(item.graph.node_size() + 2, output.node_size());
 }
 
 TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnValidGraph) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   ConfigProto config_proto;
   auto& post_optimization_verifier_config =
@@ -773,7 +792,7 @@ TEST_F(MetaOptimizerTest, RunPostOptimizationVerifiersOnValidGraph) {
 TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnValidGraph) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
   GrapplerItem item;
-  CHECK(fake_input.NextItem(&item));
+  ASSERT_TRUE(fake_input.NextItem(&item));
 
   ConfigProto config_proto;
   auto& inter_optimizer_verifier_config =
@@ -935,6 +954,63 @@ TEST_F(MetaOptimizerTest, RunInterOptimizerVerifiersOnInvalidGraph) {
   EXPECT_TRUE(absl::StrContains(
       status.error_message(),
       "NodeDef expected inputs 'float' do not match 3 inputs specified"));
+}
+
+TEST_F(MetaOptimizerTest, CompressConstants) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Tensor zeros_t(DT_FLOAT, TensorShape({64}));
+  Tensor ones_t(DT_FLOAT, TensorShape({64}));
+  for (int i = 0; i < 64; ++i) {
+    zeros_t.flat<float>()(i) = 0.0f;
+    ones_t.flat<float>()(i) = 1.0f;
+  }
+  Output zeros = ops::Const(scope.WithOpName("zeros"), zeros_t);
+  Output host_ones = ops::Const(scope.WithOpName("host_ones"), ones_t);
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  ASSERT_EQ(item.graph.node(1).name(), "host_ones");
+  // There is not C++ api for HostConst, so we manually change the node type
+  // here.
+  item.graph.mutable_node(1)->set_op("HostConst");
+  item.fetch = {"zeros", "host_ones"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
+
+  ConfigProto config_proto;
+  auto& rewriter_config =
+      *config_proto.mutable_graph_options()->mutable_rewrite_options();
+  rewriter_config.set_min_graph_nodes(-1);
+  MetaOptimizer optimizer(/*cpu_device=*/nullptr, config_proto);
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  bool found_zeros = false;
+  bool found_host_ones = false;
+  ASSERT_EQ(output.node_size(), 2);
+  for (const auto& node : output.node()) {
+    if (node.name() == "zeros") {
+      found_zeros = true;
+      EXPECT_EQ(node.op(), "Const");
+      const TensorProto& zeroes_t = node.attr().at("value").tensor();
+      EXPECT_EQ(zeroes_t.float_val_size(), 1);
+      EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+    } else if (node.name() == "host_ones") {
+      found_host_ones = true;
+      EXPECT_EQ(node.op(), "HostConst");
+      const TensorProto& ones_t = node.attr().at("value").tensor();
+      EXPECT_EQ(ones_t.float_val_size(), 1);
+      EXPECT_EQ(ones_t.float_val(0), 1.0f);
+    }
+  }
+
+  EXPECT_TRUE(found_zeros);
+  EXPECT_TRUE(found_host_ones);
+
+  auto tensors = EvaluateNodes(output, item.fetch, {});
+  ASSERT_EQ(tensors.size(), 2);
+  ASSERT_EQ(tensors_expected.size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
+  }
 }
 
 }  // namespace

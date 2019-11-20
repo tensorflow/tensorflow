@@ -32,6 +32,21 @@ Reads a literal proto and transfers it to device memory.
 'handle' is an id that can be used in other ops to refer to the allocation.
 )");
 
+REGISTER_OP("XRTAllocateUninitialized")
+    .Output("handle: int64")
+    .Attr("dtype: type")
+    .Attr("shape: shape")
+    .SetShapeFn(tensorflow::shape_inference::ScalarShape)
+    .Doc(
+        R"(
+Allocates a tensor to hold the specified shape in device memory.  The values
+in the tensor are left uninitialized.
+
+shape: The shapes which the tensor should have on device.
+
+handle: An id that can be used in other ops to refer to the allocation.
+)");
+
 REGISTER_OP("XRTAllocateFromTensor")
     .Input("inputs: dtypes")
     .Output("handle: int64")
@@ -189,6 +204,16 @@ REGISTER_OP("XRTReleaseAllAllocations")
     .Doc(
         R"(
 Discards all the XRT allocations. All the client held handles will be invalid.
+)");
+
+REGISTER_OP("XRTCompactAllocations")
+    .SetShapeFn(tensorflow::shape_inference::NoOutputs)
+    .Doc(
+        R"(
+Runs a device memory compaction cycle. This copies the device data behind the
+currently alive allocation handles into host memory, releases the device memory
+backing the handles, and re-allocate and send back the data to the device.
+This operation helps with device memory fragmentation.
 )");
 
 }  // namespace tensorflow

@@ -60,10 +60,23 @@ message AdagradParameters {
   float initial_accumulator = 1;
 }
 
+// Algorithm in http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf.
+message BoundedAdagradParameters {
+  // Whether to use the updated or the old value of the accumulator when
+  // computing the effective learning rate. When update_accumulator_first is set
+  // to True, the updated value of the accumulator is used.
+  bool update_accumulator_first = 1;
+  // The max_var_update value to use. Set value to 0 (default) to disable using
+  // max_var_update to clip the gradient.
+  float max_var_update = 2;
+  // The maximum value of the accumulator. Set max_accumulator to 0 (default)
+  // to disable using max_accumulator to clip the accumulator.
+  float max_accumulator = 3;
+}
+
 // https://www.tensorflow.org/api_docs/python/tf/train/GradientDescentOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L423
-message StochasticGradientDescentParameters {
-}
+message StochasticGradientDescentParameters {}
 
 // https://www.tensorflow.org/api_docs/python/tf/train/FtrlOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L192
@@ -153,7 +166,7 @@ message MdlAdagradLightParameters {
   float initial_benefit = 15;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://www.tensorflow.org/api_docs/python/tf/train/AdadeltaOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L68
 message AdadeltaParameters {
   float rho = 1;
@@ -162,12 +175,84 @@ message AdadeltaParameters {
   float initial_update = 4;
 }
 
-// https://www.tensorflow.org/api_docs/python/tf/train/RMSPropOptimizer
+// https://www.tensorflow.org/api_docs/python/tf/train/ProximalAdagradOptimizer
 // https://github.com/tensorflow/tensorflow/blob/c19e29306ce1777456b2dbb3a14f511edf7883a8/tensorflow/core/kernels/training_ops.cc#L164
 message ProximalAdagradParameters {
   float l1 = 1;
   float l2 = 2;
   float initial_accumulator = 3;
+}
+
+// The online Yogi optimizer does not implement hyper-parameter update; use the
+// dynamic learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+//
+// https://papers.nips.cc/paper/8186-adaptive-methods-for-nonconvex-optimization.pdf
+// plus some extensions based on FTRL.
+//
+// Note that the code by default implements the lazy version of online Yogi.
+message OnlineYogiParameters {
+  // The L1 regularization parameter (used analogously to the one in FTRL).
+  float l1 = 1;
+
+  // The L2 regularization parameter (used analogously to the one in FTRL).
+  float l2 = 2;
+
+  // \beta_2 from Algorithm 2 in the paper.
+  float beta2 = 3;
+
+  // x -> copysign(1, x) (i.e., return 1 for an input of +0 rather than 0).
+  message SignActivation {}
+
+  // x -> tanh(x * 10)
+  message TanhActivation {}
+
+  // Activation to use to replace sign function in v_t update in Algorithm 2 of
+  // paper.
+  oneof activation {
+    SignActivation sign = 6;
+    TanhActivation tanh = 7;
+  }
+}
+
+// The online Yogi optimizer does not implement hyper-parameter update; use the
+// dynamic learning rate feature instead, setting the learning rate to:
+// user learning_rate * sqrt(1 - beta2^t) / (1 - beta1^t)
+// Here, t is the current timestep.
+//
+// https://papers.nips.cc/paper/8186-adaptive-methods-for-nonconvex-optimization.pdf
+// plus some extensions based on FTRL.
+//
+// Note that the code by default implements the lazy version of proximal Yogi.
+message ProximalYogiParameters {
+  // The L1 regularization parameter.
+  float l1 = 1;
+
+  // The L2 regularization parameter.
+  float l2 = 2;
+
+  // The exponential decay rate for the 1st moment estimates.
+  float beta1 = 3;
+
+  // The exponential decay rate for the 2nd moment estimates.
+  float beta2 = 4;
+
+  // A constant trading off adaptivity and noise.
+  float epsilon = 5;
+
+  // x -> copysign(1, x) (i.e., return 1 for an input of +0 rather than 0).
+  message SignActivation {}
+
+  // x -> tanh(x * 10)
+  message TanhActivation {}
+
+  // Activation to use to replace sign function in v_t update in Algorithm 2 of
+  // paper.
+  oneof activation {
+    SignActivation sign = 8;
+    TanhActivation tanh = 9;
+  }
 }
 
 // Status of using gradient accumulation (doing two passes over the input
@@ -181,11 +266,11 @@ message GradientAccumulationStatus {
     ENABLED = 1;
     DISABLED = 2;
   }
-};
+}
 
 // Configuration proto for hot ID optimization. This is an experimental feature
 // that is currently disabled (by default).
-message HotIdOptimizerConfiguration {
+message HotIdReplicationConfiguration {
   // Whether to enable or disable hot ID optimization.
   // If UNSPECIFIED (default), hot ID optimization is DISABLED.
   enum Status {
@@ -194,28 +279,6 @@ message HotIdOptimizerConfiguration {
     DISABLED = 2;
   }
   Status status = 1;
-
-  // The following fields are never expected to be set by the TF model. However,
-  // a TF model could set them if it chooses to. If the fields are not set,
-  // meaningful default values will be chosen by the TPU software.
-
-  // Frequency above which an embedding ID is classified as hot. The valid
-  // range for the frequency is [0.0, 1.0]. The frequency of an embedding ID is
-  // defined as the ratio of the number of lookups for that ID to the total
-  // number of lookups for the embedding table.
-  float frequency_threshold = 2;
-
-  // The maximum number of hot IDs for the embedding table. If greater than
-  // max_id_count hot IDs exist for the table, the IDs with the highest
-  // frequencies are chosen.
-  int32 max_id_count = 3;
-
-  // The maximum number of slots reserved in HBM (across the entire TPU system)
-  // for storing the replicas of hot IDs for the embedding table. In future, the
-  // number of replicas for a particular hot ID could be adjusted based on its
-  // frequency. The max_slot_count value captures the total number of replicas
-  // across all hot IDs for the table.
-  int32 max_slot_count = 4;
 }
 
 message OptimizationParameters {
@@ -244,14 +307,15 @@ message OptimizationParameters {
   // apply them using the actual optimization algorithm).
   GradientAccumulationStatus.Status gradient_accumulation_status = 17;
 
-  // Configuration proto for hot ID optimization. This is an experimental
+  // Configuration proto for hot ID replication. This is an experimental
   // feature that is currently disabled (by default).
-  HotIdOptimizerConfiguration hot_id_optimizer_configuration = 18;
+  HotIdReplicationConfiguration hot_id_replication_configuration = 18;
 
   // Optimization algorithm parameters; which field is selected determines which
   // algorithm to use.
   oneof parameters {
     AdagradParameters adagrad = 3;
+    BoundedAdagradParameters bounded_adagrad = 19;
     StochasticGradientDescentParameters stochastic_gradient_descent = 4;
     FtrlParameters ftrl = 5;
     AdamParameters adam = 6;
@@ -261,6 +325,8 @@ message OptimizationParameters {
     MdlAdagradLightParameters mdl_adagrad_light = 11;
     AdadeltaParameters adadelta = 12;
     ProximalAdagradParameters proximal_adagrad = 14;
+    OnlineYogiParameters online_yogi = 20;
+    ProximalYogiParameters proximal_yogi = 21;
   }
 
   reserved 15;  // Old use_gradient_accumulation.

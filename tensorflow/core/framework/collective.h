@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
+
 class BufRendezvous;
 class CancellationManager;
 class CompleteGroupRequest;
@@ -35,7 +36,6 @@ class Device;
 class DeviceMgr;
 class GetStepSequenceRequest;
 class GetStepSequenceResponse;
-class Op;
 class Tensor;
 
 // Types of supported collective operations.
@@ -46,6 +46,14 @@ enum CollectiveType {
   UNDEFINED_COLLECTIVE,
 };
 
+// Some collective op implementations require runtime group configuration from
+// the OpKernel.  Currently, this struct is used to set communicator key for
+// NCCL-based collective implementation.
+struct CollGroupRuntimeDetails {
+  string communicator_key;  // for communicator-based techniques e.g. NCCL
+  string ToString() const;
+};
+
 // Data common to all members of a device group.
 // All members share the same device set but its order is
 // particular to an instance so it is stored there.
@@ -54,6 +62,7 @@ struct CollGroupParams {
   int32 group_size;
   DeviceType device_type;
   int32 num_tasks;  // number of distinct tasks in group
+  CollGroupRuntimeDetails runtime_details;
   string ToString() const;
   CollGroupParams()
       : group_key(0), group_size(0), device_type(DEVICE_CPU), num_tasks(0) {}
@@ -72,7 +81,9 @@ struct CollImplDetails {
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
   std::vector<int32>
-      dependencies;  // collective instances on which this node depends
+      dependencies;           // collective instances on which this node depends
+  string communication_hint;  // user-supplied hint for implementation choice,
+                              // e.g. ring or nccl
 };
 
 // Data common to all members of a collective instance.
@@ -93,8 +104,6 @@ struct CollInstanceParams {
   // If passed in to GPUOptions in ConfigProto, defines a good ring order for
   // GPUs.  Assumes same GPU configuration at each worker.
   string gpu_ring_order = "";
-  // Valid when using a communicator-based collective mechanism, e.g. NCCL.
-  string communicator_key;
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -131,21 +140,25 @@ class DeviceResolverInterface {
  public:
   virtual ~DeviceResolverInterface() {}
 
-  // Collects DeviceLocality protobufs from all of the devices identified
+  // Collects DeviceAttributes protobufs from all of the devices identified
   // in 'col_params'.
-  virtual void GetDeviceLocalitiesAsync(const CollInstanceParams& inst_params,
-                                        std::vector<DeviceLocality>* localities,
+  virtual void GetAllDeviceAttributesAsync(
+      const std::vector<string>& devices, const std::vector<string>& tasks,
+      std::vector<DeviceAttributes>* attributes,
+      const StatusCallback& done) = 0;
+
+  // Populate *attributes with the DeviceAttributes of the specified
+  // device.
+  virtual void GetDeviceAttributesAsync(const string& device,
+                                        const string& task,
+                                        DeviceAttributes* attributes,
                                         const StatusCallback& done) = 0;
 
-  // Populate *locality with the DeviceLocality of the specified
-  // device.
-  virtual void GetLocalityAsync(const string& device, const string& task,
-                                DeviceLocality* locality,
-                                const StatusCallback& done) = 0;
-
-  // Clear the cache of device data belonging
-  // to the specified task.
+  // Clear the cache of device data belonging to the specified task.
   virtual void ClearTask(const string& task) = 0;
+
+  // Clear the cache of all device data.
+  virtual void ClearCache() = 0;
 };
 
 // Interface that provides resolution of shared CollectiveParams fields.
@@ -248,6 +261,9 @@ class PeerAccessInterface {
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
+
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
 };
 
 class PerStepCollectiveRemoteAccess;
@@ -286,10 +302,10 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   // execution, where safety is defined as: ordered with respect to the
   // collective instances defined in the callee's `wait_for` attribute.
   virtual void WaitForDependencies(const CollectiveParams& col_params) {}
-  // `Launched` unblocks the dependent collective instances by recording that
-  // this callee device has completed the critical portion of the collective
-  // execution.
-  virtual void Launched(const CollectiveParams& col_params) {}
+  // `UnblockDependencies` unblocks the dependent collective instances by
+  // recording that this caller's device has completed the critical portion of
+  // the collective execution.
+  virtual void UnblockDependencies(const CollectiveParams& col_params) {}
 
   // Used to designate an invalid group or instance key.
   static int64 kInvalidId;
@@ -383,13 +399,12 @@ class CollectiveImplementationInterface {
   // object.
   virtual Status InitializeCollectiveContext(CollectiveContext* col_ctx) = 0;
 
-  // Initializes instance params at the beginning of `CompleteInstanceLocal()`,
-  // unlike `InitializeCollectiveParams` which is called at the end.  This
-  // function is called before all devices in the instance are discovered, and
-  // may be used to broadcast data via the shared `InstanceRec` object in
-  // collective param resolution to all devices.
-  virtual Status InitializeInstanceBeforeGroupDiscovery(
-      CollectiveParams* col_params) = 0;
+  // Performs collective implementation specific group initialization.  The
+  // intention is to do group-specific initialization of runtime details for the
+  // collective implementation.  Currently used only to set `communicator_key`
+  // in techniques which use a communicator for distributed collectives (NCCL).
+  virtual Status InitializeCollectiveGroupRuntimeDetails(
+      CollGroupRuntimeDetails* col_group_runtime_details) = 0;
 
   // Processes and moves data according to the logic of this Collective
   // implementation.  Relies on appropriate initialization of op-specific

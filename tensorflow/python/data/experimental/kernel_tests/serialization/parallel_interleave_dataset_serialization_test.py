@@ -17,18 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import interleave_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
 class ParallelInterleaveDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def setUp(self):
     self.input_values = np.array([4, 5, 6], dtype=np.int64)
@@ -42,25 +46,25 @@ class ParallelInterleaveDatasetSerializationTest(
                 lambda x: dataset_ops.Dataset.range(10 * x, 11 * x),
                 cycle_length, block_length, sloppy)))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializationCore(self):
     # cycle_length > 1, block_length > 1
     cycle_length = 2
     block_length = 3
-    self.run_core_tests(
-        lambda: self._build_ds(cycle_length, block_length),
-        lambda: self._build_ds(cycle_length * 2, block_length * 1),
-        self.num_outputs)
+    self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
+                        self.num_outputs)
     # cycle_length = 1
     cycle_length = 1
     block_length = 3
     self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
-                        None, self.num_outputs)
+                        self.num_outputs)
     # block_length = 1
     cycle_length = 2
     block_length = 1
     self.run_core_tests(lambda: self._build_ds(cycle_length, block_length),
-                        None, self.num_outputs)
+                        self.num_outputs)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSerializationWithSloppy(self):
     break_points = self.gen_break_points(self.num_outputs, 10)
     expected_outputs = np.repeat(
@@ -80,6 +84,7 @@ class ParallelInterleaveDatasetSerializationTest(
     # block_length = 1
     run_test(2, 1)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparseCore(self):
 
     def _map_fn(i):
@@ -94,7 +99,7 @@ class ParallelInterleaveDatasetSerializationTest(
       return dataset_ops.Dataset.range(10).map(_map_fn).apply(
           interleave_ops.parallel_interleave(_interleave_fn, 1))
 
-    self.run_core_tests(_build_dataset, None, 20)
+    self.run_core_tests(_build_dataset, 20)
 
 
 if __name__ == '__main__':

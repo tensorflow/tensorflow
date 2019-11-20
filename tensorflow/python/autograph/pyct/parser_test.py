@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import textwrap
-
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.platform import test
 
@@ -31,50 +29,101 @@ class ParserTest(test.TestCase):
     def f(x):
       return x + 1
 
-    node, _, _ = parser.parse_entity(f)
+    node, _ = parser.parse_entity(f, future_features=())
     self.assertEqual('f', node.name)
 
-  def test_parse_str(self):
-    mod = parser.parse_str(
-        textwrap.dedent("""
-            def f(x):
-              return x + 1
-    """))
-    self.assertEqual('f', mod.body[0].name)
+  def test_parse_entity_print_function(self):
 
-  def test_parse_str_print(self):
-    mod = parser.parse_str(
-        textwrap.dedent("""
-            def f(x):
-              print(x)
-              return x + 1
-    """))
-    self.assertEqual('f', mod.body[0].name)
+    def f(x):
+      print(x)
 
-  def test_parse_str_weird_print(self):
-    mod = parser.parse_str(
-        textwrap.dedent("""
-            def f(x):
-              print (x)
-              return x + 1
-    """))
-    self.assertEqual('f', mod.body[0].name)
+    node, _ = parser.parse_entity(f, future_features=('print_function',))
+    self.assertEqual('f', node.name)
 
   def test_parse_comments(self):
+
     def f():
 # unindented comment
       pass
-    with self.assertRaises(ValueError):
-      parser.parse_entity(f)
+
+    node, _ = parser.parse_entity(f, future_features=())
+    self.assertEqual('f', node.name)
 
   def test_parse_multiline_strings(self):
+
     def f():
       print("""
-some
 multiline
 string""")
-    with self.assertRaises(ValueError):
-      parser.parse_entity(f)
+
+    node, _ = parser.parse_entity(f, future_features=())
+    self.assertEqual('f', node.name)
+
+  def _eval_code(self, code, name):
+    globs = {}
+    exec(code, globs)  # pylint:disable=exec-used
+    return globs[name]
+
+  def test_dedent_block_basic(self):
+
+    code = """
+    def f(x):
+      if x > 0:
+        return -x
+      return x
+    """
+
+    f = self._eval_code(parser.dedent_block(code), 'f')
+    self.assertEqual(f(1), -1)
+    self.assertEqual(f(-1), -1)
+
+  def test_dedent_block_comments_out_of_line(self):
+
+    code = """
+  ###
+    def f(x):
+###
+      if x > 0:
+  ###
+        return -x
+          ###
+  ###
+      return x
+      ###
+    """
+
+    f = self._eval_code(parser.dedent_block(code), 'f')
+    self.assertEqual(f(1), -1)
+    self.assertEqual(f(-1), -1)
+
+  def test_dedent_block_multiline_string(self):
+
+    code = """
+    def f():
+      '''
+      Docstring.
+      '''
+      return '''
+  1
+    2
+      3'''
+    """
+
+    f = self._eval_code(parser.dedent_block(code), 'f')
+    self.assertEqual(f.__doc__, '\n      Docstring.\n      ')
+    self.assertEqual(f(), '\n  1\n    2\n      3')
+
+  def test_dedent_block_multiline_expression(self):
+
+    code = """
+    def f():
+      return (1,
+2,
+        3)
+    """
+
+    f = self._eval_code(parser.dedent_block(code), 'f')
+    self.assertEqual(f(), (1, 2, 3))
 
   def test_parse_expression(self):
     node = parser.parse_expression('a.b')

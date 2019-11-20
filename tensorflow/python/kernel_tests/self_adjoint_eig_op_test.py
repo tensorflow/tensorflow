@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for tensorflow.ops.math_ops.matrix_inverse."""
+"""Tests for tensorflow.ops.linalg_ops.self_adjoint_eig."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -240,9 +240,12 @@ def _GetSelfAdjointEigGradTest(dtype_, shape_, compute_v_):
 
 
 if __name__ == "__main__":
+  dtypes_to_test = [dtypes_lib.float32, dtypes_lib.float64]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [dtypes_lib.complex64, dtypes_lib.complex128]
   for compute_v in True, False:
-    for dtype in (dtypes_lib.float32, dtypes_lib.float64, dtypes_lib.complex64,
-                  dtypes_lib.complex128):
+    for dtype in dtypes_to_test:
       for size in 1, 2, 5, 10:
         for batch_dims in [(), (3,)] + [(3, 2)] * (max(size, size) < 10):
           shape = batch_dims + (size, size)

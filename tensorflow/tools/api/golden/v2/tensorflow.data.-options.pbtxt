@@ -8,11 +8,19 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "experimental_numa_aware"
+    name: "experimental_distribute"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_external_state_policy"
     mtype: "<type \'property\'>"
   }
   member {
     name: "experimental_optimization"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "experimental_slack"
     mtype: "<type \'property\'>"
   }
   member {

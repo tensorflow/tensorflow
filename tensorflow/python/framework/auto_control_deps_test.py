@@ -106,24 +106,24 @@ class AutomaticControlDependenciesTest(test.TestCase):
       with acd.AutomaticControlDependencies() as c:
 
         def true_fn():
-          v.assign(v + 1, name='true')
+          v.assign(v + 1, name="true")
           return 1.0
 
         def false_fn():
 
           def inner_true_fn():
-            v.assign(v * 2, name='false_true')
+            v.assign(v * 2, name="false_true")
             return 2.0
 
           def inner_false_fn():
-            v.assign(v * 3, name='false_false')
+            v.assign(v * 3, name="false_false")
             return 3.0
 
           control_flow_ops.cond(q, inner_true_fn, inner_false_fn)
           return 1.0
 
         control_flow_ops.cond(p, true_fn, false_fn)
-        with ops.name_scope('final'):
+        with ops.name_scope("final"):
           val = v.read_value()
         val = c.mark_as_return(val)
       self.assertAllEqual(val.eval(feed_dict={p: False, q: False}), 3.0)

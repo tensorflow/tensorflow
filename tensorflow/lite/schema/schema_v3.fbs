@@ -48,7 +48,7 @@ table QuantizationParameters {
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
   // builtin ops use: [batch size, number of channels, height, width] (That's
-  // Tensorflow's NCHW).
+  // Tensorflow's NHWC).
   shape:[int];
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/dump_graph.h"
 
+#include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
@@ -90,18 +91,37 @@ string WriteTextProtoToUniqueFile(Env* env, const string& name,
         << "variable or function argument.";
     return "(TF_DUMP_GRAPH_PREFIX not specified)";
   }
-  Status status = env->RecursivelyCreateDir(dir);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to create " << dir << " for dumping " << proto_type
-                 << ": " << status;
-    return "(unavailable)";
+
+  if (absl::EqualsIgnoreCase(dir, "sponge") ||
+      absl::EqualsIgnoreCase(dir, "test_undeclared_outputs_dir")) {
+    const char* tmp_dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
+    if (tmp_dir == nullptr) {
+      LOG(WARNING) << "TF_DUMP_GRAPH_PREFIX=sponge, but "
+                      "TEST_UNDECLARED_OUTPUT_DIRS is not set, dumping to log";
+      dir = "-";
+    } else {
+      dir = tmp_dir;
+    }
   }
-  string filepath = absl::StrCat(dir, "/", MakeUniqueFilename(name));
-  status = WriteToFile(filepath, proto);
-  if (!status.ok()) {
-    LOG(WARNING) << "Failed to dump " << proto_type << " to file: " << filepath
-                 << " : " << status;
-    return "(unavailable)";
+
+  string filepath = "NULL";
+  if (std::strncmp(dir, "-", 2) == 0) {
+    LOG(INFO) << proto.DebugString();
+    filepath = "LOG(INFO)";
+  } else {
+    Status status = env->RecursivelyCreateDir(dir);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to create " << dir << " for dumping "
+                   << proto_type << ": " << status;
+      return "(unavailable)";
+    }
+    filepath = absl::StrCat(dir, "/", MakeUniqueFilename(name));
+    status = WriteToFile(filepath, proto);
+    if (!status.ok()) {
+      LOG(WARNING) << "Failed to dump " << proto_type
+                   << " to file: " << filepath << " : " << status;
+      return "(unavailable)";
+    }
   }
   LOG(INFO) << "Dumped " << proto_type << " to " << filepath;
   return filepath;

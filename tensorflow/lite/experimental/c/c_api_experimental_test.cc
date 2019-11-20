@@ -32,24 +32,24 @@ TfLiteRegistration* GetDummyRegistration() {
   return &registration;
 }
 
-TEST(CApiExperimentalSimple, Smoke) {
-  TFL_Model* model = TFL_NewModelFromFile(
-      "tensorflow/lite/testdata/add.bin");
+TEST(CApiExperimentalTest, Smoke) {
+  TfLiteModel* model =
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, nullptr);
 
-  TFL_InterpreterOptions* options = TFL_NewInterpreterOptions();
-  TFL_InterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
-                                     GetDummyRegistration(), 1, 1);
+  TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+  TfLiteInterpreterOptionsAddBuiltinOp(options, kTfLiteBuiltinAdd,
+                                       GetDummyRegistration(), 1, 1);
 
-  TFL_Interpreter* interpreter = TFL_NewInterpreter(model, options);
+  TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
   ASSERT_NE(interpreter, nullptr);
-  ASSERT_EQ(TFL_InterpreterAllocateTensors(interpreter), kTfLiteOk);
-  EXPECT_EQ(TFL_InterpreterResetVariableTensors(interpreter), kTfLiteOk);
-  EXPECT_EQ(TFL_InterpreterInvoke(interpreter), kTfLiteOk);
+  ASSERT_EQ(TfLiteInterpreterAllocateTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterResetVariableTensors(interpreter), kTfLiteOk);
+  EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);
 
-  TFL_DeleteInterpreter(interpreter);
-  TFL_DeleteInterpreterOptions(options);
-  TFL_DeleteModel(model);
+  TfLiteInterpreterDelete(interpreter);
+  TfLiteInterpreterOptionsDelete(options);
+  TfLiteModelDelete(model);
 }
 
 }  // namespace

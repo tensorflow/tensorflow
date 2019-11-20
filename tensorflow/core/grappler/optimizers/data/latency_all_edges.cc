@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -32,7 +33,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kInsertOpName[] = "ExperimentalLatencyStatsDataset";
+constexpr char kInsertOpName[] = "LatencyStatsDataset";
 
 NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   NodeDef new_node;
@@ -42,8 +43,10 @@ NodeDef MakeLatencyNode(const NodeDef& node, MutableGraphView* graph) {
   // Set the input of LatencyDataset node as `node`
   new_node.add_input(node.name());
 
+  string tag_name = strings::StrCat("record_latency",
+                                    data::stats_utils::kDelimiter, node.name());
   NodeDef* tag = graph_utils::AddScalarConstNode<StringPiece>(
-      StringPiece("record_latency_" + node.name()), graph);
+      StringPiece(tag_name), graph);
   new_node.add_input(tag->name());
 
   // Set `output_types` and `output_shapes` attributes.
@@ -75,19 +78,11 @@ Status LatencyAllEdges::OptimizeAndCollectStats(Cluster* cluster,
   // TODO(shivaniagrawal): Add Op to return Latency for the particular Op than
   // for the edge (e2 - e1?).
   for (const NodeDef& node : item.graph.node()) {
-    if (!str_util::EndsWith(node.op(), "Dataset") || node.attr().empty()) {
+    if (!absl::EndsWith(node.op(), "Dataset") || node.attr().empty()) {
       // TODO(b/111805951): Replace this with non-approximate way to check if
       // node corresponds to a `Dataset` op.
       continue;
     }
-    MutableGraphView::OutputPort output_port =
-        graph.GetOutputPort(node.name(), 0);
-    auto fanout = graph.GetFanout(output_port);
-    if (fanout.size() > 1) {
-      LOG(WARNING) << node.name() << " has fanout size " << fanout.size();
-      continue;
-    }
-    // fanout will have size 0 for last dataset node in the pipeline.
     NodeDef* latency_node = graph.AddNode(MakeLatencyNode(node, &graph));
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), latency_node->name()));
     stats->num_changes++;

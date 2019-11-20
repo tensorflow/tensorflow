@@ -39,6 +39,8 @@ class MetaOptimizer : public GraphOptimizer {
 
   string name() const override { return "meta_optimizer"; };
 
+  bool UsesFunctionLibrary() const override { return true; }
+
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
@@ -50,6 +52,8 @@ class MetaOptimizer : public GraphOptimizer {
  private:
   std::unique_ptr<GraphOptimizer> MakeNewOptimizer(
       const string& optimizer) const;
+
+  bool IsSingleThreadedExecutor() const;
 
   // Initialize active optimizers from RewriterConfig toggles.
   Status InitializeOptimizers(
@@ -82,7 +86,8 @@ class MetaOptimizer : public GraphOptimizer {
 
   struct OptimizerResult {
     string optimizer_name;
-    string result;
+    string message;
+    Status status;
   };
 
   struct GraphOptimizationResult {

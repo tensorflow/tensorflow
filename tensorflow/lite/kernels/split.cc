@@ -53,6 +53,9 @@ TfLiteStatus ResizeOutputTensors(TfLiteContext* context, TfLiteNode* node,
     axis_value += NumDimensions(input);
   }
 
+  TF_LITE_ENSURE(context, axis_value >= 0);
+  TF_LITE_ENSURE(context, axis_value < NumDimensions(input));
+
   const int input_size = SizeOfDimension(input, axis_value);
   TF_LITE_ENSURE_MSG(context, input_size % num_splits == 0,
                      "Not an even split");
@@ -111,24 +114,22 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     axis_value += NumDimensions(op_context.input);
   }
 
+  TF_LITE_ENSURE(context, axis_value >= 0);
+  TF_LITE_ENSURE(context, axis_value < NumDimensions(op_context.input));
+
   // TODO(ahentz): Our usage of VectorOfTensors could be optimized by
   // calculating it in Prepare, unless we defer shape calculation.
   // TODO(ahentz): We can improve the optimized_ops version to handle other
   // cases too.
-#define TF_LITE_SPLIT(scalar)                                         \
-  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);      \
-  tflite::SplitParams op_params;                                      \
-  op_params.num_split = NumOutputs(node);                             \
-  op_params.axis = axis_value;                                        \
-  if (axis_value == 0) {                                              \
-    optimized_ops::Split(op_params, GetTensorShape(op_context.input), \
-                         GetTensorData<scalar>(op_context.input),     \
-                         all_outputs.shapes(), all_outputs.data());   \
-  } else {                                                            \
-    reference_ops::Split(op_params, GetTensorShape(op_context.input), \
-                         GetTensorData<scalar>(op_context.input),     \
-                         all_outputs.shapes(), all_outputs.data());   \
-  }
+#define TF_LITE_SPLIT(scalar)                                       \
+  VectorOfTensors<scalar> all_outputs(*context, *node->outputs);    \
+  tflite::SplitParams op_params;                                    \
+  op_params.num_split = NumOutputs(node);                           \
+  op_params.axis = axis_value;                                      \
+  reference_ops::Split(op_params, GetTensorShape(op_context.input), \
+                       GetTensorData<scalar>(op_context.input),     \
+                       all_outputs.shapes(), all_outputs.data());
+
   switch (op_context.input->type) {
     case kTfLiteFloat32: {
       TF_LITE_SPLIT(float);
@@ -151,10 +152,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     default:
-      context->ReportError(context,
-                           "Only float32, uint8, int8, int16 and int32 are "
-                           "currently supported, got %d.",
-                           op_context.input->type);
+      context->ReportError(context, "Type %s currently not supported.",
+                           TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPLIT

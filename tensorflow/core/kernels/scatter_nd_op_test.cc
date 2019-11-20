@@ -51,15 +51,15 @@ class ScatterNdUpdateOpTest : public OpsTestBase {
 // TODO(simister): Re-enable this once binary size is under control.
 // TEST_F(ScatterNdUpdateOpTest, Simple_StringType) {
 //   MakeOp(DT_STRING_REF, DT_INT32);
-//   AddInputFromArray<string>(TensorShape({1}), {"Brain"});
+//   AddInputFromArray<tstring>(TensorShape({1}), {"Brain"});
 //   AddInputFromArray<int32>(TensorShape({1}), {0});
-//   AddInputFromArray<string>(TensorShape({1}), {"TensorFlow"});
+//   AddInputFromArray<tstring>(TensorShape({1}), {"TensorFlow"});
 //   TF_ASSERT_OK(RunOpKernel());
 //   // Check the new state of the input
 //   Tensor params_tensor = *mutable_input(0).tensor;
 //   Tensor expected(allocator(), DT_STRING, TensorShape({1}));
-//   test::FillValues<string>(&expected, {"TensorFlow"});
-//   test::ExpectTensorEqual<string>(expected, params_tensor);
+//   test::FillValues<tstring>(&expected, {"TensorFlow"});
+//   test::ExpectTensorEqual<tstring>(expected, params_tensor);
 // }
 
 // TEST_F(ScatterNdUpdateOpTest, Simple_BoolType) {
@@ -184,7 +184,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_IndexOutOfRange) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "indices[2] = [99] does not index into shape [5,3]"))
       << s;
 }
@@ -198,7 +198,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_WrongDimsIndices) {
   AddInputFromArray<float>(TensorShape({3, 3}),
                            {100, 101, 102, 777, 778, 779, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(),
       "The outermost dimension of updates and indices must match. Got "
       "indices.shape [1,3,1], updates.shape [3,3]"))
@@ -216,7 +216,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
       TensorShape({3, 4}),
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(), "Must have updates.shape = indices.shape[:batch_dim]"))
       << s;
 }
@@ -231,7 +231,7 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   AddInputFromArray<float>(TensorShape({2, 3}),
                            {100, 101, 102, 10000, 10001, 10002});
   Status s = RunOpKernel();
-  EXPECT_TRUE(str_util::StrContains(
+  EXPECT_TRUE(absl::StrContains(
       s.ToString(),
       "The outermost dimension of updates and indices must match."))
       << s;

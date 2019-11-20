@@ -85,37 +85,37 @@ class KerasFunctionalMetricsTest(test.TestCase):
       y_true = K.variable(np.array([[1], [0]]))
       result = K.eval(
           metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=3))
-      self.assertEqual(result, 1)
+      self.assertEqual(np.mean(result), 1)
       result = K.eval(
           metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=2))
-      self.assertEqual(result, 0.5)
+      self.assertEqual(np.mean(result), 0.5)
       result = K.eval(
           metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
-      self.assertEqual(result, 0.)
+      self.assertEqual(np.mean(result), 0.)
 
       # Test correctness if the shape of y_true is (num_samples,)
       y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
       y_true = K.variable(np.array([1, 0]))
       result = K.eval(
           metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=3))
-      self.assertEqual(result, 1)
+      self.assertEqual(np.mean(result), 1)
       result = K.eval(
           metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=2))
-      self.assertEqual(result, 0.5)
+      self.assertEqual(np.mean(result), 0.5)
       result = K.eval(
           metrics.sparse_top_k_categorical_accuracy(y_true, y_pred, k=1))
-      self.assertEqual(result, 0.)
+      self.assertEqual(np.mean(result), 0.)
 
   def test_top_k_categorical_accuracy(self):
     with self.cached_session():
       y_pred = K.variable(np.array([[0.3, 0.2, 0.1], [0.1, 0.2, 0.7]]))
       y_true = K.variable(np.array([[0, 1, 0], [1, 0, 0]]))
       result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=3))
-      self.assertEqual(result, 1)
+      self.assertEqual(np.mean(result), 1)
       result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=2))
-      self.assertEqual(result, 0.5)
+      self.assertEqual(np.mean(result), 0.5)
       result = K.eval(metrics.top_k_categorical_accuracy(y_true, y_pred, k=1))
-      self.assertEqual(result, 0.)
+      self.assertEqual(np.mean(result), 0.)
 
 
 if __name__ == '__main__':

@@ -20,87 +20,80 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.compiler.tf2tensorrt.wrap_py_utils import get_linked_tensorrt_version
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-def _GetParams(add_quantization_nodes, dtype=dtypes.float32):
-  input_name = "input"
-  input_dims = [8, 8]
-  output_name = "output"
+def _GraphFn(x, add_quantization_nodes):
 
   def _Quantize(x, r):
     if add_quantization_nodes:
       x = gen_array_ops.fake_quant_with_min_max_vars(x, -r, r)
     return x
 
-  g = ops.Graph()
-  with g.as_default():
-    x = array_ops.placeholder(
-        dtype=dtype, shape=[None] + input_dims[1:], name=input_name)
-    x = _Quantize(x, 10.0)
-    x = x + 5
-    x = _Quantize(x, 15.0)
-    x = x - 5
-    x = _Quantize(x, 10.0)
-    x = x * 0.1
-    x = _Quantize(x, 1.0)
-    w = constant_op.constant(np.ones((8, 1)), dtype=dtypes.float32)
-    x = math_ops.matmul(x, w)
-    x = _Quantize(x, 10.0)
-    x = array_ops.identity(x, name=output_name)
+  x = _Quantize(x, 10.0)
+  x = x + 5
+  x = _Quantize(x, 15.0)
+  x = x - 5
+  x = _Quantize(x, 10.0)
+  x = x * 0.1
+  x = _Quantize(x, 1.0)
+  w = constant_op.constant(np.ones((8, 1)), dtype=dtypes.float32)
+  x = math_ops.matmul(x, w)
+  x = _Quantize(x, 10.0)
+  return array_ops.identity(x, name="output_0")
 
-  return trt_test.TfTrtIntegrationTestParams(
-      gdef=g.as_graph_def(),
-      input_names=[input_name],
-      input_dims=[[input_dims]],
-      output_names=[output_name],
-      expected_output_dims=[[[8, 1]]])
+
+def _GetParams(self):
+  return self.BuildParams(self.GraphFn, dtypes.float32, [[8, 8]], [[8, 1]])
 
 
 class QuantizationMissingAllRangesTest(trt_test.TfTrtIntegrationTestBase):
+  """Create a graph containing single segment with no quantization ranges."""
+
+  def GraphFn(self, x):
+    return _GraphFn(x, add_quantization_nodes=False)
 
   def GetParams(self):
-    """Create a graph containing single segment with no quantization ranges."""
-    return _GetParams(add_quantization_nodes=False)
+    return _GetParams(self)
 
   def ShouldRunTest(self, run_params):
     if get_linked_tensorrt_version()[0] < 5:
       return False
     # Only test static engine mode, with or without calibration.
     return (trt_test.IsQuantizationMode(run_params.precision_mode) and
-            not run_params.use_optimizer and not run_params.dynamic_engine)
+            not run_params.convert_online and not run_params.dynamic_engine)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
-    if run_params.use_calibration:
-      # In static engine mode with calibration, it should build a calibration
-      # engine.
-      return ["TRTEngineOp_0"]
-    # In static engine mode without calibration, the engine building will fail
-    # since no quantization ranges are set, which results in no TRT nodes.
-    return []
+    # In static engine mode with calibration, it should build a calibration
+    # engine.
+    # In static engine mode without calibration, the engine building will
+    # succeed but fall back to non-quantized ops.
+    return ["TRTEngineOp_0"]
 
 
 class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
+  """Create a graph containing single segment with no quantization ranges."""
+
+  def GraphFn(self, x):
+    return _GraphFn(x, add_quantization_nodes=True)
 
   def GetParams(self):
-    """Create a graph containing single segment with no quantization ranges."""
-    return _GetParams(add_quantization_nodes=True)
+    return _GetParams(self)
 
   def ShouldRunTest(self, run_params):
     if get_linked_tensorrt_version()[0] < 5:
       return False
     # Test static/dynamic engine with/without calibration.
     return (trt_test.IsQuantizationMode(run_params.precision_mode) and
-            not run_params.use_optimizer)
+            not run_params.convert_online)
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
@@ -116,10 +109,13 @@ class QuantizationWithRangesTest(trt_test.TfTrtIntegrationTestBase):
 
 
 class NonQuantizedPrecisionsWithRangesTest(trt_test.TfTrtIntegrationTestBase):
+  """Create a graph containing single segment with no quantization ranges."""
+
+  def GraphFn(self, x):
+    return _GraphFn(x, add_quantization_nodes=True)
 
   def GetParams(self):
-    """Create a graph containing single segment with no quantization ranges."""
-    return _GetParams(add_quantization_nodes=True)
+    return _GetParams(self)
 
   def ShouldRunTest(self, run_params):
     # Only test FP32/FP16 mode.

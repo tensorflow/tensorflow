@@ -30,16 +30,16 @@ from tensorflow.python.autograph.pyct.static_analysis import reaching_definition
 from tensorflow.python.platform import test
 
 
-class DefinitionInfoTest(test.TestCase):
+global_a = 7
+global_b = 17
+
+
+class ReachingDefinitionsAnalyzerTestBase(test.TestCase):
 
   def _parse_and_analyze(self, test_fn):
-    node, source, _ = parser.parse_entity(test_fn)
+    node, source = parser.parse_entity(test_fn, future_features=())
     entity_info = transformer.EntityInfo(
-        source_code=source,
-        source_file=None,
-        namespace={},
-        arg_values=None,
-        arg_types=None)
+        source_code=source, source_file=None, future_features=(), namespace={})
     node = qual_names.resolve(node)
     ctx = transformer.Context(entity_info)
     node = activity.resolve(node, ctx)
@@ -77,6 +77,9 @@ class DefinitionInfoTest(test.TestCase):
         anno.getanno(first, anno.Static.DEFINITIONS)[0],
         anno.getanno(second, anno.Static.DEFINITIONS)[0])
 
+
+class ReachingDefinitionsAnalyzerTest(ReachingDefinitionsAnalyzerTestBase):
+
   def test_conditional(self):
 
     def test_fn(a, b):
@@ -94,6 +97,63 @@ class DefinitionInfoTest(test.TestCase):
     self.assertHasDefs(fn_body[2].value, 2)
 
     self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+
+  def test_try_in_conditional(self):
+
+    def test_fn(a, b):  # pylint:disable=unused-argument
+      a = []
+      if b:
+        try:
+          pass
+        except:  # pylint:disable=bare-except
+          pass
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+
+  def test_conditional_in_try_in_conditional(self):
+
+    def test_fn(a, b):
+      a = []
+      if b:
+        try:
+          if b:
+            a = []
+        except TestException:  # pylint:disable=undefined-variable,unused-variable
+          pass
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+    # Note: `TestException` and `e` are not tracked.
+    self.assertHasDefinedIn(fn_body[1].body[0].body[0], ('a', 'b'))
+
+  def test_conditional_in_except_in_conditional(self):
+
+    def test_fn(a, b):
+      a = []
+      if b:
+        try:
+          pass
+        except TestException as e:  # pylint:disable=undefined-variable,unused-variable
+          if b:
+            a = []
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefinedIn(fn_body[1], ('a', 'b'))
+    self.assertHasDefinedIn(fn_body[1].body[0], ('a', 'b'))
+    # Note: `TestException` and `e` are not tracked.
+    self.assertHasDefinedIn(fn_body[1].body[0].handlers[0].body[0], ('a', 'b'))
 
   def test_while(self):
 
@@ -298,20 +358,61 @@ class DefinitionInfoTest(test.TestCase):
   def test_comprehension_leaking(self):
 
     def test_fn(a):
-      all(x for x in a)
-      return x  # pylint:disable=undefined-variable
+      _ = [x for x in a]
+      return x  # pylint:disable=undefined-loop-variable
 
     node = self._parse_and_analyze(test_fn)
     fn_body = node.body
 
-    listcomp_target = fn_body[0].value.args[0].generators[0].target
+    listcomp_target = fn_body[0].value.generators[0].target
     retval = fn_body[1].value
 
-    # Python2 leaks comprehension symbols. Python3 doesn't.
+    # Python2 leaks list comprehension symbols. Python3 doesn't.
+    # For details, see:
+    # https://stackoverflow.com/questions/4198906/list-comprehension-rebinds-names-even-after-scope-of-comprehension-is-this-righ
     if six.PY2:
       self.assertSameDef(retval, listcomp_target)
     else:
       self.assertHasDefs(retval, 0)
+
+  def test_function_definition(self):
+
+    def test_fn():
+      def a():
+        pass
+      if a:  # pylint:disable=using-constant-test
+        a = None
+      return a
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[1].test, 1)
+    self.assertHasDefs(fn_body[1].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[2].value, 2)
+
+    self.assertHasDefinedIn(fn_body[1], ('a',))
+
+  def test_global(self):
+
+    def test_fn():
+      global global_a
+      global global_b
+      if global_a:
+        global_b = []
+      return global_a, global_b
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body
+
+    self.assertHasDefs(fn_body[2].test, 1)
+    self.assertHasDefs(fn_body[2].body[0].targets[0], 1)
+    self.assertHasDefs(fn_body[3].value.elts[0], 1)
+    self.assertHasDefs(fn_body[3].value.elts[1], 2)
+
+    self.assertSameDef(fn_body[2].test, fn_body[3].value.elts[0])
+
+    self.assertHasDefinedIn(fn_body[2], ('global_a', 'global_b'))
 
 
 if __name__ == '__main__':

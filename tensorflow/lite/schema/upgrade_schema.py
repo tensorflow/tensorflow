@@ -118,7 +118,8 @@ class Converter(object):
         that lacked file_identifier require this.
 
     Raises:
-      RuntimeError: When flatc cannot be invoked.
+      RuntimeError: 1. When flatc cannot be invoked.
+                    2. When json file does not exists.
       ValueError: When the extension is not json or bin.
 
     Returns:
@@ -235,6 +236,8 @@ class Converter(object):
         operator_type: String representing the builtin operator data type
           string.
         (see :schema.fbs).
+      Raises:
+        ValueError: When the model has consistency problems.
       Returns:
         Upgraded builtin operator data type as a string.
       """
@@ -345,4 +348,4 @@ def main(argv):
 
 if __name__ == "__main__":
   FLAGS, unparsed = parser.parse_known_args()
-  tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)
+  tf.compat.v1.app.run(main=main, argv=[sys.argv[0]] + unparsed)

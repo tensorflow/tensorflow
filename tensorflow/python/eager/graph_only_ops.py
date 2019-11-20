@@ -25,29 +25,16 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 
 
-def graph_zeros_like(tensor):
-  """Graph-only version of tf.zeros_like(), for internal use only."""
-  g = ops._get_graph_from_inputs([tensor])  # pylint: disable=protected-access
-  with g.as_default(), ops.name_scope(None, "zeros_like", [tensor]) as name:
-    tensor = ops.convert_to_tensor(tensor, name="tensor")
-    dtype = tensor.dtype.base_dtype
-    dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
-    op = g.create_op("ZerosLike", [tensor], [dtype], input_types=[dtype],
-                     attrs={"T": dtype_value}, name=name)
-  result, = op.outputs
-  return result
-
-
 def graph_placeholder(dtype, shape, name=None):
-  """Graph-only version of tf.placeholder(), for internal use only."""
+  """Graph-only version of tf.compat.v1.placeholder(), for internal use only."""
   dtype = dtype.base_dtype
   dtype_value = attr_value_pb2.AttrValue(type=dtype.as_datatype_enum)
   if isinstance(shape, (list, tuple)):
     shape = tensor_shape.TensorShape(shape)
   shape = attr_value_pb2.AttrValue(shape=shape.as_proto())
   g = ops.get_default_graph()
-  with ops.name_scope(name, "placeholder", []) as name:
-    op = g.create_op("Placeholder", [], [dtype], input_types=[],
-                     attrs={"dtype": dtype_value, "shape": shape}, name=name)
+  op = g._create_op_internal(  # pylint: disable=protected-access
+      "Placeholder", [], [dtype], input_types=[],
+      attrs={"dtype": dtype_value, "shape": shape}, name=name)
   result, = op.outputs
   return result

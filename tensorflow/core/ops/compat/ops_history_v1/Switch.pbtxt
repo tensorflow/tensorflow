@@ -1,0 +1,23 @@
+op {
+  name: "Switch"
+  input_arg {
+    name: "data"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "pred"
+    type: DT_BOOL
+  }
+  output_arg {
+    name: "output_false"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output_true"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}

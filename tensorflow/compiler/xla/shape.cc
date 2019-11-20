@@ -141,6 +141,11 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
     }
   }
 
+  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
+    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
+    return false;
+  }
+
   if (!ignore_layout_) {
     if (lhs.layout().format() != rhs.layout().format()) {
       VLOG(3) << "CompareShapes: lhs layout format != rhs layout format";
@@ -154,16 +159,14 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       if (ignore_element_size_in_layout_) {
         equal.IgnoreElementSize();
       }
+      if (ignore_memory_space_in_layout_) {
+        equal.IgnoreMemorySpace();
+      }
       if (!equal(lhs.layout(), rhs.layout())) {
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
         return false;
       }
     }
-  }
-
-  if (!ShapeUtil::SameDimensions(lhs, rhs)) {
-    VLOG(3) << "CompareShapes: lhs dimensions != rhs dimensions";
-    return false;
   }
 
   if (!ignore_dynamic_dimension_) {

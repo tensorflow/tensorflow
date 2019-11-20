@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
@@ -81,8 +82,16 @@ Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
     if (node2->op() != "ShuffleDataset") {
       continue;
     }
+
     // Use a more descriptive variable name now that we know the node type.
     const NodeDef& shuffle_node = *node2;
+
+    // TODO(b/129712758): Remove when the fused kernel supports disabling
+    // reshuffling for each iteration.
+    if (HasNodeAttr(shuffle_node, "reshuffle_each_iteration") &&
+        !shuffle_node.attr().at("reshuffle_each_iteration").b()) {
+      continue;
+    }
 
     NodeDef* shuffle_and_repeat_node =
         graph.AddNode(make_shuffle_and_repeat_node(shuffle_node, repeat_node));

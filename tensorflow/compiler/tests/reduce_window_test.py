@@ -32,7 +32,7 @@ class ReduceWindowTest(xla_test.XLATestCase):
   """Test cases for xla.reduce_window."""
 
   def _reduce_window(self, operand, init, reducer, **kwargs):
-    with self.cached_session():
+    with self.session():
       placeholder = array_ops.placeholder(operand.dtype)
       with self.test_scope():
         output = xla.reduce_window(placeholder, init, reducer, **kwargs)

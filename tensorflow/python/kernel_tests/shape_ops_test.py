@@ -496,6 +496,8 @@ class TileTest(test.TestCase, parameterized.TestCase):
         "complex64": (dtypes.complex64, complex),
         "complex128": (dtypes.complex128, complex),
         "uint8": (dtypes.uint8, int),
+        "int8": (dtypes.int8, int),
+        "int16": (dtypes.int16, int),
         "int32": (dtypes.int32, int),
         "int64": (dtypes.int64, int),
         bytes: (dtypes.string, bytes)

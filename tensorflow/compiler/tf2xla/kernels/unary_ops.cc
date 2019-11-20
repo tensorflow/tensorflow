@@ -82,12 +82,7 @@ XLAJIT_MAKE_UNARY(Round, xla::RoundToEven(x));
 
 XLAJIT_MAKE_UNARY(Rsqrt, xla::Rsqrt(x));
 
-// Expresses sigmoid as a rescaled tanh: sigmoid(x) == (tanh(x/2) + 1) / 2.
-xla::XlaOp Sigmoid(xla::XlaOp x) {
-  auto half = xla::ScalarLike(x, 0.5);
-  return half + half * xla::Tanh(half * x);
-}
-XLAJIT_MAKE_UNARY(Sigmoid, Sigmoid(x));
+XLAJIT_MAKE_UNARY(Sigmoid, xla::Logistic(x));
 
 // Returns 0 if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
 XLAJIT_MAKE_UNARY(Sign,
@@ -118,6 +113,8 @@ XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
 XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));
 XLAJIT_MAKE_UNARY(Lgamma, xla::Lgamma(x));
 XLAJIT_MAKE_UNARY(Digamma, xla::Digamma(x));
+XLAJIT_MAKE_UNARY(BesselI0e, xla::BesselI0e(x));
+XLAJIT_MAKE_UNARY(BesselI1e, xla::BesselI1e(x));
 
 }  // namespace
 }  // namespace tensorflow
