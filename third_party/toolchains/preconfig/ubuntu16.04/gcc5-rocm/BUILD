@@ -122,7 +122,7 @@ cc_toolchain_config(
         "-ffunction-sections",
         "-fdata-sections",
     ],
-    opt_link_flags = ["-Wl,--gc-sections"],
+    opt_link_flags = [],
     supports_start_end_lib = True,
     target_libc = "local",
     target_system_name = "local",
