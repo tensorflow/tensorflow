@@ -74,3 +74,84 @@ func @iota(%result: memref<10xi32>) {
   tensor_store %tensor_result, %result : memref<10xi32>
   "xla_lhlo.terminator"() : () -> ()
 }
+
+// CHECK-LABEL: func @abs
+func @abs(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.abs"(%tensor_operand) {name = "abs"}
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.abs"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @ceil
+func @ceil(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.ceil"(%tensor_operand) {name = "ceil"}
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.ceil"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @convert
+func @convert(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.convert"(%tensor_operand) {name = "convert"}
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.convert"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @cos
+func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.cos"(%tensor_operand) {name = "cos"}
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.cos"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @neg
+func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.neg"(%tensor_operand) {name = "neg"}
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.neg"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @sign
+func @sign(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.sign"(%tensor_operand) {name = "sign"}
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.sign"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @tanh
+func @tanh(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "xla_hlo.tanh"(%tensor_operand) {name = "tanh"}
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.tanh"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
+
+// CHECK-LABEL: func @remainder
+func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_lhs = tensor_load %lhs : memref<2x2xf32>
+  %tensor_rhs = tensor_load %rhs : memref<2x2xf32>
+  %tensor_result = "xla_hlo.remainder"(%tensor_lhs, %tensor_rhs) {name = "remainder"}
+      : (tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
+  // CHECK-NEXT: "xla_lhlo.remainder"(%{{.*}}, %{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  "xla_lhlo.terminator"() : () -> ()
+}
