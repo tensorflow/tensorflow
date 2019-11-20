@@ -15,8 +15,14 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/examples/hello_world/output_handler.h"
 
-void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
+namespace {
+ tflite::MicroErrorReporter micro_result_reporter;
+ tflite::ErrorReporter* result_reporter = &micro_result_reporter;
+}
+
+void HandleOutput(float x_value,
                   float y_value) {
+  
   // Log the current X and Y values
-  error_reporter->Report("x_value: %f, y_value: %f\n", x_value, y_value);
+  result_reporter->Report("x_value: %f, y_value: %f\n", x_value, y_value);
 }
