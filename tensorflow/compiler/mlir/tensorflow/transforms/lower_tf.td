@@ -119,3 +119,16 @@ def LowerL2LossOp :
 def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
              (TF_ConstOp (GetScalarOfType<0> $input)))>;
+
+//===----------------------------------------------------------------------===//
+// TanhGrad op patterns.
+//===----------------------------------------------------------------------===//
+
+// grad = dy * (1 - y**2)
+
+// TODO(hinsu): Support complex input types.
+def LowerTanhGradOp :
+  Pat<(TF_TanhGradOp TF_FpTensor:$y, TF_FpTensor:$dy),
+      (TF_MulOp $dy,
+                (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
+                          (TF_SquareOp $y)))>;
