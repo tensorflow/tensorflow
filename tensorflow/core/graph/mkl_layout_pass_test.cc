@@ -2000,7 +2000,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_ConstInp) {
             "A->D;B->D:1;C->D:2;D->E");
 }
 
-TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_MinFirst) {
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_MinFirst) {
   InitGraph(
       "node { name: 'A' op: 'Input' } "
       "node { name: 'B' op: 'Const' "
@@ -2021,8 +2021,11 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_MinFirst) {
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
-            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
-            "A->D;B->D:1;C->D:2;D->E");
+            "A(Input);B(Const);C(Const);D(_MklQuantizeV2);DMT/_0(Const);DMT/"
+            "_1(Const);DMT/_2(Const);E(Zeta)|"
+            "A->D;A:control->DMT/_0:control;A:control->DMT/"
+            "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
+            "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
 }
 
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_NarrowRange_True) {
