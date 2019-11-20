@@ -516,7 +516,9 @@ tflite_micro_cc_test(
     deps = [
         ":all_ops_resolver",
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
         "//tensorflow/lite/kernels/internal:tensor",
     ],
