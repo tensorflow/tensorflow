@@ -3459,14 +3459,18 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "cuda_sparse",
-    srcs = ["cuda_sparse.cc"],
+    srcs = if_cuda(["cuda_sparse.cc"]) + if_rocm(["rocm_sparse.cc"]),
     hdrs = ["cuda_sparse.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/kernels:cuda_solvers",
+    ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-    ] + if_cuda(["@cub_archive//:cub"]),
+        "@cub_archive//:cub",
+    ]) + if_rocm([
+        "@local_config_rocm//rocm:hipsparse",
+    ]),
 )
 
 LINALG_DEPS = [
