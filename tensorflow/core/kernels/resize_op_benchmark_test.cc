@@ -51,7 +51,7 @@ static Graph* BM_Resize(const char* algorithm, int batches, int width,
 BM_ResizeDev(cpu, ResizeNearestNeighbor, 10, 499, 499);
 BM_ResizeDev(cpu, ResizeBilinear, 10, 499, 499);
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 BM_ResizeDev(gpu, ResizeNearestNeighbor, 10, 499, 499);
 BM_ResizeDev(gpu, ResizeBilinear, 10, 499, 499);
 #endif

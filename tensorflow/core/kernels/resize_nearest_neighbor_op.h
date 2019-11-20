@@ -28,8 +28,7 @@ template <typename Device, typename T, bool half_pixel_centers,
 struct ResizeNearestNeighbor {
   bool operator()(const Device& d, typename TTypes<T, 4>::ConstTensor input,
                   const float height_scale, const float width_scale,
-                  typename TTypes<T, 4>::Tensor output,
-                  OpKernelContext* context = NULL);
+                  typename TTypes<T, 4>::Tensor output);
 };
 
 template <typename Device, typename T, bool half_pixel_centers,
