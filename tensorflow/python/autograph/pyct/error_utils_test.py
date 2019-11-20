@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for errors module."""
+"""Tests for error_utils module."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import re
 
-from tensorflow.python.autograph.pyct import errors
+from tensorflow.python.autograph.pyct import error_utils
 from tensorflow.python.platform import test
 
 
@@ -31,7 +31,7 @@ class ErrorMetadataBaseTest(test.TestCase):
     class CustomError(Exception):
       pass
 
-    em = errors.ErrorMetadataBase(
+    em = error_utils.ErrorMetadataBase(
         callsite_tb=(),
         cause_metadata=None,
         cause_message='test message',
@@ -47,7 +47,7 @@ class ErrorMetadataBaseTest(test.TestCase):
       def __init__(self):
         super(CustomError, self).__init__('test_message')
 
-    em = errors.ErrorMetadataBase(
+    em = error_utils.ErrorMetadataBase(
         callsite_tb=(),
         cause_metadata=None,
         cause_message='test message',
@@ -61,7 +61,7 @@ class ErrorMetadataBaseTest(test.TestCase):
         ('/path/two.py', 171, 'test_fn_2', 'test code'),
     ]
     cause_message = 'Test message'
-    em = errors.ErrorMetadataBase(
+    em = error_utils.ErrorMetadataBase(
         callsite_tb=callsite_tb,
         cause_metadata=None,
         cause_message=cause_message,
