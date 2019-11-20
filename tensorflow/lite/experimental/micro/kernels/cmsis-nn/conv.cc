@@ -35,7 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 64;
+constexpr int kMaxChannels = 256;
 
 const int kTensorNotAllocated = -1;
 
@@ -169,7 +169,7 @@ TfLiteStatus EvalQuantizedPerChannel(
   RuntimeShape output_shape = GetTensorShape(output);
   RuntimeShape bias_shape = GetTensorShape(bias);
 
-  // TODO(b/130439627): Use calculated value for clamping.
+  // Set min and max value of the output.
   const int32 output_activation_min = std::numeric_limits<int8_t>::min();
   const int32 output_activation_max = std::numeric_limits<int8_t>::max();
 
@@ -285,7 +285,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int output_height = output->dims->data[1];
 
   OpData data;
-  if (input->type != kTfLiteFloat32) {
+
+  // All per-channel quantized tensors need valid zero point and scale arrays.
+  if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -294,6 +296,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             filter->quantization.params);
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context, affine_quantization->zero_point);
+    // Conv is quantized along dimension 0:
+    // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->scale->size);
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->zero_point->size);
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(
