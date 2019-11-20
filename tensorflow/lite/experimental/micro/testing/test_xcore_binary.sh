@@ -32,11 +32,9 @@ mkdir -p ${MICRO_LOG_PATH}
 SCRIPT_PATH="`dirname \"$BASH_SOURCE\"`"
 SCRIPT_PATH="`( cd \"$SCRIPT_PATH\" && pwd )`"
 # pushd ./tensorflow/lite/experimental/micro/tools/make/downloads/xtimecomposer/ && source SetEnv && popd
-# XSIM_PATH="tensorflow/lite/experimental/micro/tools/make/downloads/xtimecomposer/bin/xsim"
-XSIM_FLAGS="--warn-resources --warn-links --warn-stack"
+XSIM_PATH="tensorflow/lite/experimental/micro/tools/make/downloads/xtimecomposer/bin/xsim"
+XSIM_FLAGS="--stats"
 #TODO Check that tools versions all line up with one another and with this repo
-xcc --version
-xsim --version
 xsim $1 ${XSIM_FLAGS} 2>&1 | tee ${MICRO_LOG_FILENAME}
 
 
