@@ -100,14 +100,15 @@ def elu(x, alpha=1.0):
 
   Example Usage:
 
-  ```python3
-  model = models.Sequential()
-  model.add(layers.Conv2D(32, (3, 3), activation='elu', input_shape=(28, 28, 1)))
-  model.add(layers.MaxPooling2D((2, 2)))
-  model.add(layers.Conv2D(64, (3, 3), activation='elu'))
-  model.add(layers.MaxPooling2D((2, 2)))
-  model.add(layers.Conv2D(64, (3, 3), activation='elu'))
-  ```
+>>> from tensorflow.keras import models, layers
+>>> model = models.Sequential()
+>>> model.add(layers.Conv2D(32, (3, 3), activation='elu', input_shape=(28, 28, 1)))
+>>> model.add(layers.MaxPooling2D((2, 2)))
+>>> model.add(layers.Conv2D(64, (3, 3), activation='elu'))
+>>> model.add(layers.MaxPooling2D((2, 2)))
+>>> model.add(layers.Conv2D(64, (3, 3), activation='elu'))
+>>> model
+<tensorflow.python.keras.engine.sequential.Sequential object ...>
 
   Arguments:
       x: Input tensor.
