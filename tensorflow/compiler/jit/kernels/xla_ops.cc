@@ -326,8 +326,6 @@ static Status CompileToLocalExecutable(
   }
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
-  compile_options.resolve_compile_time_constants =
-      !GetXlaOpsCommonFlags().tf_xla_noresolve_compile_time_constants;
   // Optimization: where possible, have the computation return a naked array
   // rather than a one-element tuple.
   compile_options.always_return_tuple = false;

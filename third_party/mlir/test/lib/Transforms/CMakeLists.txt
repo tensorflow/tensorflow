@@ -8,6 +8,7 @@ add_llvm_library(MLIRTestTransforms
   TestLowerVectorTransfers.cpp
   TestOpaqueLoc.cpp
   TestMemRefStrideCalculation.cpp
+  TestVectorToVectorConversion.cpp
   TestVectorizationUtils.cpp
 
   ADDITIONAL_HEADER_DIRS

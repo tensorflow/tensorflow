@@ -39,7 +39,7 @@ export TF2_BEHAVIOR=1
 export PYTHON_BIN_PATH=$(which python3.7)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
-tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1)"
+tag_filters="-no_oss,-oss_serial,-nomac,-no_mac$(maybe_skip_v1),-gpu,-tpu,-benchmark-test"
 
 # Get the default test targets for bazel.
 source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh

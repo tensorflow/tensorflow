@@ -19,6 +19,7 @@
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 include "mlir/Analysis/InferTypeOpInterface.td"
 
@@ -993,6 +994,19 @@ def PolyForOp : TEST_Op<"polyfor">
 
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
+}
+
+//===----------------------------------------------------------------------===//
+// Test OpAsmInterface.
+
+def AsmInterfaceOp : TEST_Op<"asm_interface_op",
+    [DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
+  let results = (outs AnyType:$firstResult, Variadic<AnyType>:$middleResults,
+                      AnyType);
+}
+
+def AsmDialectInterfaceOp : TEST_Op<"asm_dialect_interface_op"> {
+  let results = (outs AnyType);
 }
 
 #endif // TEST_OPS

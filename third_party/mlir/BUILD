@@ -43,6 +43,26 @@ cc_library(
     textual_hdrs = ["include/mlir/IR/DialectSymbolRegistry.def"],
 )
 
+gentbl(
+    name = "OpAsmInterfacesIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-interface-decls",
+            "include/mlir/IR/OpAsmInterface.h.inc",
+        ),
+        (
+            "-gen-op-interface-defs",
+            "include/mlir/IR/OpAsmInterface.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/IR/OpAsmInterface.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+    ],
+)
+
 cc_library(
     name = "IR",
     srcs = [
@@ -122,6 +142,7 @@ cc_library(
         ":CallOpInterfacesIncGen",
         ":DialectSymbolRegistry",
         ":InferTypeOpInterfaceIncGen",
+        ":OpAsmInterfacesIncGen",
         ":Support",
         "@llvm//:support",
     ],
@@ -272,6 +293,7 @@ filegroup(
     srcs = [
         "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Dialect/StandardOps/Ops.td",
+        "include/mlir/IR/OpAsmInterface.td",
         ":OpBaseTdFiles",
     ],
 )
@@ -2261,24 +2283,46 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "VectorTransformPatterns",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Dialect/VectorOps/VectorTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
+    td_srcs = [
+        "include/mlir/IR/OpBase.td",
+        ":StdOpsTdFiles",
+        ":VectorOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "VectorConversions",
     srcs = [
         "lib/Conversion/VectorConversions/VectorToLLVM.cpp",
         "lib/Conversion/VectorConversions/VectorToLoops.cpp",
+        "lib/Conversion/VectorConversions/VectorToVector.cpp",  # TODO(transforms?)
     ],
     hdrs = [
         "include/mlir/Conversion/VectorConversions/VectorConversions.h",
     ],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
         ":Pass",
+        ":StandardOps",
+        ":Support",
         ":Transforms",
         ":VectorOps",
+        ":VectorTransformPatterns",
         "@llvm//:core",
         "@llvm//:support",
     ],
@@ -2297,6 +2341,7 @@ exports_files(
         "include/mlir/Analysis/CallInterfaces.td",
         "include/mlir/Transforms/InliningUtils.h",
         "include/mlir/IR/OpBase.td",
+        "include/mlir/IR/OpAsmInterface.td",
         "include/mlir/Analysis/CallInterfaces.h",
     ],
     visibility = ["@local_config_mlir//:friends"],

@@ -38,6 +38,7 @@ gentbl(
     td_file = "lib/TestDialect/TestOps.td",
     td_srcs = [
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@local_config_mlir//:include/mlir/IR/OpAsmInterface.td",
         "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
         "@local_config_mlir//:include/mlir/Analysis/InferTypeOpInterface.td",
     ],
@@ -107,6 +108,7 @@ cc_library(
         "lib/Transforms/TestLowerVectorTransfers.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestOpaqueLoc.cpp",
+        "lib/Transforms/TestVectorToVectorConversion.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],

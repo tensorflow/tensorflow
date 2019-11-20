@@ -181,7 +181,7 @@ struct MaterializationState {
   SmallVector<int64_t, 8> hwVectorSize;
   VectorType superVectorType;
   VectorType hwVectorType;
-  SmallVector<unsigned, 8> hwVectorInstance;
+  SmallVector<int64_t, 8> hwVectorInstance;
   DenseMap<Value *, Value *> *substitutionsMap;
 };
 
@@ -206,24 +206,24 @@ struct MaterializeVectorsPass : public FunctionPass<MaterializeVectorsPass> {
 /// returns the distance, in number of elements, between a slice in a dimension
 /// and the next slice in the same dimension.
 ///   e.g. shape[3, 4, 5] -> strides[20, 5, 1]
-static SmallVector<unsigned, 8> makeStrides(ArrayRef<unsigned> shape) {
-  SmallVector<unsigned, 8> tmp;
+static SmallVector<int64_t, 8> makeStrides(ArrayRef<int64_t> shape) {
+  SmallVector<int64_t, 8> tmp;
   tmp.reserve(shape.size());
-  unsigned running = 1;
+  int64_t running = 1;
   for (auto rit = shape.rbegin(), reit = shape.rend(); rit != reit; ++rit) {
     assert(*rit > 0 && "size must be greater than 0 along all dimensions of "
                        "shape");
     tmp.push_back(running);
     running *= *rit;
   }
-  return SmallVector<unsigned, 8>(tmp.rbegin(), tmp.rend());
+  return SmallVector<int64_t, 8>(tmp.rbegin(), tmp.rend());
 }
 
 /// Given a shape with sizes greater than 0 along all dimensions, returns the
 /// delinearized components of linearIndex along shape.
-static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
-                                            ArrayRef<unsigned> shape) {
-  SmallVector<unsigned, 8> res;
+static SmallVector<int64_t, 8> delinearize(int64_t linearIndex,
+                                           ArrayRef<int64_t> shape) {
+  SmallVector<int64_t, 8> res;
   res.reserve(shape.size());
   auto strides = makeStrides(shape);
   for (unsigned idx = 0; idx < strides.size(); ++idx) {
@@ -333,7 +333,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// vectorization trait at the op level directly.
 static SmallVector<mlir::Value *, 8>
 reindexAffineIndices(OpBuilder b, VectorType hwVectorType,
-                     ArrayRef<unsigned> hwVectorInstance,
+                     ArrayRef<int64_t> hwVectorInstance,
                      ArrayRef<Value *> memrefIndices) {
   auto vectorShape = hwVectorType.getShape();
   assert(hwVectorInstance.size() >= vectorShape.size());
@@ -483,7 +483,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
 /// reindexAffineIndices.
 static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
                               VectorType hwVectorType,
-                              ArrayRef<unsigned> hwVectorInstance,
+                              ArrayRef<int64_t> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
       map(makePtrDynCaster<Value>(), read.indices());
@@ -507,7 +507,7 @@ static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
 /// reindexAffineIndices.
 static Operation *instantiate(OpBuilder b, VectorTransferWriteOp write,
                               VectorType hwVectorType,
-                              ArrayRef<unsigned> hwVectorInstance,
+                              ArrayRef<int64_t> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
       map(makePtrDynCaster<Value>(), write.indices());

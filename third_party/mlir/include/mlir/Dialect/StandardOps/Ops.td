@@ -26,6 +26,7 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 
 def Std_Dialect : Dialect {
@@ -580,7 +581,8 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
   let hasCanonicalizer = 1;
 }
 
-def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
+def ConstantOp : Std_Op<"constant",
+    [NoSideEffect, DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
   let summary = "constant";
 
   let arguments = (ins AnyAttr:$value);

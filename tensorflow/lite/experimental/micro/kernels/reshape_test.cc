@@ -13,9 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
+
+#include <initializer_list>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
+#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
+#include "tensorflow/lite/experimental/micro/micro_utils.h"
+#include "tensorflow/lite/experimental/micro/test_helpers.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -24,11 +32,25 @@ namespace tflite {
 namespace testing {
 namespace {
 
-TfLiteReshapeParams create_params(int* shape_data) {
+TfLiteReshapeParams create_params(int size, const int shape_data[]) {
   TfLiteReshapeParams op_params = {};
-  op_params.num_dimensions = shape_data[0];
-  for (int i = 0; i < shape_data[0]; ++i)
-    op_params.shape[i] = shape_data[i + 1];
+  if (size > TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT) {
+    MicroErrorReporter micro_reporter;
+    ErrorReporter* error_reporter = &micro_reporter;
+    error_reporter->Report(
+        "WARNING: Input dimenstion count (%d) is more than the max supported "
+        "(%d). Truncating the input.",
+        size, TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT);
+
+    op_params.num_dimensions = TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT;
+  } else {
+    op_params.num_dimensions = size;
+  }
+
+  for (int i = 0; i < op_params.num_dimensions; ++i) {
+    op_params.shape[i] = shape_data[i];
+  }
+
   return op_params;
 }
 
@@ -67,21 +89,21 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
   const TfLiteRegistration* registration =
       resolver.FindOp(tflite::BuiltinOperator_RESHAPE, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+
   TfLiteReshapeParams builtin_data =
-      create_params(reinterpret_cast<int*>(output_tensor->dims));
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
-  size_t init_data_size = 0;
+      create_params(output_tensor->dims->size, output_tensor->dims->data);
+
   void* user_data = nullptr;
   node.temporaries = nullptr;
   node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
+  node.builtin_data = &builtin_data;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
   node.delegate = nullptr;
 
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(registration->init, nullptr);
+  TF_LITE_MICRO_EXPECT_EQ(registration->free, nullptr);
+
   if (registration->prepare) {
     TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
   }
@@ -91,9 +113,6 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
     return;
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
 
   const int output_dims_count = ElementCount(*output_tensor->dims);
   const T* output_data = GetTensorData<T>(output_tensor);
