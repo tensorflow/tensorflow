@@ -743,7 +743,6 @@ distribute_py_test(
     name = "input_lib_test",
     srcs = ["input_lib_test.py"],
     main = "input_lib_test.py",
-    python_version = "PY3",
     shard_count = 10,
     deps = [
         ":collective_all_reduce_strategy",
