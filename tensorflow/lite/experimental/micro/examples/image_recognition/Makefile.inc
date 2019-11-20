@@ -1,3 +1,6 @@
+$(eval $(call add_third_party_download,$(IMAGE_RECOGNITION_MODEL_URL),$(IMAGE_RECOGNITION_MODEL_MD5),image_recognition_model,))
+$(eval $(call add_third_party_download,$(CIFAR10_DATASET_URL),$(CIFAR10_DATASET_MD5),cifar10,patch_cifar10_dataset))
+
 IMAGE_RECOGNITION_HDRS := \
 tensorflow/lite/experimental/micro/examples/image_recognition/image_recognition_model.h \
 tensorflow/lite/experimental/micro/examples/image_recognition/image_provider.h \
@@ -20,10 +23,6 @@ IMAGE_RECOGNITION_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/image_recognition/image_recognition_model.h \
 tensorflow/lite/experimental/micro/examples/image_recognition/util.h
 
-CIFAR10_DATASET_URL="https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
-CIFAR10_DATASET_MD5="c32a1d4ab5d03f1284b67883e8d87530"
-$(eval $(call add_third_party_download,$(CIFAR10_DATASET_URL),$(CIFAR10_DATASET_MD5),cifar10,patch_cifar10_dataset))
-
 include $(wildcard tensorflow/lite/experimental/micro/examples/image_recognition/*/Makefile.inc)
 
 
@@ -35,3 +34,6 @@ endif
 
 $(eval $(call microlite_test,image_recognition,\
 $(IMAGE_RECOGNITION_SRCS),$(IMAGE_RECOGNITION_HDRS)))
+
+$(eval $(call microlite_test,image_recognition_test,\
+$(IMAGE_RECOGNITION_TEST_SRCS),$(IMAGE_RECOGNITION_TEST_HDRS)))
