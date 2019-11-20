@@ -199,12 +199,6 @@ class XlaCompiler {
     // the input and output signatures match.
     bool return_updated_values_for_all_resources = false;
 
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
-
     // If 'always_return_tuple' is true, then the output of a computation will
     // always be a tuple. Otherwise, a single-element output will not be wrapped
     // in a tuple.
