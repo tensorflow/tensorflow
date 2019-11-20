@@ -2663,6 +2663,20 @@ static LogicalResult verify(SubViewOp op) {
     return op.emitError("invalid to specify dynamic sizes when subview result "
                         "type is statically shaped and viceversa");
   }
+  if (op.getNumSizes() > 0) {
+    // Verify that non if the shape values of the result type are static.
+    if (llvm::any_of(subViewType.getShape(), [](int64_t dim) {
+          return dim != ShapedType::kDynamicSize;
+        })) {
+      // TODO: This is based on the assumption that number of size arguments are
+      // either 0, or the rank of the result type. It is possible to have more
+      // fine-grained verification where only particular dimensions are
+      // dynamic. That probably needs further changes to the shape op
+      // specification.
+      return op.emitError("expected shape of result type to be fully dynamic "
+                          "when sizes are specified");
+    }
+  }
 
   // Verify that if dynamic offsets are specified or base memref has dynamic
   // offset or base memref has dynamic strides, then the subview offset is
