@@ -1416,9 +1416,9 @@ Status Converter::BuildCudaEngine(
   TrtUniquePtrType<nvinfer1::IBuilderConfig> builder_config(
       trt_builder_->createBuilderConfig());
   builder_config->setMaxWorkspaceSize(max_workspace_size_bytes);
-  if (precision_mode == TrtPrecisionMode::FP16) {
+  if (precision_mode_ == TrtPrecisionMode::FP16) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-  } else if (precision_mode == TrtPrecisionMode::INT8) {
+  } else if (precision_mode_ == TrtPrecisionMode::INT8) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     builder_config->setFlag(nvinfer1::BuilderFlag::kINT8);
     if (use_calibration) {
