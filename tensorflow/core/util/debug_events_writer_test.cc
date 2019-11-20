@@ -581,7 +581,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferNoFlush) {
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
-  // of the cyclic buffer, in a serial fashion.
+  // of the circular buffer, in a serial fashion.
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
@@ -603,7 +603,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
-  // of the cyclic buffer, in a serial fashion.
+  // of the circular buffer, in a serial fashion.
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     Execution* execution = new Execution();
     execution->set_op_type("Log");
@@ -625,7 +625,7 @@ TEST_F(DebugEventsWriterTest, WriteExecutionWithCyclicBufferFlush) {
               kCyclicBufferSize + i);
   }
 
-  // Second, write more than the capacity of the cyclic buffer,
+  // Second, write more than the capacity of the circular buffer,
   // in a concurrent fashion.
   thread::ThreadPool* thread_pool =
       new thread::ThreadPool(Env::Default(), "test_pool", 8);
@@ -675,7 +675,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferNoFlush) {
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
-  // of the cyclic buffer, in a serial fashion.
+  // of the circular buffer, in a serial fashion.
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
@@ -696,7 +696,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
   TF_ASSERT_OK(writer->Init());
 
   // First, try writing and flushing more debug events than the capacity
-  // of the cyclic buffer, in a serial fashion.
+  // of the circular buffer, in a serial fashion.
   for (size_t i = 0; i < kCyclicBufferSize * 2; ++i) {
     GraphExecutionTrace* trace = new GraphExecutionTrace();
     trace->set_tfdbg_context_id(strings::Printf("graph_%.2ld", i));
@@ -716,7 +716,7 @@ TEST_F(DebugEventsWriterTest, WriteGrahExecutionTraceWithCyclicBufferFlush) {
               strings::Printf("graph_%.2ld", i + kCyclicBufferSize));
   }
 
-  // Second, write more than the capacity of the cyclic buffer,
+  // Second, write more than the capacity of the circular buffer,
   // in a concurrent fashion.
   thread::ThreadPool* thread_pool =
       new thread::ThreadPool(Env::Default(), "test_pool", 8);

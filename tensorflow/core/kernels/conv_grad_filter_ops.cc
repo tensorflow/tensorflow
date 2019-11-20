@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
@@ -240,8 +241,8 @@ struct LaunchXsmmBackwardFilter<CPUDevice, float> {
     desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
     desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
-
+    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
     if (!CanUseXsmmConv2D(desc, data_format)) {
       return false;
     }

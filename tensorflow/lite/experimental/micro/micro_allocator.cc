@@ -15,11 +15,16 @@ limitations under the License.
 
 #include "tensorflow/lite/experimental/micro/micro_allocator.h"
 
+#include <cstddef>
+
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/api/tensor_utils.h"
+#include "tensorflow/lite/experimental/micro/compatibility.h"
 #include "tensorflow/lite/experimental/micro/memory_helpers.h"
 #include "tensorflow/lite/experimental/micro/memory_planner/greedy_memory_planner.h"
+#include "tensorflow/lite/experimental/micro/simple_memory_allocator.h"
 
 namespace tflite {
 
@@ -36,6 +41,28 @@ struct TensorInfo {
 // We align tensor buffers to 16-byte boundaries, since this is a common
 // requirement for SIMD extensions.
 constexpr int kBufferAlignment = 16;
+
+class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
+ public:
+  explicit MicroBuiltinDataAllocator(SimpleMemoryAllocator* memory_allocator)
+      : memory_allocator_(memory_allocator) {}
+
+  void* Allocate(size_t size) override {
+    // Align to an address that is proper for all primitive types, but no more
+    // than the size.
+    return memory_allocator_->AllocateFromTail(
+        size, std::min(size, alignof(std::max_align_t)));
+  }
+  void Deallocate(void* data) override {
+    // Do not deallocate, builtin data needs to be available for the life time
+    // of the model.
+  }
+
+ private:
+  SimpleMemoryAllocator* memory_allocator_;
+
+  TF_LITE_REMOVE_VIRTUAL_DELETE
+};
 
 }  // namespace
 
@@ -60,13 +87,16 @@ MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
   context_->tensors_size = tensors_->size();
   context_->tensors =
       reinterpret_cast<TfLiteTensor*>(memory_allocator_.AllocateFromTail(
-          sizeof(TfLiteTensor) * context_->tensors_size, 4));
+          sizeof(TfLiteTensor) * context_->tensors_size,
+          alignof(TfLiteTensor)));
 
   // Null all inputs so we can later perform a null check to avoid re-allocating
   // registered pre-allocated inputs.
   for (size_t i = 0; i < context_->tensors_size; ++i) {
     context_->tensors[i].data.raw = nullptr;
   }
+
+  active_ = true;
 }
 
 TfLiteStatus MicroAllocator::RegisterPreallocatedInput(uint8_t* buffer,
@@ -86,17 +116,120 @@ TfLiteStatus MicroAllocator::RegisterPreallocatedInput(uint8_t* buffer,
                                  &context_->tensors[tensor_index], buffer);
 }
 
-TfLiteStatus MicroAllocator::AllocateTensors() {
-  const size_t tensors_size = tensors_->size();
+TfLiteStatus MicroAllocator::AllocateNodeAndRegistrations(
+    const OpResolver& op_resolver,
+    NodeAndRegistration** node_and_registrations) {
+  if (!active_) {
+    return kTfLiteError;
+  }
 
-  // It would be better not to allocate this memory for the lifetime of the
-  // model, but we don't have a straightforward way to avoid it.
-  TensorInfo* tensor_info =
-      reinterpret_cast<TensorInfo*>(memory_allocator_.AllocateFromTail(
-          sizeof(TensorInfo) * tensors_size, sizeof(TensorInfo)));
+  auto* output =
+      reinterpret_cast<NodeAndRegistration*>(memory_allocator_.AllocateFromTail(
+          sizeof(NodeAndRegistration) * operators_->size(),
+          alignof(NodeAndRegistration)));
+  if (output == nullptr) {
+    error_reporter_->Report(
+        "Failed to allocate memory for node_and_registrations.");
+    return kTfLiteError;
+  }
+  TfLiteStatus status = kTfLiteOk;
+  auto* opcodes = model_->operator_codes();
+  MicroBuiltinDataAllocator builtin_data_allocator(&memory_allocator_);
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    const auto* op = operators_->Get(i);
+    size_t index = op->opcode_index();
+    if (index < 0 || index >= opcodes->size()) {
+      error_reporter_->Report("Missing registration for opcode_index %d\n",
+                              index);
+      return kTfLiteError;
+    }
+    auto* opcode = (*opcodes)[index];
+    status = GetRegistrationFromOpCode(opcode, op_resolver, error_reporter_,
+                                       &(output[i].registration));
+    if (status != kTfLiteOk) {
+      error_reporter_->Report("Failed to get registration from op code % d\n ",
+                              opcode);
+      return status;
+    }
+    const auto* registration = output[i].registration;
+    if (registration == nullptr) {
+      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
+      return kTfLiteError;
+    }
+    BuiltinOperator op_type =
+        static_cast<BuiltinOperator>(registration->builtin_code);
+
+    if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
+      error_reporter_->Report(
+          "Unsupported behavior: found builtin operator %s with custom "
+          "options.\n",
+          EnumNameBuiltinOperator(op_type));
+      return kTfLiteError;
+    }
+
+    const char* custom_data = nullptr;
+    size_t custom_data_size = 0;
+    unsigned char* builtin_data = nullptr;
+    if (op->custom_options()) {
+      custom_data = reinterpret_cast<const char*>(op->custom_options()->data());
+      custom_data_size = op->custom_options()->size();
+    } else {
+      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
+                                        &builtin_data_allocator,
+                                        (void**)(&builtin_data)));
+    }
+
+    // Disregard const qualifier to workaround with existing API.
+    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
+    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
+
+    TfLiteNode* node = &(output[i].node);
+    node->inputs = inputs_array;
+    node->outputs = outputs_array;
+    // This is OK for now as temporary array is not in used.
+    // TODO(wangtz): Support scratch buffers.
+    node->temporaries = nullptr;
+    node->user_data = nullptr;  // Will be filled in after `init`
+    node->builtin_data = reinterpret_cast<void*>(builtin_data);
+    node->custom_initial_data = custom_data;
+    node->custom_initial_data_size = custom_data_size;
+    node->delegate = nullptr;
+  }
+  *node_and_registrations = output;
+  return kTfLiteOk;
+}
+
+TfLiteStatus MicroAllocator::FinishTensorAllocation() {
+  if (!active_) {
+    return kTfLiteError;
+  }
+
+  const size_t tensors_size = tensors_->size();
 
   const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers =
       model_->buffers();
+
+  // Initialize runtime tensors.
+  for (size_t i = 0; i < tensors_size; ++i) {
+    auto* runtime_tensor = &context_->tensors[i];
+    auto* flatbuffer_tensor = tensors_->Get(i);
+
+    // Preallocated inputs have already been set up earlier, so skip them.
+    const bool is_preallocated_input = (runtime_tensor->data.raw != nullptr);
+    if (!is_preallocated_input) {
+      TF_LITE_ENSURE_STATUS(InitializeRuntimeTensor(*flatbuffer_tensor, buffers,
+                                                    error_reporter_,
+                                                    runtime_tensor, nullptr));
+    }
+  }
+
+  // tensor_info is only used in this function.
+  auto tmp_allocator = memory_allocator_.CreateChildAllocator();
+  TensorInfo* tensor_info =
+      reinterpret_cast<TensorInfo*>(tmp_allocator.AllocateFromTail(
+          sizeof(TensorInfo) * tensors_size, alignof(TensorInfo)));
 
   // Set up the runtime data structures for all tensors.
   for (size_t i = 0; i < tensors_size; ++i) {
@@ -112,14 +245,6 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
       current->last_used = -1;
     }
     current->needs_allocating = false;
-    // Preallocated inputs have already been set up earlier, so skip them.
-    const bool is_preallocated_input =
-        (current->runtime_tensor->data.raw != nullptr);
-    if (!is_preallocated_input) {
-      TF_LITE_ENSURE_STATUS(InitializeRuntimeTensor(
-          *current->flatbuffer_tensor, buffers, error_reporter_,
-          current->runtime_tensor, nullptr));
-    }
   }
 
   // First go through the inputs and figure out if they need to be allocated.
@@ -181,8 +306,9 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
   uint8_t* aligned_arena = AlignPointerUp(arena_, kBufferAlignment);
   const size_t alignment_loss = (aligned_arena - arena_);
 
+  // Remaining arena size that memory planner can use for calculating offsets.
   int remaining_arena_size =
-      arena_size_ - (memory_allocator_.GetDataSize() + alignment_loss);
+      arena_size_ - (tmp_allocator.GetDataSize() + alignment_loss);
   GreedyMemoryPlanner planner(aligned_arena, remaining_arena_size);
 
   // Add the tensors to our allocation plan.
@@ -196,13 +322,18 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
                                                    error_reporter_));
       size_t aligned_bytes_required =
           AlignSizeUp(bytes_required, kBufferAlignment);
-      planner.AddBuffer(error_reporter_, aligned_bytes_required,
-                        current->first_created, current->last_used);
+      TF_LITE_ENSURE_STATUS(
+          planner.AddBuffer(error_reporter_, aligned_bytes_required,
+                            current->first_created, current->last_used));
     }
   }
 
+  // Actual size available for placing tensors. This includes memory held by the
+  // tensor info array, which will be released.
+  int actual_available_arena_size =
+      arena_size_ - (memory_allocator_.GetDataSize() + alignment_loss);
   // Make sure we have enough room.
-  if (planner.GetMaximumMemorySize() > remaining_arena_size) {
+  if (planner.GetMaximumMemorySize() > actual_available_arena_size) {
     error_reporter_->Report(
         "Arena size is too small for activation buffers. Needed %d but only %d "
         "was available.",
@@ -221,6 +352,13 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
       current->runtime_tensor->data.uint8 = aligned_arena + offset;
       ++planner_index;
     }
+  }
+
+  // Copy default value for variable tensors. Note that this will overwrite
+  // the arena planner data so GetOffsetForBuffer will return wrong
+  // result.
+  for (size_t i = 0; i < tensors_->size(); ++i) {
+    TensorInfo* current = &tensor_info[i];
     // Set default value for variable tensors:
     if (current->flatbuffer_tensor->is_variable()) {
       if (current->runtime_tensor->data.uint8 == nullptr) {
@@ -231,6 +369,7 @@ TfLiteStatus MicroAllocator::AllocateTensors() {
     }
   }
 
+  active_ = false;
   return kTfLiteOk;
 }
 
@@ -239,6 +378,10 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     ErrorReporter* error_reporter, TfLiteTensor* result,
     uint8_t* preallocated_buffer) {
+  if (!active_) {
+    return kTfLiteError;
+  }
+
   // Make sure the serialized type is one we know how to deal with, and convert
   // it from a flatbuffer enum into a constant used by the kernel C API.
   TF_LITE_ENSURE_STATUS(ConvertTensorType(flatbuffer_tensor.type(),
@@ -298,8 +441,8 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
   // form. We have to allocate memory for this.
   result->dims =
       reinterpret_cast<TfLiteIntArray*>(memory_allocator_.AllocateFromTail(
-          sizeof(int) * (flatbuffer_tensor.shape()->Length() + 1),
-          sizeof(int)));
+          TfLiteIntArrayGetSizeInBytes(flatbuffer_tensor.shape()->Length()),
+          alignof(TfLiteIntArray)));
   result->dims->size = flatbuffer_tensor.shape()->Length();
   for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
     result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
@@ -324,25 +467,27 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
     int channels = src_quantization->scale()->size();
     TfLiteAffineQuantization* quantization =
         reinterpret_cast<TfLiteAffineQuantization*>(
-            memory_allocator_.AllocateFromTail(sizeof(TfLiteAffineQuantization),
-                                               sizeof(int)));
-    int* zero_point_array =
-        reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
-            channels * sizeof(int) + sizeof(int), sizeof(int)));
-    int* scale_array =
-        reinterpret_cast<int*>(memory_allocator_.AllocateFromTail(
-            channels * sizeof(float) + sizeof(int), sizeof(int)));
-    zero_point_array[0] = channels;
-    scale_array[0] = channels;
-    int* zero_point_data = &zero_point_array[1];
-    float* scale_data = reinterpret_cast<float*>(&scale_array[1]);
+            memory_allocator_.AllocateFromTail(
+                sizeof(TfLiteAffineQuantization),
+                alignof(TfLiteAffineQuantization)));
+    quantization->zero_point =
+        reinterpret_cast<TfLiteIntArray*>(memory_allocator_.AllocateFromTail(
+            TfLiteIntArrayGetSizeInBytes(channels), alignof(TfLiteIntArray)));
+    quantization->scale =
+        reinterpret_cast<TfLiteFloatArray*>(memory_allocator_.AllocateFromTail(
+            TfLiteFloatArrayGetSizeInBytes(channels),
+            alignof(TfLiteFloatArray)));
+    quantization->zero_point->size = channels;
+    quantization->scale->size = channels;
+    int* zero_point_data = quantization->zero_point->data;
+    float* scale_data = quantization->scale->data;
     for (int i = 0; i < channels; i++) {
       zero_point_data[i] = src_quantization->zero_point()->Get(i);
       scale_data[i] = src_quantization->scale()->Get(i);
     }
-    quantization->scale = reinterpret_cast<TfLiteFloatArray*>(scale_array);
-    quantization->zero_point =
-        reinterpret_cast<TfLiteIntArray*>(zero_point_array);
+    // TODO(rocky): Need to add a micro_allocator test case that fails when
+    // this is not copied:
+    quantization->quantized_dimension = src_quantization->quantized_dimension();
 
     result->quantization = {kTfLiteAffineQuantization, quantization};
   }

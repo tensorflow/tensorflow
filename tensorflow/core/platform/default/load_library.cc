@@ -33,7 +33,12 @@ Status LoadLibrary(const char* library_filename, void** handle) {
 
 Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
                             void** symbol) {
-  *symbol = dlsym(handle, symbol_name);
+  // Check that the handle is not NULL to avoid dlsym's RTLD_DEFAULT behavior.
+  if (!handle) {
+    *symbol = nullptr;
+  } else {
+    *symbol = dlsym(handle, symbol_name);
+  }
   if (!*symbol) {
     return errors::NotFound(dlerror());
   }

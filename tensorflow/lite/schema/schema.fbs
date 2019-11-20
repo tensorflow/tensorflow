@@ -235,6 +235,7 @@ enum BuiltinOperator : byte {
   WHILE = 119,
   NON_MAX_SUPPRESSION_V4 = 120,
   NON_MAX_SUPPRESSION_V5 = 121,
+  SCATTER_ND = 122
 }
 
 // Options for the builtin operators.
@@ -334,7 +335,8 @@ union BuiltinOptions {
   WhileOptions,
   DepthToSpaceOptions,
   NonMaxSuppressionV4Options,
-  NonMaxSuppressionV5Options
+  NonMaxSuppressionV5Options,
+  ScatterNdOptions
 }
 
 enum Padding : byte { SAME, VALID }
@@ -371,6 +373,9 @@ table DepthwiseConv2DOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+  // `depth_multiplier` is redundant. It's used by CPU kernels in
+  // TensorFlow 2.0 or below, but ignored in versions above.
+  // See comments in lite/c/builtin_op_data.h for more details.
   depth_multiplier:int;
   fused_activation_function:ActivationFunctionType;
   // Parameters for DepthwiseConv version 2 or above.
@@ -810,6 +815,9 @@ table NonMaxSuppressionV4Options {
 }
 
 table NonMaxSuppressionV5Options {
+}
+
+table ScatterNdOptions {
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

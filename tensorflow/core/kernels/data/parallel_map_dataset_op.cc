@@ -285,9 +285,13 @@ class ParallelMapIterator : public DatasetBaseIterator {
   }
 
   string BuildTraceMeName() override {
-    // NOTE: We do not synchronize the following access to num_parallel_calls_
-    // to minimize the tracing overhead.
-    int64 parallelism = num_parallel_calls_->value;
+    int64 parallelism = -1;
+    // NOTE: We only set the parallelism value if the lock can be acquired right
+    // away to avoid introducing tracing overhead.
+    if (mu_->try_lock()) {
+      parallelism = num_parallel_calls_->value;
+      mu_->unlock();
+    }
     return strings::StrCat(this->prefix(), "#parallelism=", parallelism,
                            ",autotune=", autotune_, ",deterministic=", !sloppy_,
                            "#");
@@ -313,6 +317,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
         RecordStop(ctx);
         cond_var_->wait(l);
         RecordStart(ctx);
+      }
+      if (cancelled_) {
+        return errors::Cancelled("Iterator was cancelled");
       }
     }
     RecordStop(ctx);
@@ -551,6 +558,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
   // false, `result` will point to the result.
   bool ShouldWait(std::shared_ptr<InvocationResult>* result)
       EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    if (cancelled_) {
+      return false;
+    }
     if (sloppy_) {
       for (auto it = invocation_results_.begin();
            it != invocation_results_.end(); ++it) {

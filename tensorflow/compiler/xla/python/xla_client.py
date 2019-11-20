@@ -25,6 +25,7 @@ import inspect
 import itertools
 import os
 
+from absl import logging
 import numpy as np
 
 import six
@@ -213,12 +214,17 @@ def _get_local_backends():
 
   _local_backends = collections.OrderedDict()
   for name, factory in _local_backend_factories.items():
+    logging.vlog(2, "Initializing backend '%s'" % name)
     try:
       backend = factory()
     except RuntimeError:
-      # If the backend isn't built into the binary, or if it has no devices, we
-      # expect a RuntimeError.
-      continue
+      if name == 'cpu':
+        # We always expect CPU to initialize successfully.
+        raise
+      else:
+        # If the backend isn't built into the binary, or if it has no devices,
+        # we expect a RuntimeError.
+        continue
     _local_backends[name] = backend
   return _local_backends
 
@@ -268,6 +274,8 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
+bfloat16 = _xla.bfloat16_dtype()
+
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
     PrimitiveType.S8: np.dtype('int8'),
@@ -278,6 +286,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
     PrimitiveType.F64: np.dtype('float64'),
@@ -608,8 +617,7 @@ class Computation(object):
 #       sole, zero'th replica's output is returned instead, as a Buffer.
 #     """
 #
-# There are different implementations of Executable for the Local and XRT
-# backends.
+# There are different implementations of Executable for different backends.
 
 
 def execute_with_python_values(executable, arguments=(), backend=None):
@@ -1672,6 +1680,7 @@ _BINARY_OPS = [
     'ShiftRightLogical',
     'Atan2',
     'Complex',
+    'NextAfter',
 ]
 
 _OTHER_OPS = [

@@ -71,6 +71,10 @@ std::string DOTGraphTraits<mlir::Block *>::getNodeLabel(mlir::Operation *op,
   raw_string_ostream os(ostr);
   os << op->getName() << "\n";
 
+  if (!op->getLoc().isa<mlir::UnknownLoc>()) {
+    os << op->getLoc() << "\n";
+  }
+
   // Print resultant types
   mlir::interleaveComma(op->getResultTypes(), os);
   os << "\n";
@@ -89,6 +93,12 @@ std::string DOTGraphTraits<mlir::Block *>::getNodeLabel(mlir::Operation *op,
       os << std::string(elements.getType().getRank(), '[') << "..."
          << std::string(elements.getType().getRank(), ']') << " : "
          << elements.getType();
+      continue;
+    }
+
+    auto array = attr.second.dyn_cast<mlir::ArrayAttr>();
+    if (array && static_cast<int64_t>(array.size()) > elideIfLarger) {
+      os << "[...]";
       continue;
     }
 

@@ -260,7 +260,6 @@ class _GraphTensorArray(object):
       value.set_shape(self._element_shape[0].dims)
     return value
 
-  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayWrite", [self._handle, index, value]):
@@ -526,7 +525,6 @@ class _GraphTensorArrayV2(object):
           name=name)
       return value
 
-  @tf_should_use.should_use_result
   def write(self, index, value, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Write", [self._flow, index, value]):
@@ -640,7 +638,6 @@ class _GraphTensorArrayV2(object):
     else:
       return list_ops.tensor_list_length(input_handle=self._flow, name=name)
 
-  @tf_should_use.should_use_result
   def close(self, name=None):
     """See TensorArray."""
     return gen_control_flow_ops.no_op(name=name)
@@ -1139,6 +1136,7 @@ class TensorArray(object):
     """
     return self._implementation.read(index, name=name)
 
+  @tf_should_use.should_use_result(warn_in_eager=True)
   def write(self, index, value, name=None):
     """Write `value` into index `index` of the TensorArray.
 

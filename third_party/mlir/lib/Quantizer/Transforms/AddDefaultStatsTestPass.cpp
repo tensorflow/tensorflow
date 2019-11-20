@@ -81,7 +81,7 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
     APFloat minValue(-1.0f);
     APFloat maxValue(1.0f);
     ElementsAttr layerStats = DenseFPElementsAttr::get(
-        b.getTensorType({2}, b.getF32Type()), {minValue, maxValue});
+        RankedTensorType::get({2}, b.getF32Type()), {minValue, maxValue});
     auto statsOp = b.create<StatisticsOp>(func.getLoc(), arg, layerStats,
                                           nullptr, nullptr);
     arg->replaceAllUsesWith(statsOp);
@@ -107,7 +107,7 @@ void AddDefaultStatsPass::runWithConfig(SolverContext &solverContext,
     APFloat minValue(-1.0f);
     APFloat maxValue(1.0f);
     ElementsAttr layerStats = DenseFPElementsAttr::get(
-        b.getTensorType({2}, b.getF32Type()), {minValue, maxValue});
+        RankedTensorType::get({2}, b.getF32Type()), {minValue, maxValue});
     auto statsOp = b.create<StatisticsOp>(op->getLoc(), op->getResult(0),
                                           layerStats, nullptr, nullptr);
     originalResult->replaceAllUsesWith(statsOp);

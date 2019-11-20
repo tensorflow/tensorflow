@@ -44,13 +44,12 @@ ModuleOp ModuleOp::create(Location loc, Optional<StringRef> name) {
 ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
   // If the name is present, parse it.
   StringAttr nameAttr;
-  (void)parser.parseSymbolName(nameAttr, mlir::SymbolTable::getSymbolAttrName(),
-                               result.attributes);
+  (void)parser.parseOptionalSymbolName(
+      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
 
   // If module attributes are present, parse them.
-  if (succeeded(parser.parseOptionalKeyword("attributes")))
-    if (parser.parseOptionalAttributeDict(result.attributes))
-      return failure();
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
 
   // Parse the module body.
   auto *body = result.addRegion();
@@ -65,18 +64,14 @@ ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
 void ModuleOp::print(OpAsmPrinter &p) {
   p << "module";
 
-  Optional<StringRef> name = getName();
-  if (name) {
+  if (Optional<StringRef> name = getName()) {
     p << ' ';
     p.printSymbolName(*name);
   }
 
   // Print the module attributes.
-  auto attrs = getAttrs();
-  if (!attrs.empty() && !(attrs.size() == 1 && name)) {
-    p << " attributes";
-    p.printOptionalAttrDict(attrs, {mlir::SymbolTable::getSymbolAttrName()});
-  }
+  p.printOptionalAttrDictWithKeyword(getAttrs(),
+                                     {mlir::SymbolTable::getSymbolAttrName()});
 
   // Print the region.
   p.printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,
@@ -87,7 +82,7 @@ LogicalResult ModuleOp::verify() {
   auto &bodyRegion = getOperation()->getRegion(0);
 
   // The body must contain a single basic block.
-  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
+  if (!has_single_element(bodyRegion))
     return emitOpError("expected body region to have a single block");
 
   // Check that the body has no block arguments.

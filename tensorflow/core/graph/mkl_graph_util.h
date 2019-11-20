@@ -136,10 +136,17 @@ static inline bool IsMklLayoutDependentOp(const string& op_name, DataType T) {
   if (kernel.find(kMklQuantizedOpLabelPattern) != string::npos) {
     return (T == DT_QUINT8 || T == DT_QINT8 || T == DT_QINT32);
   }
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+  // Restrict regular ops to FLOAT and BFLOAT16
+  if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
+    return (T == DT_FLOAT || T == DT_BFLOAT16);
+  }
+#else
   // Restrict regular ops to FLOAT
   if (kernel.find(kMklLayoutDependentOpLabelPattern) != string::npos) {
     return (T == DT_FLOAT);
   }
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
   return false;
 }
 
@@ -184,10 +191,16 @@ static inline bool IsMklNameChangeOp(const string& op_name, DataType T) {
   // That way kernel registration does not decide which operators we support.
   // We are using this change to temporarily disable BFLOAT16 support. Once
   // we want to enable it, we will go back to earlier check.
+  bool isTypeAllowed = false;
   if (kernel.find(search_string) != string::npos) {
-    return T == DT_COMPLEX128 || T == DT_COMPLEX64 || T == DT_DOUBLE ||
-           T == DT_FLOAT;
+    isTypeAllowed = (T == DT_COMPLEX128 || T == DT_COMPLEX64 ||
+                     T == DT_DOUBLE || T == DT_FLOAT);
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+    isTypeAllowed = isTypeAllowed || (T == DT_BFLOAT16);
+#endif
+    return isTypeAllowed;
   }
+
   return false;
 }
 

@@ -59,6 +59,7 @@ void ProcessFunctionLibraryRuntime::FunctionData::DistributedInit(
     FunctionLibraryRuntime::DoneCallback done) {
   {
     mutex_lock l(mu_);
+    is_cross_process_ = true;
     if (init_started_) {
       init_done_.WaitForNotification();
       done(init_result_);
@@ -793,7 +794,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     string unique_name = name_generator.GetName();
     ComponentFunctionData* comp_data = &data->glue_[pair.first];
     runner([this, &pair, comp_data, unique_name, data_lib_def, &control_ret,
-            &options, status, &counter] {
+            &options, status, &counter, &data] {
       const string& target = pair.first;
 
       const string& device_type =
@@ -816,27 +817,35 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         return;
       }
       status->Update(data_lib_def->AddFunctionDef(shard));
+      if (!status->ok()) {
+        counter.DecrementCount();
+        return;
+      }
       FunctionLibraryRuntime::InstantiateOptions opts;
       opts.executor_type = options.executor_type;
       opts.target = target;
       opts.lib_def = data_lib_def;
       opts.create_kernels_eagerly = options.create_kernels_eagerly;
       opts.state_handle = options.state_handle;
-
       auto attrs = AttrSlice(&shard.attr());
-
       VLOG(1) << "Start instantiating component function " << unique_name
               << " on device " << target;
       VLOG(2) << DebugString(shard);
 
       auto* component_handle = new FunctionLibraryRuntime::Handle;
-      auto done = [status, unique_name, comp_data, component_handle,
-                   &counter](const Status& s) {
+      auto done = [this, status, unique_name, comp_data, component_handle,
+                   &data, &counter](const Status& s) {
         status->Update(s);
 
         VLOG(1) << "Finished instantiating component function " << unique_name
                 << "with handle " << *component_handle << " status: " << s;
         if (status->ok()) {
+          {
+            mutex_lock l(mu_);
+            if (function_data_[*component_handle]->is_cross_process()) {
+              data->is_cross_process_ = true;
+            }
+          }
           comp_data->handle_ = *component_handle;
         }
         delete component_handle;
@@ -960,6 +969,15 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     return;
   }
 
+  // Check whether we have the right rendezvous.
+  if (opts.rendezvous && data->is_cross_process_ &&
+      !opts.rendezvous->is_cross_process()) {
+    done(errors::InvalidArgument(
+        "Running a cross process function ", data->function_name_,
+        " without an appropriate cross process Rendezvous."));
+    return;
+  }
+
   auto* refcounted_done = new ReffedStatusCallback(std::move(done));
   for (int i = 0; i < data->glue_.size(); ++i) {
     refcounted_done->Ref();
@@ -1066,6 +1084,22 @@ Status ProcessFunctionLibraryRuntime::Instantiate(
                     });
   notification.WaitForNotification();
   return status;
+}
+
+Status ProcessFunctionLibraryRuntime::IsCrossProcess(
+    FunctionLibraryRuntime::Handle handle, bool* is_cross_process) const {
+  tf_shared_lock l(mu_);
+  const auto& mdevice_it = mdevice_data_.find(handle);
+  if (mdevice_it != mdevice_data_.end()) {
+    *is_cross_process = mdevice_it->second->is_cross_process_;
+    return Status::OK();
+  }
+  const auto& it = function_data_.find(handle);
+  if (it != function_data_.end()) {
+    *is_cross_process = it->second->is_cross_process();
+    return Status::OK();
+  }
+  return errors::InvalidArgument("Handle ", handle, " not found.");
 }
 
 void ProcessFunctionLibraryRuntime::InstantiateRemote(
@@ -1352,6 +1386,15 @@ void ProcessFunctionLibraryRuntime::Run(
         }
         done(Status::OK());
       });
+}
+
+void ProcessFunctionLibraryRuntime::Run(
+    const FunctionLibraryRuntime::Options& opts,
+    FunctionLibraryRuntime::Handle handle, const FunctionArgsInterface& args,
+    std::vector<Tensor>* rets,
+    FunctionLibraryRuntime::DoneCallback done) const {
+  const std::vector<Tensor> lcoal_inputs = args.GetLocalTensors();
+  Run(opts, handle, lcoal_inputs, rets, std::move(done));
 }
 
 void ProcessFunctionLibraryRuntime::CleanUp(

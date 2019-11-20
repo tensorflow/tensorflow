@@ -93,7 +93,10 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   GraphDebugInfo debug_info;
   mlir::MLIRContext context;
   GraphImportConfig specs;
+  specs.graph_as_function = true;
+
   GraphExportConfig confs;
+  confs.graph_as_function = true;
   TF_ASSIGN_OR_RETURN(auto module,
                       ConvertGraphToMlir(**options.graph, debug_info,
                                          *options.flib_def, specs, &context));
@@ -103,7 +106,8 @@ Status MlirBridgePass::Run(const GraphOptimizationPassOptions& options) {
   if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_before_");
 
   // Run the bridge now
-  TF_RETURN_IF_ERROR(mlir::TFTPU::TPUBridge(*module));
+  TF_RETURN_IF_ERROR(
+      mlir::TFTPU::TPUBridge(*module, /*enable_logging=*/VLOG_IS_ON(1)));
 
   if (VLOG_IS_ON(1)) DumpModule(*module, "mlir_bridge_after_");
 

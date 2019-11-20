@@ -21,6 +21,7 @@ tensorflow::swig::RegisterType
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
 tensorflow::IsBuiltWithROCm
+tensorflow::IsBuiltWithNvcc
 tensorflow::GpuSupportsHalfMatMulAndConv
 tensorflow::IsMklEnabled
 
@@ -69,6 +70,7 @@ tensorflow::Status::ok()
 tensorflow::Device::attributes
 tensorflow::DeviceFactory::AddDevices
 tensorflow::SessionOptions::SessionOptions
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
 [protos_all]  # device_lib
 tensorflow::ConfigProto::ConfigProto
@@ -78,3 +80,37 @@ tensorflow::DeviceAttributes::SerializeToString
 [py_exception_registry] # py_exception_registry
 tensorflow::PyExceptionRegistry::Init
 tensorflow::PyExceptionRegistry::Lookup
+
+[kernel_registry] # kernel_registry
+tensorflow::swig::TryFindKernelClass
+
+[toco_python_api] # toco_python_api
+toco::TocoConvert
+toco::TocoGetPotentiallySupportedOps
+
+[transform_graph_lib] # transform_graph
+tensorflow::graph_transforms::TransformGraph
+tensorflow::graph_transforms::ParseTransformParameters
+
+[checkpoint_reader] # py_checkpoint_reader
+tensorflow::checkpoint::CheckpointReader
+tensorflow::checkpoint::CheckpointReader::Init
+tensorflow::checkpoint::CheckpointReader::DebugString
+tensorflow::checkpoint::CheckpointReader::GetVariableToShapeMap
+tensorflow::checkpoint::CheckpointReader::GetVariableToDataTypeMap
+tensorflow::checkpoint::CheckpointReader::GetTensor
+tensorflow::checkpoint::CheckpointReader::HasTensor
+
+[tensor_bundle] # py_checkpoint_reader
+tensorflow::BundleReader::BundleReader
+tensorflow::BundleReader::~BundleReader
+
+[ndarray_tensor] # py_checkpoint_reader
+tensorflow::TensorToNdarray
+
+[safe_ptr] # py_checkpoint_reader
+tensorflow::detail::PyDecrefDeleter
+tensorflow::make_safe
+
+[python_op_gen] # python_op_gen
+tensorflow::GetPythonWrappers

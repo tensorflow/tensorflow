@@ -24,7 +24,9 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
@@ -45,9 +47,13 @@ limitations under the License.
 #include "profiling/profiler.h"
 #endif
 
-#ifdef TFLITE_CUSTOM_OPS_HEADER
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
-#endif
+
+// Version with Weak linker attribute doing nothing: if someone links this
+// library with another definition of this function (presumably to actually
+// register custom ops), that version will be used instead.
+void ABSL_ATTRIBUTE_WEAK
+RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 
 namespace tflite {
 namespace benchmark {
@@ -63,10 +69,12 @@ constexpr int kOpProfilingEnabledDefault = false;
 // Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
-  explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
+  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
       : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
+    profiler_.Reset();
+    profiler_.StartProfiling();
   }
 
   void OnSingleRunStart(RunType run_type) override;
@@ -90,7 +98,13 @@ class GemmlowpProfilingListener : public BenchmarkListener {
 };
 
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
+  // Note: we have started profiling when this listener is created. In order
+  // not to count events during the WARMUP phase, we need to stop profiling and
+  // process already-recorded profile events when the WARMUP run starts and
+  // restart profiling at the REGULAR run.
+  if (run_type == WARMUP) {
+    OnSingleRunEnd();
+  } else if (run_type == REGULAR) {
     profiler_.Reset();
     profiler_.StartProfiling();
   }
@@ -422,6 +436,8 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
         return static_cast<float>(rand()) / RAND_MAX - 0.5f;
       });
     } else if (t->type == kTfLiteFloat16) {
+// TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
+#if TFLITE_ENABLE_FP16_CPU_BENCHMARKS
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
@@ -436,6 +452,14 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type FLOAT16 on this platform.";
 #endif
+#else
+      // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
+      // compiler that supports __fp16 type. Note: when using Clang and *not*
+      // linking with compiler-rt, a defintion of __gnu_h2f_ieee and
+      // __gnu_f2h_ieee must be supplied.
+      TFLITE_LOG(FATAL) << "Populating the tensor " << t->name
+                        << " of type FLOAT16 is disabled.";
+#endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
     } else if (t->type == kTfLiteInt64) {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 99;
@@ -584,18 +608,21 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     }
   }
 
-  if (interpreter_->AllocateTensors() != kTfLiteOk) {
-    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
-    return kTfLiteError;
-  }
-
-  // Install profilers if necessary.
+  // Install profilers if necessary but *before* any memory allocations inside
+  // the TFLite interpreter because the installed profiler might profile memory
+  // usage information.
   if (params_.Get<bool>("enable_op_profiling")) {
     profiling_listener_.reset(new ProfilingListener(
         interpreter_.get(),
         params_.Get<int32_t>("max_profiling_buffer_entries")));
     AddListener(profiling_listener_.get());
   }
+
+  if (interpreter_->AllocateTensors() != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
+    return kTfLiteError;
+  }
+
 #ifdef GEMMLOWP_PROFILING
   gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
   AddListener(gemmlowp_profiling_listener_.get());
@@ -686,11 +713,8 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
-  tflite::OpResolver* resolver = nullptr;
-  resolver = new tflite::ops::builtin::BuiltinOpResolver();
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
-#endif
+  auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
+  RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 

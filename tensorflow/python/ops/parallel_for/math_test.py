@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -307,8 +306,6 @@ class MathTest(PForTestCase, parameterized.TestCase):
             self._test_loop_fn(loop_fn, 2)
 
   def test_batch_matmul_broadcast(self):
-    if not compat.forward_compatible(2019, 4, 25):
-      self.skipTest("Skipping test for future functionality.")
     for broadcast_a in (True, False):
       for broadcast_b in (True, False):
         for stack_a in (True, False):

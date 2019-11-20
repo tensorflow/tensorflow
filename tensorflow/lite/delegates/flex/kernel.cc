@@ -258,9 +258,7 @@ class OpNode {
 
     // Precalculating a cache key saves about 10% of inference time for very
     // small models.
-    tensorflow::Device* device = op_->Device();
-    op_->MutableAttrs()->CacheKey(device == nullptr ? "unspecified"
-                                                    : device->name());
+    op_->MutableAttrs()->CacheKey(op_->GetDeviceName());
 
     return tensorflow::Status::OK();
   }
@@ -530,9 +528,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Execute the TensorFlow Ops sequentially.
   for (auto& node_data : op_data->nodes) {
-    TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(
-        reinterpret_cast<Profiler*>(context->profiler),
-        node_data->name().c_str(), node_data->index());
+    TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
+        reinterpret_cast<Profiler*>(context->profiler), node_data->index());
 
     auto status = ExecuteFlexOp(context, buffer_map, node_data.get());
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));

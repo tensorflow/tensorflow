@@ -21,6 +21,16 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 
 namespace mlir {
+
+// Creates a pass that breaks up an island with multiple ops into multiple
+// islands, each with a single op.
+std::unique_ptr<OpPassBase<FuncOp>> CreateBreakUpIslandsPass();
+
+// Creates a pass that converts mlir functions consisting of mlir ops into a
+// tf_executor dialect as a single island.
+std::unique_ptr<OpPassBase<FuncOp>>
+CreateFunctionalToExecutorDialectConversionPass();
+
 namespace TF {
 // Transforms functional control flow operations in the standard TensorFlow
 // dialect to MLIR Control Flow Graph (CFG) form.
@@ -36,6 +46,10 @@ std::unique_ptr<OpPassBase<ModuleOp>> CreateTFShapeInferencePass();
 // Optimizes Tensorflow graph.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass();
 
+// Propagates the pass manager with the passes involved in transforming or
+// optimizing an MLIR graph without any target specialization.
+// NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
+void CreateTFStandardPipeline(OpPassManager& pm);
 }  // namespace TF
 
 namespace TFControlFlow {
@@ -86,6 +100,13 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateResourceOpLiftingPass();
 // `op`.
 void LiftResourceOps(Operation* op);
 
+// Creates a pass that hoists invariant operations in a `tf_device.replicate`.
+std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateInvariantOpHoistingPass();
+
+// Creates a pass that forms replica `tf_executor.island` from a single
+// `tf_device.replicate` island.
+std::unique_ptr<OpPassBase<FuncOp>> CreateReplicateToIslandPass();
+
 }  // namespace TFDevice
 
 namespace TFTPU {
@@ -94,14 +115,34 @@ namespace TFTPU {
 std::unique_ptr<OpPassBase<FuncOp>> CreateTPUClusterFormationPass();
 
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
-// ops
+// ops.
 std::unique_ptr<OpPassBase<ModuleOp>> CreateTPURewritePass();
+
+// Creates a pass that merges device variable reads/updates into the surrounded
+// TPUExecute node. This allows the execute node to perform in-place variable
+// updates.
+std::unique_ptr<OpPassBase<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 
 // Populates the supplied passmanager with the passes required to run the
 // bridge. NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
-void createTPUBridge(OpPassManager& bridge);
+void CreateTPUBridge(OpPassManager& pm);
 
 }  // namespace TFTPU
+
+namespace tf_saved_model {
+
+// Creates a pass that uses tf_saved_model dialect linkage information
+// to delete unused func's.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateDeleteUnusedFuncsPass();
+
+// Creates a pass that optimizes tf_saved_model.global_tensor ops.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateOptimizeGlobalTensorsPass();
+
+// Creates a pass that inlines global tensors as tf.Const ops in the function
+// body.
+std::unique_ptr<OpPassBase<ModuleOp>> CreateInlineGlobalTensorsPass();
+
+}  // namespace tf_saved_model
 
 }  // namespace mlir
 

@@ -143,6 +143,22 @@ class CreatePythonApiTest(test.TestCase):
     self.assertTrue('compat.v1.test' in imports,
                     msg='compat.v1.test not in %s' % str(imports.keys()))
 
+  def testNestedCompatModulesAreAdded(self):
+    imports, _ = create_python_api.get_api_init_text(
+        packages=[create_python_api._DEFAULT_PACKAGE],
+        output_package='tensorflow',
+        api_name='tensorflow',
+        api_version=2,
+        compat_api_versions=[1, 2])
+    self.assertIn('compat.v1.compat.v1', imports,
+                  msg='compat.v1.compat.v1 not in %s' % str(imports.keys()))
+    self.assertIn('compat.v1.compat.v2', imports,
+                  msg='compat.v1.compat.v2 not in %s' % str(imports.keys()))
+    self.assertIn('compat.v2.compat.v1', imports,
+                  msg='compat.v2.compat.v1 not in %s' % str(imports.keys()))
+    self.assertIn('compat.v2.compat.v2', imports,
+                  msg='compat.v2.compat.v2 not in %s' % str(imports.keys()))
+
 
 if __name__ == '__main__':
   test.main()

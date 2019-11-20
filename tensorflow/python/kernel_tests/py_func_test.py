@@ -29,6 +29,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -36,6 +37,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import batch_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -51,10 +53,40 @@ def matmul(x, y):
   return math_ops.matmul(x, y)
 
 
-class PyFuncTest(test.TestCase):
-  """Encapsulates tests for py_func and eager_py_func."""
+class PyFuncTestBase(test.TestCase):
 
-  # ----- Tests for py_func -----
+  def verifyExceptionHandling(self, py_exp, tf_exp, eager=False):
+
+    def inner_exception():
+      raise py_exp("blah")  # pylint: disable=not-callable
+
+    def raise_exception():
+      inner_exception()
+
+    expected_regexp = r": blah.*"               # Error at the top
+    expected_regexp += r"in raise_exception.*"  # Stacktrace outer
+    expected_regexp += r"in inner_exception.*"  # Stacktrace inner
+    expected_regexp += r": blah"                # Stacktrace of raise
+    def expected_error_check(exception):
+      return re.search(expected_regexp, str(exception), re.DOTALL)
+
+    if eager:
+      if context.executing_eagerly():
+        with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
+          f = script_ops.eager_py_func(raise_exception, [], [])
+        return
+      else:
+        f = script_ops.eager_py_func(raise_exception, [], [])
+    else:
+      f = script_ops.py_func(raise_exception, [], [])
+
+    with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
+      self.evaluate(f)
+
+
+class PyFuncTest(PyFuncTestBase):
+  """Encapsulates tests for py_func only."""
+
   def testRealDataTypes(self):
     def sum_func(x, y):
       return x + y
@@ -324,7 +356,7 @@ class PyFuncTest(test.TestCase):
 
   def testStateful(self):
     # Not using self.cached_session(), which disables optimization.
-    with session_lib.Session() as sess:
+    with session_lib.Session():
       producer = iter(range(3))
       x, = script_ops.py_func(lambda: next(producer), [], [dtypes.int64])
       self.assertEqual(self.evaluate(x), 0)
@@ -334,7 +366,7 @@ class PyFuncTest(test.TestCase):
   @test_util.enable_tf_xla_constant_folding("b/134376434")
   def testStateless(self):
     # Not using self.cached_session(), which disables optimization.
-    with session_lib.Session() as sess:
+    with session_lib.Session():
       producer = iter(range(3))
       x, = script_ops.py_func(
           lambda: next(producer), [], [dtypes.int64], stateful=False)
@@ -415,79 +447,100 @@ class PyFuncTest(test.TestCase):
 
     f = script_ops.py_func(
         do_nothing, [constant_op.constant(3, dtypes.int64)], [], stateful=False)
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertEqual(self.evaluate(f), [])
-
-  def _testExceptionHandling(self, py_exp, tf_exp, eager=False):
-
-    def inner_exception():
-      raise py_exp("blah")  # pylint: disable=not-callable
-
-    def raise_exception():
-      inner_exception()
-
-    expected_regexp = r": blah.*"               # Error at the top
-    expected_regexp += r"in raise_exception.*"  # Stacktrace outer
-    expected_regexp += r"in inner_exception.*"  # Stacktrace inner
-    expected_regexp += r": blah"                # Stacktrace of raise
-    def expected_error_check(exception):
-      return re.search(expected_regexp, str(exception), re.DOTALL)
-
-    if eager:
-      if context.executing_eagerly():
-        with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
-          f = script_ops.eager_py_func(raise_exception, [], [])
-        return
-      else:
-        f = script_ops.eager_py_func(raise_exception, [], [])
-    else:
-      f = script_ops.py_func(raise_exception, [], [])
-
-    with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
-      self.evaluate(f)
 
   @test_util.run_v1_only("b/120545219")
   def testExceptionHandling(self):
     with self.cached_session():
-      self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
-      self._testExceptionHandling(TypeError, errors.InvalidArgumentError)
-      self._testExceptionHandling(StopIteration, errors.OutOfRangeError)
-      self._testExceptionHandling(MemoryError, errors.ResourceExhaustedError)
-      self._testExceptionHandling(NotImplementedError,
-                                  errors.UnimplementedError)
+      self.verifyExceptionHandling(ValueError, errors.InvalidArgumentError)
+      self.verifyExceptionHandling(TypeError, errors.InvalidArgumentError)
+      self.verifyExceptionHandling(StopIteration, errors.OutOfRangeError)
+      self.verifyExceptionHandling(MemoryError, errors.ResourceExhaustedError)
+      self.verifyExceptionHandling(NotImplementedError,
+                                   errors.UnimplementedError)
 
       class WeirdError(Exception):
         pass
 
-      self._testExceptionHandling(WeirdError, errors.UnknownError)
+      self.verifyExceptionHandling(WeirdError, errors.UnknownError)
 
-  # ----- Tests shared by py_func and eager_py_func -----
-  def testCleanup(self):
-    # Delete everything created by previous tests to avoid side effects.
+  def testFunctionReferencesAreKept(self):
+    g = ops.Graph()
+    with g.as_default():
+      c = constant_op.constant([1.], dtypes.float32)
+      @batch_ops.batch_function(1, 10, 100000)
+      def fn(x):
+        # Upon exiting this function, the py_func holds the sole reference
+        # to this lambda, without which it would be garbage collected.
+        return script_ops.py_func(lambda x: x, [x], [dtypes.float32])
+      result = fn(c)
+      gc.collect()
+      self.evaluate(result)
+
+
+class PyFuncAndEagerPyFuncTest(PyFuncTestBase):
+  """Encapsulates tests shared between py_func and eager_py_func."""
+
+  def verifyPyFuncsNoIncrease(self, make_graph):
     ops.reset_default_graph()
     gc.collect()
     initial_size = script_ops._py_funcs.size()
-    # Encapsulate the graph generation, so locals can be deleted.
-    def make_graphs():
-      for _ in xrange(1000):
-        g = ops.Graph()
-        with g.as_default():
-          c = constant_op.constant([1.], dtypes.float32)
-          _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
-          _ = script_ops.eager_py_func(lambda x: x + 1, [c], [dtypes.float32])
-          # These ops have a reference to 'c' which has a reference to the graph.
-          # Checks if the functions are being deleted though the graph is referenced from them.
-          # (see #18292)
-          _ = script_ops.py_func(lambda x: x + c.shape[0], [c], [dtypes.float32])
-          _ = script_ops.eager_py_func(lambda x: x + c.shape[0], [c], [dtypes.float32])
 
-    # Call garbage collector to enforce deletion.
-    make_graphs()
+    for _ in xrange(1000):
+      make_graph()
+
     ops.reset_default_graph()
     gc.collect()
     self.assertEqual(initial_size, script_ops._py_funcs.size())
 
-  # ----- Tests for eager_py_func -----
+  def testCleanup(self):
+
+    def make_graph():
+      g = ops.Graph()
+      with g.as_default():
+        c = constant_op.constant([1.], dtypes.float32)
+        _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
+        _ = script_ops.eager_py_func(lambda x: x + 1, [c], [dtypes.float32])
+        # These ops have a reference to 'c' which has a reference to the
+        # graph.
+        # Checks if the functions are being deleted though the graph is
+        # referenced from them (see #18292).
+        script_ops.py_func(
+            lambda x: x + c.shape[0], [c], [dtypes.float32])
+        script_ops.eager_py_func(
+            lambda x: x + c.shape[0], [c], [dtypes.float32])
+
+    self.verifyPyFuncsNoIncrease(make_graph)
+
+  def testCleanupInTfFunction(self):
+
+    self.skipTest("b/144098211")
+
+    def make_graph():
+      g = ops.Graph()
+      with g.as_default():
+        @def_function.function
+        def fn():
+          c = constant_op.constant([1.], dtypes.float32)
+          _ = script_ops.py_func(lambda x: x + 1, [c], [dtypes.float32])
+          _ = script_ops.eager_py_func(lambda x: x + 1, [c], [dtypes.float32])
+          # These ops have a reference to 'c' which has a reference to the
+          # graph.
+          # Checks if the functions are being deleted though the graph is
+          # referenced from them (see #18292).
+          script_ops.py_func(
+              lambda x: x + c.shape[0], [c], [dtypes.float32])
+          script_ops.eager_py_func(
+              lambda x: x + c.shape[0], [c], [dtypes.float32])
+        fn()
+
+    self.verifyPyFuncsNoIncrease(make_graph)
+
+
+class EagerPyFuncTest(PyFuncTestBase):
+  """Encapsulates tests for eager_py_func only."""
+
   @test_util.run_in_graph_and_eager_modes
   def testEagerSingleOutputInt32(self):
     a = array_ops.ones((3, 3), dtype=dtypes.int32)
@@ -539,7 +592,7 @@ class PyFuncTest(test.TestCase):
       output = script_ops.eager_py_func(no_return_value, inp=[], Tout=[])
       ret = self.evaluate(output)
       if context.executing_eagerly():
-        self.assertEquals(len(ret), 0)
+        self.assertEqual(len(ret), 0)
       else:
         self.assertIsNone(ret)
 
@@ -559,21 +612,21 @@ class PyFuncTest(test.TestCase):
   @test_util.run_v1_only("b/120545219")
   def testEagerExceptionHandling(self):
     with test_util.device(use_gpu=True):
-      self._testExceptionHandling(
+      self.verifyExceptionHandling(
           ValueError, errors.InvalidArgumentError, eager=True)
-      self._testExceptionHandling(
+      self.verifyExceptionHandling(
           TypeError, errors.InvalidArgumentError, eager=True)
-      self._testExceptionHandling(
+      self.verifyExceptionHandling(
           StopIteration, errors.OutOfRangeError, eager=True)
-      self._testExceptionHandling(
+      self.verifyExceptionHandling(
           MemoryError, errors.ResourceExhaustedError, eager=True)
-      self._testExceptionHandling(
+      self.verifyExceptionHandling(
           NotImplementedError, errors.UnimplementedError, eager=True)
 
       class WeirdError(Exception):
         pass
 
-      self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
+      self.verifyExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
   @test_util.run_in_graph_and_eager_modes
   @test_util.run_v1_only("b/120545219")
@@ -598,7 +651,16 @@ class PyFuncTest(test.TestCase):
       tape.watch(x)
       y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.float32)
     dy_dx = tape.gradient(y, x)
-    self.assertEqual(self.evaluate(dy_dx), 6.0)
+    self.assertAllClose(self.evaluate(dy_dx), 6.0)
+
+    # Test complex values
+    x = constant_op.constant(3.0 + 3.0j)
+    with backprop.GradientTape() as tape:
+      tape.watch(x)
+      y = script_ops.eager_py_func(f, inp=[x], Tout=dtypes.complex128)
+    dy_dx = tape.gradient(y, x)
+    # Gradient of complex will be the conj
+    self.assertAllClose(self.evaluate(dy_dx), 6.0 - 6.0j)
 
   @test_util.run_v1_only("b/120545219")
   def testEagerGradientGraph(self):

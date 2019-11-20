@@ -66,6 +66,8 @@ struct GraphExportConfig {
   bool export_library = true;
   // Whether to export debug original node name in the GraphDef.
   bool export_debug_info = true;
+  // If true, the main graph will be treated as a function.
+  bool graph_as_function = false;
 };
 
 // Parses the command line flag strings to the specification of nodes in
@@ -79,7 +81,7 @@ Status ParseOutputArrayInfo(const std::vector<string>& output_names,
                             std::vector<string>* order);
 
 // Parses the command line flag strings to the specification of nodes in
-// the Graph.
+// the Graph. `data_types` input string can be empty since the flag is optional.
 Status ParseInputArrayInfo(absl::string_view array_names,
                            absl::string_view data_types,
                            absl::string_view shapes,

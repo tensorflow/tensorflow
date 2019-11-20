@@ -248,12 +248,13 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
 
       super(LinearOperatorLowRankUpdate, self).__init__(
           dtype=self._base_operator.dtype,
-          graph_parents=graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      self._set_graph_parents(graph_parents)
 
       # Create the diagonal operator D.
       self._set_diag_operators(diag_update, is_diag_update_positive)

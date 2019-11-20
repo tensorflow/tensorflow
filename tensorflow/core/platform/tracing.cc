@@ -17,19 +17,13 @@ limitations under the License.
 
 #include <array>
 #include <atomic>
-#include <map>
-#include <string>
-#include <vector>
+
 #include "tensorflow/core/lib/hash/hash.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 namespace tracing {
 namespace {
 std::atomic<uint64> unique_arg{1};
-std::atomic<bool> enable_annotation;
 }  // namespace
 
 const char* GetEventCategoryName(EventCategory category) {
@@ -59,14 +53,6 @@ uint64 GetUniqueArg() {
 
 uint64 GetArgForName(StringPiece name) {
   return Hash64(name.data(), name.size());
-}
-
-void ScopedAnnotation::Enable(bool enable) {
-  return enable_annotation.store(enable, std::memory_order_release);
-}
-
-const bool ScopedAnnotation::IsEnabled() {
-  return enable_annotation.load(std::memory_order_acquire);
 }
 
 }  // namespace tracing

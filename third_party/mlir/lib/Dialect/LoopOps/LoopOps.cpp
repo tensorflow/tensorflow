@@ -29,9 +29,28 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
+#include "mlir/Transforms/SideEffectsInterface.h"
 
 using namespace mlir;
 using namespace mlir::loop;
+
+//===----------------------------------------------------------------------===//
+// LoopOpsDialect Interfaces
+//===----------------------------------------------------------------------===//
+namespace {
+
+struct LoopSideEffectsInterface : public SideEffectsDialectInterface {
+  using SideEffectsDialectInterface::SideEffectsDialectInterface;
+
+  SideEffecting isSideEffecting(Operation *op) const override {
+    if (isa<IfOp>(op) || isa<ForOp>(op)) {
+      return Recursive;
+    }
+    return SideEffectsDialectInterface::isSideEffecting(op);
+  };
+};
+
+} // namespace
 
 //===----------------------------------------------------------------------===//
 // LoopOpsDialect
@@ -43,6 +62,7 @@ LoopOpsDialect::LoopOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/LoopOps/LoopOps.cpp.inc"
       >();
+  addInterfaces<LoopSideEffectsInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -60,7 +80,7 @@ void ForOp::build(Builder *builder, OperationState &result, Value *lb,
 LogicalResult verify(ForOp op) {
   if (auto cst = dyn_cast_or_null<ConstantIndexOp>(op.step()->getDefiningOp()))
     if (cst.getValue() <= 0)
-      return op.emitOpError("constant step operand must be nonnegative");
+      return op.emitOpError("constant step operand must be positive");
 
   // Check that the body defines as single block argument for the induction
   // variable.
@@ -106,9 +126,21 @@ static ParseResult parseForOp(OpAsmParser &parser, OperationState &result) {
   ForOp::ensureTerminator(*body, builder, result.location);
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
+  return success();
+}
+
+Region &ForOp::getLoopBody() { return region(); }
+
+bool ForOp::isDefinedOutsideOfLoop(Value *value) {
+  return !region().isAncestor(value->getParentRegion());
+}
+
+LogicalResult ForOp::moveOutOfLoop(ArrayRef<Operation *> ops) {
+  for (auto *op : ops)
+    op->moveBefore(this->getOperation());
   return success();
 }
 
@@ -175,7 +207,7 @@ static ParseResult parseIfOp(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   return success();

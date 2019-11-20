@@ -443,18 +443,15 @@ node {
   }
 }
 
-
 # MLIR-LABEL: func @main(%arg0: tensor<1x1x1x256x!quant.uniform<i8:f32, 0.21632751372549019:27>>) -> tensor<1x6x31x!quant.uniform<i8:f32, 0.09363494573854933:22>>
 # MLIR:     attributes  {tf.entry_function = {inputs = "input", outputs = "output"}
 # MLIR:   %[[shape:.*]] = constant dense<[1, -1, 31]> : tensor<3xi32>
-# MLIR:   %[[input:.*]] = "tfl.pseudo_input"(%arg0) : (tensor<1x1x1x256x!quant.uniform<i8:f32, 0.21632751372549019:27>>)
 # MLIR:   %[[bias:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<186x!quant.uniform<i32:f32:0
 # MLIR:   %[[weight:.*]] = "tfl.pseudo_qconst"() {qtype = tensor<186x1x1x256x!quant.uniform<i8<-127:127>:f32:0, {0.12581039038230116,
-# MLIR:   %[[conv:.*]] = "tfl.conv_2d"(%[[input]], %[[weight]], %[[bias]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}
+# MLIR:   %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[weight]], %[[bias]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32}
 # MLIR:   %[[reshape:.*]] = "tfl.reshape"(%[[conv]], %[[shape]]) : (tensor<1x1x1x186x!quant.uniform<i8:f32, 0.09363494573854933:22>>, tensor<3xi32>)
 # MLIR:   return %[[reshape]] : tensor<1x6x31x!quant.uniform<i8:f32, 0.09363494573854933:22>>
 # MLIR: }
-
 
 # CHECK-LABEL: {
 # CHECK:   version: 3,
@@ -467,27 +464,27 @@ node {
 # CHECK:   } ],
 # CHECK:   subgraphs: [ {
 # CHECK:     tensors: [ {
-# CHECK:       shape: [ 3 ],
-# CHECK:       type: INT32,
-# CHECK:       buffer: 1,
-# CHECK:       name: "BoxPredictor_4/Reshape_1/shape",
-# CHECK:       quantization: {
-# CHECK-EMPTY
-# CHECK:       }
-# CHECK:     }, {
 # CHECK:       shape: [ 1, 1, 1, 256 ],
 # CHECK:       type: INT8,
-# CHECK:       buffer: 2,
+# CHECK:       buffer: 1,
 # CHECK:       name: "input",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.216328 ],
 # CHECK:         zero_point: [ 27 ]
 # CHECK:       }
 # CHECK:     }, {
+# CHECK:       shape: [ 3 ],
+# CHECK:       type: INT32,
+# CHECK:       buffer: 2,
+# CHECK:       name: "BoxPredictor_4/Reshape_1/shape",
+# CHECK:       quantization: {
+# CHECK-EMPTY
+# CHECK:       }
+# CHECK:     }, {
 # CHECK:       shape: [ 186 ],
 # CHECK:       type: INT32,
 # CHECK:       buffer: 3,
-# CHECK:       name: "tfl.pseudo_qconst",
+# CHECK:       name: "BoxPredictor_4/ClassPredictor/BiasAdd;BoxPredictor_4/ClassPredictor/Conv2D;BoxPredictor_4/ClassPredictor/biases",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.027216, 0.00038, 0.000413, 0.000426, 0.001607,
 # CHECK:         zero_point: [ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -496,7 +493,7 @@ node {
 # CHECK:       shape: [ 186, 1, 1, 256 ],
 # CHECK:       type: INT8,
 # CHECK:       buffer: 4,
-# CHECK:       name: "tfl.pseudo_qconst1",
+# CHECK:       name: "BoxPredictor_4/ClassPredictor/Conv2D;BoxPredictor_4/ClassPredictor/weights_quant/FakeQuantWithMinMaxVarsPerChannel",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.12581, 0.001755, 0.001908, 0.001967, 0.007431,
 # CHECK:         zero_point: [ 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -505,7 +502,7 @@ node {
 # CHECK:       shape: [ 1, 1, 1, 186 ],
 # CHECK:       type: INT8,
 # CHECK:       buffer: 5,
-# CHECK:       name: "tfl.conv_2d",
+# CHECK:       name: "BoxPredictor_4/ClassPredictor/BiasAdd;BoxPredictor_4/ClassPredictor/Conv2D;BoxPredictor_4/ClassPredictor/biases1",
 # CHECK:       quantization: {
 # CHECK:         scale: [ 0.093635 ],
 # CHECK:         zero_point: [ 22 ]
@@ -520,10 +517,10 @@ node {
 # CHECK:         zero_point: [ 22 ]
 # CHECK:       }
 # CHECK:     } ],
-# CHECK:     inputs: [ 1 ],
+# CHECK:     inputs: [ 0 ],
 # CHECK:     outputs: [ 5 ],
 # CHECK:     operators: [ {
-# CHECK:       inputs: [ 1, 3, 2 ],
+# CHECK:       inputs: [ 0, 3, 2 ],
 # CHECK:       outputs: [ 4 ],
 # CHECK:       builtin_options_type: Conv2DOptions,
 # CHECK:       builtin_options: {
@@ -532,7 +529,7 @@ node {
 # CHECK:       }
 # CHECK:     }, {
 # CHECK:       opcode_index: 1,
-# CHECK:       inputs: [ 4, 0 ],
+# CHECK:       inputs: [ 4, 1 ],
 # CHECK:       outputs: [ 5 ]
 # CHECK:     } ],
 # CHECK:     name: "main"
@@ -541,9 +538,9 @@ node {
 # CHECK:   buffers: [ {
 # CHECK-EMPTY
 # CHECK:   }, {
-# CHECK:     data: [ 1, 0, 0, 0, 255, 255, 255, 255, 31, 0, 0, 0 ]
-# CHECK:   }, {
 # CHECK-EMPTY
+# CHECK:   }, {
+# CHECK:     data: [ 1, 0, 0, 0, 255, 255, 255, 255, 31, 0, 0, 0 ]
 # CHECK:   }, {
 # CHECK:     data: [ 245, 255, 255, 255, 186, 254, 255, 255, 213, 254, 255, 255,
 # CHECK:   }, {

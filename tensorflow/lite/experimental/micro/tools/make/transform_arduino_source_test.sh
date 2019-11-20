@@ -37,7 +37,8 @@ EOF
 OUTPUT_REGULAR_FILE=${TEST_TMPDIR}/output_regular.cc
 THIRD_PARTY_HEADERS="subdir/foo.h subdir_2/include/bar/fish.h subdir_3/something.h"
 
-${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_arduino_source \
+${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_source \
+  --platform=arduino \
   --third_party_headers="${THIRD_PARTY_HEADERS}" \
   < ${INPUT_REGULAR_FILE} \
   > ${OUTPUT_REGULAR_FILE}
@@ -89,7 +90,8 @@ EOF
 
 OUTPUT_EXAMPLE_INO_FILE=${TEST_TMPDIR}/output_regular.cc
 
-${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_arduino_source \
+${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_source \
+  --platform=arduino \
   --third_party_headers="${THIRD_PARTY_HEADERS}" \
   --is_example_ino \
   < ${INPUT_EXAMPLE_INO_FILE} \
@@ -129,7 +131,8 @@ EOF
 
 OUTPUT_EXAMPLE_SOURCE_FILE=${TEST_TMPDIR}/output_example_source.h
 
-${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_arduino_source \
+${TEST_SRCDIR}/tensorflow/lite/experimental/micro/tools/make/transform_source \
+  --platform=arduino \
   --third_party_headers="${THIRD_PARTY_HEADERS}" \
   --is_example_source \
   --source_path="foo/input_example_source.h" \

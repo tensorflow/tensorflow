@@ -794,6 +794,8 @@ def deserialize(config, custom_objects=None):
   Returns:
       A Keras Optimizer instance.
   """
+  # loss_scale_optimizer has a direct dependency of optimizer, import here
+  # rather than top to avoid the cyclic dependency.
   from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer  # pylint: disable=g-import-not-at-top
   all_classes = {
       'adadelta': adadelta_v2.Adadelta,

@@ -27,7 +27,6 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import def_function
@@ -70,9 +69,9 @@ def current_device():
 def configure_virtual_cpus():
   cpus = config.list_physical_devices('CPU')
   # Set 2 virtual CPUs
-  config.set_virtual_device_configuration(cpus[0], [
-      context.VirtualDeviceConfiguration(),
-      context.VirtualDeviceConfiguration()
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration()
   ])
 
 
@@ -304,13 +303,9 @@ class TFETest(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         bool(tf_a == tf_d)
       self.assertAllEqual(tf_a == tf_d, [[True, False], [True, False]])
-      if compat.forward_compatible(2019, 9, 25):
-        self.assertFalse(bool(tf_a == tf_e))
-        self.assertTrue(bool(tf_a != tf_e))
-        self.assertNotAllEqual(tf_a, tf_e)
-      else:
-        with self.assertRaises(errors.InvalidArgumentError):
-          bool(tf_a != tf_e)
+      self.assertFalse(bool(tf_a == tf_e))
+      self.assertTrue(bool(tf_a != tf_e))
+      self.assertNotAllEqual(tf_a, tf_e)
 
       with self.assertRaises(ValueError):
         bool(np_a == np_b)
@@ -745,12 +740,14 @@ class TFETest(test_util.TensorFlowTestCase):
                'container', '', 'shared_name', ''))
 
   def testExecuteShapeAttrBadValue(self):
-    with self.assertRaises(errors.InvalidArgumentError):
+    with self.assertRaisesRegex(
+        errors.InvalidArgumentError,
+        'Expecting a Dimension for attr shape, got object'):
       execute(
           b'VarHandleOp',
           num_outputs=1,
           inputs=[],
-          attrs=('shape', 1, 'dtype', dtypes.int32.as_datatype_enum,
+          attrs=('shape', [object()], 'dtype', dtypes.int32.as_datatype_enum,
                  'container', '', 'shared_name', ''))
 
   def testExecuteListStringAttr(self):
@@ -1016,6 +1013,14 @@ class TFETest(test_util.TensorFlowTestCase):
     for t in threads:
       t.join()
 
+  def testEmptyResourceReturned(self):
+    v = variables.Variable(1.)
+    empty_handle = array_ops.gather(
+        v.handle[array_ops.newaxis], array_ops.zeros([0], dtype=dtypes.int32))
+    self.assertEqual(
+        [0],
+        empty_handle.shape.as_list())
+
 
 class SendRecvTest(test_util.TensorFlowTestCase):
 
@@ -1049,17 +1054,16 @@ class SendRecvTest(test_util.TensorFlowTestCase):
     configure_virtual_cpus()
 
   def testBasic(self):
-    with ops.device(self.cpu_device):
-      t0 = constant_op.constant(1.0)
-      t1 = constant_op.constant(2.0)
-      self._send(t0, 't0', self.cpu_device)
-      self._send(t1, 't1', self.cpu_device)
-      self.assertAllEqual(
-          self._recv(dtypes.float32, 't0', self.cpu_device),
-          1.0)
-      self.assertAllEqual(
-          self._recv(dtypes.float32, 't1', self.cpu_device),
-          2.0)
+    t0 = constant_op.constant(1.0)
+    t1 = constant_op.constant(2.0)
+    self._send(t0, 't0', self.cpu_device)
+    self._send(t1, 't1', self.cpu_device)
+    self.assertAllEqual(
+        self._recv(dtypes.float32, 't0', self.cpu_device),
+        1.0)
+    self.assertAllEqual(
+        self._recv(dtypes.float32, 't1', self.cpu_device),
+        2.0)
 
   @test_util.run_gpu_only
   def testLocalCrossDevice(self):

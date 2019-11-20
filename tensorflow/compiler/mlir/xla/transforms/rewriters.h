@@ -31,6 +31,10 @@ void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
 void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
                               MLIRContext *ctx);
 
+// Collection of rewrite patterns for lowering of HLO to LHLO dialect.
+void populateHLOToLHLOConversionPattern(MLIRContext *context,
+                                        OwningRewritePatternList *patterns);
+
 }  // namespace xla_hlo
 }  // namespace mlir
 

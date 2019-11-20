@@ -14,16 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/framework/variant.h"
+
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_op_registry.h"
-#include "tensorflow/core/framework/variant_tensor_data.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace tensorflow {
 
-Variant::~Variant() { clear(); }
+Variant::~Variant() { ResetMemory(); }
 
 bool Variant::Decode(VariantTensorData data) {
   if (!is_empty()) {

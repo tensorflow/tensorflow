@@ -67,6 +67,7 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
+        "//tensorflow/python/eager:monitoring",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
@@ -200,6 +201,7 @@ py_library(
         ":regularizers",
         ":saving",
         "//tensorflow/python:composite_tensor_utils",
+        "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute:distribute_coordinator",
         "//tensorflow/python/distribute:distribute_lib",
@@ -213,6 +215,8 @@ py_library(
         "//tensorflow/python/module",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
+        "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -352,6 +356,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/distribute:distributed_file_utils",
         "//tensorflow/python/keras/distribute:multi_worker_training_state",
         "//tensorflow/tools/docs:doc_controls",
     ],
@@ -612,7 +617,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_adapter_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/data_adapter_test.py"],
     additional_deps = [
         ":data_adapter",
@@ -940,7 +945,7 @@ tf_py_test(
 
 tf_py_test(
     name = "merge_test",
-    size = "small",
+    size = "medium",
     srcs = ["layers/merge_test.py"],
     additional_deps = [
         ":keras",
@@ -996,8 +1001,10 @@ tf_py_test(
     size = "medium",
     srcs = ["layers/preprocessing/text_vectorization_test.py"],
     additional_deps = [
+        ":generic_utils",
         ":keras",
         ":preprocessing_test_utils",
+        "//tensorflow/python/ops/ragged:ragged_string_ops",
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
@@ -1330,6 +1337,7 @@ cuda_py_test(
         "guitar",
         "multi_gpu",
     ],
+    xla_enable_strict_auto_jit = False,  # b/142744009
 )
 
 cuda_py_test(
@@ -1415,8 +1423,10 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_oss",
@@ -1599,6 +1609,23 @@ tf_py_test(
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "no_oss",  # TODO(b/135021748) reenable
+        "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "training_v2_utils_test",
+    size = "medium",
+    srcs = ["engine/training_v2_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:strategy_combinations",
     ],
     tags = [
         "no_oss",  # TODO(b/135021748) reenable

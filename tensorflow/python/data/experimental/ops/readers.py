@@ -24,9 +24,9 @@ import gzip
 
 import numpy as np
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
-from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -206,13 +206,10 @@ def _get_sorted_col_indices(select_columns, column_names):
 def _maybe_shuffle_and_repeat(
     dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed):
   """Optionally shuffle and repeat dataset, as requested."""
-  if num_epochs != 1 and shuffle:
-    return shuffle_ops._ShuffleAndRepeatDataset(dataset, shuffle_buffer_size,
-                                                num_epochs, shuffle_seed)
-  elif shuffle:
-    return dataset.shuffle(shuffle_buffer_size, shuffle_seed)
-  elif num_epochs != 1:
-    return dataset.repeat(num_epochs)
+  if shuffle:
+    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  if num_epochs != 1:
+    dataset = dataset.repeat(num_epochs)
   return dataset
 
 
@@ -531,14 +528,17 @@ def make_csv_dataset_v2(
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if num_parallel_reads=1) or in parallel
-    dataset = core_readers.ParallelInterleaveDataset(
-        dataset,
-        filename_to_dataset,
-        cycle_length=num_parallel_reads,
-        block_length=1,
-        sloppy=sloppy,
-        buffer_output_elements=None,
-        prefetch_input_elements=None)
+    def apply_fn(dataset):
+      return core_readers.ParallelInterleaveDataset(
+          dataset,
+          filename_to_dataset,
+          cycle_length=num_parallel_reads,
+          block_length=1,
+          sloppy=sloppy,
+          buffer_output_elements=None,
+          prefetch_input_elements=None)
+
+    dataset = dataset.apply(apply_fn)
 
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
@@ -751,7 +751,7 @@ class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
 def make_batched_features_dataset_v2(file_pattern,
                                      batch_size,
                                      features,
-                                     reader=core_readers.TFRecordDataset,
+                                     reader=None,
                                      label_key=None,
                                      reader_args=None,
                                      num_epochs=None,
@@ -853,6 +853,8 @@ def make_batched_features_dataset_v2(file_pattern,
     TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
+  if reader is None:
+    reader = core_readers.TFRecordDataset
 
   if reader_num_threads is None:
     reader_num_threads = 1
@@ -884,14 +886,17 @@ def make_batched_features_dataset_v2(file_pattern,
     dataset = dataset.with_options(options)
   else:
     # Read files sequentially (if reader_num_threads=1) or in parallel
-    dataset = core_readers.ParallelInterleaveDataset(
-        dataset,
-        lambda filename: reader(filename, *reader_args),
-        cycle_length=reader_num_threads,
-        block_length=1,
-        sloppy=sloppy_ordering,
-        buffer_output_elements=None,
-        prefetch_input_elements=None)
+    def apply_fn(dataset):
+      return core_readers.ParallelInterleaveDataset(
+          dataset,
+          lambda filename: reader(filename, *reader_args),
+          cycle_length=reader_num_threads,
+          block_length=1,
+          sloppy=sloppy_ordering,
+          buffer_output_elements=None,
+          prefetch_input_elements=None)
+
+    dataset = dataset.apply(apply_fn)
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
@@ -930,7 +935,7 @@ def make_batched_features_dataset_v2(file_pattern,
 def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-docstring
                                      batch_size,
                                      features,
-                                     reader=core_readers.TFRecordDataset,
+                                     reader=None,
                                      label_key=None,
                                      reader_args=None,
                                      num_epochs=None,
@@ -1040,9 +1045,13 @@ class SqlDatasetV1(dataset_ops.DatasetV1Adapter):
     super(SqlDatasetV1, self).__init__(wrapped)
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-CsvDataset = CsvDatasetV1
-SqlDataset = SqlDatasetV1
-make_batched_features_dataset = make_batched_features_dataset_v1
-make_csv_dataset = make_csv_dataset_v1
+if tf2.enabled():
+  CsvDataset = CsvDatasetV2
+  SqlDataset = SqlDatasetV2
+  make_batched_features_dataset = make_batched_features_dataset_v2
+  make_csv_dataset = make_csv_dataset_v2
+else:
+  CsvDataset = CsvDatasetV1
+  SqlDataset = SqlDatasetV1
+  make_batched_features_dataset = make_batched_features_dataset_v1
+  make_csv_dataset = make_csv_dataset_v1

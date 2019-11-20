@@ -219,7 +219,8 @@ class HloModule {
   // Convert an HloModule to or from a proto.
   HloModuleProto ToProto() const;
   static StatusOr<std::unique_ptr<HloModule>> CreateFromProto(
-      const HloModuleProto& proto, const HloModuleConfig& module_config);
+      const HloModuleProto& proto, const HloModuleConfig& module_config,
+      bool prohibit_empty_literal = true);
 
   // Creates and returns an HloModuleConfig with an appropriate program shape
   // for the HLO module in the given proto.

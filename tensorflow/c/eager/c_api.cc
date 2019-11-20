@@ -37,7 +37,9 @@ limitations under the License.
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/platform/platform.h"  // NOLINT
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #ifdef TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -61,22 +63,25 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
+#include "tensorflow/core/distributed_runtime/eager/cluster_function_library_runtime.h"
 #endif  // !IS_MOBILE_PLATFORM
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
+#include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
+
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 
 using tensorflow::int64;
@@ -261,6 +266,7 @@ tensorflow::Status CreateRemoteContexts(
     tensorflow::uint64 context_view_id, int keep_alive_secs,
     const tensorflow::ServerDef& server_def,
     tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
+    const bool lazy_copy_remote_function_inputs,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -297,6 +303,8 @@ tensorflow::Status CreateRemoteContexts(
     request.mutable_server_def()->set_task_index(parsed_name.task);
     request.set_async(async);
     request.set_keep_alive_secs(keep_alive_secs);
+    request.set_lazy_copy_remote_function_inputs(
+        lazy_copy_remote_function_inputs);
 
     eager_client->CreateContextAsync(
         &request, response,
@@ -316,7 +324,7 @@ tensorflow::Status CreateRemoteContexts(
 tensorflow::Status UpdateRemoteContexts(
     const std::vector<string>& remote_workers, tensorflow::uint64 context_id,
     tensorflow::uint64 context_view_id, const tensorflow::ServerDef& server_def,
-    tensorflow::eager::EagerClientCache* remote_eager_workers, bool async,
+    tensorflow::eager::EagerClientCache* remote_eager_workers,
     const tensorflow::eager::CreateContextRequest& base_request) {
   int num_remote_workers = remote_workers.size();
   tensorflow::BlockingCounter counter(num_remote_workers);
@@ -443,19 +451,24 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
   std::vector<string> existing_workers;
   std::vector<string> replaced_workers;
 
-  std::unique_ptr<tensorflow::DynamicDeviceMgr> remote_device_mgr;
+  // New remote device manager created for new server_def. Unused if updating
+  // server_def.
+  std::unique_ptr<tensorflow::DynamicDeviceMgr> new_remote_device_mgr;
+  tensorflow::DynamicDeviceMgr* remote_device_mgr = nullptr;
   if (reset_context) {
     LOG_AND_RETURN_IF_ERROR(GetAllRemoteDevices(
         remote_workers, grpc_server->master_env()->worker_cache,
-        &remote_device_mgr));
+        &new_remote_device_mgr));
+    remote_device_mgr = new_remote_device_mgr.get();
   } else {
     ctx->context->ClearCaches();
-    grpc_server->worker_env()->rendezvous_mgr->Cleanup(context_id);
+    // TODO(b/143914772): Potential memory leak if rendezvous has pending
+    // tensors for removed / replaced workers.
 
-    remote_device_mgr = ctx->context->ReleaseRemoteDeviceMgr();
+    remote_device_mgr = ctx->context->GetOwnedRemoteDeviceMgr();
     if (remote_device_mgr == nullptr) {
       LOG_AND_RETURN_IF_ERROR(tensorflow::errors::InvalidArgument(
-          "Updating context with invalid a valid set of remote devices."));
+          "Updating context with an invalid set of remote devices."));
     }
     std::sort(curr_remote_workers.begin(), curr_remote_workers.end());
     std::sort(remote_workers.begin(), remote_workers.end());
@@ -465,17 +478,6 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(GetReplacedFromExistingWorkers(
         &existing_workers, context_id, ctx->context->GetContextViewId(),
         server_def, remote_eager_workers.get(), &replaced_workers));
-    if (!replaced_workers.empty()) {
-      // Also adding replaced workers so that we recreate remote devices and
-      // contexts, and re-register functions on those workers
-      added_workers.insert(added_workers.end(), replaced_workers.begin(),
-                           replaced_workers.end());
-      for (const string& w : replaced_workers) {
-        existing_workers.erase(
-            std::remove(existing_workers.begin(), existing_workers.end(), w),
-            existing_workers.end());
-      }
-    }
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Updating cluster with following changes";
       for (const string& w : added_workers) VLOG(1) << "  Added worker " << w;
@@ -484,13 +486,24 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       for (const string& w : replaced_workers)
         VLOG(1) << "  Replaced worker " << w;
     }
+    if (!replaced_workers.empty()) {
+      // Treat replaced workers as removed then added back, so that we recreate
+      // remote devices and contexts, and re-register functions on those workers
+      removed_workers.insert(removed_workers.end(), replaced_workers.begin(),
+                             replaced_workers.end());
+      added_workers.insert(added_workers.end(), replaced_workers.begin(),
+                           replaced_workers.end());
+      for (const string& w : replaced_workers) {
+        existing_workers.erase(
+            std::remove(existing_workers.begin(), existing_workers.end(), w),
+            existing_workers.end());
+      }
+    }
     LOG_AND_RETURN_IF_ERROR(
-        RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr.get()));
-    LOG_AND_RETURN_IF_ERROR(
-        RemoveRemoteDevicesFromMgr(replaced_workers, remote_device_mgr.get()));
+        RemoveRemoteDevicesFromMgr(removed_workers, remote_device_mgr));
     LOG_AND_RETURN_IF_ERROR(AddRemoteDevicesToMgr(
         added_workers, grpc_server->master_env()->worker_cache,
-        remote_device_mgr.get()));
+        remote_device_mgr));
   }
 
   std::vector<tensorflow::DeviceAttributes> cluster_device_attributes;
@@ -519,7 +532,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         remote_workers, context_id, context_view_id, keep_alive_secs,
         server_def, remote_eager_workers.get(),
-        ctx->context->Executor().Async(), base_request));
+        ctx->context->Executor().Async(),
+        ctx->context->LazyCopyFunctionRemoteInputs(), base_request));
   } else {
     // The master's context_view_id will be incremented by one
     // the UpdateRemoteMaster call later. We want all new workers and
@@ -529,7 +543,8 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
     LOG_AND_RETURN_IF_ERROR(CreateRemoteContexts(
         added_workers, context_id, context_view_id + 1, keep_alive_secs,
         server_def, remote_eager_workers.get(),
-        ctx->context->Executor().Async(), base_request));
+        ctx->context->Executor().Async(),
+        ctx->context->LazyCopyFunctionRemoteInputs(), base_request));
     if (!existing_workers.empty()) {
       if (VLOG_IS_ON(1)) {
         for (const string& w : existing_workers) {
@@ -538,48 +553,58 @@ tensorflow::Status UpdateTFE_ContextWithServerDef(
       }
       LOG_AND_RETURN_IF_ERROR(UpdateRemoteContexts(
           existing_workers, context_id, context_view_id + 1, server_def,
-          remote_eager_workers.get(), ctx->context->Executor().Async(),
-          base_request));
+          remote_eager_workers.get(), base_request));
     }
   }
 
   tensorflow::RemoteRendezvous* r =
       grpc_server->worker_env()->rendezvous_mgr->Find(context_id);
-
   auto session_name = tensorflow::strings::StrCat("eager_", context_id);
-  TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
-      session_name, server_def, base_request.cluster_device_attributes(),
-      true));
-
-  std::shared_ptr<tensorflow::WorkerSession> worker_session;
-  TF_RETURN_IF_ERROR(
-      grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
-          session_name, &worker_session));
-
-  // Initialize remote tensor communication based on worker session.
-  TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
-
   auto* device_mgr = grpc_server->worker_env()->device_mgr;
-  auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
-      /*is_master=*/true, ctx->context);
+  std::shared_ptr<tensorflow::WorkerSession> worker_session;
 
   if (reset_context) {
+    TF_RETURN_IF_ERROR(grpc_server->worker_env()->session_mgr->CreateSession(
+        session_name, server_def, base_request.cluster_device_attributes(),
+        true));
+    TF_RETURN_IF_ERROR(
+        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+            session_name, &worker_session));
+
+    // Initialize remote tensor communication based on worker session.
+    TF_RETURN_IF_ERROR(r->Initialize(worker_session.get()));
+
+    tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
+        tensorflow::eager::CreateClusterFLR(context_id, ctx->context,
+                                            worker_session.get());
+    auto remote_mgr = absl::make_unique<tensorflow::eager::RemoteMgr>(
+        /*is_master=*/true, ctx->context);
+
     LOG_AND_RETURN_IF_ERROR(ctx->context->InitializeRemoteMaster(
         std::move(new_server), grpc_server->worker_env(), worker_session,
-        std::move(remote_eager_workers), std::move(remote_device_mgr),
-        remote_workers, context_id, r, device_mgr, keep_alive_secs,
-        worker_session->cluster_flr(), std::move(remote_mgr)));
-  } else {
-    LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
-        grpc_server->worker_env(), worker_session,
-        std::move(remote_eager_workers), std::move(remote_device_mgr),
-        added_workers, removed_workers, context_id, r, device_mgr,
-        keep_alive_secs, worker_session->cluster_flr()));
-  }
+        std::move(remote_eager_workers), std::move(new_remote_device_mgr),
+        remote_workers, context_id, r, device_mgr, keep_alive_secs, cluster_flr,
+        std::move(remote_mgr)));
 
-  // NOTE: We start the server after all other initialization, because the
-  // GrpcServer cannot be destroyed after it is started.
-  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+    // NOTE: We start the server after all other initialization, because the
+    // GrpcServer cannot be destroyed after it is started.
+    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+  } else {
+    LOG_AND_RETURN_IF_ERROR(
+        grpc_server->worker_env()->session_mgr->UpdateSession(
+            session_name, server_def, base_request.cluster_device_attributes(),
+            true));
+    TF_RETURN_IF_ERROR(
+        grpc_server->worker_env()->session_mgr->WorkerSessionForSession(
+            session_name, &worker_session));
+    tensorflow::DistributedFunctionLibraryRuntime* cluster_flr =
+        tensorflow::eager::CreateClusterFLR(context_id, ctx->context,
+                                            worker_session.get());
+    LOG_AND_RETURN_IF_ERROR(ctx->context->UpdateRemoteMaster(
+        grpc_server->worker_env(), std::move(remote_eager_workers),
+        added_workers, removed_workers, context_id, r, device_mgr,
+        keep_alive_secs, cluster_flr));
+  }
 #undef LOG_AND_RETURN_IF_ERROR
 
   return tensorflow::Status::OK();
@@ -694,7 +719,8 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
 
   return new TFE_Context(opts->session_options.options,
                          opts->device_placement_policy, opts->mirroring_policy,
-                         opts->async, device_mgr.release(),
+                         opts->async, opts->lazy_remote_inputs_copy,
+                         device_mgr.release(),
                          /*device_mgr_owned*/ true, r,
                          tensorflow::GetDefaultCustomKernelCreator());
 }
@@ -709,7 +735,8 @@ TFE_Context* TFE_NewContextFromSession(const TFE_ContextOptions* opts,
 
   return new TFE_Context(opts->session_options.options,
                          opts->device_placement_policy, opts->mirroring_policy,
-                         opts->async, device_mgr, /*device_mgr_owned*/ false, r,
+                         opts->async, opts->lazy_remote_inputs_copy, device_mgr,
+                         /*device_mgr_owned*/ false, r,
                          tensorflow::GetDefaultCustomKernelCreator());
 }
 
@@ -772,6 +799,63 @@ TF_CAPI_EXPORT extern void TFE_ContextUpdateServerDef(TFE_Context* ctx,
 #endif  // !IS_MOBILE_PLATFORM
 }
 
+TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
+                                                 const char* worker_name,
+                                                 TF_Status* status) {
+#if defined(IS_MOBILE_PLATFORM)
+  status->status = tensorflow::errors::Unimplemented(
+      "TFE_ContextSetServerDef not supported on mobile");
+  return false;
+#else   // !defined(IS_MOBILE_PLATFORM)
+  tensorflow::GrpcServer* grpc_server =
+      static_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
+
+  std::unique_ptr<tensorflow::eager::EagerClientCache> remote_eager_workers;
+  status->status = grpc_server->master_env()->worker_cache->GetEagerClientCache(
+      &remote_eager_workers);
+  if (!status->status.ok()) {
+    LOG(ERROR) << "Failed to get client cache for remote workers.";
+    return false;
+  }
+
+  // TODO(yuefengz): support partially specified `worker_name`.
+  tensorflow::eager::EagerClient* eager_client;
+  status->status = remote_eager_workers->GetClient(worker_name, &eager_client);
+  if (!status->status.ok()) {
+    return false;
+  }
+
+  // Send a rpc request to the worker to check aliveness.
+  tensorflow::eager::KeepAliveRequest request;
+  request.set_context_id(ctx->context->GetContextId());
+  tensorflow::eager::KeepAliveResponse response;
+
+  tensorflow::Status keep_alive_status;
+  tensorflow::Notification done;
+  eager_client->KeepAliveAsync(
+      &request, &response,
+      [&keep_alive_status, &done](const tensorflow::Status& s) {
+        keep_alive_status = s;
+        done.Notify();
+      });
+  done.WaitForNotification();
+
+  status->status = tensorflow::Status::OK();
+
+  // If `context_id` doesn't exist on the remote worker, an InvalidArgument
+  // error will return. But this still indicates that the remote worker is
+  // alive.
+  if (keep_alive_status.ok() ||
+      keep_alive_status.code() == tensorflow::error::INVALID_ARGUMENT) {
+    return true;
+  } else {
+    LOG(INFO) << "Remote worker " << worker_name
+              << " is not alive: " << keep_alive_status.error_message();
+    return false;
+  }
+#endif  // !IS_MOBILE_PLATFORM
+}
+
 void TFE_ContextSetThreadLocalDevicePlacementPolicy(
     TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
   ctx->context->SetThreadLocalDevicePlacementPolicy(
@@ -796,6 +880,8 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   if (h == nullptr) return;
+  tensorflow::profiler::TraceMe activity(
+      "TFE_DeleteTensorHandle", tensorflow::profiler::TraceMeLevel::kInfo);
   VLOG(1) << "Deleting tensor handle " << h << " with internal handle "
           << h->handle;
   if (h->handle) {

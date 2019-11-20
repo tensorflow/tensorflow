@@ -39,7 +39,6 @@ from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
-from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -109,7 +108,7 @@ def wrap_layer_objects(layer, serialization_cache):
   # First, generate list of all regularization losses in this layer and
   # sublayers.
   all_losses = layer._callable_losses[:]  # pylint: disable=protected-access
-  for child_layer in _list_all_layers(layer):
+  for child_layer in utils.list_all_layers(layer):
     all_losses.extend(child_layer._callable_losses)  # pylint: disable=protected-access
   # Next, wrap all loss functions as tf.functions. Use the serialization cache
   # to store already-wrapped functions.
@@ -130,7 +129,7 @@ def wrap_layer_objects(layer, serialization_cache):
           layer.trainable_variables),
       non_trainable_variables=data_structures.ListWrapper(
           layer.non_trainable_variables),
-      layers=data_structures.ListWrapper(_list_all_layers(layer)),
+      layers=data_structures.ListWrapper(utils.list_all_layers(layer)),
       metrics=data_structures.ListWrapper(layer.metrics),
       regularization_losses=data_structures.ListWrapper(
           wrapped_loss_functions),
@@ -214,14 +213,6 @@ def default_save_signature(layer):
   return fn
 
 
-def _list_all_layers(obj):
-  if isinstance(obj, training_lib.Model):
-    return obj.layers
-  else:
-    return list(
-        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
-
-
 def _replace_child_layer_functions(layer, serialization_cache):
   """Replaces functions in the children layers with wrapped tf.functions.
 
@@ -248,7 +239,7 @@ def _replace_child_layer_functions(layer, serialization_cache):
   """
   # pylint: disable=protected-access
   original_fns = {}
-  for child_layer in _list_all_layers(layer):
+  for child_layer in utils.list_all_layers(layer):
     if isinstance(child_layer, input_layer.InputLayer):
       continue
 
@@ -300,7 +291,7 @@ def _restore_child_layer_functions(original_fns):
 def _reset_layer_losses(parent_layer):
   """Resets losses of layer and its sublayers, and returns original losses."""
   losses_dict = {}
-  for layer in _list_all_layers(parent_layer) + [parent_layer]:
+  for layer in utils.list_all_layers(parent_layer) + [parent_layer]:
     losses_dict[layer] = {'losses': layer._losses[:],
                           'eager_losses': layer._eager_losses[:]}
     with trackable.no_automatic_dependency_tracking_scope(layer):
@@ -317,23 +308,6 @@ def _restore_layer_losses(losses_dict):
 # pylint: enable=protected-access
 
 
-def layer_uses_training_bool(layer):
-  """Returns whether this layer or any of its children uses the training arg."""
-  if layer._expects_training_arg:  # pylint: disable=protected-access
-    return True
-  visited = {layer}
-  to_visit = _list_all_layers(layer)
-  while to_visit:
-    layer = to_visit.pop()
-    if layer in visited:
-      continue
-    if layer._expects_training_arg:  # pylint: disable=protected-access
-      return True
-    visited.add(layer)
-    to_visit.extend(_list_all_layers(layer))
-  return False
-
-
 class LayerCallCollection(object):
   """Groups wrapped layer call functions.
 
@@ -348,7 +322,7 @@ class LayerCallCollection(object):
     self.layer = layer
 
     self.layer_call_method = _get_layer_call_method(layer)
-    self._expects_training_arg = layer_uses_training_bool(layer)
+    self._expects_training_arg = utils.layer_uses_training_bool(layer)
     self._training_arg_index = utils.get_training_arg_index(
         self.layer_call_method)
 

@@ -48,6 +48,7 @@ from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: 
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
 from tensorflow.lite.python.util import build_debug_info_func as _build_debug_info_func
+from tensorflow.lite.python.util import convert_debug_info_func as _convert_debug_info_func
 from tensorflow.lite.python.util import freeze_graph as _freeze_graph
 from tensorflow.lite.python.util import get_debug_info as _get_debug_info
 from tensorflow.lite.python.util import get_grappler_config as _get_grappler_config
@@ -145,8 +146,8 @@ class TargetSpec(object):
       supported by the device. (default set([OpsSet.TFLITE_BUILTINS]))
     supported_types: List of types for constant values on the target device.
       Supported values are types exported by lite.constants. Frequently, an
-      optimization choice is driven by the most compact (i.e. smallest)
-      type in this list (default [constants.FLOAT])
+      optimization choice is driven by the most compact (i.e. smallest) type in
+      this list (default [constants.FLOAT])
   """
 
   def __init__(self, supported_ops=None, supported_types=None):
@@ -166,7 +167,10 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_enable_mlir_converter = False
+    self.experimental_new_converter = False
+    self.experimental_new_quantizer = False
+    # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
+    # in the `GraphDef` to the converter.
     self._debug_info = None
 
   def _grappler_config(self):
@@ -234,12 +238,12 @@ class TFLiteConverterBase(object):
             self._smallest_supported_type() != constants.FLOAT16)
 
   def _calibrate_quantize_model(self, result, inference_input_type,
-                                inference_output_type):
+                                inference_output_type, enable_mlir_quantizer):
     allow_float = not self._is_int8_target_required()
     calibrate_quantize = _calibrator.Calibrator(result)
     return calibrate_quantize.calibrate_and_quantize(
         self.representative_dataset.input_gen, inference_input_type,
-        inference_output_type, allow_float)
+        inference_output_type, allow_float, enable_mlir_quantizer)
 
   def _get_base_converter_args(self):
     """Returns the base converter args.
@@ -256,7 +260,7 @@ class TFLiteConverterBase(object):
         "quantize_to_float16": float16_quantize,
         "debug_info": self._debug_info,
         "target_ops": self.target_spec.supported_ops,
-        "enable_mlir_converter": self.experimental_enable_mlir_converter,
+        "enable_mlir_converter": self.experimental_new_converter,
     }
     return args
 
@@ -278,9 +282,10 @@ class TFLiteConverterV2(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
+    experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-
+    experimental_new_quantizer: Experimental flag, subject to change.
+      Enables MLIR-based post-training quantization.
   Example usage:
 
     ```python
@@ -383,7 +388,19 @@ class TFLiteConverterV2(TFLiteConverterBase):
     Returns:
       TFLiteConverter object.
     """
-    func = _saving_utils.trace_model_call(model)
+    input_signature = None
+    # If the model's call is not a `tf.function`, then we need to first get its
+    # input signature from `model_input_signature` method. We can't directly
+    # call `trace_model_call` because otherwise the batch dimension is set
+    # to None.
+    # Once we have better support for dynamic shapes, we can remove this.
+    if not isinstance(model.call, _def_function.Function):
+      # Pass `keep_original_batch_size=True` will ensure that we get an input
+      # signature including the batch dimension specified by the user.
+      input_signature = _saving_utils.model_input_signature(
+          model, keep_original_batch_size=True)
+
+    func = _saving_utils.trace_model_call(model, input_signature)
     concrete_func = func.get_concrete_function()
     return cls([concrete_func])
 
@@ -405,8 +422,10 @@ class TFLiteConverterV2(TFLiteConverterBase):
                        "ConcreteFunction. Converting multiple functions is "
                        "under development.")
 
-    frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
-        self._funcs[0], lower_control_flow=False)
+    # graph_def is used here to preserve the node bug information
+    frozen_func, graph_def = (
+        _convert_to_constants.convert_variables_to_constants_v2_as_graph(
+            self._funcs[0], lower_control_flow=False))
     input_tensors = [
         tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
@@ -414,7 +433,6 @@ class TFLiteConverterV2(TFLiteConverterBase):
     output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = frozen_func.graph.as_graph_def()
     graph_def = _run_graph_optimizations(
         graph_def,
         input_tensors,
@@ -438,8 +456,14 @@ class TFLiteConverterV2(TFLiteConverterBase):
 
     self._validate_quantization()
     self._validate_representative_dataset()
-    self._debug_info = _get_debug_info(
-        _build_debug_info_func(self._funcs[0].graph), graph_def)
+    if self._trackable_obj is None:
+      self._debug_info = _get_debug_info(
+          _build_debug_info_func(self._funcs[0].graph), graph_def)
+    else:
+      self._debug_info = _get_debug_info(
+          _convert_debug_info_func(self._trackable_obj.graph_debug_info),
+          graph_def)
+
     converter_kwargs = self._get_base_converter_args()
 
     # Converts model.
@@ -450,8 +474,9 @@ class TFLiteConverterV2(TFLiteConverterBase):
         **converter_kwargs)
 
     if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(result, constants.FLOAT,
-                                              constants.FLOAT)
+      result = self._calibrate_quantize_model(
+          result, constants.FLOAT, constants.FLOAT,
+          self.experimental_new_quantizer)
 
     return result
 
@@ -522,6 +547,8 @@ class TFLiteConverter(TFLiteConverterBase):
       output file. (default None)
     dump_graphviz_video: Boolean indicating whether to dump the graph after
       every graph transformation. (default False)
+    conversion_summary_dir: A string indicating the path to the generated
+      conversion logs.
     target_ops: Deprecated. Please specify `target_spec.supported_ops` instead.
       Set of OpsSet options indicating which converter to use.
       (default set([OpsSet.TFLITE_BUILTINS]))
@@ -532,9 +559,10 @@ class TFLiteConverter(TFLiteConverterBase):
     representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
-    experimental_enable_mlir_converter: Experimental flag, subject to change.
+    experimental_new_converter: Experimental flag, subject to change.
       Enables MLIR-based conversion instead of TOCO conversion.
-
+    experimental_new_quantizer: Experimental flag, subject to change.
+      Enables MLIR-based post-training quantization.
   Example usage:
 
     ```python
@@ -605,7 +633,9 @@ class TFLiteConverter(TFLiteConverterBase):
     self._post_training_quantize = False
     self.dump_graphviz_dir = None
     self.dump_graphviz_video = False
+    self.conversion_summary_dir = None
     self._debug_info_func = experimental_debug_info_func
+    self._custom_opdefs = None
 
     # Attributes are used by models that cannot be loaded into TensorFlow.
     if not self._has_valid_tensors():
@@ -975,7 +1005,9 @@ class TFLiteConverter(TFLiteConverterBase):
         "reorder_across_fake_quant": self.reorder_across_fake_quant,
         "change_concat_input_ranges": self.change_concat_input_ranges,
         "dump_graphviz_dir": self.dump_graphviz_dir,
-        "dump_graphviz_video": self.dump_graphviz_video
+        "dump_graphviz_video": self.dump_graphviz_video,
+        "conversion_summary_dir": self.conversion_summary_dir,
+        "custom_opdefs": self._custom_opdefs,
     })
 
     # Converts model.
@@ -993,8 +1025,9 @@ class TFLiteConverter(TFLiteConverterBase):
           **converter_kwargs)
 
     if self._is_calibration_quantize():
-      result = self._calibrate_quantize_model(result, inference_input_type,
-                                              inference_output_type)
+      result = self._calibrate_quantize_model(
+          result, inference_input_type, inference_output_type,
+          self.experimental_new_quantizer)
 
     return result
 

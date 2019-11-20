@@ -4,8 +4,6 @@ This page is complete reference of command-line flags used by the TensorFlow
 Lite Converter's command line starting from TensorFlow 1.9 up until the most
 recent build of TensorFlow.
 
-[TOC]
-
 ## High-level flags
 
 The following high level flags specify the details of the input and output
@@ -157,3 +155,10 @@ graph transformations:
     completed.
 *   `--dump_graphviz_video`. Type: boolean. Outputs GraphViz after every graph
     transformation. Requires `--dump_graphviz_dir` to be specified.
+
+The following flag controls generating the conversion logs. The conversion log
+includes a protocol buffer of analytics collected during conversion, and an HTML
+file where user can preview the conversion summary.
+
+*   `--conversion_summary_dir`. Type: string. Specifies the full path of the
+    directory to output conversion logs.

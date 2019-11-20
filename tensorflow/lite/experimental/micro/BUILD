@@ -18,6 +18,7 @@ cc_library(
         "micro_error_reporter.cc",
         "micro_interpreter.cc",
         "micro_mutable_op_resolver.cc",
+        "micro_optional_debug_tools.cc",
         "simple_memory_allocator.cc",
         "test_helpers.cc",
     ],
@@ -30,6 +31,7 @@ cc_library(
         "micro_error_reporter.h",
         "micro_interpreter.h",
         "micro_mutable_op_resolver.h",
+        "micro_optional_debug_tools.h",
         "simple_memory_allocator.h",
         "test_helpers.h",
     ],
@@ -40,9 +42,11 @@ cc_library(
     ],
     deps = [
         ":micro_utils",
+        "//tensorflow/lite:type_to_tflitetype",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/experimental/micro/memory_planner:greedy_memory_planner",
+        "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

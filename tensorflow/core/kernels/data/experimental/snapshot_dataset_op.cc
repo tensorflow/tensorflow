@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"  // NOLINT
 #include "tensorflow/core/grappler/graph_view.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/compression.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
 #include "tensorflow/core/platform/file_system.h"
 #if !defined(IS_SLIM_BUILD)
@@ -67,6 +69,8 @@ constexpr char kSnapshotReaderWorkerPool[] = "snapshot_reader_worker_pool";
 constexpr char kSnapshotWriterWorkerPool[] = "snapshot_writer_worker_pool";
 constexpr char kSeparator[] = "::";
 constexpr char kBookkeeping[] = "Bookkeeping";
+constexpr char kSnapshotReadElements[] = "snapshot_read_elements";
+constexpr char kSnapshotWrittenElements[] = "snapshot_written_elements";
 
 class SnapshotWriter {
  public:
@@ -221,7 +225,7 @@ class SnapshotReader {
 
 Status WriteMetadataFile(const string& hash_dir,
                          const experimental::SnapshotMetadataRecord& metadata) {
-  string metadata_filename = absl::StrCat(hash_dir, "/", kSnapshotFilename);
+  string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(hash_dir));
 
   std::string tmp_filename =
@@ -244,7 +248,7 @@ Status WriteMetadataFile(const string& hash_dir,
 
 Status ReadMetadataFile(const string& hash_dir,
                         experimental::SnapshotMetadataRecord* metadata) {
-  string metadata_filename = absl::StrCat(hash_dir, "/", kSnapshotFilename);
+  string metadata_filename = io::JoinPath(hash_dir, kSnapshotFilename);
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(metadata_filename));
 
   std::unique_ptr<RandomAccessFile> file;
@@ -257,6 +261,19 @@ Status ReadMetadataFile(const string& hash_dir,
 
   metadata->ParseFromString(record_bytes);
   return Status::OK();
+}
+
+Status DumpDatasetGraph(const std::string& path, uint64 hash,
+                        const GraphDef& graph) {
+  std::unique_ptr<WritableFile> file;
+  std::string hash_hex =
+      strings::StrCat(strings::Hex(hash, strings::kZeroPad16));
+  std::string graph_file =
+      io::JoinPath(path, absl::StrCat(hash_hex, "-graph.pbtxt"));
+
+  LOG(INFO) << "Graph hash is " << hash_hex << ", writing to " << graph_file;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(path));
+  return WriteTextProto(Env::Default(), graph_file, graph);
 }
 
 Status DetermineOpState(const Status& file_status,
@@ -356,7 +373,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     SerializationContext::Params params;
     std::vector<std::pair<string, Tensor>> input_list;
     params.input_list = &input_list;
-    params.check_external_state = false;
+    params.external_state_policy =
+        SerializationContext::ExternalStatePolicy::kIgnore;
 
     GraphDef graph_def;
     OP_REQUIRES_OK(
@@ -364,6 +382,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
     uint64 hash;
     OP_REQUIRES_OK(ctx, HashGraph(graph_def, &hash));
+
+    Status dump_status = DumpDatasetGraph(path, hash, graph_def);
+    if (!dump_status.ok()) {
+      LOG(WARNING) << "Unable to write graphdef to disk, error: "
+                   << dump_status.ToString();
+    }
+
+    LOG(INFO) << "Graph def serialized to hash: " << hash;
 
     *output = new Dataset(
         ctx, input, path,
@@ -409,7 +435,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
       return absl::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::Snapshot")});
+          Iterator::Params{this, absl::StrCat(prefix, "::Snapshot")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -508,8 +534,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       Status Initialize(IteratorContext* ctx) override {
         mutex_lock l(mu_);
         // TODO(dero): remove NOLINT after USE_TSTRING is enabled.
-        hash_dir_ = absl::StrCat(StringPiece(dataset()->dir_), "/",  // NOLINT
-                                 dataset()->graph_hash_);
+        hash_dir_ = io::JoinPath(dataset()->dir_, dataset()->graph_hash_);
         return Status::OK();
       }
 
@@ -524,23 +549,26 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               ReadMetadataFile(hash_dir_, &metadata), metadata,
               dataset()->pending_snapshot_expiry_seconds_, &state_));
 
+          LOG(INFO) << "Op state: " << state_
+                    << " with metadata: " << metadata.DebugString();
+
           switch (state_) {
             case WRITER:
               iterator_ = absl::make_unique<SnapshotWriterIterator>(
                   SnapshotWriterIterator::Params{
-                      dataset(), strings::StrCat(prefix(), "WriterImpl")},
+                      dataset(), absl::StrCat(prefix(), "WriterImpl")},
                   hash_dir_);
               break;
             case READER:
               iterator_ = absl::make_unique<SnapshotReaderIterator>(
                   SnapshotReaderIterator::Params{
-                      dataset(), strings::StrCat(prefix(), "ReaderImpl")},
+                      dataset(), absl::StrCat(prefix(), "ReaderImpl")},
                   hash_dir_, metadata);
               break;
             case PASSTHROUGH:
               iterator_ = absl::make_unique<SnapshotPassthroughIterator>(
                   SnapshotPassthroughIterator::Params{
-                      dataset(), strings::StrCat(prefix(), "PassthroughImpl")});
+                      dataset(), absl::StrCat(prefix(), "PassthroughImpl")});
               break;
           }
           TF_RETURN_IF_ERROR(iterator_->Initialize(ctx));
@@ -587,7 +615,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           thread_pool_ = ctx->CreateThreadPool(kSnapshotReaderWorkerPool,
                                                dataset()->num_reader_threads_);
           run_id_ = metadata_.run_id();
-          run_dir_ = absl::StrCat(hash_dir_, "/", run_id_);
+          run_dir_ = io::JoinPath(hash_dir_, run_id_);
           // Get all the files in the run_dir.
           TF_RETURN_IF_ERROR(ctx->env()->GetMatchingPaths(
               absl::StrCat(run_dir_, "/*"), &filenames_));
@@ -632,6 +660,14 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           if (cancelled_) {
             return errors::Cancelled(
                 "SnapshotDatasetOp::Dataset::SnapshotReaderIterator::GetNext");
+          }
+
+          const auto& stats_aggregator = ctx->stats_aggregator();
+          if (stats_aggregator) {
+            stats_aggregator->AddScalar(
+                absl::StrCat(dataset()->node_name(), kSeparator,
+                             kSnapshotReadElements),
+                static_cast<float>(num_elements_read_), num_elements());
           }
 
           if (!buffer_.empty()) {
@@ -727,6 +763,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               elem.status = Status::OK();
               mutex_lock l(mu_);
               buffer_.push_back(std::move(elem));
+              num_elements_read_++;
               cond_var_.notify_all();
             } else if (errors::IsOutOfRange(s)) {
               return Status::OK();
@@ -752,7 +789,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               if (next_file_index_ >= filenames_.size()) {
                 return;
               }
-              filename = absl::StrCat(dataset()->reader_path_prefix_,
+              filename = io::JoinPath(dataset()->reader_path_prefix_,
                                       filenames_[next_file_index_]);
               VLOG(2) << "Starting to read: " << filename;
               next_file_index_++;
@@ -809,6 +846,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         bool cancelled_ GUARDED_BY(mu_) = false;
         bool background_threads_started_ GUARDED_BY(mu_) = false;
         bool background_threads_finished_ GUARDED_BY(mu_) = false;
+        int64 num_elements_read_ = 0;
       };
 
       class SnapshotWriterIterator : public DatasetIterator<Dataset> {
@@ -835,8 +873,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                                                dataset()->num_writer_threads_);
           run_id_ = strings::StrCat(
               strings::Hex(random::New64(), strings::kZeroPad4));
-          run_dir_ = absl::StrCat(dataset()->writer_path_prefix_, hash_dir_,
-                                  "/", run_id_);
+          run_dir_ =
+              io::JoinPath(dataset()->writer_path_prefix_, hash_dir_, run_id_);
           TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(run_dir_));
 
           experimental::SnapshotMetadataRecord metadata;
@@ -911,6 +949,13 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                         << (bytes_produced_ * 1000000.0) /
                                (time_spent_micros_ * 1024.0 * 1024.0);
             }
+            const auto& stats_aggregator = ctx->stats_aggregator();
+            if (stats_aggregator) {
+              stats_aggregator->AddScalar(
+                  absl::StrCat(dataset()->node_name(), kSeparator,
+                               kSnapshotWrittenElements),
+                  static_cast<float>(num_elements_written_), num_elements());
+            }
           }
           return Status::OK();
         }
@@ -923,9 +968,10 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
 
         string GetSnapshotFilename() {
           mutex_lock l(mu_);
-          string snapshot_data_filename = absl::StrCat(
-              run_dir_, "/", strings::Printf("%08llu", next_file_index_),
-              ".snapshot");
+          string snapshot_data_filename = io::JoinPath(
+              run_dir_,
+              absl::StrCat(strings::Printf("%08llu", next_file_index_),
+                           ".snapshot"));
           next_file_index_++;
           return snapshot_data_filename;
         }
@@ -1104,6 +1150,8 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               cond_var_.notify_all();
               return;
             }
+            mutex_lock l(mu_);
+            num_elements_written_++;
           }
         }
 
@@ -1138,6 +1186,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
         uint64 next_file_index_ GUARDED_BY(mu_) = 0;
         std::unique_ptr<thread::ThreadPool> thread_pool_;
         int64 num_active_threads_ GUARDED_BY(mu_) = 0;
+        int64 num_elements_written_ = 0;
       };
 
       class SnapshotPassthroughIterator : public DatasetIterator<Dataset> {

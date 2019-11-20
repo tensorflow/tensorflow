@@ -2,13 +2,11 @@
 
 HloModule foo
 
-// CHECK-LABEL: func @cond
 %cond (arg_1: s64[]) -> pred[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   ROOT %compare.2 = pred[] compare(%arg_1, %arg_1), direction=LT, metadata={op_type="Less" op_name="Less"}
 }
 
-// CHECK-LABEL: func @loop
 %loop (arg_1: s64[]) -> s64[] {
   %arg_1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
   ROOT %compare.2 = s64[] add(%arg_1, %arg_1), metadata={op_type="Less" op_name="Less"}
@@ -17,7 +15,15 @@ HloModule foo
 // CHECK-LABEL: func @main(%arg0: tensor<i64>) -> tensor<i64> {
 ENTRY %foo (arg0.1: s64[]) -> s64[] {
   %arg0.1 = s64[] parameter(0), metadata={op_name="HLO_Args"}
-  // CHECK-NEXT: %0 = "xla_hlo.while"(%arg0) {body = @loop, cond = @cond} : (tensor<i64>) -> tensor<i64>
-  // CHECK-NEXT: return %0 : tensor<i64>
+
+  // CHECK: "xla_hlo.while"(%arg0) ( {
+  // CHECK:   ^bb0
+  // CHECK:     "xla_hlo.compare"
+  // CHECK:     "xla_hlo.return"
+  // CHECK:   },  {
+  // CHECK:   ^bb0
+  // CHECK:     xla_hlo.add
+  // CHECK:     "xla_hlo.return"
+  // CHECK: }) : (tensor<i64>) -> tensor<i64>
   ROOT %while.2 = s64[] while(%arg0.1), body=%loop, condition=%cond
 }

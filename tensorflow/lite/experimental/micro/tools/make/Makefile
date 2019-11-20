@@ -97,21 +97,6 @@ tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
 tensorflow/lite/core/api/tensor_utils.cc \
-tensorflow/lite/experimental/microfrontend/lib/fft.cc \
-tensorflow/lite/experimental/microfrontend/lib/fft_util.cc \
-tensorflow/lite/experimental/microfrontend/lib/filterbank.c \
-tensorflow/lite/experimental/microfrontend/lib/filterbank_util.c \
-tensorflow/lite/experimental/microfrontend/lib/frontend.c \
-tensorflow/lite/experimental/microfrontend/lib/frontend_util.c \
-tensorflow/lite/experimental/microfrontend/lib/log_lut.c \
-tensorflow/lite/experimental/microfrontend/lib/log_scale.c \
-tensorflow/lite/experimental/microfrontend/lib/log_scale_util.c \
-tensorflow/lite/experimental/microfrontend/lib/noise_reduction.c \
-tensorflow/lite/experimental/microfrontend/lib/noise_reduction_util.c \
-tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control.c \
-tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control_util.c \
-tensorflow/lite/experimental/microfrontend/lib/window.c \
-tensorflow/lite/experimental/microfrontend/lib/window_util.c \
 tensorflow/lite/kernels/internal/quantization_util.cc \
 tensorflow/lite/kernels/kernel_util.cc
 
@@ -121,7 +106,6 @@ MICROLITE_CC_HDRS := \
 $(wildcard tensorflow/lite/experimental/micro/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.h) \
 $(wildcard tensorflow/lite/experimental/micro/memory_planner/*.h) \
-$(wildcard tensorflow/lite/experimental/microfrontend/lib/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
@@ -149,7 +133,10 @@ tensorflow/lite/kernels/internal/reference/integer_ops/add.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
+tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \
 tensorflow/lite/kernels/internal/reference/pooling.h \
 tensorflow/lite/kernels/internal/reference/prelu.h \
@@ -171,6 +158,7 @@ tensorflow/lite/kernels/padding.h \
 tensorflow/lite/schema/schema_generated.h \
 tensorflow/lite/string_type.h \
 tensorflow/lite/string_util.h \
+tensorflow/lite/type_to_tflitetype.h \
 tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \
@@ -199,6 +187,12 @@ KEIL_PROJECT_FILES := \
 
 ARDUINO_PROJECT_FILES := \
   library.properties
+
+ESP_PROJECT_FILES := \
+  README_ESP.md \
+  CMakeLists.txt \
+  main/CMakeLists.txt \
+  components/tfmicro/CMakeLists.txt
 
 ALL_PROJECT_TARGETS :=
 
@@ -256,17 +250,17 @@ MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
 $(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
-$(OBJDIR)%.o: %.cc third_party_downloads
+$(OBJDIR)%.o: %.cc $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow C source files.
-$(OBJDIR)%.o: %.c third_party_downloads
+$(OBJDIR)%.o: %.c $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 
 # For normal manually-created TensorFlow ASM source files.
-$(OBJDIR)%.o: %.S third_party_downloads
+$(OBJDIR)%.o: %.S $(THIRD_PARTY_TARGETS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CCFLAGS) $(INCLUDES) -c $< -o $@
 

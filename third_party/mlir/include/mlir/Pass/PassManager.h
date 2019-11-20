@@ -69,6 +69,12 @@ public:
   /// operation type, it must be the same type as this pass manager.
   void addPass(std::unique_ptr<Pass> pass);
 
+  /// Add the given pass to a nested pass manager for the given operation kind
+  /// `OpT`.
+  template <typename OpT> void addNestedPass(std::unique_ptr<Pass> pass) {
+    nest<OpT>().addPass(std::move(pass));
+  }
+
   /// Returns the number of passes held by this manager.
   size_t size() const;
 

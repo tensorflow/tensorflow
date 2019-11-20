@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
+using mlir::DenseIntElementsAttr;
 using mlir::ElementsAttr;
 using mlir::FunctionPass;
 using mlir::MLIRContext;
@@ -38,6 +39,7 @@ using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
 using mlir::PatternMatchResult;
 using mlir::PatternRewriter;
+using mlir::RankedTensorType;
 using mlir::Value;
 
 namespace {
@@ -64,28 +66,27 @@ Value *TransposeReshape(Value *arg, mlir::Location loc,
                                                       left_dims.end());
   transpose_permutation.append(right_dims.begin(), right_dims.end());
 
-  mlir::TensorType transpose_permutation_type = rewriter->getTensorType(
+  mlir::TensorType transpose_permutation_type = RankedTensorType::get(
       {static_cast<int64_t>(transpose_permutation.size())},
       rewriter->getIntegerType(64));
 
   auto transpose_permutation_attr =
-      rewriter
-          ->getDenseIntElementsAttr(transpose_permutation_type,
-                                    transpose_permutation)
-          .cast<mlir::DenseIntElementsAttr>();
+      DenseIntElementsAttr::get(transpose_permutation_type,
+                                llvm::makeArrayRef(transpose_permutation))
+          .cast<DenseIntElementsAttr>();
 
   // Compute the resulting shape.
   llvm::SmallVector<int64_t, 5> transposed_shape;
   for (auto val : transpose_permutation) {
     transposed_shape.push_back(arg_shape[val]);
   }
-  auto transpose_type = rewriter->getTensorType(transposed_shape, element_type);
+  auto transpose_type = RankedTensorType::get(transposed_shape, element_type);
   auto transpose_result = rewriter->create<mlir::xla_hlo::TransposeOp>(
       loc, transpose_type, arg, transpose_permutation_attr);
 
   // Return the final result.
   auto reshaped_type =
-      rewriter->getTensorType({left_size, right_size}, element_type);
+      RankedTensorType::get({left_size, right_size}, element_type);
   return rewriter->create<mlir::xla_hlo::ReshapeOp>(loc, reshaped_type,
                                                     transpose_result);
 }
@@ -156,7 +157,7 @@ struct GeneralDotConvert
     auto lhs_shape = lhs->getType().cast<mlir::ShapedType>().getShape();
     auto rhs_shape = rhs->getType().cast<mlir::ShapedType>().getShape();
     auto new_dot_type =
-        rewriter.getTensorType({lhs_shape[0], rhs_shape[1]}, dot_element_type);
+        RankedTensorType::get({lhs_shape[0], rhs_shape[1]}, dot_element_type);
 
     auto new_dot_op = rewriter.create<mlir::xla_hlo::DotOp>(
         op.getLoc(), new_dot_type, lhs, rhs, *(op.precision_config()));

@@ -19,8 +19,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef ROCDLIR_OPS
-#else
+#ifndef ROCDLIR_OPS
 #define ROCDLIR_OPS
 
 include "mlir/Dialect/LLVMIR/LLVMOpBase.td"

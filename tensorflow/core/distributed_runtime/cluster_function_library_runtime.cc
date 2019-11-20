@@ -219,18 +219,18 @@ void ClusterFunctionLibraryRuntime::Instantiate(
     return;
   }
 
-  RegisterGraphRequest req;
-  req.set_session_handle(worker_session_->session_name());
-  req.set_create_worker_session_called(create_worker_session_called_);
-  *req.mutable_graph_def() = std::move(gdef);
-  req.mutable_graph_options()
+  auto* req = new RegisterGraphRequest;
+  req->set_session_handle(worker_session_->session_name());
+  req->set_create_worker_session_called(create_worker_session_called_);
+  *req->mutable_graph_def() = std::move(gdef);
+  req->mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_do_function_inlining(true);
   auto* resp = new RegisterGraphResponse;
 
   wi->RegisterGraphAsync(
-      &req, resp,
-      [this, handle, resp, wi, function_name, target, send_keys, recv_keys,
+      req, resp,
+      [this, handle, req, resp, wi, function_name, target, send_keys, recv_keys,
        done](const Status& status) {
         if (status.ok()) {
           mutex_lock l(mu_);
@@ -244,6 +244,7 @@ void ClusterFunctionLibraryRuntime::Instantiate(
         done(status);
         delete recv_keys;
         delete send_keys;
+        delete req;
         delete resp;
       });
 }

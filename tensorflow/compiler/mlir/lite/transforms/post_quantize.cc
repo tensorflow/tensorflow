@@ -69,30 +69,22 @@ void RemoveQuantizationAdaptorOps(FuncOp func) {
     // argument in the list.
     auto* arg = bb.getArgument(0);
 
-    // This is looking for a pattern: arg -> tfl.pseudo_input -> tfl.quantize
-    if (arg->hasOneUse() && llvm::isa<InputOp>(*arg->user_begin())) {
-      auto input_op = llvm::cast<InputOp>(*arg->user_begin());
-      Value* input_output = input_op.output();
-      // We can drop the quantization adaptor only when the pseudo input op has
-      // one user and it is the quantize op. Otherwise, we have to keep the
-      // adaptor and allow the floating point inputs.
-      if (input_output->hasOneUse() &&
-          llvm::isa<QuantizeOp>(*input_output->user_begin())) {
-        auto quantize_op = llvm::cast<QuantizeOp>(*input_output->user_begin());
-        auto quantize_output = quantize_op.output();
-        auto quantize_type = quantize_output->getType();
-        input_types.push_back(quantize_type);
-        auto* new_arg = bb.addArgument(quantize_type);
-        // Make a copy of input op with quantized input and output type.
-        auto new_input =
-            builder.create<InputOp>(input_op.getLoc(), quantize_type, new_arg);
-        quantize_output->replaceAllUsesWith(new_input);
-        quantize_op.erase();
-        input_op.erase();
-        arg->dropAllUses();
-        bb.eraseArgument(0);
-        continue;
-      }
+    auto remove_quantize_op = [&](QuantizeOp quantize_op) {
+      auto quantize_output = quantize_op.output();
+      auto quantize_type = quantize_output->getType();
+      input_types.push_back(quantize_type);
+      auto* new_arg = bb.addArgument(quantize_type);
+      quantize_output->replaceAllUsesWith(new_arg);
+      quantize_op.erase();
+      arg->dropAllUses();
+      bb.eraseArgument(0);
+    };
+
+    // This is looking for a pattern: arg -> tfl.quantize
+    if (arg->hasOneUse() && llvm::isa<QuantizeOp>(*arg->user_begin())) {
+      auto quantize_op = llvm::cast<QuantizeOp>(*arg->user_begin());
+      remove_quantize_op(quantize_op);
+      continue;
     }
 
     // Make a copy of current argument and append it to the end of the list if

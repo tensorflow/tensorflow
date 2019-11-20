@@ -9,14 +9,10 @@ load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 # tf.tpu and tf.compat.v1.tpu in TF 2.x.
 package(
     default_visibility = [
-        "//cloud/vmm/testing/tests/tpu:__subpackages__",
-        "//knowledge/cerebra/sense/im2query:__subpackages__",
         "//learning/brain:__subpackages__",
         "//learning/deepmind:__subpackages__",
-        "//medical/pathology:__subpackages__",
         "//research/graph:__subpackages__",
         "//tensorflow:__subpackages__",
-        "//vr/perception:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -31,7 +27,12 @@ py_test(
     ],
     main = "tpu_test_wrapper_test.py",
     python_version = "PY3",
-    tags = ["no_pip"],
+    srcs_version = "PY3",
+    tags = [
+        "no_oss_py2",
+        "no_oss_py35",
+        "no_pip",
+    ],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
@@ -222,6 +223,7 @@ py_library(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:platform_analytics",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tpu_ops_gen",
         "//tensorflow/python:training",
@@ -436,7 +438,7 @@ tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
     protodeps = [
-        "//tensorflow/core:protos_all_proto",
+        "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
 )

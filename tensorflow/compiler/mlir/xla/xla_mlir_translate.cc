@@ -31,8 +31,8 @@ using stream_executor::port::Status;
 using stream_executor::port::StatusOr;  // NOLINT TODO(b/130822468) fix this
 
 // NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_use_tuple_arg(
-    "emit-use-tuple-args",
+static llvm::cl::opt<bool> emit_use_tuple_arg_for_entry_function(
+    "emit-use-tuple-args-for-entry-function",
     llvm::cl::desc("Emit HLO modules using tuples as args"),
     llvm::cl::init(false));
 
@@ -64,12 +64,11 @@ bool LoadHloProto(const std::string& contents, HloProto* hlo_proto) {
 }  // namespace
 
 mlir::OwningModuleRef HloToMlirHloTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context) {
   HloProto hlo_proto;
-  string content(input->getBufferStart(), input->getBufferSize());
+  string content(input.data(), input.size());
   if (!LoadHloProto(content, &hlo_proto)) {
-    LOG(ERROR) << "Failed to load proto: "
-               << input->getBufferIdentifier().str();
+    LOG(ERROR) << "Failed to load proto";
     return nullptr;
   }
 
@@ -86,9 +85,9 @@ mlir::OwningModuleRef HloToMlirHloTranslateFunction(
 }
 
 mlir::OwningModuleRef HloTextToMlirHloTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input, mlir::MLIRContext* context) {
+    llvm::StringRef input, mlir::MLIRContext* context) {
   HloProto hlo_proto;
-  string content(input->getBufferStart(), input->getBufferSize());
+  string content(input.data(), input.size());
 
   auto hlo_module_error = ParseAndReturnUnverifiedModule(content);
   if (!hlo_module_error.ok()) {
@@ -114,7 +113,8 @@ static mlir::LogicalResult MlirHloToHloTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg_for_entry_function,
+      emit_always_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();
@@ -139,7 +139,8 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 
   HloProto hloProto;
   Status status = mlir::ConvertMlirHloToHlo(
-      module, &hloProto, emit_use_tuple_arg, emit_always_return_tuple);
+      module, &hloProto, emit_use_tuple_arg_for_entry_function,
+      emit_always_return_tuple);
   if (!status.ok()) {
     LOG(ERROR) << "Module conversion failed: " << status;
     return mlir::failure();

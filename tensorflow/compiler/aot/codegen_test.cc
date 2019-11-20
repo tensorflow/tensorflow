@@ -162,10 +162,10 @@ static void CompareWithGoldenFile(
 TEST(CodegenTest, Golden) {
   // Normally CpuCompiler::CpuCompiler does this, but in this test we've
   // bypassed the Cpu compiler so we have to do this manually.
-  llvm::InitializeNativeTarget();
-  llvm::InitializeNativeTargetAsmPrinter();
   LLVMInitializeX86Target();
+  LLVMInitializeX86TargetInfo();
   LLVMInitializeX86TargetMC();
+  LLVMInitializeX86AsmPrinter();
 
   CodegenOpts opts;
   opts.class_name = "MyClass";

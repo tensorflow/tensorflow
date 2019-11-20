@@ -74,9 +74,8 @@ int8_t FloatToAsymmetricQuantizedInt8(const float value, const float scale,
          kAsymmetricInt8Min;
 }
 
-int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale,
-                                     const int zero_point) {
-  return FloatToSymmetricQuantizedUInt8(value, scale) + kAsymmetricInt8Min;
+int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale) {
+  return FloatToAsymmetricQuantizedInt8(value, scale, 0.0f);
 }
 
 int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale) {

@@ -396,6 +396,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       if (from_type == F32 && to_type == BF16) {
         return EmitF32ToBF16(operand_value, b_);
       }
+      if (from_type == F16 && to_type == BF16) {
+        // Upcast to F32 first. EmitReducePrecisionIR does not support casting
+        // between different 16 bits floating point formats.
+        llvm::Value* f32_value = b_->CreateFPCast(
+            operand_value, llvm_ir::PrimitiveTypeToIrType(F32, module_));
+        return EmitF32ToBF16(f32_value, b_);
+      }
       if (to_type == PRED) {
         return b_->CreateZExt(
             FCmpUNE(operand_value,
@@ -2371,15 +2378,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               &operand_to_generator](const IrArray::Index& dot_result_index)
                  -> StatusOr<llvm::Value*> {
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
-      };
-    case HloOpcode::kReplicaId:
-      return [this, hlo](const IrArray::Index&) -> StatusOr<llvm::Value*> {
-        if (hlo_module_config_.replica_count() != 1) {
-          return Unimplemented("Replication is not implemented on CPU/GPU.");
-        }
-        llvm::Type* type = llvm_ir::PrimitiveTypeToIrType(
-            hlo->shape().element_type(), module_);
-        return llvm::ConstantInt::getNullValue(type);
       };
     default:
       return [hlo](const IrArray::Index& index) {

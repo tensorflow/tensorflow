@@ -17,6 +17,7 @@ target_link_libraries(MLIRMlirOptLib ${LIB_LIBS})
 
 set(LIBS
   MLIRAffineOps
+  MLIRAffineToStandard
   MLIRLoopsToGPU
   MLIRAnalysis
   MLIRLoopToStandard
@@ -37,7 +38,7 @@ set(LIBS
   MLIRQuantOps
   MLIRROCDLIR
   MLIRSPIRV
-  MLIRSPIRVConversion
+  MLIRStandardToSPIRVTransforms
   MLIRSPIRVTransforms
   MLIRStandardOps
   MLIRStandardToLLVM
@@ -55,7 +56,7 @@ if(MLIR_CUDA_CONVERSIONS_ENABLED)
     MLIRGPUtoCUDATransforms
   )
 endif()
-add_llvm_executable(mlir-opt
+add_llvm_tool(mlir-opt
  mlir-opt.cpp
 )
 llvm_update_compile_flags(mlir-opt)

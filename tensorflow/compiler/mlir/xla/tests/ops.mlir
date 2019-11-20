@@ -202,25 +202,19 @@ func @select_bad_pred_type(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>, %arg2: 
 
 // -----
 
+// TODO(jpienaar): Re-enable post updating select function verify.
 func @select_bad_shape_mismatch(%arg0: tensor<3xi1>, %arg1: tensor<2x4xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{on_true type (tensor<2x4xi32>) does not match on_false type (tensor<2x3xi32>)}}
+  // should-be-error@+1 {{on_true type (tensor<2x4xi32>) does not match on_false type (tensor<2x3xi32>)}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x4xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
 
 // -----
 
+// TODO(jpienaar): Re-enable post updating select function verify.
 func @select_bad_element_type_mismatch(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{on_true type (tensor<2x3xf32>) does not match on_false type (tensor<2x3xi32>)}}
+  // should-be-error@+1 {{on_true type (tensor<2x3xf32>) does not match on_false type (tensor<2x3xi32>)}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xf32>, tensor<2x3xi32>) -> tensor<2x3xi32>
-  return %0 : tensor<2x3xi32>
-}
-
-// -----
-
-func @select_bad_pred_shape(%arg0: tensor<3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{red shape ([3]) is not scalar and does not match operand shapes ([2, 3])}}
-  %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
 
@@ -282,6 +276,20 @@ func @transpose(%arg0: tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32> {
 
 // -----
 
+func @transpose_ranked(%arg0: tensor<?x?x?x?xi32>) ->  tensor<?x?x?x?xi32> {
+  %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<?x?x?x?xi32>) -> tensor<?x?x?x?xi32>
+  return %0: tensor<?x?x?x?xi32>
+}
+
+// -----
+
+func @transpose_unranked(%arg0: tensor<*xi32>) ->  tensor<*xi32> {
+  %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<*xi32>) -> tensor<*xi32>
+  return %0: tensor<*xi32>
+}
+
+// -----
+
 func @transpose_bad_permutations_rank(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
   // expected-error@+1 {{permutation has rank 2 instead of rank 1}}
   %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[[1]]> : tensor<1x1xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
@@ -291,7 +299,7 @@ func @transpose_bad_permutations_rank(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1
 // -----
 
 func @transpose_bad_permutations_size(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1x4x3xi32> {
-  // expected-error@+1 {{permutation size (1) does not match operand rank (4)}}
+  // expected-error@+1 {{operand rank (4) does not match permutation size (1)}}
   %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1]> : tensor<1xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2x1x4x3xi32>
   return %0: tensor<2x1x4x3xi32>
 }
@@ -299,17 +307,17 @@ func @transpose_bad_permutations_size(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2x1
 // -----
 
 func @transpose_operand_result_rank_mismatch(%arg0: tensor<1x2x3x4xi32>) ->  tensor<2xi32> {
-  // expected-error@+1 {{result rank (1) does not match operand rank (4)}}
+  // expected-error@+1 {{result rank (1) does not match permutation size (4)}}
   %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<2xi32>
   return %0: tensor<2xi32>
 }
 
 // -----
 
-func @transpose_operand_result_permutation_mismatch(%arg0: tensor<1x2x3x4xi32>) ->  tensor<1x2x3x4xi32> {
-  // expected-error@+1 {{result shape is [1, 2, 3, 4] instead of [2, 1, 4, 3]}}
-  %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x2x3x4xi32>) -> tensor<1x2x3x4xi32>
-  return %0: tensor<1x2x3x4xi32>
+func @transpose_operand_result_permutation_mismatch(%arg0: tensor<1x?x3x?xi32>) ->  tensor<?x2x?x?xi32> {
+  // expected-error@+1 {{result type tensor<?x2x?x?xi32> is incompatible with the expected type tensor<?x1x?x3xi32>}}
+  %0 = "xla_hlo.transpose"(%arg0) {permutation = dense<[1, 0, 3, 2]> : tensor<4xi64>} : (tensor<1x?x3x?xi32>) -> tensor<?x2x?x?xi32>
+  return %0: tensor<?x2x?x?xi32>
 }
 
 // -----
@@ -357,6 +365,37 @@ func @get_tuple_element_index_out_of_bounds(%arg0: tuple<tensor<f32>, tensor<i32
   // expected-error@+1 {{index 2 is out of bounds of operand with size 2}}
   %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 2 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: func @and_i32_type
+func @and_i32_type(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = "xla_hlo.and"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+// CHECK-LABEL: func @or_i1_type
+func @or_i1_type(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
+  %0 = "xla_hlo.or"(%arg0, %arg1) : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+}
+
+// -----
+
+func @or_invalid_f32_type(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit integer values, but got 'tensor<4xf32>'}}
+  %0 = "xla_hlo.or"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+
+func @floor_invalid_i32_type(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // expected-error@+1 {{must be tensor of floating-point values, but got 'tensor<4xi32>'}}
+  %0 = "xla_hlo.floor"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }
 
 // -----

@@ -26,10 +26,13 @@ py_library(
     deps = [
         ":check_numerics_callback",
         ":debug_data",
+        ":debug_events_reader",
         ":debug_events_writer",
         ":debug_gradients",
         ":debug_graphs",
         ":debug_utils",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
         ":grpc_debug_server",
         ":grpc_debug_test_server",
         ":hooks",
@@ -71,7 +74,35 @@ py_library(
         ":op_callbacks_common",
         ":source_utils",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:debug_ops_gen",
         "//tensorflow/python:op_callbacks",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "dumping_callback",
+    srcs = ["lib/dumping_callback.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":debug_events_writer",
+        ":op_callbacks_common",
+        ":source_utils",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:debug_ops_gen",
+        "//tensorflow/python:op_callbacks",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "dumping_callback_test_lib",
+    srcs = ["lib/dumping_callback_test_lib.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":check_numerics_callback",
+        ":debug_events_reader",
+        ":dumping_callback",
         "//third_party/py/numpy",
     ],
 )
@@ -80,6 +111,16 @@ py_library(
     name = "common",
     srcs = ["lib/common.py"],
     srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "debug_events_reader",
+    srcs = ["lib/debug_events_reader.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:framework",
+    ],
 )
 
 py_library(
@@ -611,6 +652,7 @@ py_test(
         "no_windows",  # b/142475891
     ],
     deps = [
+        ":debug_events_reader",
         ":debug_events_writer",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -663,10 +705,63 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "distributed_callbacks_test",
+    size = "medium",
+    srcs = ["lib/distributed_callbacks_test.py"],
+    additional_deps = [
+        ":check_numerics_callback",
+        ":debug_events_writer",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
+        "//third_party/py/numpy",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/keras",
+    ],
+    tags = [
+        "guitar",
+        "multi_and_single_gpu",
+        "no_rocm",
+        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
+        "no_windows_gpu",  # TODO(b/130551176)
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+)
+
+cuda_py_test(
+    name = "dumping_callback_test",
+    size = "medium",
+    srcs = ["lib/dumping_callback_test.py"],
+    additional_deps = [
+        ":debug_events_reader",
+        ":debug_events_writer",
+        ":dumping_callback",
+        ":dumping_callback_test_lib",
+        "//third_party/py/numpy",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 8,
+    tags = [
+        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
+)
+
+cuda_py_test(
     name = "debug_v2_ops_test",
     size = "medium",
     srcs = ["lib/debug_v2_ops_test.py"],
     additional_deps = [
+        ":debug_events_reader",
         ":debug_events_writer",
         "//third_party/py/numpy",
         "//tensorflow/python:debug_ops_gen",
@@ -1312,6 +1407,8 @@ sh_test(
     ],
     tags = [
         "no_windows",
+        "noasan",  # TODO(b/143150907)
+        "nomsan",  # TODO(b/143150907)
         "v1only",
     ],
 )

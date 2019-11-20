@@ -166,6 +166,9 @@ tf_cuda_library(
         "tf_status.h",
         "tf_status_internal.h",
     ],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
+    ],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -288,6 +291,15 @@ exports_files(
         "exported_symbols.lds",
     ],
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "checkpoint_reader_hdrs",
+    srcs = [
+        "checkpoint_reader.h",
+        "tf_status_helper.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_cuda_library(

@@ -19,14 +19,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef AFFINE_OPS
-#else
+#ifndef AFFINE_OPS
 #define AFFINE_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
+
+#ifndef MLIR_LOOPLIKEINTERFACE
+include "mlir/Transforms/LoopLikeInterface.td"
+#endif
 
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
 
@@ -53,7 +55,9 @@ class Affine_Op<string mnemonic, list<OpTrait> traits = []> :
 def ImplicitAffineTerminator
     : SingleBlockImplicitTerminator<"AffineTerminatorOp">;
 
-def AffineForOp : Affine_Op<"for", [ImplicitAffineTerminator]> {
+def AffineForOp : Affine_Op<"for",
+    [ImplicitAffineTerminator,
+     DeclareOpInterfaceMethods<LoopLikeOpInterface>]> {
   let summary = "for operation";
   let description = [{
     The "affine.for" operation represents an affine loop nest, defining an SSA
@@ -242,6 +246,24 @@ def AffineIfOp : Affine_Op<"if", [ImplicitAffineTerminator]> {
   }];
 
   let hasCanonicalizer = 1;
+}
+
+def AffineMinOp : Affine_Op<"min"> {
+  let summary = "min operation";
+  let description = [{
+    The "min" operation computes the minimum value result from a multi-result
+    affine map.
+
+    Example:
+
+       %0 = affine.min (d0) -> (1000, d0 + 512) (%i0) : index
+  }];
+  let arguments = (ins AffineMapAttr:$map, Variadic<Index>:$operands);
+  let results = (outs Index);
+  let extraClassDeclaration = [{
+    static StringRef getMapAttrName() { return "map"; }
+  }];
+  let hasFolder = 1;
 }
 
 def AffineTerminatorOp :

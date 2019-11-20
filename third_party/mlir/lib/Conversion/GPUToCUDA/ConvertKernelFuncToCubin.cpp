@@ -94,9 +94,9 @@ private:
   std::string translateModuleToPtx(llvm::Module &module,
                                    llvm::TargetMachine &target_machine);
 
-  /// Converts llvmModule to cubin using the user-provded generator. Location is
-  /// used for error reporting and name is forwarded to the CUBIN generator to
-  /// use in its logging mechanisms.
+  /// Converts llvmModule to cubin using the user-provided generator. Location
+  /// is used for error reporting and name is forwarded to the CUBIN generator
+  /// to use in its logging mechanisms.
   OwnedCubin convertModuleToCubin(llvm::Module &llvmModule, Location loc,
                                   StringRef name);
 
@@ -117,7 +117,7 @@ std::string GpuKernelToCubinPass::translateModuleToPtx(
     llvm::buffer_ostream pstream(stream);
     llvm::legacy::PassManager codegen_passes;
     target_machine.addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                       llvm::TargetMachine::CGFT_AssemblyFile);
+                                       llvm::CGFT_AssemblyFile);
     codegen_passes.run(module);
   }
 

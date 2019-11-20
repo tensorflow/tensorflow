@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/IR/GlobalVariable.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Target/TargetOptions.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -243,15 +244,6 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
   }
   *shape_size = static_cast<int32>(encoded_shape.size());
   return b->CreateGlobalStringPtr(encoded_shape);
-}
-
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes) {
-  ShapeProto shape_proto;
-  TF_RET_CHECK(shape_proto.ParseFromArray(shape_ptr, size_bytes));
-  Shape shape(shape_proto);
-  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(shape));
-  return std::move(shape);
 }
 
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,

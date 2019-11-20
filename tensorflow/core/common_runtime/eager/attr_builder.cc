@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/version.h"

@@ -33,7 +33,8 @@ class AutoShardDatasetOpTest : public DatasetOpsTestBase {
         kNodeName, name_utils::OpName(AutoShardDatasetOp::kDatasetType),
         {AutoShardDatasetOp::kInputDataset, AutoShardDatasetOp::kNumWorkers,
          AutoShardDatasetOp::kIndex},
-        {{AutoShardDatasetOp::kOutputTypes, output_types},
+        {{AutoShardDatasetOp::kAutoShardPolicy, 0},  // AutoShardPolicy == AUTO
+         {AutoShardDatasetOp::kOutputTypes, output_types},
          {AutoShardDatasetOp::kOutputShapes, output_shapes}});
     TF_RETURN_IF_ERROR(CreateOpKernel(node_def, op_kernel));
     return Status::OK();

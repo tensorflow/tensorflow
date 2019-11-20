@@ -573,6 +573,7 @@ bool FindContractionWithBiasInPort(const RemapperContext& ctx,
   if (add_node_view.NumRegularFanins() < port_id + 1) return false;
   const auto& bias_add_node_view =
       add_node_view.GetRegularFanin(port_id).node_view();
+  if (bias_add_node_view == nullptr) return false;
   const auto* bias_add_node_def = bias_add_node_view->node();
 
   if (!FindContractionWithBias(ctx, bias_add_node_view->node_index(), base,
@@ -637,6 +638,7 @@ bool FindContractionWithBiasAndAddActivation(
 
   // Root of the pattern must be an activation node.
   const auto* node_def = node_view->node();
+  if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
 
   // MKL activation op only supports float data type.

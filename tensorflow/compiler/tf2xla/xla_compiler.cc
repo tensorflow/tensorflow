@@ -127,9 +127,9 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
       step_id, [&status, device](const string& name) {
         status = device->resource_manager()->Cleanup(name);
       });
-  TF_RETURN_IF_ERROR(device->resource_manager()->Create(
-      step_container->name(), XlaContext::kXlaContextResourceName,
-      xla_context));
+  TF_RETURN_IF_ERROR(step_container->Create(device->resource_manager(),
+                                            XlaContext::kXlaContextResourceName,
+                                            xla_context));
 
   GraphCompiler graph_compiler(device, graph.get(), flib, step_container.get());
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
@@ -491,6 +491,16 @@ std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
         absl::get<TensorShape>(shape).dim_sizes());
   } else {
     return xla::SpanToVector(absl::get<xla::Shape>(shape).dimensions());
+  }
+}
+
+absl::InlinedVector<int64, 4>
+XlaCompiler::Argument::DimensionSizesAsInlinedVector() const {
+  if (absl::holds_alternative<TensorShape>(shape)) {
+    return absl::get<TensorShape>(shape).dim_sizes();
+  } else {
+    auto v = absl::get<xla::Shape>(shape).dimensions();
+    return absl::InlinedVector<int64, 4>(v.begin(), v.end());
   }
 }
 

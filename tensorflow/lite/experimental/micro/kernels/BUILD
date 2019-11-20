@@ -14,6 +14,7 @@ package(
 cc_library(
     name = "micro_ops",
     srcs = [
+        "activations.cc",
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
@@ -27,6 +28,7 @@ cc_library(
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
+        "mul.cc",
         "neg.cc",
         "pack.cc",
         "pooling.cc",
@@ -40,8 +42,7 @@ cc_library(
         "svdf.cc",
         "unpack.cc",
     ],
-    hdrs = [
-    ],
+    hdrs = ["micro_ops.h"],
     copts = tflite_copts(),
     deps = [
         ":activation_utils",
@@ -76,6 +77,7 @@ cc_library(
 cc_library(
     name = "portable_optimized_micro_ops",
     srcs = [
+        "activations.cc",
         "add.cc",
         "arg_min_max.cc",
         "ceil.cc",
@@ -88,6 +90,7 @@ cc_library(
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
+        "mul.cc",
         "neg.cc",
         "pack.cc",
         "pooling.cc",
@@ -102,8 +105,7 @@ cc_library(
         "svdf.cc",
         "unpack.cc",
     ],
-    hdrs = [
-    ],
+    hdrs = ["micro_ops.h"],
     copts = tflite_copts(),
     deps = [
         ":activation_utils",
@@ -322,6 +324,22 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "mul_test",
+    srcs = [
+        "mul_test.cc",
+    ],
+    tags = [
+        "noasan",  # b/144450349
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "arg_min_max_test",
     srcs = [
         "arg_min_max_test.cc",
@@ -501,5 +519,18 @@ tflite_micro_cc_test(
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
         "//tensorflow/lite/kernels/internal:tensor",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "activations_test",
+    srcs = [
+        "activations_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )

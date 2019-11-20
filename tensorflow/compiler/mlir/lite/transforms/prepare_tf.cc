@@ -102,12 +102,13 @@ struct PrepareTFPass : public FunctionPass<PrepareTFPass> {
 //                   |
 //              tf.dequantize
 //                   |
-template <typename TFFakeQuantOp>
+template <typename TFFakeQuantOp, bool PerAxis>
 struct InsertTFLQuantOpsAfterTFFakeQuantOp
     : public OpRewritePattern<TFFakeQuantOp> {
-  using BaseType = InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp>;
+  using BaseType = InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis>;
 
-  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp>(MLIRContext *ctx)
+  explicit InsertTFLQuantOpsAfterTFFakeQuantOp<TFFakeQuantOp, PerAxis>(
+      MLIRContext *ctx)
       : OpRewritePattern<TFFakeQuantOp>(ctx) {}
 
   PatternMatchResult matchAndRewrite(TFFakeQuantOp tf_op,
@@ -129,16 +130,21 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     if (!matchPattern(min, m_Constant(&min_value))) return this->matchFailure();
     if (!matchPattern(max, m_Constant(&max_value))) return this->matchFailure();
 
+    int quant_dim = -1;
+    if (PerAxis) {
+      // This is a special case that the quant_dim is the last dimentions.
+      quant_dim = res->getType().template cast<ShapedType>().getRank() - 1;
+    }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPoint(rewriter.getBlock(), ++Block::iterator(tf_op));
+    rewriter.setInsertionPointAfter(tf_op);
     IntegerAttr num_bits =
         rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
-    TypeAttr qtype =
-        GetQuantizedTypeAttr(rewriter, res_type, min_value, max_value, num_bits,
-                             narrow_range, /*is_signed=*/false);
+    TypeAttr qtype = GetQuantizedTypeAttr(rewriter, res_type, min_value,
+                                          max_value, quant_dim, num_bits,
+                                          narrow_range, /*is_signed=*/false);
     if (!qtype) this->matchFailure();
 
     // Finally, use the quantization parameter to create the quantize and
@@ -157,10 +163,11 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
 };
 
 using PreparePerTensorFakeQuant =
-    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsOp>;
+    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsOp, false>;
 
-using PreparePerChannelFakeQuant = InsertTFLQuantOpsAfterTFFakeQuantOp<
-    TF::FakeQuantWithMinMaxVarsPerChannelOp>;
+using PreparePerChannelFakeQuant =
+    InsertTFLQuantOpsAfterTFFakeQuantOp<TF::FakeQuantWithMinMaxVarsPerChannelOp,
+                                        true>;
 
 // Templated class for declaring a converter from some TensorFlow convolution
 // op into its counterpart in TensorFlow Lite.
@@ -259,7 +266,7 @@ struct ConvertTFConvOp : public RewritePattern {
     auto elem_type = filter_type.getElementType();
     auto bias_dim = static_cast<const ConcreteType *>(this)->getBiasDim(
         filter_type.getShape());
-    auto bias_type = rewriter.getTensorType({bias_dim}, elem_type);
+    auto bias_type = RankedTensorType::get({bias_dim}, elem_type);
     auto bias_attr = rewriter.getZeroAttr(bias_type);
     auto bias =
         rewriter.create<TF::ConstOp>(op->getLoc(), bias_type, bias_attr);
@@ -309,8 +316,8 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
                         Value *filter) const {
     // Create a constant op for HWIO to OHWI transpose permutation.
     SmallVector<int, 4> perm = {3, 0, 1, 2};
-    auto perm_type = rewriter.getTensorType({static_cast<int>(perm.size())},
-                                            rewriter.getIntegerType(32));
+    auto perm_type = RankedTensorType::get({static_cast<int>(perm.size())},
+                                           rewriter.getIntegerType(32));
     auto perm_attr =
         DenseElementsAttr::get(perm_type, llvm::makeArrayRef<int>(perm));
     auto perm_op = rewriter.create<TF::ConstOp>(loc, perm_type, perm_attr);
@@ -321,7 +328,7 @@ class ConvertTFConv2D : public ConvertTFConvOp<ConvertTFConv2D, TF::Conv2DOp> {
         [filter_type](int64_t dim) { return filter_type.getDimSize(dim); },
         perm);
     auto elem_type = filter_type.getElementType();
-    auto result_type = rewriter.getTensorType(result_shape, elem_type);
+    auto result_type = RankedTensorType::get(result_shape, elem_type);
 
     return rewriter.create<TF::TransposeOp>(loc, result_type, filter, perm_op);
   }
@@ -378,16 +385,15 @@ class ConvertTFDepthwiseConv2dNative
     SmallVector<int64_t, 4> result_shape = {1, filterShape[0], filterShape[1],
                                             filterShape[2] * filterShape[3]};
     auto elem_type = filter_type.getElementType();
-    auto result_type = rewriter.getTensorType(result_shape, elem_type);
+    auto result_type = RankedTensorType::get(result_shape, elem_type);
     // TensorFlow Lite `Reshape` op only support int32 shape tensor currently.
-    auto shape_type = rewriter.getTensorType({4}, rewriter.getIntegerType(32));
+    auto shape_type = RankedTensorType::get({4}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(4);
     for (int i = 0; i < 4; ++i) {
       result_shape_data[i] =
           rewriter.getI32IntegerAttr(static_cast<int32_t>(result_shape[i]));
     }
-    auto shape_attr =
-        rewriter.getDenseElementsAttr(shape_type, result_shape_data);
+    auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<TF::ConstOp>(loc, shape_type, shape_attr);
 
     return rewriter.create<TF::ReshapeOp>(loc, result_type, filter, shape);
@@ -447,17 +453,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     Location loc = strided_slice_op.getLoc();
     auto shape_type =
-        rewriter.getTensorType({dim_size}, rewriter.getIntegerType(32));
+        RankedTensorType::get({dim_size}, rewriter.getIntegerType(32));
     SmallVector<Attribute, 4> result_shape_data(dim_size);
     for (int i = 0; i < dim_size; ++i) {
       result_shape_data[i] =
           rewriter.getI32IntegerAttr(static_cast<int32_t>(new_shape[i]));
     }
-    auto shape_attr =
-        rewriter.getDenseElementsAttr(shape_type, result_shape_data);
+    auto shape_attr = DenseElementsAttr::get(shape_type, result_shape_data);
     auto shape = rewriter.create<ConstantOp>(loc, shape_type, shape_attr);
     auto new_output_type =
-        rewriter.getTensorType(new_shape, original_input_type.getElementType());
+        RankedTensorType::get(new_shape, original_input_type.getElementType());
     TF::ReshapeOp reshape = rewriter.create<TF::ReshapeOp>(
         loc, new_output_type, original_input, shape);
 
