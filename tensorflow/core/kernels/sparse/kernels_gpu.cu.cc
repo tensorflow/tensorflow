@@ -13,15 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#if GOOGLE_CUDA
 #include "third_party/cub/device/device_histogram.cuh"
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
 #include "third_party/gpus/cuda/include/cusparse.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hipcub/hipcub.hpp"
+#endif
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
@@ -31,6 +35,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/gpu_kernel_helper.h"
+
+#if GOOGLE_CUDA
+namespace gpuprim = ::cub;
+#elif TENSORFLOW_USE_ROCM
+namespace gpuprim = ::hipcub;
+#endif
 
 namespace tensorflow {
 
@@ -65,9 +75,9 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
   DCHECK_EQ(indices.dimension(1), 3);  // batch, row, col
 
   const int rank = indices.dimension(1);
-  cub::CountingInputIterator<int> row_counter(0);
-  cub::TransformInputIterator<int, StridedDataReader,
-                              cub::CountingInputIterator<int>>
+  gpuprim::CountingInputIterator<int> row_counter(0);
+  gpuprim::TransformInputIterator<int, StridedDataReader,
+                                  gpuprim::CountingInputIterator<int>>
       indices_first_column(row_counter,
                            StridedDataReader(indices.data(), rank));
 
@@ -76,7 +86,7 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
   DCHECK_NE(indices.data(), nullptr);
   DCHECK_NE(nnz_per_batch.data(), nullptr);
 
-  auto first_success = cub::DeviceHistogram::HistogramEven(
+  auto first_success = gpuprim::DeviceHistogram::HistogramEven(
       /*d_temp_storage*/ nullptr,
       /*temp_storage_bytes&*/ temp_storage_bytes,
       /*d_samples*/ indices_first_column,
@@ -87,12 +97,12 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
       /*num_samples*/ total_nnz,
       /*stream*/ cu_stream);
 
-  if (first_success != cudaSuccess) {
+  if (first_success != gpuSuccess) {
     return errors::Internal(
         "SparseTensorToCSRSparseMatrix: Could not launch "
-        "cub::DeviceHistogram::HistogramEven "
+        "gpuprim::DeviceHistogram::HistogramEven "
         "to calculate temp_storage_bytes, status: ",
-        cudaGetErrorString(first_success));
+        GpuGetErrorString(first_success));
   }
 
   Tensor temp_storage;
@@ -100,7 +110,7 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
       DT_INT8, TensorShape({static_cast<int64>(temp_storage_bytes)}),
       &temp_storage));
   DCHECK_NE(temp_storage.flat<int8>().data(), nullptr);
-  auto second_success = cub::DeviceHistogram::HistogramEven(
+  auto second_success = gpuprim::DeviceHistogram::HistogramEven(
       /*d_temp_storage*/ temp_storage.flat<int8>().data(),
       /*temp_storage_bytes&*/ temp_storage_bytes,
       /*d_samples*/ indices_first_column,
@@ -111,12 +121,12 @@ Status CalculateNNZPerBatchMatrixFromIndices<GPUDevice>::operator()(
       /*num_samples*/ total_nnz,
       /*stream*/ cu_stream);
 
-  if (second_success != cudaSuccess) {
+  if (second_success != gpuSuccess) {
     return errors::Internal(
         "SparseTensorToCSRSparseMatrix: Could not launch "
-        "cub::DeviceHistogram::HistogramEven "
+        "gpuprim::DeviceHistogram::HistogramEven "
         "to count nnz entries per batch.  temp_storage_bytes: ",
-        temp_storage_bytes, ", status: ", cudaGetErrorString(second_success));
+        temp_storage_bytes, ", status: ", GpuGetErrorString(second_success));
   }
 
   return Status::OK();
@@ -128,11 +138,11 @@ template <>
 Status CSRSparseMatrixToCOOSparseMatrix<GPUDevice>::operator()(
     OpKernelContext* c, TTypes<const int>::UnalignedVec csr_row_ptr,
     TTypes<int>::UnalignedVec coo_row_ind) {
-  GpuSparse cuda_sparse(c);
+  GpuSparse gpu_sparse(c);
   const int nnz = coo_row_ind.size();
-  TF_RETURN_IF_ERROR(cuda_sparse.Initialize());
+  TF_RETURN_IF_ERROR(gpu_sparse.Initialize());
   const int m = csr_row_ptr.size() - 1;  // rows
-  return cuda_sparse.Csr2coo(csr_row_ptr.data(), nnz, m, coo_row_ind.data());
+  return gpu_sparse.Csr2coo(csr_row_ptr.data(), nnz, m, coo_row_ind.data());
 }
 
 template <int stride>
@@ -140,7 +150,7 @@ __global__ void SparseTensorToCOOMatrixKernel(const int64* indices,
                                               int* coo_rows_out,
                                               int* coo_cols_out, int size) {
   const int offset = (stride == 3) ? 1 : 0;
-  CUDA_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size) {
     coo_rows_out[i] = static_cast<int>(ldg(indices + i * stride + offset));
     coo_cols_out[i] = static_cast<int>(ldg(indices + i * stride + offset + 1));
   }
@@ -157,20 +167,22 @@ void SparseTensorToCOOSparseMatrix<GPUDevice>::operator()(
   const int size = coo_row_ind.dimension(0);
   GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
   if (stride == 2) {
-    SparseTensorToCOOMatrixKernel<2>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            indices.data(), coo_row_ind.data(), coo_col_ind.data(), size);
+    TF_CHECK_OK(GpuLaunchKernel(SparseTensorToCOOMatrixKernel<2>,
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), indices.data(), coo_row_ind.data(),
+                                coo_col_ind.data(), size));
   } else {
-    SparseTensorToCOOMatrixKernel<3>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            indices.data(), coo_row_ind.data(), coo_col_ind.data(), size);
+    TF_CHECK_OK(GpuLaunchKernel(SparseTensorToCOOMatrixKernel<3>,
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), indices.data(), coo_row_ind.data(),
+                                coo_col_ind.data(), size));
   }
 }
 
 __global__ void COOMatrixToSparseTensorKernel2D(const int* coo_rows,
                                                 const int* coo_cols,
                                                 int64* indices_out, int size) {
-  CUDA_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size) {
     indices_out[i * 2] = static_cast<int64>(ldg(coo_rows + i));
     indices_out[i * 2 + 1] = static_cast<int64>(ldg(coo_cols + i));
   }
@@ -203,7 +215,7 @@ __global__ void COOMatrixToSparseTensorKernel3D(
   }
   __syncthreads();
 
-  CUDA_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size) {
     // TODO(ebrevdo): Consider special casing batch_size <= 3,
     // alternatively doing linear instead of binary search.  Requires
     // some benchmarks.
@@ -231,9 +243,10 @@ Status COOSparseMatrixToSparseTensor<GPUDevice>::operator()(
   DCHECK_EQ(size, indices.dimension(0));
   if (ndims == 2) {
     GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
-    COOMatrixToSparseTensorKernel2D<<<config.block_count,
-                                      config.thread_per_block, 0, d.stream()>>>(
-        coo_row_ind.data(), coo_col_ind.data(), indices.data(), size);
+    TF_CHECK_OK(GpuLaunchKernel(COOMatrixToSparseTensorKernel2D,
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), coo_row_ind.data(),
+                                coo_col_ind.data(), indices.data(), size));
     return Status::OK();
   } else {
     const int batch_size = host_dense_shape(0);
@@ -246,11 +259,11 @@ Status COOSparseMatrixToSparseTensor<GPUDevice>::operator()(
     GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
     // shared memory stores the batch pointers.
     const size_t shared_memory_size = sizeof(int) * (batch_size + 1);
-    COOMatrixToSparseTensorKernel3D<<<config.block_count,
-                                      config.thread_per_block,
-                                      shared_memory_size, d.stream()>>>(
-        coo_row_ind.data(), coo_col_ind.data(), indices.data(),
-        batch_ptr_copy.data(), batch_size, size);
+    TF_CHECK_OK(
+        GpuLaunchKernel(COOMatrixToSparseTensorKernel3D, config.block_count,
+                        config.thread_per_block, shared_memory_size, d.stream(),
+                        coo_row_ind.data(), coo_col_ind.data(), indices.data(),
+                        batch_ptr_copy.data(), batch_size, size));
     return Status::OK();
   }
 }
@@ -274,7 +287,7 @@ __global__ void CSRSparseMatrixBatchMulVecKernel3D(
   }
   __syncthreads();
 
-  CUDA_1D_KERNEL_LOOP(i, total_nnz) {
+  GPU_1D_KERNEL_LOOP(i, total_nnz) {
     const int b = BinarySearchRange(local_batch_ptr, batch_size, i);
     c_values[i] = ldg(a_values + i) * local_batch_values[b];
   }
@@ -316,10 +329,10 @@ Status CSRSparseMatrixBatchMulVecImpl(OpKernelContext* ctx,
   const size_t shared_memory_size =
       (sizeof(int) * (batch_size + 1)  // local batch_pointers.
        + sizeof(T) * batch_size);      // local copy of b.
-  CSRSparseMatrixBatchMulVecKernel3D<T>
-      <<<config.block_count, config.thread_per_block, shared_memory_size,
-         d.stream()>>>(a_values.data(), b.data(), c_values.data(),
-                       batch_ptr_copy.data(), batch_size, total_nnz);
+  TF_CHECK_OK(GpuLaunchKernel(
+      CSRSparseMatrixBatchMulVecKernel3D<T>, config.block_count,
+      config.thread_per_block, shared_memory_size, d.stream(), a_values.data(),
+      b.data(), c_values.data(), batch_ptr_copy.data(), batch_size, total_nnz));
 
   return Status::OK();
 }
@@ -374,7 +387,7 @@ __global__ void CSRSparseMatrixSoftmaxKernel2D(const int rows,
   // algorithm to distribute the work in case the row sizes are
   // uneven:
   //   http://images.nvidia.com/events/sc15/pdfs/sc15-Merge-Based-Parallel-Sparse-Matrix-Vector-Multiplication-merrill.pdf
-  CUDA_1D_KERNEL_LOOP(row, rows) {
+  GPU_1D_KERNEL_LOOP(row, rows) {
     CalculateRowSoftmax(ldg(row_ptr + row), ldg(row_ptr + row + 1), logits,
                         softmax);
   }
@@ -382,7 +395,7 @@ __global__ void CSRSparseMatrixSoftmaxKernel2D(const int rows,
 
 EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void CopyFromGpuDeviceArrayToLocal(
     GpuDeviceArrayStruct<int> cuda_ptr_s, int* local_ptr, int length) {
-#ifdef __CUDA_ARCH__
+#if defined(__CUDA_ARCH__) || defined(__HIP_DEVICE_COMPILE__)
   const int* cuda_ptr = GetGpuDeviceArrayOnDevice(&cuda_ptr_s);
   for (int i = threadIdx.x; i < length; i += blockDim.x) {
     local_ptr[i] = cuda_ptr[i];
@@ -404,7 +417,7 @@ __global__ void CSRSparseMatrixSoftmaxKernel3D(
   CopyFromGpuDeviceArrayToLocal(std::move(batch_ptr_s), local_batch_ptr,
                                 batch_size + 1);
 
-  CUDA_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size) {
     const int batch = i / rows;
     const int row = i % rows;
     const int batch_offset = local_batch_ptr[batch];
@@ -431,10 +444,10 @@ Status CSRSparseMatrixSoftmaxGPUImpl(OpKernelContext* ctx,
     const int rows = host_dense_shape(0);
     DCHECK_EQ(rows, row_ptr.size() - 1);
     GpuLaunchConfig config = GetGpuLaunchConfig(rows /*size*/, d);
-    CSRSparseMatrixSoftmaxKernel2D<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            rows /*size*/, row_ptr.data(), logits_values.data(),
-            softmax_values.data());
+    TF_CHECK_OK(GpuLaunchKernel(CSRSparseMatrixSoftmaxKernel2D<T>,
+                                config.block_count, config.thread_per_block, 0,
+                                d.stream(), rows /*size*/, row_ptr.data(),
+                                logits_values.data(), softmax_values.data()));
   } else {
     const int batch_size = host_dense_shape(0);
     const int rows = host_dense_shape(1);
@@ -452,10 +465,11 @@ Status CSRSparseMatrixSoftmaxGPUImpl(OpKernelContext* ctx,
     GpuLaunchConfig config = GetGpuLaunchConfig(size, d);
     // shared memory stores the batch pointers.
     const size_t shared_memory_size = sizeof(int) * (batch_size + 1);
-    CSRSparseMatrixSoftmaxKernel3D<T>
-        <<<config.block_count, config.thread_per_block, shared_memory_size,
-           d.stream()>>>(size, rows, batch_ptr_copy.data(), row_ptr.data(),
-                         logits_values.data(), softmax_values.data());
+    TF_CHECK_OK(GpuLaunchKernel(CSRSparseMatrixSoftmaxKernel3D<T>,
+                                config.block_count, config.thread_per_block,
+                                shared_memory_size, d.stream(), size, rows,
+                                batch_ptr_copy.data(), row_ptr.data(),
+                                logits_values.data(), softmax_values.data()));
   }
 
   return Status::OK();
@@ -549,7 +563,7 @@ __global__ void CSRSparseMatrixSoftmaxGradKernel2D(
   // algorithm to distribute the work in case the row sizes are
   // uneven:
   //   http://images.nvidia.com/events/sc15/pdfs/sc15-Merge-Based-Parallel-Sparse-Matrix-Vector-Multiplication-merrill.pdf
-  CUDA_1D_KERNEL_LOOP(row, rows) {
+  GPU_1D_KERNEL_LOOP(row, rows) {
     CalculateRowSoftmaxGrad(
         ldg(softmax_row_ptr + row) /*softmax_begin*/,
         ldg(softmax_row_ptr + row + 1) /*softmax_end*/, softmax_col_ind,
@@ -579,7 +593,7 @@ __global__ void CSRSparseMatrixSoftmaxGradKernel3D(
 #define SOFTMAX_BATCH_PTR(i) local_batch_ptr[i];
 #define GRAD_SOFTMAX_BATCH_PTR(i) local_batch_ptr[batch_size + 1 + i];
 
-  CUDA_1D_KERNEL_LOOP(i, size) {
+  GPU_1D_KERNEL_LOOP(i, size) {
     const int batch = i / rows;
     const int row = i % rows;
     const int softmax_batch_offset = SOFTMAX_BATCH_PTR(batch);
@@ -625,12 +639,12 @@ Status CSRSparseMatrixSoftmaxGradGPUImpl(
     DCHECK_EQ(rows + 1, softmax_row_ptr.size());
     DCHECK_EQ(rows + 1, grad_softmax_row_ptr.size());
     GpuLaunchConfig config = GetGpuLaunchConfig(rows /*size*/, d);
-    CSRSparseMatrixSoftmaxGradKernel2D<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            rows /*size*/, softmax_row_ptr.data(), softmax_col_ind.data(),
-            softmax_values.data(), grad_softmax_row_ptr.data(),
-            grad_softmax_col_ind.data(), grad_softmax_values.data(),
-            gradient_values.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        CSRSparseMatrixSoftmaxGradKernel2D<T>, config.block_count,
+        config.thread_per_block, 0, d.stream(), rows /*size*/,
+        softmax_row_ptr.data(), softmax_col_ind.data(), softmax_values.data(),
+        grad_softmax_row_ptr.data(), grad_softmax_col_ind.data(),
+        grad_softmax_values.data(), gradient_values.data()));
   } else {
     const int batch_size = host_dense_shape(0);
     const int rows = host_dense_shape(1);
@@ -656,13 +670,13 @@ Status CSRSparseMatrixSoftmaxGradGPUImpl(
     // shared memory stores two copies of batch pointers: one for the
     // softmax CSR matrix, one for the grad_softmax CSR matrix.
     const size_t shared_memory_size = 2 * sizeof(int) * (batch_size + 1);
-    CSRSparseMatrixSoftmaxGradKernel3D<T>
-        <<<config.block_count, config.thread_per_block, shared_memory_size,
-           d.stream()>>>(size, rows, softmax_and_grad_batch_ptr_copy.data(),
-                         softmax_row_ptr.data(), softmax_col_ind.data(),
-                         softmax_values.data(), grad_softmax_row_ptr.data(),
-                         grad_softmax_col_ind.data(),
-                         grad_softmax_values.data(), gradient_values.data());
+    TF_CHECK_OK(GpuLaunchKernel(
+        CSRSparseMatrixSoftmaxGradKernel3D<T>, config.block_count,
+        config.thread_per_block, shared_memory_size, d.stream(), size, rows,
+        softmax_and_grad_batch_ptr_copy.data(), softmax_row_ptr.data(),
+        softmax_col_ind.data(), softmax_values.data(),
+        grad_softmax_row_ptr.data(), grad_softmax_col_ind.data(),
+        grad_softmax_values.data(), gradient_values.data()));
   }
 
   return Status::OK();
@@ -687,4 +701,4 @@ DEFINE_SOFTMAX_GRAD_GPU(double);
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

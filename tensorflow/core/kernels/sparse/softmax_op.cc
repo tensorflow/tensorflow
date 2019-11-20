@@ -19,7 +19,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cuda_sparse.h"
 #define EIGEN_USE_GPU
 #endif
@@ -84,7 +84,7 @@ class CSRSoftmaxOp : public OpKernel {
   }
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER(DEV, T)                                  \
   REGISTER_KERNEL_BUILDER(Name("SparseMatrixSoftmax")     \
                               .Device(DEVICE_##DEV)       \
@@ -110,7 +110,7 @@ DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename Device, typename T>
 class CSRSoftmaxGradOp : public OpKernel {
@@ -193,7 +193,7 @@ class CSRSoftmaxGradOp : public OpKernel {
   }
 };
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER(DEV, T)                                  \
   REGISTER_KERNEL_BUILDER(Name("SparseMatrixSoftmaxGrad") \
                               .Device(DEVICE_##DEV)       \
@@ -220,6 +220,6 @@ DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow
