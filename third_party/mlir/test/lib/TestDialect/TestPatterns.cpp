@@ -272,8 +272,7 @@ struct TestUpdateConsumerType : public ConversionPattern {
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const final {
-    // Verify that the the incoming operand has been successfully remapped to
-    // F64.
+    // Verify that the incoming operand has been successfully remapped to F64.
     if (!operands[0]->getType().isF64())
       return matchFailure();
     rewriter.replaceOpWithNewOp<TestTypeConsumerOp>(op, operands[0]);
