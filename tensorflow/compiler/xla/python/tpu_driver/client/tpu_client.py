@@ -55,6 +55,8 @@ class TpuBackend(xla_client.Backend):
       # initialization, except where `force` == True.
       if force:
         return TpuBackend(_tpu_client.TpuClient.Get(worker))
+      if worker == 'local':
+        worker = 'local://'
       if TpuBackend._local_backend is None:
         logging.info('Starting the local TPU driver.')
         TpuBackend._local_backend = TpuBackend(
