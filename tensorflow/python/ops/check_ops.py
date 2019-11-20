@@ -1647,10 +1647,10 @@ def assert_shapes(shapes, data=None, summarize=None, message=None, name=None):
 
   ```python
   tf.assert_shapes({
-    (x, ('N', 'Q')),
-    (y, ('N', 'D')),
-    (param, ('Q',)),
-    (scalar, ())
+    x, ('N', 'Q'),
+    y, ('N', 'D'),
+    param, ('Q',),
+    scalar, (),
   })
   ```
 
