@@ -17,11 +17,8 @@ limitations under the License.
 
 #include <initializer_list>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_utils.h"
 #include "tensorflow/lite/experimental/micro/test_helpers.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
@@ -31,28 +28,6 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 namespace {
-
-TfLiteReshapeParams create_params(int size, const int shape_data[]) {
-  TfLiteReshapeParams op_params = {};
-  if (size > TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT) {
-    MicroErrorReporter micro_reporter;
-    ErrorReporter* error_reporter = &micro_reporter;
-    error_reporter->Report(
-        "WARNING: Input dimenstion count (%d) is more than the max supported "
-        "(%d). Truncating the input.",
-        size, TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT);
-
-    op_params.num_dimensions = TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT;
-  } else {
-    op_params.num_dimensions = size;
-  }
-
-  for (int i = 0; i < op_params.num_dimensions; ++i) {
-    op_params.shape[i] = shape_data[i];
-  }
-
-  return op_params;
-}
 
 // If expected output is empty, the test is expected to fail.
 template <typename T>
@@ -90,13 +65,10 @@ void TestReshapeImpl(TfLiteTensor* input_tensor, TfLiteTensor* shape_tensor,
       resolver.FindOp(tflite::BuiltinOperator_RESHAPE, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLiteReshapeParams builtin_data =
-      create_params(output_tensor->dims->size, output_tensor->dims->data);
-
   void* user_data = nullptr;
   node.temporaries = nullptr;
   node.user_data = user_data;
-  node.builtin_data = &builtin_data;
+  node.builtin_data = nullptr;
   node.custom_initial_data = nullptr;
   node.custom_initial_data_size = 0;
   node.delegate = nullptr;
