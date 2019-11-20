@@ -314,7 +314,7 @@ Status GpuTracer::DoStart() {
 
   CuptiTracerCollectorOptions collector_options;
   uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
-  uint64 start_walltime_ns = tensorflow::EnvTime::Default()->NowNanos();
+  uint64 start_walltime_ns = tensorflow::EnvTime::NowNanos();
   int num_gpus = cupti_tracer_->NumGpus();
   step_stats_cupti_adaptor_ = absl::make_unique<StepStatsCuptiTracerAdaptor>(
       collector_options, "", num_gpus, start_walltime_ns, start_gputime_ns,
