@@ -2283,24 +2283,46 @@ gentbl(
     ],
 )
 
+gentbl(
+    name = "VectorTransformPatterns",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "include/mlir/Dialect/VectorOps/VectorTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
+    td_srcs = [
+        "include/mlir/IR/OpBase.td",
+        ":StdOpsTdFiles",
+        ":VectorOpsTdFiles",
+    ],
+)
+
 cc_library(
     name = "VectorConversions",
     srcs = [
         "lib/Conversion/VectorConversions/VectorToLLVM.cpp",
         "lib/Conversion/VectorConversions/VectorToLoops.cpp",
+        "lib/Conversion/VectorConversions/VectorToVector.cpp",  # TODO(transforms?)
     ],
     hdrs = [
         "include/mlir/Conversion/VectorConversions/VectorConversions.h",
     ],
     includes = ["include"],
     deps = [
+        ":Analysis",
         ":EDSC",
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
         ":Pass",
+        ":StandardOps",
+        ":Support",
         ":Transforms",
         ":VectorOps",
+        ":VectorTransformPatterns",
         "@llvm//:core",
         "@llvm//:support",
     ],

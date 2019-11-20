@@ -108,6 +108,7 @@ cc_library(
         "lib/Transforms/TestLowerVectorTransfers.cpp",
         "lib/Transforms/TestMemRefStrideCalculation.cpp",
         "lib/Transforms/TestOpaqueLoc.cpp",
+        "lib/Transforms/TestVectorToVectorConversion.cpp",
         "lib/Transforms/TestVectorizationUtils.cpp",
     ],
     includes = ["lib/TestDialect"],
