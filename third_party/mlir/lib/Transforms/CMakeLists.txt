@@ -6,7 +6,6 @@ add_llvm_library(MLIRTransforms
   Canonicalizer.cpp
   CSE.cpp
   DialectConversion.cpp
-  DCE.cpp
   Inliner.cpp
   LoopCoalescing.cpp
   LoopFusion.cpp

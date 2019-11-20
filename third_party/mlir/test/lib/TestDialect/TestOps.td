@@ -409,6 +409,10 @@ def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
                      (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
                      [(IsNotScalar $attr)]>;
 
+def TestBranchOp : TEST_Op<"br", [Terminator]> {
+  let arguments = (ins Variadic<AnyType>:$operands);
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//
