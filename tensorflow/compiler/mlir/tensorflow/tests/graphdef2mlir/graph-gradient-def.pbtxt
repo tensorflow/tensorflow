@@ -5,7 +5,7 @@
 # added to its list of function attributes.
 
 # CHECK: func @foo0(
-# CHECK-NEXT:   tf.gradient = @foo_grad
+# CHECK:   tf.gradient = @foo_grad
 
 node {
   name: "Const"

@@ -40,7 +40,7 @@ using llvm::SmallDenseMap;
 void mlir::getLoopIVs(Operation &op, SmallVectorImpl<AffineForOp> *loops) {
   auto *currOp = op.getParentOp();
   AffineForOp currAffineForOp;
-  // Traverse up the hierarchy collecing all 'affine.for' operation while
+  // Traverse up the hierarchy collecting all 'affine.for' operation while
   // skipping over 'affine.if' operations.
   while (currOp && ((currAffineForOp = dyn_cast<AffineForOp>(currOp)) ||
                     isa<AffineIfOp>(currOp))) {
@@ -222,7 +222,7 @@ LogicalResult MemRefRegion::compute(Operation *op, unsigned loopDepth,
   cst.reset(numDims, numSymbols, 0, operands);
 
   // Add equality constraints.
-  // Add inequalties for loop lower/upper bounds.
+  // Add inequalities for loop lower/upper bounds.
   for (unsigned i = 0; i < numDims + numSymbols; ++i) {
     auto *operand = operands[i];
     if (auto loop = getForInductionVarOwner(operand)) {
@@ -616,7 +616,9 @@ LogicalResult mlir::computeSliceUnion(ArrayRef<Operation *> opsA,
           return failure();
       }
       // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
-      if (failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
+      if (sliceUnionCst.getNumLocalIds() > 0 ||
+          tmpSliceCst.getNumLocalIds() > 0 ||
+          failed(sliceUnionCst.unionBoundingBox(tmpSliceCst))) {
         LLVM_DEBUG(llvm::dbgs()
                    << "Unable to compute union bounding box of slice bounds."
                       "\n.");

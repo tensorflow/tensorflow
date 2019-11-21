@@ -203,15 +203,15 @@ Status CreateSimpleConv2DBackpropFilter(GraphDef* graph,
       ops::RandomUniform(scope.WithOpName("out_backprop"),
                          {kBatchSize, kHeight, kWidth, kDepthOut}, data_type);
   if (padding == "EXPLICIT") {
-    auto attrs = ops::Conv2DBackpropFilter::Attrs()
-                     .Dilations({1, kDilation, kDilation, 1})
-                     .ExplicitPaddings({0, 0, kPaddingTop, kPaddingBottom,
-                                        kPaddingLeft, kPaddingRight, 0, 0})
-                     .DataFormat(kSrcFormat);
     auto conv2d_backprop_filter = ops::Conv2DBackpropFilter(
         scope.WithOpName("conv2d_backprop_filter").WithDevice("/device:GPU:0"),
         input, {kHeight, kWidth, kDepthIn, kDepthOut}, out_backprop,
-        {1, 2, 4, 1}, padding, attrs);
+        {1, 2, 4, 1}, padding,
+        ops::Conv2DBackpropFilter::Attrs()
+            .Dilations({1, kDilation, kDilation, 1})
+            .ExplicitPaddings({0, 0, kPaddingTop, kPaddingBottom, kPaddingLeft,
+                               kPaddingRight, 0, 0})
+            .DataFormat(kSrcFormat));
     auto output =
         ops::Identity(scope.WithOpName("output"), conv2d_backprop_filter);
   } else {

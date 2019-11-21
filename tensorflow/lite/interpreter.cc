@@ -174,6 +174,13 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
   return primary_subgraph().ResizeInputTensor(tensor_index, dims);
 }
 
+TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
+  // TODO(b/138790287): We could do this for all subgraphs whose tensors have
+  // been allocated. However, AllocateTensors() relies on Control Flow ops to
+  // allocate tensors on 'children' subgraphs. Revisit this if required.
+  return primary_subgraph().ReleaseNonPersistentMemory();
+}
+
 TfLiteStatus Interpreter::Invoke() {
   TF_LITE_ENSURE_STATUS(primary_subgraph().Invoke());
 
@@ -316,13 +323,7 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 void Interpreter::SetProfiler(Profiler* profiler) {
   for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
        ++subgraph_index) {
-    if (profiler != nullptr) {
-      subgraphs_[subgraph_index]->SetProfiler(std::unique_ptr<Profiler>(
-          new SubgraphAwareProfiler(profiler, subgraph_index)));
-    } else {
-      subgraphs_[subgraph_index]->SetProfiler(
-          std::unique_ptr<Profiler>(nullptr));
-    }
+    subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);
   }
 }
 

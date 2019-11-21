@@ -357,8 +357,15 @@ class ConcatenateDatasetParams : public DatasetParams {
 
 template <typename T>
 struct GetNextTestCase {
+  GetNextTestCase(T dataset_params, std::vector<Tensor> expected_outputs,
+                  bool compare_order = true)
+      : dataset_params(std::move(dataset_params)),
+        expected_outputs(std::move(expected_outputs)),
+        compare_order(compare_order) {}
+
   T dataset_params;
   std::vector<Tensor> expected_outputs;
+  bool compare_order;
 };
 
 template <typename T>
@@ -422,9 +429,18 @@ struct IteratorPrefixTestCase {
 
 template <typename T>
 struct IteratorSaveAndRestoreTestCase {
+  IteratorSaveAndRestoreTestCase(T dataset_params, std::vector<int> breakpoints,
+                                 std::vector<Tensor> expected_outputs,
+                                 bool compare_order = true)
+      : dataset_params(std::move(dataset_params)),
+        breakpoints(std::move(breakpoints)),
+        expected_outputs(std::move(expected_outputs)),
+        compare_order(compare_order) {}
+
   T dataset_params;
   std::vector<int> breakpoints;
   std::vector<Tensor> expected_outputs;
+  bool compare_order;
 };
 
 // Class composing a dataset with its dependencies.
@@ -651,7 +667,7 @@ class DatasetOpsTestBase : public ::testing::Test {
   Status CheckIteratorSaveAndRestore(
       const string& iterator_prefix,
       const std::vector<Tensor>& expected_outputs,
-      const std::vector<int>& breakpoints);
+      const std::vector<int>& breakpoints, bool compare_order);
 
  protected:
   // Creates a thread pool for parallel tasks.
@@ -743,6 +759,8 @@ class DatasetOpsTestBase : public ::testing::Test {
   mutex lock_for_refs_;  // Used as the Mutex for inputs added as refs.
   std::unique_ptr<CancellationManager> cancellation_manager_;
 
+  // Indicates if the below fields have been initialized.
+  bool initialized_ = false;
   std::unique_ptr<OpKernel> dataset_kernel_;
   std::unique_ptr<OpKernelContext::Params> params_;
   std::unique_ptr<OpKernelContext> dataset_ctx_;
@@ -823,8 +841,9 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
   TEST_P(ParameterizedGetNextTest, GetNext) {                                 \
     auto test_case = GetParam();                                              \
     TF_ASSERT_OK(Initialize(test_case.dataset_params));                       \
-    TF_ASSERT_OK(CheckIteratorGetNext(test_case.expected_outputs,             \
-                                      /*compare_order=*/true));               \
+    TF_ASSERT_OK(                                                             \
+        CheckIteratorGetNext(test_case.expected_outputs,                      \
+                             /*compare_order=*/test_case.compare_order));     \
   }                                                                           \
                                                                               \
   INSTANTIATE_TEST_SUITE_P(                                                   \
@@ -999,7 +1018,8 @@ class DatasetOpsTestBaseV2 : public DatasetOpsTestBase {
     TF_ASSERT_OK(Initialize(test_case.dataset_params));                      \
     TF_ASSERT_OK(CheckIteratorSaveAndRestore(                                \
         test_case.dataset_params.iterator_prefix(),                          \
-        test_case.expected_outputs, test_case.breakpoints));                 \
+        test_case.expected_outputs, test_case.breakpoints,                   \
+        test_case.compare_order));                                           \
   }                                                                          \
   INSTANTIATE_TEST_SUITE_P(                                                  \
       dataset_op_test_class, ParameterizedIteratorSaveAndRestoreTest,        \

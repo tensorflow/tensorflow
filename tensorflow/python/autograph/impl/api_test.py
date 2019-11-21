@@ -19,22 +19,27 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import contextlib
 import functools
 import gc
 import imp
 import os
 import re
+import sys
 import textwrap
 import types
 
 import numpy as np
+import six
 
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.utils import ag_logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
@@ -63,6 +68,26 @@ class TestResource(object):
 
 
 class ApiTest(test.TestCase):
+
+  @contextlib.contextmanager
+  def assertPrints(self, expected, not_expected):
+    try:
+      out_capturer = six.StringIO()
+      sys.stdout = out_capturer
+      yield
+      self.assertIn(expected, out_capturer.getvalue())
+      self.assertNotIn(not_expected, out_capturer.getvalue())
+    finally:
+      sys.stdout = sys.__stdout__
+
+  def assertNoMemoryLeaks(self, f):
+    object_ids_before = {id(o) for o in gc.get_objects()}
+    f()
+    gc.collect()
+    objects_after = tuple(
+        o for o in gc.get_objects() if id(o) not in object_ids_before)
+    self.assertEmpty(
+        tuple(o for o in objects_after if isinstance(o, TestResource)))
 
   @test_util.run_deprecated_v1
   def test_decorator_recursive(self):
@@ -431,19 +456,24 @@ class ApiTest(test.TestCase):
 
     class TestClass(object):
 
-      def __init__(self, x):
-        self.__private = x
+      def __init__(self):
+        self.__private = constant_op.constant(-1)
 
       def test_method(self):
-        if self.__private < 0:
-          return self.__private
         return self.__private
 
-    tc = TestClass(constant_op.constant(-1))
-    # The error below is specific to the `if` statement not being converted.
-    with self.assertRaisesRegex(NotImplementedError, 'Mangled names'):
+    tc = TestClass()
+    with self.assertRaisesRegex(
+        errors.UnsupportedLanguageElementError, 'mangled names'):
       api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
-      tc.test_method()
+
+    # TODO(mdan): Refactor to avoid this use of global state.
+    ag_logging.set_verbosity(0, True)
+    os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '0'
+    with self.assertPrints('could not transform', 'bug'):
+      api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
+    ag_logging.set_verbosity(0, False)
+    os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'
 
   def test_converted_call_already_converted(self):
 
@@ -685,15 +715,6 @@ class ApiTest(test.TestCase):
 
     self.assertAllEqual(self.evaluate(graph_fn()), (3, 2, 1))
 
-  def assertNoMemoryLeaks(self, f):
-    object_ids_before = {id(o) for o in gc.get_objects()}
-    f()
-    gc.collect()
-    objects_after = tuple(
-        o for o in gc.get_objects() if id(o) not in object_ids_before)
-    self.assertEmpty(
-        tuple(o for o in objects_after if isinstance(o, TestResource)))
-
   def test_converted_call_no_leaks_via_closure(self):
 
     def test_fn():
@@ -721,6 +742,35 @@ class ApiTest(test.TestCase):
       api.converted_call(f, (1,), None, options=DEFAULT_RECURSIVE)()
 
     self.assertNoMemoryLeaks(test_fn)
+
+  def test_converted_call_no_caching_on_abort(self):
+
+    def test_fn(needs_autograph):
+      if needs_autograph:
+        if constant_op.constant(True):
+          x = constant_op.constant(1)
+        else:
+          x = constant_op.constant(2)
+      else:
+        x = 3
+      return x
+
+    def call_in_disabled_context():
+      with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.DISABLED):
+        return api.converted_call(
+            test_fn, (False,), None, options=DEFAULT_RECURSIVE)
+
+    def call_in_default_context():
+      with ag_ctx.ControlStatusCtx(status=ag_ctx.Status.ENABLED):
+        return api.converted_call(
+            test_fn, (True,), None, options=DEFAULT_RECURSIVE)
+
+    # Note: this is an invariant, not a test (see above).
+    assert call_in_disabled_context() == 3
+
+    # If api.convert placed test_fn in the unconverted cache, this second
+    # invocation would fail.
+    self.assertEqual(self.evaluate(call_in_default_context()), 1)
 
   def test_context_tracking_direct_calls(self):
 

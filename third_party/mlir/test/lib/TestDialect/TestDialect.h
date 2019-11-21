@@ -30,6 +30,7 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
 
@@ -40,6 +41,15 @@ public:
 
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName() { return "test"; }
+
+  LogicalResult verifyOperationAttribute(Operation *op,
+                                         NamedAttribute namedAttr) override;
+  LogicalResult verifyRegionArgAttribute(Operation *op, unsigned regionIndex,
+                                         unsigned argIndex,
+                                         NamedAttribute namedAttr) override;
+  LogicalResult verifyRegionResultAttribute(Operation *op, unsigned regionIndex,
+                                            unsigned resultIndex,
+                                            NamedAttribute namedAttr) override;
 };
 
 #define GET_OP_CLASSES

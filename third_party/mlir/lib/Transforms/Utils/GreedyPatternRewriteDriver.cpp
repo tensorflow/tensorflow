@@ -23,6 +23,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -79,6 +80,7 @@ public:
     if (it != worklistMap.end()) {
       assert(worklist[it->second] == op && "malformed worklist data structure");
       worklist[it->second] = nullptr;
+      worklistMap.erase(it);
     }
   }
 
@@ -208,6 +210,10 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
       // notified of any necessary changes, so there is nothing else to do here.
       changed |= matcher.matchAndRewrite(op, *this);
     }
+
+    // After applying patterns, make sure that the CFG of each of the regions is
+    // kept up to date.
+    changed |= succeeded(simplifyRegions(regions));
   } while (changed && ++i < maxIterations);
   // Whether the rewrite converges, i.e. wasn't changed in the last iteration.
   return !changed;

@@ -24,14 +24,12 @@ limitations under the License.
 // all ops whose definitions are generated from TensorFlow codebase.
 // Changes made there are not respected.
 
-#ifdef TF_OPS
-#else
+#ifndef TF_OPS
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
 
-#ifdef MLIR_CALLINTERFACES
-#else
+#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
 #endif // MLIR_CALLINTERFACES
 
@@ -155,8 +153,8 @@ else_branch: A function that takes 'inputs' and returns a list of
     TF_Tensor:$cond,
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$then_branch,
-    SymbolRefAttr:$else_branch,
+    FlatSymbolRefAttr:$then_branch,
+    FlatSymbolRefAttr:$else_branch,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
@@ -215,7 +213,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -239,33 +237,6 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   }];
 }
 
-// In MLIR, the 'tf.Placeholder.input' instruction is used to capture attributes
-// of function arguments.
-// Note: NoSideEffect trait is not added intentionally to preserve the captured
-// attributes even if the input is unused.
-def TF_PlaceholderInputOp : TF_Op<"Placeholder.input",
-    [SameOperandsAndResultType]> {
-  let summary = "PlaceholderInput op";
-
-  let description = [{
-Inserts a placeholder for a tensor that will be always fed.
-  }];
-
-  let arguments = (ins
-    TF_Tensor:$arg,
-
-    OptionalAttr<F32Attr>:$min,
-    OptionalAttr<F32Attr>:$max,
-    OptionalAttr<TF_IntTypeAttr>:$type
-  );
-
-  let results = (outs
-    TF_Tensor:$output
-  );
-
-  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
-}
-
 def TF_PlaceholderOp : TF_Op<"Placeholder", [NoSideEffect]> {
   let summary = "Placeholder op";
 
@@ -283,6 +254,24 @@ Inserts a placeholder for a tensor that will be always fed.
   TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_PlaceholderWithDefaultOp : TF_Op<"PlaceholderWithDefault", [NoSideEffect]> {
+  let summary = "Placeholder op";
+  let description = [{
+    A placeholder op that passes through input when its output is not fed.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+  DerivedAttr shape = TF_DerivedResultShapeAttr;
+}
+
 def TF_StatefulPartitionedCallOp : TF_Op<"StatefulPartitionedCall",
                                          [CallOpInterface]> {
   let summary =
@@ -297,7 +286,7 @@ underlying graph, and executes each of the partitioned subgraphs as a function.
   let arguments = (ins
     Variadic<TF_Tensor>:$args,
 
-    SymbolRefAttr:$f,
+    FlatSymbolRefAttr:$f,
     StrAttr:$config,
     StrAttr:$config_proto,
     StrAttr:$executor_type
@@ -346,8 +335,8 @@ body: A function that takes a list of tensors and returns another
   let arguments = (ins
     Variadic<TF_Tensor>:$input,
 
-    SymbolRefAttr:$cond,
-    SymbolRefAttr:$body,
+    FlatSymbolRefAttr:$cond,
+    FlatSymbolRefAttr:$body,
     DefaultValuedAttr<StrArrayAttr, "{}">:$output_shapes,
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations,
 
@@ -410,5 +399,36 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   );
 
   let results = (outs);
+}
+
+def TF_VarHandleOp : TF_Op<"VarHandleOp", []> {
+  let summary = "Creates a handle to a Variable resource from its name.";
+
+  let description = [{
+container: the container this variable is placed in.
+shared_name: the name by which this variable is referred to.
+dtype and shape: attributes representing the data type and shape held in the
+  variable.
+
+Example:
+    resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[8, 16], container="foo", shared_name="bar")
+  returns a handle for a variable with name "bar" in container "foo", and the
+  variable holds a tensor of shape [8, 16] and dtype int32.
+  }];
+
+  let arguments = (ins
+    DefaultValuedAttr<StrAttr, "">:$container,
+    DefaultValuedAttr<StrAttr, "">:$shared_name
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$resource
+  );
+
+  TF_DerivedOperandOrResultHandleTypeAttr dtype =
+    TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
+  TF_DerivedOperandOrResultHandleShapeAttr shape =
+    TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
 }
 #endif // TF_OPS

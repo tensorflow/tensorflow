@@ -39,6 +39,7 @@ from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.tpu import tpu
 from tensorflow.python.util import tf_decorator
 
 NEG_INF = -1e10
@@ -71,6 +72,19 @@ def update_state_wrapper(update_state_fn):
 
   def decorated(metric_obj, *args, **kwargs):
     """Decorated function with `add_update()`."""
+    strategy = distribution_strategy_context.get_strategy()
+    # TODO(b/142574744): Remove this check if a better solution is found for
+    # declaring keras Metric outside of TPUStrategy and then updating it per
+    # replica.
+
+    for weight in metric_obj.weights:
+      if (tpu.is_tpu_strategy(strategy) and
+          not strategy.extended.variable_created_in_scope(weight)
+          and not distribution_strategy_context.in_cross_replica_context()):
+        raise ValueError(
+            'Trying to run metric.update_state in replica context when '
+            'the metric was not created in TPUStrategy scope. '
+            'Make sure the keras Metric is created in TPUstrategy scope. ')
 
     with tf_utils.graph_context_for_symbolic_tensors(*args, **kwargs):
       update_op = update_state_fn(*args, **kwargs)

@@ -41,6 +41,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "//tensorflow/core/distributed_runtime:worker_session",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -108,6 +109,7 @@ cc_library(
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/common_runtime/eager:execute",
+        "//tensorflow/core/common_runtime/eager:process_function_library_runtime",
         "//tensorflow/core/common_runtime/eager:tensor_handle",
         "//tensorflow/core/distributed_runtime:server_lib",
         "//tensorflow/core/distributed_runtime:session_mgr",
@@ -118,6 +120,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/container:fixed_array",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 

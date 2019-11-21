@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import context
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -293,42 +294,60 @@ def set_synchronous_execution(enable):
     context.context().execution_mode = context.ASYNC
 
 
-@tf_export('config.experimental.list_physical_devices')
+@tf_export('config.list_physical_devices',
+           'config.experimental.list_physical_devices')
+@deprecation.deprecated_endpoints(
+    'config.experimental.list_physical_devices')
 def list_physical_devices(device_type=None):
   """Return a list of physical devices visible to the host runtime.
 
   Physical devices are hardware devices present on the host machine. By default
-  all discovered CPU and GPU devices are considered visible. The
-  `tf.config.experimental.list_physical_devices` API allows querying the
-  hardware prior to runtime initialization.
+  all discovered CPU and GPU devices are considered visible.
+
+  This API allows querying the physical hardware resources prior to runtime
+  initialization. Thus, giving an opportunity to call any additional
+  configuration APIs. This is in contrast to `tf.config.list_logical_devices`,
+  which triggers runtime initialization in order to list the configured devices.
 
   The following example lists the number of visible GPUs on the host.
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  >>> physical_devices = tf.config.list_physical_devices('GPU')
   >>> print("Num GPUs:", len(physical_devices))
   Num GPUs: ...
+
+  However, the number of GPUs available to the runtime may change during runtime
+  initialization due to marking certain devices as not visible or configuring
+  multiple logical devices.
 
   Args:
     device_type: (optional string) Only include devices matching this device
       type. For example "CPU" or "GPU".
 
   Returns:
-    List of discovered `PhysicalDevice`s
+    List of discovered `tf.config.PhysicalDevice` objects
   """
   return context.context().list_physical_devices(device_type)
 
 
-@tf_export('config.experimental.list_logical_devices')
+@tf_export('config.list_logical_devices',
+           'config.experimental.list_logical_devices')
+@deprecation.deprecated_endpoints(
+    'config.experimental.list_logical_devices')
 def list_logical_devices(device_type=None):
   """Return a list of logical devices created by runtime.
 
   Logical devices may correspond to physical devices or remote devices in the
   cluster. Operations and tensors may be placed on these devices by using the
-  `name` of the `LogicalDevice`.
+  `name` of the `tf.config.LogicalDevice`.
+
+  Calling `tf.config.list_logical_devices` triggers the runtime to configure any
+  `tf.config.PhysicalDevice` visible to the runtime, thereby preventing
+  further configuration. To avoid runtime initialization, call
+  `tf.config.list_physical_devices` instead.
 
   For example:
 
-  >>> logical_devices = tf.config.experimental.list_logical_devices('GPU')
+  >>> logical_devices = tf.config.list_logical_devices('GPU')
   >>> if len(logical_devices) > 0:
   ...   # Allocate on GPU:0
   ...   with tf.device(logical_devices[0].name):
@@ -347,7 +366,10 @@ def list_logical_devices(device_type=None):
   return context.context().list_logical_devices(device_type=device_type)
 
 
-@tf_export('config.experimental.get_visible_devices')
+@tf_export('config.get_visible_devices',
+           'config.experimental.get_visible_devices')
+@deprecation.deprecated_endpoints(
+    'config.experimental.get_visible_devices')
 def get_visible_devices(device_type=None):
   """Get the list of visible physical devices.
 
@@ -357,11 +379,11 @@ def get_visible_devices(device_type=None):
 
   The following example verifies all visible GPUs have been disabled:
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  >>> physical_devices = tf.config.list_physical_devices('GPU')
   >>> try:
   ...   # Disable all GPUS
-  ...   tf.config.experimental.set_visible_devices([], 'GPU')
-  ...   visible_devices = tf.config.experimental.get_visible_devices()
+  ...   tf.config.set_visible_devices([], 'GPU')
+  ...   visible_devices = tf.config.get_visible_devices()
   ...   for device in visible_devices:
   ...     assert device.device_type != 'GPU'
   ... except:
@@ -378,7 +400,10 @@ def get_visible_devices(device_type=None):
   return context.context().get_visible_devices(device_type)
 
 
-@tf_export('config.experimental.set_visible_devices')
+@tf_export('config.set_visible_devices',
+           'config.experimental.set_visible_devices')
+@deprecation.deprecated_endpoints(
+    'config.experimental.set_visible_devices')
 def set_visible_devices(devices, device_type=None):
   """Set the list of visible devices.
 
@@ -389,11 +414,11 @@ def set_visible_devices(devices, device_type=None):
 
   The following example demonstrates disabling the first GPU on the machine.
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  >>> physical_devices = tf.config.list_physical_devices('GPU')
   >>> try:
   ...   # Disable first GPU
-  ...   tf.config.experimental.set_visible_devices(physical_devices[1:], 'GPU')
-  ...   logical_devices = tf.config.experimental.list_logical_devices('GPU')
+  ...   tf.config.set_visible_devices(physical_devices[1:], 'GPU')
+  ...   logical_devices = tf.config.list_logical_devices('GPU')
   ...   # Logical device was not created for first GPU
   ...   assert len(logical_devices) == len(physical_devices) - 1
   ... except:
@@ -421,7 +446,7 @@ def get_memory_growth(device):
 
   For example:
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  >>> physical_devices = tf.config.list_physical_devices('GPU')
   >>> try:
   ...   tf.config.experimental.set_memory_growth(physical_devices[0], True)
   ...   assert tf.config.experimental.get_memory_growth(physical_devices[0])
@@ -451,7 +476,7 @@ def set_memory_growth(device, enable):
 
   For example:
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  >>> physical_devices = tf.config.list_physical_devices('GPU')
   >>> try:
   ...   tf.config.experimental.set_memory_growth(physical_devices[0], True)
   ... except:
@@ -469,27 +494,30 @@ def set_memory_growth(device, enable):
   context.context().set_memory_growth(device, enable)
 
 
-@tf_export('config.experimental.get_virtual_device_configuration')
-def get_virtual_device_configuration(device):
-  """Get the virtual device configuration for a `PhysicalDevice`.
+@tf_export('config.get_logical_device_configuration',
+           'config.experimental.get_virtual_device_configuration')
+@deprecation.deprecated_endpoints(
+    'config.experimental.get_virtual_device_configuration')
+def get_logical_device_configuration(device):
+  """Get the virtual device configuration for a `tf.config.PhysicalDevice`.
 
-  Returns the list of `tf.config.experimental.VirtualDeviceConfiguration`
+  Returns the list of `tf.config.LogicalDeviceConfiguration`
   objects previously configured by a call to
-  `tf.config.experimental.set_virtual_device_configuration()`.
+  `tf.config.set_logical_device_configuration`.
 
   For example:
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('CPU')
+  >>> physical_devices = tf.config.list_physical_devices('CPU')
   >>> assert len(physical_devices) == 1, "No CPUs found"
-  >>> configs = tf.config.experimental.get_virtual_device_configuration(
+  >>> configs = tf.config.get_logical_device_configuration(
   ...   physical_devices[0])
   >>> try:
   ...   assert configs is None
-  ...   tf.config.experimental.set_virtual_device_configuration(
+  ...   tf.config.set_logical_device_configuration(
   ...     physical_devices[0],
-  ...     [tf.config.experimental.VirtualDeviceConfiguration(),
-  ...      tf.config.experimental.VirtualDeviceConfiguration()])
-  ...   configs = tf.config.experimental.get_virtual_device_configuration(
+  ...     [tf.config.LogicalDeviceConfiguration(),
+  ...      tf.config.LogicalDeviceConfiguration()])
+  ...   configs = tf.config.get_logical_device_configuration(
   ...     physical_devices[0])
   ...   assert len(configs) == 2
   ... except:
@@ -500,77 +528,79 @@ def get_virtual_device_configuration(device):
     device: `PhysicalDevice` to query
 
   Returns:
-    List of `tf.config.experimental.VirtualDeviceConfiguration` objects or
+    List of `tf.config.LogicalDeviceConfiguration` objects or
     `None` if no virtual device configuration has been set for this physical
     device.
   """
-  return context.context().get_virtual_device_configuration(device)
+  return context.context().get_logical_device_configuration(device)
 
 
-@tf_export('config.experimental.set_virtual_device_configuration')
-def set_virtual_device_configuration(device, virtual_devices):
-  """Set the virtual device configuration for a `PhysicalDevice`.
+@tf_export('config.set_logical_device_configuration',
+           'config.experimental.set_virtual_device_configuration')
+@deprecation.deprecated_endpoints(
+    'config.experimental.set_virtual_device_configuration')
+def set_logical_device_configuration(device, logical_devices):
+  """Set the logical device configuration for a `tf.config.PhysicalDevice`.
 
-  A visible `PhysicalDevice` will by default have a single `LogicalDevice`
-  associated with it once the runtime is initialized. Specifying a list of
-  `tf.config.experimental.VirtualDeviceConfiguration`s allows multiple
-  devices to be on the same `PhysicalDevice`.
+  A visible `tf.config.PhysicalDevice` will by default have a single
+  `tf.config.LogicalDevice` associated with it once the runtime is initialized.
+  Specifying a list of `tf.config.LogicalDeviceConfiguration` objects allows
+  multiple devices to be created on the same `tf.config.PhysicalDevice`.
 
-  The following example splits the CPU into 2 virtual devices:
+  The following example splits the CPU into 2 logical devices:
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('CPU')
+  >>> physical_devices = tf.config.list_physical_devices('CPU')
   >>> assert len(physical_devices) == 1, "No CPUs found"
   >>> # Specify 2 virtual CPUs. Note currently memory limit is not supported.
   >>> try:
-  ...   tf.config.experimental.set_virtual_device_configuration(
+  ...   tf.config.set_logical_device_configuration(
   ...     physical_devices[0],
-  ...     [tf.config.experimental.VirtualDeviceConfiguration(),
-  ...      tf.config.experimental.VirtualDeviceConfiguration()])
-  ...   logical_devices = tf.config.experimental.list_logical_devices('CPU')
+  ...     [tf.config.LogicalDeviceConfiguration(),
+  ...      tf.config.LogicalDeviceConfiguration()])
+  ...   logical_devices = tf.config.list_logical_devices('CPU')
   ...   assert len(logical_devices) == 2
   ...
-  ...   tf.config.experimental.set_virtual_device_configuration(
+  ...   tf.config.set_logical_device_configuration(
   ...     physical_devices[0],
-  ...     [tf.config.experimental.VirtualDeviceConfiguration(),
-  ...      tf.config.experimental.VirtualDeviceConfiguration(),
-  ...      tf.config.experimental.VirtualDeviceConfiguration(),
-  ...      tf.config.experimental.VirtualDeviceConfiguration()])
+  ...     [tf.config.LogicalDeviceConfiguration(),
+  ...      tf.config.LogicalDeviceConfiguration(),
+  ...      tf.config.LogicalDeviceConfiguration(),
+  ...      tf.config.LogicalDeviceConfiguration()])
   ... except:
-  ...   # Cannot modify virtual devices once initialized.
+  ...   # Cannot modify logical devices once initialized.
   ...   pass
 
-  The following example splits the GPU into 2 virtual devices with 100 MB each:
+  The following example splits the GPU into 2 logical devices with 100 MB each:
 
-  >>> physical_devices = tf.config.experimental.list_physical_devices('GPU')
+  >>> physical_devices = tf.config.list_physical_devices('GPU')
   >>> try:
-  ...   tf.config.experimental.set_virtual_device_configuration(
+  ...   tf.config.set_logical_device_configuration(
   ...     physical_devices[0],
-  ...     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=100),
-  ...      tf.config.experimental.VirtualDeviceConfiguration(memory_limit=100)])
+  ...     [tf.config.LogicalDeviceConfiguration(memory_limit=100),
+  ...      tf.config.LogicalDeviceConfiguration(memory_limit=100)])
   ...
-  ...   logical_devices = tf.config.experimental.list_logical_devices('GPU')
+  ...   logical_devices = tf.config.list_logical_devices('GPU')
   ...   assert len(logical_devices) == len(physical_devices) + 1
   ...
-  ...   tf.config.experimental.set_virtual_device_configuration(
+  ...   tf.config.set_logical_device_configuration(
   ...     physical_devices[0],
-  ...     [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=10),
-  ...      tf.config.experimental.VirtualDeviceConfiguration(memory_limit=10)])
+  ...     [tf.config.LogicalDeviceConfiguration(memory_limit=10),
+  ...      tf.config.LogicalDeviceConfiguration(memory_limit=10)])
   ... except:
-  ...   # Invalid device or cannot modify virtual devices once initialized.
+  ...   # Invalid device or cannot modify logical devices once initialized.
   ...   pass
 
   Args:
     device: The `PhysicalDevice` to configure.
-    virtual_devices: (optional) List of
-      `tf.config.experimental.VirtualDeviceConfiguration` objects to allocate
-      for the specified `PhysicalDevice`. If None, the default configuration
-      will be used.
+    logical_devices: (optional) List of `tf.config.LogicalDeviceConfiguration`
+      objects to allocate for the specified `PhysicalDevice`. If None, the
+      default configuration will be used.
 
   Raises:
     ValueError: If argument validation fails.
     RuntimeError: Runtime is already initialized.
   """
-  context.context().set_virtual_device_configuration(device, virtual_devices)
+  context.context().set_logical_device_configuration(device, logical_devices)
 
 
 @tf_export('config.experimental.enable_mlir_bridge')

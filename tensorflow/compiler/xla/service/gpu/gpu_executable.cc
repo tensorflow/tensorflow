@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -44,7 +44,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::tracing::ScopedAnnotation;
+using tensorflow::profiler::ScopedAnnotation;
 
 }  // namespace
 
@@ -95,10 +95,9 @@ void GpuExecutable::ComputeThunkAnnotations() {
     const HloInstruction* hlo = thunk->hlo_instruction();
     CHECK(hlo);
     thunk_annotations_[thunk] =
-        absl::StrFormat("%s:#tf_op=%s:%s,hlo_op=%s,hlo_module=%s#",
+        absl::StrFormat("%s:#hlo_op=%s,hlo_module=%s#",
                         hlo->ToStringWithCanonicalNameMap(
                             HloPrintOptions::Canonical(), &canonical_name_map),
-                        hlo->metadata().op_name(), hlo->metadata().op_type(),
                         hlo->name(), hlo->GetModule()->name());
   }
 }

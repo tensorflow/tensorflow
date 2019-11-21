@@ -152,6 +152,15 @@ def gen_operand_kind_enum_attr(operand_kind):
   if 'enumerants' not in operand_kind:
     return '', ''
 
+  # Returns a symbol for the given case in the given kind. This function
+  # handles Dim specially to avoid having numbers as the start of symbols,
+  # which does not play well with C++ and the MLIR parser.
+  def get_case_symbol(kind_name, case_name):
+    if kind_name == 'Dim':
+      if case_name == '1D' or case_name == '2D' or case_name == '3D':
+        return 'Dim{}'.format(case_name)
+    return case_name
+
   kind_name = operand_kind['kind']
   is_bit_enum = operand_kind['category'] == 'BitEnum'
   kind_category = 'Bit' if is_bit_enum else 'I32'
@@ -162,13 +171,14 @@ def gen_operand_kind_enum_attr(operand_kind):
   max_len = max([len(symbol) for (symbol, _) in kind_cases])
 
   # Generate the definition for each enum case
-  fmt_str = 'def SPV_{acronym}_{symbol} {colon:>{offset}} '\
+  fmt_str = 'def SPV_{acronym}_{case} {colon:>{offset}} '\
             '{category}EnumAttrCase<"{symbol}", {value}>;'
   case_defs = [
       fmt_str.format(
           category=kind_category,
           acronym=kind_acronym,
-          symbol=case[0],
+          case=case[0],
+          symbol=get_case_symbol(kind_name, case[0]),
           value=case[1],
           colon=':',
           offset=(max_len + 1 - len(case[0]))) for case in kind_cases
@@ -311,7 +321,7 @@ def update_td_enum_attrs(path, operand_kinds, filter_list):
 
 
 def snake_casify(name):
-  """Turns the given name to follow snake_case convension."""
+  """Turns the given name to follow snake_case convention."""
   name = re.sub('\W+', '', name).split()
   name = [s.lower() for s in name]
   return '_'.join(name)
@@ -343,7 +353,7 @@ def map_spec_operand_to_ods_argument(operand):
       arg_type = 'Variadic<SPV_Type>'
   elif kind == 'IdMemorySemantics' or kind == 'IdScope':
     # TODO(antiagainst): Need to further constrain 'IdMemorySemantics'
-    # and 'IdScope' given that they should be gernated from OpConstant.
+    # and 'IdScope' given that they should be generated from OpConstant.
     assert quantifier == '', ('unexpected to have optional/variadic memory '
                               'semantics or scope <id>')
     arg_type = 'I32'
@@ -505,6 +515,42 @@ def get_string_between(base, start, end):
   return '', split[0]
 
 
+def get_string_between_nested(base, start, end):
+  """Extracts a substring with a nested start and end from a string.
+
+  Arguments:
+    - base: string to extract from.
+    - start: string to use as the start of the substring.
+    - end: string to use as the end of the substring.
+
+  Returns:
+    - The substring if found
+    - The part of the base after end of the substring. Is the base string itself
+      if the substring wasnt found.
+  """
+  split = base.split(start, 1)
+  if len(split) == 2:
+    # Handle nesting delimiters
+    rest = split[1]
+    unmatched_start = 1
+    index = 0
+    while unmatched_start > 0 and index < len(rest):
+      if rest[index:].startswith(end):
+        unmatched_start -= 1
+        index += len(end)
+      elif rest[index:].startswith(start):
+        unmatched_start += 1
+        index += len(start)
+      else:
+        index += 1
+
+    assert index < len(rest), \
+           'cannot find end "{end}" while extracting substring '\
+           'starting with "{start}"'.format(start=start, end=end)
+    return rest[:index - len(end)].rstrip(end), rest[index:]
+  return '', split[0]
+
+
 def extract_td_op_info(op_def):
   """Extracts potentially manually specified sections in op's definition.
 
@@ -528,7 +574,7 @@ def extract_td_op_info(op_def):
   inst_category = inst_category[0] if len(inst_category) == 1 else 'Op'
 
   # Get category_args
-  op_tmpl_params = op_def.split('<', 1)[1].split('>', 1)[0]
+  op_tmpl_params = get_string_between_nested(op_def, '<', '>')[0]
   opstringname, rest = get_string_between(op_tmpl_params, '"', '"')
   category_args = rest.split('[', 1)[0]
 
@@ -587,10 +633,12 @@ def update_td_op_definitions(path, instructions, docs, filter_list,
   # For each existing op, extract the manually-written sections out to retain
   # them when re-generating the ops. Also append the existing ops to filter
   # list.
+  name_op_map = {}  # Map from opname to its existing ODS definition
   op_info_dict = {}
   for op in ops:
     info_dict = extract_td_op_info(op)
     opname = info_dict['opname']
+    name_op_map[opname] = op
     op_info_dict[opname] = info_dict
     filter_list.append(opname)
   filter_list = sorted(list(set(filter_list)))
@@ -598,11 +646,15 @@ def update_td_op_definitions(path, instructions, docs, filter_list,
   op_defs = []
   for opname in filter_list:
     # Find the grammar spec for this op
-    instruction = next(
-        inst for inst in instructions if inst['opname'] == opname)
-    op_defs.append(
-        get_op_definition(instruction, docs[opname],
-                          op_info_dict.get(opname, {})))
+    try:
+      instruction = next(
+          inst for inst in instructions if inst['opname'] == opname)
+      op_defs.append(
+          get_op_definition(instruction, docs[opname],
+                            op_info_dict.get(opname, {})))
+    except StopIteration:
+      # This is an op added by us; use the existing ODS definition.
+      op_defs.append(name_op_map[opname])
 
   # Substitute the old op definitions
   op_defs = [header] + op_defs + [footer]

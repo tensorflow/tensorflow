@@ -26,7 +26,6 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import dynamic_padding_pb2 as dynamic_padding
 from tensorflow.python import pywrap_tensorflow
-from tensorflow.python.compat import compat as api_compat
 from tensorflow.python.compiler.xla import xla
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -92,7 +91,9 @@ def _tpu_system_device_name(job):
 
 
 @tf_export(v1=["tpu.initialize_system"])
-def initialize_system(embedding_config=None, job=None):
+def initialize_system(embedding_config=None,
+                      job=None,
+                      compilation_failure_closes_chips=True):
   """Initializes a distributed TPU system for use with TensorFlow.
 
   Args:
@@ -103,6 +104,8 @@ def initialize_system(embedding_config=None, job=None):
       contains the TPU devices that will be initialized. If job=None it is
       assumed there is only one job in the TensorFlow flock, and an error will
       be returned if this assumption does not hold.
+    compilation_failure_closes_chips: Set the configuration whether
+      we want to close TPU chips when there is a compilation failure.
   Returns:
     A serialized `TopologyProto` that describes the TPU system. Note:
       the topology must be evaluated using `Session.run` before it can be used.
@@ -110,7 +113,9 @@ def initialize_system(embedding_config=None, job=None):
   config_string = ("" if embedding_config is None else
                    embedding_config.SerializeToString())
   with ops.device(_tpu_system_device_name(job)):
-    return tpu_ops.configure_distributed_tpu(embedding_config=config_string)
+    return tpu_ops.configure_distributed_tpu(
+        embedding_config=config_string,
+        compilation_failure_closes_chips=compilation_failure_closes_chips)
 
 
 def initialize_system_for_tpu_embedding(embedding_config, job=None):
@@ -486,8 +491,13 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
-    if _TPU_REPLICATE_ATTR in op.node_def.attr:
-      raise ValueError("TPU computations cannot be nested")
+
+    # TensorFlowOpLayer may clone nodes that are in tpu.rewrite()s. It'll add
+    # the "_cloned" attribute and we should continue in that case.
+    if (_TPU_REPLICATE_ATTR in op.node_def.attr and
+        "_cloned" not in op.node_def.attr):
+      raise ValueError("TPU computations cannot be nested on op (%s)" %
+                       op)
     op._set_attr_with_buf(
         _TPU_REPLICATE_ATTR, self._tpu_relicate_attr_buf._buffer)
     if self._outside_compilation_cluster:
@@ -622,6 +632,54 @@ class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
 def outside_compilation(computation, *args, **kwargs):
   """Builds part of a computation outside any current TPU replicate scope.
 
+  `tf.tpu.outside_compilation()` is used to run ops in `computation` on CPU
+  instead of running on TPU. For example, users can run ops that are not
+  supported on TPU's (e.g. tf.summary.write()) by explicitly placing those
+  ops on CPU's. Below usage of outside compilation will place ops in
+  `computation_with_string_ops` on CPU.
+
+  def computation_with_string_ops(x):
+    # strings types are not supported on TPU's and below ops must
+    # run on CPU instead.
+    output = tf.strings.format('1{}', x)
+    return tf.strings.to_number(output)
+
+  def tpu_computation():
+    # Expected output is 11.
+    output = tf.tpu.outside_compilation(computation_with_string_ops, 1)
+
+  Outside compilation should be called inside TPUReplicateContext. That is,
+  `tf.tpu.outside_compilation()` should be called inside a function that is
+  passed to `tpu.split_compile_and_replicate()` -- this is implied when
+  outside compilation is invoked inside a function passed to TPUStrategy
+  `experimental_run_v2()`. If invoked outside of TPUReplicateContext,
+  then this simply returns the result of `computation`, and therefore,
+  would be a no-op. Note that outside compilation is different from
+  `tf.distribute.experimental.TPUStrategy.merge_call()` as logic in
+  outside compilation is replicated and executed separately for each
+  replica. On the other hand, `merge_call()` requires a `merge_fn`
+  to aggregate the inputs from different replicas and is executed only
+  once.
+
+  For variables placed in TPU device, which includes variables created inside
+  TPUStrategy scope, outside compilation logic must not include variable
+  read/write. For variables placed on host, which is the case when variables
+  created via TPUEstimator, variable read/write is only allowed if the variable
+  is not accessed by any other ops in the TPU computation. Variable read/write
+  from outside compilation cluster is not visible from TPU computation and
+  vice versa. Therefore, if outside compilation logic contains such host
+  variables read/write ops and if the variables are accessed by TPU
+  computation as well, then this may lead to deadlock.
+
+  Internally, `tf.tpu.outside_compilation()` adds outside compilation
+  attributes to all ops in `computation`. During later graph pass, these
+  ops with outside compilation attribute is extracted out and replicated
+  into a host-side graph. Inputs to this extract host-side graph is sent
+  from TPU computation graph to host graph via a pair of XlaSendToHost and
+  XlaRecvFromHost ops. Note that using `tf.tpu.outside_compilation()`
+  may result in tensor transfer between TPU and CPU, leading to non-trivial
+  performance impact.
+
   Args:
     computation: A Python function that builds the computation to
       place on the host.
@@ -638,7 +696,15 @@ def outside_compilation(computation, *args, **kwargs):
   # we need to attach _xla_outside_compilation attribute directly because we are
   # not in TPUReplicateContext.
   if isinstance(graph, func_graph.FuncGraph):
-    tpu_context, _ = _enclosing_tpu_context_and_graph()
+    try:
+      tpu_context, _ = _enclosing_tpu_context_and_graph()
+    except ValueError:
+      logging.warning(
+          "Outside compilation attempted outside TPUReplicateContext "
+          "scope. As no enclosing TPUReplicateContext can be found, "
+          "returning the result of `computation` as is.")
+      return computation(*args, **kwargs)
+
     # pylint: disable=protected-access
     outside_compilation_name = str(tpu_context._outside_compilation_counter)
     tpu_context._outside_compilation_counter = (
@@ -818,13 +884,19 @@ def _pad_all_input(inputs, padded_shapes):
         paddings = []
         for i, s in enumerate(padded_shape.dims):
           if need_padding[idx][i]:
+            # The minimum padded dimension size is 2 as XLA doesn't support size
+            # 1 dynamic size.
+            minimum_dynamic_dim_size = 2
             if s.value:
               # Pad to the given maximum value.
-              padding = [0, s.value - input_shape_tensor[i]]
+              max_dim_size = max(s.value, minimum_dynamic_dim_size)
             else:
               # If maximum value is not given, then pad to the maximum dimension
               # among all the cores.
-              padding = [0, maximum_shapes[idx][i] - input_shape_tensor[i]]
+              max_dim_size = math_ops.maximum(maximum_shapes[idx][i],
+                                              minimum_dynamic_dim_size)
+            # Pad to the given maximum value.
+            padding = [0, max_dim_size - input_shape_tensor[i]]
           else:
             padding = [0, 0]
           paddings.append(padding)
@@ -925,16 +997,8 @@ def split_compile_and_replicate(computation,
         "device_assignment":
             device_assignment.core_assignment.flatten().tolist()
     }
-    # TODO(phawkins): remove this case after the forward compatibility window
-    # expires on 2018-10-5.
-    if api_compat.forward_compatible(2018, 10, 5):
-      metadata_kwargs["num_cores_per_replica"] = (
-          device_assignment.num_cores_per_replica)
-    else:
-      metadata_kwargs["computation_shape"] = [
-          device_assignment.num_cores_per_replica
-      ]
-
+    metadata_kwargs["num_cores_per_replica"] = (
+        device_assignment.num_cores_per_replica)
   # This entry is used for enabling automatic outside compilation.
   metadata_kwargs["allow_soft_placement"] = config.get_soft_device_placement()
 
@@ -1022,14 +1086,9 @@ def split_compile_and_replicate(computation,
   flat_replicated_inputs = []
   for i in range(0, len(flat_inputs[0])):
     replicas = [flat_inputs[replica][i] for replica in xrange(num_replicas)]
-    if api_compat.forward_compatible(2019, 9, 19):
-      flat_replicated_inputs.append(
-          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i),
-                                       index=i))
-    else:
-      flat_replicated_inputs.append(
-          tpu_ops.tpu_replicated_input(replicas, name="input{}".format(i)))
-
+    flat_replicated_inputs.append(
+        tpu_ops.tpu_replicated_input(
+            replicas, name="input{}".format(i), index=i))
   if isinstance(graph, func_graph.FuncGraph):
     # When we are in Tensorflow 2.0 function, 'graph' will be a FuncGraph
     # object. If both outside graph and this function have a TPU cluster,
@@ -1320,7 +1379,7 @@ def split_compile_and_shard(computation,
   ... = shard(computation, ...)
 
   If `outputs_from_all_shards` is true, the outputs from all shards of
-  `computation` are concatenated back together along their `output_shards_axes`.
+  `computation` are concatenated back together along their `output_shard_axes`.
   Otherwise, each output is taken from an arbitrary shard.
 
   Inputs and outputs of the computation must be at least rank-1 Tensors.
@@ -1474,7 +1533,7 @@ def shard(computation,
   as inputs.
 
   If `outputs_from_all_shards` is true, the outputs from all shards of
-  `computation` are concatenated back together along their `output_shards_axes`.
+  `computation` are concatenated back together along their `output_shard_axes`.
   Otherwise, each output is taken from an arbitrary shard.
 
   Inputs and outputs of the computation must be at least rank-1 Tensors.

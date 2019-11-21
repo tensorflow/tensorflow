@@ -29,6 +29,9 @@ from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
 
 
+bfloat16 = xla_client.bfloat16
+
+
 class ComputationTest(absltest.TestCase):
   """Base class for running an XLA Computation through the local client."""
 
@@ -116,6 +119,11 @@ class ComputationsWithConstantsTest(ComputationTest):
     c = self._NewComputation()
     c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
     self._ExecuteAndCompareExact(c, expected=np.int8(3))
+
+  def testConstantScalarSumBF16(self):
+    c = self._NewComputation()
+    c.Add(c.Constant(bfloat16(1.11)), c.Constant(bfloat16(3.14)))
+    self._ExecuteAndCompareClose(c, expected=bfloat16(4.25))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
@@ -1421,6 +1429,15 @@ class SingleOpTest(ComputationTest):
     self._ExecuteAndCompareClose(c, expected=np.fft.irfftn(a, axes=(1, 2, 3)),
                                  rtol=1e-4)
 
+  def testNextAfter(self):
+    c = self._NewComputation()
+    c.NextAfter(
+        c.Constant(np.array([1, 2], dtype=np.float32)),
+        c.Constant(np.array([2, 1], dtype=np.float32)))
+    out = self._Execute(c, ())
+    eps = np.finfo(np.float32).eps
+    np.testing.assert_equal(np.array([eps + 1, 2 - eps], dtype=np.float32), out)
+
 
 class EmbeddedComputationsTest(ComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""
@@ -1965,6 +1982,29 @@ class ComputationRootTest(ComputationTest):
     result = c.Add(x, c.ConstantF32Scalar(3.14))
     extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
 
+    arg = NumpyArrayF32(1.0)
+    compiled_c = c.Build(result).Compile()
+    ans = xla_client.execute_with_python_values(compiled_c, [arg])
+    np.testing.assert_allclose(ans, 4.14)
+
+
+class SetShardingTest(ComputationTest):
+  """Tests related to set OpSharding."""
+
+  def testSetSharding(self):
+    c = self._NewComputation()
+    sharding = xla_client.OpSharding()
+    sharding.type = sharding.type.REPLICATED
+    sharding.tile_assignment_dimensions.extend([1])
+    sharding.tile_assignment_devices.extend([0])
+    # Set Sharding.
+    c.SetSharding(sharding)
+    x = c.ParameterFromNumpy(NumpyArrayF32(2.0))
+    # Clear Sharding.
+    c.ClearSharding()
+
+    result = c.Add(x, c.ConstantF32Scalar(3.14))
+    extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
     arg = NumpyArrayF32(1.0)
     compiled_c = c.Build(result).Compile()
     ans = xla_client.execute_with_python_values(compiled_c, [arg])

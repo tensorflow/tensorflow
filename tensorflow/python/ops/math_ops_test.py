@@ -441,7 +441,7 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     nums, divs = self.floatTestData()
     tf_result = math_ops.realdiv(nums, divs)
     np_result = np.divide(nums, divs)
-    self.assertAllEqual(tf_result, np_result)
+    self.assertAllClose(tf_result, np_result)
 
   def testComplexDiv(self):
     foo = array_ops.constant([1. + 3.j])
@@ -498,7 +498,7 @@ class DivNoNanTest(test_util.TensorFlowTestCase):
 
       with test_util.use_gpu():
         tf_result = math_ops.div_no_nan(nums, divs)
-        self.assertAllEqual(tf_result, np_result)
+        self.assertAllClose(tf_result, np_result)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -627,7 +627,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       error = errors_impl.InvalidArgumentError
       error_message = (
           r"cannot compute Add(V2)? as input #1\(zero-based\) was expected to "
-          r"be a int32 tensor but is a float tensor \[Op:Add(V2)?\] name: add/")
+          r"be a int32 tensor but is a float tensor \[Op:Add(V2)?\]")
     else:
       error = TypeError
       error_message = (

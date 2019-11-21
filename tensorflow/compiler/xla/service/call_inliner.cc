@@ -143,11 +143,11 @@ StatusOr<bool> CallInliner::Run(HloModule* module) {
   bool did_mutate = false;
   TF_RETURN_IF_ERROR(
       call_graph->VisitNodes([&](const CallGraphNode& node) -> Status {
-        for (const CallSite& callsite : node.caller_callsites()) {
-          VLOG(1) << "Visiting callsite: " << callsite.ToString();
-          if (callsite.instruction()->opcode() == HloOpcode::kCall) {
-            HloInstruction* call = callsite.instruction();
-            TF_RETURN_IF_ERROR(Inline(call).status());
+        VLOG(1) << "Visiting node: " << node.ToString();
+        for (HloInstruction* instruction :
+             node.computation()->MakeInstructionPostOrder()) {
+          if (instruction->opcode() == HloOpcode::kCall) {
+            TF_RETURN_IF_ERROR(Inline(instruction).status());
             did_mutate = true;
           }
         }

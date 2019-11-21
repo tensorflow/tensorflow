@@ -20,6 +20,7 @@
 
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Helpers.h"
 
 namespace mlir {
@@ -40,7 +41,7 @@ public:
   /// *only* way to capture the loop induction variable.
   LoopRangeBuilder(ValueHandle *iv, ValueHandle range);
   LoopRangeBuilder(ValueHandle *iv, Value *range);
-  LoopRangeBuilder(ValueHandle *iv, linalg::SubViewOp::Range range);
+  LoopRangeBuilder(ValueHandle *iv, SubViewOp::Range range);
 
   LoopRangeBuilder(const LoopRangeBuilder &) = delete;
   LoopRangeBuilder(LoopRangeBuilder &&) = default;
@@ -64,7 +65,7 @@ public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
                        llvm::ArrayRef<Value *> ranges);
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<linalg::SubViewOp::Range> ranges);
+                       llvm::ArrayRef<SubViewOp::Range> ranges);
   edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
@@ -81,11 +82,28 @@ struct FusionInfo {
   LinalgOp fusedProducer;
 };
 
-// Fuses producer into consumer if the producer is structurally feasible and the
-// fusion would not violate dependencies.
-Optional<FusionInfo> fuseProducerOf(LinalgOp consumer, unsigned consumerIdx,
-                                    LinalgDependenceGraph &graph,
-                                    OperationFolder &state);
+/// Checks whether the specific `producer` is the last write to exactly the
+/// whole `consumedView`. This checks structural dominance, that the dependence
+/// is a RAW without any interleaved write to any piece of `consumedView`.
+bool isProducerLastWriteOfView(const LinalgDependenceGraph &graph,
+                               LinalgOp consumer, Value *consumedView,
+                               LinalgOp producer);
+
+/// Checks whether fusing the specific `producer` of the `consumedView` is
+/// feasible. This checks `producer` is the last write of `consumedView` and
+/// that no interleaved dependence would be violated (RAW, WAR or WAW).
+bool isFusableInto(const LinalgDependenceGraph &graph, LinalgOp consumer,
+                   Value *consumedView, LinalgOp producer);
+
+/// Fuses producer into consumer if the producer is structurally feasible and
+/// the fusion would not violate dependencies.
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+Optional<FusionInfo> fuseProducerOf(OpBuilder &b, LinalgOp consumer,
+                                    unsigned consumerIdx,
+                                    const LinalgDependenceGraph &graph,
+                                    OperationFolder *folder = nullptr);
 
 /// Returns the linearized list of all view dimensions in a linalgOp. Applying
 /// the inverse, concatenated loopToOperandRangeMaps to this list allows the
@@ -102,11 +120,13 @@ SmallVector<Value *, 8> getViewSizes(ConcreteOp linalgOp) {
 }
 
 /// Returns the values obtained by applying `map` to the list of values.
-/// Performs simplifications and foldings where possible.
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
 SmallVector<Value *, 4> applyMapToValues(OpBuilder &b, Location loc,
                                          AffineMap map,
                                          ArrayRef<Value *> values,
-                                         OperationFolder &state);
+                                         OperationFolder *folder = nullptr);
 
 struct TiledLinalgOp {
   LinalgOp op;
@@ -116,14 +136,28 @@ struct TiledLinalgOp {
 /// Performs standalone tiling of a single LinalgOp by `tileSizes`.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-llvm::Optional<TiledLinalgOp>
-tileLinalgOp(LinalgOp op, ArrayRef<Value *> tileSizes, OperationFolder &folder);
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                           ArrayRef<Value *> tileSizes,
+                                           OperationFolder *folder = nullptr);
 
 /// Performs standalone tiling of a single LinalgOp by constant `tileSizes`.
 /// Returns a struct containing the tiled loops and the cloned op if successful,
 /// llvm::None otherwise.
-llvm::Optional<TiledLinalgOp>
-tileLinalgOp(LinalgOp op, ArrayRef<int64_t> tileSizes, OperationFolder &folder);
+/// When non-null, the optional pointer `folder` is used to call into the
+/// `createAndFold` builder method. If `folder` is null, the regular `create`
+/// method is called.
+llvm::Optional<TiledLinalgOp> tileLinalgOp(OpBuilder &b, LinalgOp op,
+                                           ArrayRef<int64_t> tileSizes,
+                                           OperationFolder *folder = nullptr);
+
+template <typename... Args>
+llvm::Optional<TiledLinalgOp> tileLinalgOperation(OpBuilder &b, Operation *op,
+                                                  Args... args) {
+  return tileLinalgOp(b, cast<LinalgOp>(op), args...);
+}
 
 struct PromotionInfo {
   Value *buffer;
@@ -137,12 +171,14 @@ struct PromotionInfo {
 ///   2. Take a full view on the buffer and `linalg.fill` it with zeros (use
 ///      float zero for now).
 ///   3. Take a partial slice of the full view in step 2. and copy into it.
+/// Infers statically sized buffers from subViews unless `dynamicBuffers` is
+/// true.
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8> promoteSubViews(OpBuilder &b, Location loc,
-                                                    ArrayRef<Value *> subViews,
-                                                    OperationFolder &folder);
+llvm::SmallVector<PromotionInfo, 8>
+promoteSubViews(OpBuilder &b, Location loc, ArrayRef<Value *> subViews,
+                bool dynamicBuffers = false, OperationFolder *folder = nullptr);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like

@@ -851,8 +851,10 @@ class OptimizerV2(trackable.Trackable):
     Returns:
       Valid types for loss, variables and gradients.
     """
-    return set(
-        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64])
+    return set([
+        dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64,
+        dtypes.complex64, dtypes.complex128
+    ])
 
   def _call_if_callable(self, param):
     """Call the function if param is callable."""

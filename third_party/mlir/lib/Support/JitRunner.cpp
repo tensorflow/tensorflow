@@ -27,7 +27,6 @@
 
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
-#include "mlir/ExecutionEngine/MemRefUtils.h"
 #include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"

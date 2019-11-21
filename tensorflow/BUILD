@@ -13,8 +13,9 @@ load(
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
+    "get_compat_files",
+    "get_nested_compat_files",
 )
-load("//tensorflow/python/tools/api/generator:api_gen.bzl", "get_compat_files")
 load(
     "//tensorflow/python/tools/api/generator:api_init_files.bzl",
     "TENSORFLOW_API_INIT_FILES",  # @unused
@@ -41,7 +42,8 @@ package(
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
-    # The leakr files are used by //third_party/cloud_tpu.
+    # The leakr files are used by //third_party/cloud_tpu and
+    # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
     "leakr_badfiles.dic",
     "leakr_file_type_recipe.ftrcp",
@@ -51,14 +53,20 @@ exports_files([
 TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V1 = (
     TENSORFLOW_API_INIT_FILES_V1 +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # Config setting used when building for products
@@ -579,6 +587,18 @@ tf_cc_shared_object(
     ] + tf_additional_binary_deps(),
 )
 
+# This is intended to be the same as tf_binary_additional_srcs:
+# https://github.com/tensorflow/tensorflow/blob/cd67f4f3723f9165aabedd0171aaadc6290636e5/tensorflow/tensorflow.bzl#L396-L425
+# And is usable in the "deps" attribute instead of the "srcs" attribute
+# as a workaround for https://github.com/tensorflow/tensorflow/issues/34117
+cc_import(
+    name = "libtensorflow_framework_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
+    }),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
@@ -800,7 +820,7 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from . _api.v2 import:g' $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v2 import:g' $(OUTS)",
         "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v1 import:g' $(OUTS)",
     }),
 )

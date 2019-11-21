@@ -24,16 +24,62 @@ namespace {
 
 namespace op = xla::testing::opcode_matchers;
 
-class MemorySpaceAssignmentTest : public HloTestBase {
+constexpr int64 kPointerSize = 8;
+constexpr float kAsyncCopyBandwidth = 100;
+constexpr float kAlternateMemBandwidth = 1000;
+constexpr float kBytesPerSecond = 100;
+constexpr float kFlopsPerSecond = 1000;
+constexpr float kTranscendentalsPerSecond = 10;
+
+int64 ShapeSize(const Shape& shape) {
+  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
+}
+
+class MemorySpaceAssignmentTest : public HloTestBase,
+                                  public ::testing::WithParamInterface<bool> {
  protected:
   // We use the following two memory space values to describe the default (slow
   // and large) and alternate (fast and small) memory spaces.
   const int64 kDefaultMemorySpace = 0;
   const int64 kAlternateMemorySpace = 1;
 
+  std::unique_ptr<PresetAssignments> AssignMemorySpaceUsingCostAnalysis(
+      HloModule* module) {
+    HloCostAnalysis hlo_cost_analysis(ShapeSize);
+    hlo_cost_analysis.set_flops_per_second(kFlopsPerSecond);
+    hlo_cost_analysis.set_bytes_per_second(kBytesPerSecond);
+    hlo_cost_analysis.set_transcendentals_per_second(kTranscendentalsPerSecond);
+    for (HloComputation* computation : module->MakeNonfusionComputations()) {
+      TF_CHECK_OK(computation->Accept(&hlo_cost_analysis));
+    }
+    MemorySpaceAssignmentCostAnalysis cost_analysis(
+        hlo_cost_analysis, kAsyncCopyBandwidth, kAlternateMemBandwidth);
+    CostAnalysisPrefetchIntervalPicker prefetch_interval_picker(
+        CostAnalysisPrefetchIntervalPicker(
+            cost_analysis, /*min_async_copy_to_overlap_ratio=*/0.8,
+            /*max_async_copy_to_overlap_ratio=*/10.0));
+    return AssignMemorySpace(
+        module, /*max_outstanding_async_copies=*/-1,
+        MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
+            cost_analysis),
+        &prefetch_interval_picker);
+  }
+
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64 max_outstanding_async_copies = -1,
       int64 max_prefetch_interval = 10) {
+    InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
+        /*min_overlap_count=*/2, max_prefetch_interval);
+    return AssignMemorySpace(module, max_outstanding_async_copies,
+                             /*buffer_interval_compare=*/{},
+                             &prefetch_interval_picker);
+  }
+
+  std::unique_ptr<PresetAssignments> AssignMemorySpace(
+      HloModule* module, int64 max_outstanding_async_copies,
+      absl::optional<MemorySpaceAssignment::BufferIntervalCompare>
+          buffer_interval_compare,
+      PrefetchIntervalPicker* prefetch_interval_picker) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -51,14 +97,18 @@ class MemorySpaceAssignmentTest : public HloTestBase {
       return true;
     };
 
+    MemorySpaceAssignment::Options options;
+    options.alternate_memory_space = kAlternateMemorySpace;
+    options.max_size_in_bytes = 128;
+    options.alignment_in_bytes = 8;
+    options.buffer_interval_compare = buffer_interval_compare;
+    options.prefetch_interval_picker = prefetch_interval_picker;
+    options.size_fn = size_fn;
+    options.is_allowed_in_alternate_mem_fn = is_allowed_in_alternate_mem;
+    options.max_outstanding_async_copies = max_outstanding_async_copies;
+    options.allocate_across_sequential_calls = GetParam();
     std::unique_ptr<PresetAssignments> preset_assignments =
-        MemorySpaceAssignment::Run(
-            module, kAlternateMemorySpace,
-            /*max_size_in_bytes=*/128,
-            /*min_prefetch_interval=*/2, max_prefetch_interval,
-            /*alternate_memory_space_alignment_in_bytes=*/8, size_fn,
-            is_allowed_in_alternate_mem, max_outstanding_async_copies)
-            .ValueOrDie();
+        MemorySpaceAssignment::Run(module, options).ValueOrDie();
     CheckPresetAssignments(preset_assignments.get());
     return preset_assignments;
   }
@@ -142,7 +192,7 @@ class MemorySpaceAssignmentTest : public HloTestBase {
   }
 };
 
-TEST_F(MemorySpaceAssignmentTest, ParameterOnly) {
+TEST_P(MemorySpaceAssignmentTest, ParameterOnly) {
   // A module consisting of a single parameter. Inputs/outputs are currently
   // excluded from memory space assignment.
   HloComputation::Builder builder(TestName());
@@ -162,7 +212,7 @@ TEST_F(MemorySpaceAssignmentTest, ParameterOnly) {
   EXPECT_THAT(p0, op::ShapeWithLayout(shape));
 }
 
-TEST_F(MemorySpaceAssignmentTest, Simple) {
+TEST_P(MemorySpaceAssignmentTest, Simple) {
   // A simple module with a few simple instructions. Expect this to be
   // transformed with CopyStart and CopyDone instructions inserted after inputs
   // and before outputs.
@@ -208,7 +258,7 @@ TEST_F(MemorySpaceAssignmentTest, Simple) {
             preset_assignments->chunks()[1].second.offset);
 }
 
-TEST_F(MemorySpaceAssignmentTest, NegateChain) {
+TEST_P(MemorySpaceAssignmentTest, NegateChain) {
   // The negate chain is long enough for asynchronous copy to be inserted
   // between p1 and add.
   HloComputation::Builder builder(TestName());
@@ -271,7 +321,7 @@ TEST_F(MemorySpaceAssignmentTest, NegateChain) {
   EXPECT_THAT(sequence.instructions()[10], op::CopyDone());
 }
 
-TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetch) {
+TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetch) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get());
@@ -282,12 +332,9 @@ TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetch) {
               op::AsyncCopy(kAlternateMemorySpace, kDefaultMemorySpace,
                             op::AsyncCopy(kDefaultMemorySpace,
                                           kAlternateMemorySpace, op::Tanh()))));
-
-  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
-            2);
 }
 
-TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
+TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/0);
@@ -296,7 +343,7 @@ TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies0) {
             0);
 }
 
-TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
+TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
   std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
 
   AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/1);
@@ -305,7 +352,16 @@ TEST_F(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies1) {
             1);
 }
 
-TEST_F(MemorySpaceAssignmentTest, While) {
+TEST_P(MemorySpaceAssignmentTest, EvictAndPrefetchLimitAsyncCopies2) {
+  std::unique_ptr<HloModule> module = CreateEvictAndPrefetchModule();
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/2);
+
+  EXPECT_EQ(MemorySpaceAssignment::CountMaximumOutstandingAsyncCopies(*module),
+            2);
+}
+
+TEST_P(MemorySpaceAssignmentTest, While) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
@@ -381,14 +437,18 @@ TEST_F(MemorySpaceAssignmentTest, While) {
   AssignMemorySpace(module.get());
 
   // Ensure the tuple value and buffers used in the while instruction are
-  // exempted from using the alternate memory. However, body_data_mul is
-  // independent and can be safely be placed in the alternate memory.
-  EXPECT_THAT(tuple, op::ShapeWithLayout(tuple_shape));
-  EXPECT_THAT(data, op::ShapeWithLayout(shape));
-  EXPECT_THAT(iter, op::ShapeWithLayout(scalar_shape));
-  EXPECT_THAT(body_data, op::ShapeWithLayout(shape));
-  EXPECT_THAT(body_iter, op::ShapeWithLayout(scalar_shape));
-  EXPECT_THAT(cond_iter, op::ShapeWithLayout(scalar_shape));
+  // exempted from using the alternate memory when allocating across sequential
+  // calls is disabled. However, body_data_mul is independent and can be safely
+  // be placed in the alternate memory.
+  const bool allocate_across_sequential_calls = GetParam();
+  if (!allocate_across_sequential_calls) {
+    EXPECT_THAT(tuple, op::ShapeWithLayout(tuple_shape));
+    EXPECT_THAT(data, op::ShapeWithLayout(shape));
+    EXPECT_THAT(iter, op::ShapeWithLayout(scalar_shape));
+    EXPECT_THAT(body_data, op::ShapeWithLayout(shape));
+    EXPECT_THAT(body_iter, op::ShapeWithLayout(scalar_shape));
+    EXPECT_THAT(cond_iter, op::ShapeWithLayout(scalar_shape));
+  }
   Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
       F32, {2, 3},
       /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
@@ -396,7 +456,7 @@ TEST_F(MemorySpaceAssignmentTest, While) {
   EXPECT_THAT(body_data_mul, op::ShapeWithLayout(shape_in_alternate_mem));
 }
 
-TEST_F(MemorySpaceAssignmentTest, Tuple) {
+TEST_P(MemorySpaceAssignmentTest, Tuple) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape inner_tuple_shape = ShapeUtil::MakeTupleShape({shape});
@@ -451,7 +511,7 @@ TEST_F(MemorySpaceAssignmentTest, Tuple) {
                                  op::GetTupleElement(op::GetTupleElement()))));
 }
 
-TEST_F(MemorySpaceAssignmentTest, Bitcast) {
+TEST_P(MemorySpaceAssignmentTest, Bitcast) {
   // Bitcasts can cause the position in the alternate memory to appear multiple
   // times in the preset assignments. This test ensure the preset assignments
   // refer to unique positions.
@@ -480,7 +540,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast) {
   EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
-TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
+TEST_P(MemorySpaceAssignmentTest, Bitcast2) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape param_shape = ShapeUtil::MakeShape(F32, {6});
@@ -516,7 +576,7 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast2) {
   EXPECT_EQ(bitcast->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
-TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
+TEST_P(MemorySpaceAssignmentTest, Bitcast3) {
   HloComputation::Builder builder(TestName());
   Shape shape1 = ShapeUtil::MakeShape(F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(F32, {3, 2});
@@ -579,7 +639,58 @@ TEST_F(MemorySpaceAssignmentTest, Bitcast3) {
   EXPECT_EQ(bitcast4->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
-TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
+TEST_P(MemorySpaceAssignmentTest, BitcastTuple) {
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  Shape param_shape = ShapeUtil::MakeShape(F32, {6});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder fusion_builder("fusion");
+  HloInstruction* fusion_param = fusion_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "p"));
+  HloInstruction* fusion_element0 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 0));
+  HloInstruction* fusion_element1 = fusion_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, fusion_param, 1));
+  fusion_builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, fusion_element0, fusion_element1));
+  HloComputation* fusion_computation =
+      module->AddEmbeddedComputation(fusion_builder.Build());
+
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, param_shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* bitcast =
+      builder.AddInstruction(HloInstruction::CreateBitcast(shape, p1));
+  HloInstruction* tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({bitcast, p0}));
+  HloInstruction* fusion = builder.AddInstruction(HloInstruction::CreateFusion(
+      shape, HloInstruction::FusionKind::kCustom, {tuple}, fusion_computation));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation,
+                        {p0, p1, negate0, negate1, negate2, negate3, negate4,
+                         bitcast, tuple, fusion});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get());
+}
+
+TEST_P(MemorySpaceAssignmentTest, LastUseOpt) {
   // Test that checks the last use optimization. It uses two buffers that should
   // be placed in alternate memory.
   //
@@ -636,7 +747,7 @@ TEST_F(MemorySpaceAssignmentTest, LastUseOpt) {
                                 op::Add(op::Parameter(0), op::Parameter(0)))));
 }
 
-TEST_F(MemorySpaceAssignmentTest, CopyOrdering) {
+TEST_P(MemorySpaceAssignmentTest, CopyOrdering) {
   // Test to make sure the CopyStarts follow the same CopyDone order. The shapes
   // are picked in increasing order to exploit the fact that heap simulator
   // processes larger tensors first. This checks the ability of the compiler to
@@ -751,7 +862,7 @@ TEST_F(MemorySpaceAssignmentTest, CopyOrdering) {
   }
 }
 
-TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
+TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
   // Test to ensure CopyStart/CopyDone is placed only in the entry computation.
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
@@ -835,7 +946,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule1) {
   AssignMemorySpace(module.get(), -1, 50);
 }
 
-TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
+TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
@@ -906,7 +1017,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule2) {
   AssignMemorySpace(module.get(), -1, 5);
 }
 
-TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
+TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
@@ -972,7 +1083,7 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule3) {
   AssignMemorySpace(module.get(), -1, 5);
 }
 
-TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule4) {
+TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule4) {
   auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
   Shape shape2 = ShapeUtil::MakeShape(xla::F32, {3, 3});
@@ -1045,7 +1156,264 @@ TEST_F(MemorySpaceAssignmentTest, NonEntryComputationSchedule4) {
   AssignMemorySpace(module.get(), -1, 5);
 }
 
-TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
+TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule5) {
+  // This test reproduces the failure in b/143288178.  Given a graph like the
+  // following:
+  //
+  // ... = foo(a)
+  // tuple = tuple((..., a)
+  // ... = while(tuple) {
+  //   p = param(0)
+  //   a1 = get-tuple-element(p), index=n-1
+  //   ...
+  //   ROOT tuple((..., a1))
+  // }
+  //
+  // If a copy to alternate memory is inserted before foo, and if the size of
+  // the while body is less than max prefetch interval so that the copy-done is
+  // kept in the alternate memory, then we end up refering to the copy-done in
+  // the root instruction of the while loop body. I.e.,
+  //
+  // cs = copy-start(a)
+  // ...
+  // cd = copy-done(cs)
+  // ... = foo(cd)
+  // tuple = tuple((..., cd)
+  // ... = while(tuple) {
+  //   p = param(0)
+  //   a1 = get-tuple-element(p), index=n-1
+  //   ...
+  //   ROOT tuple((..., cd))  <-- Error: cd belongs to outside computation.
+  // }
+  //
+  auto module = CreateNewVerifiedModule();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape =
+      ShapeUtil::MakeTupleShape({shape, scalar_shape, scalar_shape});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
+  HloInstruction* cond_limit = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  HloInstruction* body_iter = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, body_param, 1));
+  HloInstruction* body_data = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, body_param, 0));
+  HloInstruction* body_iter_increment = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.f)));
+  HloInstruction* body_iter_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          scalar_shape, HloOpcode::kAdd, body_iter, body_iter_increment));
+  HloInstruction* body_data2 = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, body_param, 2));
+  HloInstruction* body_out = body_builder.AddInstruction(
+      HloInstruction::CreateTuple({body_data, body_iter_next, body_data2}));
+  HloComputation* body_computation =
+      module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param_data"));
+  HloInstruction* iter = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "param_iter"));
+  HloInstruction* data2 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, scalar_shape, "param_data2"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, data));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kSubtract, iter, data2));
+  HloInstruction* tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({negate7, iter, data2}));
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      tuple_shape, cond_computation, body_computation, tuple));
+  HloInstruction* while_data = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, while_op, 1));
+  HloInstruction* root =
+      builder.AddInstruction(HloInstruction::CreateTuple({while_data, sub}));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(cond_computation,
+                        {cond_param, cond_iter, cond_limit, cond_lt});
+  schedule.set_sequence(body_computation,
+                        {body_param, body_iter, body_data, body_iter_increment,
+                         body_iter_next, body_data2, body_out});
+  schedule.set_sequence(
+      entry_computation,
+      {iter, data, data2, negate0, negate1, negate2, negate3, negate4, negate5,
+       negate6, negate7, sub, tuple, while_op, while_data, root});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  // Set a large max prefetch interval so that the buffer can be kept in
+  // alternate memory.
+  AssignMemorySpace(module.get(), -1, 20);
+}
+
+TEST_P(MemorySpaceAssignmentTest, NonEntryComputationSchedule6) {
+  auto module = CreateNewVerifiedModule();
+  Shape shape = ShapeUtil::MakeShape(xla::F32, {2, 3});
+  Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+  Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, scalar_shape, shape});
+
+  auto cond_builder = HloComputation::Builder("WhileCond");
+  HloInstruction* cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "cond_param"));
+  HloInstruction* cond_iter = cond_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, cond_param, 1));
+  HloInstruction* cond_limit = cond_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(50.f)));
+  HloInstruction* cond_lt = cond_builder.AddInstruction(
+      HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), cond_iter,
+                                    cond_limit, ComparisonDirection::kLt));
+  HloComputation* cond_computation =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto body_builder = HloComputation::Builder("WhileBody");
+  HloInstruction* body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, tuple_shape, "body_param"));
+  HloInstruction* body_iter = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(scalar_shape, body_param, 1));
+  HloInstruction* body_data = body_builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, body_param, 0));
+  HloInstruction* body_negate0 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_data));
+  HloInstruction* body_negate1 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_negate0));
+  HloInstruction* body_negate2 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_negate1));
+  HloInstruction* body_negate3 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_negate2));
+  HloInstruction* body_negate4 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_negate3));
+  HloInstruction* body_negate5 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_negate4));
+  HloInstruction* body_negate6 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_negate5));
+  HloInstruction* body_negate7 = body_builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, body_negate6));
+  HloInstruction* body_iter_increment = body_builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.f)));
+  HloInstruction* body_iter_next =
+      body_builder.AddInstruction(HloInstruction::CreateBinary(
+          scalar_shape, HloOpcode::kAdd, body_iter, body_iter_increment));
+  HloInstruction* body_out = body_builder.AddInstruction(
+      HloInstruction::CreateTuple({body_data, body_iter_next, body_negate7}));
+  HloComputation* body_computation =
+      module->AddEmbeddedComputation(body_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  HloInstruction* data = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, shape, "param_data"));
+  HloInstruction* iter = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape, "param_iter"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, data));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* negate7 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate6));
+  HloInstruction* tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({data, iter, negate7}));
+  HloInstruction* while_op = builder.AddInstruction(HloInstruction::CreateWhile(
+      tuple_shape, cond_computation, body_computation, tuple));
+  HloInstruction* while_data = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, while_op, 0));
+  HloInstruction* while_data2 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(shape, while_op, 2));
+  HloInstruction* root = builder.AddInstruction(HloInstruction::CreateBinary(
+      shape, HloOpcode::kAdd, while_data, while_data2));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(cond_computation,
+                        {cond_param, cond_iter, cond_limit, cond_lt});
+  schedule.set_sequence(
+      body_computation,
+      {body_param, body_iter, body_data, body_negate0, body_negate1,
+       body_negate2, body_negate3, body_negate4, body_negate5, body_negate6,
+       body_negate7, body_iter_increment, body_iter_next, body_out});
+  schedule.set_sequence(
+      entry_computation,
+      {iter, data, negate0, negate1, negate2, negate3, negate4, negate5,
+       negate6, negate7, tuple, while_op, while_data, while_data2, root});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  // Pick a large max prefetch interval to ensure all the while inputs are
+  // allocated in the alternate memory.
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/25);
+
+  int64 memory_space_across_while = kDefaultMemorySpace;
+  bool allocate_across_sequential_calls = GetParam();
+  if (allocate_across_sequential_calls) {
+    memory_space_across_while = kAlternateMemorySpace;
+  }
+
+  // Index {0} of the while loop argument is not written inside the while loop,
+  // so it can be trivially placed in the alternate memory space.
+  *ShapeUtil::GetMutableSubshape(&tuple_shape, {0})->mutable_layout() =
+      LayoutUtil::MakeLayout(
+          /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+          kAlternateMemorySpace);
+  // Indexes {1} and {2} of the while loop argument are only placed in the
+  // alternate memory if we enable the allocate_across_sequential_calls option.
+  *ShapeUtil::GetMutableSubshape(&tuple_shape, {1})->mutable_layout() =
+      LayoutUtil::MakeLayout(
+          /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+          memory_space_across_while);
+  *ShapeUtil::GetMutableSubshape(&tuple_shape, {2})->mutable_layout() =
+      LayoutUtil::MakeLayout(
+          /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+          memory_space_across_while);
+
+  // Expect the layout for the while loop and its aliased buffers.
+  EXPECT_THAT(while_op, op::ShapeWithLayout(tuple_shape));
+  EXPECT_THAT(while_op->operand(0), op::ShapeWithLayout(tuple_shape));
+  EXPECT_THAT(cond_param, op::ShapeWithLayout(tuple_shape));
+  EXPECT_THAT(body_param, op::ShapeWithLayout(tuple_shape));
+  EXPECT_THAT(body_out, op::ShapeWithLayout(tuple_shape));
+}
+
+TEST_P(MemorySpaceAssignmentTest, DanglingCopy) {
   // This situation was encountered in vss, where there is a mismatch in the
   // memory space in preset assignments and the output graph.
   HloComputation::Builder builder(TestName());
@@ -1091,7 +1459,7 @@ TEST_F(MemorySpaceAssignmentTest, DanglingCopy) {
   AssignMemorySpace(module.get());
 }
 
-TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
+TEST_P(MemorySpaceAssignmentTest, MultiOutputFusion) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -1128,7 +1496,7 @@ TEST_F(MemorySpaceAssignmentTest, MultiOutputFusion) {
   AssignMemorySpace(module.get());
 }
 
-TEST_F(MemorySpaceAssignmentTest, TupleInput) {
+TEST_P(MemorySpaceAssignmentTest, TupleInput) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -1168,7 +1536,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleInput) {
   AssignMemorySpace(module.get());
 }
 
-TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
+TEST_P(MemorySpaceAssignmentTest, TupleToTuple1) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -1247,7 +1615,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple1) {
                                 op::GetTupleElement(op::Fusion(), 1)))));
 }
 
-TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
+TEST_P(MemorySpaceAssignmentTest, TupleToTuple2) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -1327,7 +1695,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple2) {
                                 op::GetTupleElement(op::Fusion(), 1), 1))))));
 }
 
-TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
+TEST_P(MemorySpaceAssignmentTest, TupleToTuple3) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -1374,7 +1742,7 @@ TEST_F(MemorySpaceAssignmentTest, TupleToTuple3) {
   EXPECT_THAT(fusion1, op::Fusion(op::Fusion()));
 }
 
-TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
+TEST_P(MemorySpaceAssignmentTest, InputOutputAlias) {
   HloComputation::Builder builder(TestName());
   Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
   Shape tuple_shape = ShapeUtil::MakeTupleShape({shape, shape});
@@ -1428,6 +1796,140 @@ TEST_F(MemorySpaceAssignmentTest, InputOutputAlias) {
   EXPECT_EQ(p->shape().tuple_shapes(1).layout().memory_space(),
             kDefaultMemorySpace);
 }
+
+TEST_P(MemorySpaceAssignmentTest, CostAnalysis) {
+  // This is mostly a smoke test since it's difficult and brittle to work out
+  // the cost of the HLO instructions.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {2, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* negate5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate4));
+  HloInstruction* negate6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate5));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, negate6, p1));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation, {p0, p1, negate0, negate1, negate2,
+                                      negate3, negate4, negate5, negate6, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get());
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  // Negate instructions are in the alternate memory space (1).
+  Shape shape_in_alternate_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {2, 3},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kAlternateMemorySpace);
+  EXPECT_THAT(negate0, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate1, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate2, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate3, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate4, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate5, op::ShapeWithLayout(shape_in_alternate_mem));
+  EXPECT_THAT(negate6, op::ShapeWithLayout(shape_in_alternate_mem));
+}
+
+TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
+  // This test is carefully crafted to force only negates to be allocated to the
+  // alternate memory. The graph consists of interleaving negate and tanh
+  // operations:
+  //
+  //        +------+      +-------+      +-----
+  //       /        \    /         \    /
+  //  negate  tanh  negate  tanh   negate  tanh
+  //             \          /  \           /
+  //              +--------+    +---------+
+  //
+  // The alternate memory is sized to fit only one f32[4,6] tensor at a time.
+  // Also, transcendentals are made to be lower bandwidth than FLOPs. So, the
+  // MemoryBoundednessBufferIntervalCompare should prioritize the negates, which
+  // are more memory bound.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 6});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* p1 =
+      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"));
+  HloInstruction* tanh0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, p1));
+  HloInstruction* tanh1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* tanh2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh1));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* tanh3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh2));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* tanh4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh3));
+  HloInstruction* negate4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate3));
+  HloInstruction* add = builder.AddInstruction(
+      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, tanh4, negate4));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(computation,
+                        {p0, p1, tanh0, negate0, tanh1, negate1, tanh2, negate2,
+                         tanh3, negate3, tanh4, negate4, add});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get());
+  // Parameters are in the default memory space.
+  EXPECT_THAT(p0, op::ShapeWithLayout(shape));
+  EXPECT_THAT(p1, op::ShapeWithLayout(shape));
+  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {4, 6},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
+  // Expect only negates to be in alternate memory space. Not all might fit but
+  // make sure at least one does.
+  std::vector<HloInstruction*> negate_instructions = {negate0, negate1, negate2,
+                                                      negate3, negate4};
+  int64 num_negates_in_alternate_mem = absl::c_count_if(
+      negate_instructions, [&](const HloInstruction* instruction) {
+        return instruction->shape().layout().memory_space() ==
+               kAlternateMemorySpace;
+      });
+  EXPECT_GE(num_negates_in_alternate_mem, 1);
+  EXPECT_THAT(tanh0, op::ShapeWithLayout(shape_in_default_mem));
+  EXPECT_THAT(tanh1, op::ShapeWithLayout(shape_in_default_mem));
+  EXPECT_THAT(tanh2, op::ShapeWithLayout(shape_in_default_mem));
+  EXPECT_THAT(tanh3, op::ShapeWithLayout(shape_in_default_mem));
+  EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
+}
+
+INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
+                         MemorySpaceAssignmentTest,
+                         ::testing::Values(false, true));
 
 }  // namespace
 }  // namespace xla

@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -59,10 +58,6 @@ def regex_full_match(input, pattern, name=None):
   Returns:
     bool `Tensor` of the same shape as `input` with match results.
   """
-  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
-  if not compat.forward_compatible(2018, 11, 10):
-    return gen_string_ops.regex_full_match(
-        input=input, pattern=pattern, name=name)
   if isinstance(pattern, util_compat.bytes_or_text_types):
     # When `pattern` is static through the life of the op we can
     # use a version which performs the expensive regex compilation once at

@@ -19,15 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef STANDARD_OPS
-#else
+#ifndef STANDARD_OPS
 #define STANDARD_OPS
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 
 def Std_Dialect : Dialect {
@@ -82,7 +81,8 @@ class UnaryOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 }
 
-class UnaryOpSameOperandAndResultType<string mnemonic, list<OpTrait> traits = []> :
+class UnaryOpSameOperandAndResultType<string mnemonic,
+                                      list<OpTrait> traits = []> :
     UnaryOp<mnemonic, !listconcat(traits, [SameOperandsAndResultType])> {
   let parser = [{
     return impl::parseOneResultSameOperandTypeOp(parser, result);
@@ -166,18 +166,35 @@ def AllocOp : Std_Op<"alloc"> {
 
     This operation returns a single ssa value of memref type, which can be used
     by subsequent load and store operations.
+
+    The optional `alignment` attribute may be specified to ensure that the
+    region of memory that will be indexed is aligned at the specified byte
+    boundary. TODO(b/144281289) optional alignment attribute to MemRefType.
+
+      %0 = alloc()[%s] {alignment = 8} :
+        memref<8x64xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1>
   }];
 
-  let arguments = (ins Variadic<Index>:$value);
+  let arguments = (ins Variadic<Index>:$value,
+                   Confined<OptionalAttr<I64Attr>, [IntMinValue<0>]>:$alignment);
   let results = (outs AnyMemRef);
 
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, MemRefType memrefType", [{
        result.types.push_back(memrefType);
-     }]
-  >];
+     }]>,
+    OpBuilder<
+    "Builder *builder, OperationState &result, MemRefType memrefType, " #
+    "ArrayRef<Value*> operands, IntegerAttr alignment = IntegerAttr()", [{
+       result.addOperands(operands);
+       result.types.push_back(memrefType);
+       if (alignment)
+         result.addAttribute(getAlignmentAttrName(), alignment);
+     }]>];
 
   let extraClassDeclaration = [{
+    static StringRef getAlignmentAttrName() { return "alignment"; }
+
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
     /// Returns the number of symbolic operands (the ones in square brackets),
@@ -233,19 +250,22 @@ def BranchOp : Std_Op<"br", [Terminator]> {
     /// Erase the operand at 'index' from the operand list.
     void eraseOperand(unsigned index);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def CallOp : Std_Op<"call", [CallOpInterface]> {
   let summary = "call operation";
   let description = [{
-    The "call" operation represents a direct call to a function.  The operands
-    and result types of the call must match the specified function type.  The
-    callee is encoded as a function attribute named "callee".
+    The "call" operation represents a direct call to a function that is within
+    the same symbol scope as the call.  The operands and result types of the
+    call must match the specified function type. The callee is encoded as a
+    function attribute named "callee".
 
       %2 = call @my_add(%0, %1) : (f32, f32) -> f32
   }];
 
-  let arguments = (ins SymbolRefAttr:$callee, Variadic<AnyType>:$operands);
+  let arguments = (ins FlatSymbolRefAttr:$callee, Variadic<AnyType>:$operands);
   let results = (outs Variadic<AnyType>);
 
   let builders = [OpBuilder<
@@ -326,6 +346,24 @@ def CallIndirectOp : Std_Op<"call_indirect", [CallOpInterface]> {
   let hasCanonicalizer = 1;
 }
 
+def CMPI_P_EQ  : I64EnumAttrCase<"eq", 0>;
+def CMPI_P_NE  : I64EnumAttrCase<"ne", 1>;
+def CMPI_P_SLT : I64EnumAttrCase<"slt", 2>;
+def CMPI_P_SLE : I64EnumAttrCase<"sle", 3>;
+def CMPI_P_SGT : I64EnumAttrCase<"sgt", 4>;
+def CMPI_P_SGE : I64EnumAttrCase<"sge", 5>;
+def CMPI_P_ULT : I64EnumAttrCase<"ult", 6>;
+def CMPI_P_ULE : I64EnumAttrCase<"ule", 7>;
+def CMPI_P_UGT : I64EnumAttrCase<"ugt", 8>;
+def CMPI_P_UGE : I64EnumAttrCase<"uge", 9>;
+
+def CmpIPredicateAttr : I64EnumAttr<
+    "CmpIPredicate", "",
+    [CMPI_P_EQ, CMPI_P_NE, CMPI_P_SLT, CMPI_P_SLE, CMPI_P_SGT,
+     CMPI_P_SGE, CMPI_P_ULT, CMPI_P_ULE, CMPI_P_UGT, CMPI_P_UGE]> {
+  let cppNamespace = "::mlir";
+}
+
 def CmpIOp : Std_Op<"cmpi",
     [NoSideEffect, SameTypeOperands, SameOperandsAndResultShape]> {
   let summary = "integer comparison operation";
@@ -350,7 +388,11 @@ def CmpIOp : Std_Op<"cmpi",
       %r3 = "std.cmpi"(%0, %1){predicate: 0} : (i8, i8) -> i1
   }];
 
-  let arguments = (ins IntegerLike:$lhs, IntegerLike:$rhs);
+  let arguments = (ins
+      CmpIPredicateAttr:$predicate,
+      IntegerLike:$lhs,
+      IntegerLike:$rhs
+  );
   let results = (outs BoolLike);
 
   let builders = [OpBuilder<
@@ -368,6 +410,8 @@ def CmpIOp : Std_Op<"cmpi",
           .getInt();
     }
   }];
+
+  let verifier = [{ return success(); }];
 
   let hasFolder = 1;
 }
@@ -537,7 +581,8 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
   let hasCanonicalizer = 1;
 }
 
-def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
+def ConstantOp : Std_Op<"constant",
+    [NoSideEffect, DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
   let summary = "constant";
 
   let arguments = (ins AnyAttr:$value);
@@ -1067,8 +1112,8 @@ def TensorLoadOp : Std_Op<"tensor_load",
   let builders = [OpBuilder<
     "Builder *builder, OperationState &result, Value *memref", [{
       auto memrefType = memref->getType().cast<MemRefType>();
-      auto resultType = builder->getTensorType(memrefType.getShape(),
-          memrefType.getElementType());
+      auto resultType = RankedTensorType::get(memrefType.getShape(),
+                                              memrefType.getElementType());
       result.addOperands(memref);
       result.addTypes(resultType);
   }]>];
@@ -1130,6 +1175,239 @@ def TruncateIOp : Std_Op<"trunci", [NoSideEffect, SameOperandsAndResultShape]> {
   let printer = [{
     return printStandardCastOp(this->getOperation(), p);
   }];
+}
+
+def ViewOp : Std_Op<"view", [NoSideEffect]> {
+  let summary = "memref view operation";
+  let description = [{
+    The "view" operation converts a 1-D memref with i8 element type,
+    to an N-D memref with arbitrary element type. In addition, the ViewOp
+    supports the following arguments:
+    *) A single dynamic offset operand can be specified which represents a
+       a dynamic offset within the base 1-D memref at which to create the
+       resulting memref view.
+    *) A dynamic size operand must be specified for each dynamic dimension
+       in the resulting view memref type.
+
+    // Allocate a flat 1D/i8 memref.
+    %0 = alloc() : memref<2048xi8>
+
+    // ViewOp with static offset and sizes.
+    %1 = view %0[][] : memref<2048xi8> to memref<64x4xf32>
+
+    // ViewOp with dynamic offset and one dynamic size.
+    %2 = view %0[%offset_1024][%size0]
+      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)
+
+    // ViewOp creating 3D shape where two of the dim sizes are dynamic.
+    // *) The dynamic offset specified in the ViewOp is applied to the
+    //    base 1-D memref, and is represented by the symbol 's0' in the
+    //    layout map of the ViewOp result memref type.
+    // *) The dynamic size for the second dimension induces a dynamic
+    //    stride for the first dimension, which is represented by the
+    //    symbol 's1' in the layout map of the ViewOp result memref type.
+    //    Note that this dynamic stride will be computed from the view
+    //    shape and dynamic sizes.
+    %3 = view %0[%offset_1024][%size0, %size1]
+      : memref<2048xi8> to memref<?x?x4xf32,
+        (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * 4 + d2 + s0)
+  }];
+
+  let arguments = (ins MemRefRankOf<[I8], [1]>:$source,
+                       Variadic<Index>:$operands);
+  let results = (outs AnyMemRef);
+
+  let extraClassDeclaration = [{
+    /// The result of a view is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns the dynamic offset for this view operation if specified.
+    /// Returns nullptr if no dynamic offset was specified.
+    Value *getDynamicOffset();
+
+    /// Returns the starting operand list position of the dynamic size operands.
+    unsigned getDynamicSizesOperandStart() {
+      return getDynamicOffset() == nullptr ? 1 : 2;
+    }
+
+    /// Returns the dynamic sizes for this view operation.
+    operand_range getDynamicSizes() {
+      return {operand_begin() + getDynamicSizesOperandStart(), operand_end()};
+    }
+  }];
+
+  let hasCanonicalizer = 1;
+}
+
+def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
+  let summary = "memref subview operation";
+  let description = [{
+    The "subview" operation converts a memref type to another memref type
+    which represents a reduced-size view of the original memref as specified by
+    the operation's offsets, sizes and strides arguments.
+
+    The SubView operation supports the following arguments:
+    *) Memref: the "base" memref on which to create a "view" memref.
+    *) Offsets: zero or memref-rank number of dynamic offsets into the "base"
+                memref at which to create the "view" memref.
+    *) Sizes: zero or memref-rank dynamic size operands which specify the
+              dynamic sizes of the result "view" memref type.
+    *) Strides: zero or memref-rank number of dynamic strides which are applied
+                multiplicatively to the base memref strides in each dimension.
+
+    Note on the number of operands for offsets, sizes and strides: For
+    each of these, the number of operands must either be same as the
+    memref-rank number or empty. For the latter, those values will be
+    treated as constants.
+
+    Example 1:
+
+      %0 = alloc() : memref<64x4xf32, (d0, d1) -> (d0 * 4 + d1)>
+
+      // Create a sub-view of "base" memref '%0' with offset arguments '%c0',
+      // dynamic sizes for each dimension, and stride arguments '%c1'.
+      %1 = subview %0[%c0, %c0][%size0, %size1][%c1, %c1]
+        : memref<64x4xf32, (d0, d1) -> (d0 * 4 + d1) > to
+          memref<?x?xf32, (d0, d1)[s0, s1] -> (d0 * s1 + d1 + s0)>
+
+    Example 2:
+
+      %0 = alloc() : memref<8x16x4xf32, (d0, d1, d1) -> (d0 * 64 + d1 * 4 + d2)>
+
+      // Create a sub-view of "base" memref '%0' with dynamic offsets, sizes,
+      // and strides.
+      // Note that dynamic offsets are represented by the linearized dynamic
+      // offset symbol 's0' in the subview memref layout map, and that the
+      // dynamic strides operands, after being applied to the base memref
+      // strides in each dimension, are represented in the view memref layout
+      // map as symbols 's1', 's2' and 's3'.
+      %1 = subview %0[%i, %j, %k][%size0, %size1, %size2][%x, %y, %z]
+        : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+          memref<?x?x?xf32,
+            (d0, d1, d2)[s0, s1, s2, s3] -> (d0 * s1 + d1 * s2 + d2 * s3 + s0)>
+
+    Example 3:
+
+      %0 = alloc() : memref<8x16x4xf32, (d0, d1, d1) -> (d0 * 64 + d1 * 4 + d2)>
+
+      // Subview with constant offsets, sizes and strides.
+      %1 = subview %0[][][]
+        : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
+          memref<4x4x4xf32, (d0, d1, d2) -> (d0 * 16 + d1 * 4 + d2 + 8)>
+
+    Example 4:
+
+      %0 = alloc(%arg0, %arg1) : memref<?x?xf32>
+
+      // Subview with constant size, but dynamic offsets and
+      // strides. The resulting memref has a static shape, but if the
+      // base memref has an affine map to describe the layout, the result
+      // memref also uses an affine map to describe the layout. The
+      // strides of the result memref is computed as follows:
+      //
+      // Let #map1 represents the layout of the base memref, and #map2
+      // represents the layout of the result memref. A #mapsubview can be
+      // constructed to map an index from the result memref to the base
+      // memref (note that the description below uses more convenient
+      // naming for symbols, while in affine maps, symbols are
+      // represented as unsigned numbers that identify that symbol in the
+      // given affine map.
+      //
+      // #mapsubview = (d0, d1)[o0, o1, t0, t1] -> (d0 * t0 + o0, d1 * t1 + o1)
+      //
+      // where, o0, o1, ... are offsets, and t0, t1, ... are strides. Then,
+      //
+      // #map2 = #map1.compose(#mapsubview)
+      //
+      // If the layout map is represented as
+      //
+      // #map1 = (d0, d1)[s0, s1, s2] -> (d0 * s1 + d1 * s2 + s0)
+      //
+      // then,
+      //
+      // #map2 = (d0, d1)[s0, s1, s2, o0, o1, t0, t1] ->
+      //              (d0 * s1 * t0 + d1 * s2 * t1 + o0 * s1 + o1 * s2 + s0)
+      //
+      // Representing this canonically
+      //
+      // #map2 = (d0, d1)[r0, r1, r2] -> (d0 * r1 + d1 * r2 + r0)
+      //
+      // where, r0 = o0 * s1 + o1 * s2 + s0, r1 = s1 * t0, r2 = s2 * t1.
+      %1 = subview %0[%i, %j][][%x, %y] :
+        : memref<?x?xf32, (d0, d1)[s0, s1, s2] -> (d0 * s1 + d1 * s2 + s0)> to
+          memref<4x4xf32, (d0, d1)[r0, r1, r2] -> (d0 * r1 + d1 * r2 + r0)>
+
+      // Note that the subview op does not gaurantee that the result
+      // memref is "inbounds" w.r.t to base memref. It is upto the client
+      // to ensure that the subview is accessed in a manner that is
+      // in-bounds.
+
+    }
+  }];
+
+  // TODO(b/144779634, ravishankarm) : Use different arguments for
+  // offsets, sizes and strides.
+  let arguments = (ins AnyMemRef:$source, I32Attr:$num_offsets,
+                   I32Attr:$num_sizes, I32Attr:$num_strides,
+                   Variadic<Index>:$operands);
+  let results = (outs AnyMemRef);
+
+  let builders = [OpBuilder<
+    "Builder *b, OperationState &result, Value *source, "
+    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
+    "ArrayRef<Value *> strides, Type resultType = Type(), "
+    "ArrayRef<NamedAttribute> attrs = {}">,
+    OpBuilder<
+    "Builder *builder, OperationState &result, Type resultType, Value *source">,
+    OpBuilder<
+    "Builder *builder, OperationState &result, Type resultType, Value *source, "
+    "unsigned num_offsets, unsigned num_sizes, unsigned num_strides, "
+    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
+    "ArrayRef<Value *> strides">];
+
+  let extraClassDeclaration = [{
+    /// Returns the type of the base memref operand.
+    MemRefType getBaseMemRefType() {
+      return source()->getType().cast<MemRefType>();
+    }
+
+    /// The result of a subview is always a memref.
+    MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns as integer value the number of offset operands.
+    int64_t getNumOffsets() {
+      return num_offsets().getSExtValue();
+    }
+
+    /// Returns as integer value the number of size operands.
+    int64_t getNumSizes() {
+      return num_sizes().getSExtValue();
+    }
+
+    /// Returns as integer value the number of stride operands.
+    int64_t getNumStrides() {
+      return num_strides().getSExtValue();
+    }
+
+    /// Returns the dynamic offsets for this subview operation.
+    operand_range getDynamicOffsets();
+
+    /// Returns the dynamic sizes for this subview operation if specified.
+    operand_range getDynamicSizes();
+
+    /// Returns the dynamic strides for this subview operation if specified.
+    operand_range getDynamicStrides();
+
+    // Auxiliary range data structure and helper function that unpacks the
+    // offset, size and stride operands of the SubViewOp into a list of triples.
+    // Such a list of triple is sometimes more convenient to manipulate.
+    struct Range {
+      Value *offset, *size, *stride;
+    };
+    SmallVector<Range, 8> getRanges();
+  }];
+
+  let hasCanonicalizer = 1;
 }
 
 def XOrOp : IntArithmeticOp<"xor", [Commutative]> {

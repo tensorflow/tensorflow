@@ -25,9 +25,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/abi.h"
-#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/internal/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
@@ -45,7 +45,6 @@ namespace profiler {
 class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
  public:
   StepStatsCuptiTracerAdaptor(const CuptiTracerCollectorOptions& option,
-                              const std::string prefix, int num_gpus,
                               uint64 start_walltime_ns, uint64 start_gpu_ns,
                               StepStatsCollector* trace_collector)
       : CuptiTraceCollector(option),
@@ -54,15 +53,15 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
         num_activity_events_(0),
         start_walltime_ns_(start_walltime_ns),
         start_gpu_ns_(start_gpu_ns),
-        num_gpus_(num_gpus),
-        per_device_adaptor_(num_gpus) {
-    for (int i = 0; i < num_gpus; ++i) {  // for each device id.
+        num_gpus_(option.num_gpus),
+        per_device_adaptor_(option.num_gpus) {
+    for (int i = 0; i < num_gpus_; ++i) {  // for each device id.
       per_device_adaptor_[i].stream_device =
-          strings::StrCat(prefix, "/device:GPU:", i, "/stream:");
+          strings::StrCat("/device:GPU:", i, "/stream:");
       per_device_adaptor_[i].memcpy_device =
-          strings::StrCat(prefix, "/device:GPU:", i, "/memcpy");
+          strings::StrCat("/device:GPU:", i, "/memcpy");
       per_device_adaptor_[i].sync_device =
-          strings::StrCat(prefix, "/device:GPU:", i, "/sync");
+          strings::StrCat("/device:GPU:", i, "/sync");
     }
   }
 
@@ -111,14 +110,14 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
     void AddEvent(CuptiTracerEvent&& event) {
       absl::MutexLock lock(&mutex);
       if (event.source == CuptiTracerEventSource::DriverCallback) {
-        // Cupti api callcack events were used to populate launch times etc.
-        if (event.name == "cuStreamSynchronize") {
-          events.emplace_back(std::move(event));
-        }
+        // Cupti api callback events were used to populate launch times etc.
         if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
           correlation_info.insert(
               {event.correlation_id,
                CorrelationInfo(event.thread_id, event.start_time_ns)});
+        }
+        if (event.name == "cuStreamSynchronize") {
+          events.emplace_back(std::move(event));
         }
       } else {
         // Cupti activity events measure device times etc.
@@ -224,8 +223,7 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
 class GpuTracer : public profiler::ProfilerInterface {
  public:
   GpuTracer(CuptiTracer* cupti_tracer, CuptiInterface* cupti_interface)
-      : cupti_tracer_(cupti_tracer),
-        trace_collector_(&step_stats_) {
+      : cupti_tracer_(cupti_tracer), trace_collector_(&step_stats_) {
     VLOG(1) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
@@ -234,6 +232,7 @@ class GpuTracer : public profiler::ProfilerInterface {
   Status Start() override;
   Status Stop() override;
   Status CollectData(RunMetadata* run_metadata) override;
+  Status CollectData(XSpace* space) override;
   profiler::DeviceType GetDeviceType() override {
     return profiler::DeviceType::kGpu;
   }
@@ -313,14 +312,14 @@ Status GpuTracer::DoStart() {
 #endif
 
   CuptiTracerCollectorOptions collector_options;
+  collector_options.num_gpus = cupti_tracer_->NumGpus();
   uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
-  uint64 start_walltime_ns = tensorflow::EnvTime::Default()->NowNanos();
-  int num_gpus = cupti_tracer_->NumGpus();
+  uint64 start_walltime_ns = tensorflow::EnvTime::NowNanos();
   step_stats_cupti_adaptor_ = absl::make_unique<StepStatsCuptiTracerAdaptor>(
-      collector_options, "", num_gpus, start_walltime_ns, start_gputime_ns,
+      collector_options, start_walltime_ns, start_gputime_ns,
       &trace_collector_);
 
-  tensorflow::tracing::ScopedAnnotation::Enable(true);
+  AnnotationStack::Enable(true);
   cupti_tracer_->Enable(options_, step_stats_cupti_adaptor_.get());
   return Status::OK();
 }
@@ -338,7 +337,7 @@ Status GpuTracer::Start() {
 
 Status GpuTracer::DoStop() {
   cupti_tracer_->Disable();
-  tensorflow::tracing::ScopedAnnotation::Enable(false);
+  AnnotationStack::Enable(false);
   return Status::OK();
 }
 
@@ -373,6 +372,10 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
     }
   }
   return errors::Internal("Invalid profiling state: ", profiling_state_);
+}
+
+Status GpuTracer::CollectData(XSpace* space) {
+  return errors::Unimplemented("Collect data into XSpace not yet implemented");
 }
 
 }  // namespace profiler

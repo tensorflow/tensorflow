@@ -37,6 +37,7 @@ from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
+from tensorflow.python.autograph.pyct import error_utils
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
@@ -53,7 +54,7 @@ def is_autograph_strict_conversion_mode():
 
 
 # TODO(mdan): Export this symbol.
-class AutoGraphError(Exception):
+class AutoGraphError(errors.PyCTError):
   """Base class for all AutoGraph exceptions."""
   pass
 
@@ -68,7 +69,7 @@ class StagingError(AutoGraphError):
   pass
 
 
-class _ErrorMetadata(errors.ErrorMetadataBase):
+class _ErrorMetadata(error_utils.ErrorMetadataBase):
   """AutoGraph-specific error metadata. See base class."""
 
   def create_exception(self, source_error):
@@ -100,8 +101,8 @@ class _ErrorMetadata(errors.ErrorMetadataBase):
               op=source_error.op,
               message=message)
 
-    elif preferred_type in (AutoGraphError, ConversionError, StagingError,
-                            errors_impl.InaccessibleTensorError,
+    elif preferred_type in (errors.PyCTError, AutoGraphError, ConversionError,
+                            StagingError, errors_impl.InaccessibleTensorError,
                             errors_impl.OperatorNotAllowedInGraphError):
       return preferred_type(self.get_message())
 
@@ -179,17 +180,28 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
   decorators, f = tf_decorator.unwrap(f)
 
   # TODO(mdan): Grab features from context.
+  # Note: we pass the original context through to convert to properly handle the
+  # following scenario, which can be used insite TF implementations:
+  #
+  #   ctx = ag_ctx.control_status_ctx()
+  #   @function(autograph=False)  # Low-level graph code
+  #   def inner_fn():
+  #     # The context is disabled here, but should be enabled in user user_fn
+  #     tf_convert(user_fn, ctx=ctx)
   if ctx.status == ag_ctx.Status.ENABLED:
-    wrapper = convert(recursive=True, user_requested=user_requested)(f)
+    wrapper_factory = convert(
+        recursive=True, user_requested=user_requested, conversion_ctx=ctx)
   elif ctx.status == ag_ctx.Status.DISABLED:
-    wrapper = do_not_convert(f)
+    wrapper_factory = do_not_convert
   elif ctx.status == ag_ctx.Status.UNSPECIFIED:
     if convert_by_default:
-      wrapper = convert(recursive=True, user_requested=user_requested)(f)
+      wrapper_factory = convert(
+          recursive=True, user_requested=user_requested, conversion_ctx=ctx)
     else:
-      wrapper = call_with_unspecified_conversion_status(f)
+      wrapper_factory = call_with_unspecified_conversion_status
   else:
-    raise ValueError(ctx.status)
+    assert False, 'This switch contains all possible cases!'
+  wrapper = wrapper_factory(f)
 
   if decorators:
     wrapper = tf_decorator.rewrap(f_wrapper, f, wrapper)
@@ -199,7 +211,10 @@ def tf_convert(f, ctx, convert_by_default=True, user_requested=False):
 
 
 # TODO(mdan): Make private.
-def convert(recursive=False, optional_features=None, user_requested=True):
+def convert(recursive=False,
+            optional_features=None,
+            user_requested=True,
+            conversion_ctx=ag_ctx.NullCtx()):
   """Decorator that compiles a function to use TensorFlow ops.
 
   The decorator is dynamic - it recompiles the target whenever the decorated
@@ -213,8 +228,10 @@ def convert(recursive=False, optional_features=None, user_requested=True):
     optional_features: converted.Feature, allows toggling optional or
       experimental features. When set to None, only the core features are
       enabled.
-    user_requested: bool, whether to ignore the conversion whitelist. See
-      ConversionOptions.user_requested.
+    user_requested: bool, whether this is a function that the user explicitly
+      asked to be converted. See ConversionOptions.user_requested.
+    conversion_ctx: Optional ag_ctx.ControlStatusCtx, the Autograph context in
+      which `f` is used.
 
   Returns:
     Callable, a decorator that converts the given function into an equivalent
@@ -231,7 +248,8 @@ def convert(recursive=False, optional_features=None, user_requested=True):
           user_requested=user_requested,
           optional_features=optional_features)
       try:
-        return converted_call(f, args, kwargs, options=options)
+        with conversion_ctx:
+          return converted_call(f, args, kwargs, options=options)
       except Exception as e:  # pylint:disable=broad-except
         if hasattr(e, 'ag_error_metadata'):
           raise e.ag_error_metadata.to_exception(e)
@@ -362,13 +380,11 @@ def _is_known_loaded_type(f, module_name, entity_name):
   return False
 
 
-def _errors_are_normally_possible(entity, error):
-  if inspect_utils.islambda(entity) and isinstance(error, ValueError):
-    return True
-  return False
-
-
-def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
+def converted_call(f,
+                   args,
+                   kwargs,
+                   caller_fn_scope=None,
+                   options=None):
   """Compiles a function call inline.
 
   For internal use only.
@@ -403,6 +419,10 @@ def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
     options = caller_fn_scope.callopts
 
   if conversion.check_cached_unconverted(f, options):
+    return _call_unconverted(f, args, kwargs, options, False)
+
+  if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
+    logging.log(2, 'Whitelisted: %s: AutoGraph is disabled in context', f)
     return _call_unconverted(f, args, kwargs, options, False)
 
   if inspect_utils.isbuiltin(f):
@@ -546,10 +566,14 @@ def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
     logging.log(1, 'Error transforming entity %s', target_entity, exc_info=True)
     if is_autograph_strict_conversion_mode():
       raise
-    if _errors_are_normally_possible(target_entity, e):
-      logging.warn(
-          'AutoGraph could not transform %s and will run it as-is.\n'
-          'Cause: %s', target_entity, e)
+
+    if isinstance(e, errors.UnsupportedLanguageElementError):
+      # Repeating the check made upon function entry because the state might
+      # have updated in the meantime.
+      if not conversion.check_cached_unconverted(f, options):
+        logging.warn(
+            'AutoGraph could not transform %s and will run it as-is.\n'
+            'Cause: %s', target_entity, e)
     else:
       logging.warn(
           'AutoGraph could not transform %s and will run it as-is.\n'
@@ -557,6 +581,7 @@ def converted_call(f, args, kwargs, caller_fn_scope=None, options=None):
           ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
           ' attach the full output.\n'
           'Cause: %s', target_entity, e)
+
     return _call_unconverted(f, args, kwargs, options)
 
   with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():

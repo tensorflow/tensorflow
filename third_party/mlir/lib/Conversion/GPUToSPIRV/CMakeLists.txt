@@ -1,5 +1,6 @@
 add_llvm_library(MLIRGPUtoSPIRVTransforms
-  GPUToSPIRV.cpp
+  ConvertGPUToSPIRV.cpp
+  ConvertGPUToSPIRVPass.cpp
   )
 
 target_link_libraries(MLIRGPUtoSPIRVTransforms
@@ -8,6 +9,6 @@ target_link_libraries(MLIRGPUtoSPIRVTransforms
   MLIRPass
   MLIRSPIRV
   MLIRStandardOps
-  MLIRSPIRVConversion
+  MLIRStandardToSPIRVTransforms
   MLIRTransforms
   )

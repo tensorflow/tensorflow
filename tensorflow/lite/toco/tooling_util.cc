@@ -449,6 +449,8 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiag)
     HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV2)
     HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV2)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixDiagV3)
+    HANDLE_OPERATORTYPENAME_CASE(MatrixSetDiagV3)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -2349,6 +2351,12 @@ std::unordered_set<string> ScanArrayNames(
 void UseArraysExtraInfo(Model* model, bool quantize_output) {
   for (const auto& entry : model->flags.arrays_extra_info().entries()) {
     const auto matches = ScanArrayNames(*model, entry);
+    if (matches.empty()) {
+      LOG(ERROR) << "arrays_extra_info_file: No matching arrays found for "
+                 << (entry.has_name() ? entry.name() : "")
+                 << (entry.has_name_regexp() ? entry.name_regexp() : "");
+      continue;
+    }
     for (const auto& matched_name : matches) {
       auto& array = model->GetArray(matched_name);
       if (entry.has_min() || entry.has_max()) {

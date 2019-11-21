@@ -23,6 +23,10 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+// TfLiteReshapeParams can't have dynamic data so we fix the maximum possible
+// number of dimensions.
+#define TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT 8
+
 // TODO(aselle): Consider using "if this then that" for testing.
 
 // Useful placeholder to put in otherwise empty structs to avoid size warnings.
@@ -63,8 +67,8 @@ typedef struct {
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
-  kTfLiteActRelu1,
-  kTfLiteActRelu6,
+  kTfLiteActRelu1,  // min(max(-1, x), 1)
+  kTfLiteActRelu6,  // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
   kTfLiteActSigmoid,
@@ -96,6 +100,16 @@ typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  // `depth_multiplier` is redundant. It's used by CPU kernels in
+  // TensorFlow 2.0 or below, but ignored in versions above.
+  //
+  // The information can be deduced from the shape of input and the shape of
+  // weights. Since the TFLiteConverter toolchain doesn't support partially
+  // specificed shapes, relying on `depth_multiplier` stops us from supporting
+  // graphs with dynamic shape tensors.
+  //
+  // Note: Some of the delegates (e.g. NNAPI, GPU) are still relying on this
+  // field.
   int depth_multiplier;
   TfLiteFusedActivation activation;
   // Parameters for DepthwiseConv version 2 or above.
@@ -256,7 +270,7 @@ typedef struct {
 typedef struct {
   // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
   // For now we will fix the maximum possible number of dimensions.
-  int shape[8];
+  int shape[TFLITE_RESHAPE_PARAMS_MAX_DIMENSION_COUNT];
   int num_dimensions;
 } TfLiteReshapeParams;
 

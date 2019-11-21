@@ -320,7 +320,6 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
     d = getAffineSymbolExpr(numSymbols++, context);
     resultVal = val;
   } else {
-    assert(isValidDim(val) && "Must be a valid Dim");
     d = getAffineDimExpr(numDims++, context);
     resultVal = val;
   }
@@ -461,13 +460,13 @@ ValueHandle mlir::edsc::op::operator==(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OEQ, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::EQ, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::eq, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator!=(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::ONE, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::NE, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::ne, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator<(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
@@ -475,23 +474,23 @@ ValueHandle mlir::edsc::op::operator<(ValueHandle lhs, ValueHandle rhs) {
              ? createFComparisonExpr(CmpFPredicate::OLT, lhs, rhs)
              :
              // TODO(ntv,zinenko): signed by default, how about unsigned?
-             createIComparisonExpr(CmpIPredicate::SLT, lhs, rhs);
+             createIComparisonExpr(CmpIPredicate::slt, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator<=(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OLE, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::SLE, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::sle, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator>(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OGT, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::SGT, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::sgt, lhs, rhs);
 }
 ValueHandle mlir::edsc::op::operator>=(ValueHandle lhs, ValueHandle rhs) {
   auto type = lhs.getType();
   return type.isa<FloatType>()
              ? createFComparisonExpr(CmpFPredicate::OGE, lhs, rhs)
-             : createIComparisonExpr(CmpIPredicate::SGE, lhs, rhs);
+             : createIComparisonExpr(CmpIPredicate::sge, lhs, rhs);
 }

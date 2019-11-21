@@ -7,15 +7,16 @@ following example.
 image classification example</a>
 
 For an explanation of the source code, you should also read
-[TensorFlow Lite Android image classification](https://www.tensorflow.org/lite/models/image_classification/android).
+[TensorFlow Lite Android image classification](https://github.com/tensorflow/examples/blob/master/lite/examples/image_classification/android/EXPLORE_THE_CODE.md).
 
 This example app uses
 [image classification](https://www.tensorflow.org/lite/models/image_classification/overview)
 to continuously classify whatever it sees from the device's rear-facing camera.
 The application can run either on device or emulator.
 
-Inference is performed using the TensorFlow Lite Java API. The demo app
-classifies frames in real-time, displaying the top most probable
+Inference is performed using the TensorFlow Lite Java API and the
+[TensorFlow Lite Android Support Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/java/README.md).
+The demo app classifies frames in real-time, displaying the top most probable
 classifications. It allows the user to choose between a floating point or
 [quantized](https://www.tensorflow.org/lite/performance/post_training_quantization)
 model, select the thread count, and decide whether to run on CPU, GPU, or via
@@ -38,6 +39,20 @@ as a starting point.
 
 The following sections contain some useful information for working with
 TensorFlow Lite on Android.
+
+### Use the TensorFlow Lite Android Support Library
+
+The TensorFlow Lite Android Support Library makes it easier to integrate models
+into your application. It provides high-level APIs that help transform raw input
+data into the form required by the model, and interpret the model's output,
+reducing the amount of boilerplate code required.
+
+It supports common data formats for inputs and outputs, including images and
+arrays. It also provides pre- and post-processing units that perform tasks such
+as image resizing and cropping.
+
+To get started, follow the instructions in the
+[TensorFlow Lite Android Support Library README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/java/README.md).
 
 ### Use the TensorFlow Lite AAR from JCenter
 
@@ -117,7 +132,7 @@ in the `.tf_configure.bazelrc` file in the root folder:
 
 ```shell
 build --action_env ANDROID_NDK_HOME="/usr/local/android/android-ndk-r17c"
-build --action_env ANDROID_NDK_API_LEVEL="18"
+build --action_env ANDROID_NDK_API_LEVEL="21"
 build --action_env ANDROID_BUILD_TOOLS_VERSION="28.0.3"
 build --action_env ANDROID_SDK_API_LEVEL="23"
 build --action_env ANDROID_SDK_HOME="/usr/local/android/android-sdk-linux"
@@ -134,7 +149,7 @@ bazel build --cxxopt='-std=c++11' -c opt         \
   //tensorflow/lite/java:tensorflow-lite
 ```
 
-This will generate an AAR file in `bazel-genfiles/tensorflow/lite/java/`. Note
+This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. Note
 that this builds a "fat" AAR with several different architectures; if you don't
 need all of them, use the subset appropriate for your deployment environment.
 From there, there are several approaches you can take to use the .aar in your
@@ -168,7 +183,7 @@ Execute the following command from your root checkout directory:
 
 ```sh
 mvn install:install-file \
-  -Dfile=bazel-genfiles/tensorflow/lite/java/tensorflow-lite.aar \
+  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite.aar \
   -DgroupId=org.tensorflow \
   -DartifactId=tensorflow-lite -Dversion=0.1.100 -Dpackaging=aar
 ```

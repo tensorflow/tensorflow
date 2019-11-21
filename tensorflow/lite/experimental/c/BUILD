@@ -73,6 +73,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -85,6 +86,7 @@ cc_library(
         ":c_api_internal",
         "//tensorflow/lite:kernel_api",
     ],
+    alwayslink = 1,
 )
 
 cc_test(

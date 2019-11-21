@@ -16,8 +16,8 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_TESTS_VERIFIED_HLO_MODULE_H_
 
 #include <functional>
-#include <string>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
@@ -43,14 +43,20 @@ class VerifiedHloModule : public HloModule {
 
   ~VerifiedHloModule() override { VerifyOrAddFailure("in destructor"); }
 
-  // Verifies the module using HloVerifier and returns the status.
-  Status Verify();
+  // Given a string in the HloModule::ToString() format, parses the string and
+  // builds the VerifiedHloModule in place. Before calling this method, the
+  // module must be empty (no computations). Finally verifies the module using
+  // HloVerifier and returns the status.
+  Status ParseHloStringAndVerifyModule(absl::string_view str);
 
   // Verifies the module and flags any error with ADD_FAILURE. 'message' is
   // included in the failure message.
-  void VerifyOrAddFailure(const string& message);
+  void VerifyOrAddFailure(absl::string_view message);
 
  private:
+  // Verifies the module using HloVerifier and returns the status.
+  Status Verify();
+
   HloVerifier verifier_;
 };
 

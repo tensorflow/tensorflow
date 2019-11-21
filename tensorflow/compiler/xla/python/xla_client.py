@@ -274,6 +274,8 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
 
 PrimitiveType = _xla.PrimitiveType
 
+bfloat16 = _xla.bfloat16_dtype()
+
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.PRED: np.dtype('bool'),
     PrimitiveType.S8: np.dtype('int8'),
@@ -284,6 +286,7 @@ XLA_ELEMENT_TYPE_TO_DTYPE = {
     PrimitiveType.U16: np.dtype('uint16'),
     PrimitiveType.U32: np.dtype('uint32'),
     PrimitiveType.U64: np.dtype('uint64'),
+    PrimitiveType.BF16: np.dtype(bfloat16),
     PrimitiveType.F16: np.dtype('float16'),
     PrimitiveType.F32: np.dtype('float32'),
     PrimitiveType.F64: np.dtype('float64'),
@@ -614,8 +617,7 @@ class Computation(object):
 #       sole, zero'th replica's output is returned instead, as a Buffer.
 #     """
 #
-# There are different implementations of Executable for the Local and XRT
-# backends.
+# There are different implementations of Executable for different backends.
 
 
 def execute_with_python_values(executable, arguments=(), backend=None):
@@ -737,6 +739,17 @@ class ComputationBuilder(object):
   def ClearOpMetadata(self):
     """Clear metadata for operations that are about to be enqueued."""
     self._builder.ClearOpMetadata()
+
+  def SetSharding(self, sharding):
+    """Set sharding that will be attached to all instructions until cleared."""
+    self._builder.SetSharding(sharding)
+
+  def ClearSharding(self):
+    """Clears the sharding.
+
+    Ops will be shared according to the default placement policy.
+    """
+    self._builder.ClearSharding()
 
   def CreateToken(self):
     """Enqueues a CreateToken op onto the computation.
@@ -1678,6 +1691,7 @@ _BINARY_OPS = [
     'ShiftRightLogical',
     'Atan2',
     'Complex',
+    'NextAfter',
 ]
 
 _OTHER_OPS = [
@@ -1807,6 +1821,20 @@ class ConvolutionDimensionNumbers(object):
     self.output_batch_dimension = 0
     self.output_feature_dimension = 0
     self.output_spatial_dimensions = []
+
+
+class OpSharding(object):
+  """Python representation of a xla.OpSharding protobuf."""
+  __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
+               'tuple_shardings')
+
+  Type = _xla.OpSharding_Type
+
+  def __init__(self):
+    self.type = self.Type.REPLICATED
+    self.tile_assignment_dimensions = []
+    self.tile_assignment_devices = []
+    self.tuple_shardings = []
 
 
 class PrecisionConfig(object):

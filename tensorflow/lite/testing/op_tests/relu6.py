@@ -32,17 +32,20 @@ def make_relu6_tests(options):
   test_parameters = [{
       "input_shape": [[], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3],
                       [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      "fully_quantize": [True, False],
+      "input_range": [(-2, 8)]
   }]
 
   def build_graph(parameters):
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
-    out = tf.nn.relu(input_tensor)
+    out = tf.nn.relu6(input_tensor)
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(
-        np.float32, parameters["input_shape"], min_value=-3, max_value=10)
+    min_value, max_value = parameters["input_range"]
+    input_values = create_tensor_data(np.float32, parameters["input_shape"],
+                                      min_value, max_value)
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
 

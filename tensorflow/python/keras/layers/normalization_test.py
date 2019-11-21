@@ -154,13 +154,14 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         normalization_v2.BatchNormalization, dtype='float16')
 
   @tf_test_util.run_in_graph_and_eager_modes
+  @testing_utils.enable_v2_dtype_behavior
   def test_batchnorm_policy(self):
     norm = keras.layers.BatchNormalization(
         axis=-1,
         input_shape=(4, 4, 3),
         momentum=0.8,
-        dtype=policy.Policy('infer_float32_vars'))
-    x = np.random.normal(size=(10, 4, 4, 3)).astype('float16')
+        dtype=policy.Policy('mixed_float16'))
+    x = np.random.normal(size=(10, 4, 4, 3))
     y = norm(x)
     self.assertEqual(y.dtype, 'float16')
     self.assertEqual(norm.beta.dtype.base_dtype, 'float32')

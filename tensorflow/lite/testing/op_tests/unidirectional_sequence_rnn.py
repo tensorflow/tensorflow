@@ -44,7 +44,8 @@ def make_unidirectional_sequence_rnn_tests(options):
           parameters["seq_length"], parameters["batch_size"],
           parameters["units"]
       ]
-      input_value = tf.placeholder(dtype=tf.float32, name="input", shape=shape)
+      input_value = tf.compat.v1.placeholder(
+          dtype=tf.float32, name="input", shape=shape)
       input_values.append(input_value)
       rnn_cell = tf.lite.experimental.nn.TfLiteRNNCell(parameters["units"])
       outs, _ = tf.lite.experimental.nn.dynamic_rnn(
@@ -53,13 +54,14 @@ def make_unidirectional_sequence_rnn_tests(options):
     else:
       shape = [parameters["batch_size"], parameters["units"]]
       for i in range(parameters["seq_length"]):
-        input_value = tf.placeholder(
+        input_value = tf.compat.v1.placeholder(
             dtype=tf.float32, name=("input_%d" % i), shape=shape)
         input_values.append(input_value)
       rnn_cell = tf.lite.experimental.nn.TfLiteRNNCell(parameters["units"])
       outs, _ = tf.nn.static_rnn(rnn_cell, input_values, dtype=tf.float32)
 
     real_output = tf.zeros([1], dtype=tf.float32) + outs[-1]
+    real_output = tf.identity(real_output)
     return input_values, [real_output]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -77,7 +79,7 @@ def make_unidirectional_sequence_rnn_tests(options):
       for _ in range(parameters["seq_length"]):
         input_value = create_tensor_data(tf.float32, shape)
         input_values.append(input_value)
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
     sess.run(init)
     # Tflite fused kernel takes input as [time, batch, input].
     # For static unidirectional sequence rnn, the input is an array sized of

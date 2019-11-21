@@ -52,6 +52,7 @@ class ToDense(Layer):
   def __init__(self, default_value, **kwargs):
     super(ToDense, self).__init__(**kwargs)
     self._default_value = default_value
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
     if isinstance(inputs, ragged_tensor.RaggedTensor):
@@ -75,6 +76,7 @@ class ToRagged(Layer):
     super(ToRagged, self).__init__(**kwargs)
     self._padding = padding
     self._ragged_rank = ragged_rank
+    self._supports_ragged_inputs = True
 
   def call(self, inputs):
     return ragged_tensor.RaggedTensor.from_tensor(

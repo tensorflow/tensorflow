@@ -35,17 +35,11 @@ class ModuleOp;
 class Pass;
 template <typename T> class OpPassBase;
 
-/// Creates a constant folding pass. Note that this pass solely provides simple
-/// top-down constant folding functionality; it is intended to be used for
-/// testing purpose. Use Canonicalizer pass, which exploits more simplification
-/// opportunities exposed by constant folding, for the general cases.
-std::unique_ptr<OpPassBase<FuncOp>> createTestConstantFoldPass();
-
 /// Creates an instance of the Canonicalizer pass.
-std::unique_ptr<OpPassBase<FuncOp>> createCanonicalizerPass();
+std::unique_ptr<Pass> createCanonicalizerPass();
 
 /// Creates a pass to perform common sub expression elimination.
-std::unique_ptr<OpPassBase<FuncOp>> createCSEPass();
+std::unique_ptr<Pass> createCSEPass();
 
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D super-vector abstraction.
@@ -127,9 +121,6 @@ std::unique_ptr<OpPassBase<FuncOp>> createAffineDataCopyGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace,
     unsigned tagMemorySpace = 0, int minDmaTransferSize = 1024,
     uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max());
-
-/// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.
-std::unique_ptr<OpPassBase<FuncOp>> createLowerVectorTransfersPass();
 
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.

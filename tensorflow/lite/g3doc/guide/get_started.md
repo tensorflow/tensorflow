@@ -223,9 +223,9 @@ NanoPi).
 
 ### Microcontrollers
 
-[TensorFlow Lite for Microcontrollers](../microcontrollers/overview.md) is an
-experimental port of TensorFlow Lite aimed at microcontrollers and other devices
-with only kilobytes of memory.
+[TensorFlow Lite for Microcontrollers](../microcontrollers) is an experimental
+port of TensorFlow Lite aimed at microcontrollers and other devices with only
+kilobytes of memory.
 
 ### Operations
 

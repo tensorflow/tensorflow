@@ -1,8 +1,8 @@
 // RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=IsolatePlacerInspectionRequiredOpsPass  | FileCheck %s
 
 func @main() {
-  %0:2 = "_tf.VarHandleOp"() {dtype = "tfdtype$DT_FLOAT", shape = "tfshape$"} : () -> (tensor<!tf.resource>, !_tf.control)
-  %1:2 = "_tf.StatefulPartitionedCall"(%0#0) {Tin = ["tfdtype$DT_RESOURCE"], Tout = ["tfdtype$DT_RESOURCE"], config = "", config_proto = "", executor_type = "", f = @foo} : (tensor<!tf.resource>) -> (tensor<!tf.resource>, !_tf.control) loc("call_foo")
+  %0:2 = "_tf.VarHandleOp"() {container = "c", shared_name = "n"} : () -> (tensor<!tf.resource<tensor<8xf32>>>, !_tf.control)
+  %1:2 = "_tf.StatefulPartitionedCall"(%0#0) {Tin = ["tfdtype$DT_RESOURCE"], Tout = ["tfdtype$DT_RESOURCE"], config = "", config_proto = "", executor_type = "", f = @foo} : (tensor<!tf.resource<tensor<8xf32>>>) -> (tensor<!tf.resource<tensor<8xf32>>>, !_tf.control) loc("call_foo")
   return
 }
 

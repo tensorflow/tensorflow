@@ -20,12 +20,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef LLVMIR_OP_BASE
-#else
+#ifndef LLVMIR_OP_BASE
 #define LLVMIR_OP_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 

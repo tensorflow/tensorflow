@@ -21,9 +21,11 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
+#include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Location.h"  // TF:local_config_mlir
+#include "mlir/IR/Region.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
@@ -43,6 +45,7 @@ using mlir::DenseIntElementsAttr;
 using mlir::FuncOp;
 using mlir::NamedAttribute;
 using mlir::Operation;
+using mlir::RankedTensorType;
 using mlir::ShapedType;
 using mlir::Type;
 using mlir::Value;
@@ -328,6 +331,19 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
               ConvertDimensions(instruction->slice_strides()))
           .getOperation();
     }
+    case HloOpcode::kConditional: {
+      llvm::SmallVector<Type, 4> rets;
+      TF_RETURN_IF_ERROR(GetMlirTypes(
+          {instruction->true_computation()->root_instruction()}, &rets));
+
+      auto op = func_builder->create<mlir::xla_hlo::ConditionalOp>(
+          loc, rets, operands, attributes);
+      TF_RETURN_IF_ERROR(ImportComputation(instruction->true_computation(),
+                                           &op.true_branch()));
+      TF_RETURN_IF_ERROR(ImportComputation(instruction->false_computation(),
+                                           &op.false_branch()));
+      return op.getOperation();
+    }
     case HloOpcode::kConcatenate: {
       // TODO(b/132057942): Support taking an uint64_t instead of an IntegerAttr
       // for concatenate dimension.
@@ -357,22 +373,13 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
           .getOperation();
     }
     case HloOpcode::kWhile: {
-      TF_ASSIGN_OR_RETURN(auto body, ImportFunction(instruction->while_body()));
-      TF_ASSIGN_OR_RETURN(auto cond,
-                          ImportFunction(instruction->while_condition()));
-
-      llvm::SmallVector<Type, 4> types;
-      types.reserve(operands.size());
-      for (auto operand : operands) {
-        types.push_back(operand->getType());
-      }
-
-      auto cond_attr = func_builder->getSymbolRefAttr(cond);
-      auto body_attr = func_builder->getSymbolRefAttr(body);
-
-      Operation* op = func_builder->create<mlir::xla_hlo::WhileOp>(
-          loc, types, operands, cond_attr, body_attr);
-      return op;
+      auto op = func_builder->create<mlir::xla_hlo::WhileOp>(
+          loc, operands[0]->getType(), operands[0]);
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->while_condition(), &op.cond()));
+      TF_RETURN_IF_ERROR(
+          ImportComputation(instruction->while_body(), &op.body()));
+      return op.getOperation();
     }
     case HloOpcode::kGetTupleElement: {
       attributes.push_back(builder_->getNamedAttr(
@@ -437,24 +444,42 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
       // builder API.
       NoAttributeCase(kAdd, AddOp);
       NoAttributeCase(kAnd, AndOp);
+      NoAttributeCase(kAtan2, Atan2Op);
       NoAttributeCase(kConvert, ConvertOp);
       NoAttributeCase(kClamp, ClampOp);
+      NoAttributeCase(kComplex, ComplexOp);
+      NoAttributeCase(kCos, CosOp);
       NoAttributeCase(kDivide, DivOp);
       NoAttributeCase(kExp, ExpOp);
+      NoAttributeCase(kExpm1, Expm1Op);
       NoAttributeCase(kFloor, FloorOp);
+      NoAttributeCase(kImag, ImagOp);
       NoAttributeCase(kLog, LogOp);
+      NoAttributeCase(kLog1p, Log1pOp);
       NoAttributeCase(kMaximum, MaxOp);
       NoAttributeCase(kMinimum, MinOp);
       NoAttributeCase(kMultiply, MulOp);
+      NoAttributeCase(kNegate, NegOp);
+      NoAttributeCase(kNot, NotOp);
+      NoAttributeCase(kOr, OrOp);
+      NoAttributeCase(kPopulationCount, PopulationCountOp);
+      NoAttributeCase(kPower, PowOp);
+      NoAttributeCase(kReal, RealOp);
+      NoAttributeCase(kRemainder, RemOp);
       // The dimensions attribute is not present on the HLO Reshape instruction.
       // If dimensions are non-default, the XLA builder implements it as a
       // separate transpose.
       NoAttributeCase(kReshape, ReshapeOp);
       NoAttributeCase(kRsqrt, RsqrtOp);
       NoAttributeCase(kSelect, SelectOp);
+      NoAttributeCase(kShiftLeft, ShiftLeftOp);
+      NoAttributeCase(kShiftRightArithmetic, ShiftRightArithmeticOp);
+      NoAttributeCase(kShiftRightLogical, ShiftRightLogicalOp);
+      NoAttributeCase(kSin, SinOp);
       NoAttributeCase(kSubtract, SubOp);
       NoAttributeCase(kTanh, TanhOp);
       NoAttributeCase(kTuple, TupleOp);
+      NoAttributeCase(kXor, XorOp);
       // TODO(b/129422361) Copy needs special handling because it is not defined
       // in tensorflow/compiler/xla/client/xla_builder.h.
       // See operation semantics in
@@ -508,32 +533,32 @@ StatusOr<mlir::RankedTensorType> HloFunctionImporter::ConvertTensorType(
 
   switch (type) {
     case PrimitiveType::PRED:
-      return builder_->getTensorType(array, builder_->getI1Type());
+      return mlir::RankedTensorType::get(array, builder_->getI1Type());
     case PrimitiveType::F16:
-      return builder_->getTensorType(array, builder_->getF16Type());
+      return mlir::RankedTensorType::get(array, builder_->getF16Type());
     case PrimitiveType::F32:
-      return builder_->getTensorType(array, builder_->getF32Type());
+      return mlir::RankedTensorType::get(array, builder_->getF32Type());
     case PrimitiveType::F64:
-      return builder_->getTensorType(array, builder_->getF64Type());
+      return mlir::RankedTensorType::get(array, builder_->getF64Type());
     case PrimitiveType::S8:
-      return builder_->getTensorType(array, builder_->getIntegerType(8));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
     case PrimitiveType::S16:
-      return builder_->getTensorType(array, builder_->getIntegerType(16));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
     case PrimitiveType::S32:
-      return builder_->getTensorType(array, builder_->getIntegerType(32));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
     case PrimitiveType::S64:
-      return builder_->getTensorType(array, builder_->getIntegerType(64));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
     // TODO(b/130356985): Update once MLIR supports unsigned integers.
     case PrimitiveType::U8:
-      return builder_->getTensorType(array, builder_->getIntegerType(8));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(8));
     case PrimitiveType::U16:
-      return builder_->getTensorType(array, builder_->getIntegerType(16));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(16));
     case PrimitiveType::U32:
-      return builder_->getTensorType(array, builder_->getIntegerType(32));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(32));
     case PrimitiveType::U64:
-      return builder_->getTensorType(array, builder_->getIntegerType(64));
+      return mlir::RankedTensorType::get(array, builder_->getIntegerType(64));
     case PrimitiveType::C64:
-      return builder_->getTensorType(
+      return mlir::RankedTensorType::get(
           array, mlir::ComplexType::get(builder_->getF32Type()));
     default:
       return tensorflow::errors::Internal(
@@ -607,28 +632,23 @@ mlir::DenseIntElementsAttr HloFunctionImporter::ConvertDimensions(
   for (auto value : op_dimensions) dimensions.emplace_back(APInt(64, value));
 
   return DenseIntElementsAttr::get(
-             builder_->getTensorType(dimensions.size(),
-                                     builder_->getIntegerType(64)),
-             dimensions)
-      .cast<DenseIntElementsAttr>();
+      RankedTensorType::get(dimensions.size(), builder_->getIntegerType(64)),
+      dimensions);
 }
 
 mlir::DenseIntElementsAttr HloFunctionImporter::Convert(
     llvm::ArrayRef<int64_t> op_dimensions) {
-  return builder_
-      ->getDenseIntElementsAttr(
-          builder_->getTensorType(op_dimensions.size(),
-                                  builder_->getIntegerType(64)),
-          op_dimensions)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get(op_dimensions.size(), builder_->getIntegerType(64)),
+      op_dimensions);
 }
 
 mlir::NamedAttribute HloFunctionImporter::ConvertPadding(
     llvm::ArrayRef<int64_t> padding) {
   auto ty =
-      builder_->getTensorType({2, static_cast<int64_t>(padding.size()) / 2},
-                              builder_->getIntegerType(64));
-  auto attr = builder_->getDenseIntElementsAttr(ty, padding);
+      mlir::RankedTensorType::get({2, static_cast<int64_t>(padding.size()) / 2},
+                                  builder_->getIntegerType(64));
+  auto attr = DenseIntElementsAttr::get(ty, padding);
   return builder_->getNamedAttr("padding", attr);
 }
 

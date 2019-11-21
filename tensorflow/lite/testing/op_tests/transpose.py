@@ -48,7 +48,7 @@ def make_transpose_tests(options):
 
   def build_graph(parameters):
     """Build a transpose graph given `parameters`."""
-    input_tensor = tf.placeholder(
+    input_tensor = tf.compat.v1.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
@@ -58,7 +58,7 @@ def make_transpose_tests(options):
       input_tensors = [input_tensor]
     else:
       shape = [len(parameters["perm"]), 2]
-      perm = tf.placeholder(dtype=tf.int32, name="perm", shape=shape)
+      perm = tf.compat.v1.placeholder(dtype=tf.int32, name="perm", shape=shape)
       input_tensors = [input_tensor, perm]
 
     out = tf.transpose(input_tensor, perm=perm)

@@ -35,6 +35,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Transforms/FoldUtils.h"
 #include "mlir/Transforms/Passes.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -191,7 +192,7 @@ using namespace mlir;
 ///    programmer/library: we derive information from scalar code + annotations.
 /// 2. After dependence analysis and before polyhedral scheduling: the
 ///    information that supports vectorization does not need to be supplied by a
-///    higher level of abstraction. Traditional dependence anaysis is available
+///    higher level of abstraction. Traditional dependence analysis is available
 ///    in MLIR and will be used to drive vectorization and cost models.
 ///
 /// Let's pause here and remark that applying super-vectorization as described
@@ -211,7 +212,7 @@ using namespace mlir;
 ///   operating on elemental vector types. For this reason, the pattern
 ///   profitability analysis should include a component that also captures the
 ///   maximal amount of fusion available under a particular pattern. This is
-///   still at the stage of rought ideas but in this context, search is our
+///   still at the stage of rough ideas but in this context, search is our
 ///   friend as the Tensor Comprehensions and auto-TVM contributions
 ///   demonstrated previously.
 /// Bottom-line is we do not yet have good answers for the above but aim at
@@ -253,8 +254,8 @@ using namespace mlir;
 ///  1. defining super-vectorization patterns and matching them on the tree of
 ///     AffineForOp. A super-vectorization pattern is defined as a recursive
 ///     data structures that matches and captures nested, imperfectly-nested
-///     loops that have a. comformable loop annotations attached (e.g. parallel,
-///     reduction, vectoriable, ...) as well as b. all contiguous load/store
+///     loops that have a. conformable loop annotations attached (e.g. parallel,
+///     reduction, vectorizable, ...) as well as b. all contiguous load/store
 ///     operations along a specified minor dimension (not necessarily the
 ///     fastest varying) ;
 ///  2. analyzing those patterns for profitability (TODO(ntv): and
@@ -482,7 +483,7 @@ using namespace mlir;
 /// --test-fastest-varying=1 --test-fastest-varying=0
 /// ```
 ///
-/// produces this more insteresting mixed outer-innermost-loop vectorized code:
+/// produces this more interesting mixed outer-innermost-loop vectorized code:
 /// ```mlir
 /// mlfunc @vector_add_2d(%arg0 : index, %arg1 : index) -> f32 {
 ///   %0 = alloc(%arg0, %arg1) : memref<?x?xf32>
@@ -718,6 +719,8 @@ struct VectorizationState {
   // Checks that the type of `op` is AffineStoreOp and adds it to the terminals
   // set.
   void registerTerminal(Operation *op);
+  // Folder used to factor out constant creation.
+  OperationFolder *folder;
 
 private:
   void registerReplacement(Value *key, Value *value);
@@ -772,7 +775,7 @@ static void computeMemoryOpIndices(Operation *op, AffineMap map,
   OpBuilder builder(op);
   for (auto resultExpr : map.getResults()) {
     auto singleResMap =
-        builder.getAffineMap(map.getNumDims(), map.getNumSymbols(), resultExpr);
+        AffineMap::get(map.getNumDims(), map.getNumSymbols(), resultExpr);
     auto afOp =
         builder.create<AffineApplyOp>(op->getLoc(), singleResMap, mapOperands);
     results.push_back(afOp);
@@ -832,7 +835,11 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
     LLVM_DEBUG(permutationMap.print(dbgs()));
     auto transfer = b.create<vector::VectorTransferReadOp>(
         opInst->getLoc(), vectorType, memoryOp.getMemRef(),
-        map(makePtrDynCaster<Value>(), indices), permutationMap);
+        map(makePtrDynCaster<Value>(), indices),
+        AffineMapAttr::get(permutationMap),
+        // TODO(b/144455320) add a proper padding value, not just 0.0 : f32
+        state->folder->create<ConstantFloatOp>(
+            b, opInst->getLoc(), llvm::APFloat(0.0f), b.getF32Type()));
     state->registerReplacement(opInst, transfer.getOperation());
   } else {
     state->registerTerminal(opInst);
@@ -1058,7 +1065,8 @@ static Operation *vectorizeOneOperation(Operation *opInst,
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
     auto transfer = b.create<vector::VectorTransferWriteOp>(
-        opInst->getLoc(), vectorValue, memRef, indices, permutationMap);
+        opInst->getLoc(), vectorValue, memRef, indices,
+        AffineMapAttr::get(permutationMap));
     auto *res = transfer.getOperation();
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ vectorized store: " << *res);
     // "Terminals" (i.e. AffineStoreOps) are erased on the spot.
@@ -1099,7 +1107,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
 
 /// Iterates over the forward slice from the loads in the vectorization pattern
 /// and rewrites them using their vectorized counterpart by:
-///   1. Create the forward slice starting from the laods in the vectorization
+///   1. Create the forward slice starting from the loads in the vectorization
 ///   pattern.
 ///   2. Topologically sorts the forward slice.
 ///   3. For each operation in the slice, create the vector form of this
@@ -1152,8 +1160,10 @@ static LogicalResult vectorizeNonTerminals(VectorizationState *state) {
 static LogicalResult vectorizeRootMatch(NestedMatch m,
                                         VectorizationStrategy *strategy) {
   auto loop = cast<AffineForOp>(m.getMatchedOperation());
+  OperationFolder folder(loop.getContext());
   VectorizationState state;
   state.strategy = strategy;
+  state.folder = &folder;
 
   // Since patterns are recursive, they can very well intersect.
   // Since we do not want a fully greedy strategy in general, we decouple

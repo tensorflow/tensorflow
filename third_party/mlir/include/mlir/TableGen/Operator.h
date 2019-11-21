@@ -124,6 +124,14 @@ public:
   // Returns the total number of arguments.
   int getNumArgs() const { return arguments.size(); }
 
+  using arg_iterator = const Argument *;
+  using arg_range = llvm::iterator_range<arg_iterator>;
+
+  // Op argument (attribute or operand) iterators.
+  arg_iterator arg_begin() const;
+  arg_iterator arg_end() const;
+  arg_range getArgs() const;
+
   // Op argument (attribute or operand) accessors.
   Argument getArg(int index) const;
   StringRef getArgName(int index) const;
@@ -163,6 +171,10 @@ public:
 
   // Returns the dialect of the op.
   const Dialect &getDialect() const { return dialect; }
+
+  // Prints the contents in this operator to the given `os`. This is used for
+  // debugging purposes.
+  void print(llvm::raw_ostream &os) const;
 
 private:
   // Populates the vectors containing operands, attributes, results and traits.

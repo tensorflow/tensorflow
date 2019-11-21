@@ -23,7 +23,6 @@ import threading
 
 import six
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.framework import ops
@@ -1217,11 +1216,7 @@ class ConditionalAccumulatorBase(object):
     if name is None:
       name = "%s_NumAccumulated" % self._name
 
-    if compat.forward_compatible(2019, 8, 8):
-      return gen_data_flow_ops.resource_accumulator_num_accumulated(
-          self._accumulator_ref, name=name)
-
-    return gen_data_flow_ops.accumulator_num_accumulated(
+    return gen_data_flow_ops.resource_accumulator_num_accumulated(
         self._accumulator_ref, name=name)
 
   def set_global_step(self, new_global_step, name=None):
@@ -1237,13 +1232,7 @@ class ConditionalAccumulatorBase(object):
     Returns:
       Operation that sets the accumulator's time step.
     """
-    if compat.forward_compatible(2019, 8, 8):
-      return gen_data_flow_ops.resource_accumulator_set_global_step(
-          self._accumulator_ref,
-          math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
-          name=name)
-
-    return gen_data_flow_ops.accumulator_set_global_step(
+    return gen_data_flow_ops.resource_accumulator_set_global_step(
         self._accumulator_ref,
         math_ops.cast(ops.convert_to_tensor(new_global_step), _dtypes.int64),
         name=name)
@@ -1276,23 +1265,15 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
       name: Optional name for the accumulator.
       reduction_type: Reduction type to use when taking the gradient.
     """
-    if compat.forward_compatible(2019, 8, 8):
-      accumulator_ref = gen_data_flow_ops.resource_conditional_accumulator(
-          dtype=dtype,
-          shape=shape,
-          shared_name=shared_name,
-          name=name,
-          reduction_type=reduction_type)
-      if context.executing_eagerly():
-        self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-            handle=accumulator_ref, handle_device=context.context().device_name)
-    else:
-      accumulator_ref = gen_data_flow_ops.conditional_accumulator(
-          dtype=dtype,
-          shape=shape,
-          shared_name=shared_name,
-          name=name,
-          reduction_type=reduction_type)
+    accumulator_ref = gen_data_flow_ops.resource_conditional_accumulator(
+        dtype=dtype,
+        shape=shape,
+        shared_name=shared_name,
+        name=name,
+        reduction_type=reduction_type)
+    if context.executing_eagerly():
+      self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
+          handle=accumulator_ref, handle_device=context.context().device_name)
 
     super(ConditionalAccumulator, self).__init__(dtype, shape, accumulator_ref)
 
@@ -1317,13 +1298,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     grad.get_shape().assert_is_compatible_with(self._shape)
     local_step = math_ops.cast(ops.convert_to_tensor(local_step), _dtypes.int64)
 
-    if compat.forward_compatible(2019, 8, 8):
-      return gen_data_flow_ops.resource_accumulator_apply_gradient(
-          self._accumulator_ref,
-          local_step=local_step,
-          gradient=grad,
-          name=name)
-    return gen_data_flow_ops.accumulator_apply_gradient(
+    return gen_data_flow_ops.resource_accumulator_apply_gradient(
         self._accumulator_ref, local_step=local_step, gradient=grad, name=name)
 
   def take_grad(self, num_required, name=None):
@@ -1348,12 +1323,8 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     Raises:
       InvalidArgumentError: If num_required < 1
     """
-    if compat.forward_compatible(2019, 8, 8):
-      out = gen_data_flow_ops.resource_accumulator_take_gradient(
-          self._accumulator_ref, num_required, dtype=self._dtype, name=name)
-    else:
-      out = gen_data_flow_ops.accumulator_take_gradient(
-          self._accumulator_ref, num_required, dtype=self._dtype, name=name)
+    out = gen_data_flow_ops.resource_accumulator_take_gradient(
+        self._accumulator_ref, num_required, dtype=self._dtype, name=name)
     out.set_shape(self._shape)
     return out
 

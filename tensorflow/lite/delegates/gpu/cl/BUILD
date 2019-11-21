@@ -272,6 +272,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/delegates/gpu:api",
+        "//tensorflow/lite/delegates/gpu:delegate",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",

@@ -351,4 +351,19 @@ TEST(OpVersionTest, VersioningFloorDivOperatorTest) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
 }
 
+TEST(OpVersionTest, VersioningTransposeConvOperatorTest) {
+  OpSignature fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .input_types =
+          std::vector<TensorType>{TensorType_FLOAT32, TensorType_UINT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
+
+  fake_op_sig = {
+      .op = BuiltinOperator_TRANSPOSE_CONV,
+      .input_types = std::vector<TensorType>{TensorType_INT8},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 2);
+}
+
 }  // namespace tflite

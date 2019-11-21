@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/experimental/micro/compatibility.h"
+#include "tensorflow/lite/experimental/micro/micro_optional_debug_tools.h"
 
 namespace tflite {
 namespace {
@@ -144,8 +145,10 @@ TfLiteStatus MicroInterpreter::RegisterPreallocatedInput(uint8_t* buffer,
 }
 
 TfLiteStatus MicroInterpreter::AllocateTensors() {
-  TfLiteStatus status = allocator_.AllocateTensors();
-  TF_LITE_ENSURE_OK(&context_, status);
+  TF_LITE_ENSURE_OK(&context_, allocator_.AllocateNodeAndRegistrations(
+                                   op_resolver_, &node_and_registrations_));
+  TF_LITE_ENSURE_OK(&context_, allocator_.FinishTensorAllocation());
+
   tensors_allocated_ = true;
   return kTfLiteOk;
 }
@@ -161,87 +164,31 @@ TfLiteStatus MicroInterpreter::Invoke() {
   if (!tensors_allocated_) {
     AllocateTensors();
   }
-  TfLiteStatus status = kTfLiteOk;
-  auto opcodes = model_->operator_codes();
+
+  // Init method is not yet implemented.
   for (size_t i = 0; i < operators_->size(); ++i) {
-    const auto* op = operators_->Get(i);
-    size_t index = op->opcode_index();
-    if (index < 0 || index >= opcodes->size()) {
-      error_reporter_->Report("Missing registration for opcode_index %d\n",
-                              index);
-      return kTfLiteError;
-    }
-    auto opcode = (*opcodes)[index];
-    const TfLiteRegistration* registration = nullptr;
-    status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
-                                       &registration);
-    if (status != kTfLiteOk) {
-      return status;
-    }
-    if (registration == nullptr) {
-      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
-      return kTfLiteError;
-    }
-    BuiltinOperator op_type =
-        static_cast<BuiltinOperator>(registration->builtin_code);
-
-    if (op_type != BuiltinOperator_CUSTOM && op->custom_options()) {
-      error_reporter_->Report(
-          "Unsupported behavior: found builtin operator %s with custom "
-          "options.\n",
-          EnumNameBuiltinOperator(op_type));
-      return kTfLiteError;
-    }
-    StackDataAllocator stack_data_allocator;
-    const char* custom_data = nullptr;
-    size_t custom_data_size = 0;
-    unsigned char* builtin_data = nullptr;
-    if (op->custom_options()) {
-      custom_data = reinterpret_cast<const char*>(op->custom_options()->data());
-      custom_data_size = op->custom_options()->size();
-    } else {
-      TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
-                                        &stack_data_allocator,
-                                        (void**)(&builtin_data)));
-    }
-
-    const char* init_data;
+    auto* node = &(node_and_registrations_[i].node);
+    auto* registration = node_and_registrations_[i].registration;
     size_t init_data_size;
+    const char* init_data;
     if (registration->builtin_code == BuiltinOperator_CUSTOM) {
-      init_data = custom_data;
-      init_data_size = custom_data_size;
+      init_data = reinterpret_cast<const char*>(node->custom_initial_data);
+      init_data_size = node->custom_initial_data_size;
     } else {
-      init_data = reinterpret_cast<const char*>(builtin_data);
+      init_data = reinterpret_cast<const char*>(node->builtin_data);
       init_data_size = 0;
     }
-    void* user_data = nullptr;
     if (registration->init) {
-      user_data = registration->init(&context_, init_data, init_data_size);
+      node->user_data =
+          registration->init(&context_, init_data, init_data_size);
     }
+  }
 
-    // Disregard const qualifier to workaround with existing API.
-    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
-    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
-        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
-
-    const int kMaxTemporaries = 16;
-    int temporaries_data[kMaxTemporaries + 1];
-    TfLiteIntArray* temporaries_array =
-        reinterpret_cast<TfLiteIntArray*>(temporaries_data);
-    temporaries_array->size = 0;
-
-    TfLiteNode node;
-    node.inputs = inputs_array;
-    node.outputs = outputs_array;
-    node.temporaries = temporaries_array;
-    node.user_data = user_data;
-    node.builtin_data = reinterpret_cast<void*>(builtin_data);
-    node.custom_initial_data = custom_data;
-    node.custom_initial_data_size = custom_data_size;
-    node.delegate = nullptr;
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    auto* node = &(node_and_registrations_[i].node);
+    auto* registration = node_and_registrations_[i].registration;
     if (registration->prepare) {
-      TfLiteStatus prepare_status = registration->prepare(&context_, &node);
+      TfLiteStatus prepare_status = registration->prepare(&context_, node);
       if (prepare_status != kTfLiteOk) {
         error_reporter_->Report(
             "Node %s (number %d) failed to prepare with status %d",
@@ -249,9 +196,14 @@ TfLiteStatus MicroInterpreter::Invoke() {
         return kTfLiteError;
       }
     }
+  }
+
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    auto* node = &(node_and_registrations_[i].node);
+    auto* registration = node_and_registrations_[i].registration;
 
     if (registration->invoke) {
-      TfLiteStatus invoke_status = registration->invoke(&context_, &node);
+      TfLiteStatus invoke_status = registration->invoke(&context_, node);
       if (invoke_status != kTfLiteOk) {
         error_reporter_->Report(
             "Node %s (number %d) failed to invoke with status %d",
@@ -259,12 +211,18 @@ TfLiteStatus MicroInterpreter::Invoke() {
         return kTfLiteError;
       }
     }
+  }
 
+  // This is actually a no-op.
+  // TODO(wangtz): Consider removing this code to slightly reduce binary size.
+  for (size_t i = 0; i < operators_->size(); ++i) {
+    auto* node = &(node_and_registrations_[i].node);
+    auto* registration = node_and_registrations_[i].registration;
     if (registration->free) {
-      registration->free(&context_, user_data);
+      registration->free(&context_, node->user_data);
     }
   }
-  return status;
+  return kTfLiteOk;
 }
 
 TfLiteTensor* MicroInterpreter::input(size_t index) {
@@ -297,6 +255,45 @@ TfLiteTensor* MicroInterpreter::tensor(size_t index) {
     return nullptr;
   }
   return &context_.tensors[index];
+}
+
+struct pairTfLiteNodeAndRegistration MicroInterpreter::node_and_registration(
+    int node_index) {
+  TfLiteStatus status = kTfLiteOk;
+  struct pairTfLiteNodeAndRegistration tfNodeRegiPair;
+  auto opcodes = model_->operator_codes();
+  {
+    const auto* op = operators_->Get(node_index);
+    size_t index = op->opcode_index();
+    if (index < 0 || index >= opcodes->size()) {
+      error_reporter_->Report("Missing registration for opcode_index %d\n",
+                              index);
+    }
+    auto opcode = (*opcodes)[index];
+    const TfLiteRegistration* registration = nullptr;
+    status = GetRegistrationFromOpCode(opcode, op_resolver_, error_reporter_,
+                                       &registration);
+    if (status != kTfLiteOk) {
+      error_reporter_->Report("Missing registration for opcode_index %d\n",
+                              index);
+    }
+    if (registration == nullptr) {
+      error_reporter_->Report("Skipping op for opcode_index %d\n", index);
+    }
+
+    // Disregard const qualifier to workaround with existing API.
+    TfLiteIntArray* inputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->inputs()));
+    TfLiteIntArray* outputs_array = const_cast<TfLiteIntArray*>(
+        reinterpret_cast<const TfLiteIntArray*>(op->outputs()));
+
+    TfLiteNode node;
+    node.inputs = inputs_array;
+    node.outputs = outputs_array;
+    tfNodeRegiPair.node = node;
+    tfNodeRegiPair.registration = registration;
+  }
+  return tfNodeRegiPair;
 }
 
 }  // namespace tflite

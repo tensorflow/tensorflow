@@ -81,49 +81,56 @@ class ExecuteNodeArgs : public EagerKernelArgs {
 
 class ExecuteNode : public EagerNode {
  public:
-  ExecuteNode(EagerContext* ctx,
-              const gtl::InlinedVector<TensorHandle*, 4>& inputs,
-              const absl::optional<int64> op_id,
-              core::RefCountPtr<KernelAndDevice> kernel,
-              GraphCollector* graph_collector,
-              const DataTypeVector& output_dtypes,
-              CancellationManager* cancellation_manager,
-              absl::Span<TensorHandle*> retvals)
+  ExecuteNode(
+      EagerContext* ctx, const gtl::InlinedVector<TensorHandle*, 4>& inputs,
+      const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
+      core::RefCountPtr<KernelAndDevice> kernel,
+      GraphCollector* graph_collector, const DataTypeVector& output_dtypes,
+      CancellationManager* cancellation_manager, bool async,
+      absl::Span<TensorHandle*> retvals)
       : EagerNode(),
         ctx_(ctx),
         inputs_(inputs),
-        op_id_(op_id),
+        remote_func_params_(remote_func_params),
         kernel_(std::move(kernel)),
         graph_collector_(graph_collector),
-        cancellation_manager_(cancellation_manager) {
+        cancellation_manager_(cancellation_manager),
+        async_(async) {
     // Copy the output handles, since the container for them might get
     // destroyed.
     for (auto handle : retvals) {
-      handle->Ref();
       retvals_.push_back(handle);
     }
 
-    // This is required to ensure that the tensor handles stay alive across the
-    // execution.
-    for (auto handle : inputs_) {
-      handle->Ref();
+    if (async_) {
+      // This is required to ensure that the tensor handles stay alive across
+      // the execution.
+      for (auto handle : inputs_) {
+        handle->Ref();
+      }
+
+      for (auto handle : retvals_) {
+        handle->Ref();
+      }
     }
   }
 
   ~ExecuteNode() override {
-    for (auto handle : retvals_) {
-      handle->Unref();
-    }
+    if (async_) {
+      for (auto handle : retvals_) {
+        handle->Unref();
+      }
 
-    for (auto handle : inputs_) {
-      handle->Unref();
+      for (auto handle : inputs_) {
+        handle->Unref();
+      }
     }
   }
 
   Status Run() override {
-    const Status status =
-        EagerKernelExecute(ctx_, inputs_, op_id_, kernel_, graph_collector_,
-                           cancellation_manager_, absl::MakeSpan(retvals_));
+    const Status status = EagerKernelExecute(
+        ctx_, inputs_, remote_func_params_, kernel_, graph_collector_,
+        cancellation_manager_, absl::MakeSpan(retvals_));
     if (!status.ok()) {
       Abort(status);
       return status;
@@ -148,10 +155,11 @@ class ExecuteNode : public EagerNode {
  private:
   EagerContext* ctx_;
   gtl::InlinedVector<TensorHandle*, 4> inputs_;
-  const absl::optional<int64> op_id_;
+  const absl::optional<EagerRemoteFunctionParams> remote_func_params_;
   core::RefCountPtr<KernelAndDevice> kernel_;
   GraphCollector* graph_collector_;
   CancellationManager* const cancellation_manager_;
+  const bool async_;
   gtl::InlinedVector<TensorHandle*, 2> retvals_;
 };
 

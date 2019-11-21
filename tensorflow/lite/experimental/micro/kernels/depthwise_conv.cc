@@ -35,7 +35,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 64;
+constexpr int kMaxChannels = 256;
 
 struct OpData {
   TfLitePaddingValues padding;
@@ -78,6 +78,16 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
     const TfLiteTensor* bias =
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+
+    // Ensure filter and bias channel count does not exceed space reserved for
+    // quantization metadata.
+    const auto filter_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    const auto bias_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(bias->quantization.params);
+    TF_LITE_ENSURE(context, filter_quantization->scale->size <= kMaxChannels);
+    TF_LITE_ENSURE(context, bias_quantization->scale->size <= kMaxChannels);
 
     TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, params->activation,
@@ -211,7 +221,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   OpData data;
 
-  if (input->type != kTfLiteFloat32) {
+  // All per-channel quantized tensors need valid zero point and scale arrays.
+  if (input->type == kTfLiteInt8) {
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
 
@@ -220,12 +231,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             filter->quantization.params);
     TF_LITE_ENSURE(context, affine_quantization);
     TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context, affine_quantization->zero_point);
+    // Depthwise conv is quantized along dimension 3:
+    // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
+                      affine_quantization->scale->size);
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[3],
+                      affine_quantization->zero_point->size);
   }
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, node, params, width, height,
                                         filter_width, filter_height, data_type,
                                         &data));
-
   // TODO(aselle): Consider whether float conv and quantized conv should be
   // separate ops to avoid dispatch overhead here.
   switch (input->type) {  // Already know in/out types are same.

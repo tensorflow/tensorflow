@@ -13,12 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef HLO_OPS_BASE
-#else
+#ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
-#ifdef OP_BASE
-#else
+#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
@@ -72,6 +70,15 @@ class BASE_HLO_CeilOp {
   }];
 }
 
+class BASE_HLO_ComplexOp {
+  string summary = "Complex operator";
+
+  string description = [{
+    Performs element-wise conversion of a pair of real and imaginary values to
+    a complex value.
+  }];
+}
+
 class BASE_HLO_ConvertOp {
   string summary = "Convert operator";
 
@@ -105,6 +112,17 @@ class BASE_HLO_ExpOp {
   }];
 }
 
+class BASE_HLO_Expm1Op {
+  string summary = "Exponential minus one operator";
+
+  string description = [{
+    Returns `e^(operand) - 1` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_FloorOp {
   string summary = "Floor operator";
 
@@ -113,6 +131,14 @@ class BASE_HLO_FloorOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_ImagOp {
+  string summary = "Imag operator";
+
+  string description = [{
+    Returns `Imag(operand)` element-wise.
   }];
 }
 
@@ -127,6 +153,17 @@ class BASE_HLO_LogOp {
   }];
 }
 
+class BASE_HLO_Log1pOp {
+  string summary = "Log1p operator";
+
+  string description = [{
+    Returns `log(operand+1)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
 class BASE_HLO_NegOp {
   string summary = "Negation operator";
 
@@ -135,6 +172,36 @@ class BASE_HLO_NegOp {
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_NotOp {
+  string summary = "Not operator";
+
+  string description = [{
+    Returns `!operand` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_PopulationCountOp {
+  string summary = "PopulationCount operator";
+
+  string description = [{
+    Returns the number of bits set in each operand element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_RealOp {
+  string summary = "Real operator";
+
+  string description = [{
+    Returns `Real(operand)` element-wise.
   }];
 }
 
@@ -162,6 +229,28 @@ class BASE_HLO_SignOp {
             = +0  : x = +0
             = 1   : x > 0
     ```
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_SinOp {
+  string summary = "Sin operator";
+
+  string description = [{
+    Returns `Sin(operand)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
+  }];
+}
+
+class BASE_HLO_SqrtOp {
+  string summary = "Square-root operator";
+
+  string description = [{
+    Returns `sqrt(operand)` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
@@ -243,6 +332,16 @@ class BASE_HLO_MulOp {
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
   }];
 }
+class BASE_HLO_PowOp {
+  string summary = "Power operator";
+
+  string description = [{
+    Returns `lhs ^ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
 
 class BASE_HLO_RemOp {
   string summary = "Remainder operator";
@@ -266,6 +365,50 @@ class BASE_HLO_SubOp {
   }];
 }
 
+class BASE_HLO_ShiftLeftOp {
+  string summary = "Shift Left operator";
+
+  string description = [{
+    Returns `lhs << rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ShiftRightArithmeticOp {
+  string summary = "Shift right arithmetic operator";
+
+  string description = [{
+    Returns arithmetic `lhs >> rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_ShiftRightLogicalOp {
+  string summary = "Shift right logical operator";
+
+  string description = [{
+    Returns logical `lhs >> rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_Atan2Op {
+  string summary = "Atan2 operator";
+
+  string description = [{
+    Returns `atan2(lhs/rhs)` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
 class BASE_HLO_AndOp {
   string summary = "Logical and";
 
@@ -282,6 +425,17 @@ class BASE_HLO_OrOp {
 
   string description = [{
     Returns `lhs \/ rhs` element-wise.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
+  }];
+}
+
+class BASE_HLO_XorOp {
+  string summary = "Logical xor";
+
+  string description = [{
+    Returns `lhs xor rhs` element-wise.
 
     See
     https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations.
@@ -510,6 +664,22 @@ class BASE_HLO_ConcatenateOp {
    }];
 }
 
+class BASE_HLO_CrossReplicaSumOp {
+   string summary = "Sums input across replicated instances.";
+
+   string description = [{
+     For each of the replica groups, operands of the group devices are summed
+     so that each device has the sum.
+
+     For example, suppose there are 8 TPU devices: `[A, B, C, D, E, F, G, H]`.
+     Passing group_assignment=`[[0,2,4,6],[1,3,5,7]]` sets `A, C, E, G` as group 0,
+     and `B, D, F, H` as group 1. Thus we get the outputs:
+     `[A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H, A+C+E+G, B+D+F+H]`.
+
+     See https://www.tensorflow.org/xla/operation_semantics#crossreplicasum.
+   }];
+}
+
 class BASE_HLO_ConvOp {
   string summary = "Convolution operator";
 
@@ -578,13 +748,7 @@ class BASE_HLO_SelectOp {
     Constructs an output tensor from the elements of `on_true` and `on_false`
     based on the values of `pred`.
 
-    `on_true` and `on_false` must be the same shape. For each element of `pred`,
-    `res` has the corresponding element of `on_true` or `on_false` depending on
-    the value in `pred`. `pred` must be the same shape as `on_true` and
-    `on_false` or a scalar, in which case `res` is equal to either `on_true` or
-    `on_false`.
-
-    See https://www.tensorflow.org/xla/operation_semantics#select.
+    `pred`, `on_true` and `on_false` must be broadcast compatible.
   }];
 }
 
