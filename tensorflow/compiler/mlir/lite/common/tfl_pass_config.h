@@ -53,6 +53,9 @@ struct PassConfig {
   // are formed by grouping consecutive ops of the same device, under a
   // `tf_device.launch` op.
   bool form_clusters;
+  // Inline function calls within the main function in the MLIR module, prior
+  // to legalization to TFLite.
+  bool inline_functions;
 };
 
 }  // namespace TFL
