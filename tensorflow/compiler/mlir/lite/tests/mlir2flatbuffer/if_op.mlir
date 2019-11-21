@@ -4,26 +4,29 @@
 // CHECK: {
 // CHECK-NEXT:   version: 3,
 // CHECK-NEXT:   operator_codes: [ {
-// CHECK-NEXT:     builtin_code: LESS
+// CHECK-NEXT:     builtin_code: LESS,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: IF
+// CHECK-NEXT:     builtin_code: IF,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-EMPTY:
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   }, {
-// CHECK-NEXT:     builtin_code: MUL
+// CHECK-NEXT:     builtin_code: MUL,
+// CHECK-NEXT:     version: 1
 // CHECK-NEXT:   } ],
 // CHECK-NEXT:   subgraphs: [ {
 // CHECK-NEXT:     tensors: [ {
 // CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       buffer: 1,
-// CHECK-NEXT:       name: "tfl.pseudo_input",
+// CHECK-NEXT:       name: "arg0",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }, {
 // CHECK-NEXT:       shape: [ 1 ],
 // CHECK-NEXT:       buffer: 2,
-// CHECK-NEXT:       name: "tfl.pseudo_input1",
+// CHECK-NEXT:       name: "arg1",
 // CHECK-NEXT:       quantization: {
 // CHECK-EMPTY:
 // CHECK-NEXT:       }
@@ -157,11 +160,9 @@
 // CHECK-NEXT: }
 
 func @main(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
-  %0 = "tfl.pseudo_input"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
-  %1 = "tfl.pseudo_input"(%arg1) : (tensor<1xf32>) -> tensor<1xf32>
-  %2 = "tfl.less"(%0, %1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xi1>
-  %3 = "tf.If"(%2, %0, %1) {else_branch = @cond_false, then_branch = @cond_true, is_stateless = false} : (tensor<1xi1>, tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
-  return %3 : tensor<1xf32>
+  %0 = "tfl.less"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xi1>
+  %1 = "tf.If"(%0, %arg0, %arg1) {else_branch = @cond_false, then_branch = @cond_true, is_stateless = false} : (tensor<1xi1>, tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  return %1 : tensor<1xf32>
 }
 
 func @cond_true(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {

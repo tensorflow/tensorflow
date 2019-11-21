@@ -39,20 +39,40 @@ class MlirIrGenTestBase : public CodegenTestBase {
   // steps to LLVM IR are applied; otherwise, the IR before lowering is
   // matched.
   void CompileAndVerifyIr(std::unique_ptr<HloModule> hlo_module,
-                          const string& pattern,
-                          LoweringStage stage = LoweringStage::LHLO);
+                          const string& pattern, LoweringStage printing_stage);
 
   // A thin wrapper around CompileAndVerifyIr that parses `hlo_text` to create
   // an HLO module.
   void CompileAndVerifyIr(const string& hlo_text,
                           const string& expected_llvm_ir,
-                          LoweringStage stage = LoweringStage::LHLO);
+                          LoweringStage printing_stage = LoweringStage::LHLO);
 
   // Compiles and returns module with optimizations from a given HLO.
   StatusOr<std::unique_ptr<HloModule>> GetOptimizedModule(
       absl::string_view hlo);
 
+  // Adds the InjectErrorsForTestingPass to MLIRCompiler on the provided
+  // lowering stage, compiles the given HLO module, and returns a string
+  // representation of all the errors occurred during compiling.
+  StatusOr<string> CompileAndInjectErrors(std::unique_ptr<HloModule> hlo_module,
+                                          LoweringStage breaking_stage);
+
+  // Adds the InjectErrorsForTestingPass to MLIRCompiler on the provided
+  // lowering stage, parses and compiles `hlo_text`, and verifies that the
+  // string representation of all the errors occurred during compiling matches
+  // the given pattern.
+  void CompileAndVerifyErrors(const string& hlo_text,
+                              const string& expected_errors,
+                              LoweringStage breaking_stage);
+
  private:
+  void CompileIr(std::unique_ptr<HloModule> hlo_module,
+                 const MlirCompiler::IRHook& ir_hook);
+  void PatternMatch(const string& str, const string& pattern);
+  string CompileIr(std::unique_ptr<HloModule> hlo_module,
+                   LoweringStage printing_stage);
+  MlirCompiler::IRHook getIRHookBreakingLoweringStage(
+      LoweringStage breaking_stage);
   MlirCompiler* GetMLIRCompiler();
 };
 

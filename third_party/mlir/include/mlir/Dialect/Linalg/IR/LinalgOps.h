@@ -44,15 +44,18 @@ namespace linalg {
 ///
 /// Examples:
 ///
-/// 1. linalg.fill(%A, %f) : !linalg.view<f32>, f32
+/// 1. linalg.fill(%A, %f) : memref<f32>, f32
 ///   name mangles into `linalg_fill_viewf32_f32_impl`
 ///
 /// 2. linalg.dot(%A, %B, %C) :
-///      !linalg.view<?xf32>, !linalg.view<?xf32>, !linalg.view<f32>
+///      memref<?xf32, stride_specification>,
+///      memref<?xf32, stride_specification>, memref<f32>
 ///   name mangles into `linalg_dot_viewxf32_viewxf32_viewf32_impl`
 ///
 /// 3. linalg.matmul(...) :
-///      !linalg.view<?x?xf32>, !linalg.view<?x?xf32>, !linalg.view<?x?xf32>
+///      memref<?x?xf32, stride_specification>,
+///      memref<?x?xf32, stride_specification>,
+///      memref<?x?xf32, stride_specification>
 ///   name mangles into `linalg_matmul_viewxxf32_viewxxf32_viewxxf32_impl`
 std::string generateLibraryCallName(Operation *op);
 
@@ -82,7 +85,6 @@ SmallVector<AffineMap, 4> loopToOperandRangesMaps(Operation *op);
 #define GET_OP_CLASSES
 #include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.h.inc"
 
-llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
 
 } // namespace linalg
 } // namespace mlir

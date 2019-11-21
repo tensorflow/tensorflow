@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
@@ -36,6 +37,9 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/lite/utils/lstm_utils.h"
+
+// NOLINTNEXTLINE
 
 namespace mlir {
 namespace TFL {
@@ -47,11 +51,8 @@ class ConvertEmbeddedLookupFunc {
   explicit ConvertEmbeddedLookupFunc(FuncOp func) : func_(func) {}
 
   void RewriteFunc() {
-    func_.eraseBody();
-    func_.addEntryBlock();
-    func_.setAttr(
-        "tf._implements",
-        StringAttr::get("fused_tfl_embedding_lookup", func_.getContext()));
+    func_.setAttr(kTFImplements,
+                  StringAttr::get("embedding_lookup", func_.getContext()));
     Value* lookup = func_.getArgument(1);
     Value* value = func_.getArgument(0);
     auto output_type = func_.getType().getResult(0);
@@ -96,24 +97,40 @@ class PrepareCompositeFunctionsPass
 };
 
 void PrepareCompositeFunctionsPass::runOnFunction() {
-  // TODO(ashwinm): Explore if we can generalize this pass by simply taking
-  // a map<func annotation, tfl op> and doing the transform. This should be
-  // revisited after we add LSTM composite op to this pass.
   auto func = getFunction();
-  auto attr = func.getAttrOfType<StringAttr>("tf._implements");
-  if (!attr || attr.getValue() != "embedding_matmul") return;
-  // Convert the composite embedding_matmul function body to a
-  // TFLite fused embedding_lookup op.
-  ConvertEmbeddedLookupFunc convert_embedded_lookup(func);
-  if (failed(convert_embedded_lookup.VerifySignature())) {
-    return signalPassFailure();
+  auto attr = func.getAttrOfType<StringAttr>(kTFImplements);
+  if (!attr) return;
+  if (attr.getValue() == "embedding_matmul") {
+    func.eraseBody();
+    func.addEntryBlock();
+    // Convert the composite embedding_matmul function body to a
+    // TFLite fused embedding_lookup op.
+    ConvertEmbeddedLookupFunc convert_embedded_lookup(func);
+    if (failed(convert_embedded_lookup.VerifySignature())) {
+      return signalPassFailure();
+    }
+    convert_embedded_lookup.RewriteFunc();
+  } else if (attr.getValue() == mlir::TFL::kLstmCellSimple) {
+    func.eraseBody();
+    func.addEntryBlock();
+    ConvertLSTMCellSimpleToFusedLSTM convert_lstm_cell_simple(func);
+    if (failed(convert_lstm_cell_simple.RewriteFunc())) {
+      return signalPassFailure();
+    }
+  } else if (attr.getValue() == mlir::TFL::kLayerNormalizedLstmCellSimple) {
+    func.eraseBody();
+    func.addEntryBlock();
+    ConvertLayerNormalizedLSTMCellSimpleToFusedLSTM
+        convert_layer_norm_lstm_cell_simple(func);
+    if (failed(convert_layer_norm_lstm_cell_simple.RewriteFunc())) {
+      return signalPassFailure();
+    }
   }
-  convert_embedded_lookup.RewriteFunc();
 }
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreatePrepareCompositeFunctionsPass() {
-  return std::unique_ptr<PrepareCompositeFunctionsPass>();
+std::unique_ptr<OpPassBase<FuncOp>> CreatePrepareCompositeFunctionsPass() {
+  return std::make_unique<PrepareCompositeFunctionsPass>();
 }
 
 static PassRegistration<PrepareCompositeFunctionsPass> pass(

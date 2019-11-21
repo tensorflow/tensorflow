@@ -1,12 +1,16 @@
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
+        "//tensorflow/core:__pkg__",
+        # tensorflow/core/lib/random uses on gtl:array_slice
+        "//tensorflow/core/lib/random:__pkg__",
+        # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
+        "//tensorflow/core/lib/strings:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Todo(bmzhao): Remaining targets to add to this BUILD file are:
-# compactptrset, flatmap, flatset, manual_constructor, + all tests.
+# Todo(bmzhao): Remaining targets to add to this BUILD file are: all tests.
 
 cc_library(
     name = "array_slice",
@@ -24,6 +28,12 @@ cc_library(
 )
 
 cc_library(
+    name = "compactptrset",
+    hdrs = ["compactptrset.h"],
+    deps = ["//tensorflow/core/lib/gtl:flatset"],
+)
+
+cc_library(
     name = "edit_distance",
     hdrs = ["edit_distance.h"],
     deps = [
@@ -33,10 +43,32 @@ cc_library(
 )
 
 cc_library(
+    name = "flatmap",
+    hdrs = ["flatmap.h"],
+    deps = [
+        "//tensorflow/core/lib/gtl:flatrep",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
     name = "flatrep",
     hdrs = ["flatrep.h"],
     deps = [
         "//tensorflow/core/platform:prefetch",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
+cc_library(
+    name = "flatset",
+    hdrs = ["flatset.h"],
+    deps = [
+        "//tensorflow/core/lib/gtl:flatrep",
+        "//tensorflow/core/lib/hash",
+        "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
     ],
 )
@@ -63,7 +95,15 @@ cc_library(
 cc_library(
     name = "iterator_range",
     hdrs = ["iterator_range.h"],
-    deps = [],
+)
+
+cc_library(
+    name = "manual_constructor",
+    hdrs = ["manual_constructor.h"],
+    deps = [
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
+    ],
 )
 
 cc_library(
@@ -84,13 +124,6 @@ cc_library(
 cc_library(
     name = "priority_queue_util",
     hdrs = ["priority_queue_util.h"],
-    deps = [],
-)
-
-cc_library(
-    name = "stl_util",
-    hdrs = ["stl_util.h"],
-    deps = ["@com_google_absl//absl/meta:type_traits"],
 )
 
 cc_library(
@@ -123,7 +156,6 @@ filegroup(
         "iterator_range.h",
         "manual_constructor.h",
         "map_util.h",
-        "stl_util.h",
         "top_n.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -162,7 +194,6 @@ filegroup(
         "map_util.h",
         "optional.h",
         "priority_queue_util.h",
-        "stl_util.h",
         "subtle/map_traits.h",
         "top_n.h",
     ],

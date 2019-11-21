@@ -38,6 +38,7 @@ limitations under the License.
 #define DISABLED_ON_GPU(X) X
 #define DISABLED_ON_GPU_ROCM(X) X
 #define DISABLED_ON_INTERPRETER(X) X
+#define DISABLED_ON_INTERPRETER_TSAN(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -66,6 +67,12 @@ limitations under the License.
 #ifdef XLA_TEST_BACKEND_INTERPRETER
 # undef DISABLED_ON_INTERPRETER
 # define DISABLED_ON_INTERPRETER(X) XLA_TEST_PASTE(DISABLED_, X)
+
+#ifdef THREAD_SANITIZER
+# undef DISABLED_ON_INTERPRETER_TSAN
+# define DISABLED_ON_INTERPRETER_TSAN(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // THREAD_SANITIZER
+
 #endif  // XLA_TEST_BACKEND_INTERPRETER
 
 // clang-format on

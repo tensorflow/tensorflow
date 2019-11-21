@@ -156,6 +156,15 @@ Shape TypeToShape(mlir::Type type) {
         return ShapeUtil::MakeShape(primitive_type, span);
       break;
     }
+    case mlir::StandardTypes::Tuple: {
+      const auto t = type.cast<mlir::TupleType>();
+      llvm::SmallVector<Shape, 4> shapes;
+      shapes.reserve(t.size());
+      for (mlir::Type sub_type : t.getTypes()) {
+        shapes.push_back(TypeToShape(sub_type));
+      }
+      return ShapeUtil::MakeTupleShape(shapes);
+    }
     default:
       break;
   }

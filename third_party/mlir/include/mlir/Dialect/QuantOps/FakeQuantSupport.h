@@ -62,6 +62,14 @@ UniformQuantizedType fakeQuantAttrsToType(Location loc, unsigned numBits,
                                           bool narrowRange, Type expressedType,
                                           bool isSigned = false);
 
+/// Converts per-channel FakeQuant attributes to the corresponding type.
+/// In the event that the parameters cannot be converted, returns a nullptr
+/// convertible Type and issues an appropriate error.
+UniformQuantizedPerAxisType
+fakeQuantAttrsToType(Location loc, unsigned numBits, int32_t quantizedDimension,
+                     ArrayRef<double> rmins, ArrayRef<double> rmax,
+                     bool narrowRange, Type expressedType,
+                     bool isSigned = false);
 } // namespace quant
 } // namespace mlir
 

@@ -287,6 +287,9 @@ class CrossDeviceOps(object):
     Reduce each first element in `value_destination_pairs` to each second
     element which indicates the destinations.
 
+    This can be faster than multiple individual `reduce`s because we can
+    fuse several tensors into one or multiple packs before reduction.
+
     Args:
       reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
         the `per_replica_value` will be reduced.
@@ -1008,7 +1011,8 @@ class CollectiveAllReduce(CrossDeviceOps):
                num_workers=1,
                num_gpus_per_worker=0,
                num_packs=1,
-               collective_keys=None):
+               collective_keys=None,
+               communication=CollectiveCommunication.AUTO):
     """Initializes the object.
 
     Args:
@@ -1016,12 +1020,14 @@ class CollectiveAllReduce(CrossDeviceOps):
       num_gpus_per_worker: number of GPUs per worker.
       num_packs: gradients will be packed into `num_packs` chunks.
       collective_keys: an optional CollectiveKey object.
+      communication: indicates which collective communication to use.
     """
     self._num_workers = num_workers
     self._num_gpus_per_worker = num_gpus_per_worker
     self._num_packs = num_packs
     self._collective_keys = (collective_keys or
                              cross_device_utils.CollectiveKeys())
+    self._communication = communication
     super(CollectiveAllReduce, self).__init__()
 
   @property
@@ -1084,6 +1090,10 @@ class CollectiveAllReduce(CrossDeviceOps):
     #  ...
     # ]
 
+    # No chunking if number of variables is fewer than number of packs.
+    if len(chunked_by_var) < num_packs:
+      return [chunked_by_var]
+
     # First n-1 chunks get `chunk_size` grads, last chunk gets leftover grads.
     # This strategy can cause the last chunk to have larger size compared to the
     # first n-1 chunks.  Alternatively, we can increment chunk_size by 1 to get
@@ -1119,11 +1129,22 @@ class CollectiveAllReduce(CrossDeviceOps):
   def _do_batch_all_reduce_dense(self, reduce_op, per_replica_values):
     """All-reduce across all workers in a batch."""
 
+    chunked_gv = self._make_gradient_chunks(per_replica_values, self._num_packs)
+
+    batch_size = len(per_replica_values)
+    # Pass self._communication to the runtime as a communication hint.
+    communication_hint = self._communication.value
+    # For now, we use NCCL only when batch_size > 1 and num_packs is 1.
+    # TODO(b/132575814): switch to NCCL for all collectives when communication
+    # is NCCL.
+    if self._communication == CollectiveCommunication.NCCL and (
+        batch_size == 1 or self._num_packs != 1):
+      communication_hint = CollectiveCommunication.AUTO.value
+
     logging.log_first_n(
         logging.INFO, "Collective batch_all_reduce: %d all-reduces, "
-        "num_workers = %d" % (len(per_replica_values), self._num_workers), 10)
-
-    chunked_gv = self._make_gradient_chunks(per_replica_values, self._num_packs)
+        "num_workers = %d, communication_hint = %s" % (
+            batch_size, self._num_workers, communication_hint), 10)
 
     reduced_gv_list = []
     for chunk in chunked_gv:
@@ -1136,7 +1157,7 @@ class CollectiveAllReduce(CrossDeviceOps):
           scaled_grads = [g for g, _ in grad_and_vars]
           collective_reduced = cross_device_utils.build_collective_reduce(
               scaled_grads, self._num_workers, self._collective_keys, "Add",
-              "Id")
+              "Id", communication_hint)
           result = []
           for (_, v), g in zip(grad_and_vars, collective_reduced):
             result.append([g, v])
@@ -1205,13 +1226,24 @@ def choose_the_best(devices, session_config=None):
   Args:
     devices: a list of devices passed to `tf.distribute.Strategy`.
     session_config: a `tf.compat.v1.ConfigProto` or `None`. If `None`, it will
-      make decision based on all local devices.
+      make decision based on all logical devices.
 
   Returns:
     A subclass of `CrossDeviceOps`.
   """
   requested_devices = set([device_util.canonicalize(d) for d in devices])
-  machine_devices = device_lib.list_local_devices(session_config=session_config)
+  if ops.executing_eagerly_outside_functions():
+    logical_gpus = context.context().list_logical_devices(device_type="GPU")
+    physical_gpus = context.context().list_physical_devices(device_type="GPU")
+    if len(logical_gpus) != len(physical_gpus):
+      logging.warning("NCCL is not supported when using virtual GPUs, falling"
+                      "back to reduction to one device")
+      return ReductionToOneDevice()
+
+    machine_devices = context.context().list_logical_devices()
+  else:
+    machine_devices = device_lib.list_local_devices(
+        session_config=session_config)
   using_devices = set()
   for d in machine_devices:
     if device_util.canonicalize(d.name) in requested_devices:
@@ -1221,11 +1253,10 @@ def choose_the_best(devices, session_config=None):
     logging.warning(
         "Some requested devices in `tf.distribute.Strategy` are not visible "
         "to TensorFlow: %s", ",".join(list(requested_devices - using_devices)))
-    return ReductionToOneDevice()
 
-  if any("gpu" not in d.lower() for d in using_devices):
-    logging.warning("There is non-GPU devices in `tf.distribute.Strategy`, not "
-                    "using nccl allreduce.")
+  if any("gpu" not in d.lower() for d in requested_devices):
+    logging.warning("There are non-GPU devices in `tf.distribute.Strategy`, "
+                    "not using nccl allreduce.")
     return ReductionToOneDevice()
 
   if kernels.get_registered_kernels_for_op("NcclAllReduce"):

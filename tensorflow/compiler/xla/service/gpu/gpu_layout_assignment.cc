@@ -58,6 +58,12 @@ HeuristicLayoutAssignment(const HloInstruction* instr,
       std::make_tuple(DataLayout::kBatchYXDepth, FilterLayout::kOutputYXInput,
                       DataLayout::kBatchYXDepth);
 
+  // Integer convolution must use NHWC.
+  if (primitive_util::IsIntegralType(
+          instr->operand(0)->shape().element_type())) {
+    return kAllNHWC;
+  }
+
   const DebugOptions& debug_options =
       instr->GetModule()->config().debug_options();
 

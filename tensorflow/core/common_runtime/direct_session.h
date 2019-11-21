@@ -125,6 +125,8 @@ class DirectSession : public Session {
 
   ::tensorflow::Status ReleaseCallable(CallableHandle handle) override;
 
+  ::tensorflow::Status Finalize() override;
+
   const SessionOptions& options() const { return options_; }
 
  private:
@@ -134,7 +136,7 @@ class DirectSession : public Session {
   // We create one executor and its dependent library runtime for
   // every partition.
   struct PerPartitionExecutorsAndLib {
-    Graph* graph = nullptr;                  // not owned.
+    std::unique_ptr<Graph> graph = nullptr;
     Device* device = nullptr;                // not owned.
     FunctionLibraryRuntime* flib = nullptr;  // not owned.
     std::unique_ptr<Executor> executor;
@@ -184,36 +186,42 @@ class DirectSession : public Session {
     std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr;
   };
 
-  // For each live partial execution, the session maintains a RunState.
-  // 'status' is the current status of this partial execution. 'executor_done'
-  // is "notified" when all executors are done. 'pending_inputs' are the set
-  // of pending feeds and 'pending_outputs' are the set of pending fetches.
+  // For each live Run() call, the session maintains a RunState.
+  // 'status' is the current status of the execution.
   struct RunState {
-    mutex mu_;
-    Status status GUARDED_BY(mu_);
-    IntraProcessRendezvous* rendez = nullptr;
+    mutex mu;
+    Status status GUARDED_BY(mu);
+    core::RefCountPtr<IntraProcessRendezvous> rendez = nullptr;
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
-    Notification executors_done;
-    std::unordered_map<string, bool> pending_inputs;   // true if fed
-    std::unordered_map<string, bool> pending_outputs;  // true if fetched
     TensorStore tensor_store;
     ScopedStepContainer step_container;
 
     RunState(int64 step_id, const std::vector<Device*>* devices);
+  };
 
-    RunState(const std::vector<string>& pending_input_names,
-             const std::vector<string>& pending_output_names, int64 step_id,
-             const std::vector<Device*>* devices);
+  // For each live partial execution, the session maintains a PartialRunState.
+  // 'executor_done' is "notified" when all executors are done. 'pending_inputs'
+  // are the set of pending feeds and 'pending_outputs' are the set of pending
+  // fetches.
+  struct PartialRunState : public RunState {
+    Notification executors_done;
+    std::unordered_map<string, bool> pending_inputs;   // true if fed
+    std::unordered_map<string, bool> pending_outputs;  // true if fetched
+
+    PartialRunState(const std::vector<string>& pending_input_names,
+                    const std::vector<string>& pending_output_names,
+                    int64 step_id, const std::vector<Device*>* devices);
 
     // Returns true if all pending inputs and outputs have been completed.
     bool PendingDone() const;
 
-    ~RunState();
+    ~PartialRunState();
   };
 
   struct RunStateArgs {
-    RunStateArgs(const DebugOptions& options) : debug_options(options) {}
+    explicit RunStateArgs(const DebugOptions& options)
+        : debug_options(options) {}
 
     bool is_partial_run = false;
     string handle;
@@ -282,7 +290,8 @@ class DirectSession : public Session {
   ::tensorflow::Status CheckFetch(
       const std::vector<std::pair<string, Tensor>>& feeds,
       const std::vector<string>& fetches,
-      const ExecutorsAndKeys* executors_and_keys, const RunState* run_state);
+      const ExecutorsAndKeys* executors_and_keys,
+      const PartialRunState* run_state);
 
   // Use the appropriate WaitForNotification function based on whether
   // operation_timeout_in_ms is greater than 0.
@@ -290,8 +299,8 @@ class DirectSession : public Session {
   // If the timeout expires, the `cm->StartCancel()` will be called.
   ::tensorflow::Status WaitForNotification(Notification* n,
                                            int64 timeout_in_ms);
-  void WaitForNotification(RunState* run_state, CancellationManager* cm,
-                           int64 timeout_in_ms);
+  void WaitForNotification(Notification* n, RunState* run_state,
+                           CancellationManager* cm, int64 timeout_in_ms);
 
   ::tensorflow::Status CheckNotClosed() {
     mutex_lock l(closed_lock_);
@@ -327,6 +336,7 @@ class DirectSession : public Session {
   string session_handle_;
   mutex graph_state_lock_;
   bool graph_created_ GUARDED_BY(graph_state_lock_) = false;
+  bool finalized_ GUARDED_BY(graph_state_lock_) = false;
 
   // The thread-pools to use for running ops, with a bool indicating if the pool
   // is owned.
@@ -360,7 +370,7 @@ class DirectSession : public Session {
   std::unordered_map<int64, Callable> callables_ GUARDED_BY(callables_lock_);
 
   // Holds mappings from handle to partial run state.
-  std::unordered_map<string, std::unique_ptr<RunState>> partial_runs_
+  std::unordered_map<string, std::unique_ptr<PartialRunState>> partial_runs_
       GUARDED_BY(executor_lock_);
 
   // This holds all the tensors that are currently alive in the session.

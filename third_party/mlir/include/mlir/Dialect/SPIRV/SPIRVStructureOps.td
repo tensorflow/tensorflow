@@ -21,12 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_STRUCTURE_OPS
-#else
+#ifndef SPIRV_STRUCTURE_OPS
 #define SPIRV_STRUCTURE_OPS
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 include "mlir/SPIRV/SPIRVBase.td"
 #endif // SPIRV_BASE
 
@@ -57,7 +55,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$variable
+    FlatSymbolRefAttr:$variable
   );
 
   let results = (outs
@@ -65,6 +63,11 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   );
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              spirv::GlobalVariableOp var}]>];
 }
 
 def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
@@ -84,7 +87,7 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
     more tedious. Therefore, we use a single `spv.constant` op to represent
     them all. Note that conversion between those SPIR-V constant instructions
     and this op is purely mechanical; so it can be scoped to the binary
-    (de)serialzation process.
+    (de)serialization process.
 
     ### Custom assembly form
 
@@ -120,6 +123,8 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
   }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
@@ -169,16 +174,22 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 
   let arguments = (ins
     SPV_ExecutionModelAttr:$execution_model,
-    SymbolRefAttr:$fn,
-    OptionalAttr<SymbolRefArrayAttr>:$interface
+    FlatSymbolRefAttr:$fn,
+    SymbolRefArrayAttr:$interface
   );
 
   let results = (outs);
+
   let autogenSerialization = 0;
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              spirv::ExecutionModel executionModel,
+                              FuncOp function,
+                              ArrayRef<Attribute> interfaceVars}]>];
 }
 
 
-def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
+def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
   let summary = [{
     Allocate an object in memory at module scope. The object is
     referenced using a symbol name.
@@ -226,12 +237,22 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
   let arguments = (ins
     TypeAttr:$type,
     StrAttr:$sym_name,
-    OptionalAttr<SymbolRefAttr>:$initializer
+    OptionalAttr<FlatSymbolRefAttr>:$initializer
   );
+
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &state, "
+      "TypeAttr type, ArrayRef<NamedAttribute> namedAttrs", [{
+      state.addAttribute("type", type);
+      state.addAttributes(namedAttrs);
+    }]>
+  ];
 
   let results = (outs);
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 
   let extraClassDeclaration = [{
     ::mlir::spirv::StorageClass storageClass() {
@@ -241,7 +262,8 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
 }
 
 def SPV_ModuleOp : SPV_Op<"module",
-                          [SingleBlockImplicitTerminator<"ModuleEndOp">,
+                          [IsolatedFromAbove,
+                           SingleBlockImplicitTerminator<"ModuleEndOp">,
                            NativeOpTrait<"SymbolTable">]> {
   let summary = "The top-level op that defines a SPIR-V module";
 
@@ -252,7 +274,7 @@ def SPV_ModuleOp : SPV_Op<"module",
 
     Using an op with a region to define a SPIR-V module enables "embedding"
     SPIR-V modules in other dialects in a clean manner: this op guarantees
-    the validaty and serializability of a SPIR-V module and thus serves as
+    the validity and serializability of a SPIR-V module and thus serves as
     a clear-cut boundary.
 
     This op takes no operands and generates no results. This op should not
@@ -299,8 +321,8 @@ def SPV_ModuleOp : SPV_Op<"module",
 
   let regions = (region SizedRegion<1>:$body);
 
-  let builders = [OpBuilder<"Builder *, OperationState *state">,
-                  OpBuilder<[{Builder *, OperationState *state,
+  let builders = [OpBuilder<"Builder *, OperationState &state">,
+                  OpBuilder<[{Builder *, OperationState &state,
                               IntegerAttr addressing_model,
                               IntegerAttr memory_model,
                               /*optional*/ArrayAttr capabilities = nullptr,
@@ -312,6 +334,8 @@ def SPV_ModuleOp : SPV_Op<"module",
   let skipDefaultBuilders = 1;
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 
   let extraClassDeclaration = [{
     Block& getBlock() {
@@ -340,6 +364,8 @@ def SPV_ModuleEndOp : SPV_Op<"_module_end", [InModuleScope, Terminator]> {
   let verifier = [{ return success(); }];
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
@@ -368,7 +394,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$spec_const
+    FlatSymbolRefAttr:$spec_const
   );
 
   let results = (outs
@@ -376,9 +402,11 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   );
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
-def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
+def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
   let summary = "The op that declares a SPIR-V specialization constant";
 
   let description = [{
@@ -396,17 +424,21 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
 
     ``` {.ebnf}
     spv-spec-constant-op ::= `spv.specConstant` symbol-ref-id
+                             `spec_id(` integer `)`
                              `=` attribute-value (`:` spirv-type)?
     ```
+
+    where `spec_id` specifies the SPIR-V SpecId decoration associated with
+    the op.
 
     For example:
 
     ```
     spv.specConstant @spec_const1 = true
-    spv.specConstant @spec_const2 = 42 : i32
+    spv.specConstant @spec_const2 spec_id(5) = 42 : i32
     ```
 
-    TODO(antiagainst): support composite spec cosntants with another op
+    TODO(antiagainst): support composite spec constants with another op
   }];
 
   let arguments = (ins
@@ -417,6 +449,8 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
   let results = (outs);
 
   let hasOpcode = 0;
+
+  let autogenSerialization = 0;
 }
 
 #endif // SPIRV_STRUCTURE_OPS

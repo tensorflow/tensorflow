@@ -5,11 +5,18 @@
 load(":build_defs.bzl", "ruy_copts_avx2", "ruy_copts_base", "ruy_copts_skylake", "ruy_visibility")
 load(":ruy_test_ext.bzl", "ruy_test_ext_defines", "ruy_test_ext_deps")
 load(":ruy_test.bzl", "ruy_benchmark", "ruy_benchmark_opt_sets", "ruy_test")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 package(
     default_visibility = ["//visibility:private"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+config_setting(
+    name = "optimized",
+    values = {
+        "compilation_mode": "opt",
+    },
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -22,7 +29,16 @@ cc_library(
     name = "check_macros",
     hdrs = ["check_macros.h"],
     copts = ruy_copts_base(),
-    deps = ["//tensorflow/lite/kernels/internal:compatibility"],
+)
+
+cc_test(
+    name = "check_macros_test",
+    srcs = ["check_macros_test.cc"],
+    copts = ruy_copts_base(),
+    deps = [
+        ":check_macros",
+        "@com_google_googletest//:gtest",
+    ],
 )
 
 cc_library(
@@ -87,11 +103,40 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "prepacked_cache",
+    srcs = [
+        "prepacked_cache.cc",
+    ],
+    hdrs = [
+        "prepacked_cache.h",
+    ],
+    copts = ruy_copts_base(),
+    deps = [
+        ":allocator",
+        ":matrix",
+        ":opt_set",
+        ":platform",
+        ":time",
+    ],
+)
+
 cc_test(
     name = "tune_test",
     srcs = ["tune_test.cc"],
     deps = [
         ":tune",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "prepacked_cache_test",
+    srcs = ["prepacked_cache_test.cc"],
+    deps = [
+        ":prepacked_cache",
+        ":ruy",
+        ":time",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -147,9 +192,20 @@ cc_library(
     deps = [
         ":check_macros",
         ":opt_set",
+        ":path",
         ":side_pair",
         ":size_util",
         "@gemmlowp//:profiler",
+    ],
+)
+
+cc_test(
+    name = "block_map_test",
+    srcs = ["block_map_test.cc"],
+    deps = [
+        ":block_map",
+        ":path",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -550,6 +606,7 @@ cc_library(
         ":have_built_path_for",
         ":path",
         ":platform",
+        ":prepacked_cache",
         ":thread_pool",
         ":trace",
         ":tune",
@@ -626,6 +683,7 @@ cc_library(
         ":opt_set",
         ":pack",
         ":path",
+        ":prepacked_cache",
         ":side_pair",
         ":size_util",
         ":spec",
@@ -710,6 +768,7 @@ ruy_test(
         ("i8", "u8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
         ("i8", "i8", "i32", "i32"),
+        ("i8", "u8", "i32", "i32"),
     ],
 )
 
@@ -760,5 +819,3 @@ ruy_benchmark_opt_sets(
         "7ff",
     ],
 )
-
-tflite_portable_test_suite()

@@ -78,7 +78,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
-#include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/rng_expander.h"
 #include "tensorflow/compiler/xla/service/slice_sinker.h"
@@ -136,9 +135,6 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<DynamicIndexSplitter>();
     pipeline.AddPass<GpuHloSupportChecker>();
-    ReducePrecisionInsertion::AddPasses(
-        &pipeline, hlo_module->config().debug_options(),
-        ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
@@ -231,6 +227,9 @@ Status GpuCompiler::OptimizeHloModule(
     // run, meaning, the pipeline that contains layout assignment cannot contain
     // a layout-sensitive verifier!
     HloPassPipeline pipeline("layout assignment");
+    // Layout assignment uses alias analysis, which requires the call graph to
+    // be flattened.
+    pipeline.AddPass<FlattenCallGraph>();
     pipeline.AddPass<GpuLayoutAssignment>(
         hlo_module->mutable_entry_computation_layout(),
         LayoutAssignment::InstructionCanChangeLayout, stream_exec);
@@ -260,24 +259,6 @@ Status GpuCompiler::OptimizeHloModule(
                            /*only_fusion_computations=*/true);
     fusion.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
-
-    HloPassPipeline reduce_pipeline("reduce-precision");
-    /* TODO(b/117531509): Use LayoutAssignment::InstructionCanChangeLayout after
-     * fixing the ticket. */
-    reduce_pipeline.AddInvariantChecker<HloVerifier>(
-        /*is_layout_sensitive=*/true, /*allow_mixed_precision=*/false,
-        LayoutAssignment::InstructionCanChangeLayout);
-    ReducePrecisionInsertion::AddPasses(
-        &reduce_pipeline, hlo_module->config().debug_options(),
-        ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
-    StatusOr<bool> reduce_result = reduce_pipeline.Run(hlo_module);
-    TF_RETURN_IF_ERROR(reduce_result.status());
-
-    if (reduce_result.ValueOrDie()) {
-      // Do another fusion pass, with the expectation that we may be able to
-      // fuse the new ReducePrecision operations.
-      TF_RETURN_IF_ERROR(fusion.Run(hlo_module).status());
-    }
   }
 
   return Status::OK();
@@ -306,7 +287,6 @@ Status GpuCompiler::PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // (and sometime after) copy insertion, to avoid dead code from interfering
   // with the rewrites.
   pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   if (hlo_module->config().alias_passthrough_params()) {
     pipeline.AddPass<AliasPassthroughParams>();
   }

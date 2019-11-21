@@ -19,38 +19,54 @@ limitations under the License.
 #include <memory>
 
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 
 namespace mlir {
 
 class FuncOp;
+class ModuleOp;
 class Operation;
 template <typename T>
 class OpPassBase;
-using FunctionPassBase = OpPassBase<FuncOp>;
-class MLIRContext;
-class OwningRewritePatternList;
 
 namespace xla_hlo {
 
-/// Lowers from TF dialect to XLA dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeTFPass();
+/// Lowers from TF dialect to HLO dialect. When allow_partial_conversion is
+/// false, emits an error if there is any operation that can't be legalized.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeTFPass(
+    bool allow_partial_conversion = false);
 
-/// Converts the provided Operation as well as all nested operations into XLA
-/// dialect using the conversion patterns registered by the XLA dialect.
-void legalizeTF(Operation* op);
+/// Lowers from TF dialect's control flow to HLO dialect's control flow.
+std::unique_ptr<OpPassBase<ModuleOp>> createLegalizeTFControlFlowPass();
 
-/// Lowers XLA control flow ops to the Standard dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeControlFlowPass();
+/// Converts the provided Operation as well as all nested operations into HLO
+/// dialect using the conversion patterns registered by the HLO dialect. When
+/// allow_partial_conversion is false, emits an error if there is any operation
+/// that can't be legalized.
+LogicalResult legalizeTF(Operation* op, bool allow_partial_conversion = false);
 
-/// Lowers from XLA dialect to Standard dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeToStdPass();
+/// Lowers HLO control flow ops to the Standard dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeControlFlowPass();
+
+/// Lowers from HLO dialect to Standard dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToStdPass();
+
+// Lowers from HLO dialect to LHLO dialect allocating/deallocating temporary
+// buffers if necessary.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLhloPass();
 
 }  // namespace xla_hlo
 
 namespace xla_lhlo {
 
-// Lowers LHLO dialect to affine dialect.
-std::unique_ptr<FunctionPassBase> createLegalizeToAffinePass();
+// Lowers from LHLO dialect to Affine dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToAffinePass();
+
+// Lowers from LHLO dialect to Linalg dialect.
+std::unique_ptr<OpPassBase<FuncOp>> createLegalizeToLinalgPass();
+
+// Fuses linalg ops obtained after LHLO lowering.
+std::unique_ptr<OpPassBase<FuncOp>> createLhloFuseLinalg();
 
 }  // namespace xla_lhlo
 }  // namespace mlir

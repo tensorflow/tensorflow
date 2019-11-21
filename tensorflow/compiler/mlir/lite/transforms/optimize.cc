@@ -18,7 +18,12 @@ limitations under the License.
 
 #include <climits>
 #include <cstdint>
+#include <functional>
+#include <iterator>
+#include <map>
+#include <numeric>
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
@@ -57,10 +62,64 @@ bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
 }
 
-// Returns whether the given `a` and `b` ElementsAttr have broadcast-compatible
-// types.
-bool IsBroadcastableElementsAttrs(Attribute a, Attribute b) {
-  return IsBroadcastableElementsAttrAndType(a.getType(), b.getType());
+bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
+                                bool is_depthwise) {
+  // Make sure the val tensor has shape where all dimensions are 1 except
+  // last one.
+  // Also, val tensor must be of rank 1 or 4 or 0 (scalar).
+  const auto elements = val.dyn_cast<DenseElementsAttr>();
+  const auto elements_shape = elements.getType().getShape();
+  const auto filter_elements = filter.dyn_cast<DenseElementsAttr>();
+  const auto filter_shape = filter_elements.getType().getShape();
+  const auto elements_rank = elements.getType().getRank();
+  if (!elements || !filter_elements) {
+    return false;
+  }
+  for (int i = 0; i < static_cast<int>(elements_shape.size()) - 1; ++i) {
+    if (elements_shape[i] != 1) return false;
+  }
+  if (elements_rank != 1 && elements_rank != 0 && elements_rank != 4) {
+    return false;
+  }
+  auto elements_depth = elements_shape.empty() ? 1 : elements_shape.back();
+  // In TFLite Conv2D uses OHWI format for filter, and 1HWO for Depthwise Conv.
+  // For conv:
+  // Check if last dimension in filter equals the first dimension
+  // For depthwise conv:
+  // Check if the first in filter dimension equals the first dimension.
+  if (filter_shape.empty() ||
+      (is_depthwise ? filter_shape.back() != elements_depth
+                    : filter_shape[0] != elements_depth))
+    return false;
+  return true;
+}
+
+// Expand Attribute 'a' to 4D with all 1s except 1 dimension.
+// Which dimension depends on 'is_depthwise' is true or false.
+ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
+  auto elements = a.dyn_cast<DenseElementsAttr>();
+  auto shape = elements.getType().getShape();
+  if (shape.size() == 4) {
+    return elements;
+  }
+  std::vector<int64_t> shape_data = {1, 1, 1, 1};
+  if (shape.size() == 1 || shape.empty()) {
+    if (is_depthwise)
+      shape_data[3] = shape.empty() ? 1 : shape[0];
+    else
+      shape_data[0] = shape.empty() ? 1 : shape[0];
+  }
+  auto new_shape =
+      RankedTensorType::get(shape_data, elements.getType().getElementType());
+  return elements.reshape(new_shape);
+}
+
+ElementsAttr ExpandTo4DForConv(Attribute a) {
+  return ExpandTo4DForConvImpl(a, false);
+}
+
+ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
+  return ExpandTo4DForConvImpl(a, true);
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -174,7 +233,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
       llvm::SmallVector<int64_t, 4> normalized_shape(original_shape.begin(),
                                                      original_shape.end());
       normalized_shape.push_back(1);
-      auto new_cst = cst.reshape(rewriter.getTensorType(
+      auto new_cst = cst.reshape(RankedTensorType::get(
           normalized_shape, cst.getType().getElementType()));
       Type new_type = new_cst.getType();
       if (!IsBroadcastableElementsAttrAndType(new_type, filter->getType())) {
@@ -210,85 +269,170 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
   }
 };
 
-// StridedSlice can have complicated atributes like begin_axis_mask,
-// end_axis_mask, ellipsis_axis_mask, new_axis_mask, shrink_axis_mask. These
-// masks will complicate the strided_slice computation logic, we can simplify
-// the logic by inserting a reshape op to pad the inputs so strided_slice can
-// be easier to handle.
-//
-// So the graph may looks like below:
-//   original_input -> strided_slice -> output
-//      (transforms)
-//   original_input -> reshape -> strided_slice -> output
-//
-// And the new shape is computed based on the masks.
-//
-// An example for new_axis_mask. say the new_axis_mask is 9 which represents
-// [1 0 0 1], and that means we're inserting two new axes at 0 & 3 dim, so
-// if original shape is [2, 3], now we reshape that into [1, 2, 3, 1].
-struct PadStridedSliceDims : public RewritePattern {
-  explicit PadStridedSliceDims(MLIRContext *context)
-      : RewritePattern(TFL::StridedSliceOp::getOperationName(),
-                       {"tfl.strided_slice", "tfl.strided_slice"}, 2, context) {
-  }
+// Fuse Binary Op with following Affine operation.
+template <typename ConcreteType, typename AffineOpType>
+struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
+  using OpRewritePattern<AffineOpType>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(Operation *strided_slice_op,
+  PatternMatchResult matchAndRewrite(AffineOpType fc_op,
                                      PatternRewriter &rewriter) const override {
-    // TODO(renjieliu): Consider expand the transformation for ellipsis & shrink
-    // mask as well.
-    TFL::StridedSliceOp strided_slice =
-        llvm::cast<TFL::StridedSliceOp>(strided_slice_op);
-    const uint64_t new_axis_mask = strided_slice.new_axis_mask().getZExtValue();
-    if (new_axis_mask == 0) return matchFailure();
+    // Binary op.
+    Operation *binary_op = fc_op.input()->getDefiningOp();
+    if (!binary_op || binary_op->getNumOperands() != 2)
+      return this->matchFailure();
+    // We only handle the cases the RHS is a scalar.
+    // TODO(fengliuai): Currently the canonicalizer pass couldn't guarantee that
+    // the constant operands are on the RHS, we need to consider LHS constant
+    // operand if necessary.
+    DenseFPElementsAttr cst;
+    if (!matchPattern(binary_op->getOperand(1), m_Constant(&cst)))
+      return this->matchFailure();
+    if (cst.getNumElements() != 1) return this->matchFailure();
+    APFloat cst_value = *cst.float_value_begin();
 
-    // Insert a new reshape op.
-    Value *original_input = strided_slice.input();
-    RankedTensorType original_input_type =
-        original_input->getType().cast<RankedTensorType>();
-    const ArrayRef<int64_t> &original_input_shape =
-        original_input_type.getShape();
-    RankedTensorType begin_type =
-        strided_slice.begin()->getType().cast<RankedTensorType>();
-    const int dim_size = begin_type.getShape()[0];
-    SmallVector<int64_t, 4> new_shape;
-    int mask = 1;
-    int index = 0;
-    for (int i = 0; i < dim_size; ++i) {
-      if (mask & new_axis_mask) {
-        new_shape.emplace_back(1);
-      } else {
-        new_shape.emplace_back(original_input_shape[index]);
-        ++index;
+    // Affine op.
+    Value *filter = fc_op.filter();
+    Value *bias = fc_op.bias();
+    DenseFPElementsAttr filter_cst, bias_cst;
+    if (!matchPattern(filter, m_Constant(&filter_cst))) {
+      // The filter maybe quantized, then we should set it to the real constant.
+      auto dq = llvm::dyn_cast_or_null<DequantizeOp>(filter->getDefiningOp());
+      if (!dq) return this->matchFailure();
+      auto q = llvm::dyn_cast_or_null<QuantizeOp>(dq.input()->getDefiningOp());
+      if (!q || !matchPattern(q.input(), m_Constant(&filter_cst))) {
+        return this->matchFailure();
       }
-      mask = mask << 1;
+      filter = q.input();
     }
+    if (!bias->getType().isa<NoneType>() &&
+        !matchPattern(bias, m_Constant(&bias_cst)))
+      return this->matchFailure();
+    ShapedType filter_type = filter_cst.getType();
 
-    auto new_output_type =
-        rewriter.getTensorType(new_shape, original_input_type.getElementType());
+    if (llvm::isa<AddOp>(binary_op) || llvm::isa<SubOp>(binary_op)) {
+      auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
+      if (padding && padding.getValue() != "VALID") return this->matchFailure();
 
-    TFL::ReshapeOp reshape = rewriter.create<TFL::ReshapeOp>(
-        strided_slice.getLoc(), new_output_type, original_input);
+      // The fusion of add/sub is actually applying the following
+      // transformation:
+      // w * (x + c) + b => w * x + (w * c + b)
+      // so we have to update the bias.
+      if (llvm::isa<SubOp>(binary_op)) cst_value.changeSign();
 
-    // Replace the original strided_slice.
-    llvm::APInt new_begin_mask = strided_slice.begin_mask();
-    llvm::APInt new_end_mask = strided_slice.end_mask();
-    // Since we expand the dims, we need to apply them to the begin_mask &
-    // end_mask.
-    new_begin_mask |= strided_slice.new_axis_mask();
-    new_end_mask |= strided_slice.new_axis_mask();
+      auto bias_and_slice = GetBiasDimAndSliceSize(filter_type.getShape());
+      int64_t bias_size = bias_and_slice.first;
+      int64_t slice_size = bias_and_slice.second;
+      ShapedType new_bias_type =
+          RankedTensorType::get({bias_size}, filter_type.getElementType());
 
-    auto attribute_type = rewriter.getIntegerType(32);
-    rewriter.replaceOpWithNewOp<TFL::StridedSliceOp>(
-        strided_slice_op, strided_slice.getType(), reshape,
-        strided_slice.begin(), strided_slice.end(), strided_slice.strides(),
-        rewriter.getIntegerAttr(attribute_type, new_begin_mask),
-        rewriter.getIntegerAttr(attribute_type, new_end_mask),
-        rewriter.getIntegerAttr(attribute_type, strided_slice.ellipsis_mask()),
-        rewriter.getI32IntegerAttr(0),
-        rewriter.getIntegerAttr(attribute_type,
-                                strided_slice.shrink_axis_mask()));
-    return matchSuccess();
+      // The new bias should be a 1-D tensor with length equals to the bias
+      // dimension of the weight.
+      SmallVector<APFloat, 4> new_bias_values;
+      if (bias->getType().isa<NoneType>()) {  // none bias, a list of zeros
+        new_bias_values.resize(bias_size, APFloat(0.0));
+      } else if (bias_cst.getNumElements() == 1) {  // scalar bias, broadcast it
+        new_bias_values.resize(bias_size, *bias_cst.float_value_begin());
+      } else if (bias_cst.getNumElements() == bias_size) {  // 1-d bias, copy it
+        new_bias_values.insert(new_bias_values.begin(),
+                               bias_cst.float_value_begin(),
+                               bias_cst.float_value_end());
+      } else {
+        return this->matchFailure();
+      }
+
+      int64_t flatten_index = 0;
+      for (auto fp_it = filter_cst.float_value_begin(),
+                fp_end = filter_cst.float_value_end();
+           fp_it != fp_end; ++fp_it) {
+        int bias_index = (flatten_index++ / slice_size) % bias_size;
+
+        new_bias_values[bias_index] =
+            new_bias_values[bias_index] + *fp_it * cst_value;
+      }
+      auto new_bias = DenseFPElementsAttr::get(new_bias_type, new_bias_values);
+      auto new_bias_op =
+          rewriter.create<ConstOp>(fc_op.getLoc(), new_bias_type, new_bias);
+      fc_op.setOperand(0, binary_op->getOperand(0));
+      fc_op.setOperand(2, new_bias_op);
+    } else if (llvm::isa<MulOp>(binary_op) || llvm::isa<DivOp>(binary_op)) {
+      // The fusion of mul/div is actually applying the following
+      // transformation:
+      // w * (x ' c) + b => (w ' c) x + b
+      // so we have to update the weight.
+      bool is_mul = llvm::isa<MulOp>(binary_op);
+      auto new_fitler =
+          filter_cst.mapValues(filter_type.getElementType(), [&](APFloat it) {
+            return (is_mul ? it * cst_value : it / cst_value).bitcastToAPInt();
+          });
+      // We recreate the constant op in case it is shared by the other ops. This
+      // might increase the model size.
+      auto new_filter_op = rewriter.create<ConstOp>(
+          fc_op.getLoc(), filter->getType(), new_fitler);
+      fc_op.setOperand(0, binary_op->getOperand(0));
+      if (fc_op.filter() != filter) {
+        // This filter goes through quantize and dequantize ops. Then we just
+        // need to update the weight to the quantize op.
+        filter->replaceAllUsesWith(new_filter_op);
+      } else {
+        // This filter doesn't go through quantize and dequantize ops, Then
+        // we update the weight of the affine op directly.
+        fc_op.setOperand(1, new_filter_op);
+      }
+    } else {
+      return this->matchFailure();
+    }
+    return this->matchSuccess();
   }
+
+ private:
+  // Returns the dimension length of the channel dimension and also the slide
+  // size by each position in the channel dimension accordingly. tfl.conv2d and
+  // tfl.fully_connected has heading channel dimension, but tfl.depthwise_conv2d
+  // has tailing channel dimension. This function is to provide a utility to
+  // create the above information from the op property.
+  static std::pair<int64_t, int64_t> GetBiasDimAndSliceSize(
+      ArrayRef<int64_t> filter_shape) {
+    // Channel dimension index is specified as op property
+    auto channel_index_iter = filter_shape.begin();
+    std::advance(channel_index_iter, AffineOpType::GetChannelDimIndex());
+    // The slide size is the size of the data in higher dimensions.
+    int64_t slice_size =
+        std::accumulate(std::next(channel_index_iter), filter_shape.end(), 1,
+                        std::multiplies<int64_t>());
+    return {*channel_index_iter, slice_size};
+  }
+};
+
+class FuseBinaryOpToFollowingFullyConnected
+    : public FuseBinaryOpToFollowingAffineOp<
+          FuseBinaryOpToFollowingFullyConnected, FullyConnectedOp> {
+ public:
+  using BaseType =
+      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingFullyConnected,
+                                      FullyConnectedOp>;
+  explicit FuseBinaryOpToFollowingFullyConnected(MLIRContext *context)
+      : BaseType(context) {}
+};
+
+class FuseBinaryOpToFollowingDepthwiseConv2D
+    : public FuseBinaryOpToFollowingAffineOp<
+          FuseBinaryOpToFollowingDepthwiseConv2D, DepthwiseConv2DOp> {
+ public:
+  using BaseType =
+      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingDepthwiseConv2D,
+                                      DepthwiseConv2DOp>;
+  explicit FuseBinaryOpToFollowingDepthwiseConv2D(MLIRContext *context)
+      : BaseType(context) {}
+};
+
+class FuseBinaryOpToFollowingConv2D
+    : public FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingConv2D,
+                                             Conv2DOp> {
+ public:
+  using BaseType =
+      FuseBinaryOpToFollowingAffineOp<FuseBinaryOpToFollowingConv2D, Conv2DOp>;
+  explicit FuseBinaryOpToFollowingConv2D(MLIRContext *context)
+      : BaseType(context) {}
 };
 
 void Optimize::runOnFunction() {
@@ -296,17 +440,25 @@ void Optimize::runOnFunction() {
   auto *ctx = &getContext();
   auto func = getFunction();
 
-  // Add the generated patterns to the list.
+  // Potentially the binary ops might be fused together, like hard_swish, thus
+  // we explore these potentially first and then fuse the binary ops with the
+  // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                  FuseFullyConnectedAndMul, PadStridedSliceDims>(ctx);
+                  FuseFullyConnectedAndMul>(ctx);
+  applyPatternsGreedily(func, patterns);
+
+  // Fuse the binary ops with the following ops.
+  patterns.insert<FuseBinaryOpToFollowingConv2D,
+                  FuseBinaryOpToFollowingDepthwiseConv2D,
+                  FuseBinaryOpToFollowingFullyConnected>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<FunctionPassBase> CreateOptimizePass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateOptimizePass() {
   return std::make_unique<Optimize>();
 }
 

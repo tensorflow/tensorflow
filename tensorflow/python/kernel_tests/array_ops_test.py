@@ -695,8 +695,8 @@ class StridedSliceTest(test_util.TensorFlowTestCase):
     with self.session(use_gpu=True):
       ones = array_ops.placeholder(shape=[2, 2], dtype=dtypes.int16)
       self.assertAllEqual(
-          ones[array_ops.newaxis, :, 0].eval(
-              feed_dict={ones: [[1, 1], [1, 1]]}), [[1, 1]])
+          ones[array_ops.newaxis, :,
+               0].eval(feed_dict={ones: [[1, 1], [1, 1]]}), [[1, 1]])
 
   @test_util.run_deprecated_v1
   def testTensorIndexing(self):
@@ -1098,8 +1098,9 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
   def testInvalidSlice(self):
     with self.cached_session() as sess:
       foo = constant_op.constant([1, 2, 3])
-      with self.assertRaisesRegexp(ValueError, "Sliced assignment"
-                                   " is only supported for variables"):
+      with self.assertRaisesRegexp(
+          ValueError, "Sliced assignment"
+          " is only supported for variables"):
         bar = foo[:2].assign(constant_op.constant([1, 2]))
         sess.run(bar)
 
@@ -1312,6 +1313,7 @@ class IdentityTest(test_util.TensorFlowTestCase):
   @test_util.run_gpu_only
   def testEagerIdentity(self):
     with context.eager_mode():
+
       def _test(x, y, device):
         self.assertAllEqual(x.numpy(), y.numpy())
         self.assertTrue(device in y.device.lower())
@@ -1429,36 +1431,47 @@ class SnapshotOpTest(test_util.TensorFlowTestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-@test_util.disable_xla("b/140109958")
 class QuantizeAndDequantizeTest(test_util.TensorFlowTestCase):
 
+  # Generates a tensor of the specified `shape` using values from `values`
+  # scaled by (slice_idx + 1) along `axis` dimension.
   def _scale_per_slice(self, shape, axis, values):
+    # Note: repeats the values if the shape is larger than values.
     out = np.take(values, np.remainder(np.arange(np.prod(shape)),
                                        len(values))).reshape(shape)
     if axis is not None:
-      scale_shape = [1] * 4
+      scale_shape = [1] * len(shape)
       scale_shape[axis] = shape[axis]
       out *= np.arange(1, shape[axis] + 1).reshape(scale_shape)
     return out
 
   def testAxis(self):
     shape = np.array([2, 3, 4, 5])
-    values = np.array([-1, -0.5, 0, 0.3, 0.8, 0.555, 0.5],
-                      dtype=np.float32)
-    quant_values = np.array([-1, -0.5, 0, 38.0/128, 102.0/128, 71.0/128, 0.5],
-                            dtype=np.float32)
+    values = np.array([-1, -0.5, 0, 0.3, 0.8, 0.555, 0.5], dtype=np.float32)
+    quant_values = np.array(
+        [-1, -0.5, 0, 38.0 / 128, 102.0 / 128, 71.0 / 128, 0.5],
+        dtype=np.float32)
     for axis in [None, 0, 1, 2, 3]:
       inputs = constant_op.constant(self._scale_per_slice(shape, axis, values))
       expected = self._scale_per_slice(shape, axis, quant_values)
-      unused_minmax_value = 0 if axis is None else []
-      fake_quantized = self.evaluate(array_ops.quantize_and_dequantize(
-          inputs, unused_minmax_value, unused_minmax_value,
-          range_given=False, round_mode="HALF_UP", axis=axis))
+      unused_minmax_value = 0 if axis is None else [0] * shape[axis]
+      fake_quantized = self.evaluate(
+          array_ops.quantize_and_dequantize(
+              inputs,
+              unused_minmax_value,
+              unused_minmax_value,
+              range_given=False,
+              round_mode="HALF_UP",
+              axis=axis))
       self.assertAllEqual(fake_quantized, expected)
       if axis is not None:
-        fake_quantized = self.evaluate(array_ops.quantize_and_dequantize(
-            inputs, unused_minmax_value, unused_minmax_value, range_given=False,
-            axis=(axis - 4)))
+        fake_quantized = self.evaluate(
+            array_ops.quantize_and_dequantize(
+                inputs,
+                unused_minmax_value,
+                unused_minmax_value,
+                range_given=False,
+                axis=(axis - 4)))
         self.assertAllClose(fake_quantized, expected)
 
 

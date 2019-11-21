@@ -904,8 +904,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
   const int src_depth = IntegralDivideRoundUp(params.weights.shape.i, 4);
   const int shared_size =
       sizeof(float) * 4 * src_depth * src_local_size_x * src_local_size_y;
-  int gpu_type = GetAppleSocVersion();
-  if (shared_size < 1000 * 16 && (gpu_type == 7 || gpu_type == 8)) {
+  auto gpu_type = GetGpuType();
+  if (shared_size < 1000 * 16 &&
+      (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8)) {
     desc->shader_source =
         GetDeconvolutionShared(params, kThreadGroupWidth, kThreadGroupHeight);
   } else {
@@ -950,15 +951,14 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
     }
   }
 
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(params.bias.data)
-                    : VectorFloatToHalf(params.bias.data);
+  auto filters =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
   desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
-      {"constant FLT4* const biases", biases},
+      {"device FLT4* const biases",
+       GetByteBufferConvertedResized(params.bias.data,
+                                     options.storage_precision,
+                                     params.weights.shape.o)},
   };
 
   desc->uniform_buffers = {
@@ -972,7 +972,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed(
              output_dimension.w,
              output_dimension.h,
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -1044,12 +1044,10 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
     }
   }
 
-  auto filters = options.storage_precision == RuntimeOptions::Precision::FP32
-                     ? VectorToUint8Vector(filters_reordered)
-                     : VectorFloatToHalf(filters_reordered);
-  auto biases = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(params.bias.data)
-                    : VectorFloatToHalf(params.bias.data);
+  auto filters =
+      GetByteBufferConverted(filters_reordered, options.storage_precision);
+  auto biases = GetByteBufferConvertedResized(
+      params.bias.data, options.storage_precision, params.weights.shape.o);
   border_desc->immutable_buffers = {
       {"device FilterStripe* const filters", filters},
       {"constant FLT4* const biases", biases},
@@ -1088,7 +1086,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
              /*uint GridParams.elements_count*/
              ptr[12],
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 
@@ -1116,8 +1114,9 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
   desc->is_linkable = false;
 
   const int shared_size = sizeof(float) * 4 * src_depth * dst_ch_aligned * 4;
-  int gpu_type = GetAppleSocVersion();
-  if (shared_size < (1024 * 16 - 32) && (gpu_type == 7 || gpu_type == 8) &&
+  auto gpu_type = GetGpuType();
+  if (shared_size < (1024 * 16 - 32) &&
+      (gpu_type == GpuType::kA7 || gpu_type == GpuType::kA8) &&
       dst_ch_aligned <= kThreadGroupWidth * kThreadGroupHeight) {
     desc->shader_source = GetDeconvolutionShared3x3(params);
   } else {
@@ -1137,9 +1136,8 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
       }};
 
   desc->immutable_buffers = {
-      {"device FilterStripe* const filters",
-       VectorToUint8Vector(filters_reordered)},
-      {"constant FLT4* const biases", VectorToUint8Vector(params.bias.data)},
+      {"device FilterStripe* const filters", filters},
+      {"constant FLT4* const biases", biases},
   };
 
   desc->uniform_buffers = {
@@ -1161,7 +1159,7 @@ std::vector<ComputeTaskDescriptorPtr> ConvolutionTransposed3x3(
              /*short2 Params3x3.src_offset*/ ptr[1],
              /*short2 Params3x3.dst_offset*/ ptr[2],
          };
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

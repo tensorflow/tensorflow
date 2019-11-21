@@ -150,12 +150,13 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
       super(LinearOperatorLowerTriangular, self).__init__(
           dtype=self._tril.dtype,
-          graph_parents=[self._tril],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      self._set_graph_parents([self._tril])
 
   def _check_tril(self, tril):
     """Static check of the `tril` argument."""
@@ -202,3 +203,6 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
   def _to_dense(self):
     return self._get_tril()
+
+  def _eigvals(self):
+    return self._get_diag()

@@ -45,7 +45,7 @@ void PrePackForMulInternal(const Matrix<LhsScalar>& lhs,
                            std::function<void*(std::size_t)> alloc_fn) {
   gemmlowp::ScopedProfilingLabel label("PrePackForMul");
   Path the_path = context->GetPathToTake<CompiledPaths>();
-  RUY_CHECK(the_path != Path::kReference);
+  RUY_CHECK_NE(the_path, Path::kReference);
   constexpr Path TrMulCompiledPaths = CompiledPaths & ~Path::kReference;
   Matrix<LhsScalar> transposed_lhs(lhs);
   Transpose(&transposed_lhs);
@@ -84,7 +84,7 @@ void MulWithPrepackedInternal(const Matrix<LhsScalar>& lhs,
                                 dst->zero_point);
 
   Path the_path = context->GetPathToTake<CompiledPaths>();
-  RUY_CHECK(the_path != Path::kReference);
+  RUY_CHECK_NE(the_path, Path::kReference);
   constexpr Path TrMulCompiledPaths = CompiledPaths & ~Path::kReference;
   Matrix<LhsScalar> transposed_lhs(lhs);
   Transpose(&transposed_lhs);

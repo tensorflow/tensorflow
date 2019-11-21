@@ -16,26 +16,22 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/fully_connected.h"
 
 #include <algorithm>
-#include <cassert>
-#include <cmath>
+#include <cstddef>
 #include <cstdint>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -305,15 +301,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   // Quantize input from float to uint8 + quantization params (scaling factor).
   float unused_min, unused_max;
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
-  int8_t* quant_data;
-  int8_t* filter_data;
-  if (filter->type == kTfLiteUInt8) {
-    quant_data = reinterpret_cast<int8_t*>(input_quantized->data.uint8);
-    filter_data = reinterpret_cast<int8_t*>(filter->data.uint8);
-  } else {
-    quant_data = input_quantized->data.int8;
-    filter_data = filter->data.int8;
-  }
+  int8_t* quant_data = GetTensorData<int8_t>(input_quantized);
+  const int8_t* filter_data = GetTensorData<int8_t>(filter);
 
   // Quantize each batch independently.
   for (int b = 0; b < batch_size; ++b) {

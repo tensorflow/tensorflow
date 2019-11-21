@@ -87,11 +87,13 @@ class FromTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType4(output_def.object_def.data_type) + "* dst",
+        "__global " + ToCLDataType(output_def.object_def.data_type, 4) +
+            "* dst",
         "dst[(d * size.y + y) * size.x + x] = " +
             (output_def.object_def.data_type == input_def.object_def.data_type
                  ? "input;"
-                 : "convert_" + GetDataType4(output_def.object_def.data_type) +
+                 : "convert_" +
+                       ToCLDataType(output_def.object_def.data_type, 4) +
                        "(input);"));
   }
 
@@ -99,7 +101,7 @@ class FromTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType(output_def.object_def.data_type) + "* dst",
+        "__global " + ToCLDataType(output_def.object_def.data_type) + "* dst",
         R"(
   int c = d * 4;
   int index = (y * size.x + x) * size.z + c;
@@ -134,22 +136,23 @@ class FromTensorConverter : public OpenClConverterImpl {
         R"(
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 
-const sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
+const sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
 
 __kernel void from_tensor()" +
-        GetTensorDeclaration(src_tensor_type, AccessType::READ,
-                             input_def.object_def.data_type) +
-        " src, " + params_kernel.first + R"(, int4 size) {
+        src_tensor.GetDeclaration(AccessType::READ) + ", " +
+        params_kernel.first + R"(, int4 size) {
   int x = get_global_id(0);
   int y = get_global_id(1);
   int d = get_global_id(2);
   if (x >= size.x || y >= size.y || d >= size.w) return;
-  )" + GetDataType4(input_def.object_def.data_type) +
+  )" + ToCLDataType(input_def.object_def.data_type, 4) +
         " input = " + src_tensor.Read3D("x", "y", "d") + ";\n" +
         params_kernel.second + "\n}";
     queue_ = environment->queue();
     dims_ = input_def.dimensions;
-    return CreateKernel(shader_src, "from_tensor", environment, &kernel_);
+    return environment->program_cache()->GetOrCreateCLKernel(
+        shader_src, "from_tensor", environment->context(),
+        environment->device(), &kernel_);
   }
 
   Status Convert(const TensorObject& input_obj,
@@ -198,11 +201,11 @@ class ToTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType4(input_def.object_def.data_type) + "* src",
+        "__global " + ToCLDataType(input_def.object_def.data_type, 4) + "* src",
         output_def.object_def.data_type == input_def.object_def.data_type
             ? "result = src[(d * size.y + y) * size.x + x];"
             : "result = convert_" +
-                  GetDataType4(output_def.object_def.data_type) +
+                  ToCLDataType(output_def.object_def.data_type, 4) +
                   "(src[(d * size.y + y) * size.x + x]);");
   }
 
@@ -210,7 +213,7 @@ class ToTensorConverter : public OpenClConverterImpl {
       const TensorObjectDef& input_def,
       const TensorObjectDef& output_def) const {
     return std::make_pair(
-        "__global " + GetDataType(input_def.object_def.data_type) + "* src",
+        "__global " + ToCLDataType(input_def.object_def.data_type) + "* src",
         R"(int c = d * 4;
   int index = (y * size.x + x) * size.z + c;
   result.x = src[index];
@@ -238,20 +241,21 @@ class ToTensorConverter : public OpenClConverterImpl {
 
 __kernel void to_tensor()" +
         params_kernel.first + ", " +
-        GetTensorDeclaration(dst_tensor_type, AccessType::WRITE,
-                             output_def.object_def.data_type) +
-        R"( dst, int4 size) {
+        dst_tensor.GetDeclaration(AccessType::WRITE) +
+        R"(, int4 size) {
   int x = get_global_id(0);
   int y = get_global_id(1);
   int d = get_global_id(2);
 
   if (x >= size.x || y >= size.y || d >= size.w) return;
-  )" + GetDataType4(output_def.object_def.data_type) +
+  )" + ToCLDataType(output_def.object_def.data_type, 4) +
         " result;\n" + params_kernel.second + "\n  " +
         dst_tensor.Write3D("result", "x", "y", "d") + ";\n}";
     queue_ = environment->queue();
     dims_ = output_def.dimensions;
-    return CreateKernel(shader_src, "to_tensor", environment, &kernel_);
+    return environment->program_cache()->GetOrCreateCLKernel(
+        shader_src, "to_tensor", environment->context(), environment->device(),
+        &kernel_);
   }
 
   Status Convert(const TensorObject& input_obj,
@@ -278,15 +282,15 @@ std::array<size_t, 3> CalculateTextureRegion(const TensorObjectDef& def) {
   switch (ToTensorStorageType(def.object_def.object_type,
                               def.object_def.data_layout)) {
     case TensorStorageType::SINGLE_TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h);
       break;
     case TensorStorageType::TEXTURE_2D:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h * dims.d());
       break;
     case TensorStorageType::TEXTURE_ARRAY:
-      region[0] = static_cast<size_t>(dims.w);
+      region[0] = static_cast<size_t>(dims.w * dims.b);
       region[1] = static_cast<size_t>(dims.h);
       region[2] = static_cast<size_t>(dims.d());
       break;
@@ -425,7 +429,7 @@ class OpenClTensorConverterBuilder : public TensorObjectConverterBuilder {
       : environment_(environment) {}
 
   bool IsSupported(const TensorObjectDef& input,
-                   const TensorObjectDef& output) final {
+                   const TensorObjectDef& output) const final {
     const auto& input_def = input.object_def;
     const auto& output_def = output.object_def;
     return input.dimensions == output.dimensions &&

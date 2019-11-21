@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
@@ -123,6 +124,7 @@ XlaCompilationCache::BuildSignature(
     absl::Span<const XlaCompiler::Argument> args) {
   Signature signature;
   signature.name = Canonicalize(function.name(), AttrSlice(&function.attr()));
+
   for (const XlaCompiler::Argument& arg : args) {
     switch (arg.kind) {
       case XlaCompiler::Argument::kConstant:
@@ -130,7 +132,8 @@ XlaCompilationCache::BuildSignature(
         break;
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kResource:
-        signature.arg_shapes.emplace_back(arg.type, arg.DimensionSizes());
+        signature.arg_shapes.emplace_back(arg.type,
+                                          arg.DimensionSizesAsInlinedVector());
         break;
       default:
         return errors::InvalidArgument(
@@ -189,7 +192,7 @@ Status XlaCompilationCache::Compile(
                      out_compilation_result, out_executable);
 }
 
-static bool IsMegamorphic(int64 compile_count, int64 execution_count) {
+static bool ShouldBeMegamorphic(int64 compile_count, int64 execution_count) {
   const int64 kCompileThreshold = 10;
   const int64 kMinExecutionsPerCompile = 50;
 
@@ -256,7 +259,7 @@ Status XlaCompilationCache::CompileImpl(
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
     for (int i = 0; i < args.size(); i++) {
-      VLOG(2) << i << ": " << args[i].HumanString();
+      VLOG(3) << i << ": " << args[i].HumanString();
     }
   }
 
@@ -296,9 +299,15 @@ Status XlaCompilationCache::CompileImpl(
 
     // The is_megamorphic bit is "sticky".  We assume clusters that have been
     // observed to be megamorphic once stay megamorphic forever.
-    it->second.is_megamorphic |=
-        IsMegamorphic(/*compile_count=*/it->second.compile_count,
-                      /*execution_count=*/it->second.execution_count);
+    if (!it->second.is_megamorphic &&
+        ShouldBeMegamorphic(/*compile_count=*/it->second.compile_count,
+                            /*execution_count=*/it->second.execution_count)) {
+      VLOG(1) << "Marking " << function.name()
+              << " as megamorphic, compile_count=" << it->second.compile_count
+              << " execution_count=" << it->second.execution_count;
+      it->second.is_megamorphic = true;
+    }
+
     is_megamorphic = it->second.is_megamorphic;
   }
 
@@ -312,6 +321,7 @@ Status XlaCompilationCache::CompileImpl(
           << current_request_count << " and compile threshold "
           << compile_threshold.value_or(0);
   if (!entry->compiled) {
+    XLA_SCOPED_LOGGING_TIMER("Compilation of XLA executable");
     const bool should_compile = [&] {
       if (!compile_threshold.has_value()) {
         // Lazy compilation is disabled.

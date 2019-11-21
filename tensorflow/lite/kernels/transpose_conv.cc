@@ -24,7 +24,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
+// NOLINTNEXTLINE - This header file should't go to the top.
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -73,6 +76,12 @@ struct OpData {
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
   int output_shift;
+
+  // Per channel output multiplier and shift.
+  // TODO(b/144846950): Add channel dimension index for the kernel to be more
+  // flexible.
+  std::vector<int32_t> per_channel_output_multiplier;
+  std::vector<int32_t> per_channel_output_shift;
 
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
@@ -133,7 +142,7 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
 
   // Allocate transposed_weights tensor. Currently it's only used for optimized
   // float kernels.
-  if (kernel_type == kGenericOptimized && input_type == kTfLiteFloat32) {
+  if (kernel_type == kGenericOptimized) {
     if (data->transposed_weights_id == kTensorNotAllocated) {
       context->AddTensors(context, 1, &data->transposed_weights_id);
     }
@@ -143,7 +152,7 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
   }
 
   // Allocate scratch buffer tensor for UInt8 inputs.
-  if (input_type == kTfLiteUInt8) {
+  if (input_type == kTfLiteUInt8 || input_type == kTfLiteInt8) {
     if (data->scratch_tensor_id == kTensorNotAllocated) {
       context->AddTensors(context, 1, &data->scratch_tensor_id);
     }
@@ -175,7 +184,7 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
   col2im_shape_array->data[1] =
       weights_shape.Dims(0) * weights_shape.Dims(1) * weights_shape.Dims(2);
 
-  col2im->type = input->type;
+  col2im->type = input->type == kTfLiteFloat32 ? kTfLiteFloat32 : kTfLiteInt32;
   col2im->allocation_type = kTfLiteDynamic;
   return context->ResizeTensor(context, col2im, col2im_shape_array);
 }
@@ -203,10 +212,26 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
   transpose_params.perm[2] = 0;
   transpose_params.perm[3] = 3;
 
-  optimized_ops::Transpose(transpose_params, input_shape,
-                           GetTensorData<float>(weights),
-                           GetTensorShape(transposed_weights),
-                           GetTensorData<float>(transposed_weights));
+  if (weights->type == kTfLiteFloat32) {
+    optimized_ops::Transpose(transpose_params, input_shape,
+                             GetTensorData<float>(weights),
+                             GetTensorShape(transposed_weights),
+                             GetTensorData<float>(transposed_weights));
+  } else if (weights->type == kTfLiteUInt8) {
+    optimized_ops::Transpose(transpose_params, input_shape,
+                             GetTensorData<uint8>(weights),
+                             GetTensorShape(transposed_weights),
+                             GetTensorData<uint8>(transposed_weights));
+  } else if (weights->type == kTfLiteInt8) {
+    optimized_ops::Transpose(transpose_params, input_shape,
+                             GetTensorData<int8>(weights),
+                             GetTensorShape(transposed_weights),
+                             GetTensorData<int8>(transposed_weights));
+  } else {
+    context->ReportError(
+        context, "Transpose conv only support float & uint8 right now.");
+    return kTfLiteError;
+  }
 
   return kTfLiteOk;
 }
@@ -230,8 +255,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 4);
-  TF_LITE_ENSURE(context,
-                 input->type == kTfLiteFloat32 || input->type == kTfLiteUInt8);
+  TF_LITE_ENSURE(context, input->type == kTfLiteFloat32 ||
+                              input->type == kTfLiteUInt8 ||
+                              input->type == kTfLiteInt8);
   TF_LITE_ENSURE_EQ(context, weights->type, input->type);
   TF_LITE_ENSURE_EQ(context, output->type, input->type);
   // Ensure that weights and inputs have the same channel dimension.
@@ -276,7 +302,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  if (input->type == kTfLiteUInt8) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     node->temporaries->data[data->scratch_tensor_index] =
         data->scratch_tensor_id;
     TfLiteTensor* scratch_buffer =
@@ -290,19 +316,24 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           ResizeTensor(context, output_shape, scratch_buffer));
     }
 
-    // Calcuate output multiplier for quantization.
-    double real_multiplier = 0.0;
-    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
-        context, input, weights, output, &real_multiplier));
-    int exponent;
-    // Populate quantization parameteters with multiplier and shift.
-    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
-    data->output_shift = -exponent;
-    // Populate max and min activation range.
-    CalculateActivationRangeUint8(kTfLiteActNone, output,
-                                  &data->output_activation_min,
-                                  &data->output_activation_max);
+    TF_LITE_ENSURE_EQ(context, weights->quantization.type,
+                      kTfLiteAffineQuantization);
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            weights->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    const int number_channel = affine_quantization->scale->size;
+    data->per_channel_output_multiplier.resize(number_channel);
+    data->per_channel_output_shift.resize(number_channel);
+    TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
+        context, input, weights, nullptr, output, kTfLiteActNone,
+        &data->output_multiplier, &data->output_shift,
+        &data->output_activation_min, &data->output_activation_max,
+        data->per_channel_output_multiplier.data(),
+        data->per_channel_output_shift.data()));
   }
+
   return kTfLiteOk;
 }
 
@@ -342,10 +373,12 @@ void EvalFloat(TfLiteContext* context, const TfLiteTransposeConvParams* params,
   }
 }
 
-void EvalQuantized(const TfLiteTransposeConvParams* params, OpData* data,
+template <KernelType kernel_type>
+void EvalQuantized(TfLiteContext* context,
+                   const TfLiteTransposeConvParams* params, OpData* data,
                    const TfLiteTensor* input, const TfLiteTensor* weights,
-                   TfLiteTensor* col2im, TfLiteTensor* output,
-                   TfLiteTensor* scratch_buffer) {
+                   const TfLiteTensor* transposed_weights, TfLiteTensor* col2im,
+                   TfLiteTensor* output, TfLiteTensor* scratch_buffer) {
   int32_t input_offset = -input->params.zero_point;
   int32_t filter_offset = -weights->params.zero_point;
   int32_t output_offset = output->params.zero_point;
@@ -354,6 +387,8 @@ void EvalQuantized(const TfLiteTransposeConvParams* params, OpData* data,
   op_params.padding_type = PaddingType::kSame;
   op_params.padding_values.width = data->padding.width;
   op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width_offset = data->padding.width_offset;
+  op_params.padding_values.height_offset = data->padding.height_offset;
   op_params.stride_width = params->stride_width;
   op_params.stride_height = params->stride_height;
   op_params.input_offset = input_offset;
@@ -364,13 +399,60 @@ void EvalQuantized(const TfLiteTransposeConvParams* params, OpData* data,
   op_params.quantized_activation_min = data->output_activation_min;
   op_params.quantized_activation_max = data->output_activation_max;
 
-  // TODO(haoliang): Add optimized implementation later.
-  reference_ops::TransposeConv(
-      op_params, GetTensorShape(input), GetTensorData<uint8>(input),
-      GetTensorShape(weights), GetTensorData<uint8>(weights),
-      GetTensorShape(output), GetTensorData<uint8>(output),
-      GetTensorShape(col2im), GetTensorData<uint8>(col2im),
-      GetTensorData<int32_t>(scratch_buffer));
+  switch (kernel_type) {
+    case kReference: {
+      reference_ops::TransposeConv(
+          op_params, GetTensorShape(input), GetTensorData<uint8>(input),
+          GetTensorShape(weights), GetTensorData<uint8>(weights),
+          GetTensorShape(output), GetTensorData<uint8>(output),
+          GetTensorShape(col2im), GetTensorData<uint8>(col2im),
+          GetTensorData<int32_t>(scratch_buffer));
+      break;
+    }
+    case kGenericOptimized: {
+      optimized_ops::TransposeConvV2(
+          op_params, GetTensorShape(input), GetTensorData<uint8>(input),
+          GetTensorShape(transposed_weights),
+          GetTensorData<uint8>(transposed_weights), GetTensorShape(output),
+          GetTensorData<uint8>(output), GetTensorShape(col2im),
+          GetTensorData<int32>(col2im), GetTensorData<int32>(scratch_buffer),
+          CpuBackendContext::GetFromContext(context));
+      break;
+    }
+  }
+}
+
+void EvalQuantizedPerChannel(TfLiteContext* context,
+                             const TfLiteTransposeConvParams* params,
+                             OpData* data, const TfLiteTensor* input,
+                             const TfLiteTensor* weights,
+                             const TfLiteTensor* transposed_weights,
+                             TfLiteTensor* col2im, TfLiteTensor* output,
+                             TfLiteTensor* scratch_buffer) {
+  tflite::ConvParams op_params;
+  op_params.padding_type = PaddingType::kSame;
+  op_params.padding_values.width = data->padding.width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width_offset = data->padding.width_offset;
+  op_params.padding_values.height_offset = data->padding.height_offset;
+  op_params.stride_width = params->stride_width;
+  op_params.stride_height = params->stride_height;
+  // Need to flip the sign of input offset to add it directly to the quantized
+  // buffer.
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  // TODO(b/143380105): Need to add optimized kernel for int8 quantized
+  // transpose conv.
+  reference_integer_ops::TransposeConv(
+      op_params, data->per_channel_output_multiplier.data(),
+      data->per_channel_output_shift.data(), GetTensorShape(input),
+      GetTensorData<int8>(input), GetTensorShape(weights),
+      GetTensorData<int8>(weights), GetTensorShape(output),
+      GetTensorData<int8>(output), GetTensorShape(col2im),
+      GetTensorData<int8>(col2im), GetTensorData<int32_t>(scratch_buffer));
 }
 
 template <KernelType kernel_type>
@@ -427,16 +509,35 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
     }
     case kTfLiteUInt8: {
-      // TODO(haoliang): support optimized implementation for quantized
-      // TransposeConv.
       TfLiteTensor* scratch_buffer =
           GetTemporary(context, node, data->scratch_tensor_index);
       if (IsDynamicTensor(scratch_buffer)) {
         TF_LITE_ENSURE_OK(context,
                           ResizeTensor(context, output_shape, scratch_buffer));
       }
-      EvalQuantized(params, data, input, weights, col2im, output,
-                    scratch_buffer);
+      if (data->weights_are_transposed) {
+        if (!IsConstantTensor(weights)) {
+          ResizeAndTransposeWeights(context, weights, transposed_weights);
+        }
+      }
+      EvalQuantized<kernel_type>(context, params, data, input, weights,
+                                 transposed_weights, col2im, output,
+                                 scratch_buffer);
+      break;
+    }
+    case kTfLiteInt8: {
+      TfLiteTensor* scratch_buffer =
+          GetTemporary(context, node, data->scratch_tensor_index);
+      if (IsDynamicTensor(scratch_buffer)) {
+        TF_LITE_ENSURE_OK(context,
+                          ResizeTensor(context, output_shape, scratch_buffer));
+      }
+      if (data->weights_are_transposed && !IsConstantTensor(weights)) {
+        ResizeAndTransposeWeights(context, weights, transposed_weights);
+      }
+      EvalQuantizedPerChannel(context, params, data, input, weights,
+                              transposed_weights, col2im, output,
+                              scratch_buffer);
       break;
     }
     default:

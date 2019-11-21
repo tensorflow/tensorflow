@@ -27,6 +27,12 @@ limitations under the License.
 
 namespace xla {
 
+enum class FusionConfigCollection {
+  kOff,      // Do not collect configuration.
+  kPerEdge,  // Collect per-edge configuration.
+  kPerNode,  // Collect per-node configuration.
+};
+
 // This class gathers all settings and values which affect the compiled
 // executable outside of the HLO code itself. This include layouts of inputs and
 // outputs to the module and settings such as HLO profiling. Together the
@@ -40,6 +46,9 @@ class HloModuleConfig {
   // optimization. If sharded, XLA will create separate sharding/unsharding
   // programs, and the caller is responsible to call the XLA-generated
   // sharding/unsharding programs before and after the sharded main program.
+  //
+  // If the variable is not updated and there is not a corresponding output, use
+  // {-1} as the output_shape_index.
   //
   // The sharding/unsharding programs will include all the input/output pairs in
   // shardable_value_update_pairs() as a flat tuple in their inputs/outputs,
@@ -104,6 +113,11 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  void set_num_partitions(int64 num_partitions) {
+    num_partitions_ = num_partitions;
+  }
+  int64 num_partitions() const { return num_partitions_; }
+
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
@@ -154,6 +168,21 @@ class HloModuleConfig {
     alias_passthrough_params_ = alias_passthrough_params;
   }
 
+  FusionConfigCollection fusion_config_collection() const {
+    return fusion_config_collection_;
+  }
+  void set_fusion_config_collection(
+      FusionConfigCollection fusion_config_collection) {
+    fusion_config_collection_ = fusion_config_collection;
+  }
+
+  const std::vector<std::vector<bool>>& fusion_config() const {
+    return fusion_config_;
+  }
+  std::vector<std::vector<bool>>* mutable_fusion_config() {
+    return &fusion_config_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -162,8 +191,11 @@ class HloModuleConfig {
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
 
-  // The number of replicas to compile this binary for.
+  // The number of replicas (data parallelism) to compile this binary for.
   int64 replica_count_ = 1;
+
+  // The number of partitions (model parallelism) to compile this binary for.
+  int64 num_partitions_ = 1;
 
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
@@ -177,6 +209,11 @@ class HloModuleConfig {
   std::vector<ShardableValueUpdatePair> shardable_value_update_pairs_;
 
   bool alias_passthrough_params_ = false;
+
+  FusionConfigCollection fusion_config_collection_ =
+      FusionConfigCollection::kOff;
+
+  std::vector<std::vector<bool>> fusion_config_;
 };
 
 }  // namespace xla

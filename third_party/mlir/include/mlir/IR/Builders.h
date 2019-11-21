@@ -80,12 +80,6 @@ public:
   IntegerType getI1Type();
   IntegerType getIntegerType(unsigned width);
   FunctionType getFunctionType(ArrayRef<Type> inputs, ArrayRef<Type> results);
-  MemRefType getMemRefType(ArrayRef<int64_t> shape, Type elementType,
-                           ArrayRef<AffineMap> affineMapComposition = {},
-                           unsigned memorySpace = 0);
-  VectorType getVectorType(ArrayRef<int64_t> shape, Type elementType);
-  RankedTensorType getTensorType(ArrayRef<int64_t> shape, Type elementType);
-  UnrankedTensorType getTensorType(Type elementType);
   TupleType getTupleType(ArrayRef<Type> elementTypes);
   NoneType getNoneType();
 
@@ -105,22 +99,12 @@ public:
   FloatAttr getFloatAttr(Type type, double value);
   FloatAttr getFloatAttr(Type type, const APFloat &value);
   StringAttr getStringAttr(StringRef bytes);
-  StringAttr getStringAttr(StringRef bytes, Type type);
   ArrayAttr getArrayAttr(ArrayRef<Attribute> value);
-  AffineMapAttr getAffineMapAttr(AffineMap map);
-  IntegerSetAttr getIntegerSetAttr(IntegerSet set);
-  TypeAttr getTypeAttr(Type type);
-  SymbolRefAttr getSymbolRefAttr(Operation *value);
-  SymbolRefAttr getSymbolRefAttr(StringRef value);
-  ElementsAttr getDenseElementsAttr(ShapedType type,
-                                    ArrayRef<Attribute> values);
-  ElementsAttr getDenseIntElementsAttr(ShapedType type,
-                                       ArrayRef<int64_t> values);
-  ElementsAttr getSparseElementsAttr(ShapedType type,
-                                     DenseIntElementsAttr indices,
-                                     DenseElementsAttr values);
-  ElementsAttr getOpaqueElementsAttr(Dialect *dialect, ShapedType type,
-                                     StringRef bytes);
+  FlatSymbolRefAttr getSymbolRefAttr(Operation *value);
+  FlatSymbolRefAttr getSymbolRefAttr(StringRef value);
+  SymbolRefAttr getSymbolRefAttr(StringRef value,
+                                 ArrayRef<FlatSymbolRefAttr> nestedReferences);
+
   // Returns a 0-valued attribute of the given `type`. This function only
   // supports boolean, integer, and 16-/32-/64-bit float types, and vector or
   // ranked tensor of them. Returns null attribute otherwise.
@@ -131,6 +115,8 @@ public:
   FloatAttr getF32FloatAttr(float value);
   FloatAttr getF64FloatAttr(double value);
 
+  IntegerAttr getI8IntegerAttr(int8_t value);
+  IntegerAttr getI16IntegerAttr(int16_t value);
   IntegerAttr getI32IntegerAttr(int32_t value);
   IntegerAttr getI64IntegerAttr(int64_t value);
 
@@ -146,9 +132,6 @@ public:
   AffineExpr getAffineDimExpr(unsigned position);
   AffineExpr getAffineSymbolExpr(unsigned position);
   AffineExpr getAffineConstantExpr(int64_t constant);
-
-  AffineMap getAffineMap(unsigned dimCount, unsigned symbolCount,
-                         ArrayRef<AffineExpr> results);
 
   // Special cases of affine maps and integer sets
   /// Returns a zero result affine map with no dimensions or symbols: () -> ().
@@ -173,11 +156,6 @@ public:
   ///   returns:    (d0, d1)[s0] -> (d0 + 2, d1 + s0 + 2)
   AffineMap getShiftedAffineMap(AffineMap map, int64_t shift);
 
-  // Integer set.
-  IntegerSet getIntegerSet(unsigned dimCount, unsigned symbolCount,
-                           ArrayRef<AffineExpr> constraints,
-                           ArrayRef<bool> isEq);
-  // TODO: Helpers for affine map/exprs, etc.
 protected:
   MLIRContext *context;
 };
@@ -278,6 +256,12 @@ public:
     setInsertionPoint(op->getBlock(), Block::iterator(op));
   }
 
+  /// Sets the insertion point to the node after the specified operation, which
+  /// will cause subsequent insertions to go right after it.
+  void setInsertionPointAfter(Operation *op) {
+    setInsertionPoint(op->getBlock(), ++Block::iterator(op));
+  }
+
   /// Sets the insertion point to the start of the specified block.
   void setInsertionPointToStart(Block *block) {
     setInsertionPoint(block, block->begin());
@@ -313,7 +297,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args &&... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, std::forward<Args>(args)...);
+    OpTy::build(this, state, std::forward<Args>(args)...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");

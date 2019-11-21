@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <ctype.h>
+
 #include <map>
 #include <unordered_map>
 #include <utility>
@@ -166,6 +168,7 @@ class FunctionInstantiationHelper {
 
   // Builds index for nodes that can be used as node's input arguments.
   Status BuildInputArgIndex(const OpDef::ArgDef& arg_def, AttrSlice attr_values,
+                            const FunctionDef::ArgAttrs* arg_attrs,
                             bool ints_on_device) {
     bool is_type_list;
     DataTypeVector dtypes;
@@ -193,6 +196,11 @@ class FunctionInstantiationHelper {
       DataType dtype = arg_def.is_ref() ? MakeRefType(dtypes[i]) : dtypes[i];
       AddAttr("T", dtype, gnode);
       AddAttr("index", arg_index, gnode);
+      if (arg_attrs) {
+        for (const auto& arg_attr : arg_attrs->attr()) {
+          AddAttr(arg_attr.first, arg_attr.second, gnode->mutable_attr());
+        }
+      }
       result_.arg_types.push_back(dtypes[i]);
       ++arg_index;
     }
@@ -503,7 +511,7 @@ string Print(const AttrValue& attr_value) {
       return attr_value.func().name();
     }
     std::vector<string> entries;
-    for (auto p : attr_value.func().attr()) {
+    for (const auto& p : attr_value.func().attr()) {
       entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
     }
     std::sort(entries.begin(), entries.end());
@@ -696,7 +704,16 @@ Status AddDefaultAttrs(const string& op,
 Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
                            GetFunctionSignature get_function,
                            InstantiationResult* result) {
-  VLOG(4) << "Instantiation Function: " << Print(fdef);
+  if (VLOG_IS_ON(5)) {
+    const auto& signature = fdef.signature();
+    VLOG(5) << "Instantiate function definition: name=" << signature.name()
+            << " #input_args=" << signature.input_arg_size()
+            << " #output_args=" << signature.output_arg_size()
+            << " #control_output=" << signature.control_output_size();
+    for (const auto& line : str_util::Split(Print(fdef), '\n')) {
+      VLOG(5) << "|| " << line;
+    }
+  }
 
   const OpDef& sig = fdef.signature();
   TF_RETURN_IF_ERROR(ValidateSignatureWithAttrs(sig, attr_values));
@@ -707,8 +724,13 @@ Status InstantiateFunction(const FunctionDef& fdef, AttrSlice attr_values,
 
   FunctionInstantiationHelper helper(get_function, result);
   Status s;
-  for (const OpDef::ArgDef& arg_def : sig.input_arg()) {
-    s = helper.BuildInputArgIndex(arg_def, attr_values, ints_on_device);
+  for (int i = 0, e = sig.input_arg_size(); i < e; ++i) {
+    const OpDef::ArgDef& arg_def = sig.input_arg(i);
+    auto it = fdef.arg_attr().find(i);
+    const FunctionDef::ArgAttrs* arg_attrs =
+        it != fdef.arg_attr().end() ? &it->second : nullptr;
+    s = helper.BuildInputArgIndex(arg_def, attr_values, arg_attrs,
+                                  ints_on_device);
     if (!s.ok()) {
       errors::AppendToMessage(&s, "In ", Print(arg_def));
       return s;
@@ -814,7 +836,7 @@ namespace {
 // and adds an unset attr to the map.
 std::map<string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
   std::map<string, AttrValue> set_attrs;
-  for (auto pair : fdef.attr()) {
+  for (const auto& pair : fdef.attr()) {
     if (pair.second.value_case() != AttrValue::VALUE_NOT_SET) {
       set_attrs[pair.first] = pair.second;
     }
@@ -830,7 +852,7 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   std::map<string, AttrValue> f1_attrs = GetSetAttrs(f1);
   std::map<string, AttrValue> f2_attrs = GetSetAttrs(f2);
   if (f1_attrs.size() != f2_attrs.size()) return false;
-  for (auto iter1 : f1_attrs) {
+  for (const auto& iter1 : f1_attrs) {
     auto iter2 = f2_attrs.find(iter1.first);
     if (iter2 == f2_attrs.end()) return false;
     if (!AreAttrValuesEqual(iter1.second, iter2->second)) return false;
@@ -899,55 +921,132 @@ string FunctionLibraryRuntime::ExecutorType(const InstantiateOptions& options,
   }
 }
 
+namespace {
+class AttrKeyAndValue {
+ public:
+  enum ValueRepresentationOp {
+    kRaw,
+    kCEscape,
+  };
+  AttrKeyAndValue(absl::string_view key_name, int key_suffix, string value,
+                  ValueRepresentationOp value_op = kRaw)
+      : key_name_(key_name),
+        key_suffix_(key_suffix),
+        value_op_(value_op),
+        value_(std::move(value)) {}
+
+  bool operator<(const AttrKeyAndValue& b) const {
+    if (key_name_ != b.key_name_) {
+      return key_name_ < b.key_name_;
+    } else if (key_suffix_ != b.key_suffix_) {
+      return key_suffix_ < b.key_suffix_;
+    } else {
+      return value_ < b.value_;
+    }
+  }
+
+  void AppendTo(bool first, string* s) const {
+    absl::string_view v;
+    bool add_escaped = false;
+    if ((value_op_ == kCEscape) && NeedsEscaping(value_)) {
+      // Use CEscape call below
+      add_escaped = true;
+    } else {
+      // Add raw value contents directly
+      v = value_;
+    }
+    if (key_suffix_ >= 0) {
+      strings::StrAppend(s, first ? "" : ",", key_name_, key_suffix_, "=", v);
+    } else {
+      strings::StrAppend(s, first ? "" : ",", key_name_, "=", v);
+    }
+    if (add_escaped) {
+      strings::StrAppend(s, absl::CEscape(value_));
+    }
+  }
+
+ private:
+  static bool NeedsEscaping(const string& s) {
+    for (auto c : s) {
+      if (!isalnum(c) && (c != ' ')) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  absl::string_view key_name_;
+  int key_suffix_;  // -1 if missing
+  ValueRepresentationOp value_op_;
+  string value_;
+};
+}  // namespace
+
 string Canonicalize(const string& funcname, AttrSlice attrs,
                     const FunctionLibraryRuntime::InstantiateOptions& options) {
-  std::vector<string> entries;
-  entries.reserve(attrs.size() + static_cast<int>(options.target.empty()) +
+  absl::InlinedVector<AttrKeyAndValue, 8> entries;
+  entries.reserve(attrs.size() + static_cast<int>(!options.target.empty()) +
                   options.input_devices.size());
-  for (auto p : attrs) {
+  for (const auto& p : attrs) {
     if (p.first != kExecutorAttr) {
-      entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+      entries.push_back(AttrKeyAndValue(p.first, -1, Print(p.second)));
     }
   }
   if (!options.target.empty()) {
-    entries.push_back(
-        strings::StrCat("_target", "=", absl::CEscape(options.target)));
+    entries.push_back(AttrKeyAndValue("_target", -1, options.target,
+                                      AttrKeyAndValue::kCEscape));
   }
   for (int i = 0; i < options.input_devices.size(); ++i) {
-    entries.push_back(strings::StrCat("_input_dev", i, "=",
-                                      absl::CEscape(options.input_devices[i])));
+    entries.push_back(AttrKeyAndValue("_input_dev", i, options.input_devices[i],
+                                      AttrKeyAndValue::kCEscape));
   }
   for (int i = 0; i < options.output_devices.size(); ++i) {
-    entries.push_back(strings::StrCat(
-        "_output_dev", i, "=", absl::CEscape(options.output_devices[i])));
+    entries.push_back(AttrKeyAndValue("_output_dev", i,
+                                      options.output_devices[i],
+                                      AttrKeyAndValue::kCEscape));
   }
   for (const auto& iter : options.input_resource_dtypes_and_shapes) {
-    entries.push_back(strings::StrCat("_input_resource_dtype", iter.first, "=",
+    entries.push_back(AttrKeyAndValue("_input_resource_dtype", iter.first,
                                       DataTypeString(iter.second.dtype)));
-    entries.push_back(
-        strings::StrCat("_input_resource_shape", iter.first, "=",
-                        absl::CEscape(iter.second.shape.DebugString())));
+    entries.push_back(AttrKeyAndValue("_input_resource_shape", iter.first,
+                                      iter.second.shape.DebugString(),
+                                      AttrKeyAndValue::kCEscape));
   }
   if (options.lib_def) {
-    entries.push_back(strings::StrCat(
-        "_lib_def", "=", reinterpret_cast<uintptr_t>(options.lib_def)));
+    entries.push_back(AttrKeyAndValue(
+        "_lib_def", -1,
+        absl::StrCat("", reinterpret_cast<uintptr_t>(options.lib_def))));
   }
   if (!options.state_handle.empty()) {
     entries.push_back(
-        strings::StrCat("_state_handle", "=", options.state_handle));
+        AttrKeyAndValue("_state_handle", -1, options.state_handle));
   }
   string executor_type = FunctionLibraryRuntime::ExecutorType(options, attrs);
   if (!executor_type.empty()) {
-    entries.push_back(strings::StrCat(kExecutorAttr, "=", executor_type));
+    entries.push_back(AttrKeyAndValue(kExecutorAttr, -1, executor_type));
   }
-  string config_proto_serialized;
-  options.config_proto.SerializeToString(&config_proto_serialized);
-  if (!config_proto_serialized.empty()) {
-    entries.push_back(strings::StrCat("_config_proto", "=",
-                                      absl::CEscape(config_proto_serialized)));
+  if (options.config_proto.ByteSize() > 0) {
+    string config_proto_serialized;
+    options.config_proto.SerializeToString(&config_proto_serialized);
+    entries.push_back(AttrKeyAndValue("_config_proto", -1,
+                                      config_proto_serialized,
+                                      AttrKeyAndValue::kCEscape));
   }
   std::sort(entries.begin(), entries.end());
-  return strings::StrCat(funcname, "[", absl::StrJoin(entries, ","), "]");
+  string result = strings::StrCat(funcname, "[");
+  bool first = true;
+  for (const auto& entry : entries) {
+    entry.AppendTo(first, &result);
+    first = false;
+  }
+  result += "]";
+  return result;
+}
+
+string Canonicalize(const string& funcname, AttrSlice attrs) {
+  static const FunctionLibraryRuntime::InstantiateOptions* kEmptyOptions =
+      new FunctionLibraryRuntime::InstantiateOptions;
+  return Canonicalize(funcname, attrs, *kEmptyOptions);
 }
 
 FunctionCallFrame::FunctionCallFrame(DataTypeSlice arg_types,

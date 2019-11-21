@@ -86,6 +86,18 @@ def _run_inline_graph_optimization(func, lower_control_flow):
   graph_def = func.graph.as_graph_def()
   if not lower_control_flow:
     graph_def = disable_lower_using_switch_merge(graph_def)
+
+  # In some cases, a secondary implementation of the function (e.g. for GPU) is
+  # written to the "api_implements" attribute. (e.g. `tf.keras.layers.LSTM` in
+  # TF2 produces a CuDNN-based RNN for GPU).
+  # This function suppose to inline all functions calls, but "api_implements"
+  # prevents this from happening. Removing the attribute solves the problem.
+  # To learn more about "api_implements", see:
+  #   tensorflow/core/grappler/optimizers/implementation_selector.h
+  for function in graph_def.library.function:
+    if "api_implements" in function.attr:
+      del function.attr["api_implements"]
+
   meta_graph = export_meta_graph(graph_def=graph_def, graph=func.graph)
 
   # Clear the initializer_name for the variables collections, since they are not
@@ -203,7 +215,7 @@ def _get_tensor_data(func):
   return tensor_data
 
 
-def _get_control_flow_function_data(node_defs, tensor_data):
+def _get_control_flow_function_data(node_defs, tensor_data, name_to_node):
   """Gets the types and shapes for the parameters to the function.
 
   Creates a map from function name to a list of types and a list of shapes that
@@ -218,6 +230,7 @@ def _get_control_flow_function_data(node_defs, tensor_data):
   Args:
     node_defs: List of NodeDefs.
     tensor_data: {str name : Tensor}.
+    name_to_node: Dictionary mapping node name to node object.
 
   Returns:
     {str function name : {"types" : [int representing DataType],
@@ -226,11 +239,23 @@ def _get_control_flow_function_data(node_defs, tensor_data):
   """
   func_data = {}
 
+  def get_source_node_name_through_identities(node_name):
+    # Trace the source node along with a chain of Identity nodes.
+    # For example, given Plaecholder -> Identity -> Identity -> node_name
+    # The function will return the name of the Placeholder.
+    while name_to_node[node_name].op == "Identity":
+      node_name = _get_tensor_name(name_to_node[node_name].input[0])
+    return node_name
+
   def get_resource_type(node_name):
+    node_name = get_source_node_name_through_identities(node_name)
+
     numpy_type = tensor_data[node_name]["data"].dtype
     return dtypes.as_dtype(numpy_type).as_datatype_enum
 
   def get_resource_shape(node_name):
+    node_name = get_source_node_name_through_identities(node_name)
+
     return tensor_shape_pb2.TensorShapeProto(dim=[
         tensor_shape_pb2.TensorShapeProto.Dim(size=dim)
         for dim in tensor_data[node_name]["data"].shape
@@ -360,8 +385,8 @@ def _construct_concrete_function(func, output_graph_def,
   input_tensors = func.graph.internal_captures
   converted_inputs = object_identity.ObjectIdentitySet(
       [input_tensors[index] for index in converted_input_indices])
-  not_converted_inputs = object_identity.ObjectIdentitySet(
-      func.inputs).difference(converted_inputs)
+  not_converted_inputs = [
+      tensor for tensor in func.inputs if tensor not in converted_inputs]
   not_converted_inputs_map = {
       tensor.name: tensor for tensor in not_converted_inputs
   }
@@ -379,7 +404,7 @@ def _construct_concrete_function(func, output_graph_def,
   return new_func
 
 
-def convert_variables_to_constants_v2(func, lower_control_flow=True):
+def _convert_variables_to_constants_v2_impl(func, lower_control_flow=True):
   """Replaces all the variables in a graph with constants of the same values.
 
   TensorFlow 2.0 function for converting all Variable ops into Const ops holding
@@ -391,13 +416,18 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
   The current implementation only works for graphs that do not contain any
   control flow or embedding related ops.
 
+  Note that the NodeDefs in the returned GraphDef contains the original node
+  names if they are created by the graph optimization. Converting the GraphDef
+  to concrete function will lose these debug information.
+
   Args:
     func: ConcreteFunction.
     lower_control_flow: Boolean indicating whether or not to lower control flow
       ops such as If and While. (default True)
 
   Returns:
-    ConcreteFunction containing a simplified version of the original.
+    GraphDef containing a simplified version of the original and converted
+    input indices that were converted to constants.
   """
   # Inline the graph in order to remove functions when possible.
   graph_def = _run_inline_graph_optimization(func, lower_control_flow)
@@ -412,7 +442,8 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
   tensor_data = _get_tensor_data(func)
 
   # Get mapping from function name to argument types.
-  function_data = _get_control_flow_function_data(node_defs, tensor_data)
+  function_data = _get_control_flow_function_data(
+      node_defs, tensor_data, name_to_node)
 
   # Get variable data for all nodes in `node_defs`.
   reference_variables = {}
@@ -592,5 +623,52 @@ def convert_variables_to_constants_v2(func, lower_control_flow=True):
               output_node.input[idx] = input_name
 
   output_graph_def.versions.CopyFrom(graph_def.versions)
-  return _construct_concrete_function(func, output_graph_def,
-                                      converted_input_indices)
+  return (output_graph_def, converted_input_indices)
+
+
+def convert_variables_to_constants_v2(func, lower_control_flow=True):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  TensorFlow 2.0 function for converting all Variable ops into Const ops holding
+  the same values. This makes it possible to describe the network fully with a
+  single GraphDef file, and allows the removal of a lot of ops related to
+  loading and saving the variables. This function runs Grappler's function
+  inlining optimization in order to return a single subgraph.
+
+  The current implementation only works for graphs that do not contain any
+  control flow or embedding related ops.
+
+  Args:
+    func: ConcreteFunction.
+    lower_control_flow: Boolean indicating whether or not to lower control flow
+      ops such as If and While. (default True)
+
+  Returns:
+    ConcreteFunction containing a simplified version of the original.
+  """
+  output_graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
+      func, lower_control_flow)
+  return _construct_concrete_function(func, output_graph_def, converted_inputs)
+
+
+def convert_variables_to_constants_v2_as_graph(func, lower_control_flow=True):
+  """Replaces all the variables in a graph with constants of the same values.
+
+  This function works as same as convert_variables_to_constants_v2, but it
+  returns the intermediate `GraphDef` as well. This `GraphDef` contains all the
+  debug information after all the transformations in the frozen phase.
+
+  Args:
+    func: ConcreteFunction.
+    lower_control_flow: Boolean indicating whether or not to lower control flow
+      ops such as If and While. (default True)
+
+  Returns:
+    ConcreteFunction containing a simplified version of the original, and also
+    the intermediate GraphDef containing the node debug information for the
+    transformations in the frozen phase.
+  """
+  graph_def, converted_inputs = _convert_variables_to_constants_v2_impl(
+      func, lower_control_flow)
+  frozen_func = _construct_concrete_function(func, graph_def, converted_inputs)
+  return frozen_func, graph_def

@@ -32,10 +32,12 @@ from six.moves import urllib
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
+from tensorflow.python.ops import gen_audio_ops as audio_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.util import compat
+
+tf.compat.v1.disable_eager_execution()
 
 # If it's available, load the specialized feature generator. If this doesn't
 # work, try building with bazel instead of running the Python script directly.
@@ -125,7 +127,7 @@ def load_wav_file(filename):
   with tf.compat.v1.Session(graph=tf.Graph()) as sess:
     wav_filename_placeholder = tf.compat.v1.placeholder(tf.string, [])
     wav_loader = io_ops.read_file(wav_filename_placeholder)
-    wav_decoder = contrib_audio.decode_wav(wav_loader, desired_channels=1)
+    wav_decoder = tf.audio.decode_wav(wav_loader, desired_channels=1)
     return sess.run(
         wav_decoder,
         feed_dict={wav_filename_placeholder: filename}).audio.flatten()
@@ -143,8 +145,8 @@ def save_wav_file(filename, wav_data, sample_rate):
     wav_filename_placeholder = tf.compat.v1.placeholder(tf.string, [])
     sample_rate_placeholder = tf.compat.v1.placeholder(tf.int32, [])
     wav_data_placeholder = tf.compat.v1.placeholder(tf.float32, [None, 1])
-    wav_encoder = contrib_audio.encode_wav(wav_data_placeholder,
-                                           sample_rate_placeholder)
+    wav_encoder = tf.audio.encode_wav(wav_data_placeholder,
+                                      sample_rate_placeholder)
     wav_saver = io_ops.write_file(wav_filename_placeholder, wav_encoder)
     sess.run(
         wav_saver,
@@ -240,7 +242,7 @@ class AudioProcessor(object):
       statinfo = os.stat(filepath)
       tf.compat.v1.logging.info('Successfully downloaded %s (%d bytes)',
                                 filename, statinfo.st_size)
-    tarfile.open(filepath, 'r:gz').extractall(dest_directory)
+      tarfile.open(filepath, 'r:gz').extractall(dest_directory)
 
   def prepare_data_index(self, silence_percentage, unknown_percentage,
                          wanted_words, validation_percentage,
@@ -353,7 +355,7 @@ class AudioProcessor(object):
     with tf.compat.v1.Session(graph=tf.Graph()) as sess:
       wav_filename_placeholder = tf.compat.v1.placeholder(tf.string, [])
       wav_loader = io_ops.read_file(wav_filename_placeholder)
-      wav_decoder = contrib_audio.decode_wav(wav_loader, desired_channels=1)
+      wav_decoder = tf.audio.decode_wav(wav_loader, desired_channels=1)
       search_path = os.path.join(self.data_dir, BACKGROUND_NOISE_DIR_NAME,
                                  '*.wav')
       for wav_path in gfile.Glob(search_path):
@@ -395,7 +397,7 @@ class AudioProcessor(object):
       self.wav_filename_placeholder_ = tf.compat.v1.placeholder(
           tf.string, [], name='wav_filename')
       wav_loader = io_ops.read_file(self.wav_filename_placeholder_)
-      wav_decoder = contrib_audio.decode_wav(
+      wav_decoder = tf.audio.decode_wav(
           wav_loader, desired_channels=1, desired_samples=desired_samples)
       # Allow the audio sample's volume to be adjusted.
       self.foreground_volume_placeholder_ = tf.compat.v1.placeholder(
@@ -424,7 +426,7 @@ class AudioProcessor(object):
       background_add = tf.add(background_mul, sliced_foreground)
       background_clamp = tf.clip_by_value(background_add, -1.0, 1.0)
       # Run the spectrogram and MFCC ops to get a 2D 'fingerprint' of the audio.
-      spectrogram = contrib_audio.audio_spectrogram(
+      spectrogram = audio_ops.audio_spectrogram(
           background_clamp,
           window_size=model_settings['window_size_samples'],
           stride=model_settings['window_stride_samples'],
@@ -450,7 +452,7 @@ class AudioProcessor(object):
                                    self.output_,
                                    max_outputs=1)
       elif model_settings['preprocess'] == 'mfcc':
-        self.output_ = contrib_audio.mfcc(
+        self.output_ = audio_ops.mfcc(
             spectrogram,
             wav_decoder.sample_rate,
             dct_coefficient_count=model_settings['fingerprint_width'])
@@ -660,7 +662,7 @@ class AudioProcessor(object):
     with tf.compat.v1.Session(graph=tf.Graph()) as sess:
       wav_filename_placeholder = tf.compat.v1.placeholder(tf.string, [])
       wav_loader = io_ops.read_file(wav_filename_placeholder)
-      wav_decoder = contrib_audio.decode_wav(
+      wav_decoder = tf.audio.decode_wav(
           wav_loader, desired_channels=1, desired_samples=desired_samples)
       foreground_volume_placeholder = tf.compat.v1.placeholder(tf.float32, [])
       scaled_foreground = tf.multiply(wav_decoder.audio,

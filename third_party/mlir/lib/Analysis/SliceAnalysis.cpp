@@ -117,7 +117,7 @@ static void getBackwardSliceImpl(Operation *op,
           getBackwardSliceImpl(loopOp, backwardSlice, filter);
       } else if (blockArg->getOwner() !=
                  &op->getParentOfType<FuncOp>().getBody().front()) {
-        op->emitError("Unsupported CF for operand ") << en.index();
+        op->emitError("unsupported CF for operand ") << en.index();
         llvm_unreachable("Unsupported control flow");
       }
       continue;

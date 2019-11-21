@@ -49,8 +49,10 @@ static constexpr const char *cuModuleGetFunctionName = "mcuModuleGetFunction";
 static constexpr const char *cuLaunchKernelName = "mcuLaunchKernel";
 static constexpr const char *cuGetStreamHelperName = "mcuGetStreamHelper";
 static constexpr const char *cuStreamSynchronizeName = "mcuStreamSynchronize";
+static constexpr const char *kMcuMemHostRegister = "mcuMemHostRegister";
 
-static constexpr const char *kCubinGetterAnnotation = "nvvm.cubingetter";
+static constexpr const char *kCubinAnnotation = "nvvm.cubin";
+static constexpr const char *kCubinStorageSuffix = "_cubin_cst";
 
 namespace {
 
@@ -78,6 +80,7 @@ private:
 
   void initializeCachedTypes() {
     const llvm::Module &module = llvmDialect->getLLVMModule();
+    llvmVoidType = LLVM::LLVMType::getVoidTy(llvmDialect);
     llvmPointerType = LLVM::LLVMType::getInt8PtrTy(llvmDialect);
     llvmPointerPointerType = llvmPointerType.getPointerTo();
     llvmInt8Type = LLVM::LLVMType::getInt8Ty(llvmDialect);
@@ -86,6 +89,8 @@ private:
     llvmIntPtrType = LLVM::LLVMType::getIntNTy(
         llvmDialect, module.getDataLayout().getPointerSizeInBits());
   }
+
+  LLVM::LLVMType getVoidType() { return llvmVoidType; }
 
   LLVM::LLVMType getPointerType() { return llvmPointerType; }
 
@@ -118,7 +123,7 @@ private:
 
   void declareCudaFunctions(Location loc);
   Value *setupParamsArray(gpu::LaunchFuncOp launchOp, OpBuilder &builder);
-  Value *generateKernelNameConstant(FuncOp kernelFunction, Location &loc,
+  Value *generateKernelNameConstant(StringRef name, Location loc,
                                     OpBuilder &builder);
   void translateGpuLaunchCalls(mlir::gpu::LaunchFuncOp launchOp);
 
@@ -130,14 +135,20 @@ public:
     // Cache the used LLVM types.
     initializeCachedTypes();
 
-    for (auto func : getModule().getOps<FuncOp>()) {
-      func.walk(
-          [this](mlir::gpu::LaunchFuncOp op) { translateGpuLaunchCalls(op); });
-    }
+    getModule().walk([this](mlir::gpu::LaunchFuncOp op) {
+      translateGpuLaunchCalls(op);
+    });
+
+    // GPU kernel modules are no longer necessary since we have a global
+    // constant with the CUBIN data.
+    for (auto m : llvm::make_early_inc_range(getModule().getOps<ModuleOp>()))
+      if (m.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelModuleAttrName()))
+        m.erase();
   }
 
 private:
   LLVM::LLVMDialect *llvmDialect;
+  LLVM::LLVMType llvmVoidType;
   LLVM::LLVMType llvmPointerType;
   LLVM::LLVMType llvmPointerPointerType;
   LLVM::LLVMType llvmInt8Type;
@@ -153,38 +164,41 @@ private:
 // uses void pointers. This is fine as they have the same linkage in C.
 void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
   ModuleOp module = getModule();
-  Builder builder(module);
-  if (!module.lookupSymbol<FuncOp>(cuModuleLoadName)) {
-    module.push_back(
-        FuncOp::create(loc, cuModuleLoadName,
-                       builder.getFunctionType(
-                           {
-                               getPointerPointerType(), /* CUmodule *module */
-                               getPointerType()         /* void *cubin */
-                           },
-                           getCUResultType())));
+  OpBuilder builder(module.getBody()->getTerminator());
+  if (!module.lookupSymbol(cuModuleLoadName)) {
+    builder.create<LLVM::LLVMFuncOp>(
+        loc, cuModuleLoadName,
+        LLVM::LLVMType::getFunctionTy(
+            getCUResultType(),
+            {
+                getPointerPointerType(), /* CUmodule *module */
+                getPointerType()         /* void *cubin */
+            },
+            /*isVarArg=*/false));
   }
-  if (!module.lookupSymbol<FuncOp>(cuModuleGetFunctionName)) {
+  if (!module.lookupSymbol(cuModuleGetFunctionName)) {
     // The helper uses void* instead of CUDA's opaque CUmodule and
     // CUfunction.
-    module.push_back(
-        FuncOp::create(loc, cuModuleGetFunctionName,
-                       builder.getFunctionType(
-                           {
-                               getPointerPointerType(), /* void **function */
-                               getPointerType(),        /* void *module */
-                               getPointerType()         /* char *name */
-                           },
-                           getCUResultType())));
+    builder.create<LLVM::LLVMFuncOp>(
+        loc, cuModuleGetFunctionName,
+        LLVM::LLVMType::getFunctionTy(
+            getCUResultType(),
+            {
+                getPointerPointerType(), /* void **function */
+                getPointerType(),        /* void *module */
+                getPointerType()         /* char *name */
+            },
+            /*isVarArg=*/false));
   }
-  if (!module.lookupSymbol<FuncOp>(cuLaunchKernelName)) {
+  if (!module.lookupSymbol(cuLaunchKernelName)) {
     // Other than the CUDA api, the wrappers use uintptr_t to match the
     // LLVM type if MLIR's index type, which the GPU dialect uses.
     // Furthermore, they use void* instead of CUDA's opaque CUfunction and
     // CUstream.
-    module.push_back(FuncOp::create(
+    builder.create<LLVM::LLVMFuncOp>(
         loc, cuLaunchKernelName,
-        builder.getFunctionType(
+        LLVM::LLVMType::getFunctionTy(
+            getCUResultType(),
             {
                 getPointerType(),        /* void* f */
                 getIntPtrType(),         /* intptr_t gridXDim */
@@ -198,23 +212,31 @@ void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
                 getPointerPointerType(), /* void **kernelParams */
                 getPointerPointerType()  /* void **extra */
             },
-            getCUResultType())));
+            /*isVarArg=*/false));
   }
-  if (!module.lookupSymbol<FuncOp>(cuGetStreamHelperName)) {
+  if (!module.lookupSymbol(cuGetStreamHelperName)) {
     // Helper function to get the current CUDA stream. Uses void* instead of
     // CUDAs opaque CUstream.
-    module.push_back(FuncOp::create(
+    builder.create<LLVM::LLVMFuncOp>(
         loc, cuGetStreamHelperName,
-        builder.getFunctionType({}, getPointerType() /* void *stream */)));
+        LLVM::LLVMType::getFunctionTy(getPointerType(), /*isVarArg=*/false));
   }
-  if (!module.lookupSymbol<FuncOp>(cuStreamSynchronizeName)) {
-    module.push_back(
-        FuncOp::create(loc, cuStreamSynchronizeName,
-                       builder.getFunctionType(
-                           {
-                               getPointerType() /* CUstream stream */
-                           },
-                           getCUResultType())));
+  if (!module.lookupSymbol(cuStreamSynchronizeName)) {
+    builder.create<LLVM::LLVMFuncOp>(
+        loc, cuStreamSynchronizeName,
+        LLVM::LLVMType::getFunctionTy(getCUResultType(),
+                                      getPointerType() /* CUstream stream */,
+                                      /*isVarArg=*/false));
+  }
+  if (!module.lookupSymbol(kMcuMemHostRegister)) {
+    builder.create<LLVM::LLVMFuncOp>(
+        loc, kMcuMemHostRegister,
+        LLVM::LLVMType::getFunctionTy(getVoidType(),
+                                      {
+                                          getPointerType(), /* void *ptr */
+                                          getInt64Type()    /* int64 sizeBytes*/
+                                      },
+                                      /*isVarArg=*/false));
   }
 }
 
@@ -229,22 +251,47 @@ void GpuLaunchFuncToCudaCallsPass::declareCudaFunctions(Location loc) {
 Value *
 GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
                                                OpBuilder &builder) {
+  auto numKernelOperands = launchOp.getNumKernelOperands();
   Location loc = launchOp.getLoc();
   auto one = builder.create<LLVM::ConstantOp>(loc, getInt32Type(),
                                               builder.getI32IntegerAttr(1));
+  // Provision twice as much for the `array` to allow up to one level of
+  // indirection for each argument.
   auto arraySize = builder.create<LLVM::ConstantOp>(
-      loc, getInt32Type(),
-      builder.getI32IntegerAttr(launchOp.getNumKernelOperands()));
+      loc, getInt32Type(), builder.getI32IntegerAttr(numKernelOperands));
   auto array = builder.create<LLVM::AllocaOp>(loc, getPointerPointerType(),
                                               arraySize, /*alignment=*/0);
-  for (int idx = 0, e = launchOp.getNumKernelOperands(); idx < e; ++idx) {
+  for (unsigned idx = 0; idx < numKernelOperands; ++idx) {
     auto operand = launchOp.getKernelOperand(idx);
     auto llvmType = operand->getType().cast<LLVM::LLVMType>();
-    auto memLocation = builder.create<LLVM::AllocaOp>(
+    Value *memLocation = builder.create<LLVM::AllocaOp>(
         loc, llvmType.getPointerTo(), one, /*alignment=*/1);
     builder.create<LLVM::StoreOp>(loc, operand, memLocation);
     auto casted =
         builder.create<LLVM::BitcastOp>(loc, getPointerType(), memLocation);
+
+    // Assume all struct arguments come from MemRef. If this assumption does not
+    // hold anymore then we `launchOp` to lower from MemRefType and not after
+    // LLVMConversion has taken place and the MemRef information is lost.
+    // Extra level of indirection in the `array`:
+    //   the descriptor pointer is registered via @mcuMemHostRegisterPtr
+    if (llvmType.isStructTy()) {
+      auto registerFunc =
+          getModule().lookupSymbol<LLVM::LLVMFuncOp>(kMcuMemHostRegister);
+      auto nullPtr = builder.create<LLVM::NullOp>(loc, llvmType.getPointerTo());
+      auto gep = builder.create<LLVM::GEPOp>(loc, llvmType.getPointerTo(),
+                                             ArrayRef<Value *>{nullPtr, one});
+      auto size = builder.create<LLVM::PtrToIntOp>(loc, getInt64Type(), gep);
+      builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{},
+                                   builder.getSymbolRefAttr(registerFunc),
+                                   ArrayRef<Value *>{casted, size});
+      Value *memLocation = builder.create<LLVM::AllocaOp>(
+          loc, getPointerPointerType(), one, /*alignment=*/1);
+      builder.create<LLVM::StoreOp>(loc, casted, memLocation);
+      casted =
+          builder.create<LLVM::BitcastOp>(loc, getPointerType(), memLocation);
+    }
+
     auto index = builder.create<LLVM::ConstantOp>(
         loc, getInt32Type(), builder.getI32IntegerAttr(idx));
     auto gep = builder.create<LLVM::GEPOp>(loc, getPointerPointerType(), array,
@@ -265,14 +312,12 @@ GpuLaunchFuncToCudaCallsPass::setupParamsArray(gpu::LaunchFuncOp launchOp,
 //   %2 = llvm.getelementptr %0[%1, %1] : !llvm<"i8*">
 // }
 Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
-    FuncOp kernelFunction, Location &loc, OpBuilder &builder) {
+    StringRef name, Location loc, OpBuilder &builder) {
   // Make sure the trailing zero is included in the constant.
-  std::vector<char> kernelName(kernelFunction.getName().begin(),
-                               kernelFunction.getName().end());
+  std::vector<char> kernelName(name.begin(), name.end());
   kernelName.push_back('\0');
 
-  std::string globalName =
-      llvm::formatv("{0}_kernel_name", kernelFunction.getName());
+  std::string globalName = llvm::formatv("{0}_kernel_name", name);
   return LLVM::createGlobalString(
       loc, builder, globalName, StringRef(kernelName.data(), kernelName.size()),
       llvmDialect);
@@ -306,46 +351,54 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
 
   auto zero = builder.create<LLVM::ConstantOp>(loc, getInt32Type(),
                                                builder.getI32IntegerAttr(0));
-  // Emit a call to the cubin getter to retrieve a pointer to the data that
-  // represents the cubin at runtime.
-  // TODO(herhut): This should rather be a static global once supported.
-  auto kernelFunction = getModule().lookupSymbol<FuncOp>(launchOp.kernel());
-  auto cubinGetter =
-      kernelFunction.getAttrOfType<SymbolRefAttr>(kCubinGetterAnnotation);
-  if (!cubinGetter) {
-    kernelFunction.emitError("Missing ")
-        << kCubinGetterAnnotation << " attribute.";
+  // Create an LLVM global with CUBIN extracted from the kernel annotation and
+  // obtain a pointer to the first byte in it.
+  auto kernelModule =
+      getModule().lookupSymbol<ModuleOp>(launchOp.getKernelModuleName());
+  assert(kernelModule && "expected a kernel module");
+
+  auto cubinAttr = kernelModule.getAttrOfType<StringAttr>(kCubinAnnotation);
+  if (!cubinAttr) {
+    kernelModule.emitOpError()
+        << "missing " << kCubinAnnotation << " attribute";
     return signalPassFailure();
   }
-  auto data = builder.create<LLVM::CallOp>(
-      loc, ArrayRef<Type>{getPointerType()}, cubinGetter, ArrayRef<Value *>{});
+
+  assert(kernelModule.getName() && "expected a named module");
+  SmallString<128> nameBuffer(*kernelModule.getName());
+  nameBuffer.append(kCubinStorageSuffix);
+  Value *data = LLVM::createGlobalString(
+      loc, builder, nameBuffer.str(), cubinAttr.getValue(), getLLVMDialect());
+
   // Emit the load module call to load the module data. Error checking is done
   // in the called helper function.
   auto cuModule = allocatePointer(builder, loc);
-  FuncOp cuModuleLoad = getModule().lookupSymbol<FuncOp>(cuModuleLoadName);
+  auto cuModuleLoad =
+      getModule().lookupSymbol<LLVM::LLVMFuncOp>(cuModuleLoadName);
   builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{getCUResultType()},
                                builder.getSymbolRefAttr(cuModuleLoad),
-                               ArrayRef<Value *>{cuModule, data.getResult(0)});
+                               ArrayRef<Value *>{cuModule, data});
   // Get the function from the module. The name corresponds to the name of
   // the kernel function.
   auto cuOwningModuleRef =
       builder.create<LLVM::LoadOp>(loc, getPointerType(), cuModule);
-  auto kernelName = generateKernelNameConstant(kernelFunction, loc, builder);
+  auto kernelName = generateKernelNameConstant(launchOp.kernel(), loc, builder);
   auto cuFunction = allocatePointer(builder, loc);
-  FuncOp cuModuleGetFunction =
-      getModule().lookupSymbol<FuncOp>(cuModuleGetFunctionName);
+  auto cuModuleGetFunction =
+      getModule().lookupSymbol<LLVM::LLVMFuncOp>(cuModuleGetFunctionName);
   builder.create<LLVM::CallOp>(
       loc, ArrayRef<Type>{getCUResultType()},
       builder.getSymbolRefAttr(cuModuleGetFunction),
       ArrayRef<Value *>{cuFunction, cuOwningModuleRef, kernelName});
   // Grab the global stream needed for execution.
-  FuncOp cuGetStreamHelper =
-      getModule().lookupSymbol<FuncOp>(cuGetStreamHelperName);
+  auto cuGetStreamHelper =
+      getModule().lookupSymbol<LLVM::LLVMFuncOp>(cuGetStreamHelperName);
   auto cuStream = builder.create<LLVM::CallOp>(
       loc, ArrayRef<Type>{getPointerType()},
       builder.getSymbolRefAttr(cuGetStreamHelper), ArrayRef<Value *>{});
   // Invoke the function with required arguments.
-  auto cuLaunchKernel = getModule().lookupSymbol<FuncOp>(cuLaunchKernelName);
+  auto cuLaunchKernel =
+      getModule().lookupSymbol<LLVM::LLVMFuncOp>(cuLaunchKernelName);
   auto cuFunctionRef =
       builder.create<LLVM::LoadOp>(loc, getPointerType(), cuFunction);
   auto paramsArray = setupParamsArray(launchOp, builder);
@@ -362,14 +415,15 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
                         paramsArray,                  /* kernel params */
                         nullpointer /* extra */});
   // Sync on the stream to make it synchronous.
-  auto cuStreamSync = getModule().lookupSymbol<FuncOp>(cuStreamSynchronizeName);
+  auto cuStreamSync =
+      getModule().lookupSymbol<LLVM::LLVMFuncOp>(cuStreamSynchronizeName);
   builder.create<LLVM::CallOp>(loc, ArrayRef<Type>{getCUResultType()},
                                builder.getSymbolRefAttr(cuStreamSync),
                                ArrayRef<Value *>(cuStream.getResult(0)));
   launchOp.erase();
 }
 
-std::unique_ptr<mlir::ModulePassBase>
+std::unique_ptr<mlir::OpPassBase<mlir::ModuleOp>>
 mlir::createConvertGpuLaunchFuncToCudaCallsPass() {
   return std::make_unique<GpuLaunchFuncToCudaCallsPass>();
 }

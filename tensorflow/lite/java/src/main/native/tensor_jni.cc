@@ -404,6 +404,27 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_dtype(JNIEnv* env,
   return static_cast<jint>(tensor->type);
 }
 
+JNIEXPORT jstring JNICALL Java_org_tensorflow_lite_Tensor_name(JNIEnv* env,
+                                                               jclass clazz,
+                                                               jlong handle) {
+  TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  if (tensor == nullptr) {
+    ThrowException(env, kIllegalArgumentException,
+                   "Target Tensor doesn't exist.");
+    return nullptr;
+  }
+
+  if (tensor->name == nullptr) {
+    return env->NewStringUTF("");
+  }
+
+  jstring tensor_name = env->NewStringUTF(tensor->name);
+  if (tensor_name == nullptr) {
+    return env->NewStringUTF("");
+  }
+  return tensor_name;
+}
+
 JNIEXPORT jintArray JNICALL
 Java_org_tensorflow_lite_Tensor_shape(JNIEnv* env, jclass clazz, jlong handle) {
   TfLiteTensor* tensor = GetTensorFromHandle(env, handle);

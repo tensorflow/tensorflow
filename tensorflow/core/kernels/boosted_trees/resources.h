@@ -102,10 +102,12 @@ class BoostedTreesEnsembleResource : public StampedResource {
   int32 right_id(const int32 tree_id, const int32 node_id) const;
 
   // Add a tree to the ensemble and returns a new tree_id.
-  int32 AddNewTree(const float weight);
+  int32 AddNewTree(const float weight, const int32 logits_dimension);
 
   // Adds new tree with one node to the ensemble and sets node's value to logits
-  int32 AddNewTreeWithLogits(const float weight, const float logits);
+  int32 AddNewTreeWithLogits(const float weight,
+                             const std::vector<float>& logits,
+                             const int32 logits_dimension);
 
   // Grows the tree by adding a bucketized split and leaves.
   void AddBucketizedSplitNode(

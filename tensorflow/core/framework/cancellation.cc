@@ -53,15 +53,10 @@ void CancellationManager::StartCancel() {
   cancelled_notification_.Notify();
 }
 
-CancellationToken CancellationManager::get_cancellation_token() {
-  mutex_lock l(mu_);
-  return next_cancellation_token_++;
-}
-
 bool CancellationManager::RegisterCallback(CancellationToken token,
                                            CancelCallback callback) {
+  DCHECK_LT(token, next_cancellation_token_) << "Invalid cancellation token";
   mutex_lock l(mu_);
-  CHECK_LT(token, next_cancellation_token_) << "Invalid cancellation token";
   bool should_register = !is_cancelled_ && !is_cancelling_;
   if (should_register) {
     std::swap(callbacks_[token], callback);

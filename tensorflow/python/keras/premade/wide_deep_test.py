@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.feature_column import dense_features_v2
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.keras import keras_parameterized
@@ -31,6 +32,7 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.premade import linear
 from tensorflow.python.keras.premade import wide_deep
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -95,6 +97,31 @@ class WideDeepModelTest(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
     wide_deep_model.fit(inputs, output, epochs=5)
+
+  def test_wide_deep_model_with_multi_outputs(self):
+    with context.eager_mode():
+      inp = input_layer.Input(shape=(1,), name='linear')
+      l = linear.LinearModel(units=2, use_bias=False)(inp)
+      l1, l2 = array_ops.split(l, num_or_size_splits=2, axis=1)
+      linear_model = training.Model(inp, [l1, l2])
+      linear_model.set_weights([np.asarray([[0.5, 0.3]])])
+      h = core.Dense(units=2, use_bias=False)(inp)
+      h1, h2 = array_ops.split(h, num_or_size_splits=2, axis=1)
+      dnn_model = training.Model(inp, [h1, h2])
+      dnn_model.set_weights([np.asarray([[0.1, -0.5]])])
+      wide_deep_model = wide_deep.WideDeepModel(linear_model, dnn_model)
+      inp_np = np.asarray([[1.]])
+      out1, out2 = wide_deep_model(inp_np)
+      # output should be 0.5 * (0.5 + 0.1), and 0.5 * (0.3 - 0.5)
+      self.assertAllClose([[0.3]], out1)
+      self.assertAllClose([[-0.1]], out2)
+
+      wide_deep_model = wide_deep.WideDeepModel(
+          linear_model, dnn_model, activation='relu')
+      out1, out2 = wide_deep_model(inp_np)
+      # output should be relu(0.5 * (0.5 + 0.1)), and relu(0.5 * (0.3 - 0.5))
+      self.assertAllClose([[0.3]], out1)
+      self.assertAllClose([[0.]], out2)
 
   def test_wide_deep_model_with_single_optimizer(self):
     linear_model = linear.LinearModel(units=1)

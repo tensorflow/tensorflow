@@ -159,6 +159,8 @@ message MachineConfiguration {
 // Run-specific items such as arguments to the test / benchmark.
 message RunConfiguration {
   repeated string argument = 1;
+  // Environment variables used to run the test/benchmark.
+  map<string, string> env_vars = 2;
 }
 
 // The output of one benchmark / test run.  Each run contains a list of

@@ -36,6 +36,7 @@ limitations under the License.
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/InitializePasses.h"
 #include "llvm/Linker/Linker.h"
 #include "llvm/PassRegistry.h"
 #include "llvm/Support/CommandLine.h"
@@ -225,7 +226,7 @@ string EmitModuleToPTX(Module* module, llvm::TargetMachine* target_machine) {
         llvm::Triple(module->getTargetTriple())));
 
     target_machine->addPassesToEmitFile(codegen_passes, pstream, nullptr,
-                                        llvm::TargetMachine::CGFT_AssemblyFile);
+                                        llvm::CGFT_AssemblyFile);
     codegen_passes.run(*module);
   }
 
@@ -613,7 +614,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
       new llvm::raw_fd_ostream(isabin_path, ec, llvm::sys::fs::F_Text));
   module->setDataLayout(target_machine->createDataLayout());
   target_machine->addPassesToEmitFile(codegen_passes, *isabin_fs, nullptr,
-                                      llvm::TargetMachine::CGFT_ObjectFile);
+                                      llvm::CGFT_ObjectFile);
   codegen_passes.run(*module);
   isabin_fs->flush();
 

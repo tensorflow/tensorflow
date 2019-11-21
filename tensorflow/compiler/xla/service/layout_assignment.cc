@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/hlo_alias_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
@@ -1912,52 +1913,47 @@ Status LayoutAssignment::ConstrainChannelLayouts(
   for (HloInstruction* instruction : computation->MakeInstructionPostOrder()) {
     if (instruction->opcode() == HloOpcode::kSend) {
       HloInstruction* operand = instruction->mutable_operand(0);
-      const Layout* layout = get_channel_constraints(instruction)
-                                 ->ConstrainChannel(*instruction->channel_id(),
-                                                    operand->shape().layout());
-      if (layout != nullptr) {
-        // We found an already constrained layout which does not match the one
-        // the kSend wants to impose. Either add a new kCopy, or use the
-        // existing one to marshal the correct shape.
-        Shape shape = operand->shape();
-        *shape.mutable_layout() = *layout;
-        if (operand->opcode() != HloOpcode::kCopy) {
-          HloInstruction* copy = operand->parent()->AddInstruction(
-              HloInstruction::CreateUnary(shape, HloOpcode::kCopy, operand));
-          RegisterAddedCopy(copy);
-          SetupCopiedInstruction(*operand, copy, {});
-          TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(0, copy));
-          operand = copy;
-        } else {
-          *operand->mutable_shape() = shape;
-        }
-        Shape* send_shape =
-            ShapeUtil::GetMutableSubshape(instruction->mutable_shape(), {0});
-        *send_shape = shape;
-      }
+      get_channel_constraints(instruction)
+          ->ConstrainChannel(*instruction->channel_id(),
+                             operand->shape().layout());
     } else if (instruction->IsCrossModuleAllReduce()) {
-      const Layout* layout =
-          get_channel_constraints(instruction)
-              ->ConstrainChannel(instruction->channel_id().value(),
-                                 instruction->shape().layout());
-      if (layout != nullptr) {
-        // We found an already constrained layout which does not match the one
-        // the channel wants to impose. Either add a new kCopy, or use the
-        // existing one to marshal the correct shape.
-        HloInstruction* operand = instruction->mutable_operand(0);
-        Shape shape = operand->shape();
-        *shape.mutable_layout() = *layout;
-        if (operand->opcode() != HloOpcode::kCopy) {
-          HloInstruction* copy = operand->parent()->AddInstruction(
-              HloInstruction::CreateUnary(shape, HloOpcode::kCopy, operand));
-          RegisterAddedCopy(copy);
-          SetupCopiedInstruction(*operand, copy, {});
-          TF_RETURN_IF_ERROR(instruction->ReplaceOperandWith(0, copy));
-          operand = copy;
-        } else {
-          *operand->mutable_shape() = shape;
+      get_channel_constraints(instruction)
+          ->ConstrainChannel(instruction->channel_id().value(),
+                             instruction->shape().layout());
+    }
+  }
+  return Status::OK();
+}
+
+Status LayoutAssignment::PropagateMemorySpace(HloModule* module) {
+  TF_ASSIGN_OR_RETURN(auto alias_analysis, HloAliasAnalysis::Run(module));
+  for (auto buffer : alias_analysis->buffers()) {
+    // First go through values to collect the memory spaces.
+    int64 buffer_memory_space = Layout::kDefaultMemorySpace;
+    for (auto value : buffer.values()) {
+      const Shape& defining_shape = value->defining_position().shape();
+      int64 memory_space = defining_shape.layout().memory_space();
+      if (memory_space != Layout::kDefaultMemorySpace) {
+        if (buffer_memory_space != Layout::kDefaultMemorySpace &&
+            memory_space != buffer_memory_space) {
+          return InternalError(
+              "Buffer %d (%s) has conflicting memory spaces: %d and %d.",
+              buffer.id(), value->ToShortString(), buffer_memory_space,
+              memory_space);
         }
-        *instruction->mutable_shape() = shape;
+        buffer_memory_space = memory_space;
+      }
+    }
+
+    // If we encounter a memory space other than the default, then propagate all
+    // the positions with the buffer's memory space.
+    if (buffer_memory_space != Layout::kDefaultMemorySpace) {
+      for (auto value : buffer.values()) {
+        for (auto& position : value->positions()) {
+          Shape* shape = ShapeUtil::GetMutableSubshape(
+              position.instruction->mutable_shape(), position.index);
+          shape->mutable_layout()->set_memory_space(buffer_memory_space);
+        }
       }
     }
   }
@@ -1999,6 +1995,22 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   TF_RETURN_IF_ERROR(Init());
   call_graph_ = CallGraph::Build(module);
   auto computations = module->computations();
+
+  // Add copy to the operand of Send instructions, since we cannot call
+  // SetOperandLayout on Send instructions as it aliases its input to the
+  // output.
+  //
+  // TODO(b/68493863): Remove this once we can call SetOperandLayout() on the
+  // operand buffers that aliases with the output.
+  for (HloComputation* computation : module->computations()) {
+    for (HloInstruction* instruction :
+         computation->MakeInstructionPostOrder()) {
+      if (instruction->opcode() == HloOpcode::kSend) {
+        TF_RETURN_IF_ERROR(AddCopyForOperand(instruction, 0));
+      }
+    }
+  }
+
   // Clone Conditional computations with multiple callsites.
   for (HloComputation* computation : computations) {
     CallGraphNode& node = call_graph_->GetNode(computation);
@@ -2076,6 +2088,9 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   }
   TF_RETURN_IF_ERROR(PropagateComputationLayouts(module->entry_computation(),
                                                  entry_computation_layout_));
+
+  TF_RETURN_IF_ERROR(PropagateMemorySpace(module));
+
   TF_RETURN_IF_ERROR(CheckLayouts(module));
 
   // All layouts are reset then reassigned by this pass.
@@ -2150,6 +2165,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kCholesky:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
+    case HloOpcode::kSetDimensionSize:
       return false;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
@@ -2234,7 +2250,6 @@ Status LayoutAssignment::ClearPreviousPassSideEffects(HloModule* module) {
     TF_RETURN_IF_ERROR(tuple_simplifier.Run(module).status());
     TF_RETURN_IF_ERROR(dce.Run(module).status());
   }
-  ResetChannelConstraints();
   return Status::OK();
 }
 

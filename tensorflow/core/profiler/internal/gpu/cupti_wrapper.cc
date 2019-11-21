@@ -233,5 +233,16 @@ CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
   return cuptiGetResultString(result, str);
 }
 
+CUptiResult CuptiWrapper::GetContextId(CUcontext context,
+                                       uint32_t* context_id) {
+  return cuptiGetContextId(context, context_id);
+}
+
+CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,
+                                        uint8_t per_thread_stream,
+                                        uint32_t* stream_id) {
+  return cuptiGetStreamIdEx(context, stream, per_thread_stream, stream_id);
+}
+
 }  // namespace profiler
 }  // namespace tensorflow

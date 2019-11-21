@@ -153,6 +153,9 @@ class XlaCompiler {
     // For a kResource, has this resource been initialized?
     bool initialized = false;
 
+    // For a kResource, is this resource on Fast Memory.
+    bool fast_mem = false;
+
     // For a TensorArray or Stack resource, what is the array's declared size?
     // (Used for lazy initialization.)
     int64 max_array_size = -1;
@@ -176,6 +179,7 @@ class XlaCompiler {
 
     // Returns the dimension sizes for either TensorShape or xla::Shape.
     std::vector<int64> DimensionSizes() const;
+    absl::InlinedVector<int64, 4> DimensionSizesAsInlinedVector() const;
 
     // Returns the human-readable string for either TensorShape or xla::Shape.
     string ShapeHumanString() const;
@@ -194,12 +198,6 @@ class XlaCompiler {
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
     bool return_updated_values_for_all_resources = false;
-
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
 
     // If 'always_return_tuple' is true, then the output of a computation will
     // always be a tuple. Otherwise, a single-element output will not be wrapped
@@ -350,6 +348,10 @@ class XlaCompiler {
   explicit XlaCompiler(Options options);
 
   ~XlaCompiler();
+
+  // Helper function to populate an XlaCompiler::Argument from XlaResource.
+  static void PopulateArgumentFromResource(const XlaResource& resource,
+                                           Argument* arg);
 
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,

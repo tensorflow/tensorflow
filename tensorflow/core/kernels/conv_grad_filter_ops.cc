@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
+#include "tensorflow/core/kernels/conv_grad_shape_utils.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #ifdef TENSORFLOW_USE_LIBXSMM_CONVOLUTIONS
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
@@ -54,8 +55,8 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -240,8 +241,8 @@ struct LaunchXsmmBackwardFilter<CPUDevice, float> {
     desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_RSCK;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
     desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
-    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
-
+    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
     if (!CanUseXsmmConv2D(desc, data_format)) {
       return false;
     }
@@ -614,12 +615,14 @@ class Conv2DCustomBackpropFilterOp : public OpKernel {
   REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")                        \
                               .Device(DEVICE_CPU)                             \
                               .Label("custom")                                \
-                              .TypeConstraint<T>("T"),                        \
+                              .TypeConstraint<T>("T")                         \
+                              .AttrConstraint("data_format", "NHWC"),         \
                           Conv2DCustomBackpropFilterOp<CPUDevice, T>);        \
   REGISTER_KERNEL_BUILDER(Name("Conv2DBackpropFilter")                        \
                               .Device(DEVICE_CPU)                             \
                               .Label("eigen_tensor")                          \
-                              .TypeConstraint<T>("T"),                        \
+                              .TypeConstraint<T>("T")                         \
+                              .AttrConstraint("data_format", "NHWC"),         \
                           Conv2DBackpropFilterOp<CPUDevice, T>);
 
 TF_CALL_half(REGISTER_CPU_KERNELS);
@@ -979,8 +982,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
     se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
                                                 stream);
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::GpuAsmOpts());
 
     se::DeviceMemory<T> filter_backprop_ptr_rz(
         WrapRedzoneBestEffort(&rz_allocator, filter_backprop_ptr));
@@ -995,8 +998,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
       // accuracy.
       DnnScratchAllocator scratch_allocator(ConvolveBackwardFilterScratchSize,
                                             ctx);
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+      se::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::GpuAsmOpts(),
           /*memory_limit=*/ConvolveBackwardFilterScratchSize);
       se::ScratchAllocator* allocator_used =
           !RedzoneCheckDisabled()
@@ -1086,32 +1089,11 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 namespace functor {
 #define DECLARE_GPU_SPEC(T)                                              \
   template <>                                                            \
-  void ShuffleAndReverse<GPUDevice, T, 4, int>::operator()(              \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
-      const Eigen::DSizes<int, 4>& order,                                \
-      const Eigen::array<bool, 4>& reverse_dims,                         \
-      typename TTypes<T, 4, int>::Tensor output);                        \
-  extern template struct ShuffleAndReverse<GPUDevice, T, 4, int>;        \
-  template <>                                                            \
-  void InflatePadAndShuffle<GPUDevice, T, 4, int>::operator()(           \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor input, \
-      const Eigen::DSizes<int, 4>& strides,                              \
-      const Eigen::array<Eigen::IndexPair<int>, 4>& pad_dims,            \
-      const Eigen::DSizes<int, 4>& order,                                \
-      typename TTypes<T, 4, int>::Tensor output);                        \
-  extern template struct InflatePadAndShuffle<GPUDevice, T, 4, int>;     \
-  template <>                                                            \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
       const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
       typename TTypes<T, 4, int>::ConstTensor in,                        \
       typename TTypes<T, 4, int>::Tensor out);                           \
   extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
-  template <>                                                            \
-  void TransformDepth<GPUDevice, T, int>::operator()(                    \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
-      const Eigen::DSizes<int, 4>& shuffle,                              \
-      typename TTypes<T, 4, int>::Tensor out);                           \
-  extern template struct TransformDepth<GPUDevice, T, int>;              \
   template <>                                                            \
   void PadInput<GPUDevice, T, int, 4>::operator()(                       \
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \

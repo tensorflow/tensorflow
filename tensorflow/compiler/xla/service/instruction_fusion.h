@@ -27,12 +27,6 @@ limitations under the License.
 
 namespace xla {
 
-enum class FusionConfigCollection {
-  kOff,      // Do not collect configuration.
-  kPerEdge,  // Collect per-edge configuration.
-  kPerNode,  // Collect per-node configuration.
-};
-
 // HLO pass which performs instruction fusion. Instructions are fused
 // "vertically", meaning producing instructions are fused into their consumers
 // with the intent that the loops which compute their values will be fused in

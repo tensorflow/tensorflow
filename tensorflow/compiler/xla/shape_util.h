@@ -280,7 +280,6 @@ class ShapeUtil {
     if (SameElementType(a, b)) {
       return a.element_type();
     }
-    CHECK(SameElementTypeIgnoringFpPrecision(a, b));
     return primitive_util::BitWidth(a.element_type()) <
                    primitive_util::BitWidth(b.element_type())
                ? b.element_type()
@@ -303,6 +302,9 @@ class ShapeUtil {
 
   // Returns whether the lhs and rhs shapes are identical.
   static bool Equal(const Shape& lhs, const Shape& rhs);
+
+  // As Equal, but does not compare the element type.
+  static bool EqualIgnoringElementType(const Shape& lhs, const Shape& rhs);
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
@@ -361,6 +363,10 @@ class ShapeUtil {
 
   // Appends a shape to the given tuple.
   static void AppendShapeToTuple(const Shape& shape, Shape* tuple_shape);
+
+  // Update a subshape of a tuple.
+  static void UpdateTupleShape(const Shape& shape, int64 index,
+                               Shape* tuple_shape);
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);

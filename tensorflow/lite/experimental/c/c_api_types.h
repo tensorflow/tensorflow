@@ -261,12 +261,14 @@ typedef struct {
   int32_t quantized_dimension;
 } TfLiteAffineQuantization;
 
-// A union of pointers that points to memory for a given tensor.
+/* A union of pointers that points to memory for a given tensor. */
 typedef union {
+  /* Do not access these members directly, if possible, use
+   * GetTensorData<TYPE>(tensor) instead, otherwise only access .data, as other
+   * members are deprecated. */
   int32_t* i32;
   int64_t* i64;
   float* f;
-  // Placeholder for 16b float type. Use uint16* in the pointer union for now.
   TfLiteFloat16* f16;
   char* raw;
   const char* raw_const;
@@ -275,6 +277,8 @@ typedef union {
   int16_t* i16;
   TfLiteComplex64* c64;
   int8_t* int8;
+  /* Only use this member. */
+  void* data;
 } TfLitePtrUnion;
 
 // Memory allocation strategies. kTfLiteMmapRo is for read-only memory-mapped
@@ -440,7 +444,7 @@ typedef struct TfLiteContext {
   // NOTE: ResizeTensor takes ownership of newSize.
   TfLiteStatus (*ResizeTensor)(struct TfLiteContext*, TfLiteTensor* tensor,
                                TfLiteIntArray* new_size);
-  // Request that a error be reported with format string msg.
+  // Request that an error be reported with format string msg.
   void (*ReportError)(struct TfLiteContext*, const char* msg, ...);
 
   // Add `tensors_to_add` tensors, preserving pre-existing Tensor entries.  If
@@ -482,6 +486,46 @@ typedef struct TfLiteContext {
 
   // Pointer to the op-level profiler, if set; nullptr otherwise.
   void* profiler;
+
+  // Allocate memory for op data. This method should only be used in `Init`
+  // method and the allocated memory will be available until `Free` method is
+  // called.
+  // On TFL, it allocates memory from heap using malloc, but for micro, this
+  // will be allocating from the allocator.
+  // WARNING: This is an experimental interface that is subject to change.
+  void* (*AllocateOpData)(struct TfLiteContext* ctx, size_t size);
+
+  // Deallocate memory holding op data. This method should only be used inside
+  // `Free` method. Caller needs to make sure that that `buffer` is allocated by
+  // `AllocateOpData` method.
+  // On TFL, it will free the buffer, and for micro, this method is a no-op.
+  // WARNING: This is an experimental interface that is subject to change.
+  void (*DeallocateOpData)(struct TfLiteContext* ctx, void* buffer);
+
+  // Allocate a temporary tensor to the node. This method also makes a copy of
+  // the shape array internally so the shape array could be deallocated right
+  // afterwards. WARNING: This is an experimental interface that is subject to
+  // change.
+  TfLiteStatus (*AllocateTemporaryTensor)(struct TfLiteContext* ctx,
+                                          TfLiteNode* node, int dims,
+                                          int* shape, TfLiteType data_type,
+                                          TfLiteAllocationType allocation_type,
+                                          int* new_tensor_index);
+
+  // Deallocate all temporary tensors associated to the node (including
+  // kTfLiteArenaRwPersistent persistent tensors). It also deallocates
+  // all the shape tensors.
+  // WARNING: This is an experimental interface that is subject to change.
+  void (*DeallocateAllTemporaryTensors)(struct TfLiteContext* ctx,
+                                        TfLiteNode* node);
+
+  // Resize the memory pointer of the `tensor`. This method behaves the same as
+  // `ResizeTensor`, except that it makes a copy of the shape array internally
+  // so the shape array could be deallocated right afterwards.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus (*ResizeTensorExplicit)(struct TfLiteContext* ctx,
+                                       TfLiteTensor* tensor, int dims,
+                                       const int* shape);
 } TfLiteContext;
 
 typedef struct TfLiteRegistration {

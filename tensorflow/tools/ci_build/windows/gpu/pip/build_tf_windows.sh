@@ -67,7 +67,6 @@ EXTRA_TEST_FLAGS=""
 # --release_build        Build for release, compilation time will be longer to
 #                        ensure performance
 # --test_core_only       Use tensorflow/python/... as test target
-# --test_contrib_only    Use tensorflow/contrib/... as test target
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --tf_nightly) TF_NIGHTLY=1 ;;
@@ -75,7 +74,6 @@ while [[ $# -gt 0 ]]; do
     --enable_remote_cache) set_remote_cache_options ;;
     --release_build) RELEASE_BUILD=1 ;;
     --test_core_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..." ;;
-    --test_contrib_only) TEST_TARGET="//${PY_TEST_DIR}/tensorflow/contrib/..." ;;
     --extra_build_flags)
       shift
       if [[ -z "$1" ]]; then
@@ -164,18 +162,18 @@ TF_GPU_COUNT=${TF_GPU_COUNT:-4}
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 # GPU tests are very flaky when running concurrently, so set local_test_jobs=1
-# TODO(pcloudy): remove --experimental_windows_native_test_wrapper once
-# native test wrapper is enabled by default.
-# https://github.com/bazelbuild/bazel/issues/6622
 bazel test --announce_rc --config=opt -k --test_output=errors \
   --test_env=TF_GPU_COUNT \
   ${EXTRA_TEST_FLAGS} \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
-  --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,gpu \
+  --test_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,gpu,-v1only \
   --build_tag_filters=-no_pip,-no_windows,-no_windows_gpu,-no_gpu,-no_pip_gpu,-no_oss,gpu --build_tests_only \
   --test_size_filters=small,medium \
   --local_test_jobs=$TF_GPU_COUNT --test_timeout="300,450,1200,3600" \
   --flaky_test_attempts=3 \
   --output_filter=^$ \
-  ${TEST_TARGET}
+  -- ${TEST_TARGET} -//${PY_TEST_DIR}/tensorflow/python:timeline_test_gpu
+# TODO(b/140106487): apply https://developer.nvidia.com/ERR_NVGPUCTRPERM to the
+# Kokoro machines and enable timeline_test_gpu again.
+

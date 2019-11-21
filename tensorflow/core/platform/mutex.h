@@ -28,8 +28,9 @@ limitations under the License.
 // Include appropriate platform-dependent implementation details of mutex etc.
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/mutex_data.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/mutex_data.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform
@@ -301,8 +302,9 @@ inline Condition::Condition(const bool* flag)
 // Include appropriate platform-dependent implementation details of mutex etc.
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/mutex.h"
-#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) || \
-    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_WINDOWS)
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_POSIX_ANDROID) ||    \
+    defined(PLATFORM_GOOGLE_ANDROID) || defined(PLATFORM_POSIX_IOS) || \
+    defined(PLATFORM_GOOGLE_IOS) || defined(PLATFORM_WINDOWS)
 #include "tensorflow/core/platform/default/mutex.h"
 #else
 #error Define the appropriate PLATFORM_<foo> macro for this platform

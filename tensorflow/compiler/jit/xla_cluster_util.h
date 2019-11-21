@@ -19,6 +19,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_JIT_XLA_CLUSTER_UTIL_H_
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
@@ -93,6 +94,14 @@ bool IsShapeConsumerOp(const Node& node);
 // Computes a clustering summary for `graph`.  See documentation on
 // `XlaAutoClusteringSummary` for details.
 XlaAutoClusteringSummary GetXlaAutoClusteringSummary(const Graph& graph);
+
+// Returns the set of nodes that have a path to or from nodes that may have ref
+// variables as input or output.
+//
+// We assume each node has a trivial path to itself so the returned set includes
+// all of the nodes that have ref variables as input or output.
+xla::StatusOr<absl::flat_hash_set<Node*>> GetNodesRelatedToRefVariables(
+    const Graph& graph, FunctionLibraryRuntime* lib_runtime);
 
 }  // namespace tensorflow
 

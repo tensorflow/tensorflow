@@ -18,11 +18,11 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/abs.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/add.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/apply_mask.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_xy.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/concat_z.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/lstm.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/max_unpooling.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/multiply_add.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/padding.h"
@@ -31,25 +31,27 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/reshapex4.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/sigmoid.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/softmax1x1.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/strided_slice.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/transpose.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/upsample.h"
 
 namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectAbs(const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr) {
-  Abs operation = CreateAbs(op_def);
-  *ptr = absl::make_unique<Abs>(std::move(operation));
+void SelectApplyMask(const OperationDef& op_def, const BHWC& src_shape,
+                     const BHWC& mask_shape,
+                     std::unique_ptr<GPUOperation>* ptr) {
+  ApplyMask operation = CreateApplyMask(op_def, src_shape, mask_shape);
+  *ptr = absl::make_unique<ApplyMask>(std::move(operation));
 }
 
-void SelectApplyMask(const OperationDef& op_def,
-                     std::unique_ptr<GPUOperation>* ptr) {
-  ApplyMask operation = CreateApplyMask(op_def);
-  *ptr = absl::make_unique<ApplyMask>(std::move(operation));
+void SelectLSTM(const OperationDef& op_def,
+                std::unique_ptr<GPUOperation>* ptr) {
+  LSTM operation = CreateLSTM(op_def);
+  *ptr = absl::make_unique<LSTM>(std::move(operation));
 }
 
 void SelectReLU(const CreationContext& creation_context,
@@ -86,12 +88,6 @@ void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
                int dst_channels, std::unique_ptr<GPUOperation>* ptr) {
   Add operation = CreateAdd(op_def, channels, dst_channels);
   *ptr = absl::make_unique<Add>(std::move(operation));
-}
-
-void SelectSigmoid(const OperationDef& op_def,
-                   std::unique_ptr<GPUOperation>* ptr) {
-  Sigmoid operation = CreateSigmoid(op_def);
-  *ptr = absl::make_unique<Sigmoid>(std::move(operation));
 }
 
 Status SelectUpsampling(const Upsample2DAttributes& attr,
@@ -181,6 +177,13 @@ void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
     Softmax operation = CreateSoftmax(op_def);
     *ptr = absl::make_unique<Softmax>(std::move(operation));
   }
+}
+
+void SelectTranspose(const TransposeAttributes& attr,
+                     const OperationDef& op_def,
+                     std::unique_ptr<GPUOperation>* ptr) {
+  Transpose operation = CreateTranspose(op_def, attr);
+  *ptr = absl::make_unique<Transpose>(std::move(operation));
 }
 
 }  // namespace cl

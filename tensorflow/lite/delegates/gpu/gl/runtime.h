@@ -59,6 +59,8 @@ class Runtime {
   // Gets access to objects created while executing generated code.
   const ObjectManager* internal_objects() const { return &internal_objects_; }
 
+  CommandQueue* command_queue() { return command_queue_; }
+
   RuntimeStats stats() const {
     RuntimeStats stats;
     stats.const_objects = const_objects_.stats();

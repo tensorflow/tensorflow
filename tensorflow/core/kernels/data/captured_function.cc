@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
@@ -31,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -45,7 +47,7 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
     processing_time_ += delta;
   }
 
-  NodeExecStatsInterface* CreateNodeExecStats(const Node* node) override {
+  NodeExecStatsInterface* CreateNodeExecStats(const NodeDef* node) override {
     return new SimpleNodeExecStats(this);
   }
 
@@ -233,6 +235,129 @@ bool IsOpWhitelisted(const OpDef* op_def) {
            absl::EndsWith(op_def->name(), "DatasetV2"))) ||
          WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
+
+Status LookupFunction(const FunctionLibraryDefinition& lib_def,
+                      const string& name, const FunctionDef** fdef) {
+  *fdef = lib_def.Find(name);
+  if (*fdef == nullptr) {
+    return errors::InvalidArgument(
+        "Failed to find function ", name,
+        " in function library: ", lib_def.ToProto().DebugString());
+  }
+  return Status::OK();
+}
+
+class CallFrameBase : public CallFrameInterface {
+ public:
+  explicit CallFrameBase(DataTypeSlice ret_types)
+      : ret_types_(ret_types), retvals_(ret_types.size()) {}
+
+  // Caller methods.
+  Status ConsumeRetvals(std::vector<Tensor>* retvals) {
+    retvals->reserve(retvals_.size());
+    int i = 0;
+    for (auto&& val : retvals_) {
+      if (!val) {
+        return errors::Internal("No return value for index ", i, ".");
+      }
+      retvals->emplace_back(std::move(val.value()));
+      ++i;
+    }
+    return Status::OK();
+  }
+
+  size_t num_retvals() const override { return retvals_.size(); }
+
+  // Callee methods.
+  Status SetRetval(int index, const Tensor& val) override {
+    if (index < retvals_.size() && val.dtype() == ret_types_[index] &&
+        !retvals_[index]) {
+      retvals_[index] = val;
+      return Status::OK();
+    } else if (index >= retvals_.size()) {
+      return errors::InvalidArgument("Return value ", index,
+                                     " is out of range.");
+    } else if (val.dtype() != ret_types_[index]) {
+      return errors::InvalidArgument("Expected type ",
+                                     DataTypeString(ret_types_[index]),
+                                     " for return value ", index, " but got ",
+                                     DataTypeString(val.dtype()), ".");
+    } else {
+      return errors::Internal("Attempted to set return value ", index,
+                              " more than once.");
+    }
+  }
+
+ private:
+  DataTypeSlice ret_types_;
+  std::vector<gtl::optional<Tensor>> retvals_;
+  TF_DISALLOW_COPY_AND_ASSIGN(CallFrameBase);
+};
+
+class OwnedArgsCallFrame : public CallFrameBase {
+ public:
+  OwnedArgsCallFrame(std::vector<Tensor>&& args,
+                     const std::vector<Tensor>* captured_inputs,
+                     DataTypeSlice ret_types)
+      : CallFrameBase(ret_types),
+        args_(std::move(args)),
+        captured_inputs_(captured_inputs) {}
+
+  size_t num_args() const override {
+    return args_.size() + captured_inputs_->size();
+  }
+
+  // Callee methods.
+  Status GetArg(int index, Tensor* val) const override {
+    if (index < args_.size()) {
+      // TODO(mrry): Consider making `CallFrameInterface::GetArg` non-const in
+      // order to be able to `std::move(args_[index])` into `*val`.
+      *val = args_[index];
+      return Status::OK();
+    } else if (index < args_.size() + captured_inputs_->size()) {
+      *val = (*captured_inputs_)[index - args_.size()];
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
+    }
+  }
+
+ private:
+  std::vector<Tensor> args_;
+  const std::vector<Tensor>* const captured_inputs_;  // Not owned.
+};
+
+class BorrowedArgsCallFrame : public CallFrameBase {
+ public:
+  BorrowedArgsCallFrame(const std::vector<Tensor>& args,
+                        const std::vector<Tensor>* captured_inputs,
+                        DataTypeSlice ret_types)
+      : CallFrameBase(ret_types),
+        args_(args),
+        captured_inputs_(captured_inputs) {}
+
+  size_t num_args() const override {
+    return args_.size() + captured_inputs_->size();
+  }
+
+  // Callee methods.
+  Status GetArg(int index, Tensor* val) const override {
+    if (index < args_.size()) {
+      *val = args_[index];
+      return Status::OK();
+    } else if (index < args_.size() + captured_inputs_->size()) {
+      *val = (*captured_inputs_)[index - args_.size()];
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument("Argument ", index, " is out of range.");
+    }
+  }
+
+ private:
+  const std::vector<Tensor>& args_;                   // Not owned.
+  const std::vector<Tensor>* const captured_inputs_;  // Not owned.
+};
+
 }  // namespace
 
 Status IsNodeStateful(const FunctionLibraryDefinition& library,
@@ -407,28 +532,27 @@ Status CapturedFunction::Instantiate(
   FunctionLibraryRuntime::InstantiateOptions inst_opts;
   inst_opts.lib_def = metadata_->lib_def();
   inst_opts.create_kernels_eagerly = true;
+  inst_opts.default_device_to_target = metadata_->use_default_device();
+  inst_opts.config_proto =
+      lib->config_proto() ? *lib->config_proto() : ConfigProto();
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
-  inst_opts.is_multi_device_function = metadata_->is_multi_device_function();
+  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &inst_opts.is_multi_device_function));
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
   inst_opts.target = lib->device()->name();
 
-  if (metadata_->is_multi_device_function()) {
+  if (inst_opts.is_multi_device_function) {
     // Compute devices of non-captured inputs.
     //
     // We infer the number of non-captured inputs by subtracting the number
     // of captured inputs from the number of input arguments and we infer the
     // input devices from the function library runtime.
-    const FunctionDef* fdef =
-        metadata_->lib_def()->Find(metadata_->func().name());
-    if (fdef == nullptr) {
-      return errors::InvalidArgument(
-          "Failed to find function ", metadata_->func().name(),
-          " in function library: ", lib->GetFunctionLibraryDefinition());
-    }
+    const FunctionDef* fdef;
+    TF_RETURN_IF_ERROR(
+        LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
     size_t num_non_captured_inputs =
         fdef->signature().input_arg_size() - captured_inputs_.size();
     for (size_t i = 0; i < num_non_captured_inputs; ++i) {
@@ -493,120 +617,6 @@ Status CapturedFunction::CheckExternalState() const {
   return Status::OK();
 }
 
-namespace {
-class CallFrameBase : public CallFrameInterface {
- public:
-  explicit CallFrameBase(DataTypeSlice ret_types)
-      : ret_types_(ret_types), retvals_(ret_types.size()) {}
-
-  // Caller methods.
-  Status ConsumeRetvals(std::vector<Tensor>* retvals) {
-    retvals->reserve(retvals_.size());
-    int i = 0;
-    for (auto&& val : retvals_) {
-      if (!val) {
-        return errors::Internal("No return value for index ", i, ".");
-      }
-      retvals->emplace_back(std::move(val.value()));
-      ++i;
-    }
-    return Status::OK();
-  }
-
-  size_t num_retvals() const override { return retvals_.size(); }
-
-  // Callee methods.
-  Status SetRetval(int index, const Tensor& val) override {
-    if (index < retvals_.size() && val.dtype() == ret_types_[index] &&
-        !retvals_[index]) {
-      retvals_[index] = val;
-      return Status::OK();
-    } else if (index >= retvals_.size()) {
-      return errors::InvalidArgument("Return value ", index,
-                                     " is out of range.");
-    } else if (val.dtype() != ret_types_[index]) {
-      return errors::InvalidArgument("Expected type ",
-                                     DataTypeString(ret_types_[index]),
-                                     " for return value ", index, " but got ",
-                                     DataTypeString(val.dtype()), ".");
-    } else {
-      return errors::Internal("Attempted to set return value ", index,
-                              " more than once.");
-    }
-  }
-
- private:
-  DataTypeSlice ret_types_;
-  std::vector<gtl::optional<Tensor>> retvals_;
-  TF_DISALLOW_COPY_AND_ASSIGN(CallFrameBase);
-};
-
-class OwnedArgsCallFrame : public CallFrameBase {
- public:
-  OwnedArgsCallFrame(std::vector<Tensor>&& args,
-                     const std::vector<Tensor>* captured_inputs,
-                     DataTypeSlice ret_types)
-      : CallFrameBase(ret_types),
-        args_(std::move(args)),
-        captured_inputs_(captured_inputs) {}
-
-  size_t num_args() const override {
-    return args_.size() + captured_inputs_->size();
-  }
-
-  // Callee methods.
-  Status GetArg(int index, Tensor* val) const override {
-    if (index < args_.size()) {
-      // TODO(mrry): Consider making `CallFrameInterface::GetArg` non-const in
-      // order to be able to `std::move(args_[index])` into `*val`.
-      *val = args_[index];
-      return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = (*captured_inputs_)[index - args_.size()];
-      return Status::OK();
-    } else {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
-    }
-  }
-
- private:
-  std::vector<Tensor> args_;
-  const std::vector<Tensor>* const captured_inputs_;  // Not owned.
-};
-
-class BorrowedArgsCallFrame : public CallFrameBase {
- public:
-  BorrowedArgsCallFrame(const std::vector<Tensor>& args,
-                        const std::vector<Tensor>* captured_inputs,
-                        DataTypeSlice ret_types)
-      : CallFrameBase(ret_types),
-        args_(args),
-        captured_inputs_(captured_inputs) {}
-
-  size_t num_args() const override {
-    return args_.size() + captured_inputs_->size();
-  }
-
-  // Callee methods.
-  Status GetArg(int index, Tensor* val) const override {
-    if (index < args_.size()) {
-      *val = args_[index];
-      return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = (*captured_inputs_)[index - args_.size()];
-      return Status::OK();
-    } else {
-      return errors::InvalidArgument("Argument ", index, " is out of range.");
-    }
-  }
-
- private:
-  const std::vector<Tensor>& args_;                   // Not owned.
-  const std::vector<Tensor>* const captured_inputs_;  // Not owned.
-};
-
-}  // namespace
-
 InstantiatedCapturedFunction::InstantiatedCapturedFunction(
     FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
     DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
@@ -615,7 +625,7 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
-      cancellation_manager_(cancellation_manager),
+      captured_cancellation_manager_(cancellation_manager),
       captured_func_(captured_func) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
@@ -644,14 +654,21 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      ctx->cancellation_manager(),
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   OwnedArgsCallFrame frame(std::move(args), &captured_func_->captured_inputs(),
                            ret_types_);
   Notification n;
   Status s;
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -680,8 +697,9 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      ctx->cancellation_manager(),
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -689,6 +707,13 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   Notification n;
   Status s;
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::RunWithBorrowedArgs#id=",
+            f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -716,8 +741,9 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   CancellationManager cancellation_manager;
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
-  TF_RETURN_IF_ERROR(ConnectCancellationManagers(
-      cancellation_manager_, &cancellation_manager, &deregister_fn));
+  TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+      captured_cancellation_manager_,
+      [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
   BorrowedArgsCallFrame frame(args, &captured_func_->captured_inputs(),
@@ -725,6 +751,12 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   Notification n;
   Status s;
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
+                            f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -767,8 +799,10 @@ void InstantiatedCapturedFunction::RunAsync(
   auto cancellation_manager = absl::make_unique<CancellationManager>();
   f_opts.cancellation_manager = cancellation_manager.get();
   std::function<void()> deregister_fn;
-  Status s = ConnectCancellationManagers(
-      ctx->cancellation_manager(), cancellation_manager.get(), &deregister_fn);
+  Status s = RegisterCancellationCallback(
+      ctx->cancellation_manager(),
+      [cm = cancellation_manager.get()]() { cm->StartCancel(); },
+      &deregister_fn);
   if (!s.ok()) {
     done(s);
     return;
@@ -825,6 +859,12 @@ void InstantiatedCapturedFunction::RunAsync(
       std::move(done), ctx, std::move(deregister_fn), prefix,
       std::move(stats_collector), std::placeholders::_1);
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
 }
 
@@ -837,6 +877,78 @@ CapturedFunction::CapturedFunction(
     const std::shared_ptr<const FunctionMetadata> metadata,
     std::vector<Tensor> captured_inputs)
     : metadata_(metadata), captured_inputs_(std::move(captured_inputs)) {}
+
+Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
+                                       bool* is_multi_device) {
+  if (!metadata_->is_multi_device_function()) {
+    *is_multi_device = false;
+    return Status::OK();
+  }
+
+  const FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(
+      LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
+
+  Device* current_device = ctx->flr()->device();
+  DeviceType current_device_type(current_device->device_type());
+  DeviceNameUtils::ParsedName current_device_name;
+  if (!DeviceNameUtils::ParseFullName(current_device->name(),
+                                      &current_device_name)) {
+    return errors::InvalidArgument("Failed to parse device name: ",
+                                   current_device->name());
+  }
+
+  // Check if any of the captured inputs are placed on a device not compatible
+  // with the current device. For non-captured inputs, we assume they are placed
+  // on the current device.
+  for (const auto& input : captured_inputs_) {
+    DataType dtype = input.dtype();
+    if (dtype == DT_RESOURCE) {
+      const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
+      DeviceNameUtils::ParsedName resource_device_name;
+      if (!DeviceNameUtils::ParseFullName(handle.device(),
+                                          &resource_device_name)) {
+        return errors::InvalidArgument("Failed to parse device name: ",
+                                       handle.device());
+      }
+      if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
+                                                  resource_device_name)) {
+        *is_multi_device = true;
+        return Status::OK();
+      }
+    }
+  }
+
+  // Check if all ops could be placed on the current device.
+  for (const auto& name : metadata_->lib_def()->ListFunctionNames()) {
+    const FunctionDef* fdef;
+    TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
+    for (const auto& node : fdef->node_def()) {
+      // Check if the op has a kernel availabe for the current device.
+      if (!KernelDefAvailable(current_device_type, node)) {
+        *is_multi_device = true;
+        return Status::OK();
+      }
+      // If the op has a requested device, check if the requested device is
+      // compatible with the current device.
+      if (!node.device().empty()) {
+        DeviceNameUtils::ParsedName node_device_name;
+        if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
+          return errors::InvalidArgument("Failed to parse device name: ",
+                                         node.device());
+        }
+        if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
+                                                    node_device_name)) {
+          *is_multi_device = true;
+          return Status::OK();
+        }
+      }
+    }
+  }
+
+  *is_multi_device = false;
+  return Status::OK();
+}
 
 }  // namespace data
 }  // namespace tensorflow

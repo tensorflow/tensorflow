@@ -17,10 +17,16 @@ limitations under the License.
 
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
+#include "tensorflow/lite/core/api/flatbuffer_conversions.h"
+#include "tensorflow/lite/experimental/micro/simple_memory_allocator.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
+
+typedef struct {
+  TfLiteNode node;
+  const TfLiteRegistration* registration;
+} NodeAndRegistration;
 
 // Allocator responsible for allocating memory for all intermediate tensors
 // necessary to invoke a model.
@@ -44,16 +50,39 @@ class MicroAllocator {
   // prematurely overwritten.
   TfLiteStatus RegisterPreallocatedInput(uint8_t* buffer, size_t input_index);
 
+  // Sets up all of the data structure members for a runtime tensor based on the
+  // contents of a serialized tensor. This method doesn't allocate any memory,
+  // all allocations happen subsequently in AllocateTensors.
+  TfLiteStatus InitializeRuntimeTensor(
+      const tflite::Tensor& flatbuffer_tensor,
+      const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
+      ErrorReporter* error_reporter, TfLiteTensor* result,
+      uint8_t* preallocated_buffer = nullptr);
+
   // Run through the model and allocate all necessary input, output and
   // intermediate tensors except for those already provided via calls to
   // registerPreallocatedInput.
-  TfLiteStatus AllocateTensors();
+  // WARNING: doing any allocation after calling is method has the risk of
+  // corruption tensor data so this method is the last method to be called in
+  // this class.
+  TfLiteStatus FinishTensorAllocation();
+
+  // Run through the model to allocate nodes and registrations. We need to keep
+  // them for the entire life time of the model to allow persistent tensors.
+  // This method needs to be called before FinishTensorAllocation method.
+  TfLiteStatus AllocateNodeAndRegistrations(
+      const OpResolver& op_resolver,
+      NodeAndRegistration** node_and_registrations);
 
  private:
   const Model* model_;
-  SimpleTensorAllocator tensor_allocator_;
+  SimpleMemoryAllocator memory_allocator_;
   ErrorReporter* error_reporter_;
   TfLiteContext* context_;
+  uint8_t* arena_;
+  size_t arena_size_;
+  // Indicating if the allocator is ready for allocation.
+  bool active_ = false;
 
   const SubGraph* subgraph_;
   const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators_;

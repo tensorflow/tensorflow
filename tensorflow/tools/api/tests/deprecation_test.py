@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import os
 import tensorflow as tf
 
 from tensorflow.python.platform import test
@@ -145,12 +146,29 @@ class DeprecationTest(test.TestCase):
   def testKerasDeprecation(self, mock_warning):
     self.assertEqual(0, mock_warning.call_count)
     tf.keras.backend.get_session()
-    self.assertEqual(1, mock_warning.call_count)
-    self.assertRegexpMatches(
-        mock_warning.call_args[0][-1],
-        "tf.compat.v1.keras.backend.get_session")
+    # if OpenMP is set in environment, then logging.warning
+    # is called two times. First for deprecation and 2nd for
+    # OMP related warning.
+    if os.environ.get("OMP_NUM_THREADS"):
+      self.assertEqual(2, mock_warning.call_count)
+      # First message on deprecation warning.
+      self.assertRegexpMatches(mock_warning.call_args_list[0][0][-1],
+                               "tf.compat.v1.keras.backend.get_session")
+      # Second message is not a deprecation warning.
+      self.assertRegexpMatches(
+          mock_warning.call_args_list[1][0][0],
+          "OMP_NUM_THREADS is no longer used by the default Keras config."
+          " To configure the number of threads, use tf.config.threading"
+          " APIs")
+    else:
+      self.assertEqual(1, mock_warning.call_count)
+      self.assertRegexpMatches(mock_warning.call_args[0][-1],
+                               "tf.compat.v1.keras.backend.get_session")
     tf.keras.backend.get_session()
-    self.assertEqual(1, mock_warning.call_count)
+    if os.environ.get("OMP_NUM_THREADS"):
+      self.assertEqual(2, mock_warning.call_count)
+    else:
+      self.assertEqual(1, mock_warning.call_count)
 
   @test.mock.patch.object(logging, "warning", autospec=True)
   def testKerasEndpointDeprecation(self, mock_warning):

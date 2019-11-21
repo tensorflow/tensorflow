@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import input_lib
@@ -281,6 +280,7 @@ def experimental_tpu_fit_loop(model,
     callbacks.on_epoch_end(epoch, epoch_logs)
     if callbacks.model.stop_training:
       break
+  model._successful_loop_finish = True
   callbacks._call_end_hook(mode)
 
   if model._compile_distribution:
@@ -456,7 +456,7 @@ def experimental_tpu_predict_loop(model,
                                                   padding_handler.update_mask)
 
     dataset = dataset.map(padding_handler.pad_batch)
-    dataset = dataset.apply(batching.unbatch())
+    dataset = dataset.unbatch()
     # Upon this point, it is guaranteed that the dataset does not
     # have partial batches. Thus, we set `drop_remainder=True` to
     # get static shape information about the elements in the dataset.
@@ -760,7 +760,7 @@ class DistributionSingleWorkerTrainingLoop(training_utils.TrainingLoop):
         callbacks=callbacks)
 
 
-def train_with_multi_worker(method):
+def _train_with_multi_worker(method):
   """Decorator that handles multi worker training with distribution strategy."""
 
   def wrapper(model, **kwargs):
@@ -786,11 +786,11 @@ class DistributionMultiWorkerTrainingLoop(training_utils.TrainingLoop):
     self._single_worker_loop = single_worker_loop
 
   def fit(self, *args, **kwargs):
-    return train_with_multi_worker(self._single_worker_loop.fit)(
+    return _train_with_multi_worker(self._single_worker_loop.fit)(
         *args, **kwargs)
 
   def evaluate(self, *args, **kwargs):
-    return train_with_multi_worker(self._single_worker_loop.evaluate)(
+    return _train_with_multi_worker(self._single_worker_loop.evaluate)(
         *args, **kwargs)
 
   def predict(self, *args, **kwargs):

@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
 import enum  # pylint: disable=g-bad-import-order
 import itertools
 import functools
@@ -28,7 +27,6 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_utils
-from tensorflow.python.compat import compat as fwd_compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -46,6 +44,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.deprecation import deprecated_args
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -265,92 +264,105 @@ class VariableMetaclass(type):
 
 @tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
-  """See the [Variables Guide](https://tensorflow.org/guide/variables).
+  """See the [variable guide](https://tensorflow.org/guide/variable).
 
-  A variable maintains state in the graph across calls to `run()`. You add a
-  variable to the graph by constructing an instance of the class `Variable`.
+  A variable maintains shared, persistent state manipulated by a program.
 
-  The `Variable()` constructor requires an initial value for the variable,
-  which can be a `Tensor` of any type and shape. The initial value defines the
-  type and shape of the variable. After construction, the type and shape of
-  the variable are fixed. The value can be changed using one of the assign
-  methods.
+  The `Variable()` constructor requires an initial value for the variable, which
+  can be a `Tensor` of any type and shape. This initial value defines the type
+  and shape of the variable. After construction, the type and shape of the
+  variable are fixed. The value can be changed using one of the assign methods.
 
-  If you want to change the shape of a variable later you have to use an
-  `assign` Op with `validate_shape=False`.
+  >>> v = tf.Variable(1.)
+  >>> v.assign(2.)
+  <tf.Variable ... shape=() dtype=float32, numpy=2.0>
+  >>> v.assign_add(0.5)
+  <tf.Variable ... shape=() dtype=float32, numpy=2.5>
+
+  The `shape` argument to `Variable`'s constructor allows you to construct a
+  variable with a less defined shape than its `initial_value`:
+
+  >>> v = tf.Variable(1., shape=tf.TensorShape(None))
+  >>> v.assign([[1.]])
+  <tf.Variable ... shape=<unknown> dtype=float32, numpy=array([[1.]], ...)>
 
   Just like any `Tensor`, variables created with `Variable()` can be used as
-  inputs for other Ops in the graph. Additionally, all the operators
-  overloaded for the `Tensor` class are carried over to variables, so you can
-  also add nodes to the graph by just doing arithmetic on variables.
+  inputs to operations. Additionally, all the operators overloaded for the
+  `Tensor` class are carried over to variables.
 
-  ```python
-  import tensorflow as tf
-
-  # Create a variable.
-  w = tf.Variable(<initial-value>, name=<optional-name>)
-
-  # Use the variable in the graph like any Tensor.
-  y = tf.matmul(w, ...another variable or tensor...)
-
-  # The overloaded operators are available too.
-  z = tf.sigmoid(w + y)
-
-  # Assign a new value to the variable with `assign()` or a related method.
-  w.assign(w + 1.0)
-  w.assign_add(1.0)
-  ```
-
-  When you launch the graph, variables have to be explicitly initialized before
-  you can run Ops that use their value. You can initialize a variable by
-  running its *initializer op*, restoring the variable from a save file, or
-  simply running an `assign` Op that assigns a value to the variable. In fact,
-  the variable *initializer op* is just an `assign` Op that assigns the
-  variable's initial value to the variable itself.
-
-  ```python
-  # Launch the graph in a session.
-  with tf.compat.v1.Session() as sess:
-      # Run the variable initializer.
-      sess.run(w.initializer)
-      # ...you now can run ops that use the value of 'w'...
-  ```
-
-  The most common initialization pattern is to use the convenience function
-  `global_variables_initializer()` to add an Op to the graph that initializes
-  all the variables. You then run that Op after launching the graph.
-
-  ```python
-  # Add an Op to initialize global variables.
-  init_op = tf.compat.v1.global_variables_initializer()
-
-  # Launch the graph in a session.
-  with tf.compat.v1.Session() as sess:
-      # Run the Op that initializes global variables.
-      sess.run(init_op)
-      # ...you can now run any Op that uses variable values...
-  ```
-
-  If you need to create a variable with an initial value dependent on another
-  variable, use the other variable's `initialized_value()`. This ensures that
-  variables are initialized in the right order.
-
-  All variables are automatically collected in the graph where they are
-  created. By default, the constructor adds the new variable to the graph
-  collection `GraphKeys.GLOBAL_VARIABLES`. The convenience function
-  `global_variables()` returns the contents of that collection.
+  >>> w = tf.Variable([[1.], [2.]])
+  >>> x = tf.constant([[3., 4.]])
+  >>> tf.matmul(w, x)
+  <tf.Tensor:... shape=(2, 2), ... numpy=
+    array([[3., 4.],
+           [6., 8.]], dtype=float32)>
+  >>> tf.sigmoid(w + x)
+  <tf.Tensor:... shape=(2, 2), ...>
 
   When building a machine learning model it is often convenient to distinguish
-  between variables holding the trainable model parameters and other variables
-  such as a `global step` variable used to count training steps. To make this
-  easier, the variable constructor supports a `trainable=<bool>` parameter. If
-  `True`, the new variable is also added to the graph collection
-  `GraphKeys.TRAINABLE_VARIABLES`. The convenience function
-  `trainable_variables()` returns the contents of this collection. The
-  various `Optimizer` classes use this collection as the default list of
-  variables to optimize.
+  between variables holding trainable model parameters and other variables such
+  as a `step` variable used to count training steps. To make this easier, the
+  variable constructor supports a `trainable=<bool>`
+  parameter. `tf.GradientTape` watches trainable variables by default:
+
+  >>> with tf.GradientTape(persistent=True) as tape:
+  ...   trainable = tf.Variable(1.)
+  ...   non_trainable = tf.Variable(2., trainable=False)
+  ...   x1 = trainable * 2.
+  ...   x2 = non_trainable * 3.
+  >>> tape.gradient(x1, trainable)
+  <tf.Tensor:... shape=(), dtype=float32, numpy=2.0>
+  >>> assert tape.gradient(x2, non_trainable) is None  # Unwatched
+
+  Variables are automatically tracked when assigned to attributes of types
+  inheriting from `tf.Module`.
+
+  >>> m = tf.Module()
+  >>> m.v = tf.Variable([1.])
+  >>> m.trainable_variables
+  (<tf.Variable ... shape=(1,) ... numpy=array([1.], dtype=float32)>,)
+
+  This tracking then allows saving variable values to
+  [training checkpoints](https://www.tensorflow.org/guide/checkpoint), or to
+  [SavedModels](https://www.tensorflow.org/guide/saved_model) which include
+  serialized TensorFlow graphs.
+
+  Variables are often captured and manipulated by `tf.function`s. This works the
+  same way the un-decorated function would have:
+
+  >>> v = tf.Variable(0.)
+  >>> read_and_decrement = tf.function(lambda: v.assign_sub(0.1))
+  >>> read_and_decrement()
+  <tf.Tensor: shape=(), dtype=float32, numpy=-0.1>
+  >>> read_and_decrement()
+  <tf.Tensor: shape=(), dtype=float32, numpy=-0.2>
+
+  Variables created inside a `tf.function` must be owned outside the function
+  and be created only once:
+
+  >>> class M(tf.Module):
+  ...   @tf.function
+  ...   def __call__(self, x):
+  ...     if not hasattr(self, "v"):  # Or set self.v to None in __init__
+  ...       self.v = tf.Variable(x)
+  ...     return self.v * x
+  >>> m = M()
+  >>> m(2.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=4.0>
+  >>> m(3.)
+  <tf.Tensor: shape=(), dtype=float32, numpy=6.0>
+  >>> m.v
+  <tf.Variable ... shape=() dtype=float32, numpy=2.0>
+
+  See the `tf.function` documentation for details.
   """
 
+  @deprecated_args(
+      None,
+      "A variable's value can be manually cached by calling "
+      "tf.Variable.read_value() under a tf.device scope. The caching_device "
+      "argument does not work properly.",
+      "caching_device")
   def __init__(self,
                initial_value=None,
                trainable=None,
@@ -365,15 +377,6 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
                aggregation=VariableAggregation.NONE,
                shape=None):
     """Creates a new variable with value `initial_value`.
-
-    The new variable is added to the graph collections listed in `collections`,
-    which defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
-
-    If `trainable` is `True` the variable is also added to the graph collection
-    `GraphKeys.TRAINABLE_VARIABLES`.
-
-    This constructor creates both a `variable` Op and an `assign` Op to set the
-    variable to its initial value.
 
     Args:
       initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
@@ -428,7 +431,6 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
       ValueError: If both `variable_def` and initial_value are specified.
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
-      RuntimeError: If eager execution is enabled.
     """
     raise NotImplementedError
 
@@ -1093,10 +1095,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __eq__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      if fwd_compat.forward_compatible(2019, 9, 25):
-        return gen_math_ops.equal(self, other, incompatible_shape_error=False)
-      else:
-        return gen_math_ops.equal(self, other)
+      return gen_math_ops.equal(self, other, incompatible_shape_error=False)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is other
@@ -1105,11 +1104,7 @@ class Variable(six.with_metaclass(VariableMetaclass, trackable.Trackable)):
   def __ne__(self, other):
     """Compares two variables element-wise for equality."""
     if ops.Tensor._USE_EQUALITY and ops.executing_eagerly_outside_functions():  # pylint: disable=protected-access
-      if fwd_compat.forward_compatible(2019, 9, 25):
-        return gen_math_ops.not_equal(
-            self, other, incompatible_shape_error=False)
-      else:
-        return gen_math_ops.not_equal(self, other)
+      return gen_math_ops.not_equal(self, other, incompatible_shape_error=False)
     else:
       # In legacy graph mode, tensor equality is object equality
       return self is not other
@@ -3384,14 +3379,3 @@ def report_uninitialized_variables(var_list=None,
 
 ops.register_tensor_conversion_function(
     PartitionedVariable, PartitionedVariable._TensorConversionFunction)  # pylint: disable=protected-access
-
-
-class AbstractVariableMetaclass(VariableMetaclass, abc.ABCMeta):
-  """Metaclass combining `VariableMetaclass` and `abc.ABCMeta`."""
-  pass
-
-
-@six.add_metaclass(AbstractVariableMetaclass)
-class AbstractVariable(Variable):
-  """`Variable`, but abstract."""
-  pass

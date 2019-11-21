@@ -52,8 +52,8 @@ class Operation final
 public:
   /// Create a new Operation with the specific fields.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            ArrayRef<NamedAttribute> attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -61,8 +61,8 @@ public:
   /// Overload of create that takes an existing NamedAttributeList to avoid
   /// unnecessarily uniquing a list of attributes.
   static Operation *create(Location location, OperationName name,
-                           ArrayRef<Value *> operands,
                            ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
                            const NamedAttributeList &attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
@@ -112,7 +112,7 @@ public:
   /// Return the context this operation is associated with.
   MLIRContext *getContext();
 
-  /// Return the dialact this operation is associated with, or nullptr if the
+  /// Return the dialect this operation is associated with, or nullptr if the
   /// associated dialect is not registered.
   Dialect *getDialect();
 
@@ -137,6 +137,17 @@ public:
       if (auto parentOp = llvm::dyn_cast<OpTy>(op))
         return parentOp;
     return OpTy();
+  }
+
+  /// Return true if this operation is a proper ancestor of the `other`
+  /// operation.
+  bool isProperAncestor(Operation *other);
+
+  /// Return true if this operation is an ancestor of the `other` operation. An
+  /// operation is considered as its own ancestor, use `isProperAncestor` to
+  /// avoid this.
+  bool isAncestor(Operation *other) {
+    return this == other || isProperAncestor(other);
   }
 
   /// Replace any uses of 'from' with 'to' within this operation.
@@ -173,9 +184,9 @@ public:
   void dropAllDefinedValueUses();
 
   /// Unlink this operation from its current block and insert it right before
-  /// `existingInst` which may be in the same or another block in the same
+  /// `existingOp` which may be in the same or another block in the same
   /// function.
-  void moveBefore(Operation *existingInst);
+  void moveBefore(Operation *existingOp);
 
   /// Unlink this operation from its current block and insert it right before
   /// `iterator` in the specified block.
@@ -188,7 +199,7 @@ public:
   /// take O(N) where N is the number of operations within the parent block.
   bool isBeforeInBlock(Operation *other);
 
-  void print(raw_ostream &os);
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None);
   void dump();
 
   //===--------------------------------------------------------------------===//
@@ -427,6 +438,23 @@ public:
   /// index.
   unsigned getSuccessorOperandIndex(unsigned index);
 
+  /// Return a pair (successorIndex, successorArgIndex) containing the index
+  /// of the successor that `operandIndex` belongs to and the index of the
+  /// argument to that successor that `operandIndex` refers to.
+  ///
+  /// If `operandIndex` is not a successor operand, None is returned.
+  Optional<std::pair<unsigned, unsigned>>
+  decomposeSuccessorOperandIndex(unsigned operandIndex);
+
+  /// Returns the `BlockArgument*` corresponding to operand `operandIndex` in
+  /// some successor, or None if `operandIndex` isn't a successor operand index.
+  Optional<BlockArgument *> getSuccessorBlockArgument(unsigned operandIndex) {
+    auto decomposed = decomposeSuccessorOperandIndex(operandIndex);
+    if (!decomposed.hasValue())
+      return None;
+    return getSuccessor(decomposed->first)->getArgument(decomposed->second);
+  }
+
   //===--------------------------------------------------------------------===//
   // Accessors for various properties of operations
   //===--------------------------------------------------------------------===//
@@ -552,13 +580,13 @@ private:
   }
 
   /// Provide a 'getParent' method for ilist_node_with_parent methods.
-  /// We mark it as const function because ilist_node_with_parent specifically
+  /// We mark it as a const function because ilist_node_with_parent specifically
   /// requires a 'getParent() const' method. Once ilist_node removes this
   /// constraint, we should drop the const to fit the rest of the MLIR const
   /// model.
   Block *getParent() const { return block; }
 
-  /// The operation block that containts this operation.
+  /// The operation block that contains this operation.
   Block *block = nullptr;
 
   /// This holds information about the source location the operation was defined
@@ -627,6 +655,9 @@ class OperandTypeIterator final
 public:
   using reference = Type;
 
+  /// Provide a const deference method.
+  Type operator*() const { return unwrap(*I); }
+
   /// Initializes the operand type iterator to the specified operand iterator.
   OperandTypeIterator(OperandIterator it)
       : llvm::mapped_iterator<OperandIterator, Type (*)(Value *)>(it, &unwrap) {
@@ -684,6 +715,33 @@ public:
   /// Initializes the result type iterator to the specified result iterator.
   ResultTypeIterator(ResultIterator it)
       : llvm::mapped_iterator<ResultIterator, Type (*)(Value *)>(it, &unwrap) {}
+};
+
+/// This class implements use iterator for the Operation. This iterates over all
+/// uses of all results of an Operation.
+class UseIterator final
+    : public llvm::iterator_facade_base<UseIterator, std::forward_iterator_tag,
+                                        Operation *> {
+public:
+  /// Initialize UseIterator for op, specify end to return iterator to last use.
+  explicit UseIterator(Operation *op, bool end = false);
+
+  UseIterator &operator++();
+  Operation *operator->() { return use->getOwner(); }
+  Operation *operator*() { return use->getOwner(); }
+
+  bool operator==(const UseIterator &other) const;
+  bool operator!=(const UseIterator &other) const;
+
+private:
+  void skipOverResultsWithNoUsers();
+
+  /// The operation whose uses are being iterated over.
+  Operation *op;
+  /// The result of op who's uses are being iterated over.
+  Operation::result_iterator res;
+  /// The use of the result.
+  Value::use_iterator use;
 };
 
 // Implement the inline result iterator methods.

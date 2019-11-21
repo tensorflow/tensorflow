@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <sstream>
 
+#include "llvm/ADT/Sequence.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -24,24 +25,19 @@ limitations under the License.
 #include "llvm/TableGen/Main.h"
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
+#include "mlir/Support/STLExtras.h"  // TF:local_config_mlir
 #include "mlir/TableGen/Operator.h"  // TF:local_config_mlir
 
-using llvm::dyn_cast;
-using llvm::LessRecord;
 using llvm::raw_ostream;
-using llvm::Record;
 using llvm::RecordKeeper;
 using llvm::StringRef;
+using mlir::interleaveComma;
+using mlir::tblgen::NamedAttribute;
+using mlir::tblgen::NamedTypeConstraint;
 using mlir::tblgen::Operator;
 
-// Returns the builder function name for the given op definition.
-// E.g., AddOp -> CreateAddOp
-static inline std::string GetOperatorBuilderName(StringRef op_name) {
-  return "Create" + op_name.str();
-}
-
-static std::string GetConversionFunction(
-    mlir::tblgen::NamedAttribute named_attr) {
+static std::string GetDefaultAttrExport(
+    const mlir::tblgen::NamedAttribute& named_attr) {
   auto storage_type = named_attr.attr.getStorageType();
   // For some attribute types we have a general conversion, so use that.
   if (storage_type.endswith("IntegerAttr") ||
@@ -51,110 +47,53 @@ static std::string GetConversionFunction(
   return "Convert_" + named_attr.name.str();
 }
 
-using ArgumentName = std::string;
-using ArgumentDeclaration = std::string;
-using Argument = std::pair<ArgumentName, ArgumentDeclaration>;
-using ArgumentList = std::vector<Argument>;
+static void BuildOperator(const Operator& op, raw_ostream* output) {
+  auto& os = *output;
+  os << "    auto& value_map = *lowering_context.values;\n"
+     << "    auto result = xla_op.getResult();\n";
 
-static std::string BuildOperator(const Operator& op) {
-  std::stringstream os;
-  StringRef op_name = op.getCppClassName();
-  std::string xla_op_name = op_name.drop_back(2).str();
+  // Build a conversion for each of the arguments.
+  int operand_number = 0;
+  for (int index : llvm::seq<int>(0, op.getNumArgs())) {
+    auto arg = op.getArg(index);
 
-  // Signature.
-  os << "static xla::XlaOp " << GetOperatorBuilderName(op_name)
-     << "(mlir::xla_hlo::" << op_name.str() << " xla_op, "
-     << "llvm::DenseMap<mlir::Value*, xla::XlaOp>* "
-        "value_lowering) {\n";
+    // Emit an argument for an operand.
+    if (auto* operand_cst = arg.dyn_cast<NamedTypeConstraint*>()) {
+      // Handle a non-variadic operand.
+      if (!operand_cst->isVariadic()) {
+        os << "    auto xla_arg_" << index
+           << " = value_map[*xla_op.getODSOperands(" << operand_number++
+           << ").begin()];\n";
+        continue;
+      }
 
-  os << "  auto& value_map = *value_lowering;\n"
-     << "  auto result = xla_op.getResult();\n";
+      // Otherwise, this is a varidiac operand list.
+      os << "    std::vector<xla::XlaOp> xla_arg_" << index << ";"
+         << "    for (auto operand : xla_op.getODSOperands(" << operand_number++
+         << "))\n      xla_arg_" << index
+         << ".push_back(value_map[operand]);\n";
+      continue;
+    }
 
-  // Invoke the conversion function for each attribute.
-  for (const auto& named_attr : op.getAttributes()) {
-    os << "  auto " << named_attr.name.str() << " = "
-       << GetConversionFunction(named_attr) << "("
-       << "xla_op." << named_attr.name.str() << "());\n";
+    // Otherwise, this is an attribute.
+    auto named_attr = arg.get<NamedAttribute*>();
+    os << "    auto xla_arg_" << index << " = "
+       << GetDefaultAttrExport(*named_attr) << "(xla_op."
+       << op.getArgName(index) << "());\n";
   }
 
   // Assumes that the client builder method names closely follow the op names
   // in the dialect. For e.g., AddOp -> xla::Add method.
-  os << "  auto xla_result = xla::" << xla_op_name << "(";
+  StringRef op_name = op.getCppClassName();
+  os << "    auto xla_result = xla::" << op_name.drop_back(2) << "(";
 
-  int num_operands = op.getNumOperands();
-  if (num_operands == 1) {
-    os << "value_map[xla_op.getOperand()]";
-  } else {
-    for (auto i = 0; i < num_operands; i++) {
-      os << "value_map[xla_op.getOperand(" << i << ")]";
-      if (i != num_operands - 1) {
-        os << ", ";
-      }
-    }
-  }
-
-  for (const auto& named_attr : op.getAttributes()) {
-    os << ", Unwrap(" << named_attr.name.str() << ")";
-  }
-
+  // Emit each of the arguments.
+  interleaveComma(llvm::seq<int>(0, op.getNumArgs()), os,
+                  [&](int i) { os << "Unwrap(xla_arg_" << i << ')'; });
   os << ");\n";
 
-  os << "  value_map[result] = xla_result;\n";
-  os << "  return xla_result;\n";
-  os << "}\n\n";
-  return os.str();
-}
-
-// For each XLA op, emits a builder function that constructs the XLA op using
-// the HLO client builder.
-static void EmitOperatorBuilders(const RecordKeeper& record_keeper,
-                                 const std::vector<Record*>& defs,
-                                 raw_ostream* ostream) {
-  raw_ostream& os = *ostream;
-
-  for (const auto* def : defs) {
-    // Skip operations that have a custom converter.
-    if (def->getValueAsBit("hasCustomHLOConverter")) continue;
-
-    Operator op(def);
-    os << BuildOperator(op);
-  }
-}
-
-// Emits a builder function that returns the XlaOp object given a
-// mlir::Operation.
-//
-// The signature of the function is:
-//
-//   llvm::Optional<xla::XlaOp>
-//   mlir::CreateXlaOperator(
-//       mlir::Operation* op,
-//       llvm::DenseMap<mlir::Value*, xla::XlaOp>
-//       *value_lowering);
-static void EmitBuilder(const std::vector<Record*>& defs,
-                        raw_ostream* ostream) {
-  raw_ostream& os = *ostream;
-
-  // Signature
-  os << "llvm::Optional<xla::XlaOp>\n"
-        "mlir::CreateXlaOperator(mlir::Operation* op, "
-        "llvm::DenseMap<mlir::Value*, xla::XlaOp> "
-        "*value_lowering) {\n";
-
-  for (const auto* def : defs) {
-    // Skip operations that have a custom converter.
-    if (def->getValueAsBit("hasCustomHLOConverter")) continue;
-
-    StringRef op_name = def->getName().drop_front(4);
-
-    // Try to cast to each op and call the corresponding op builder.
-    os << "  if (auto xla_op = llvm::dyn_cast<mlir::xla_hlo::" << op_name
-       << ">(op))\n     return " << GetOperatorBuilderName(op_name)
-       << "(xla_op, value_lowering);\n";
-  }
-
-  os << "  return llvm::None;\n"
-        "}\n";
+  os << "    value_map[result] = xla_result;\n";
+  os << "    return mlir::success();\n";
 }
 
 // The function below has a non-constant reference as that is required by LLVM's
@@ -163,26 +102,30 @@ static void EmitBuilder(const std::vector<Record*>& defs,
 static bool OperatorWritersMain(raw_ostream& os, RecordKeeper& records) {
   emitSourceFileHeader("MLIR XLA Builders", os);
 
-  // Retrieve all the definitions derived from HLO_Op and sort by record name.
-  std::vector<Record*> defs = records.getAllDerivedDefinitions("HLO_Op");
-  llvm::sort(defs, LessRecord());
+  // Emit a function to generate an XLA operation for the operations with
+  // auto-generated builders.
+  os << "mlir::LogicalResult ExportXlaOperator(\n"
+        "mlir::Operation* op, OpLoweringContext lowering_context) {\n";
 
-  for (const auto* def : defs) {
-    // XLA ops in the .td file are expected to follow the naming convention:
-    // HLO_<OpName>Op.
-    // The generated XLA op C++ class should be HLO::<OpName>Op.
-    if (!def->getName().startswith("HLO_"))
-      PrintFatalError(def->getLoc(),
-                      "unexpected op name format: 'HLO_' prefix missing");
-    if (!def->getName().endswith("Op"))
-      PrintFatalError(def->getLoc(),
-                      "unexpected op name format: 'Op' suffix missing");
+  // Retrieve all the definitions derived from HLO_Op and sort by record name.
+  for (const auto* def : records.getAllDerivedDefinitions("HLO_Op")) {
+    // Skip operations that have a custom exporter.
+    Operator op(def);
+
+    // Cast to the current operation and build the exporter.
+    os << "  if (auto xla_op = llvm::dyn_cast<mlir::xla_hlo::"
+       << op.getCppClassName() << ">(op)) {\n";
+    if (def->getValueAsBit("hasCustomHLOConverter")) {
+      os << "    return mlir::xla_hlo::ExportXlaOp(xla_op, "
+            "lowering_context);\n";
+    } else {
+      BuildOperator(op, &os);
+    }
+    os << "  }\n";
   }
 
-  EmitOperatorBuilders(records, defs, &os);
-  os << "\n\n";
-  EmitBuilder(defs, &os);
-
+  os << "  return mlir::failure();\n"
+        "}\n";
   return false;
 }
 

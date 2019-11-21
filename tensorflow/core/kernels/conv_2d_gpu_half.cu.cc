@@ -29,12 +29,6 @@ namespace tensorflow {
 
 namespace functor {
 
-template struct ShuffleAndReverse<Eigen::GpuDevice, Eigen::half, 4, int>;
-template struct ShuffleAndReverse<Eigen::GpuDevice, Eigen::half, 4,
-                                  Eigen::DenseIndex>;
-
-template struct TransformDepth<Eigen::GpuDevice, Eigen::half, int>;
-
 template struct SwapDimension1And2InTensor3<Eigen::GpuDevice, Eigen::half>;
 
 // For 2d ops.

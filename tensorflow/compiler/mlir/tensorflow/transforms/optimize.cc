@@ -20,8 +20,11 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
+#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
 namespace mlir {
 namespace TF {
@@ -41,11 +44,37 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPassBase> CreateTFOptimizePass() {
+// NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
+void CreateTFStandardPipeline(OpPassManager &pm) {
+  OpPassManager &func_pm = pm.nest<FuncOp>();
+
+  // First operates on the executor dialect:
+  // - eliminate trivial switch/merge
+  // - fuse islands as much as possible.
+  // - materialize the eventual "pass-through" ops by inlining their content.
+  func_pm.addPass(tf_executor::CreateSwitchFoldPass());
+  func_pm.addPass(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  func_pm.addPass(CreateMaterializePassthroughOpPass());
+
+  // Hopefully there is a single island left, or there wasn't any to begin with.
+  // We now run the optimizer which operates mostly inside islands.
+  func_pm.addPass(createCanonicalizerPass());
+  func_pm.addPass(CreateTFOptimizePass());
+  func_pm.addPass(createCSEPass());
+}
+
+std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TFOptimizePass>();
 }
 
 static PassRegistration<TFOptimizePass> pass("tf-optimize", "Optimizes TF.");
+
+// Registers a pipeline builder function for the default canonicalize/optimizer.
+static mlir::PassPipelineRegistration<> pipeline(
+    "tf-standard-pipeline",
+    "Run all the passes involved in transforming/optimizing the graph after "
+    "importing into MLIR, without any target specialization.",
+    CreateTFStandardPipeline);
 
 }  // namespace TF
 }  // namespace mlir

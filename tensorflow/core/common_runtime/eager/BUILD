@@ -1,6 +1,8 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_test_mkl",
+    "tf_copts",
     "tf_cuda_library",
 )
 load(
@@ -52,6 +54,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        ":process_function_library_runtime",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
@@ -91,8 +94,10 @@ tf_cuda_library(
         ":attr_builder",
         ":context",
         ":eager_executor",
+        ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -148,8 +153,22 @@ tf_cuda_library(
             "//tensorflow/core:session_options",
             "//tensorflow/core/distributed_runtime/eager:eager_client",
             "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle_data",
+            "//tensorflow/core/profiler/lib:traceme",
         ],
     }),
+)
+
+tf_cc_test(
+    name = "tensor_handle_test",
+    srcs = ["tensor_handle_test.cc"],
+    deps = [
+        ":tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/memory",
+    ],
 )
 
 tf_cuda_library(
@@ -177,6 +196,19 @@ tf_cuda_library(
     }),
 )
 
+cc_library(
+    name = "shape_inference",
+    srcs = ["shape_inference.cc"],
+    hdrs = ["shape_inference.h"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:core_cpu_lib",
     "//tensorflow/core:framework",
@@ -185,6 +217,7 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/core/profiler/lib:scoped_annotation",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -199,8 +232,11 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
+        ":process_function_library_runtime",
         "@farmhash_archive//:farmhash",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -208,6 +244,30 @@ tf_cuda_library(
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
             "//tensorflow/compiler/jit:xla_kernel_creator_util",
+        ],
+    }),
+)
+
+tf_cuda_library(
+    name = "process_function_library_runtime",
+    srcs = [
+        "process_function_library_runtime.cc",
+    ],
+    hdrs = [
+        "process_function_library_runtime.h",
+    ],
+    visibility = ["//tensorflow:internal"],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "@com_google_absl//absl/types:optional",
+            "//tensorflow/core:core_cpu_lib",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
+            "//tensorflow/core:protos_all_cc",
         ],
     }),
 )
@@ -239,12 +299,16 @@ tf_cc_test(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:matmul_op",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
 cc_library(
     name = "execute",
-    srcs = ["execute.cc"],
+    srcs = [
+        "execute.cc",
+        "execute_node.cc",
+    ],
     hdrs = [
         "execute.h",
         "execute_node.h",
@@ -257,8 +321,11 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
+        ":process_function_library_runtime",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/memory",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
@@ -282,12 +349,29 @@ cc_library(
 cc_library(
     name = "mkl_eager_op_rewrite",
     srcs = ["mkl_eager_op_rewrite.cc"],
+    copts = tf_copts(allow_exceptions = True),
     deps = [
         ":eager_op_rewrite_registry",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:mkl_graph_util",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test_mkl(
+    name = "mkl_eager_op_rewrite_test",
+    srcs = ["mkl_eager_op_rewrite_test.cc"],
+    tags = [
+        "nomac",
+    ],
+    deps = [
+        ":execute",
+        ":mkl_eager_op_rewrite",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

@@ -149,6 +149,34 @@ public:
   const llvm::fltSemantics &getFloatSemantics();
 };
 
+/// The 'complex' type represents a complex number with a parameterized element
+/// type, which is composed of a real and imaginary value of that element type.
+///
+/// The element must be a floating point or integer scalar type.
+///
+class ComplexType
+    : public Type::TypeBase<ComplexType, Type, detail::ComplexTypeStorage> {
+public:
+  using Base::Base;
+
+  /// Get or create a ComplexType with the provided element type.
+  static ComplexType get(Type elementType);
+
+  /// Get or create a ComplexType with the provided element type.  This emits
+  /// and error at the specified location and returns null if the element type
+  /// isn't supported.
+  static ComplexType getChecked(Type elementType, Location location);
+
+  /// Verify the construction of an integer type.
+  static LogicalResult
+  verifyConstructionInvariants(llvm::Optional<Location> loc,
+                               MLIRContext *context, Type elementType);
+
+  Type getElementType();
+
+  static bool kindof(unsigned kind) { return kind == StandardTypes::Complex; }
+};
+
 /// This is a common base class between Vector, UnrankedTensor, RankedTensor,
 /// and MemRef types because they share behavior and semantics around shape,
 /// rank, and fixed element type. Any type with these semantics should inherit
@@ -157,6 +185,13 @@ class ShapedType : public Type {
 public:
   using ImplType = detail::ShapedTypeStorage;
   using Type::Type;
+
+  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // Unfortunately, uses of `-1` have crept deep into the codebase now and are
+  // hard to track.
+  static constexpr int64_t kDynamicSize = -1;
+  static constexpr int64_t kDynamicStrideOrOffset =
+      std::numeric_limits<int64_t>::min();
 
   /// Return the element type.
   Type getElementType() const;
@@ -256,8 +291,8 @@ public:
     // Note: Non standard/builtin types are allowed to exist within tensor
     // types. Dialects are expected to verify that tensor types have a valid
     // element type within that dialect.
-    return type.isIntOrFloat() || type.isa<VectorType>() ||
-           type.isa<OpaqueType>() ||
+    return type.isIntOrFloat() || type.isa<ComplexType>() ||
+           type.isa<VectorType>() || type.isa<OpaqueType>() ||
            (type.getKind() > Type::Kind::LAST_STANDARD_TYPE);
   }
 
@@ -367,6 +402,14 @@ public:
   /// Returns the memory space in which data referred to by this memref resides.
   unsigned getMemorySpace() const;
 
+  // TODO(ntv): merge these two special values in a single one used everywhere.
+  // Unfortunately, uses of `-1` have crept deep into the codebase now and are
+  // hard to track.
+  static constexpr int64_t kDynamicSize = -1;
+  static int64_t getDynamicStrideOrOffset() {
+    return ShapedType::kDynamicStrideOrOffset;
+  }
+
   static bool kindof(unsigned kind) { return kind == StandardTypes::MemRef; }
 
 private:
@@ -377,38 +420,6 @@ private:
                             ArrayRef<AffineMap> affineMapComposition,
                             unsigned memorySpace, Optional<Location> location);
   using Base::getImpl;
-};
-
-/// The 'complex' type represents a complex number with a parameterized element
-/// type, which is composed of a real and imaginary value of that element type.
-///
-/// The element must be a floating point or integer scalar type.
-///
-class ComplexType
-    : public Type::TypeBase<ComplexType, Type, detail::ComplexTypeStorage> {
-public:
-  using Base::Base;
-
-  /// Get or create a ComplexType with the provided element type.
-  static ComplexType get(Type elementType);
-
-  /// Get or create a ComplexType with the provided element type.  This emits
-  /// and error at the specified location and returns null if the element type
-  /// isn't supported.
-  static ComplexType getChecked(Type elementType, Location location);
-
-  /// Verify the construction of an integer type.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Type elementType);
-
-  Type getElementType();
-
-  static bool kindof(unsigned kind) { return kind == StandardTypes::Complex; }
-
-private:
-  static ComplexType getCheckedImpl(Type elementType,
-                                    Optional<Location> location);
 };
 
 /// Tuple types represent a collection of other types. Note: This type merely
@@ -465,6 +476,54 @@ public:
 
   static bool kindof(unsigned kind) { return kind == StandardTypes::None; }
 };
+
+/// Returns the strides of the MemRef if the layout map is in strided form.
+/// MemRefs with layout maps in strided form include:
+///   1. empty or identity layout map, in which case the stride information is
+///      the canonical form computed from sizes;
+///   2. single affine map layout of the form `K + k0 * d0 + ... kn * dn`,
+///      where K and ki's are constants or symbols.
+///
+/// A stride specification is a list of integer values that are either static
+/// or dynamic (encoded with getDynamicStrideOrOffset()). Strides encode the
+/// distance in the number of elements between successive entries along a
+/// particular dimension. For example, `memref<42x16xf32, (64 * d0 + d1)>`
+/// specifies a view into a non-contiguous memory region of `42` by `16` `f32`
+/// elements in which the distance between two consecutive elements along the
+/// outer dimension is `1` and the distance between two consecutive elements
+/// along the inner dimension is `64`.
+///
+/// If a simple strided form cannot be extracted from the composition of the
+/// layout map, returns llvm::None.
+///
+/// The convention is that the strides for dimensions d0, .. dn appear in
+/// order to make indexing intuitive into the result.
+LogicalResult getStridesAndOffset(MemRefType t,
+                                  SmallVectorImpl<int64_t> &strides,
+                                  int64_t &offset);
+
+/// Given a list of strides (in which MemRefType::getDynamicStrideOrOffset()
+/// represents a dynamic value), return the single result AffineMap which
+/// represents the linearized strided layout map. Dimensions correspond to the
+/// offset followed by the strides in order. Symbols are inserted for each
+/// dynamic dimension in order. A stride cannot take value `0`.
+///
+/// Examples:
+/// =========
+///
+///   1. For offset: 0 strides: ?, ?, 1 return
+///         (i, j, k)[M, N]->(M * i + N * j + k)
+///
+///   2. For offset: 3 strides: 32, ?, 16 return
+///         (i, j, k)[M]->(3 + 32 * i + M * j + 16 * k)
+///
+///   3. For offset: ? strides: ?, ?, ? return
+///         (i, j, k)[off, M, N, P]->(off + M * i + N * j + P * k)
+AffineMap makeStridedLinearLayoutMap(ArrayRef<int64_t> strides, int64_t offset,
+                                     MLIRContext *context);
+
+bool isStrided(MemRefType t);
+
 } // end namespace mlir
 
 #endif // MLIR_IR_STANDARDTYPES_H

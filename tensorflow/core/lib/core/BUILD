@@ -2,14 +2,25 @@ load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = [
-        "//tensorflow:__subpackages__",
+        "//tensorflow/core:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
 
-# Todo(bmzhao): Remaining targets to add to this BUILD file are:
-# arena, blocking_counter, errors, notification, status, threadpool
-# threadpool_interface, threadpool_options, + all tests.
+# Todo(bmzhao): Remaining targets to add to this BUILD file are all tests.
+
+cc_library(
+    name = "arena",
+    srcs = ["arena.cc"],
+    hdrs = ["arena.h"],
+    deps = [
+        "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:platform_port",
+        "//tensorflow/core/platform:types",
+    ],
+)
 
 cc_library(
     name = "bitmap",
@@ -18,6 +29,16 @@ cc_library(
     deps = [
         "//tensorflow/core/platform:logging",
         "//tensorflow/core/platform:types",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "blocking_counter",
+    hdrs = ["blocking_counter.h"],
+    deps = [
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
     ],
 )
 
@@ -43,6 +64,27 @@ cc_library(
 )
 
 cc_library(
+    name = "errors",
+    hdrs = ["errors.h"],
+    deps = [
+        ":status",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "notification",
+    hdrs = ["notification.h"],
+    deps = [
+        "//tensorflow/core/platform:notification",
+    ],
+)
+
+cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     deps = [
@@ -58,10 +100,54 @@ cc_library(
 )
 
 cc_library(
+    name = "status",
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
+    deps = [
+        ":error_codes_proto_cc",
+        "//tensorflow/core:error_codes_proto_impl_cc",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:stacktrace",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/base",
+    ],
+)
+
+cc_library(
     name = "stringpiece",
     hdrs = ["stringpiece.h"],
     deps = [
         "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+cc_library(
+    name = "threadpool",
+    hdrs = ["threadpool.h"],
+    deps = [
+        "//tensorflow/core/platform:env",
+    ],
+)
+
+cc_library(
+    name = "threadpool_interface",
+    hdrs = ["threadpool_interface.h"],
+    deps = [
+        "//tensorflow/core/platform:threadpool_interface",
+    ],
+)
+
+cc_library(
+    name = "threadpool_options",
+    hdrs = ["threadpool_options.h"],
+    deps = [
+        "//tensorflow/core/platform:threadpool_options",
     ],
 )
 
@@ -70,7 +156,11 @@ tf_proto_library(
     srcs = ["error_codes.proto"],
     cc_api_version = 2,
     make_default_target_header_only = True,
-    provide_cc_alias = True,
+    protodeps = [
+        "//tensorflow/core:error_codes_proto_impl",
+    ],
+    visibility = ["//tensorflow/core:__subpackages__"],
+    exports = ["//tensorflow/core:error_codes_proto_impl"],
 )
 
 filegroup(
@@ -102,7 +192,6 @@ filegroup(
         "bitmap.cc",
         "coding.cc",
         "status.cc",
-        "threadpool.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

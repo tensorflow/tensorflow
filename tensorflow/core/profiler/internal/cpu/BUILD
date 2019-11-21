@@ -1,19 +1,13 @@
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cuda_library",
-)
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
 
-tf_cuda_library(
+cc_library(
     name = "host_tracer",
-    srcs = [
-        "host_tracer.cc",
-    ],
+    srcs = ["host_tracer.cc"],
     deps = [
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:lib",
@@ -21,13 +15,14 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/internal:traceme_recorder",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = True,
 )
 
-tf_cuda_cc_test(
+tf_cc_test(
     name = "host_tracer_test",
     srcs = ["host_tracer_test.cc"],
     deps = [

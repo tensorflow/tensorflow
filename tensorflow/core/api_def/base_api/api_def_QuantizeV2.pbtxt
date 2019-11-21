@@ -3,13 +3,19 @@ op {
   in_arg {
     name: "min_range"
     description: <<END
-The minimum scalar value possibly produced for the input.
+The minimum value of the quantization range. This value may be adjusted by the
+op depending on other parameters. The adjusted value is written to `output_min`.
+If the `axis` attribute is specified, this must be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.
 END
   }
   in_arg {
     name: "max_range"
     description: <<END
-The maximum scalar value possibly produced for the input.
+The maximum value of the quantization range. This value may be adjusted by the
+op depending on other parameters. The adjusted value is written to `output_max`.
+If the `axis` attribute is specified, this must be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.
 END
   }
   out_arg {
@@ -21,13 +27,19 @@ END
   out_arg {
     name: "output_min"
     description: <<END
-The actual minimum scalar value used for the output.
+The final quantization range minimum, used to clip input values before scaling
+and rounding them to quantized values.
+If the `axis` attribute is specified, this will be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.
 END
   }
   out_arg {
     name: "output_max"
     description: <<END
-The actual maximum scalar value used for the output.
+The final quantization range maximum, used to clip input values before scaling
+and rounding them to quantized values.
+If the `axis` attribute is specified, this will be a 1-D tensor whose size
+matches the `axis` dimension of the input and output tensors.
 END
   }
   summary: "Quantize the \'input\' tensor of type float to \'output\' tensor of type \'T\'."
@@ -81,54 +93,80 @@ and dequantizing will introduce a larger and larger error.
 `SCALED` mode matches the quantization approach used in
 `QuantizeAndDequantize{V2|V3}`.
 
-If the mode is `SCALED`, we do not use the full range of the output type,
-choosing to elide the lowest possible value for symmetry (e.g., output range is
--127 to 127, not -128 to 127 for signed 8 bit quantization), so that 0.0 maps to
-0.
-
-We first find the range of values in our tensor. The
-range we use is always centered on 0, so we find m such that
+If the mode is `SCALED`, the quantization is performed by multiplying each
+input value by a scaling_factor.
+The scaling_factor is determined from `min_range` and `max_range` to be as large
+as possible such that the range from `min_range` to `max_range` is representable
+within values of type T.
 
 ```c++
-  m = max(abs(input_min), abs(input_max))
+
+  const int min_T = std::numeric_limits<T>::min();
+  const int max_T = std::numeric_limits<T>::max();
+  const float max_float = std::numeric_limits<float>::max();
+
+  const float scale_factor_from_min_side =
+      (min_T * min_range > 0) ? min_T / min_range : max_float;
+  const float scale_factor_from_max_side =
+      (max_T * max_range > 0) ? max_T / max_range : max_float;
+
+  const float scale_factor = std::min(scale_factor_from_min_side,
+                                      scale_factor_from_max_side);
 ```
 
-Our input tensor range is then `[-m, m]`.
-
-Next, we choose our fixed-point quantization buckets, `[min_fixed, max_fixed]`.
-If T is signed, this is
-
-```
-  num_bits = sizeof(T) * 8
-  [min_fixed, max_fixed] =
-      [-(1 << (num_bits - 1) - 1), (1 << (num_bits - 1)) - 1]
-```
-
-Otherwise, if T is unsigned, the fixed-point range is
-
-```
-  [min_fixed, max_fixed] = [0, (1 << num_bits) - 1]
-```
-
-From this we compute our scaling factor, s:
+We next use the scale_factor to adjust min_range and max_range as follows:
 
 ```c++
-  s = (max_fixed - min_fixed) / (2 * m)
+      min_range = min_T / scale_factor;
+      max_range = max_T / scale_factor;
 ```
 
-Now we can quantize the elements of our tensor:
+
+e.g. if T = qint8, and initially min_range = -10, and max_range = 9, we would
+compare -128/-10.0 = 12.8 to 127/9.0 = 14.11, and set scaling_factor = 12.8
+In this case, min_range would remain -10, but max_range would be adjusted to
+127 / 12.8 = 9.921875
+
+So we will quantize input values in the range (-10, 9.921875) to (-128, 127).
+
+The input tensor can now be quantized by clipping values to the range
+`min_range` to `max_range`, then multiplying by scale_factor as follows:
 
 ```c++
-result = round(input * s)
+result = round(min(max_range, max(min_range, input)) * scale_factor)
 ```
 
-One thing to watch out for is that the operator may choose to adjust the
-requested minimum and maximum values slightly during the quantization process,
-so you should always use the output ports as the range for further calculations.
-For example, if the requested minimum and maximum values are close to equal,
-they will be separated by a small epsilon value to prevent ill-formed quantized
-buffers from being created. Otherwise, you can end up with buffers where all the
-quantized values map to the same float value, which causes problems for
-operations that have to perform further calculations on them.
+The adjusted `min_range` and `max_range` are returned as outputs 2 and 3 of
+this operation. These outputs should be used as the range for any further
+calculations.
+
+
+*narrow_range (bool) attribute*
+
+If true, we do not use the minimum quantized value.
+i.e. for int8 the quantized output, it would be restricted to the range
+-127..127 instead of the full -128..127 range.
+This is provided for compatibility with certain inference backends.
+(Only applies to SCALED mode)
+
+
+*axis (int) attribute*
+
+An optional `axis` attribute can specify a dimension index of the input tensor,
+such that quantization ranges will be calculated and applied separately for each
+slice of the tensor along that dimension. This is useful for per-channel
+quantization.
+
+If axis is specified, min_range and max_range
+
+if `axis`=None, per-tensor quantization is performed as normal.
+
+
+*ensure_minimum_range (float) attribute*
+
+Ensures the minimum quantization range is at least this value.
+The legacy default value for this is 0.01, but it is strongly suggested to
+set it to 0 for new uses.
+
 END
 }

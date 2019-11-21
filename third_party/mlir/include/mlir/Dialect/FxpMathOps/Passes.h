@@ -25,7 +25,6 @@
 namespace mlir {
 class FuncOp;
 template <typename T> class OpPassBase;
-using FunctionPassBase = OpPassBase<FuncOp>;
 
 namespace fxpmath {
 
@@ -33,11 +32,11 @@ namespace fxpmath {
 /// arithmetic. This will leave unrecognized real math ops as-is and is
 /// typically followed by a pass that lowers any unrecognized ops to a pure
 /// floating point form.
-FunctionPassBase *createLowerUniformRealMathPass();
+OpPassBase<FuncOp> *createLowerUniformRealMathPass();
 
 /// Creates a pass that lowers uniform-quantized qcast/dcast ops to equivalent
 /// operations that perform quantize/dequantize.
-FunctionPassBase *createLowerUniformCastsPass();
+OpPassBase<FuncOp> *createLowerUniformCastsPass();
 
 } // namespace fxpmath
 } // namespace mlir

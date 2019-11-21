@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/cl/model_hints.h"
+#include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -27,10 +28,27 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+struct GPUOperationWithRefs {
+  std::unique_ptr<GPUOperation> operation;
+
+  // input and output ids can be positive or negative.
+  // if we have positive id, we will use preallocated tensor from GraphFloat32
+  // otherwise, we will use ids for newly allocated tensors
+  std::vector<int> input_ids;
+  std::vector<int> output_ids;
+};
+
+struct GPUOperationsSubgraph {
+  std::vector<GPUOperationWithRefs> operations;
+  std::vector<std::pair<BHWC, TensorDescriptor>> new_tensors;
+};
+
 Status GPUOperationFromNode(const CreationContext& creation_context,
                             const OperationDef& op_def, ModelHints hints,
-                            const GraphFloat32& graph, const Node& node,
-                            std::unique_ptr<GPUOperation>* gpu_op);
+                            const std::vector<Value<TensorRef<BHWC>>*>& inputs,
+                            const std::vector<Value<TensorRef<BHWC>>*>& outputs,
+                            const Node& node,
+                            GPUOperationsSubgraph* gpu_subgraph);
 
 }  // namespace cl
 }  // namespace gpu

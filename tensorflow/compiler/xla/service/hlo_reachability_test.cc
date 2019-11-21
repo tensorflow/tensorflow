@@ -18,7 +18,6 @@ limitations under the License.
 #include <set>
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -208,7 +207,7 @@ TEST_F(HloReachabilityTest, ChannelReachability) {
 }
 
 TEST_F(HloReachabilityTest, ReplaceInstructions) {
-  auto module = ParseAndReturnUnverifiedModule(R"(
+  auto module = ParseAndReturnVerifiedModule(R"(
     HloModule test
 
     ENTRY entry {

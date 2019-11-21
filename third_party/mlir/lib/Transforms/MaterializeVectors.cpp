@@ -181,7 +181,7 @@ struct MaterializationState {
   SmallVector<int64_t, 8> hwVectorSize;
   VectorType superVectorType;
   VectorType hwVectorType;
-  SmallVector<unsigned, 8> hwVectorInstance;
+  SmallVector<int64_t, 8> hwVectorInstance;
   DenseMap<Value *, Value *> *substitutionsMap;
 };
 
@@ -206,24 +206,24 @@ struct MaterializeVectorsPass : public FunctionPass<MaterializeVectorsPass> {
 /// returns the distance, in number of elements, between a slice in a dimension
 /// and the next slice in the same dimension.
 ///   e.g. shape[3, 4, 5] -> strides[20, 5, 1]
-static SmallVector<unsigned, 8> makeStrides(ArrayRef<unsigned> shape) {
-  SmallVector<unsigned, 8> tmp;
+static SmallVector<int64_t, 8> makeStrides(ArrayRef<int64_t> shape) {
+  SmallVector<int64_t, 8> tmp;
   tmp.reserve(shape.size());
-  unsigned running = 1;
+  int64_t running = 1;
   for (auto rit = shape.rbegin(), reit = shape.rend(); rit != reit; ++rit) {
     assert(*rit > 0 && "size must be greater than 0 along all dimensions of "
                        "shape");
     tmp.push_back(running);
     running *= *rit;
   }
-  return SmallVector<unsigned, 8>(tmp.rbegin(), tmp.rend());
+  return SmallVector<int64_t, 8>(tmp.rbegin(), tmp.rend());
 }
 
 /// Given a shape with sizes greater than 0 along all dimensions, returns the
 /// delinearized components of linearIndex along shape.
-static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
-                                            ArrayRef<unsigned> shape) {
-  SmallVector<unsigned, 8> res;
+static SmallVector<int64_t, 8> delinearize(int64_t linearIndex,
+                                           ArrayRef<int64_t> shape) {
+  SmallVector<int64_t, 8> res;
   res.reserve(shape.size());
   auto strides = makeStrides(shape);
   for (unsigned idx = 0; idx < strides.size(); ++idx) {
@@ -264,7 +264,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
       assert(res.second && "Insertion failed");
       return res.first->second;
     }
-    v->getDefiningOp()->emitError("Missing substitution");
+    v->getDefiningOp()->emitError("missing substitution");
     return nullptr;
   }
   return it->second;
@@ -333,7 +333,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// vectorization trait at the op level directly.
 static SmallVector<mlir::Value *, 8>
 reindexAffineIndices(OpBuilder b, VectorType hwVectorType,
-                     ArrayRef<unsigned> hwVectorInstance,
+                     ArrayRef<int64_t> hwVectorInstance,
                      ArrayRef<Value *> memrefIndices) {
   auto vectorShape = hwVectorType.getShape();
   assert(hwVectorInstance.size() >= vectorShape.size());
@@ -465,7 +465,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
         ++dim;
       },
       superVectorType.getShape(), *optionalRatio);
-  auto permutationMap = transfer.getPermutationMap();
+  auto permutationMap = transfer.permutation_map();
   LLVM_DEBUG(permutationMap.print(dbgs() << "\npermutationMap: "));
   if (keep.empty()) {
     return permutationMap;
@@ -483,19 +483,19 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
 /// reindexAffineIndices.
 static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
                               VectorType hwVectorType,
-                              ArrayRef<unsigned> hwVectorInstance,
+                              ArrayRef<int64_t> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), read.getIndices());
+      map(makePtrDynCaster<Value>(), read.indices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto map = projectedPermutationMap(read, hwVectorType);
   if (!map) {
     return nullptr;
   }
-  auto cloned = b.create<VectorTransferReadOp>(read.getLoc(), hwVectorType,
-                                               read.getMemRef(), affineIndices,
-                                               map, read.getPaddingValue());
+  auto cloned = b.create<VectorTransferReadOp>(
+      read.getLoc(), hwVectorType, read.memref(), affineIndices,
+      AffineMapAttr::get(map), read.padding());
   return cloned.getOperation();
 }
 
@@ -507,17 +507,17 @@ static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
 /// reindexAffineIndices.
 static Operation *instantiate(OpBuilder b, VectorTransferWriteOp write,
                               VectorType hwVectorType,
-                              ArrayRef<unsigned> hwVectorInstance,
+                              ArrayRef<int64_t> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), write.getIndices());
+      map(makePtrDynCaster<Value>(), write.indices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto cloned = b.create<VectorTransferWriteOp>(
       write.getLoc(),
-      substitute(write.getVector(), hwVectorType, substitutionsMap),
-      write.getMemRef(), affineIndices,
-      projectedPermutationMap(write, hwVectorType));
+      substitute(write.vector(), hwVectorType, substitutionsMap),
+      write.memref(), affineIndices,
+      AffineMapAttr::get(projectedPermutationMap(write, hwVectorType)));
   return cloned.getOperation();
 }
 
@@ -578,7 +578,7 @@ static bool instantiateMaterialization(Operation *op,
     return op->emitError("NYI: ops with != 1 results"), true;
   }
   if (op->getResult(0)->getType() != state->superVectorType) {
-    return op->emitError("Op does not return a supervector."), true;
+    return op->emitError("op does not return a supervector."), true;
   }
   auto *clone =
       instantiate(b, op, state->hwVectorType, state->substitutionsMap);
@@ -630,7 +630,7 @@ static bool emitSlice(MaterializationState *state,
     for (auto *op : *slice) {
       auto fail = instantiateMaterialization(op, &scopedState);
       if (fail) {
-        op->emitError("Unhandled super-vector materialization failure");
+        op->emitError("unhandled super-vector materialization failure");
         return true;
       }
     }
@@ -721,7 +721,7 @@ static bool materialize(FuncOp f, const SetVector<Operation *> &terminators,
     if (fail) {
       return true;
     }
-    LLVM_DEBUG(dbgs() << "\nMLFunction is now\n");
+    LLVM_DEBUG(dbgs() << "\nFunction is now\n");
     LLVM_DEBUG(f.print(dbgs()));
   }
   return false;
@@ -766,7 +766,7 @@ void MaterializeVectorsPass::runOnFunction() {
     signalPassFailure();
 }
 
-std::unique_ptr<FunctionPassBase>
+std::unique_ptr<OpPassBase<FuncOp>>
 mlir::createMaterializeVectorsPass(llvm::ArrayRef<int64_t> vectorSize) {
   return std::make_unique<MaterializeVectorsPass>(vectorSize);
 }

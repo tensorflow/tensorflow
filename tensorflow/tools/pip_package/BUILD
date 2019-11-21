@@ -1,23 +1,14 @@
 # Description:
 #  Tools for building the TensorFlow pip package.
 
-package(default_visibility = ["//visibility:private"])
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "if_not_windows",
-    "if_windows",
-    "transitive_hdrs",
-)
+load("//tensorflow:tensorflow.bzl", "if_windows", "transitive_hdrs")
 load("//third_party/mkl:build_defs.bzl", "if_mkl", "if_mkl_ml")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow/core/platform:default/build_config_root.bzl", "tf_additional_license_deps")
-load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
-)
+load("//third_party/ngraph:build_defs.bzl", "if_ngraph")
+
+package(default_visibility = ["//visibility:private"])
 
 # This returns a list of headers of all public header libraries (e.g.,
 # framework, lib), and all of the transitive dependencies of those
@@ -74,27 +65,31 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:loss_scale",
     "//tensorflow/python:loss_scale_optimizer",
     "//tensorflow/python:meta_graph_testdata",
-    "//tensorflow/python:spectral_ops_test_util",
     "//tensorflow/python:util_example_parser_configuration",
     "//tensorflow/python/data/benchmarks:benchmark_base",
     "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:reader_dataset_ops_test_base",
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
+    "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
+    "//tensorflow/python/distribute:multi_process_runner",
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras:model_subclassing_test_util",
     "//tensorflow/python/keras:preprocessing_test_utils",
     "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
     "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
+    "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
+    "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests/random:util",
     "//tensorflow/python/kernel_tests/signal:test_util",
     "//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files",
     "//tensorflow/python/saved_model:saved_model",
     "//tensorflow/python/tools:tools_pip",
     "//tensorflow/python/tools/api/generator:create_python_api",
+    "//tensorflow/python/tpu",
     "//tensorflow/python:test_ops",
     "//tensorflow/python:while_v2",
     "//tensorflow/tools/common:public_api",
@@ -121,6 +116,7 @@ py_binary(
 filegroup(
     name = "licenses",
     data = [
+        "//:LICENSE",
         "//third_party/icu/data:LICENSE",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
@@ -140,13 +136,13 @@ filegroup(
         "@functools32_archive//:LICENSE",
         "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
-        "@gif_archive//:COPYING",
+        "@gif//:COPYING",
         "@highwayhash//:LICENSE",
         "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
-        "@jpeg//:LICENSE.md",
         "@keras_applications_archive//:LICENSE",
         "@kissfft//:COPYING",
+        "@libjpeg_turbo//:LICENSE.md",
         "@lmdb//:LICENSE",
         "@local_config_mlir//:LICENSE.TXT",
         "@local_config_sycl//sycl:LICENSE.text",
@@ -156,7 +152,7 @@ filegroup(
         "@opt_einsum_archive//:LICENSE",
         "@pasta//:LICENSE",
         "@pcre//:LICENCE",
-        "@png_archive//:LICENSE",
+        "@png//:LICENSE",
         "@com_google_protobuf//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
@@ -180,7 +176,6 @@ filegroup(
         "//tensorflow:windows": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
-            "@com_github_googleapis_googleapis//:LICENSE",
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
     }) + select({
@@ -214,8 +209,6 @@ filegroup(
         "@ngraph_tf//:LICENSE",
         "@nlohmann_json_lib//:LICENSE.MIT",
         "@tbb//:LICENSE",
-    ]) + if_rocm([
-        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
 

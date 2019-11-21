@@ -13,19 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/platform/env.h"
+
 #include <sys/stat.h>
+
 #include <deque>
 #include <utility>
 #include <vector>
+
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/host_info.h"
+#include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/stringprintf.h"
+
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
 #if defined(__FreeBSD__)
 #include <sys/sysctl.h>
-#include <sys/types.h>
 #endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
+#undef DeleteFile
+#undef CopyFile
 #include "tensorflow/core/platform/windows/wide_char.h"
 #define PATH_MAX MAX_PATH
 #else
@@ -35,14 +48,6 @@ limitations under the License.
 #include <unistd.h>
 #endif
 
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/platform/host_info.h"
-#include "tensorflow/core/platform/protobuf.h"
-
 namespace tensorflow {
 
 // 128KB copy buffer
@@ -50,20 +55,23 @@ constexpr size_t kCopyFileBufferSize = 128 * 1024;
 
 class FileSystemRegistryImpl : public FileSystemRegistry {
  public:
-  Status Register(const string& scheme, Factory factory) override;
-  FileSystem* Lookup(const string& scheme) override;
-  Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes) override;
+  Status Register(const std::string& scheme, Factory factory) override;
+  Status Register(const std::string& scheme,
+                  std::unique_ptr<FileSystem> filesystem) override;
+  FileSystem* Lookup(const std::string& scheme) override;
+  Status GetRegisteredFileSystemSchemes(
+      std::vector<std::string>* schemes) override;
 
  private:
   mutable mutex mu_;
-  mutable std::unordered_map<string, std::unique_ptr<FileSystem>> registry_
+  mutable std::unordered_map<std::string, std::unique_ptr<FileSystem>> registry_
       GUARDED_BY(mu_);
 };
 
-Status FileSystemRegistryImpl::Register(const string& scheme,
+Status FileSystemRegistryImpl::Register(const std::string& scheme,
                                         FileSystemRegistry::Factory factory) {
   mutex_lock lock(mu_);
-  if (!registry_.emplace(string(scheme), std::unique_ptr<FileSystem>(factory()))
+  if (!registry_.emplace(scheme, std::unique_ptr<FileSystem>(factory()))
            .second) {
     return errors::AlreadyExists("File factory for ", scheme,
                                  " already registered");
@@ -71,7 +79,17 @@ Status FileSystemRegistryImpl::Register(const string& scheme,
   return Status::OK();
 }
 
-FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
+Status FileSystemRegistryImpl::Register(
+    const std::string& scheme, std::unique_ptr<FileSystem> filesystem) {
+  mutex_lock lock(mu_);
+  if (!registry_.emplace(scheme, std::move(filesystem)).second) {
+    return errors::AlreadyExists("File system for ", scheme,
+                                 " already registered");
+  }
+  return Status::OK();
+}
+
+FileSystem* FileSystemRegistryImpl::Lookup(const std::string& scheme) {
   mutex_lock lock(mu_);
   const auto found = registry_.find(scheme);
   if (found == registry_.end()) {
@@ -81,7 +99,7 @@ FileSystem* FileSystemRegistryImpl::Lookup(const string& scheme) {
 }
 
 Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
-    std::vector<string>* schemes) {
+    std::vector<std::string>* schemes) {
   mutex_lock lock(mu_);
   for (const auto& e : registry_) {
     schemes->push_back(e.first);
@@ -91,10 +109,11 @@ Status FileSystemRegistryImpl::GetRegisteredFileSystemSchemes(
 
 Env::Env() : file_system_registry_(new FileSystemRegistryImpl) {}
 
-Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
+Status Env::GetFileSystemForFile(const std::string& fname,
+                                 FileSystem** result) {
   StringPiece scheme, host, path;
   io::ParseURI(fname, &scheme, &host, &path);
-  FileSystem* file_system = file_system_registry_->Lookup(string(scheme));
+  FileSystem* file_system = file_system_registry_->Lookup(std::string(scheme));
   if (!file_system) {
     if (scheme.empty()) {
       scheme = "[local]";
@@ -107,13 +126,18 @@ Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   return Status::OK();
 }
 
-Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
+Status Env::GetRegisteredFileSystemSchemes(std::vector<std::string>* schemes) {
   return file_system_registry_->GetRegisteredFileSystemSchemes(schemes);
 }
 
-Status Env::RegisterFileSystem(const string& scheme,
+Status Env::RegisterFileSystem(const std::string& scheme,
                                FileSystemRegistry::Factory factory) {
   return file_system_registry_->Register(scheme, std::move(factory));
+}
+
+Status Env::RegisterFileSystem(const std::string& scheme,
+                               std::unique_ptr<FileSystem> filesystem) {
+  return file_system_registry_->Register(scheme, std::move(filesystem));
 }
 
 Status Env::FlushFileSystemCaches() {
@@ -467,9 +491,7 @@ class FileStream : public ::tensorflow::protobuf::io::ZeroCopyInputStream {
     pos_ += count;
     return true;
   }
-  int64_t ByteCount() const override {
-    return pos_;
-  }
+  int64_t ByteCount() const override { return pos_; }
   Status status() const { return status_; }
 
   bool Next(const void** data, int* size) override {

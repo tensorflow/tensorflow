@@ -20,11 +20,9 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "grpc/support/alloc.h"
 #include "grpcpp/grpcpp.h"
 #include "grpcpp/security/credentials.h"
 #include "grpcpp/server_builder.h"
-
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/process_util.h"
@@ -47,10 +45,14 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/worker_cache_wrapper.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
 #include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mem.h"
+#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 
@@ -73,10 +75,27 @@ RendezvousMgrInterface* NewRpcRendezvousMgr(const WorkerEnv* env) {
   return new RpcRendezvousMgr(env);
 }
 
+std::unique_ptr<GrpcWorkerEnv> CreateGrpcWorkerEnv() {
+  int num_cpus = port::NumSchedulableCPUs();
+  int64 num_completion_queues;
+  Status status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_QUEUES", 64,
+                                      &num_completion_queues);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_QUEUES: " << status;
+  }
+  int64 num_threads;
+  status = ReadInt64FromEnvVar("TF_GRPC_WORKER_CACHE_THREADS", num_cpus,
+                               &num_threads);
+  if (!status.ok()) {
+    LOG(ERROR) << "Error parsing TF_GRPC_WORKER_CACHE_THREADS: " << status;
+  }
+  return absl::make_unique<GrpcWorkerEnv>(num_completion_queues, num_threads);
+}
+
 }  // namespace
 
 GrpcServer::GrpcServer(const ServerDef& server_def, Env* env)
-    : server_def_(server_def), env_(env), state_(NEW) {}
+    : env_(env), state_(NEW), server_def_(server_def) {}
 
 GrpcServer::~GrpcServer() {
   TF_CHECK_OK(Stop());
@@ -112,28 +131,34 @@ GrpcServer::~GrpcServer() {
 
 void GrpcServer::MaybeMutateBuilder(::grpc::ServerBuilder* builder) {}
 
-// Look up the port that has been requested for this task in `server_def_`.
-Status GrpcServer::GetPort(int* port) const {
+// Look up the port that has been requested for this task in `server_def`.
+Status GrpcServer::GetPort(const ServerDef& server_def, int* port) const {
   *port = -1;
-  for (const auto& job : server_def_.cluster().job()) {
-    if (job.name() == server_def_.job_name()) {
-      auto iter = job.tasks().find(server_def_.task_index());
+  for (const auto& job : server_def.cluster().job()) {
+    if (job.name() == server_def.job_name()) {
+      auto iter = job.tasks().find(server_def.task_index());
       if (iter == job.tasks().end()) {
-        return errors::InvalidArgument("Task ", server_def_.task_index(),
+        return errors::InvalidArgument("Task ", server_def.task_index(),
                                        " was not defined in job \"",
-                                       server_def_.job_name(), "\"");
+                                       server_def.job_name(), "\"");
       }
-      auto colon_index = iter->second.find_last_of(':');
-      if (!strings::safe_strto32(iter->second.substr(colon_index + 1), port)) {
-        return errors::InvalidArgument(
-            "Could not parse port for local server from \"", iter->second,
-            "\".");
+
+      if (server_def.port() != 0) {
+        *port = server_def.port();
+      } else {
+        auto colon_index = iter->second.find_last_of(':');
+        if (!strings::safe_strto32(iter->second.substr(colon_index + 1),
+                                   port)) {
+          return errors::InvalidArgument(
+              "Could not parse port for local server from \"", iter->second,
+              "\".");
+        }
       }
       break;
     }
   }
   if (*port == -1) {
-    return errors::Internal("Job \"", server_def_.job_name(),
+    return errors::Internal("Job \"", server_def.job_name(),
                             "\" was not defined in cluster");
   }
 
@@ -150,7 +175,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   // otherwise if 'task_index=-1' the program will abort.
 
   int requested_port;
-  TF_RETURN_IF_ERROR(GetPort(&requested_port));
+  TF_RETURN_IF_ERROR(GetPort(server_def_, &requested_port));
 
   SessionOptions sess_opts;
   ConfigProto config = server_def_.default_session_config();
@@ -217,6 +242,8 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
   if (!server_) {
     return errors::Unknown("Could not start gRPC server");
   }
+  // Create the execution environment for the GRPC workers cache.
+  grpc_worker_env_ = CreateGrpcWorkerEnv();
 
   WorkerCacheInterface* worker_cache;
   WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
@@ -337,14 +364,12 @@ Status GrpcServer::WorkerCacheFactory(const WorkerCacheFactoryOptions& options,
     return errors::Internal("Could not parse port for local server from \"",
                             host_port, "\".");
   }
-
   if (requested_port != bound_port_) {
     return errors::InvalidArgument("Requested port ", requested_port,
                                    " differs from expected port ", bound_port_);
   }
-
-  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(channel_cache,
-                                                    worker_impl(), name_prefix);
+  *worker_cache = NewGrpcWorkerCacheWithLocalWorker(
+      channel_cache, worker_impl(), name_prefix, grpc_worker_env_.get());
   return Status::OK();
 }
 
@@ -380,6 +405,41 @@ Status GrpcServer::AddMasterEagerContextToEagerService(
   auto* eager_service =
       static_cast<eager::GrpcEagerServiceImpl*>(eager_service_);
   return eager_service->CreateMasterContext(context_id, context);
+}
+
+Status GrpcServer::UpdateServerDef(const ServerDef& server_def) {
+  mutex_lock l(mu_);
+  server_def_ = server_def;
+  WorkerCacheInterface* worker_cache;
+  WorkerCacheFactoryOptions worker_cache_factory_options(server_def_);
+  TF_RETURN_IF_ERROR(
+      WorkerCacheFactory(worker_cache_factory_options, &worker_cache));
+  if (worker_cache == nullptr) {
+    return errors::InvalidArgument(
+        "Failed to build worker cache with the provided server def.");
+  }
+
+  string default_worker_name;
+  string unused;
+  if (!DeviceNameUtils::SplitDeviceName(master_env_.local_devices[0]->name(),
+                                        &default_worker_name, &unused)) {
+    return errors::Internal("Could not parse worker name.");
+  }
+  std::unique_ptr<DeviceResolverDistributed> dev_resolver(
+      new DeviceResolverDistributed(worker_env_.device_mgr, worker_cache,
+                                    default_worker_name));
+  std::unique_ptr<CollectiveParamResolverDistributed> param_resolver(
+      new CollectiveParamResolverDistributed(
+          server_def_.default_session_config(), worker_env_.device_mgr,
+          dev_resolver.get(), worker_cache, default_worker_name));
+  worker_env_.collective_executor_mgr = new RpcCollectiveExecutorMgr(
+      server_def_.default_session_config(), worker_env_.device_mgr,
+      std::move(dev_resolver), std::move(param_resolver), worker_cache,
+      default_worker_name);
+
+  master_env_.worker_cache = worker_cache;
+  master_env_.collective_executor_mgr = worker_env_.collective_executor_mgr;
+  return Status::OK();
 }
 
 Status GrpcServer::Stop() {
@@ -487,12 +547,6 @@ class GrpcServerFactory : public ServerFactory {
 class GrpcServerRegistrar {
  public:
   GrpcServerRegistrar() {
-    gpr_allocation_functions alloc_fns;
-    memset(&alloc_fns, 0, sizeof(alloc_fns));
-    alloc_fns.malloc_fn = port::Malloc;
-    alloc_fns.realloc_fn = port::Realloc;
-    alloc_fns.free_fn = port::Free;
-    gpr_set_allocation_functions(alloc_fns);
     ServerFactory::Register("GRPC_SERVER", new GrpcServerFactory());
   }
 };

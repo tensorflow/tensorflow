@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 
 #include <vector>
+
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -45,6 +47,11 @@ namespace test {
 Benchmark::Benchmark(const string& device, Graph* g,
                      const SessionOptions* options, Graph* init,
                      Rendezvous* rendez, const char* executor_type) {
+  auto cleanup = gtl::MakeCleanup([g, init]() {
+    delete g;
+    delete init;
+  });
+
   SessionOptions default_options;
   if (!options) {
     options = &default_options;
@@ -88,16 +95,14 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   if (init) {
     std::unique_ptr<Executor> init_exec;
-    TF_CHECK_OK(NewExecutor(executor_type, params, std::unique_ptr<Graph>(init),
-                            &init_exec));
+    TF_CHECK_OK(NewExecutor(executor_type, params, *init, &init_exec));
     Executor::Args args;
     args.rendezvous = rendez_;
     args.runner = runner;
     TF_CHECK_OK(init_exec->Run(args));
   }
 
-  TF_CHECK_OK(
-      NewExecutor(executor_type, params, std::unique_ptr<Graph>(g), &exec_));
+  TF_CHECK_OK(NewExecutor(executor_type, params, *g, &exec_));
 }
 
 Benchmark::~Benchmark() {
@@ -112,7 +117,7 @@ Benchmark::~Benchmark() {
   }
 }
 
-void Benchmark::Run(int iters) { RunWithArgs({}, {}, iters); }
+void Benchmark::Run(int iters) { RunWithRendezvousArgs({}, {}, iters); }
 
 string GetRendezvousKey(const Node* node) {
   string send_device;
@@ -128,22 +133,11 @@ string GetRendezvousKey(const Node* node) {
                                recv_device, tensor_name, FrameAndIter(0, 0));
 }
 
-void Benchmark::RunWithArgs(
-    const std::vector<std::pair<const Node*, Tensor>>& inputs,
-    const std::vector<const Node*>& outputs, int iters) {
+void Benchmark::RunWithRendezvousArgs(
+    const std::vector<std::pair<string, Tensor>>& inputs,
+    const std::vector<string>& outputs, int iters) {
   if (!device_ || iters == 0) {
     return;
-  }
-  // Gets inputs' and outputs' rendezvous keys.
-  std::vector<std::pair<string, Tensor>> in;
-  in.reserve(inputs.size());
-  for (const auto& p : inputs) {
-    in.push_back({GetRendezvousKey(p.first), p.second});
-  }
-  std::vector<string> out;
-  out.reserve(outputs.size());
-  for (const auto& n : outputs) {
-    out.push_back(GetRendezvousKey(n));
   }
   Tensor unused;  // In benchmark, we don't care the return value.
   bool is_dead;
@@ -156,13 +150,13 @@ void Benchmark::RunWithArgs(
   };
   static const int kWarmupRuns = 3;
   for (int i = 0; i < kWarmupRuns; ++i) {
-    for (const auto& p : in) {
+    for (const auto& p : inputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
       TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : out) {
+    for (const string& key : outputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
       TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));
@@ -173,13 +167,13 @@ void Benchmark::RunWithArgs(
 
   testing::StartTiming();
   while (iters-- > 0) {
-    for (const auto& p : in) {
+    for (const auto& p : inputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(p.first, &parsed));
       TF_CHECK_OK(rendez_->Send(parsed, Rendezvous::Args(), p.second, false));
     }
     TF_CHECK_OK(exec_->Run(args));
-    for (const string& key : out) {
+    for (const string& key : outputs) {
       Rendezvous::ParsedKey parsed;
       TF_CHECK_OK(Rendezvous::ParseKey(key, &parsed));
       TF_CHECK_OK(rendez_->Recv(parsed, Rendezvous::Args(), &unused, &is_dead));

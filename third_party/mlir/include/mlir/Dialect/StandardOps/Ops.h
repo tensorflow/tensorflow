@@ -23,11 +23,14 @@
 #ifndef MLIR_DIALECT_STANDARDOPS_OPS_H
 #define MLIR_DIALECT_STANDARDOPS_OPS_H
 
-#include "mlir/IR/Attributes.h"
+#include "mlir/Analysis/CallInterfaces.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
-#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
+
+// Pull in all enum type definitions and utility function declarations.
+#include "mlir/Dialect/StandardOps/OpsEnums.h.inc"
 
 namespace mlir {
 class AffineMap;
@@ -39,27 +42,6 @@ class StandardOpsDialect : public Dialect {
 public:
   StandardOpsDialect(MLIRContext *context);
   static StringRef getDialectNamespace() { return "std"; }
-};
-
-/// The predicate indicates the type of the comparison to perform:
-/// (in)equality; (un)signed less/greater than (or equal to).
-enum class CmpIPredicate {
-  FirstValidValue,
-  // (In)equality comparisons.
-  EQ = FirstValidValue,
-  NE,
-  // Signed comparisons.
-  SLT,
-  SLE,
-  SGT,
-  SGE,
-  // Unsigned comparisons.
-  ULT,
-  ULE,
-  UGT,
-  UGE,
-  // Number of predicates.
-  NumPredicates
 };
 
 /// The predicate indicates the type of the comparison to perform:
@@ -106,7 +88,7 @@ public:
   using ConstantOp::ConstantOp;
 
   /// Builds a constant float op producing a float of the specified type.
-  static void build(Builder *builder, OperationState *result,
+  static void build(Builder *builder, OperationState &result,
                     const APFloat &value, FloatType type);
 
   APFloat getValue() { return getAttrOfType<FloatAttr>("value").getValue(); }
@@ -123,12 +105,12 @@ class ConstantIntOp : public ConstantOp {
 public:
   using ConstantOp::ConstantOp;
   /// Build a constant int op producing an integer of the specified width.
-  static void build(Builder *builder, OperationState *result, int64_t value,
+  static void build(Builder *builder, OperationState &result, int64_t value,
                     unsigned width);
 
   /// Build a constant int op producing an integer with the specified type,
   /// which must be an integer type.
-  static void build(Builder *builder, OperationState *result, int64_t value,
+  static void build(Builder *builder, OperationState &result, int64_t value,
                     Type type);
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
@@ -146,7 +128,7 @@ public:
   using ConstantOp::ConstantOp;
 
   /// Build a constant int op producing an index.
-  static void build(Builder *builder, OperationState *result, int64_t value);
+  static void build(Builder *builder, OperationState &result, int64_t value);
 
   int64_t getValue() { return getAttrOfType<IntegerAttr>("value").getInt(); }
 
@@ -164,7 +146,7 @@ public:
 // source memref, destination memref, and the tag memref have the same
 // restrictions as any load/store. The optional stride arguments should be of
 // 'index' type, and specify a stride for the slower memory space (memory space
-// with a lower memory space id), tranferring chunks of
+// with a lower memory space id), transferring chunks of
 // number_of_elements_per_stride every stride until %num_elements are
 // transferred. Either both or no stride arguments should be specified.
 //
@@ -195,7 +177,7 @@ class DmaStartOp
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *srcMemRef,
+  static void build(Builder *builder, OperationState &result, Value *srcMemRef,
                     ArrayRef<Value *> srcIndices, Value *destMemRef,
                     ArrayRef<Value *> destIndices, Value *numElements,
                     Value *tagMemRef, ArrayRef<Value *> tagIndices,
@@ -277,8 +259,8 @@ public:
   }
 
   static StringRef getOperationName() { return "std.dma_start"; }
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
@@ -320,7 +302,7 @@ class DmaWaitOp
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *tagMemRef,
+  static void build(Builder *builder, OperationState &result, Value *tagMemRef,
                     ArrayRef<Value *> tagIndices, Value *numElements);
 
   static StringRef getOperationName() { return "std.dma_wait"; }
@@ -342,8 +324,8 @@ public:
   // Returns the number of elements transferred in the associated DMA operation.
   Value *getNumElements() { return getOperand(1 + getTagMemRefRank()); }
 
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   static void getCanonicalizationPatterns(OwningRewritePatternList &results,
                                           MLIRContext *context);
 };
@@ -351,12 +333,14 @@ public:
 /// Prints dimension and symbol list.
 void printDimAndSymbolList(Operation::operand_iterator begin,
                            Operation::operand_iterator end, unsigned numDims,
-                           OpAsmPrinter *p);
+                           OpAsmPrinter &p);
 
 /// Parses dimension and symbol list and returns true if parsing failed.
-ParseResult parseDimAndSymbolList(OpAsmParser *parser,
-                                  SmallVector<Value *, 4> &operands,
+ParseResult parseDimAndSymbolList(OpAsmParser &parser,
+                                  SmallVectorImpl<Value *> &operands,
                                   unsigned &numDims);
+
+llvm::raw_ostream &operator<<(llvm::raw_ostream &os, SubViewOp::Range &range);
 
 } // end namespace mlir
 

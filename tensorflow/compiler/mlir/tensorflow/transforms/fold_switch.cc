@@ -278,7 +278,7 @@ void SwitchFoldPass::runOnFunction() {
 }  // namespace mlir
 
 namespace tf_executor {
-std::unique_ptr<FunctionPassBase> CreateSwitchFoldPass() {
+std::unique_ptr<OpPassBase<FuncOp>> CreateSwitchFoldPass() {
   return std::make_unique<SwitchFoldPass>();
 }
 }  // namespace tf_executor

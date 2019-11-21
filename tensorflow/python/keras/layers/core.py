@@ -26,6 +26,7 @@ import warnings
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -66,18 +67,30 @@ class Masking(Layer):
   Example:
 
   Consider a Numpy data array `x` of shape `(samples, timesteps, features)`,
-  to be fed to an LSTM layer.
-  You want to mask timestep #3 and #5 because you lack data for
-  these timesteps. You can:
+  to be fed to an LSTM layer. You want to mask timestep #3 and #5 because you
+  lack data for these timesteps. You can:
 
   - Set `x[:, 3, :] = 0.` and `x[:, 5, :] = 0.`
   - Insert a `Masking` layer with `mask_value=0.` before the LSTM layer:
 
   ```python
-  model = Sequential()
-  model.add(Masking(mask_value=0., input_shape=(timesteps, features)))
-  model.add(LSTM(32))
+  samples, timesteps, features = 32, 10, 8
+  inputs = np.random.random([samples, timesteps, features]).astype(np.float32)
+  inputs[:, 3, :] = 0.
+  inputs[:, 5, :] = 0.
+
+  model = tf.keras.models.Sequential()
+  model.add(tf.keras.layers.Masking(mask_value=0.,
+                                    input_shape=(timesteps, features)))
+  model.add(tf.keras.layers.LSTM(32))
+
+  output = model(inputs)
+  # The time step 3 and 5 will be skipped from LSTM calculation.
   ```
+
+  See [the masking and padding
+  guide](https://www.tensorflow.org/guide/keras/masking_and_padding)
+  for more details.
   """
 
   def __init__(self, mask_value=0., **kwargs):
@@ -580,20 +593,41 @@ class Flatten(Layer):
       permutation.append(1)
       inputs = array_ops.transpose(inputs, perm=permutation)
 
-    outputs = array_ops.reshape(
-        inputs, (tensor_shape.dimension_value(inputs.shape[0]) or
-                 array_ops.shape(inputs)[0], -1))
+    input_shape = inputs.shape
+    if input_shape[1:].is_fully_defined():
+      flattened_dim = tensor_shape.dimension_value(
+          np.prod(input_shape[1:], dtype=int))
+      # Temporary fix for integer overflow issue.
+      if flattened_dim > np.iinfo(np.int32).max:
+        shape_dtype = dtypes.int64
+      else:
+        shape_dtype = dtypes.int32
+      outputs = array_ops.reshape(
+          inputs, constant_op.constant((-1, flattened_dim), dtype=shape_dtype))
+    else:
+      batch_size = tensor_shape.dimension_value(inputs.shape[0])
+      if batch_size:
+        # Temporary fix for integer overflow issue.
+        if batch_size > np.iinfo(np.int32).max:
+          shape_dtype = dtypes.int64
+        else:
+          shape_dtype = dtypes.int32
+        outputs = array_ops.reshape(
+            inputs, constant_op.constant((batch_size, -1), dtype=shape_dtype))
+      else:
+        outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if not context.executing_eagerly():
       outputs.set_shape(self.compute_output_shape(inputs.shape))
     return outputs
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+    input_shape = tensor_shape.as_shape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
-    output_shape = [input_shape[0]]
+    else:
+      output_shape = [input_shape[0]]
     if all(input_shape[1:]):
-      output_shape += [np.prod(input_shape[1:])]
+      output_shape += [np.prod(input_shape[1:], dtype=int)]
     else:
       output_shape += [None]
     return tensor_shape.TensorShape(output_shape)
@@ -655,13 +689,16 @@ class Lambda(Layer):
   The `Lambda` layer exists so that arbitrary TensorFlow functions
   can be used when constructing `Sequential` and Functional API
   models. `Lambda` layers are best suited for simple operations or
-  quick experimentation. For more advanced use cases, subclassing
-  `keras.layers.Layer` is preferred. One reason for this is that
-  when saving a Model, `Lambda` layers are saved by serializing the
-  Python bytecode, whereas subclassed Layers are saved via overriding
-  their `get_config` method and are thus more portable. Models that rely
-  on subclassed Layers are also often easier to visualize and reason
-  about.
+  quick experimentation. For more advanced usecases, follow 
+  [this guide](https://www.tensorflow.org/alpha/guide/keras/custom_layers_and_models) 
+  for subclassing `tf.keras.layers.Layer`. 
+  
+  The main reason to subclass `tf.keras.layers.Layer` instead of using a 
+  `Lambda` layer is saving and inspecting a Model. `Lambda` layers 
+  are saved by serializing the Python bytecode, whereas subclassed 
+  Layers can be saved via overriding their `get_config` method. Overriding 
+  `get_config` improves the portability of Models. Models that rely on 
+  subclassed Layers are also often easier to visualize and reason about.
 
   Examples:
 
@@ -740,6 +777,7 @@ class Lambda(Layer):
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
+    self._supports_ragged_inputs = True
     self._output_shape = output_shape
     self._variable_dict = {}
     # These attributes are inherited from `Layer`.
@@ -986,7 +1024,8 @@ class Dense(Layer):
 
     super(Dense, self).__init__(
         activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
-    self.units = int(units)
+
+    self.units = int(units) if not isinstance(units, int) else units
     self.activation = activations.get(activation)
     self.use_bias = use_bias
     self.kernel_initializer = initializers.get(kernel_initializer)

@@ -626,30 +626,6 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {
- private:
-  int32 batch_dims_ = 0;
-
-  // Add the batch offset derrived from params to each batch of indices.
-  // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
-  // If indexing into a params dimension of size 4, then the indices will become
-  // [0, 1, 2, 4, 5, 6]
-  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
-    int64 batch_size = 1;  // The size of all batch dimensions.
-    for (int idx = 0; idx < batch_dims_; ++idx) {
-      batch_size *= params.dim_size(idx);
-    }
-
-    auto indices_flat = indices->flat<Index>();
-    int64 const index_inner_size = indices->NumElements() / batch_size;
-    int64 const batch_offset = params.dim_size(batch_dims_);
-    for (int64 batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
-         ++batch_idx) {
-      for (int64 idx = 0; idx < index_inner_size; ++idx) {
-        indices_flat(dest_idx++) += batch_offset * batch_idx;
-      }
-    }
-  }
-
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
@@ -741,6 +717,30 @@ class ResourceGatherOp : public OpKernel {
               indices_flat(bad_i), " is not in [0, ", params.dim_size(0), ")"));
     }
   }
+
+ private:
+  // Add the batch offset derrived from params to each batch of indices.
+  // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
+  // If indexing into a params dimension of size 4, then the indices will become
+  // [0, 1, 2, 4, 5, 6]
+  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
+    int64 batch_size = 1;  // The size of all batch dimensions.
+    for (int idx = 0; idx < batch_dims_; ++idx) {
+      batch_size *= params.dim_size(idx);
+    }
+
+    auto indices_flat = indices->flat<Index>();
+    int64 const index_inner_size = indices->NumElements() / batch_size;
+    int64 const batch_offset = params.dim_size(batch_dims_);
+    for (int64 batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
+         ++batch_idx) {
+      for (int64 idx = 0; idx < index_inner_size; ++idx) {
+        indices_flat(dest_idx++) += batch_offset * batch_idx;
+      }
+    }
+  }
+
+  int32 batch_dims_ = 0;
 };
 
 #define REGISTER_GATHER_FULL(dev, type, index_type)                    \

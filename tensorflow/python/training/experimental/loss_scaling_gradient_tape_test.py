@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for lsgt.LossScalingGradientTape."""
+"""Tests for lsgt.LossScaleGradientTape."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -27,13 +27,13 @@ from tensorflow.python.training.experimental import loss_scale as loss_scale_mod
 from tensorflow.python.training.experimental import loss_scaling_gradient_tape as lsgt
 
 
-class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
+class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(loss_scale_module.FixedLossScale,
                             loss_scale_module.DynamicLossScale)
   def test_basic_tapes_eager_mode(self, loss_scale):
     x = constant_op.constant(3.0)
-    with lsgt.LossScalingGradientTape(loss_scale(32)) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32)) as g:
       g.watch(x)
       y = x * x
     dy_dx = g.gradient(y, x)
@@ -47,7 +47,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
     @def_function.function
     def _inner_test():
       x = constant_op.constant(3.0)
-      with lsgt.LossScalingGradientTape(loss_scale) as g:
+      with lsgt.LossScaleGradientTape(loss_scale) as g:
         g.watch(x)
         y = x * x
       return g.gradient(y, x)
@@ -57,9 +57,9 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
                             loss_scale_module.DynamicLossScale)
   def test_nested_tapes(self, loss_scale):
     x = constant_op.constant(3.0)
-    with lsgt.LossScalingGradientTape(loss_scale(32)) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32)) as g:
       g.watch(x)
-      with lsgt.LossScalingGradientTape(loss_scale(32)) as gg:
+      with lsgt.LossScaleGradientTape(loss_scale(32)) as gg:
         gg.watch(x)
         y = x * x
       dy_dx = gg.gradient(y, x)
@@ -71,7 +71,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
                             loss_scale_module.DynamicLossScale)
   def test_non_persistent_tapes_error(self, loss_scale):
     x = constant_op.constant(3.0)
-    with lsgt.LossScalingGradientTape(loss_scale(32), persistent=False) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32), persistent=False) as g:
       g.watch(x)
       y = x * x
       z = y * y
@@ -83,7 +83,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
                             loss_scale_module.DynamicLossScale)
   def test_persistent_tapes(self, loss_scale):
     x = constant_op.constant(3.0)
-    with lsgt.LossScalingGradientTape(loss_scale(32), persistent=True) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32), persistent=True) as g:
       g.watch(x)
       y = x * x
       z = y * y
@@ -97,7 +97,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
   def test_nested_sources(self, loss_scale):
     x = (constant_op.constant(19.0), (constant_op.constant(8.),
                                       constant_op.constant(9.)))
-    with lsgt.LossScalingGradientTape(loss_scale(32)) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32)) as g:
       g.watch(x)
       y = x * 13
     dy_dx = g.gradient(y, x)
@@ -107,7 +107,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
                             loss_scale_module.DynamicLossScale)
   def test_nested_targets(self, loss_scale):
     w = constant_op.constant(3.0)
-    with lsgt.LossScalingGradientTape(loss_scale(32)) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32)) as g:
       g.watch(w)
       x = w * 5
       y = w * 7
@@ -119,7 +119,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
                             loss_scale_module.DynamicLossScale)
   def test_scaling_inf_gradient(self, loss_scale):
     x = constant_op.constant(1.0)
-    with lsgt.LossScalingGradientTape(loss_scale(32)) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32)) as g:
       g.watch(x)
       y = x * np.inf
     dy_dx = g.gradient(y, x)
@@ -129,7 +129,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
                             loss_scale_module.DynamicLossScale)
   def test_scaling_nan_gradient(self, loss_scale):
     x = constant_op.constant(1.0)
-    with lsgt.LossScalingGradientTape(loss_scale(32)) as g:
+    with lsgt.LossScaleGradientTape(loss_scale(32)) as g:
       g.watch(x)
       y = x * np.nan
     dy_dx = g.gradient(y, x)
@@ -139,7 +139,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
   def test_dynamic_scale_to_one_on_non_finite_gradient(self, non_finite_term):
     loss_scale = loss_scale_module.DynamicLossScale(initial_loss_scale=32)
     x = constant_op.constant(1.0)
-    with lsgt.LossScalingGradientTape(loss_scale) as g:
+    with lsgt.LossScaleGradientTape(loss_scale) as g:
       g.watch(x)
       y = x * non_finite_term
     g.gradient(y, x)
@@ -150,7 +150,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
                                                        is_non_finite):
     loss_scale = loss_scale_module.FixedLossScale(32)
     x = constant_op.constant(1.0)
-    with lsgt.LossScalingGradientTape(loss_scale) as g:
+    with lsgt.LossScaleGradientTape(loss_scale) as g:
       g.watch(x)
       y = x * non_finite_term
     dy_dx = g.gradient(y, x)
@@ -160,7 +160,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
   def test_dynamic_loss_scaling_down_loop(self):
     loss_scale = loss_scale_module.DynamicLossScale(initial_loss_scale=32)
     x = constant_op.constant(1.0)
-    with lsgt.LossScalingGradientTape(loss_scale) as g:
+    with lsgt.LossScaleGradientTape(loss_scale) as g:
       g.watch(x)
       y = x * (3.0 * (10**37))  # grad will be inf after scaling
     dy_dx = g.gradient(y, x)
@@ -170,7 +170,7 @@ class LossScalingGradientTapeTest(test.TestCase, parameterized.TestCase):
   def test_dynamic_loss_scaling_inf_target_post_scale(self):
     loss_scale = loss_scale_module.DynamicLossScale(initial_loss_scale=32.0)
     x = constant_op.constant(3.0 * (10**37))
-    with lsgt.LossScalingGradientTape(loss_scale) as g:
+    with lsgt.LossScaleGradientTape(loss_scale) as g:
       g.watch(x)
       y = x * 3.0  # target will be inf after scaling
     dy_dx = g.gradient(y, x)

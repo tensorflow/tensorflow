@@ -19,6 +19,7 @@
 #define MLIR_PASS_PASSMANAGER_H
 
 #include "mlir/Support/LogicalResult.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace llvm {
@@ -48,9 +49,10 @@ struct OpPassManagerImpl;
 /// other OpPassManagers or the top-level PassManager.
 class OpPassManager {
 public:
-  OpPassManager(OpPassManager &&) = default;
+  OpPassManager(OpPassManager &&rhs);
   OpPassManager(const OpPassManager &rhs);
   ~OpPassManager();
+  OpPassManager &operator=(const OpPassManager &rhs);
 
   /// Run the held passes over the given operation.
   LogicalResult run(Operation *op, AnalysisManager am);
@@ -63,10 +65,15 @@ public:
     return nest(OpT::getOperationName());
   }
 
-  /// Add the given pass to this pass manager. The pass must either be an opaque
-  /// `OperationPass`, or an `OpPass` that operates on operations of the same
-  /// type as this pass manager.
+  /// Add the given pass to this pass manager. If this pass has a concrete
+  /// operation type, it must be the same type as this pass manager.
   void addPass(std::unique_ptr<Pass> pass);
+
+  /// Add the given pass to a nested pass manager for the given operation kind
+  /// `OpT`.
+  template <typename OpT> void addNestedPass(std::unique_ptr<Pass> pass) {
+    nest<OpT>().addPass(std::move(pass));
+  }
 
   /// Returns the number of passes held by this manager.
   size_t size() const;
@@ -77,11 +84,17 @@ public:
   /// Return the operation name that this pass manager operates on.
   const OperationName &getOpName() const;
 
-private:
-  OpPassManager(OperationName name, bool disableThreads, bool verifyPasses);
-
   /// Returns the internal implementation instance.
   detail::OpPassManagerImpl &getImpl();
+
+  /// Prints out the passes of the pass mangager as the textual representation
+  /// of pipelines.
+  /// Note: The quality of the string representation depends entirely on the
+  /// the correctness of per-pass overrides of Pass::printAsTextualPipeline.
+  void printAsTextualPipeline(raw_ostream &os);
+
+private:
+  OpPassManager(OperationName name, bool disableThreads, bool verifyPasses);
 
   /// A pointer to an internal implementation instance.
   std::unique_ptr<detail::OpPassManagerImpl> impl;
@@ -108,7 +121,7 @@ enum class PassTimingDisplayMode {
 };
 
 /// The main pass manager and pipeline builder.
-class PassManager {
+class PassManager : public OpPassManager {
 public:
   // If verifyPasses is true, the verifier is run after each pass.
   PassManager(MLIRContext *ctx, bool verifyPasses = true);
@@ -121,32 +134,17 @@ public:
   /// Disable support for multi-threading within the pass manager.
   void disableMultithreading(bool disable = true);
 
-  //===--------------------------------------------------------------------===//
-  // Pipeline Building
-  //===--------------------------------------------------------------------===//
-
-  /// Allow converting to the impl OpPassManager.
-  operator OpPassManager &() { return opPassManager; }
-
-  /// Add an opaque pass pointer to the current manager. This takes ownership
-  /// over the provided pass pointer.
-  void addPass(std::unique_ptr<Pass> pass);
-
-  /// Allow nesting other operation pass managers.
-  OpPassManager &nest(const OperationName &nestedName) {
-    return opPassManager.nest(nestedName);
-  }
-  template <typename OpT> OpPassManager &nest() {
-    return opPassManager.nest<OpT>();
-  }
+  /// Enable support for the pass manager to generate a reproducer on the event
+  /// of a crash or a pass failure. `outputFile` is a .mlir filename used to
+  /// write the generated reproducer.
+  void enableCrashReproducerGeneration(StringRef outputFile);
 
   //===--------------------------------------------------------------------===//
   // Instrumentations
   //===--------------------------------------------------------------------===//
 
-  /// Add the provided instrumentation to the pass manager. This takes ownership
-  /// over the given pointer.
-  void addInstrumentation(PassInstrumentation *pi);
+  /// Add the provided instrumentation to the pass manager.
+  void addInstrumentation(std::unique_ptr<PassInstrumentation> pi);
 
   /// Add an instrumentation to print the IR before and after pass execution.
   /// * 'shouldPrintBeforePass' and 'shouldPrintAfterPass' correspond to filter
@@ -168,14 +166,14 @@ public:
       PassTimingDisplayMode displayMode = PassTimingDisplayMode::Pipeline);
 
 private:
-  /// The top level pass manager instance.
-  OpPassManager opPassManager;
-
   /// Flag that specifies if pass timing is enabled.
   bool passTiming : 1;
 
   /// A manager for pass instrumentations.
   std::unique_ptr<PassInstrumentor> instrumentor;
+
+  /// An optional filename to use when generating a crash reproducer if valid.
+  Optional<std::string> crashReproducerFileName;
 };
 
 /// Register a set of useful command-line options that can be used to configure

@@ -16,13 +16,15 @@
 // =============================================================================
 //
 // This file implements a pass to convert MLIR standard ops into the SPIR-V
-// ops. It does not legalize FuncOps.
+// ops.
 //
 //===----------------------------------------------------------------------===//
 
+#include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRVPass.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
-#include "mlir/Dialect/SPIRV/Passes.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/SPIRVLowering.h"
+#include "mlir/Pass/Pass.h"
 
 using namespace mlir;
 
@@ -38,7 +40,9 @@ void ConvertStandardToSPIRVPass::runOnModule() {
   OwningRewritePatternList patterns;
   auto module = getModule();
 
-  populateStandardToSPIRVPatterns(module.getContext(), patterns);
+  SPIRVBasicTypeConverter basicTypeConverter;
+  SPIRVTypeConverter typeConverter(&basicTypeConverter);
+  populateStandardToSPIRVPatterns(module.getContext(), typeConverter, patterns);
   ConversionTarget target(*(module.getContext()));
   target.addLegalDialect<spirv::SPIRVDialect>();
   target.addLegalOp<FuncOp>();
@@ -48,8 +52,7 @@ void ConvertStandardToSPIRVPass::runOnModule() {
   }
 }
 
-std::unique_ptr<ModulePassBase>
-mlir::spirv::createConvertStandardToSPIRVPass() {
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertStandardToSPIRVPass() {
   return std::make_unique<ConvertStandardToSPIRVPass>();
 }
 

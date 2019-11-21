@@ -6,8 +6,12 @@ tf_class {
     name: "namespace_whitelist"
     mtype: "<type \'member_descriptor\'>"
   }
+  member {
+    name: "save_debug_info"
+    mtype: "<type \'member_descriptor\'>"
+  }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'namespace_whitelist\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'namespace_whitelist\', \'save_debug_info\'], varargs=None, keywords=None, defaults=[\'None\', \'False\'], "
   }
 }

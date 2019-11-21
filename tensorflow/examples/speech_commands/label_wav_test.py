@@ -22,7 +22,6 @@ import os
 
 import tensorflow as tf
 
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
 from tensorflow.examples.speech_commands import label_wav
 from tensorflow.python.platform import test
 
@@ -32,7 +31,7 @@ class LabelWavTest(test.TestCase):
   def _getWavData(self):
     with self.cached_session() as sess:
       sample_data = tf.zeros([1000, 2])
-      wav_encoder = contrib_audio.encode_wav(sample_data, 16000)
+      wav_encoder = tf.audio.encode_wav(sample_data, 16000)
       wav_data = self.evaluate(wav_encoder)
     return wav_data
 

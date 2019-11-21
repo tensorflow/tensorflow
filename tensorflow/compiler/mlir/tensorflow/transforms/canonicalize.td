@@ -22,6 +22,8 @@ include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 def SingleResultAndOperandHaveSameElementType : Constraint<
   CPred<"getElementTypeOrSelf($0) == getElementTypeOrSelf($1)">>;
 
+def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
+
 //===----------------------------------------------------------------------===//
 // Add op patterns.
 //===----------------------------------------------------------------------===//
@@ -38,6 +40,23 @@ def AddV2OfNegLeft : Pat<(TF_AddV2Op (TF_NegOp $arg0), $arg1),
 
 def AddV2OfNegRight : Pat<(TF_AddV2Op $arg0, (TF_NegOp $arg1)),
                           (TF_SubOp $arg0, $arg1)>;
+
+//===----------------------------------------------------------------------===//
+// BatchMatMul op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchMatMulToMatMul : Pat<(TF_BatchMatMulOp $x, $y, $adj_x, $adj_y),
+                              (TF_MatMulOp $x, $y, $adj_x, $adj_y),
+                              [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulV2 op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchMatMulV2ToMatMul : Pat<(TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
+                              (TF_MatMulOp $x, $y, $adj_x, $adj_y),
+                              [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
+
 
 //===----------------------------------------------------------------------===//
 // Bitcast op patterns.
@@ -93,11 +112,13 @@ def LogOfSoftmax : Pat<(TF_LogOp (TF_SoftmaxOp $arg)), (TF_LogSoftmaxOp $arg)>;
 def LogicalNotNested : Pat<(TF_LogicalNotOp (TF_LogicalNotOp $arg)),
                            (replaceWithValue $arg)>;
 
-def LogicalNotOfEqual : Pat<(TF_LogicalNotOp (TF_EqualOp $arg0, $arg1)),
-                            (TF_NotEqualOp $arg0, $arg1)>;
+def LogicalNotOfEqual : Pat<
+    (TF_LogicalNotOp (TF_EqualOp $arg0, $arg1, $shape_error)),
+    (TF_NotEqualOp $arg0, $arg1, $shape_error)>;
 
-def LogicalNotOfNotEqual : Pat<(TF_LogicalNotOp (TF_NotEqualOp $arg0, $arg1)),
-                               (TF_EqualOp $arg0, $arg1)>;
+def LogicalNotOfNotEqual : Pat<
+    (TF_LogicalNotOp (TF_NotEqualOp $arg0, $arg1, $shape_error)),
+    (TF_EqualOp $arg0, $arg1, $shape_error)>;
 
 def LogicalNotOfGreater : Pat<(TF_LogicalNotOp (TF_GreaterOp $arg0, $arg1)),
                               (TF_LessEqualOp $arg0, $arg1)>;

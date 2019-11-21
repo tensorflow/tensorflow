@@ -142,7 +142,7 @@ class DeviceBase {
   // "stream" is used in special circumstances (such as the
   // constructors of Ops) where there is no available OpKernelContext.
   // "default_context" is used by OpKernelContext whenever a device does not
-  // supply a DeviceContext for an op in FillContextMap (e.g. when only
+  // supply a DeviceContext for an op in TryGetDeviceContext() (e.g. when only
   // using a single stream.)
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.

@@ -13,13 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/lib/core/strings.i"
 %include "tensorflow/python/platform/base.i"
+
+%{
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
+%}
+
+
 %include "tensorflow/c/tf_datatype.h"
 %include "tensorflow/c/tf_status.h"
 
-%ignore "";
+%ignoreall;
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
+%rename("%s") TF_SetTfXlaCpuGlobalJit;
 %rename("%s") TF_SetXlaAutoJitMode;
 %rename("%s") TF_SetXlaConstantFoldingDisabled;
 %rename("%s") TF_GetXlaConstantFoldingDisabled;
@@ -42,6 +52,8 @@ limitations under the License.
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
+%rename("%s") TFE_ContextUpdateServerDef;
+%rename("%s") TFE_ContextCheckAlive;
 %rename("%s") TFE_NewExecutor;
 %rename("%s") TFE_DeleteExecutor;
 %rename("%s") TFE_ExecutorIsAsync;
@@ -60,7 +72,7 @@ limitations under the License.
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
-%rename("%s") TFE_Py_RegisterForwardGradientFunction;
+%rename("%s") TFE_Py_RegisterJVPFunction;
 %rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
 %rename("%s") TFE_Py_Execute;
@@ -87,17 +99,19 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_Py_ForwardAccumulatorNew;
+%rename("%s") TFE_Py_ForwardAccumulatorSetAdd;
 %rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
 %rename("%s") TFE_Py_ForwardAccumulatorWatch;
 %rename("%s") TFE_Py_ForwardAccumulatorJVP;
 %rename("%s") TFE_Py_ForwardAccumulatorPushState;
 %rename("%s") TFE_Py_ForwardAccumulatorPopState;
-%rename("%s") TFE_Py_PackForwardGradients;
+%rename("%s") TFE_Py_PackJVPs;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
 %rename("%s") TFE_ContextOptionsSetMirroringPolicy;
 %rename("%s") TFE_ContextOptionsSetAsync;
+%rename("%s") TFE_ContextOptionsSetLazyRemoteInputsCopy;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
@@ -373,6 +387,32 @@ static PyObject* TFE_ClearScalarCache();
       }
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
+      } else if (tensorflow::swig::IsEagerTensorSlow(elem)) {
+        // Use equivalent of object.__getattribute__ to get the underlying
+        // tf wrapped EagerTensor (if there is one).
+        tensorflow::Safe_PyObjectPtr tf_should_use_attr(
+#if PY_MAJOR_VERSION < 3
+            PyString_InternFromString("_tf_should_use_wrapped_value")
+#else
+            PyUnicode_InternFromString("_tf_should_use_wrapped_value")
+#endif
+        );
+        tensorflow::Safe_PyObjectPtr value_attr(
+            PyObject_GenericGetAttr(elem, tf_should_use_attr.get()));
+        if (value_attr) {
+          // This is an EagerTensor wrapped inside a TFShouldUse wrapped object.
+          (*$1)[i] = EagerTensor_Handle(value_attr.get());
+        } else {
+          // This is a subclass of EagerTensor that we don't support.
+          PyErr_Clear();
+          SWIG_exception_fail(
+              SWIG_TypeError,
+              tensorflow::strings::StrCat(
+                  "Saw an object that is an instance of a strict subclass of "
+                  "EagerTensor, which is not supported.  Item ",
+                  i, " is type: ", elem->ob_type->tp_name)
+                  .c_str());
+        }
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
@@ -392,7 +432,7 @@ static PyObject* TFE_ClearScalarCache();
                 "    with tf.init_scope():\n",
                 "      added = my_constant * 2\n",
                 "The graph tensor has name: ",
-                TFE_GetPythonString(name_attr.get())
+                name_attr ? TFE_GetPythonString(name_attr.get()) : "<unknown>"
             ).c_str());
       } else {
         SWIG_exception_fail(
@@ -400,7 +440,7 @@ static PyObject* TFE_ClearScalarCache();
             tensorflow::strings::StrCat(
                 "provided list of inputs contains objects other "
                 "than 'EagerTensor'. Item ",
-                i, " is ", elem->ob_type->tp_name).c_str());
+                i, " is type: ", elem->ob_type->tp_name).c_str());
       }
     }
   }
@@ -422,11 +462,11 @@ static PyObject* TFE_ClearScalarCache();
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {
-  $1 = TF_NewStatus();
+  $1 = GetStatus();
 }
 
 %typemap(freearg) (TF_Status* out_status) {
- TF_DeleteStatus($1);
+ ReturnStatus($1);
 }
 
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status) {
@@ -471,3 +511,5 @@ static PyObject* TFE_ClearScalarCache();
 %typemap(freearg) (TF_Status* out_status);
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status);
 %typemap(in) (const void* proto);
+
+%unignoreall

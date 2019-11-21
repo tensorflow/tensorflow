@@ -24,6 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -37,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import custom_gradient
+from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients_util
@@ -44,16 +46,11 @@ from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import while_v2_indexed_slices_rewriter
+from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 
 # pylint: disable=protected-access
-
-# TODO(b/79881896): Handle external control dependencies. tf.while_loop allows
-# control dependencies on external nodes with at least 1 output.
-# Another idea is to create const nodes outside the loop and add control edges
-# to them and then pass those in as data inputs. This should probably be
-# handled in the CapturingGraph itself.
 
 
 def while_loop(cond,
@@ -212,9 +209,8 @@ def while_loop(cond,
               body_graph.external_captures[:num_cond_captures])
       cond_graph_captures = object_identity.ObjectIdentitySet(
           cond_graph.external_captures)
-      for body_capture in body_graph.external_captures[num_cond_captures:]:
-        assert body_capture not in cond_graph_captures
-        cond_graph.capture(body_capture)
+      _duplicate_body_captures_in_cond(
+          cond_graph, body_graph.external_captures[num_cond_captures:])
 
     # Make sure that the shapes of the loop outputs are compatible with the
     # shape invariants, or the shapes of the loop vars if the invariants are not
@@ -292,17 +288,21 @@ def while_loop(cond,
       outputs[0].op._set_attr("_num_original_outputs",
                               attr_value_pb2.AttrValue(i=num_original_outputs))
 
+    outputs[0].op._cond_graph = cond_graph
+    outputs[0].op._body_graph = body_graph
     _copy_handle_data(body_graph.outputs, outputs)
     util.maybe_set_lowering_attr(outputs[0].op)
     util.maybe_propagate_compile_time_consts_in_xla(outputs[0].op)
 
-    # Return identities for each output of the While op, rather than the output
-    # of the While op directly. This makes pruning work if the output of
-    # while_loop() is fetched: the lowering pass converts the While outputs into
-    # IdentityN outputs, which if fetched will cause all ops in the body to be
-    # run (since it takes all exit ops as input). After lowering, each output
-    # identity op will end up with only the appropriate exit op as input.
-    outputs = tuple(array_ops.identity(t) for t in outputs)
+    if not ops.get_default_graph().building_function:
+      # In V1 graph mode, return identities for each output of the While op,
+      # rather than the output of the While op directly. This makes pruning work
+      # if the output of while_loop() is fetched: the lowering pass converts the
+      # While outputs into IdentityN outputs, which if fetched will cause all
+      # ops in the body to be run (since it takes all exit ops as input). After
+      # lowering, each output identity op will end up with only the appropriate
+      # exit op as input.
+      outputs = tuple(array_ops.identity(t) for t in outputs)
 
   outputs = _pack_sequence_as(
       orig_loop_vars, outputs[first_loop_var_index:first_loop_var_index +
@@ -327,8 +327,8 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
   # the loop cannot run in eager mode, however, we can safely introspect into
   # the graph here.
   while_op = op.outputs[0].op
-  cond_graph = _get_graph(while_op, "cond")
-  body_graph = _get_graph(while_op, "body")
+  cond_graph = _get_graph(while_op, "cond", "_cond_graph")
+  body_graph = _get_graph(while_op, "body", "_body_graph")
   orig_num_params = len(body_graph.outputs)
 
   maximum_iterations = op.inputs[1]
@@ -341,10 +341,11 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
 
   num_intermediates = len(while_op.outputs) - num_original_outputs
   grads = [
-      _preprocess_grad(grad, body_out, while_out)  # pylint: disable=g-complex-comprehension
-      for grad, body_out, while_out in zip(
+      _preprocess_grad(grad, body_out, while_in, while_out)  # pylint: disable=g-complex-comprehension
+      for grad, body_out, while_in, while_out in zip(
           grads[:num_original_outputs],
           body_graph.outputs[:num_original_outputs],
+          while_op.inputs[:num_original_outputs],
           while_op.outputs[:num_original_outputs])
   ] + [None] * num_intermediates
 
@@ -367,7 +368,7 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
     cond_graph.name += "_rewritten"
     body_graph.name += "_rewritten"
 
-    new_inputs = body_grad_graph.empty_tensor_lists
+    new_inputs = body_grad_graph.extra_inputs
     new_outputs = body_graph.outputs[orig_num_params:]
 
     while_op._set_func_attr("cond", util.create_new_tf_function(cond_graph))
@@ -465,12 +466,13 @@ def _get_intermediates(func_graph):
   return intermediates
 
 
-def _preprocess_grad(grad, body_graph_output, while_op_output):
+def _preprocess_grad(grad, body_graph_output, while_op_input, while_op_output):
   """Returns the initial gradient to be used for a given output tensor.
 
   Args:
     grad: the original gradient Tensor passed to the gradient function.
     body_graph_output: the corresponding Tensor in the body graph.
+    while_op_input: the corresponding Tensor input of the While op.
     while_op_output: the corresponding Tensor output of the While op.
 
   Returns:
@@ -491,20 +493,30 @@ def _preprocess_grad(grad, body_graph_output, while_op_output):
   # GradientTape initializes resource and variant grads as None instead of
   # zeros. Set to zeros so _GradientsHelper computes the gradients instead of
   # returning None.
-  if (while_op_output.dtype in (dtypes.resource, dtypes.variant)
-      and grad is None):
-    return _zeros_like(while_op_output)
+  # TODO(b/143286622): The supports_default_grad check is needed
+  # because While op emits non-differentiable resource tensors
+  # as outputs. Remove this check when that is not the case.
+  # Note: We use `while_op_input` instead of `while_op_output` for the call
+  # to `supports_default_grad` because `while_op_output` may be missing
+  # handle_data if the While is in a restored saved model.
+  if (while_op_output.dtype in (dtypes.resource, dtypes.variant) and
+      default_gradient.supports_default_grad(while_op_input) and grad is None):
+    return _zeros_like(while_op_input, while_op_output)
 
   return grad
 
 
 # TODO(skyewm): make this return constants if op_output's shape is fully
 # defined (this can be done by checking the "shape" attr of resource vars).
-def _zeros_like(op_output):
+def _zeros_like(op_input, op_output):
   """Like array_ops.zeros_like() but also accepts resource var handles."""
   if op_output.dtype == dtypes.resource:
+    # Note: We use `op_input` instead of `op_output` to get the zeros dtype
+    # because `op_output` may be missing handle_data if the While is in a
+    # restored saved model.
     return array_ops.zeros(
-        gen_resource_variable_ops.variable_shape(op_output))
+        gen_resource_variable_ops.variable_shape(op_output),
+        dtype=default_gradient.get_zeros_dtype(op_input))
   return array_ops.zeros_like(op_output)
 
 
@@ -526,22 +538,25 @@ def _is_trainable(tensor):
   return True
 
 
-def _get_graph(while_op, func_attr_name):
+def _get_graph(while_op, func_attr_name, attr_graph_name):
   """Returns `FuncGraph` for the given function attribute.
 
   Args:
     while_op: The While Operation.
     func_attr_name: string
+    attr_graph_name: cached forward graph name
 
   Returns:
     `FuncGraph`
   """
-  # TODO(srbs): Handle TensorShapeProto in function_def_to_graph.input_shapes.
-  input_shapes = [
-      tensor_shape.TensorShape(s) for s in while_op.get_attr("output_shapes")
-  ]
-  func_name = while_op.get_attr(func_attr_name).name
-  func_graph = util.get_func_graph(while_op, input_shapes, func_name)
+  func_graph = getattr(while_op, attr_graph_name, None)
+  if func_graph is None:
+    # TODO(srbs): Handle TensorShapeProto in function_def_to_graph.input_shapes.
+    input_shapes = [
+        tensor_shape.TensorShape(s) for s in while_op.get_attr("output_shapes")
+    ]
+    func_name = while_op.get_attr(func_attr_name).name
+    func_graph = util.get_func_graph(while_op, input_shapes, func_name)
   func_graph._while = while_op
   return func_graph
 
@@ -843,8 +858,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
     while_op_needs_rewrite: True if any non-resource intermediates were
       captured, meaning the forward While op needs to be rewritten to output the
       corresponding accumulators.
-    empty_tensor_lists: list of EmptyTensorList tensors to be used as initial
-      input to the new accumulators in the forward graph.
+    extra_inputs: list of EmptyTensorList tensors to be used as initial input to
+    the new accumulators in the forward graph. It may also contain external
+    captures of the custom gradient function.
     popped_tensor_lists: dict from the captured accumulator placeholder to the
       TensorList obtained after popping the intermediate tensor from it. The
       values of this dict need to be added to the list of outputs.
@@ -854,7 +870,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
                maximum_iterations, forward_while_op, body_graph_inputs,
                body_graph_outputs):
     super(_WhileBodyGradFuncGraph, self).__init__(name)
-    self.empty_tensor_lists = []
+    self.extra_inputs = []
     self.popped_tensor_lists = {}
     # FuncGraph for the body of the forward While op.
     self._forward_graph = forward_body_graph
@@ -878,7 +894,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
 
   @property
   def while_op_needs_rewrite(self):
-    return self.empty_tensor_lists
+    return self.extra_inputs
 
   def capture(self, tensor, name=None, whitelisted=False):
     """Selectively captures external tensors.
@@ -899,11 +915,19 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
       ValueError: If attempting to capture an external tensor not in the forward
         graph with `whitelisted` set to False.
     """
-    if (not whitelisted and tensor.graph is not self and
-        tensor.graph != self._forward_graph):
-      raise ValueError("Attempting to capture tensor %s which is not in the "
-                       "forward graph but in %s." %
-                       (str(tensor), _graph_name(tensor.graph)))
+    if not whitelisted and (isinstance(tensor, ops.EagerTensor) or
+                            (tensor.graph is not self and
+                             tensor.graph != self._forward_graph)):
+      with self._forward_cond_graph.as_default():
+        self._forward_cond_graph.capture(tensor)
+      with self._forward_graph.as_default():
+        already_captured = self._forward_graph.captured(tensor)
+        if not already_captured:
+          self.extra_inputs.append(tensor)
+        tensor = self._forward_graph.capture(tensor)
+        if not already_captured:
+          self._forward_graph.outputs.append(tensor)
+
     return super(_WhileBodyGradFuncGraph, self).capture(tensor, name)
 
   def _capture_helper(self, tensor, name):
@@ -980,7 +1004,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
               element_shape=tensor.shape,
               max_num_elements=self._maximum_iterations,
               name=_build_accumulator_name(tensor))
-      self.empty_tensor_lists.append(tensor_list)
+      self.extra_inputs.append(tensor_list)
 
       # Push the intermediate tensor to the tensor list. This captures
       # `tensor_list`.
@@ -1079,6 +1103,50 @@ def _check_inputs_outputs_types_match(body_graph, flattened_loop_vars):
                           loop_var.name, inp.dtype, out.dtype))
 
 
+def _build_cond_placeholders_name_prefix(cond_graph):
+  return cond_graph.unique_name(cond_graph.name + "___redundant_placeholder")
+
+
+def _duplicate_body_captures_in_cond(cond_graph, body_graph_captures):
+  """Creates placeholders for body captures in cond_graph.
+
+  This is needed to match signatures of cond and body graphs.
+
+  Args:
+    cond_graph: cond branch graph
+    body_graph_captures: Tensors which were captured when building the
+      `body_graph`.
+  """
+  types = [t.dtype.as_datatype_enum for t in body_graph_captures]
+  # TODO(srbs): Providing a unique prefix does not ensure that there is no
+  # conflict between the placeholder names and existing nodes in the graph.
+  # However passing a list of strings may not be performant.
+  # Ideally we should move `Graph.unique_name` to C++ or make
+  # `Graph._names_in_use` a trie so that we can find a unique prefix.
+  # TODO(b/143286622): This should not be required once captures are separated
+  # from regular loop vars.
+  placeholders = c_api.TF_CreatePlaceholders(
+      cond_graph._c_graph, types,
+      compat.as_str(_build_cond_placeholders_name_prefix(cond_graph)))
+  placeholder_ops = [
+      _OperationWithOutputs(ph.oper, cond_graph)
+      for ph in placeholders
+  ]
+
+  tensors = []
+  for op, ph, dtype in zip(placeholder_ops, placeholders, types):
+    tensor = ops.Tensor._create_with_tf_output(op, 0, dtype, ph)
+    op._outputs = [tensor]
+    tensors.append(tensor)
+
+  # Update `cond_graph._captures` and `cond_graph.inputs` to contain the
+  # newly created placeholders.
+  tuples = zip(body_graph_captures, tensors)
+  keys = [id(t) for t in body_graph_captures]
+  cond_graph._captures.update(zip(keys, tuples))
+  cond_graph.inputs.extend(tensors)
+
+
 def _copy_handle_data(src_tensors, tgt_tensors):
   for src_t, tgt_t in zip(src_tensors, tgt_tensors):
     custom_gradient.copy_handle_data(src_t, tgt_t)
@@ -1133,5 +1201,30 @@ def _build_accumulator_name(tensor):
 
 def _is_loop_invariant(tensor, inputs, outputs):
   return tensor in inputs and tensor in outputs
+
+
+class _OperationWithOutputs(ops.Operation):
+  """Operation with pre-built `TF_Output`s.
+
+  The C API for creating the extra placeholders for the cond graph returns
+  SWIG wrapped TF_Output* pointers which we can use directly for
+  `Operation.outputs`. The default constructor for `Operation` does not provide
+  a way of specifying pre-built output tensors and always creates them. This is
+  a performance overhead. It is not clear if adding that feature to the
+  `Operation` API would be generally useful so for now we just have our own
+  lightweight `Operation` implementation. Note that this does not extract a
+  stacktrace as well since we don't expect this operation to be used.
+
+  TODO(b/143286622): This should not be required once captures are separated
+  from regular loop vars.
+  """
+
+  def __init__(self, c_op, g):
+    self._c_op = c_op
+    self._graph = g
+    self._outputs = None  # Initialized by _duplicate_body_captures_in_cond().
+    self._id_value = g._add_op(self, self.name)
+    self._is_stateful = False
+
 
 # pylint: enable=protected-access

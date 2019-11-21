@@ -102,7 +102,7 @@ TfLiteQuantizationParams GetLegacyQuantization(
   }
 
   auto* affine_quantization =
-      reinterpret_cast<TfLiteAffineQuantization*>(quantization.params);
+      static_cast<TfLiteAffineQuantization*>(quantization.params);
   if (!affine_quantization || !affine_quantization->scale ||
       !affine_quantization->zero_point ||
       affine_quantization->scale->size != 1 ||
@@ -270,7 +270,7 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 
   // Step 2: Allocate the memory.
   // Use `char*` for conveniently step through the allocated space by bytes.
-  char* allocation = reinterpret_cast<char*>(malloc(allocation_size));
+  char* allocation = static_cast<char*>(malloc(allocation_size));
 
   // Step 3: Fill all data structures structures.
   TfLiteDelegateParams* params =
@@ -479,6 +479,7 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
 }
 
 TfLiteStatus Subgraph::AllocateTensors() {
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
@@ -492,6 +493,13 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // allocation as the client may have done the resize manually.
   if (state_ != kStateUninvokable &&
       !HasDynamicTensorImpl(context_, inputs())) {
+    if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
+      // If the only change was the release of non-persistent memory via
+      // ReleaseNonPersistentMemory(), just re-allocate it. For any other type
+      // of memory-planning change (for eg, ResizeInputTensor), the state would
+      // be kStateUninvokable.
+      memory_planner_->AcquireNonPersistentMemory();
+    }
     return kTfLiteOk;
   }
 
@@ -571,9 +579,8 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   if (init_data) {
     node.user_data = OpInit(*registration, init_data, init_data_size);
   } else {
-    node.user_data =
-        OpInit(*registration,
-               reinterpret_cast<const char*>(builtin_data_deleter.get()), 0);
+    node.user_data = OpInit(
+        *registration, static_cast<const char*>(builtin_data_deleter.get()), 0);
   }
 
   node.builtin_data = builtin_data_deleter.release();
@@ -631,19 +638,25 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
 }
 
+TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
+  if (memory_planner_) {
+    TF_LITE_ENSURE_STATUS(memory_planner_->ReleaseNonPersistentMemory());
+  }
+  return kTfLiteOk;
+}
+
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
                                  TfLiteNode* node) {
   if (op_reg.prepare == nullptr) {
     // Check if it's an unresolved custom op.
-    if (op_reg.builtin_code == BuiltinOperator_CUSTOM &&
-        op_reg.custom_name != nullptr && op_reg.invoke == &UnresolvedOpInvoke) {
+    if (IsUnresolvedCustomOp(op_reg)) {
       if (IsFlexOp(op_reg.custom_name)) {
         ReportError(
             "Regular TensorFlow ops are not supported by this interpreter. "
-            "Make sure you invoke the Flex delegate before inference.");
+            "Make sure you apply/link the Flex delegate before inference.");
       } else {
         ReportError("Encountered unresolved custom op: %s.",
-                    op_reg.custom_name);
+                    op_reg.custom_name ? op_reg.custom_name : "UnknownOp");
       }
       return kTfLiteError;
     }
@@ -716,6 +729,9 @@ TfLiteStatus Subgraph::Invoke() {
   if (state_ == kStateUninvokable) {
     ReportError("Invoke called on model that is not ready.");
     return kTfLiteError;
+  } else if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
+    ReportError("Non-persistent memory is not available.");
+    return kTfLiteError;
   }
 
   // This is only needed for UseNNAPI(true);
@@ -740,7 +756,7 @@ TfLiteStatus Subgraph::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
-    TFLITE_SCOPED_OPERATOR_PROFILE(profiler_, node_index);
+    TFLITE_SCOPED_OPERATOR_PROFILE(profiler_.get(), node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not

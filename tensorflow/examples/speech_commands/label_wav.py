@@ -36,9 +36,6 @@ import sys
 
 import tensorflow as tf
 
-# pylint: disable=unused-import
-from tensorflow.contrib.framework.python.ops import audio_ops as contrib_audio
-# pylint: enable=unused-import
 
 FLAGS = None
 

@@ -125,7 +125,7 @@ tf_class {
   }
   member_method {
     name: "to_tensor"
-    argspec: "args=[\'self\', \'default_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'self\', \'default_value\', \'name\', \'shape\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "value_rowids"

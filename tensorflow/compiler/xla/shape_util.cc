@@ -128,6 +128,17 @@ StatusOr<Shape> MakeShapeWithLayoutInternal(
   return equal;
 }
 
+/* static */ bool ShapeUtil::EqualIgnoringElementType(const Shape& lhs,
+                                                      const Shape& rhs) {
+  bool equal = Shape::Equal().IgnoreElementType()(lhs, rhs);
+  if (!equal && VLOG_IS_ON(3)) {
+    VLOG(3) << "ShapeUtil::EqualIgnoringElementType differ: lhs = "
+            << lhs.ShortDebugString() << ", rhs = " << rhs.ShortDebugString();
+  }
+
+  return equal;
+}
+
 /* static */ bool ShapeUtil::EqualIgnoringFpPrecision(const Shape& lhs,
                                                       const Shape& rhs) {
   bool equal = Shape::Equal().IgnoreFpPrecision()(lhs, rhs);
@@ -275,6 +286,12 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
                                                 Shape* tuple_shape) {
   TF_DCHECK_OK(ValidateShapeWithOptionalLayout(shape));
   *tuple_shape->add_tuple_shapes() = shape;
+}
+
+/* static */ void ShapeUtil::UpdateTupleShape(const Shape& shape, int64 index,
+                                              Shape* tuple_shape) {
+  CHECK(index < tuple_shape->tuple_shapes_size());
+  *tuple_shape->mutable_tuple_shapes(index) = shape;
 }
 
 /* static */ void ShapeUtil::AppendMajorDimension(int bound, Shape* shape) {
@@ -1082,7 +1099,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   }
   // `CommonFactors(a, b).back() == (a.rank, b.rank)` so we must pop it.
   common_factors.pop_back();
-  return common_factors;
+  return std::vector<std::pair<int64, int64>>(common_factors.begin(),
+                                              common_factors.end());
 }
 
 /* static */ absl::optional<std::vector<int64>>

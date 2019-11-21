@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
-#include "tensorflow/lite/experimental/micro/simple_tensor_allocator.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
 
@@ -24,13 +23,11 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestFloor(std::initializer_list<int> input_dims_data,
-               std::initializer_list<float> input_data,
-               std::initializer_list<float> expected_output_data,
-               std::initializer_list<int> output_dims_data,
+void TestFloor(const int* input_dims_data, const float* input_data,
+               const float* expected_output_data, const int* output_dims_data,
                float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
@@ -50,7 +47,9 @@ void TestFloor(std::initializer_list<int> input_dims_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
+  int intermediates_array_data[] = {0};
+  TfLiteIntArray* temporaries_array =
+      IntArrayFromInts(intermediates_array_data);
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
@@ -63,8 +62,7 @@ void TestFloor(std::initializer_list<int> input_dims_data,
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
   for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data.begin()[i], output_data[i],
-                              1e-5f);
+    TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 1e-5f);
   }
 }
 
@@ -75,25 +73,21 @@ void TestFloor(std::initializer_list<int> input_dims_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(FloorOpSingleDimFloat32) {
+  const int dims[] = {1, 2};
+  const float input[] = {8.5f, 0.0f};
+  const float golden[] = {8, 0};
   float output_data[2];
-  tflite::testing::TestFloor(/*input_dims_data=*/{1, 2},
-                             /*input_data=*/{8.5f, 0.0f},
-                             /*expected_output_data=*/{8, 0},
-                             /*output_dims_data*/ {1, 2},
-                             /*output_data=*/output_data);
+  tflite::testing::TestFloor(dims, input, golden, dims, output_data);
 }
 
 TF_LITE_MICRO_TEST(FloorOpMultiDimFloat32) {
+  const int dims[] = {4, 2, 1, 1, 5};
+  const float input[] = {0.0001f,  8.0001f,  0.9999f,  9.9999f,  0.5f,
+                         -0.0001f, -8.0001f, -0.9999f, -9.9999f, -0.5f};
+  const float golden[] = {0.0f,  8.0f,  0.0f,  9.0f,   0.0f,
+                          -1.0f, -9.0f, -1.0f, -10.0f, -1.0f};
   float output_data[10];
-  tflite::testing::TestFloor(
-      /*input_dims_data=*/{4, 2, 1, 1, 5},
-      /*input_data=*/
-      {0.0001f, 8.0001f, 0.9999f, 9.9999f, 0.5f, -0.0001f, -8.0001f, -0.9999f,
-       -9.9999f, -0.5f},
-      /*expected_output_data=*/
-      {0.0f, 8.0f, 0.0f, 9.0f, 0.0f, -1.0f, -9.0f, -1.0f, -10.0f, -1.0f},
-      /*output_dims_data=*/{4, 2, 1, 1, 5},
-      /*output_data=*/output_data);
+  tflite::testing::TestFloor(dims, input, golden, dims, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

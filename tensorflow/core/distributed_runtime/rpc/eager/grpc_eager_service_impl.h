@@ -65,12 +65,11 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
                        &GrpcEagerServiceImpl::method##Handler, false);        \
   }
   HANDLER(CreateContext);
+  HANDLER(UpdateContext);
   HANDLER(Enqueue);
   HANDLER(WaitQueueDone);
   HANDLER(KeepAlive);
   HANDLER(CloseContext);
-  HANDLER(RegisterFunction);
-  HANDLER(SendTensor);
 #undef HANDLER
 
   // Called when a new request has been received as part of a StreamingEnqueue
@@ -84,7 +83,13 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
   // executor queue.
   void StreamingEnqueueHandler(
       StreamingCall<EnqueueRequest, EnqueueResponse>* call) {
+    call->Ref();
     enqueue_streaming_thread_.Schedule([this, call]() {
+      if (call->RefCountIsOne()) {
+        // This StreamingCall has already been shutdown. Don't need to anything.
+        call->Unref();
+        return;
+      }
       // NOTE(fishx): Use the address of StreamingCall as the stream_id since we
       // reuse the same StreamingCall for multiple requests in the same
       // streaming connection.
@@ -100,6 +105,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
                 << " on request " << call->request().DebugString();
         call->Finish(ToGrpcStatus(status));
       }
+      call->Unref();
 
       // We do not tell gRPC to accept a new StreamingEnqueue request because
       // this method can be called multiple times for a given streaming call.

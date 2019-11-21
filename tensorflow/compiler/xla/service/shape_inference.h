@@ -232,7 +232,8 @@ class ShapeInference {
   // its operand and the new dimension sizes specified.
   static StatusOr<Shape> InferReshapeShape(const Shape& operand,
                                            absl::Span<const int64> dimensions,
-                                           absl::Span<const int64> new_sizes);
+                                           absl::Span<const int64> new_sizes,
+                                           int64 inferred_dimension);
 
   // Infers the shape produced by a transpose operation from the element type of
   // its operand and its dimensions field.
@@ -297,6 +298,9 @@ class ShapeInference {
       const ScatterDimensionNumbers& scatter_dim_numbers);
 
   static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
+                                                    int64 dimension);
+
+  static StatusOr<Shape> InferSetDimensionSizeShape(const Shape& shape,
                                                     int64 dimension);
 
   // Helper function for creating a Window proto from user-supplied data.

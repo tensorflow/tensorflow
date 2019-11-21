@@ -6,8 +6,7 @@ degradation in model accuracy. You can perform these techniques using an
 already-trained float TensorFlow model when you convert it to TensorFlow Lite
 format.
 
-Note: The procedures on this page require TensorFlow 1.15 or higher (available
-with the `tf-nightly` build).
+Note: The procedures on this page require TensorFlow 1.15 or higher.
 
 
 ### Optimization options
@@ -151,7 +150,7 @@ provided for specific networks in the
 [TensorFlow Lite model repository](../models/). It is important to check the
 accuracy of the quantized model to verify that any degradation in accuracy is
 within acceptable limits. There is a tool to evaluate
-[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/README.md){:.external}.
+[TensorFlow Lite model accuracy](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/accuracy/ilsvrc/README.md){:.external}.
 
 If the accuracy drop is too high, consider using
 [quantization aware training](https://github.com/tensorflow/tensorflow/tree/r1.13/tensorflow/contrib/quantize){:.external}.

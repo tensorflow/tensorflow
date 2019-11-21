@@ -18,47 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import threading
-
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 
-# A thread-local state object. It may hold the following attributes:
-#   - `callbacks`: the thread-local stack of op callbacks.
-#   - `invoking_callbacks`: a boolean used to keep track of whether
-#     we are currently invoking an op_callback.
-_state = threading.local()
 
-
-class _OpCallbackContextManager(object):
-  """Context manager for op callbacks."""
-
-  def __init__(self, callback_fn):
-    self._callback_fn = callback_fn
-
-  def __enter__(self):
-    """A method of when a scope of this context manager is being entered."""
-    # Monkey-patch `execute.execute()`.
-    execute.execute = execute.execute_with_callbacks
-    if not hasattr(_state, "callback_stack"):
-      _state.callback_stack = []
-      _state.invoking_callbacks = False
-    _state.callback_stack.append(self._callback_fn)
-
-    ctx = context.context()
-    if ctx.executing_eagerly():
-      ctx.post_execution_callbacks.append(self._callback_fn)
-
-  def __exit__(self, exec_type, exec_value, exec_traceback):
-    """A method of when a scope of this context manager is being exited."""
-    _state.callback_stack.pop()
-    ctx = context.context()
-    if ctx.executing_eagerly():
-      ctx.post_execution_callbacks.pop()
-
-
-def op_callback(callback_fn):
-  r"""Intercepts op execution and op creation.
+def add_op_callback(callback_fn):
+  r"""Add a thread-local callback that intercepts op execution and op creation.
 
   The `callback_fn` will be invoked immediately after any of the three types
   of events:
@@ -132,13 +97,8 @@ def op_callback(callback_fn):
         #     non-eager `Tensor`s. Their values will replace the original
         #     `outputs` for downstream graph construction.
 
-  Returns:
-    A thread-local context manager. Within the scope of the context
-    manager, all eager op/graph execution and graph op construction
-    will invoke `callback_fn`.
-
   Raises:
-    ValueEror: If `callback_fn` is not callable.
+    ValueEror: If `callback_fn` is `None` or not callable.
   """
   # TODO(b/139668041): Implement support for overriding `EagerTensor`s from
   # callback.
@@ -148,7 +108,11 @@ def op_callback(callback_fn):
     raise ValueError(
         "Callback function passed to op_callback() is expected to be callable, "
         "but is not. Recevied %s" % callback_fn)
-  return _OpCallbackContextManager(callback_fn)
+  ctx = context.context()
+  ctx.add_op_callback(callback_fn)
+  if ctx.executing_eagerly():
+    # Monkey-patch `execute.execute()`.
+    execute.execute = execute.execute_with_callbacks
 
 
 def should_invoke_op_callbacks():
@@ -158,9 +122,31 @@ def should_invoke_op_callbacks():
     A thread-local result (boolean) indicating whether any op callback(s) exist
     and should be invoked.
   """
-  return (
-      hasattr(_state, "callback_stack") and _state.callback_stack and
-      not (hasattr(_state, "invoking_callbacks") and _state.invoking_callbacks))
+  ctx = context.context()
+  return ctx.op_callbacks and not ctx.invoking_op_callbacks
+
+
+def remove_op_callback(op_callback):
+  """Remove an already-added op callback.
+
+  Args:
+    op_callback: The op callback to be removed.
+
+  Raises:
+    KeyError: If `op_callback` has not been registered using `add_op_callback()`
+      before.
+  """
+  ctx = context.context()
+  ctx.remove_op_callback(op_callback)
+  if ctx.executing_eagerly() and not ctx.op_callbacks:
+    # Undo monkey-patch of execute.execute if there are no more callbacks.
+    execute.execute = execute.quick_execute
+
+
+def clear_op_callbacks():
+  """Clear all op callbacks registered in the current thread."""
+  for callback in context.context().op_callbacks:
+    remove_op_callback(callback)
 
 
 def invoke_op_callbacks(op_type,
@@ -196,10 +182,11 @@ def invoke_op_callbacks(op_type,
     `None`, or a `list` or `tuple` of output tenors that will override the
     original (input) `outputs`.
   """
-  if _state.callback_stack:
+  ctx = context.context()
+  if ctx.op_callbacks:
     # Guards against stack overflow that can result from recursive invocation
     # due to op constructions inside client-supplied op callbacks.
-    _state.invoking_callbacks = True
+    ctx.invoking_op_callbacks = True
     try:
       if isinstance(attrs, dict):
         attrs_list = []
@@ -211,7 +198,7 @@ def invoke_op_callbacks(op_type,
         attrs_tuple = attrs
 
       new_outputs = outputs
-      for callback in reversed(_state.callback_stack):
+      for callback in ctx.op_callbacks:
         new_outputs = callback(
             op_type,
             inputs,
@@ -226,6 +213,6 @@ def invoke_op_callbacks(op_type,
               (len(new_outputs), op_name, len(outputs)))
       return new_outputs
     finally:
-      _state.invoking_callbacks = False
+      ctx.invoking_op_callbacks = False
   else:
     return outputs

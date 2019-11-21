@@ -55,7 +55,7 @@ export PATH="/c/Program Files/Git/cmd:$PATH"
 export PATH="/c/${PYTHON_BASE_PATH}/Scripts:$PATH"
 
 # Setting default values to CUDA related environment variables
-export TF_CUDA_VERSION=${TF_CUDA_VERSION:-10.0}
+export TF_CUDA_VERSION=${TF_CUDA_VERSION:-10.1}
 export TF_CUDNN_VERSION=${TF_CUDNN_VERSION:-7}
 export TF_CUDA_COMPUTE_CAPABILITIES=${TF_CUDA_COMPUTE_CAPABILITIES:-6.0}
 export CUDA_TOOLKIT_PATH=${CUDA_TOOLKIT_PATH:-"C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v${TF_CUDA_VERSION}"}

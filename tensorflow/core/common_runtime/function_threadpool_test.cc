@@ -64,8 +64,8 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     OptimizerOptions opts;
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     pflr_.reset(new ProcessFunctionLibraryRuntime(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, lib_def_.get(),
-        opts, default_thread_pool));
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, default_thread_pool));
     flr0_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   }
 

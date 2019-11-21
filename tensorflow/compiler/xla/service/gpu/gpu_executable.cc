@@ -36,7 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/stream_executor/platform.h"
 
@@ -44,7 +44,7 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::tracing::ScopedAnnotation;
+using tensorflow::profiler::ScopedAnnotation;
 
 }  // namespace
 
@@ -74,6 +74,19 @@ GpuExecutable::~GpuExecutable() {
   CHECK(has_module() && assignment_);
   GpuDebugInfoManager::Get()->UnregisterModule(module().name(), shared_module(),
                                                assignment_);
+
+  {
+    // We could have issued host->device mem copies in ResolveConstantGlobals.
+    // Wait for those to finish so that we can safely deallocate the backing HLO
+    // module.
+    //
+    // We need for the host->device memcpies to finish they are concurrently
+    // reading memory (xla::Literal's) owned by the HLO module.
+    tensorflow::mutex_lock lock(module_handle_mutex_);
+    for (const auto& pair : module_globals_) {
+      CHECK(pair.first->SynchronizeAllActivity());
+    }
+  }
 }
 
 void GpuExecutable::ComputeThunkAnnotations() {
@@ -82,10 +95,9 @@ void GpuExecutable::ComputeThunkAnnotations() {
     const HloInstruction* hlo = thunk->hlo_instruction();
     CHECK(hlo);
     thunk_annotations_[thunk] =
-        absl::StrFormat("%s:#tf_op=%s:%s,hlo_op=%s,hlo_module=%s#",
+        absl::StrFormat("%s:#hlo_op=%s,hlo_module=%s#",
                         hlo->ToStringWithCanonicalNameMap(
                             HloPrintOptions::Canonical(), &canonical_name_map),
-                        hlo->metadata().op_name(), hlo->metadata().op_type(),
                         hlo->name(), hlo->GetModule()->name());
   }
 }
@@ -232,7 +244,9 @@ Status GpuExecutable::ExecuteThunks(
 }
 
 StatusOr<const GpuExecutable::BufferAllocToDeviceMemoryMap*>
-GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
+GpuExecutable::ResolveConstantGlobals(se::Stream* stream) {
+  se::StreamExecutor* executor = stream->parent();
+
   tensorflow::mutex_lock lock(module_handle_mutex_);
   auto it = module_globals_.find(executor);
   if (it != module_globals_.end()) {
@@ -275,8 +289,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
       if (!ShouldEmitLiteralInLlvmIr(literal)) {
         VLOG(3) << "H2D memcpy for constant with shape "
                 << ShapeUtil::HumanString(literal.shape());
-        TF_RETURN_IF_ERROR(executor->SynchronousMemcpyH2D(
-            literal.untyped_data(), allocation.size(), &global));
+        stream->ThenMemcpy(&global, literal.untyped_data(), allocation.size());
       }
     }
   }
@@ -297,16 +310,16 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::Execute(
   }
 
   BufferAllocations::Builder buffer_allocations_builder;
-  se::StreamExecutor* executor = run_options->stream()->parent();
-
   const GpuExecutable::BufferAllocToDeviceMemoryMap* globals;
   {
     tensorflow::profiler::TraceMe hlo_module_activity(
         [&] { return std::string("Resolve constant globals"); },
         tensorflow::profiler::TraceMeLevel::kInfo);
 
-    TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(executor));
+    TF_ASSIGN_OR_RETURN(globals, ResolveConstantGlobals(run_options->stream()));
   }
+
+  se::StreamExecutor* executor = run_options->stream()->parent();
 
   std::unique_ptr<BufferAllocations> buffer_allocations;
 

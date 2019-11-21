@@ -19,26 +19,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/Analysis/AffineAnalysis.h"
-#include "mlir/Analysis/AffineStructures.h"
-#include "mlir/Analysis/LoopAnalysis.h"
-#include "mlir/Analysis/SliceAnalysis.h"
-#include "mlir/Analysis/Utils.h"
-#include "mlir/Dialect/AffineOps/AffineOps.h"
-#include "mlir/Dialect/StandardOps/Ops.h"
-#include "mlir/IR/AffineExpr.h"
-#include "mlir/IR/AffineMap.h"
-#include "mlir/IR/Builders.h"
-#include "mlir/Pass/Pass.h"
-#include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
-#include "mlir/Transforms/Utils.h"
-#include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
+
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/LoopLikeInterface.h"
+#include "mlir/Transforms/SideEffectsInterface.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
-#include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "licm"
 
@@ -46,200 +36,114 @@ using namespace mlir;
 
 namespace {
 
+using SideEffecting = SideEffectsInterface::SideEffecting;
+
 /// Loop invariant code motion (LICM) pass.
-/// TODO(asabne) : The pass is missing zero-trip tests.
-/// TODO(asabne) : Check for the presence of side effects before hoisting.
-struct LoopInvariantCodeMotion : public FunctionPass<LoopInvariantCodeMotion> {
-  void runOnFunction() override;
-  void runOnAffineForOp(AffineForOp forOp);
+struct LoopInvariantCodeMotion : public OperationPass<LoopInvariantCodeMotion> {
+public:
+  void runOnOperation() override;
 };
-} // end anonymous namespace
 
-static bool
-checkInvarianceOfNestedIfOps(Operation *op, Value *indVar,
-                             SmallPtrSetImpl<Operation *> &definedOps,
-                             SmallPtrSetImpl<Operation *> &opsToHoist);
-static bool isOpLoopInvariant(Operation &op, Value *indVar,
-                              SmallPtrSetImpl<Operation *> &definedOps,
-                              SmallPtrSetImpl<Operation *> &opsToHoist);
-
-static bool
-areAllOpsInTheBlockListInvariant(Region &blockList, Value *indVar,
-                                 SmallPtrSetImpl<Operation *> &definedOps,
-                                 SmallPtrSetImpl<Operation *> &opsToHoist);
-
-static bool isMemRefDereferencingOp(Operation &op) {
-  // TODO(asabne): Support DMA Ops.
-  if (isa<AffineLoadOp>(op) || isa<AffineStoreOp>(op)) {
-    return true;
-  }
-  return false;
-}
-
-std::unique_ptr<FunctionPassBase> mlir::createLoopInvariantCodeMotionPass() {
-  return std::make_unique<LoopInvariantCodeMotion>();
-}
-
-// Returns true if the individual op is loop invariant.
-bool isOpLoopInvariant(Operation &op, Value *indVar,
-                       SmallPtrSetImpl<Operation *> &definedOps,
-                       SmallPtrSetImpl<Operation *> &opsToHoist) {
-  LLVM_DEBUG(llvm::dbgs() << "iterating on op: " << op;);
-
-  if (isa<AffineIfOp>(op)) {
-    if (!checkInvarianceOfNestedIfOps(&op, indVar, definedOps, opsToHoist)) {
+// Checks whether the given op can be hoisted by checking that
+// - the op and any of its contained operations do not depend on SSA values
+//   defined inside of the loop (by means of calling definedOutside).
+// - the op has no side-effects. If sideEffecting is Never, sideeffects of this
+//   op and its nested ops are ignored.
+static bool canBeHoisted(Operation *op,
+                         llvm::function_ref<bool(Value *)> definedOutside,
+                         SideEffecting sideEffecting,
+                         SideEffectsInterface &interface) {
+  // Check that dependencies are defined outside of loop.
+  if (!llvm::all_of(op->getOperands(), definedOutside))
+    return false;
+  // Check whether this op is side-effect free. If we already know that there
+  // can be no side-effects because the surrounding op has claimed so, we can
+  // (and have to) skip this step.
+  auto thisOpIsSideEffecting = sideEffecting;
+  if (thisOpIsSideEffecting != SideEffecting::Never) {
+    thisOpIsSideEffecting = interface.isSideEffecting(op);
+    // If the op always has sideeffects, we cannot hoist.
+    if (thisOpIsSideEffecting == SideEffecting::Always)
       return false;
-    }
-  } else if (isa<AffineForOp>(op)) {
-    // If the body of a predicated region has a for loop, we don't hoist the
-    // 'affine.if'.
-    return false;
-  } else if (isa<AffineDmaStartOp>(op) || isa<AffineDmaWaitOp>(op)) {
-    // TODO(asabne): Support DMA ops.
-    return false;
-  } else if (!isa<ConstantOp>(op)) {
-    if (isMemRefDereferencingOp(op)) {
-      Value *memref = isa<AffineLoadOp>(op)
-                          ? cast<AffineLoadOp>(op).getMemRef()
-                          : cast<AffineStoreOp>(op).getMemRef();
-      for (auto *user : memref->getUsers()) {
-        // If this memref has a user that is a DMA, give up because these
-        // operations write to this memref.
-        if (isa<AffineDmaStartOp>(op) || isa<AffineDmaWaitOp>(op)) {
+  }
+  // Recurse into the regions for this op and check whether the contained ops
+  // can be hoisted.
+  for (auto &region : op->getRegions()) {
+    for (auto &block : region.getBlocks()) {
+      for (auto &innerOp : block) {
+        if (innerOp.isKnownTerminator())
+          continue;
+        if (!canBeHoisted(&innerOp, definedOutside, thisOpIsSideEffecting,
+                          interface))
           return false;
-        }
-        // If the memref used by the load/store is used in a store elsewhere in
-        // the loop nest, we do not hoist. Similarly, if the memref used in a
-        // load is also being stored too, we do not hoist the load.
-        if (isa<AffineStoreOp>(user) ||
-            (isa<AffineLoadOp>(user) && isa<AffineStoreOp>(op))) {
-          if (&op != user) {
-            SmallVector<AffineForOp, 8> userIVs;
-            getLoopIVs(*user, &userIVs);
-            // Check that userIVs don't contain the for loop around the op.
-            if (llvm::is_contained(userIVs, getForInductionVarOwner(indVar))) {
-              return false;
-            }
-          }
-        }
-      }
-    }
-
-    // Insert this op in the defined ops list.
-    definedOps.insert(&op);
-
-    if (op.getNumOperands() == 0 && !isa<AffineTerminatorOp>(op)) {
-      LLVM_DEBUG(llvm::dbgs() << "\nNon-constant op with 0 operands\n");
-      return false;
-    }
-    for (unsigned int i = 0; i < op.getNumOperands(); ++i) {
-      auto *operandSrc = op.getOperand(i)->getDefiningOp();
-
-      LLVM_DEBUG(
-          op.getOperand(i)->print(llvm::dbgs() << "\nIterating on operand\n"));
-
-      // If the loop IV is the operand, this op isn't loop invariant.
-      if (indVar == op.getOperand(i)) {
-        LLVM_DEBUG(llvm::dbgs() << "\nLoop IV is the operand\n");
-        return false;
-      }
-
-      if (operandSrc != nullptr) {
-        LLVM_DEBUG(llvm::dbgs()
-                   << *operandSrc << "\nIterating on operand src\n");
-
-        // If the value was defined in the loop (outside of the
-        // if/else region), and that operation itself wasn't meant to
-        // be hoisted, then mark this operation loop dependent.
-        if (definedOps.count(operandSrc) && opsToHoist.count(operandSrc) == 0) {
-          return false;
-        }
       }
     }
   }
-
-  // If no operand was loop variant, mark this op for motion.
-  opsToHoist.insert(&op);
   return true;
 }
 
-// Checks if all ops in a region (i.e. list of blocks) are loop invariant.
-bool areAllOpsInTheBlockListInvariant(
-    Region &blockList, Value *indVar, SmallPtrSetImpl<Operation *> &definedOps,
-    SmallPtrSetImpl<Operation *> &opsToHoist) {
+static LogicalResult moveLoopInvariantCode(LoopLikeOpInterface looplike,
+                                           SideEffectsInterface &interface) {
+  auto &loopBody = looplike.getLoopBody();
 
-  for (auto &b : blockList) {
-    for (auto &op : b) {
-      if (!isOpLoopInvariant(op, indVar, definedOps, opsToHoist)) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
-// Returns true if the affine.if op can be hoisted.
-bool checkInvarianceOfNestedIfOps(Operation *op, Value *indVar,
-                                  SmallPtrSetImpl<Operation *> &definedOps,
-                                  SmallPtrSetImpl<Operation *> &opsToHoist) {
-  assert(isa<AffineIfOp>(op));
-  auto ifOp = cast<AffineIfOp>(op);
-
-  if (!areAllOpsInTheBlockListInvariant(ifOp.thenRegion(), indVar, definedOps,
-                                        opsToHoist)) {
-    return false;
-  }
-
-  if (!areAllOpsInTheBlockListInvariant(ifOp.elseRegion(), indVar, definedOps,
-                                        opsToHoist)) {
-    return false;
-  }
-
-  return true;
-}
-
-void LoopInvariantCodeMotion::runOnAffineForOp(AffineForOp forOp) {
-  auto *loopBody = forOp.getBody();
-  auto *indVar = forOp.getInductionVar();
-
-  SmallPtrSet<Operation *, 8> definedOps;
-  // This is the place where hoisted instructions would reside.
-  OpBuilder b(forOp.getOperation());
-
-  SmallPtrSet<Operation *, 8> opsToHoist;
+  // We use two collections here as we need to preserve the order for insertion
+  // and this is easiest.
+  SmallPtrSet<Operation *, 8> willBeMovedSet;
   SmallVector<Operation *, 8> opsToMove;
 
-  for (auto &op : *loopBody) {
-    // We don't hoist for loops.
-    if (!isa<AffineForOp>(op)) {
-      if (!isa<AffineTerminatorOp>(op)) {
-        if (isOpLoopInvariant(op, indVar, definedOps, opsToHoist)) {
-          opsToMove.push_back(&op);
-        }
+  // Helper to check whether an operation is loop invariant wrt. SSA properties.
+  auto isDefinedOutsideOfBody = [&](Value *value) {
+    auto definingOp = value->getDefiningOp();
+    return (definingOp && !!willBeMovedSet.count(definingOp)) ||
+           looplike.isDefinedOutsideOfLoop(value);
+  };
+
+  // Do not use walk here, as we do not want to go into nested regions and hoist
+  // operations from there. These regions might have semantics unknown to this
+  // rewriting. If the nested regions are loops, they will have been processed.
+  for (auto &block : loopBody) {
+    for (auto &op : block.without_terminator()) {
+      if (canBeHoisted(&op, isDefinedOutsideOfBody,
+                       mlir::SideEffectsDialectInterface::Recursive,
+                       interface)) {
+        opsToMove.push_back(&op);
+        willBeMovedSet.insert(&op);
       }
     }
   }
 
-  // For all instructions that we found to be invariant, place sequentially
-  // right before the for loop.
-  for (auto *op : opsToMove) {
-    op->moveBefore(forOp);
-  }
-
-  LLVM_DEBUG(forOp.getOperation()->print(llvm::dbgs() << "Modified loop\n"));
+  // For all instructions that we found to be invariant, move outside of the
+  // loop.
+  auto result = looplike.moveOutOfLoop(opsToMove);
+  LLVM_DEBUG(looplike.print(llvm::dbgs() << "Modified loop\n"));
+  return result;
 }
 
-void LoopInvariantCodeMotion::runOnFunction() {
-  // Walk through all loops in a function in innermost-loop-first order.  This
+} // end anonymous namespace
+
+void LoopInvariantCodeMotion::runOnOperation() {
+  SideEffectsInterface interface(&getContext());
+  // Walk through all loops in a function in innermost-loop-first order. This
   // way, we first LICM from the inner loop, and place the ops in
   // the outer loop, which in turn can be further LICM'ed.
-  getFunction().walk([&](AffineForOp op) {
-    LLVM_DEBUG(op.getOperation()->print(llvm::dbgs() << "\nOriginal loop\n"));
-    runOnAffineForOp(op);
+  getOperation()->walk([&](Operation *op) {
+    if (auto looplike = dyn_cast<LoopLikeOpInterface>(op)) {
+      LLVM_DEBUG(op->print(llvm::dbgs() << "\nOriginal loop\n"));
+      if (failed(moveLoopInvariantCode(looplike, interface)))
+        signalPassFailure();
+    }
   });
 }
 
+// Include the generated code for the loop-like interface here, as it otherwise
+// has no compilation unit. This works as loop-invariant code motion is the
+// only user of that interface.
+#include "mlir/Transforms/LoopLikeInterface.cpp.inc"
+
+std::unique_ptr<Pass> mlir::createLoopInvariantCodeMotionPass() {
+  return std::make_unique<LoopInvariantCodeMotion>();
+}
+
 static PassRegistration<LoopInvariantCodeMotion>
-    pass("affine-loop-invariant-code-motion",
+    pass("loop-invariant-code-motion",
          "Hoist loop invariant instructions outside of the loop");

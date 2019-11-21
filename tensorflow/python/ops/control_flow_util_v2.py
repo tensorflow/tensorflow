@@ -163,6 +163,10 @@ def resource_input_index(tensor_name, input_names, node_defs, functions):
       assert len(parts) == 1
       op_name = parts[0]
       output_idx = 0
+      tensor_name = "%s:%d" % (tensor_name, output_idx)
+      # Check again for cases where the tensor suffix (":0") is stripped out.
+      if tensor_name in input_names:
+        break
     output_idx = int(output_idx)
     node_def = node_defs[op_name]
 
@@ -279,5 +283,5 @@ def get_func_graph(op, input_shapes, func_name):
   # in `func_graph` from its gradient graph in `_resolve_grad_inputs`.
   with op.graph.as_default():
     func_graph = function_def_to_graph.function_def_to_graph(
-        fdef, input_shapes, copy_functions=False)
+        fdef, input_shapes)
   return func_graph

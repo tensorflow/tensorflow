@@ -20,6 +20,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/TableGen/OpTrait.h"
+#include "mlir/Support/STLExtras.h"
+#include "mlir/TableGen/OpInterfaces.h"
 #include "mlir/TableGen/Predicate.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -27,33 +29,47 @@
 #include "llvm/TableGen/Record.h"
 
 using namespace mlir;
+using namespace mlir::tblgen;
 
-mlir::tblgen::OpTrait mlir::tblgen::OpTrait::create(const llvm::Init *init) {
+OpTrait OpTrait::create(const llvm::Init *init) {
   auto def = cast<llvm::DefInit>(init)->getDef();
   if (def->isSubClassOf("PredOpTrait"))
     return OpTrait(Kind::Pred, def);
   if (def->isSubClassOf("GenInternalOpTrait"))
     return OpTrait(Kind::Internal, def);
+  if (def->isSubClassOf("OpInterface"))
+    return OpTrait(Kind::Interface, def);
   assert(def->isSubClassOf("NativeOpTrait"));
   return OpTrait(Kind::Native, def);
 }
 
-mlir::tblgen::OpTrait::OpTrait(Kind kind, const llvm::Record *def)
-    : def(def), kind(kind) {}
+OpTrait::OpTrait(Kind kind, const llvm::Record *def) : def(def), kind(kind) {}
 
-llvm::StringRef mlir::tblgen::NativeOpTrait::getTrait() const {
+llvm::StringRef NativeOpTrait::getTrait() const {
   return def->getValueAsString("trait");
 }
 
-llvm::StringRef mlir::tblgen::InternalOpTrait::getTrait() const {
+llvm::StringRef InternalOpTrait::getTrait() const {
   return def->getValueAsString("trait");
 }
 
-std::string mlir::tblgen::PredOpTrait::getPredTemplate() const {
+std::string PredOpTrait::getPredTemplate() const {
   auto pred = tblgen::Pred(def->getValueInit("predicate"));
   return pred.getCondition();
 }
 
-llvm::StringRef mlir::tblgen::PredOpTrait::getDescription() const {
+llvm::StringRef PredOpTrait::getDescription() const {
   return def->getValueAsString("description");
+}
+
+OpInterface InterfaceOpTrait::getOpInterface() const {
+  return OpInterface(def);
+}
+
+llvm::StringRef InterfaceOpTrait::getTrait() const {
+  return def->getValueAsString("trait");
+}
+
+bool InterfaceOpTrait::shouldDeclareMethods() const {
+  return def->isSubClassOf("DeclareOpInterfaceMethods");
 }

@@ -113,7 +113,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
 // is not well-defined.
 //
-// CudnnConvRewriter lowers kConvolution HLOs to these custom calls.
+// GpuConvRewriter lowers kConvolution HLOs to these custom calls.
 // When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
 // on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
 // algorithm for each conv and sets the amount of scratch space needed.
@@ -157,24 +157,25 @@ bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 // kept are contiguous in the input of the reduce instruction.
 bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
 
+struct ReductionDimensions {
+  // Indicates whether the reduction is a row reduction or a column reduction.
+  bool is_row_reduction;
+
+  // Contains the size of the three contiguous components for
+  // the reduction [depth, height, width] (major-to-minor ordering).
+  //
+  // For row reduction, we do: [D, H, W] -> [D, H].
+  // For column reduction, we do: [D, H, W] -> [D, W].
+  std::array<int64, 3> dimensions;
+};
+
 // Given the input shape and dimensions to reduce for a reduction, returns
-// <is_row_reduction, DimensionVector>:
-// is_row_reduction:  indicates whether the reduction is a row reduction or a
-//   column reduction.
-// DimensionVector: contains the size of the three contiguous components for the
-//   reduction [depth, height, width]. For row reduction, height is the size of
-//   the dimensions to keep, depth is the size of the dimensions to reduce that
-//   are more major than the dimensions to keep, and width is the size of the
-//   dimensions to reduce that are more minor than the dimensions to keep. For
-//   column reduction, height is the size of dimensions to reduce, depth is the
-//   the size of the dimensions to keep that are more major than the dimensions
-//   to reduce, and width is the size of the dimensions to keep that are more
-//   minor than the dimensions to reduce.
+// ReductionDimensions.
 //
 // Prerequisite: the reduction instruction passes the check
 // IsReductionFromOrToContiguousDimensions, which guarantees either the
 // dimensions to reduce or the dimensions to keep are consecutive.
-std::pair<bool, DimensionVector> GetReductionKindAndContiguousComponents(
+ReductionDimensions GetReductionKindAndContiguousComponents(
     const Shape& input_shape, absl::Span<const int64> dims_to_reduce);
 
 // Emits call to "vprintf" with given format and arguments.

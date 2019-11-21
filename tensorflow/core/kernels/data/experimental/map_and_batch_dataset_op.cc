@@ -186,11 +186,18 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
     }
 
     string BuildTraceMeName() override {
-      // NOTE: We do not synchronize the following access to
-      // num_parallel_calls_ to minimize the tracing overhead.
-      int64 parallelism = num_parallel_calls_->value;
-      return strings::StrCat(prefix(), "#", kParallelism, "=", parallelism,
-                             "#");
+      int64 parallelism = -1;
+      // NOTE: We only set the parallelism value if the lock can be acquired
+      // right away to avoid introducing tracing overhead.
+      if (mu_->try_lock()) {
+        parallelism = num_parallel_calls_->value;
+        mu_->unlock();
+      }
+      return strings::StrCat(
+          prefix(), "#parallelism=", parallelism,
+          ",autotune=", dataset()->num_parallel_calls_ == model::kAutotune,
+          ",batch_size=", dataset()->batch_size_,
+          ",drop_remainder=", dataset()->drop_remainder_, "#");
     }
 
     Status Initialize(IteratorContext* ctx) override {
@@ -330,7 +337,7 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
         LOCKS_EXCLUDED(*mu_) {
       // Get the next input element.
       std::vector<Tensor> input_element;
-      bool end_of_input;
+      bool end_of_input = false;
       Status status =
           input_impl_->GetNext(ctx.get(), &input_element, &end_of_input);
       bool return_early;

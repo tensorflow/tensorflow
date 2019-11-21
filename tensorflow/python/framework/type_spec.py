@@ -26,6 +26,7 @@ from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -323,6 +324,8 @@ class TypeSpec(object):
       ])
     if isinstance(value, tuple):
       return tuple([self.__make_cmp_key(v) for v in value])
+    if isinstance(value, list):
+      return (list, tuple([self.__make_cmp_key(v) for v in value]))
     if isinstance(value, tensor_shape.TensorShape):
       if value.ndims is None:
         # Note: we include a type object in the tuple, to ensure we can't get
@@ -348,7 +351,7 @@ class TypeSpec(object):
     """Returns true if the given type serializations compatible."""
     if type(a) is not type(b):
       return False
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       return (len(a) == len(b) and
               all(TypeSpec.__is_compatible(x, y) for (x, y) in zip(a, b)))
     if isinstance(a, dict):
@@ -389,7 +392,7 @@ class TypeSpec(object):
     """
     if type(a) is not type(b):
       raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       if len(a) != len(b):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)
@@ -483,8 +486,9 @@ def type_spec_from_value(value):
     spec = _type_spec_from_value(tensor)
     if spec is not None:
       return spec
-  except (ValueError, TypeError):
-    pass
+  except (ValueError, TypeError) as e:
+    logging.vlog(
+        3, "Failed to convert %r to tensor: %s" % (type(value).__name__, e))
 
   raise TypeError("Could not build a TypeSpec for %r with type %s" %
                   (value, type(value).__name__))

@@ -69,7 +69,7 @@ inline std::vector<std::string>* CoveredPaths() {
   return &covered_paths;
 }
 
-const char* PathName(Path path) {
+inline const char* PathName(Path path) {
 #define RUY_PATHNAME_CASE(NAME) \
   case Path::NAME:              \
     return #NAME;
@@ -90,7 +90,7 @@ const char* PathName(Path path) {
 #undef RUY_PATHNAME_CASE
 }
 
-const char* TuningName(Tuning tuning) {
+inline const char* TuningName(Tuning tuning) {
 #define RUY_SUBPATHNAME_CASE(NAME) \
   case Tuning::NAME:               \
     return #NAME;
@@ -104,7 +104,7 @@ const char* TuningName(Tuning tuning) {
 #undef RUY_SUBPATHNAME_CASE
 }
 
-const char* PathName(ExternalPath path) {
+inline const char* PathName(ExternalPath path) {
 #define RUY_PATHNAME_CASE(NAME) \
   case ExternalPath::NAME:      \
     return #NAME;
@@ -120,11 +120,12 @@ const char* PathName(ExternalPath path) {
 #undef RUY_PATHNAME_CASE
 }
 
-std::ostream& operator<<(std::ostream& stream, Path path) {
+inline std::ostream& operator<<(std::ostream& stream, Path path) {
   return stream << PathName(path);
 }
 
-std::ostream& operator<<(std::ostream& stream, ExternalPath external_path) {
+inline std::ostream& operator<<(std::ostream& stream,
+                                ExternalPath external_path) {
   return stream << PathName(external_path);
 }
 
@@ -179,6 +180,7 @@ struct LogCoveredPathsOnDestruction final {
 enum class RandomRange {
   kGeneral,
   kAvoidMinValue,
+  kOffCenterAvoidMinValue,
   kReasonableSrcZeroPoint,
   kReasonableDstZeroPoint,
   kBias
@@ -196,6 +198,8 @@ struct RandomRangeBounds<Scalar, true> {
         return -1;
       case RandomRange::kAvoidMinValue:
         return -1;
+      case RandomRange::kOffCenterAvoidMinValue:
+        return -1;
       case RandomRange::kReasonableSrcZeroPoint:
         return 0;
       case RandomRange::kReasonableDstZeroPoint:
@@ -212,6 +216,8 @@ struct RandomRangeBounds<Scalar, true> {
       case RandomRange::kGeneral:
         return 1;
       case RandomRange::kAvoidMinValue:
+        return 1;
+      case RandomRange::kOffCenterAvoidMinValue:
         return 1;
       case RandomRange::kReasonableSrcZeroPoint:
         return 0;
@@ -244,11 +250,19 @@ Scalar Parametrized(float param) {
 template <typename Scalar>
 struct RandomRangeBounds<Scalar, false> {
   static Scalar GetMinBound(RandomRange range) {
+    static constexpr double offcentredness =
+        0.02;  // Shift lower limit by about 5 for range of 255.
     switch (range) {
       case RandomRange::kGeneral:
         return std::numeric_limits<Scalar>::lowest();
       case RandomRange::kAvoidMinValue:
         return 1 + std::numeric_limits<Scalar>::lowest();
+      case RandomRange::kOffCenterAvoidMinValue:
+        return 1 + std::numeric_limits<Scalar>::lowest() +
+               static_cast<Scalar>(
+                   offcentredness * std::numeric_limits<Scalar>::max() -
+                   offcentredness *
+                       (std::numeric_limits<Scalar>::lowest() + 1));
       case RandomRange::kReasonableSrcZeroPoint:
         return std::numeric_limits<Scalar>::lowest();
       case RandomRange::kReasonableDstZeroPoint:
@@ -267,6 +281,8 @@ struct RandomRangeBounds<Scalar, false> {
       case RandomRange::kGeneral:
         return std::numeric_limits<Scalar>::max();
       case RandomRange::kAvoidMinValue:
+        return std::numeric_limits<Scalar>::max();
+      case RandomRange::kOffCenterAvoidMinValue:
         return std::numeric_limits<Scalar>::max();
       case RandomRange::kReasonableSrcZeroPoint:
         return std::numeric_limits<Scalar>::max();
@@ -342,8 +358,8 @@ void MakeRandomVector(RandomRange range, int size, std::vector<Scalar>* dst) {
 
 enum class LayoutStyle { kPackedLinear, kLinear };
 
-void MakeLayout(int rows, int cols, Order order, LayoutStyle layout_style,
-                Layout* layout) {
+inline void MakeLayout(int rows, int cols, Order order,
+                       LayoutStyle layout_style, Layout* layout) {
   layout->rows = rows;
   layout->cols = cols;
   layout->order = order;
@@ -492,7 +508,7 @@ struct TestSet final {
   };
 
   ~TestSet() {
-    RUY_CHECK(life_stage == LifeStage::kFinal);
+    RUY_CHECK_EQ(life_stage, LifeStage::kFinal);
     LogCoveredPathsOnDestruction::Singleton();
   }
 
@@ -531,7 +547,7 @@ struct TestSet final {
   bool benchmark_prepack_rhs = false;
 };
 
-Context& GlobalContext() {
+inline Context& GlobalContext() {
   static Context context;
   return context;
 }
@@ -596,7 +612,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::EvalRuy(TestResultType* result) {
   GlobalContext().SetRuntimeEnabledPaths(result->path);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
     DoMul(result);
-    RUY_CHECK(GlobalContext().last_taken_path == result->path);
+    RUY_CHECK_EQ(GlobalContext().last_taken_path, result->path);
   } else if (expected_outcome == ExpectedOutcome::kDeath) {
     // TODO(benoitjacob) TSan and ASan seem to be breaking ASSERT_DEATH.
     // Report a bug?
@@ -645,7 +661,7 @@ struct GemmlowpOrder<Order::kRowMajor> {
   static constexpr gemmlowp::MapOrder kValue = gemmlowp::MapOrder::RowMajor;
 };
 
-gemmlowp::GemmContext& GlobalGemmlowpContext() {
+inline gemmlowp::GemmContext& GlobalGemmlowpContext() {
   static gemmlowp::GemmContext context;
   return context;
 }
@@ -1051,9 +1067,9 @@ void EvalOpenBlas(const Matrix<Scalar>& lhs, const Matrix<Scalar>& rhs,
     transposed_rhs = true;
   }
 
-  RUY_CHECK(gemm_lhs.layout.order == Order::kColMajor);
-  RUY_CHECK(gemm_rhs.layout.order == Order::kColMajor);
-  RUY_CHECK(gemm_dst.layout.order == Order::kColMajor);
+  RUY_CHECK_EQ(gemm_lhs.layout.order, Order::kColMajor);
+  RUY_CHECK_EQ(gemm_rhs.layout.order, Order::kColMajor);
+  RUY_CHECK_EQ(gemm_dst.layout.order, Order::kColMajor);
 
   char transa = transposed_lhs ? 'T' : 'N';
   char transb = transposed_rhs ? 'T' : 'N';
@@ -1251,7 +1267,7 @@ struct Stats {
   double max;
 };
 
-std::string StatsAsString(const Stats& stats) {
+inline std::string StatsAsString(const Stats& stats) {
   char buf[256];
   snprintf(buf, sizeof(buf), "(median = %g, mean = %g, min = %g, max = %g)",
            stats.median, stats.mean, stats.min, stats.max);
@@ -1385,9 +1401,9 @@ void ComputeReasonableMultiplier(const Matrix<LhsScalar>& lhs,
   RUY_CHECK_GT(*multiplier, 0.0);
 }
 
-void QuantizeMultiplier(double multiplier_double,
-                        std::int32_t* multiplier_fixedpoint,
-                        int* multiplier_exponent) {
+inline void QuantizeMultiplier(double multiplier_double,
+                               std::int32_t* multiplier_fixedpoint,
+                               int* multiplier_exponent) {
   RUY_CHECK_GT(multiplier_double, 0);
   if (multiplier_double == 0.) {
     *multiplier_fixedpoint = 0;
@@ -1510,7 +1526,7 @@ void MakeSpecClampFields(const Matrix<LhsScalar>& lhs,
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
-  RUY_CHECK(life_stage == LifeStage::kInitial);
+  RUY_CHECK_EQ(life_stage, LifeStage::kInitial);
   if (!use_specified_zero_points) {
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &lhs_zero_point);
     MakeRandomScalar(RandomRange::kReasonableSrcZeroPoint, &rhs_zero_point);
@@ -1526,9 +1542,9 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeZeroPoints() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
-  RUY_CHECK(life_stage == LifeStage::kHasZeroPoints);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasZeroPoints);
   MakeRandom(rows, depth, lhs_order, lhs_zero_point, layout_style,
-             RandomRange::kAvoidMinValue, &lhs);
+             RandomRange::kOffCenterAvoidMinValue, &lhs);
   MakeRandom(depth, cols, rhs_order, rhs_zero_point, layout_style,
              RandomRange::kGeneral, &rhs);
   life_stage = LifeStage::kHasLhsRhs;
@@ -1536,11 +1552,15 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeLhsRhs() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeSpec() {
-  RUY_CHECK(life_stage == LifeStage::kHasLhsRhs);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasLhsRhs);
 
   if (!getenv("BENCHMARK_ONLY_MATMUL") && (global_random_engine()() & 1)) {
     MakeRandomVector(RandomRange::kBias, rows, &bias_data);
     spec.bias = bias_data.data();
+  }
+  if (lhs.matrix.zero_point == std::numeric_limits<LhsScalar>::lowest() &&
+      rhs.matrix.zero_point == std::numeric_limits<RhsScalar>::lowest()) {
+    lhs.matrix.zero_point += 1;
   }
   MakeSpecMultiplierFieldsImpl<TestSet>::Run(this);
   MakeSpecClampFields(lhs.matrix, rhs.matrix, dst_zero_point, &spec);
@@ -1568,7 +1588,7 @@ inline int GetHexIntEnvVarOrZero(const char* name) {
   if (!val) {
     return 0;
   }
-  return std::stoi(val, 0, 16);
+  return std::stoi(val, nullptr, 16);
 }
 
 inline bool GetBoolEnvVarOrFalse(const char* name) {
@@ -1577,14 +1597,14 @@ inline bool GetBoolEnvVarOrFalse(const char* name) {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeOtherParams() {
-  RUY_CHECK(life_stage == LifeStage::kHasSpec);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasSpec);
   if (max_num_threads == 0) {
     max_num_threads = GetIntEnvVarOrZero("THREADS");
   }
   life_stage = LifeStage::kHasOtherParams;
 }
 
-std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
+inline std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
   std::vector<Path> result;
   std::uint32_t remaining_paths = static_cast<std::uint32_t>(paths_bitfield);
   std::uint32_t test_bit = 1;
@@ -1598,7 +1618,7 @@ std::vector<Path> PathsBitfieldAsVector(Path paths_bitfield) {
   return result;
 }
 
-std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
+inline std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
   if (benchmark) {
     return {Tuning::kAuto};
   }
@@ -1612,7 +1632,7 @@ std::vector<Tuning> EnumerateTuningsForPath(Path path, bool benchmark) {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
-  RUY_CHECK(life_stage == LifeStage::kHasResultPaths);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasResultPaths);
 
   // Prepacked matrices are Path-dependent, so create them for each test result.
   for (auto& result : results) {
@@ -1653,7 +1673,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
     PrePackForMul<kAllPaths>(lhs.matrix, rhs.matrix, spec, &GlobalContext(),
                              &null_data_dst, prepacked_lhs_ptr,
                              prepacked_rhs_ptr, alloc_fn);
-    RUY_CHECK(GlobalContext().last_taken_path == result->path);
+    RUY_CHECK_EQ(GlobalContext().last_taken_path, result->path);
   }
 
   life_stage = LifeStage::kHasPrepackedMatrices;
@@ -1661,7 +1681,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakePrepackedMatrices() {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
-  RUY_CHECK(life_stage == LifeStage::kHasOtherParams);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasOtherParams);
 
   Path paths_bitfield = static_cast<Path>(GetHexIntEnvVarOrZero("PATHS"));
 
@@ -1676,7 +1696,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::MakeResultPaths() {
   // to allow specifying e.g. ffff to mean 'all paths' regardless of whether all
   // those bits exist as actual paths.
   paths_bitfield = paths_bitfield & kAllPaths;
-  RUY_CHECK(paths_bitfield != Path::kNone);
+  RUY_CHECK_NE(paths_bitfield, Path::kNone);
   paths = PathsBitfieldAsVector(paths_bitfield);
 
 #ifdef RUY_TEST_EXTERNAL_PATHS
@@ -1998,7 +2018,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::Benchmark(
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Eval() {
-  RUY_CHECK(life_stage == LifeStage::kHasPrepackedMatrices);
+  RUY_CHECK_EQ(life_stage, LifeStage::kHasPrepackedMatrices);
   for (auto& result : results) {
     if (benchmark) {
       Benchmark(result.get());
@@ -2118,7 +2138,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
   }
   if (!spec.multiplier_exponent_perchannel) {
     RUY_CHECK_LE(count_clamped, std::floor(2 * kClampRatio * size));
-    if (size > 10) {
+    if (size > 1000) {
       RUY_CHECK(found_distinct_values);
     }
   }
@@ -2126,7 +2146,7 @@ void TestSet<LhsScalar, RhsScalar, SpecType>::VerifyNonTrivial() const {
 
 template <typename LhsScalar, typename RhsScalar, typename SpecType>
 void TestSet<LhsScalar, RhsScalar, SpecType>::Verify() {
-  RUY_CHECK(life_stage == LifeStage::kEvaluated);
+  RUY_CHECK_EQ(life_stage, LifeStage::kEvaluated);
   if (expected_outcome == ExpectedOutcome::kSuccess) {
     VerifyTestResults();
     VerifyNonTrivial();

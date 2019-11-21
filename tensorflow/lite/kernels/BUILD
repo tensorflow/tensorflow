@@ -1,5 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
 
 package(
@@ -93,7 +93,6 @@ config_setting(
 )
 
 ###### End of config_setting's to match aarch64 ######
-
 # Suppress warnings that are introduced by Eigen Tensor.
 EXTRA_EIGEN_COPTS = select({
     "//tensorflow:ios": [
@@ -242,6 +241,7 @@ cc_library(
         ":cpu_ios_arm64": [":tflite_with_ruy_enabled"],
         ":cpu_ios_arm64e": [":tflite_with_ruy_enabled"],
         ":cpu_arm64_v8a": [":tflite_with_ruy_enabled"],
+        "//tensorflow:android_arm": ["tflite_with_ruy_enabled"],
         "//conditions:default": [],
     }),
 )
@@ -331,6 +331,7 @@ cc_library(
         # Depend on ruy regardless of `tflite_with_ruy`. See the comment in
         # cpu_backend_gemm.h about why ruy is the generic path.
         "//tensorflow/lite/experimental/ruy",
+        "//tensorflow/lite/experimental/ruy:path",
         # We only need to depend on gemmlowp and Eigen when tflite_with_ruy
         # is false, but putting these dependencies in a select() seems to
         # defeat copybara's rewriting rules.
@@ -358,6 +359,7 @@ cc_library(
     hdrs = [
         "activation_functor.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
     ],
@@ -368,6 +370,7 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
+    copts = tflite_copts(),
 )
 
 cc_library(
@@ -378,6 +381,7 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:quantization_util",
@@ -412,6 +416,7 @@ cc_library(
     name = "padding",
     srcs = [],
     hdrs = ["padding.h"],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
     ],
@@ -482,6 +487,7 @@ cc_library(
         "reverse.cc",
         "reverse_sequence.cc",
         "round.cc",
+        "scatter_nd.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -513,7 +519,6 @@ cc_library(
     copts = tflite_copts() + tf_opts_nortti_if_android() + EXTRA_EIGEN_COPTS,
     visibility = ["//visibility:private"],
     deps = [
-        ":activation_functor",
         ":cpu_backend_context",
         ":eigen_support",
         ":kernel_util",
@@ -532,13 +537,16 @@ cc_library(
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:reference_base",
+        "//tensorflow/lite/kernels/internal:strided_slice_logic",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/eigen3",
+        "@com_google_absl//absl/memory",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -547,6 +555,7 @@ cc_library(
         "assign_variable.cc",
         "read_variable.cc",
     ],
+    copts = tflite_copts(),
     deps = [
         ":kernel_util",
         ":op_macros",
@@ -576,6 +585,7 @@ cc_library(
     name = "custom_ops",
     srcs = ["rfft2d.cc"],
     hdrs = ["custom_ops_register.h"],
+    copts = tflite_copts(),
     deps = [
         ":kernel_util",
         ":op_macros",
@@ -593,7 +603,9 @@ cc_library(
     name = "lstm_eval",
     srcs = ["lstm_eval.cc"],
     hdrs = ["lstm_eval.h"],
+    copts = tflite_copts(),
     deps = [
+        ":cpu_backend_context",
         ":op_macros",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -608,12 +620,18 @@ cc_library(
 cc_library(
     name = "builtin_ops",
     srcs = ["register.cc"],
-    hdrs = ["register.h"],
+    hdrs = [
+        "builtin_op_kernels.h",
+        "fully_connected.h",
+        "register.h",
+    ],
+    copts = tflite_copts(),
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
     ],
+    alwayslink = 1,
 )
 
 # The builtin_ops target will resolve to optimized kernels when available. This
@@ -623,6 +641,7 @@ cc_library(
     name = "reference_ops",
     srcs = ["register_ref.cc"],
     hdrs = ["register_ref.h"],
+    copts = tflite_copts(),
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
@@ -1135,6 +1154,20 @@ cc_test(
     name = "gather_nd_test",
     size = "small",
     srcs = ["gather_nd_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "scatter_nd_test",
+    size = "small",
+    srcs = ["scatter_nd_test.cc"],
     deps = [
         ":builtin_ops",
         ":test_main",
@@ -1879,8 +1912,6 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
-tflite_portable_test_suite()
-
 cc_test(
     name = "mirror_pad_test",
     srcs = ["mirror_pad_test.cc"],
@@ -1990,3 +2021,5 @@ cc_test(
         "@com_google_googletest//:gtest",
     ],
 )
+
+tflite_portable_test_suite_combined(combine_conditions = {"deps": [":test_main"]})

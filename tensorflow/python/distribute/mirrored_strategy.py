@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import contextlib
 import copy
+import functools
 import threading
+import weakref
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
@@ -34,7 +36,9 @@ from tensorflow.python.distribute import shared_variable_creator
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -42,6 +46,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
@@ -198,11 +203,12 @@ def _call_for_each_replica(distribution, device_map, fn, args, kwargs):
   return values.regroup(device_map, tuple(t.main_result for t in threads))
 
 
-def _is_device_list_local(devices):
-  """Checks whether the devices list is for local or multi-worker.
+def _is_device_list_single_worker(devices):
+  """Checks whether the devices list is for single or multi-worker.
 
   Args:
-    devices: a list of device strings, either local for remote devices.
+    devices: a list of device strings or tf.config.LogicalDevice objects, for
+      either local or for remote devices.
 
   Returns:
     a boolean indicating whether these device strings are for local or for
@@ -211,24 +217,23 @@ def _is_device_list_local(devices):
   Raises:
     ValueError: if device strings are not consistent.
   """
-  all_local = None
+  specs = []
   for d in devices:
-    d_spec = tf_device.DeviceSpec.from_string(d)
-    is_local = d_spec.job in (None, "localhost")
+    name = d.name if isinstance(d, context.LogicalDevice) else d
+    specs.append(tf_device.DeviceSpec.from_string(name))
+  num_workers = len({(d.job, d.task, d.replica) for d in specs})
+  all_local = all(d.job in (None, "localhost") for d in specs)
+  any_local = any(d.job in (None, "localhost") for d in specs)
 
-    if all_local is None:  # Determine all_local from first device.
-      all_local = is_local
+  if any_local and not all_local:
+    raise ValueError("Local device string cannot have job specified other "
+                     "than 'localhost'")
 
-    if all_local:
-      if not is_local:
-        raise ValueError("Local device string cannot have job specified other "
-                         "than 'localhost'")
-    else:
-      if is_local:
-        raise ValueError("Remote device string must have job specified.")
-      if d_spec.task is None:
-        raise ValueError("Remote device string must have task specified.")
-  return all_local
+  if num_workers == 1 and not all_local:
+    if any(d.task is None for d in specs):
+      raise ValueError("Remote device string must have task specified.")
+
+  return num_workers == 1
 
 
 def _cluster_spec_to_device_list(cluster_spec, num_gpus_per_worker):
@@ -257,7 +262,7 @@ def _group_device_list(devices):
     a dict of list of device strings mapping from task_type to a list of devices
     for the task_type in the asceding order of task_id.
   """
-  assert not _is_device_list_local(devices)
+  assert not _is_device_list_single_worker(devices)
   device_dict = {}
 
   for d in devices:
@@ -297,7 +302,7 @@ def _infer_num_gpus_per_worker(devices):
     ValueError if workers have different number of GPUs or GPU indices are not
     consecutive and starting from 0.
   """
-  if _is_device_list_local(devices):
+  if _is_device_list_single_worker(devices):
     return sum(1 for d in devices if _is_gpu_device(d))
   else:
     device_dict = _group_device_list(devices)
@@ -321,9 +326,10 @@ def _infer_num_gpus_per_worker(devices):
 
 
 def all_local_devices(num_gpus=None):
-  if num_gpus is None:
-    num_gpus = context.num_gpus()
-  return device_util.local_devices_from_num_gpus(num_gpus)
+  devices = config.list_logical_devices("GPU")
+  if num_gpus is not None:
+    devices = devices[:num_gpus]
+  return devices or config.list_logical_devices("CPU")
 
 
 def all_devices():
@@ -335,7 +341,7 @@ def all_devices():
   return devices if devices else all_local_devices()
 
 
-@tf_export("distribute.MirroredStrategy", v1=[])
+@tf_export("distribute.MirroredStrategy", v1=[])  # pylint: disable=g-classes-have-attributes
 class MirroredStrategy(distribute_lib.Strategy):
   """Mirrors vars to distribute across multiple devices and machines.
 
@@ -356,10 +362,12 @@ class MirroredStrategy(distribute_lib.Strategy):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategy, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V2").set(
+        "MirroredStrategy")
 
 
 @tf_export(v1=["distribute.MirroredStrategy"])
-class MirroredStrategyV1(distribute_lib.StrategyV1):
+class MirroredStrategyV1(distribute_lib.StrategyV1):  # pylint: disable=g-missing-docstring
 
   __doc__ = MirroredStrategy.__doc__
 
@@ -367,6 +375,8 @@ class MirroredStrategyV1(distribute_lib.StrategyV1):
     extended = MirroredExtended(
         self, devices=devices, cross_device_ops=cross_device_ops)
     super(MirroredStrategyV1, self).__init__(extended)
+    distribute_lib.distribution_strategy_gauge.get_cell("V1").set(
+        "MirroredStrategy")
 
 
 # TODO(josh11b): Switch to V2 when we no longer need to support tf.compat.v1.
@@ -376,7 +386,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
     if context.executing_eagerly():
-      if devices and not _is_device_list_local(devices):
+      if devices and not _is_device_list_single_worker(devices):
         raise RuntimeError("In-graph multi-worker training with "
                            "`MirroredStrategy` is not supported in eager mode.")
       else:
@@ -395,6 +405,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
                      "any local devices.")
     self._cross_device_ops = cross_device_ops
     self._initialize_strategy(devices)
+    self._cfer_fn_cache = weakref.WeakKeyDictionary()
 
     # TODO(b/128995245): Enable last partial batch support in graph mode.
     if ops.executing_eagerly_outside_functions():
@@ -407,24 +418,30 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     devices = tuple(device_util.resolve(d) for d in devices)
     assert len(set(devices)) == len(devices), (
         "No duplicates allowed in `devices` argument: %s" % (devices,))
-    if _is_device_list_local(devices):
-      self._initialize_local(devices)
+    if _is_device_list_single_worker(devices):
+      self._initialize_single_worker(devices)
     else:
       self._initialize_multi_worker(devices)
 
-  def _initialize_local(self, devices):
-    """Initializes the object for local training."""
-    self._local_mode = True
+  def _initialize_single_worker(self, devices):
+    """Initializes the object for single-worker training."""
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)
     self._inferred_cross_device_ops = None if self._cross_device_ops else (
         cross_device_ops_lib.choose_the_best(devices))
-    self._host_input_device = numpy_dataset.SingleDevice("/cpu:0")
+    self._host_input_device = numpy_dataset.SingleDevice(
+        self._input_workers.worker_devices[0])
     self._is_multi_worker_training = False
+    logging.info("Using MirroredStrategy with devices %r", devices)
+    device_spec = tf_device.DeviceSpec.from_string(
+        self._input_workers.worker_devices[0])
+    # Ensures when we enter strategy.scope() we use the correct default device
+    if device_spec.job is not None and device_spec.job != "localhost":
+      self._default_device = "/job:%s/replica:%d/task:%d" % (
+          device_spec.job, device_spec.replica, device_spec.task)
 
   def _initialize_multi_worker(self, devices):
     """Initializes the object for multi-worker training."""
-    self._local_mode = False
     device_dict = _group_device_list(devices)
     workers = []
     worker_devices = []
@@ -460,6 +477,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
       # TODO(yuefengz): make `choose_the_best` work with device strings
       # containing job names.
       self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
+
+    logging.info("Using MirroredStrategy with remote devices %r", devices)
 
   def _get_variable_creator_initial_value(self,
                                           replica_id,
@@ -523,7 +542,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
           value_list.append(v)
       return value_list
 
-    return distribute_lib.create_mirrored_variable(
+    return values.create_mirrored_variable(
         self._container_strategy(), device_map, logical_device,
         _real_mirrored_creator, values.MirroredVariable,
         values.SyncOnReadVariable, *args, **kwargs)
@@ -652,6 +671,17 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return self._get_cross_device_ops().broadcast(tensor, destinations)
 
   def _call_for_each_replica(self, fn, args, kwargs):
+    if isinstance(fn, def_function.Function):
+      wrapped = self._cfer_fn_cache.get(fn)
+      if wrapped is None:
+        # We need to wrap fn such that it triggers _call_for_each_replica inside
+        # the tf.function.
+        wrapped = fn._clone(  # pylint: disable=protected-access
+            python_function=functools.partial(self._call_for_each_replica,
+                                              fn.python_function))
+        self._cfer_fn_cache[fn] = wrapped
+      return wrapped(args, kwargs)
+
     if context.executing_eagerly():
       logging.log_first_n(logging.WARN, "Using %s eagerly has significant "
                           "overhead currently. We will be working on improving "
@@ -715,7 +745,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, (d, v) in enumerate(zip(var.devices, var.values)):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
                           *values.select_device_mirrored(d, args),
@@ -728,7 +758,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, d in enumerate(colocate_with):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         updates.append(fn(*values.select_device_mirrored(d, args),
                           **values.select_device_mirrored(d, kwargs)))
     return values.update_regroup(self, self._device_map, updates, group)
@@ -842,16 +872,16 @@ class _MirroredReplicaThread(threading.Thread):
     context.ensure_initialized()
     ctx = context.context()
     self.in_eager = ctx.executing_eagerly()
-    self.record_thread_local_context_fields()
+    self.record_thread_local_summary_state()
+    self.record_thread_local_eager_context_state()
     self.context_device_policy = (
         pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
-            ctx._context_handle))
+            ctx._context_handle))  # pylint: disable=protected-access
     self.graph = ops.get_default_graph()
     with ops.init_scope():
       self._init_in_eager = context.executing_eagerly()
       self._init_graph = ops.get_default_graph()
-
-    self._variable_creator_stack = self.graph._variable_creator_stack[:]
+    self._variable_creator_stack = self.graph._variable_creator_stack[:]   # pylint: disable=protected-access
     self._var_scope = variable_scope.get_variable_scope()
     # Adding a "/" at end lets us re-enter this scope later.
     self._name_scope = self.graph.get_name_scope()
@@ -868,7 +898,8 @@ class _MirroredReplicaThread(threading.Thread):
     try:
       if self.coord.should_stop():
         return
-      self.restore_thread_local_context_fields()
+      self.restore_thread_local_summary_state()
+      self.restore_thread_local_eager_context_state()
       # TODO(josh11b): Use current logical device instead of 0 here.
       with self.coord.stop_on_exception(), \
           _enter_graph(self._init_graph, self._init_in_eager), \
@@ -888,25 +919,37 @@ class _MirroredReplicaThread(threading.Thread):
     finally:
       self.has_paused.set()
 
-  def record_thread_local_context_fields(self):
-    """Record thread local fields of context.context() in self."""
-    ctx = context.context()
-    self._summary_step = ctx.summary_step
-    self._summary_writer = ctx.summary_writer
-    self._summary_recording = ctx.summary_recording
+  def record_thread_local_summary_state(self):
+    """Record the thread local summary state in self."""
+    # TODO(slebedev): is this still relevant? the referenced bug is closed.
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    self._summary_step = summary_state.step
+    self._summary_writer = summary_state.writer
+    self._summary_recording = summary_state.is_recording
     self._summary_recording_distribution_strategy = (
-        ctx.summary_recording_distribution_strategy)
+        summary_state.is_recording_distribution_strategy)
+
+  def restore_thread_local_summary_state(self):
+    """Restore thread local summary state from self."""
+    # TODO(slebedev): is this still relevant? the referenced bug is closed.
+    summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
+    summary_state.step = self._summary_step
+    summary_state.writer = self._summary_writer
+    summary_state.is_recording = self._summary_recording
+    summary_state.is_recording_distribution_strategy = (
+        self._summary_recording_distribution_strategy)
+
+  def record_thread_local_eager_context_state(self):
+    ctx = context.context()
+    eager_context_state = ctx._thread_local_data  # pylint: disable=protected-access
+    self._eager_context_op_callbacks = eager_context_state.op_callbacks
     # TODO(b/125892694): record other fields in EagerContext.
 
-  def restore_thread_local_context_fields(self):
-    """Restore thread local fields of context.context() from self."""
+  def restore_thread_local_eager_context_state(self):
     ctx = context.context()
-    ctx.summary_step = self._summary_step
-    ctx.summary_writer = self._summary_writer
-    ctx.summary_recording = self._summary_recording
-    ctx.summary_recording_distribution_strategy = (
-        self._summary_recording_distribution_strategy)
-    # TODO(b/125892694): restore other fields in EagerContext.
+    eager_context_state = ctx._thread_local_data  # pylint: disable=protected-access
+    eager_context_state.op_callbacks = self._eager_context_op_callbacks
+    # TODO(b/125892694): record other fields in EagerContext.
 
 
 class MirroredReplicaContext(distribute_lib.ReplicaContext):

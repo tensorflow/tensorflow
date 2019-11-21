@@ -35,10 +35,10 @@ public:
   QuantizationDialect(MLIRContext *context);
 
   /// Parse a type registered to this dialect.
-  Type parseType(StringRef spec, Location loc) const override;
+  Type parseType(DialectAsmParser &parser) const override;
 
   /// Print a type registered to this dialect.
-  void printType(Type type, raw_ostream &os) const override;
+  void printType(Type type, DialectAsmPrinter &os) const override;
 };
 
 #define GET_OP_CLASSES

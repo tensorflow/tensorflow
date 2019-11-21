@@ -45,7 +45,7 @@ namespace mlir {
 namespace tblgen {
 
 // Wrapper class that contains a MLIR op's information (e.g., operands,
-// atributes) defined in TableGen and provides helper methods for
+// attributes) defined in TableGen and provides helper methods for
 // accessing them.
 class Operator {
 public:
@@ -96,7 +96,7 @@ public:
   // Returns the number of variadic results in this operation.
   unsigned getNumVariadicResults() const;
 
-  // Op attribute interators.
+  // Op attribute iterators.
   using attribute_iterator = const NamedAttribute *;
   attribute_iterator attribute_begin() const;
   attribute_iterator attribute_end() const;
@@ -123,6 +123,14 @@ public:
 
   // Returns the total number of arguments.
   int getNumArgs() const { return arguments.size(); }
+
+  using arg_iterator = const Argument *;
+  using arg_range = llvm::iterator_range<arg_iterator>;
+
+  // Op argument (attribute or operand) iterators.
+  arg_iterator arg_begin() const;
+  arg_iterator arg_end() const;
+  arg_range getArgs() const;
 
   // Op argument (attribute or operand) accessors.
   Argument getArg(int index) const;
@@ -160,6 +168,13 @@ public:
   // temporary solution to OpEmitter requiring a Record because Operator does
   // not provide enough methods.
   const llvm::Record &getDef() const;
+
+  // Returns the dialect of the op.
+  const Dialect &getDialect() const { return dialect; }
+
+  // Prints the contents in this operator to the given `os`. This is used for
+  // debugging purposes.
+  void print(llvm::raw_ostream &os) const;
 
 private:
   // Populates the vectors containing operands, attributes, results and traits.

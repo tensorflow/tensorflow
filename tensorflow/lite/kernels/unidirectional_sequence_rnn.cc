@@ -12,20 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
+#include <cstddef>
+#include <cstdint>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -222,24 +216,12 @@ TfLiteStatus EvalHybrid(
 
   // Initialize input_weights, recurrent_weights, and temporary storage for
   // quantized values.
-  const int8_t* input_weights_ptr;
-  const int8_t* recurrent_weights_ptr;
-  int8_t* quantized_input_ptr;
-  int8_t* quantized_hidden_state_ptr;
-  if (input_weights->type == kTfLiteUInt8) {
-    input_weights_ptr =
-        reinterpret_cast<const int8_t*>(input_weights->data.uint8);
-    recurrent_weights_ptr =
-        reinterpret_cast<const int8_t*>(recurrent_weights->data.uint8);
-    quantized_input_ptr = reinterpret_cast<int8_t*>(input_scratch->data.uint8);
-    quantized_hidden_state_ptr =
-        reinterpret_cast<int8_t*>(hidden_state_scratch->data.uint8);
-  } else {
-    input_weights_ptr = input_weights->data.int8;
-    recurrent_weights_ptr = recurrent_weights->data.int8;
-    quantized_input_ptr = input_scratch->data.int8;
-    quantized_hidden_state_ptr = hidden_state_scratch->data.int8;
-  }
+  const int8_t* input_weights_ptr = GetTensorData<int8_t>(input_weights);
+  const int8_t* recurrent_weights_ptr =
+      GetTensorData<int8_t>(recurrent_weights);
+  int8_t* quantized_input_ptr = GetTensorData<int8_t>(input_scratch);
+  int8_t* quantized_hidden_state_ptr =
+      GetTensorData<int8_t>(hidden_state_scratch);
 
   // Get the scale of the quantized weights.
   float input_weights_scale = input_weights->params.scale;

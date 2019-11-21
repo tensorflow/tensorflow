@@ -23,10 +23,9 @@
 #include "mlir/Target/NVVMIR.h"
 
 #include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"
-#include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/Support/FileUtilities.h"
 #include "mlir/Target/LLVMIR/ModuleTranslation.h"
 #include "mlir/Translation.h"
 
@@ -43,6 +42,17 @@ static llvm::Value *createIntrinsicCall(llvm::IRBuilder<> &builder,
   llvm::Module *module = builder.GetInsertBlock()->getModule();
   llvm::Function *fn = llvm::Intrinsic::getDeclaration(module, intrinsic);
   return builder.CreateCall(fn, args);
+}
+
+static llvm::Intrinsic::ID getShflBflyIntrinsicId(llvm::Type *resultType,
+                                                  bool withPredicate) {
+  if (withPredicate) {
+    resultType = cast<llvm::StructType>(resultType)->getElementType(0);
+    return resultType->isFloatTy() ? llvm::Intrinsic::nvvm_shfl_sync_bfly_f32p
+                                   : llvm::Intrinsic::nvvm_shfl_sync_bfly_i32p;
+  }
+  return resultType->isFloatTy() ? llvm::Intrinsic::nvvm_shfl_sync_bfly_f32
+                                 : llvm::Intrinsic::nvvm_shfl_sync_bfly_i32;
 }
 
 class ModuleTranslation : public LLVM::ModuleTranslation {
@@ -67,11 +77,13 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(ModuleOp m) {
   ModuleTranslation translation(m);
   auto llvmModule =
       LLVM::ModuleTranslation::translateModule<ModuleTranslation>(m);
+  if (!llvmModule)
+    return llvmModule;
 
   // Insert the nvvm.annotations kernel so that the NVVM backend recognizes the
   // function as a kernel.
-  for (FuncOp func : m.getOps<FuncOp>()) {
-    if (!func.getAttrOfType<UnitAttr>(gpu::GPUDialect::getKernelFuncAttrName()))
+  for (auto func : m.getOps<LLVM::LLVMFuncOp>()) {
+    if (!gpu::GPUDialect::isKernel(func))
       continue;
 
     auto *llvmFunc = llvmModule->getFunction(func.getName());
@@ -92,19 +104,11 @@ std::unique_ptr<llvm::Module> mlir::translateModuleToNVVMIR(ModuleOp m) {
 
 static TranslateFromMLIRRegistration
     registration("mlir-to-nvvmir",
-                 [](ModuleOp module, llvm::StringRef outputFilename) {
-                   if (!module)
-                     return failure();
-
+                 [](ModuleOp module, llvm::raw_ostream &output) {
                    auto llvmModule = mlir::translateModuleToNVVMIR(module);
                    if (!llvmModule)
                      return failure();
 
-                   auto file = openOutputFile(outputFilename);
-                   if (!file)
-                     return failure();
-
-                   llvmModule->print(file->os(), nullptr);
-                   file->keep();
+                   llvmModule->print(output, nullptr);
                    return success();
                  });

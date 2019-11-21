@@ -89,7 +89,7 @@ message ProcessMetrics {
 
 // Parameters that define how images are preprocessed.
 //
-// Next ID: 6
+// Next ID: 7
 message ImagePreprocessingParams {
   // Required.
   optional int32 image_height = 1;
@@ -106,6 +106,9 @@ message ImagePreprocessingParams {
   // Set this flag if the image is preprocessed and saved as binary file.
   // In that case, we only do the quantization if needed.
   optional bool load_raw_images = 5 [default = false];
+  // If this flag is true, the resize function will preserve the image's
+  // aspect ratio.
+  optional bool aspect_preserving = 6 [default = false];
 }
 
 // Parameters that control TFLite inference.
@@ -207,7 +210,7 @@ message InferenceProfilerMetrics {
 // Proto containing information about all the objects (predicted or
 // ground-truth) contained in an image.
 //
-// Next ID: 3
+// Next ID: 4
 message ObjectDetectionResult {
   // One instance of an object detected in an image.
   // Next ID: 4
@@ -235,8 +238,10 @@ message ObjectDetectionResult {
   }
 
   repeated ObjectInstance objects = 1;
-  // Required for ground-truth data, to compare against inference results.
+  // Filename of the image.
   optional string image_name = 2;
+  // Unique id for the image.
+  optional int64 image_id = 3;
 }
 
 // Proto containing ground-truth ObjectsSets for all images in a COCO validation

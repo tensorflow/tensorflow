@@ -21,6 +21,7 @@
 
 #include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
@@ -32,6 +33,22 @@ using namespace mlir::linalg;
 
 using llvm::dbgs;
 
+static StringRef toStringRef(LinalgDependenceGraph::DependenceType dt) {
+  switch (dt) {
+  case LinalgDependenceGraph::DependenceType::RAW:
+    return "RAW";
+  case LinalgDependenceGraph::DependenceType::RAR:
+    return "RAR";
+  case LinalgDependenceGraph::DependenceType::WAR:
+    return "WAR";
+  case LinalgDependenceGraph::DependenceType::WAW:
+    return "WAW";
+  default:
+    break;
+  }
+  llvm_unreachable("Unexpected DependenceType");
+}
+
 Value *Aliases::find(Value *v) {
   if (isa<BlockArgument>(v))
     return v;
@@ -39,7 +56,7 @@ Value *Aliases::find(Value *v) {
   auto it = aliases.find(v);
   if (it != aliases.end()) {
     assert(((isa<BlockArgument>(it->getSecond()) &&
-             it->getSecond()->getType().isa<ViewType>()) ||
+             it->getSecond()->getType().isa<MemRefType>()) ||
             it->getSecond()->getType().isa<BufferType>()) &&
            "Buffer or block argument expected");
     return it->getSecond();
@@ -48,21 +65,32 @@ Value *Aliases::find(Value *v) {
   while (true) {
     if (isa<BlockArgument>(v))
       return v;
+    if (auto alloc = dyn_cast_or_null<AllocOp>(v->getDefiningOp())) {
+      if (isStrided(alloc.getType()))
+        return alloc.getResult();
+    }
     if (auto slice = dyn_cast_or_null<SliceOp>(v->getDefiningOp())) {
       auto it = aliases.insert(std::make_pair(v, find(slice.view())));
       return it.first->second;
     }
     if (auto view = dyn_cast_or_null<ViewOp>(v->getDefiningOp())) {
-      auto it = aliases.insert(std::make_pair(v, view.buffer()));
+      auto it = aliases.insert(std::make_pair(v, view.source()));
       return it.first->second;
     }
     if (auto view = dyn_cast_or_null<SubViewOp>(v->getDefiningOp())) {
-      v = view.getView();
+      v = view.source();
       continue;
     }
     llvm::errs() << "View alias analysis reduces to: " << *v << "\n";
     llvm_unreachable("unsupported view alias case");
   }
+}
+
+LinalgDependenceGraph
+LinalgDependenceGraph::buildDependenceGraph(Aliases &aliases, FuncOp f) {
+  SmallVector<Operation *, 8> linalgOps;
+  f.walk([&](LinalgOp op) { linalgOps.push_back(op); });
+  return LinalgDependenceGraph(aliases, linalgOps);
 }
 
 LinalgDependenceGraph::LinalgDependenceGraph(Aliases &aliases,
@@ -82,8 +110,9 @@ LinalgDependenceGraph::LinalgDependenceGraph(Aliases &aliases,
 void LinalgDependenceGraph::addDependenceElem(DependenceType dt,
                                               LinalgOpView indexingOpView,
                                               LinalgOpView dependentOpView) {
-  LLVM_DEBUG(dbgs() << "\nAdd dep type " << dt << ":\t" << *indexingOpView.op
-                    << " -> " << *dependentOpView.op);
+  LLVM_DEBUG(dbgs() << "\nAdd dep type " << toStringRef(dt) << ":\t"
+                    << *indexingOpView.op << " -> " << *dependentOpView.op);
+  (void)toStringRef;
   dependencesFromGraphs[dt][indexingOpView.op].push_back(
       LinalgDependenceGraphElem{dependentOpView, indexingOpView.view});
   dependencesIntoGraphs[dt][dependentOpView.op].push_back(
@@ -92,28 +121,32 @@ void LinalgDependenceGraph::addDependenceElem(DependenceType dt,
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesFrom(
-    LinalgOp src, LinalgDependenceGraph::DependenceType dt) {
+    LinalgOp src, LinalgDependenceGraph::DependenceType dt) const {
   return getDependencesFrom(src.getOperation(), dt);
 }
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesFrom(
-    Operation *src, LinalgDependenceGraph::DependenceType dt) {
-  auto &vec = dependencesFromGraphs[dt][src];
-  return llvm::make_range(vec.begin(), vec.end());
+    Operation *src, LinalgDependenceGraph::DependenceType dt) const {
+  auto iter = dependencesFromGraphs[dt].find(src);
+  if (iter == dependencesFromGraphs[dt].end())
+    return llvm::make_range(nullptr, nullptr);
+  return llvm::make_range(iter->second.begin(), iter->second.end());
 }
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesInto(
-    LinalgOp dst, LinalgDependenceGraph::DependenceType dt) {
+    LinalgOp dst, LinalgDependenceGraph::DependenceType dt) const {
   return getDependencesInto(dst.getOperation(), dt);
 }
 
 LinalgDependenceGraph::dependence_range
 LinalgDependenceGraph::getDependencesInto(
-    Operation *dst, LinalgDependenceGraph::DependenceType dt) {
-  auto &vec = dependencesIntoGraphs[dt][dst];
-  return llvm::make_range(vec.begin(), vec.end());
+    Operation *dst, LinalgDependenceGraph::DependenceType dt) const {
+  auto iter = dependencesIntoGraphs[dt].find(dst);
+  if (iter == dependencesIntoGraphs[dt].end())
+    return llvm::make_range(nullptr, nullptr);
+  return llvm::make_range(iter->second.begin(), iter->second.end());
 }
 
 void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
@@ -157,23 +190,21 @@ void LinalgDependenceGraph::addDependencesBetween(LinalgOp src, LinalgOp dst) {
 
 SmallVector<Operation *, 8>
 LinalgDependenceGraph::findCoveringDependences(LinalgOp srcLinalgOp,
-                                               LinalgOp dstLinalgOp) {
+                                               LinalgOp dstLinalgOp) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, nullptr,
       {DependenceType::WAW, DependenceType::WAR, DependenceType::RAW});
 }
 
-SmallVector<Operation *, 8>
-LinalgDependenceGraph::findCoveringWrites(LinalgOp srcLinalgOp,
-                                          LinalgOp dstLinalgOp, Value *view) {
+SmallVector<Operation *, 8> LinalgDependenceGraph::findCoveringWrites(
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, view,
       {DependenceType::WAW, DependenceType::WAR});
 }
 
-SmallVector<Operation *, 8>
-LinalgDependenceGraph::findCoveringReads(LinalgOp srcLinalgOp,
-                                         LinalgOp dstLinalgOp, Value *view) {
+SmallVector<Operation *, 8> LinalgDependenceGraph::findCoveringReads(
+    LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view) const {
   return findOperationsWithCoveringDependences(
       srcLinalgOp, dstLinalgOp, view,
       {DependenceType::RAR, DependenceType::RAW});
@@ -182,11 +213,11 @@ LinalgDependenceGraph::findCoveringReads(LinalgOp srcLinalgOp,
 SmallVector<Operation *, 8>
 LinalgDependenceGraph::findOperationsWithCoveringDependences(
     LinalgOp srcLinalgOp, LinalgOp dstLinalgOp, Value *view,
-    ArrayRef<DependenceType> types) {
+    ArrayRef<DependenceType> types) const {
   auto *src = srcLinalgOp.getOperation();
   auto *dst = dstLinalgOp.getOperation();
-  auto srcPos = linalgOpPositions[src];
-  auto dstPos = linalgOpPositions[dst];
+  auto srcPos = linalgOpPositions.lookup(src);
+  auto dstPos = linalgOpPositions.lookup(dst);
   assert(srcPos < dstPos && "expected dst after src in IR traversal order");
 
   SmallVector<Operation *, 8> res;
@@ -195,16 +226,16 @@ LinalgDependenceGraph::findOperationsWithCoveringDependences(
   // TODO(ntv) we are not considering paths yet, just interleaved positions.
   for (auto dt : types) {
     for (auto dependence : getDependencesFrom(src, dt)) {
-      auto interimPos = linalgOpPositions[dependence.dependentOpView.op];
+      auto interimPos = linalgOpPositions.lookup(dependence.dependentOpView.op);
       // Skip if not interleaved.
       if (interimPos >= dstPos || interimPos <= srcPos)
         continue;
       if (view && !aliases.alias(view, dependence.indexingView))
         continue;
       auto *op = dependence.dependentOpView.op;
-      LLVM_DEBUG(dbgs() << "\n***Found covering dependence of type " << dt
-                        << ": " << *src << " -> " << *op << " on "
-                        << *dependence.indexingView);
+      LLVM_DEBUG(dbgs() << "\n***Found covering dependence of type "
+                        << toStringRef(dt) << ": " << *src << " -> " << *op
+                        << " on " << *dependence.indexingView);
       res.push_back(op);
     }
   }

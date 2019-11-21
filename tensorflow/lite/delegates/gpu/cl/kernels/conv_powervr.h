@@ -53,6 +53,7 @@ class ConvPowerVR : public GPUOperation {
   struct ConvParams {
     int3 block_size;
     int3 work_group_size;
+    int3 work_group_launch_order;
     int src_depth_loop_size;
     bool explicit_sync;
     bool x_kernel_is_1;
@@ -60,29 +61,43 @@ class ConvPowerVR : public GPUOperation {
   };
 
   ConvPowerVR(const OperationDef& definition,
-              const Convolution2DAttributes& attr,
-              const ConvParams& conv_params);
+              const Convolution2DAttributes& attr, const CLDevice& device);
+  ConvPowerVR(const OperationDef& definition,
+              const FullyConnectedAttributes& attr, const CLDevice& device);
+
+  template <DataType T>
+  Status UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                    const ::tflite::gpu::Tensor<Linear, T>& biases,
+                    CLContext* context);
   template <DataType T>
   Status UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
                        CLContext* context);
-  template <DataType S, typename T>
-  void RearrangeWeight(const ::tflite::gpu::Tensor<OHWI, S>& weights,
-                       absl::Span<T> dst);
 
   friend Status CreateConvPowerVR(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const Convolution2DAttributes& attr,
                                   ConvPowerVR* result);
 
+  friend Status CreateConvPowerVR(const CreationContext& creation_context,
+                                  const OperationDef& definition,
+                                  const FullyConnectedAttributes& attr,
+                                  ConvPowerVR* result);
+
   friend std::string GenerateConvPowerVR1x1(
-      const TensorDescriptor& src_descriptor,
-      const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+      const OperationDef& op_def, bool stride_correction,
       const ConvParams& conv_params,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
-  friend ConvParams GuessBestParams(const CLDevice& device,
-                                    const OperationDef& definition,
-                                    const Convolution2DAttributes& attr);
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition,
+                             const Convolution2DAttributes& attr) const;
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition,
+                             const FullyConnectedAttributes& attr) const;
+  ConvParams GuessBestParams(const CLDevice& device,
+                             const OperationDef& definition, int src_depth,
+                             int dst_depth, bool x_kernel_is_1,
+                             bool y_kernel_is_1) const;
 
   Status BindArguments();
   int3 GetGridSize() const;
@@ -96,6 +111,21 @@ class ConvPowerVR : public GPUOperation {
 
   CLKernel kernel_;
 };
+
+template <DataType T>
+Status ConvPowerVR::UploadData(const ::tflite::gpu::Tensor<OHWI, T>& weights,
+                               const ::tflite::gpu::Tensor<Linear, T>& biases,
+                               CLContext* context) {
+  RETURN_IF_ERROR(UploadWeights(weights, context));
+  LinearStorageCreateInfo create_info;
+  create_info.storage_type = LinearStorageType::BUFFER;
+  create_info.data_type = definition_.precision == CalculationsPrecision::F16
+                              ? DataType::FLOAT16
+                              : DataType::FLOAT32;
+  create_info.aligned_size = weights.shape.o;
+  RETURN_IF_ERROR(CreateLinearStorage(create_info, biases, context, &biases_));
+  return OkStatus();
+}
 
 template <DataType T>
 Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
@@ -112,60 +142,27 @@ Status ConvPowerVR::UploadWeights(const ::tflite::gpu::Tensor<OHWI, T>& weights,
 
   if (f32_weights) {
     std::vector<float4> gpu_data(elements_count);
-    RearrangeWeight(weights, absl::MakeSpan(gpu_data));
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                     absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
   } else {
     std::vector<half4> gpu_data(elements_count);
-    RearrangeWeight(weights, absl::MakeSpan(gpu_data));
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                     absl::MakeSpan(gpu_data));
     return CreateReadOnlyBuffer(float4_size * elements_count, gpu_data.data(),
                                 context, &weights_);
-  }
-}
-
-template <DataType S, typename T>
-void ConvPowerVR::RearrangeWeight(const ::tflite::gpu::Tensor<OHWI, S>& weights,
-                                  absl::Span<T> dst) {
-  const int dst_depth = IntegralDivideRoundUp(weights.shape.o, 4);
-  const int src_depth = IntegralDivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
-
-  int counter = 0;
-  for (int d = 0;
-       d < IntegralDivideRoundUp(dst_depth, conv_params_.block_size.z); ++d) {
-    for (int y = 0; y < kernel_y; ++y) {
-      for (int x = 0; x < kernel_x; ++x) {
-        for (int s = 0; s < src_depth; ++s) {
-          for (int k = 0; k < conv_params_.block_size.z; ++k) {
-            T filters[4];
-            for (int i = 0; i < 4; ++i) {
-              for (int j = 0; j < 4; ++j) {
-                const int s_ch = s * 4 + j;
-                const int d_ch = (d * conv_params_.block_size.z + k) * 4 + i;
-                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                  const int f_index =
-                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
-                  filters[j][i] = weights.data[f_index];
-                } else {
-                  filters[j][i] = 0.0f;
-                }
-              }
-            }
-            dst[counter++] = filters[0];
-            dst[counter++] = filters[1];
-            dst[counter++] = filters[2];
-            dst[counter++] = filters[3];
-          }
-        }
-      }
-    }
   }
 }
 
 Status CreateConvPowerVR(const CreationContext& creation_context,
                          const OperationDef& definition,
                          const Convolution2DAttributes& attr,
+                         ConvPowerVR* result);
+
+Status CreateConvPowerVR(const CreationContext& creation_context,
+                         const OperationDef& definition,
+                         const FullyConnectedAttributes& attr,
                          ConvPowerVR* result);
 
 }  // namespace cl

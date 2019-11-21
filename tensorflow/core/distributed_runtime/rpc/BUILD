@@ -108,6 +108,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -123,6 +124,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
+        "@com_google_absl//absl/flags:flag",
     ],
 )
 
@@ -226,6 +228,7 @@ cc_library(
         "//tensorflow/core/distributed_runtime:call_options",
         "//tensorflow/core/distributed_runtime:master_interface",
         "//tensorflow/core/profiler/lib:traceme",
+        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -295,6 +298,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/distributed_runtime:collective_param_resolver_distributed",
         "//tensorflow/core/distributed_runtime:device_resolver_distributed",

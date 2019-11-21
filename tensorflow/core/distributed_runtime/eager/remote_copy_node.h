@@ -65,6 +65,8 @@ class RemoteCopyNode : public AsyncEagerNode {
 
   ~RemoteCopyNode() override;
 
+  Status Prepare() override;
+
   void RunAsync(StatusCallback done) override;
 
   void Abort(Status status) override;

@@ -54,6 +54,9 @@ class _LazyLoader(_types.ModuleType):
     module = self._load()
     return dir(module)
 
+  def __reduce__(self):
+    return __import__, (self.__name__,)
+
 
 # Forwarding a module is as simple as lazy loading the module from the new path
 # and then registering it to sys.modules using the old path
@@ -75,7 +78,6 @@ _top_level_modules = [
     "tensorflow.compiler",
     "tensorflow.lite",
     "tensorflow.keras",
-    "tensorflow.contrib",
     "tensorflow.compat",
     "tensorflow.summary",  # tensorboard
     "tensorflow.examples",
@@ -107,6 +109,11 @@ if not isinstance(_sys.modules[__name__], _deprecation.DeprecationWrapper):
 # These should not be visible in the main tf module.
 try:
   del core
+except NameError:
+  pass
+
+try:
+  del python
 except NameError:
   pass
 

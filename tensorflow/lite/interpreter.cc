@@ -52,7 +52,7 @@ namespace tflite {
 
 namespace {
 
-// Gets the current TfLiteQuantization from the legacy fLiteQuantizationParams.
+// Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
 TfLiteQuantization GetQuantizationFromLegacy(
     const TfLiteQuantizationParams& legacy_quantization) {
   TfLiteQuantization quantization;
@@ -172,6 +172,13 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
                                             const std::vector<int>& dims) {
   return primary_subgraph().ResizeInputTensor(tensor_index, dims);
+}
+
+TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
+  // TODO(b/138790287): We could do this for all subgraphs whose tensors have
+  // been allocated. However, AllocateTensors() relies on Control Flow ops to
+  // allocate tensors on 'children' subgraphs. Revisit this if required.
+  return primary_subgraph().ReleaseNonPersistentMemory();
 }
 
 TfLiteStatus Interpreter::Invoke() {
@@ -314,7 +321,10 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 }
 
 void Interpreter::SetProfiler(Profiler* profiler) {
-  for (auto& subgraph : subgraphs_) subgraph->SetProfiler(profiler);
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);
+  }
 }
 
 Profiler* Interpreter::GetProfiler() {

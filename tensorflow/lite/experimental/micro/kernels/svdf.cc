@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/kernels/activation_utils.h"
+#include "tensorflow/lite/experimental/micro/micro_utils.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
@@ -41,55 +42,6 @@ namespace {
  * resizing.
  */
 
-// TODO(kreeger): Create a uint8-specific version of this when refactoring.
-// TODO(kreeger): Remove these quantization methods when tensor_utils is ready
-// for micro (b/140272187).
-void SymmetricQuantizeFloats(const float* values, const int size,
-                             int8_t* quantized_values, float* scaling_factor) {
-  // First, find min/max in values
-  float min_value = values[0];
-  float max_value = values[0];
-  for (int i = 1; i < size; ++i) {
-    if (values[i] < min_value) {
-      min_value = values[i];
-    }
-    if (values[i] > max_value) {
-      max_value = values[i];
-    }
-  }
-
-  const float range = fmaxf(fabsf(min_value), fabsf(max_value));
-  if (range == 0.0f) {
-    for (int i = 0; i < size; ++i) {
-      quantized_values[i] = 0;
-    }
-    *scaling_factor = 1;
-    return;
-  }
-
-  const int kScale = 127;
-  *scaling_factor = range / kScale;
-  const float scaling_factor_inv = kScale / range;
-  for (int i = 0; i < size; ++i) {
-    const int32_t quantized_value =
-        static_cast<int32_t>(roundf(values[i] * scaling_factor_inv));
-    // Clamp: just in case some odd numeric offset.
-    quantized_values[i] = fminf(kScale, fmaxf(-kScale, quantized_value));
-  }
-}
-
-// TODO(kreeger): Port this to a micro-utils file.
-// TODO(kreeger): Than main difference between svdf.h in the reference kernel is
-// the use of tensor_utils/portable_tensor_utils. Those utility methods are not
-// currently ready for use in tflite-micro (see b/140272187).
-void SymmetricDequantizeFloats(const int8_t* values, const int size,
-                               const float dequantization_scale,
-                               float* dequantized_values) {
-  for (int i = 0; i < size; ++i) {
-    dequantized_values[i] = values[i] * dequantization_scale;
-  }
-}
-
 // TODO(kreeger): upstream these reference methods into
 // `lite/kernels/reference/svdf.h`
 
@@ -98,7 +50,7 @@ static inline void ApplyTimeWeightsBiasAndActivation(
     const TfLiteTensor* weights_time, const TfLiteTensor* bias,
     TfLiteFusedActivation activation, TfLiteTensor* activation_state,
     TfLiteTensor* scratch, TfLiteTensor* output) {
-  // Compute matmul(state, weights_time).
+  // Compute matmul(activation_state, weights_time).
   // The rightmost column is used to save temporary output (with the size of
   // num_filters). This is achieved by starting at
   // GetTensorData<float>(activation_state), and having the stride equal to
@@ -185,7 +137,8 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
                           const TfLiteTensor* weights_time,
                           const TfLiteTensor* bias,
                           const TfLiteSVDFParams* params, TfLiteTensor* scratch,
-                          TfLiteTensor* state, TfLiteTensor* output) {
+                          TfLiteTensor* activation_state,
+                          TfLiteTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -193,12 +146,12 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   const int num_units = num_filters / rank;
   const int memory_size = weights_time->dims->data[1];
 
-  // Clear the activation (state's leftmost column).
+  // Clear the activation (activation_state's leftmost column).
   // TODO(ghodrat): Add a test which initialize activation_state with invalid
   // values in leftmost column and make sure it passes.
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
-        GetTensorData<float>(state) + b * memory_size * num_filters;
+        GetTensorData<float>(activation_state) + b * memory_size * num_filters;
     for (int c = 0; c < num_filters; ++c) {
       float* state_ptr = state_ptr_batch + c * memory_size;
       state_ptr[memory_size - 1] = 0.0f;
@@ -206,14 +159,15 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
   }
 
   // Compute conv1d(inputs, weights_feature).
-  // The state's rightmost column is used to save current cycle activation. This
-  // is achieved by starting at GetTensorData<float>(state)[memory_size - 1] and
-  // having the stride equal to memory_size.
+  // The activation_state's rightmost column is used to save current cycle
+  // activation. This is achieved by starting at
+  // GetTensorData<float>(activation_state)[memory_size - 1] and having the
+  // stride equal to memory_size.
 
   // Perform batched matrix vector multiply accumulate operation:
   const float* matrix = GetTensorData<float>(weights_feature);
   const float* vector = GetTensorData<float>(input);
-  float* result = &GetTensorData<float>(state)[memory_size - 1];
+  float* result = &GetTensorData<float>(activation_state)[memory_size - 1];
   float* result_in_batch = result;
   for (int i = 0; i < batch_size; ++i) {
     const float* matrix_ptr = matrix;
@@ -228,9 +182,9 @@ inline void EvalFloatSVDF(TfLiteContext* context, TfLiteNode* node,
     }
   }
 
-  ApplyTimeWeightsBiasAndActivation(batch_size, memory_size, num_filters,
-                                    num_units, rank, weights_time, bias,
-                                    params->activation, state, scratch, output);
+  ApplyTimeWeightsBiasAndActivation(
+      batch_size, memory_size, num_filters, num_units, rank, weights_time, bias,
+      params->activation, activation_state, scratch, output);
 }
 
 inline void EvalHybridSVDF(
@@ -238,7 +192,8 @@ inline void EvalHybridSVDF(
     const TfLiteTensor* weights_feature, const TfLiteTensor* weights_time,
     const TfLiteTensor* bias, const TfLiteSVDFParams* params,
     TfLiteTensor* scratch, TfLiteTensor* scaling_factors,
-    TfLiteTensor* input_quantized, TfLiteTensor* state, TfLiteTensor* output) {
+    TfLiteTensor* input_quantized, TfLiteTensor* activation_state,
+    TfLiteTensor* output) {
   const int rank = params->rank;
   const int batch_size = input->dims->data[0];
   const int input_size = input->dims->data[1];
@@ -249,17 +204,8 @@ inline void EvalHybridSVDF(
   // Initialize the pointer to input.
   const float* input_ptr_batch = GetTensorData<float>(input);
 
-  int8_t* quantized_input_ptr_batch;
-  const int8_t* weights_feature_ptr;
-  if (weights_feature->type == kTfLiteUInt8) {
-    quantized_input_ptr_batch =
-        reinterpret_cast<int8_t*>(GetTensorData<uint8_t>(input_quantized));
-    weights_feature_ptr = reinterpret_cast<const int8_t*>(
-        GetTensorData<uint8_t>(weights_feature));
-  } else {
-    quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
-    weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
-  }
+  int8_t* quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
+  const int8_t* weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
 
   // Initialize the pointer to storage for scaling factors.
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
@@ -267,13 +213,13 @@ inline void EvalHybridSVDF(
   // Initialize the weights scale.
   const float weights_feature_scale = weights_feature->params.scale;
 
-  // Clear the activation (state's leftmost column).
-  // TODO(ghodrat): Add a test which initialize state with invalid values in
-  // the leftmost column and make sure it passes.
+  // Clear the activation (activation_state's leftmost column).
+  // TODO(ghodrat): Add a test which initialize activation_state with invalid
+  // values in the leftmost column and make sure it passes.
   // TODO(kreeger): Use a port of tensor_utils when ready (b/140272187).
   for (int b = 0; b < batch_size; ++b) {
     float* state_ptr_batch =
-        GetTensorData<float>(state) + b * memory_size * num_filters;
+        GetTensorData<float>(activation_state) + b * memory_size * num_filters;
     for (int c = 0; c < num_filters; ++c) {
       float* state_ptr = state_ptr_batch + c * memory_size;
       state_ptr[memory_size - 1] = 0.0;
@@ -289,23 +235,21 @@ inline void EvalHybridSVDF(
   }
 
   if (!is_zero_vector) {
+    SignedSymmetricPerChannelQuantize(input_ptr_batch, input->dims, 0,
+                                      quantized_input_ptr_batch,
+                                      scaling_factors_ptr);
+
     // Quantize input from float to int8.
     for (int b = 0; b < batch_size; ++b) {
-      const int offset = b * input_size;
-      SymmetricQuantizeFloats(input_ptr_batch + offset, input_size,
-                              quantized_input_ptr_batch + offset,
-                              &scaling_factors_ptr[b]);
       scaling_factors_ptr[b] *= weights_feature_scale;
     }
 
     // Compute conv1d(inputs, weights_feature).
-    // The rightmost column of state is used to save the current cycle
-    // activation.
-    // This is achieved by starting at
-    // GetTensorData<float>(state)[memory_size - 1] and having the stride equal
-    // to memory_size.
-    // (Matrix batch vector multiply accumulate)
-    float* result = &GetTensorData<float>(state)[memory_size - 1];
+    // The rightmost column of activation_state is used to save the current
+    // cycle activation. This is achieved by starting at
+    // GetTensorData<float>(activation_state)[memory_size - 1] and having the
+    // stride equal to memory_size. (Matrix batch vector multiply accumulate)
+    float* result = &GetTensorData<float>(activation_state)[memory_size - 1];
     for (int i = 0; i < batch_size;
          ++i, quantized_input_ptr_batch += input_size) {
       const float batch_scaling_factor = scaling_factors_ptr[i];
@@ -325,9 +269,9 @@ inline void EvalHybridSVDF(
 
   // TODO(alanchiao): can optimize hybrid case ~5% by unrolling loop in applying
   // time weights so that the inner loop multiplies eight elements at a time.
-  ApplyTimeWeightsBiasAndActivation(batch_size, memory_size, num_filters,
-                                    num_units, rank, weights_time, bias,
-                                    params->activation, state, scratch, output);
+  ApplyTimeWeightsBiasAndActivation(
+      batch_size, memory_size, num_filters, num_units, rank, weights_time, bias,
+      params->activation, activation_state, scratch, output);
 }
 
 }  // namespace
@@ -359,7 +303,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // [3] = Bias (optional), {1, num_units}
   // [4] = Activation State (variable),
   //         {2, batch_size, memory_size * num_filters}
-  TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
+  // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
+  // has been implemented (cl/263032056)
+  // TF_LITE_ENSURE_EQ(context, node->inputs->size, 5);
+  TF_LITE_ENSURE_EQ(context, node->inputs->size, 6);
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* weights_feature =
       GetInput(context, node, kWeightsFeatureTensor);
@@ -408,7 +355,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // [0] = Holds dot-product of time-forward calculations in
   //       ApplyTimeWeightsBiasAndActivation():
   //         float, {2, batch_size, num_filters}
-  TfLiteTensor* scratch_tensor = GetTemporary(context, node, 0);
+  // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
+  // has been implemented (cl/263032056)
+  // TfLiteTensor* scratch_tensor = GetTemporary(context, node, 0);
+  TfLiteTensor* scratch_tensor = &context->tensors[node->inputs->data[5]];
+
   TF_LITE_ENSURE_EQ(context, scratch_tensor->type, kTfLiteFloat32);
   TF_LITE_ENSURE_EQ(context, NumDimensions(scratch_tensor), 2);
   TF_LITE_ENSURE_EQ(context, scratch_tensor->dims->data[0], batch_size);
@@ -439,6 +390,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 scratch_input_quantized->type == kTfLiteInt8);
     TF_LITE_ENSURE_EQ(context, scratch_input_quantized->dims->data[0],
                       batch_size);
+    TF_LITE_ENSURE_EQ(context, scratch_input_quantized->dims->data[1],
+                      input_size);
 
     // Validate Scaling Factors Scratch Tensor:
     TF_LITE_ENSURE_EQ(context, scratch_scaling_factors->type, kTfLiteFloat32);
@@ -460,18 +413,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // the input values from the Weights Time tensor to the float weights time
     // scratch tensor.
     // TODO(kreeger): Consider doing this at model conversion time?
-    TfLiteTensor* float_weights_time_scratch = GetTemporary(context, node, 3);
-    const int8_t* weights_time_ptr;
-    if (weights_time->type == kTfLiteUInt8) {
-      weights_time_ptr =
-          reinterpret_cast<const int8_t*>(GetTensorData<uint8_t>(weights_time));
-    } else {
-      weights_time_ptr = GetTensorData<int8_t>(weights_time);
-    }
-    SymmetricDequantizeFloats(weights_time_ptr,
-                              NumElements(float_weights_time_scratch),
-                              weights_time->params.scale,
-                              GetTensorData<float>(float_weights_time_scratch));
+    SymmetricDequantize(GetTensorData<int8_t>(weights_time),
+                        NumElements(scratch_float_weights_time),
+                        weights_time->params.scale,
+                        GetTensorData<float>(scratch_float_weights_time));
   } else {
     // Validate Input Tensor dtypes:
     TF_LITE_ENSURE_EQ(context, weights_feature->type, kTfLiteFloat32);
@@ -479,7 +424,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
     // Full-float SVDF only uses the one shared scratch tensor (see above for
     // usage).
-    TF_LITE_ENSURE_EQ(context, node->temporaries->size, 1);
+    // TODO(kreeger): Use input tensor as variable until scratch tensor
+    // allocation has been implemented (cl/263032056)
+    // TF_LITE_ENSURE_EQ(context, node->temporaries->size, 1);
   }
 
   // Validate Tensor Output:
@@ -495,7 +442,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
+  const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* weights_feature =
@@ -504,7 +451,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       GetInput(context, node, kWeightsTimeTensor);
   const TfLiteTensor* bias = GetOptionalInputTensor(context, node, kBiasTensor);
 
-  TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
+  // TODO(kreeger): Use input tensor as variable until scratch tensor allocation
+  // has been implemented (cl/263032056)
+  // TfLiteTensor* scratch = GetTemporary(context, node, /*index=*/0);
+  TfLiteTensor* scratch = &context->tensors[node->inputs->data[5]];
 
   TfLiteTensor* activation_state =
       &context->tensors[node->inputs->data[kInputActivationStateTensor]];

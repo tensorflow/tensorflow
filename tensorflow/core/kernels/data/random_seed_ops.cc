@@ -111,14 +111,7 @@ void DeleteRandomSeedGeneratorOp::Compute(OpKernelContext* ctx) {
   // The resource is guaranteed to exist because the variant tensor wrapping the
   // deleter is provided as an unused input to this op, which guarantees that it
   // has not run yet.
-  Status s = ctx->resource_manager()->Delete(handle);
-  if (errors::IsNotFound(s)) {
-    // TODO(b/135948230): Investigate why is the above statement not true and
-    // then get rid of the special case.
-    ctx->SetStatus(Status::OK());
-    return;
-  }
-  ctx->SetStatus(s);
+  OP_REQUIRES_OK(ctx, ctx->resource_manager()->Delete(handle));
 }
 
 namespace {

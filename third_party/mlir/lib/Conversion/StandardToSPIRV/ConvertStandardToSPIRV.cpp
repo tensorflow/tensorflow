@@ -15,179 +15,17 @@
 // limitations under the License.
 // =============================================================================
 //
-// This file implements a pass to convert MLIR standard and builtin dialects
-// into the SPIR-V dialect.
+// This file implements patterns to convert Standard Ops to the SPIR-V dialect.
 //
 //===----------------------------------------------------------------------===//
-#include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
+#include "mlir/Dialect/SPIRV/LayoutUtils.h"
 #include "mlir/Dialect/SPIRV/SPIRVDialect.h"
+#include "mlir/Dialect/SPIRV/SPIRVLowering.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
-
-//===----------------------------------------------------------------------===//
-// Type Conversion
-//===----------------------------------------------------------------------===//
-
-Type SPIRVBasicTypeConverter::convertType(Type t) {
-  // Check if the type is SPIR-V supported. If so return the type.
-  if (spirv::SPIRVDialect::isValidType(t)) {
-    return t;
-  }
-
-  if (auto indexType = t.dyn_cast<IndexType>()) {
-    // Return I32 for index types.
-    return IntegerType::get(32, t.getContext());
-  }
-
-  if (auto memRefType = t.dyn_cast<MemRefType>()) {
-    if (memRefType.hasStaticShape()) {
-      // Convert MemrefType to a multi-dimensional spv.array if size is known.
-      auto elementType = memRefType.getElementType();
-      for (auto size : reverse(memRefType.getShape())) {
-        elementType = spirv::ArrayType::get(elementType, size);
-      }
-      // TODO(ravishankarm) : For now hard-coding this to be StorageBuffer. Need
-      // to support other Storage Classes.
-      return spirv::PointerType::get(elementType,
-                                     spirv::StorageClass::StorageBuffer);
-    }
-  }
-  return Type();
-}
-
-//===----------------------------------------------------------------------===//
-// Entry Function signature Conversion
-//===----------------------------------------------------------------------===//
-
-LogicalResult
-SPIRVTypeConverter::convertSignatureArg(unsigned inputNo, Type type,
-                                        SignatureConversion &result) {
-  // Try to convert the given input type.
-  auto convertedType = basicTypeConverter->convertType(type);
-  // TODO(ravishankarm) : Vulkan spec requires these to be a
-  // spirv::StructType. This is not a SPIR-V requirement, so just making this a
-  // pointer type for now.
-  if (!convertedType)
-    return failure();
-  // For arguments to entry functions, convert the type into a pointer type if
-  // it is already not one, unless the original type was an index type.
-  // TODO(ravishankarm): For arguments that are of index type, keep the
-  // arguments as the scalar converted type, i.e. i32. These are still not
-  // handled effectively. These are potentially best handled as specialization
-  // constants.
-  if (!convertedType.isa<spirv::PointerType>() && !type.isa<IndexType>()) {
-    // TODO(ravishankarm) : For now hard-coding this to be StorageBuffer. Need
-    // to support other Storage classes.
-    convertedType = spirv::PointerType::get(convertedType,
-                                            spirv::StorageClass::StorageBuffer);
-  }
-
-  // Add the new inputs.
-  result.addInputs(inputNo, convertedType);
-  return success();
-}
-
-static LogicalResult lowerFunctionImpl(
-    FuncOp funcOp, ArrayRef<Value *> operands,
-    ConversionPatternRewriter &rewriter, TypeConverter *typeConverter,
-    TypeConverter::SignatureConversion &signatureConverter, FuncOp &newFuncOp) {
-  auto fnType = funcOp.getType();
-
-  if (fnType.getNumResults()) {
-    return funcOp.emitError("SPIR-V dialect only supports functions with no "
-                            "return values right now");
-  }
-
-  for (auto &argType : enumerate(fnType.getInputs())) {
-    // Get the type of the argument
-    if (failed(typeConverter->convertSignatureArg(
-            argType.index(), argType.value(), signatureConverter))) {
-      return funcOp.emitError("unable to convert argument type ")
-             << argType.value() << " to SPIR-V type";
-    }
-  }
-
-  // Create a new function with an updated signature.
-  newFuncOp = rewriter.cloneWithoutRegions(funcOp);
-  rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
-                              newFuncOp.end());
-  newFuncOp.setType(FunctionType::get(signatureConverter.getConvertedTypes(),
-                                      llvm::None, funcOp.getContext()));
-
-  // Tell the rewriter to convert the region signature.
-  rewriter.applySignatureConversion(&newFuncOp.getBody(), signatureConverter);
-  rewriter.replaceOp(funcOp.getOperation(), llvm::None);
-  return success();
-}
-
-namespace mlir {
-LogicalResult lowerFunction(FuncOp funcOp, ArrayRef<Value *> operands,
-                            SPIRVTypeConverter *typeConverter,
-                            ConversionPatternRewriter &rewriter,
-                            FuncOp &newFuncOp) {
-  auto fnType = funcOp.getType();
-  TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
-  return lowerFunctionImpl(funcOp, operands, rewriter,
-                           typeConverter->getBasicTypeConverter(),
-                           signatureConverter, newFuncOp);
-}
-
-LogicalResult lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
-                                   SPIRVTypeConverter *typeConverter,
-                                   ConversionPatternRewriter &rewriter,
-                                   FuncOp &newFuncOp) {
-  auto fnType = funcOp.getType();
-  TypeConverter::SignatureConversion signatureConverter(fnType.getNumInputs());
-  if (failed(lowerFunctionImpl(funcOp, operands, rewriter, typeConverter,
-                               signatureConverter, newFuncOp))) {
-    return failure();
-  }
-  // Create spv.globalVariable ops for each of the arguments. These need to be
-  // bound by the runtime. For now use descriptor_set 0, and arg number as the
-  // binding number.
-  auto module = funcOp.getParentOfType<spirv::ModuleOp>();
-  if (!module) {
-    return funcOp.emitError("expected op to be within a spv.module");
-  }
-  auto ip = rewriter.saveInsertionPoint();
-  rewriter.setInsertionPointToStart(&module.getBlock());
-  SmallVector<Attribute, 4> interface;
-  for (auto &convertedArgType :
-       llvm::enumerate(signatureConverter.getConvertedTypes())) {
-    // TODO(ravishankarm) : The arguments to the converted function are either
-    // spirv::PointerType or i32 type, the latter due to conversion of index
-    // type to i32. Eventually entry function should be of signature
-    // void(void). Arguments converted to spirv::PointerType, will be made
-    // variables and those converted to i32 will be made specialization
-    // constants. Latter is not implemented.
-    if (!convertedArgType.value().isa<spirv::PointerType>()) {
-      continue;
-    }
-    std::string varName = funcOp.getName().str() + "_arg_" +
-                          std::to_string(convertedArgType.index());
-    auto variableOp = rewriter.create<spirv::GlobalVariableOp>(
-        funcOp.getLoc(), rewriter.getTypeAttr(convertedArgType.value()),
-        rewriter.getStringAttr(varName), nullptr);
-    variableOp.setAttr("descriptor_set", rewriter.getI32IntegerAttr(0));
-    variableOp.setAttr("binding",
-                       rewriter.getI32IntegerAttr(convertedArgType.index()));
-    interface.push_back(rewriter.getSymbolRefAttr(variableOp.sym_name()));
-  }
-  // Create an entry point instruction for this function.
-  // TODO(ravishankarm) : Add execution mode for the entry function
-  rewriter.setInsertionPoint(&(module.getBlock().back()));
-  rewriter.create<spirv::EntryPointOp>(
-      funcOp.getLoc(),
-      rewriter.getI32IntegerAttr(
-          static_cast<int32_t>(spirv::ExecutionModel::GLCompute)),
-      rewriter.getSymbolRefAttr(newFuncOp.getName()),
-      rewriter.getArrayAttr(interface));
-  rewriter.restoreInsertionPoint(ip);
-  return success();
-}
-} // namespace mlir
 
 //===----------------------------------------------------------------------===//
 // Operation conversion
@@ -195,38 +33,111 @@ LogicalResult lowerAsEntryFunction(FuncOp funcOp, ArrayRef<Value *> operands,
 
 namespace {
 
-/// Convert integer binary operations to SPIR-V operations. Cannot use tablegen
-/// for this. If the integer operation is on variables of IndexType, the type of
-/// the return value of the replacement operation differs from that of the
-/// replaced operation. This is not handled in tablegen-based pattern
-/// specification.
-template <typename StdOp, typename SPIRVOp>
-class IntegerOpConversion final : public ConversionPattern {
+/// Convert constant operation with IndexType return to SPIR-V constant
+/// operation. Since IndexType is not used within SPIR-V dialect, this needs
+/// special handling to make sure the result type and the type of the value
+/// attribute are consistent.
+class ConstantIndexOpConversion final : public SPIRVOpLowering<ConstantOp> {
 public:
-  IntegerOpConversion(MLIRContext *context)
-      : ConversionPattern(StdOp::getOperationName(), 1, context) {}
+  using SPIRVOpLowering<ConstantOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(ConstantOp constIndexOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
+    if (!constIndexOp.getResult()->getType().isa<IndexType>()) {
+      return matchFailure();
+    }
+    // The attribute has index type which is not directly supported in
+    // SPIR-V. Get the integer value and create a new IntegerAttr.
+    auto constAttr = constIndexOp.value().dyn_cast<IntegerAttr>();
+    if (!constAttr) {
+      return matchFailure();
+    }
+
+    // Use the bitwidth set in the value attribute to decide the result type
+    // of the SPIR-V constant operation since SPIR-V does not support index
+    // types.
+    auto constVal = constAttr.getValue();
+    auto constValType = constAttr.getType().dyn_cast<IndexType>();
+    if (!constValType) {
+      return matchFailure();
+    }
+    auto spirvConstType =
+        typeConverter.convertBasicType(constIndexOp.getResult()->getType());
+    auto spirvConstVal =
+        rewriter.getIntegerAttr(spirvConstType, constAttr.getInt());
+    rewriter.replaceOpWithNewOp<spirv::ConstantOp>(constIndexOp, spirvConstType,
+                                                   spirvConstVal);
+    return matchSuccess();
+  }
+};
+
+/// Convert compare operation to SPIR-V dialect.
+class CmpIOpConversion final : public SPIRVOpLowering<CmpIOp> {
+public:
+  using SPIRVOpLowering<CmpIOp>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(CmpIOp cmpIOp, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    CmpIOpOperandAdaptor cmpIOpOperands(operands);
+
+    switch (cmpIOp.getPredicate()) {
+#define DISPATCH(cmpPredicate, spirvOp)                                        \
+  case cmpPredicate:                                                           \
+    rewriter.replaceOpWithNewOp<spirvOp>(                                      \
+        cmpIOp, cmpIOp.getResult()->getType(), cmpIOpOperands.lhs(),           \
+        cmpIOpOperands.rhs());                                                 \
+    return matchSuccess();
+
+      DISPATCH(CmpIPredicate::eq, spirv::IEqualOp);
+      DISPATCH(CmpIPredicate::ne, spirv::INotEqualOp);
+      DISPATCH(CmpIPredicate::slt, spirv::SLessThanOp);
+      DISPATCH(CmpIPredicate::sle, spirv::SLessThanEqualOp);
+      DISPATCH(CmpIPredicate::sgt, spirv::SGreaterThanOp);
+      DISPATCH(CmpIPredicate::sge, spirv::SGreaterThanEqualOp);
+
+#undef DISPATCH
+
+    default:
+      break;
+    }
+    return matchFailure();
+  }
+};
+
+/// Convert integer binary operations to SPIR-V operations. Cannot use
+/// tablegen for this. If the integer operation is on variables of IndexType,
+/// the type of the return value of the replacement operation differs from
+/// that of the replaced operation. This is not handled in tablegen-based
+/// pattern specification.
+template <typename StdOp, typename SPIRVOp>
+class IntegerOpConversion final : public SPIRVOpLowering<StdOp> {
+public:
+  using SPIRVOpLowering<StdOp>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(StdOp operation, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto resultType =
+        this->typeConverter.convertBasicType(operation.getResult()->getType());
     rewriter.template replaceOpWithNewOp<SPIRVOp>(
-        op, operands[0]->getType(), operands, ArrayRef<NamedAttribute>());
+        operation, resultType, operands, ArrayRef<NamedAttribute>());
     return this->matchSuccess();
   }
 };
 
 /// Convert load -> spv.LoadOp. The operands of the replaced operation are of
 /// IndexType while that of the replacement operation are of type i32. This is
-/// not suppored in tablegen based pattern specification.
+/// not supported in tablegen based pattern specification.
 // TODO(ravishankarm) : These could potentially be templated on the operation
 // being converted, since the same logic should work for linalg.load.
-class LoadOpConversion final : public ConversionPattern {
+class LoadOpConversion final : public SPIRVOpLowering<LoadOp> {
 public:
-  LoadOpConversion(MLIRContext *context)
-      : ConversionPattern(LoadOp::getOperationName(), 1, context) {}
+  using SPIRVOpLowering<LoadOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(LoadOp loadOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     LoadOpOperandAdaptor loadOperands(operands);
     auto basePtr = loadOperands.memref();
@@ -235,43 +146,58 @@ public:
       return matchFailure();
     }
     auto loadPtr = rewriter.create<spirv::AccessChainOp>(
-        op->getLoc(), basePtr, loadOperands.indices());
+        loadOp.getLoc(), basePtr, loadOperands.indices());
     auto loadPtrType = loadPtr.getType().cast<spirv::PointerType>();
     rewriter.replaceOpWithNewOp<spirv::LoadOp>(
-        op, loadPtrType.getPointeeType(), loadPtr, /*memory_access =*/nullptr,
+        loadOp, loadPtrType.getPointeeType(), loadPtr,
+        /*memory_access =*/nullptr,
         /*alignment =*/nullptr);
     return matchSuccess();
   }
 };
 
 /// Convert return -> spv.Return.
-class ReturnToSPIRVConversion : public ConversionPattern {
+class ReturnToSPIRVConversion final : public SPIRVOpLowering<ReturnOp> {
 public:
-  ReturnToSPIRVConversion(MLIRContext *context)
-      : ConversionPattern(ReturnOp::getOperationName(), 1, context) {}
-  virtual PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  using SPIRVOpLowering<ReturnOp>::SPIRVOpLowering;
+
+  PatternMatchResult
+  matchAndRewrite(ReturnOp returnOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
-    if (op->getNumOperands()) {
+    if (returnOp.getNumOperands()) {
       return matchFailure();
     }
-    rewriter.replaceOpWithNewOp<spirv::ReturnOp>(op);
+    rewriter.replaceOpWithNewOp<spirv::ReturnOp>(returnOp);
     return matchSuccess();
   }
 };
 
-/// Convert store -> spv.StoreOp. The operands of the replaced operation are of
-/// IndexType while that of the replacement operation are of type i32. This is
-/// not suppored in tablegen based pattern specification.
+/// Convert select -> spv.Select
+class SelectOpConversion final : public SPIRVOpLowering<SelectOp> {
+public:
+  using SPIRVOpLowering<SelectOp>::SPIRVOpLowering;
+  PatternMatchResult
+  matchAndRewrite(SelectOp op, ArrayRef<Value *> operands,
+                  ConversionPatternRewriter &rewriter) const override {
+    SelectOpOperandAdaptor selectOperands(operands);
+    rewriter.replaceOpWithNewOp<spirv::SelectOp>(op, selectOperands.condition(),
+                                                 selectOperands.true_value(),
+                                                 selectOperands.false_value());
+    return matchSuccess();
+  }
+};
+
+/// Convert store -> spv.StoreOp. The operands of the replaced operation are
+/// of IndexType while that of the replacement operation are of type i32. This
+/// is not supported in tablegen based pattern specification.
 // TODO(ravishankarm) : These could potentially be templated on the operation
 // being converted, since the same logic should work for linalg.store.
-class StoreOpConversion final : public ConversionPattern {
+class StoreOpConversion final : public SPIRVOpLowering<StoreOp> {
 public:
-  StoreOpConversion(MLIRContext *context)
-      : ConversionPattern(StoreOp::getOperationName(), 1, context) {}
+  using SPIRVOpLowering<StoreOp>::SPIRVOpLowering;
 
   PatternMatchResult
-  matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
+  matchAndRewrite(StoreOp storeOp, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     StoreOpOperandAdaptor storeOperands(operands);
     auto value = storeOperands.value();
@@ -281,8 +207,8 @@ public:
       return matchFailure();
     }
     auto storePtr = rewriter.create<spirv::AccessChainOp>(
-        op->getLoc(), basePtr, storeOperands.indices());
-    rewriter.replaceOpWithNewOp<spirv::StoreOp>(op, storePtr, value,
+        storeOp.getLoc(), basePtr, storeOperands.indices());
+    rewriter.replaceOpWithNewOp<spirv::StoreOp>(storeOp, storePtr, value,
                                                 /*memory_access =*/nullptr,
                                                 /*alignment =*/nullptr);
     return matchSuccess();
@@ -298,11 +224,18 @@ namespace {
 
 namespace mlir {
 void populateStandardToSPIRVPatterns(MLIRContext *context,
+                                     SPIRVTypeConverter &typeConverter,
                                      OwningRewritePatternList &patterns) {
   populateWithGenerated(context, &patterns);
   // Add the return op conversion.
-  patterns.insert<IntegerOpConversion<AddIOp, spirv::IAddOp>,
-                  IntegerOpConversion<MulIOp, spirv::IMulOp>, LoadOpConversion,
-                  ReturnToSPIRVConversion, StoreOpConversion>(context);
+  patterns
+      .insert<ConstantIndexOpConversion, CmpIOpConversion,
+              IntegerOpConversion<AddIOp, spirv::IAddOp>,
+              IntegerOpConversion<MulIOp, spirv::IMulOp>,
+              IntegerOpConversion<DivISOp, spirv::SDivOp>,
+              IntegerOpConversion<RemISOp, spirv::SModOp>,
+              IntegerOpConversion<SubIOp, spirv::ISubOp>, LoadOpConversion,
+              ReturnToSPIRVConversion, SelectOpConversion, StoreOpConversion>(
+          context, typeConverter);
 }
 } // namespace mlir

@@ -5,5 +5,10 @@ add_llvm_library(MLIRStandardOps
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Dialect/StandardOps
   )
-add_dependencies(MLIRStandardOps MLIRStandardOpsIncGen LLVMSupport)
-target_link_libraries(MLIRStandardOps LLVMSupport)
+add_dependencies(MLIRStandardOps
+  MLIRCallOpInterfacesIncGen
+  MLIRStandardOpsIncGen
+  MLIRIR
+  LLVMSupport
+  )
+target_link_libraries(MLIRStandardOps MLIRIR LLVMSupport)

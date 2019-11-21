@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -26,113 +27,71 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
-
-std::string GetApplyMaskKernelCode(
-    const OperationDef& definition,
-    const std::vector<ElementwiseOperation*>& linked_operations) {
-  TensorCodeGenerator src("src_data", "src_size", definition.src_tensors[0]);
-  TensorCodeGenerator mask("src_mask", "src_size_1", definition.src_tensors[1]);
-  TensorCodeGenerator dst("dst_data", "dst_size", definition.dst_tensors[0]);
-
-  std::string c = GetCommonDefines(definition.precision);
-
-  c += "__kernel void main_function(\n";
-  c += src.GetDeclaration(AccessType::READ) + ",\n";
-  c += mask.GetDeclaration(AccessType::READ) + ",\n";
-  c += dst.GetDeclaration(AccessType::WRITE);
-  c += GetArgsDeclaration(linked_operations);
-  c += "    int apply_mask_type,\n";
-  c += "    int4 src_size,\n";
-  c += "    int4 src_size_1,\n";
-  c += "    int4 dst_size  \n";
-  c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
-  c += "  int Y = get_global_id(1);\n";
-  c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y) return;\n";
-  c += "  FLT4 result = " +
-       src.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
-  c += "  if (apply_mask_type == 1) {\n";
-  c += "    result *= " +
-       mask.Read3D("X", "Y", "Z", TextureAddressMode::DONT_CARE) + ";\n";
-  c += "  } else if (apply_mask_type == 2) {\n";
-  c += "    result *= " +
-       mask.Read3D("0", "0", "Z", TextureAddressMode::DONT_CARE) + ";\n";
-  c += "  } else {\n";
-  c += "    result *= " +
-       mask.Read3D("X", "Y", "0", TextureAddressMode::DONT_CARE) + ".x;\n";
-  c += "  }\n";
-  c += "  " + dst.GetAddress("dst_adr", "X", "Y", "Z");
-  c += PostProcess(linked_operations, "result", "Z", "dst_adr");
-  c += "  " + dst.Write3D("result", "dst_adr");
-  c += "}\n";
-  return c;
-}
-
-int GetMaskType(int4 src_size, int4 mask_size) {
-  if (mask_size.z == 1) {
-    return 0;
-  } else if (src_size.x == mask_size.x && src_size.y == mask_size.y) {
-    return 1;
-  } else {
-    return 2;
-  }
-}
-
-}  // namespace
 
 ApplyMask::ApplyMask(ApplyMask&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
+    : ElementwiseOperation(std::move(operation)),
+      mask_type_(operation.mask_type_),
+      link_index_(operation.link_index_) {}
 
 ApplyMask& ApplyMask::operator=(ApplyMask&& operation) {
   if (this != &operation) {
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
-    GPUOperation::operator=(std::move(operation));
+    mask_type_ = operation.mask_type_;
+    link_index_ = operation.link_index_;
+    ElementwiseOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
-Status ApplyMask::Compile(const CreationContext& creation_context) {
-  const auto code = GetApplyMaskKernelCode(definition_, linked_operations_);
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
+void ApplyMask::SetLinkIndex(int index) { link_index_ = index; }
+
+std::string ApplyMask::GetCoreCode(const LinkingContext& context) const {
+  const std::string size_name = "mask_size_op" + std::to_string(link_index_);
+  const std::string tensor_name = absl::StrCat("mask_data_op", link_index_);
+  TensorCodeGenerator mask(tensor_name, size_name, definition_.src_tensors[1]);
+  switch (mask_type_) {
+    case MaskType::TENSOR:
+      return context.var_name + " *= " +
+             mask.Read3D(context.x_coord, context.y_coord, context.z_coord) +
+             ";\n";
+    case MaskType::CHANNELS:
+      return context.var_name +
+             " *= " + mask.Read3D("0", "0", context.z_coord) + ";\n";
+    case MaskType::LAYER:
+      return context.var_name +
+             " *= " + mask.Read3D(context.x_coord, context.y_coord, "0") +
+             ".x;\n";
+  }
 }
 
-Status ApplyMask::BindArguments() {
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(src_[1]->GetMemoryPtr()));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(int32_t(
-      GetMaskType(src_[0]->GetSizeWithDepth(), src_[1]->GetSizeWithDepth()))));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[1]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+std::string ApplyMask::GetArgsDeclaration() const {
+  std::string args;
+  const std::string tensor_name = absl::StrCat("mask_data_op", link_index_);
+  TensorCodeGenerator src_tensor(tensor_name, "", definition_.src_tensors[1]);
+  absl::StrAppend(&args, ",\n", src_tensor.GetDeclaration(AccessType::READ));
+  const std::string size_name = "mask_size_op" + std::to_string(link_index_);
+  absl::StrAppend(&args, ",\n   int4 ", size_name);
+  return args;
+}
+
+Status ApplyMask::BindArguments(CLKernel* kernel) {
+  RETURN_IF_ERROR(kernel->SetMemoryAuto(src_[1]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel->SetBytesAuto(src_[1]->GetSizeWithDepth()));
   return OkStatus();
 }
 
-int3 ApplyMask::GetGridSize() const {
-  return int3(dst_[0]->Width(), dst_[0]->Height(), dst_[0]->Depth());
-}
-
-Status ApplyMask::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-Status ApplyMask::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
-ApplyMask CreateApplyMask(const OperationDef& definition) {
-  return ApplyMask(definition);
+ApplyMask CreateApplyMask(const OperationDef& definition, const BHWC& src_shape,
+                          const BHWC& mask_shape) {
+  ApplyMask::MaskType mask_type;
+  if (mask_shape == src_shape) {
+    mask_type = ApplyMask::MaskType::TENSOR;
+  } else if (mask_shape.c == 1) {
+    mask_type = ApplyMask::MaskType::LAYER;
+  } else {
+    mask_type = ApplyMask::MaskType::CHANNELS;
+  }
+  ApplyMask operation(definition, mask_type);
+  operation.SetLinkIndex(0);
+  return operation;
 }
 
 }  // namespace cl

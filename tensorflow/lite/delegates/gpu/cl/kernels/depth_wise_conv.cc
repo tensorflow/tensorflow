@@ -73,19 +73,26 @@ std::string GetSrcValue(const TensorCodeGenerator& src_tensor,
 }
 
 std::string GenerateDepthWiseConvolutionCode(
-    const TensorDescriptor& src_descriptor,
-    const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+    const OperationDef& op_def, bool stride_correction,
     const LinearStorage& biases, int channel_multiplier,
     const std::vector<ElementwiseOperation*>& linked_operations,
     const CLDevice& device) {
-  TensorCodeGenerator src_tensor("src_data", "src_size", src_descriptor);
-  TensorCodeGenerator dst_tensor("dst_data", "dst_size", dst_descriptor);
+  TensorCodeGenerator src_tensor("src_data",
+                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 op_def.src_tensors[0]);
+  TensorCodeGenerator dst_tensor("dst_data",
+                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 op_def.dst_tensors[0]);
+  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
-  std::string c = GetCommonDefines(precision);
+  std::string c = GetCommonDefines(op_def.precision);
+
+  const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
+                            src_tensor_type == TensorStorageType::IMAGE_BUFFER;
 
   c += "__kernel void main_function(\n";
   c += src_tensor.GetDeclaration(AccessType::READ) + ",\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "    __global FLT4* filters,  \n";
   } else {
     c += "    __read_only image2d_t filters,  \n";
@@ -106,17 +113,23 @@ std::string GenerateDepthWiseConvolutionCode(
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.w) return;\n";
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
   c += "  ACCUM_FLT4 r = (ACCUM_FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
-  c += "  int x_offseted = X * stride.x - padding.x;\n";
-  c += "  int y_offseted = Y * stride.y - padding.y;\n";
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (stride_correction) {
+    c += "  int x_offseted = " +
+         GetXStrideCorrected("X", "src_size.w", "stride.x", "padding.x") +
+         ";\n";
+  } else {
+    c += "  int x_offseted = X * stride.x + padding.x;\n";
+  }
+  c += "  int y_offseted = Y * stride.y + padding.y;\n";
+  if (src_tensor_type == TensorStorageType::BUFFER) {
     c += "  int fx_c = Z * kernel_size.x * kernel_size.y;\n";
   } else {
     c += "  int fx_c = 0;\n";
   }
 
-  if (src_descriptor.storage_type == TensorStorageType::BUFFER) {
+  if (manual_clamp) {
     c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
     c += "    int y_c = y_offseted + ky * dilation.y;\n";
     c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
@@ -124,7 +137,11 @@ std::string GenerateDepthWiseConvolutionCode(
     c += "      int x_c = x_offseted + kx * dilation.x;\n";
     c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
     c += "      if (!outside_x && !outside_y) {\n";
-    c += "        FLT4 f = filters[fx_c];\n";
+    if (src_tensor_type == TensorStorageType::BUFFER) {
+      c += "        FLT4 f = filters[fx_c];\n";
+    } else {
+      c += "        FLT4 f = READ_IMAGE(filters, smp_none, (int2)(fx_c, Z));\n";
+    }
     c += GetSrcValue(src_tensor, channel_multiplier,
                      TextureAddressMode::DONT_CARE);
     c += "        r += TO_ACCUM_TYPE(src_final * f);\n";
@@ -147,9 +164,9 @@ std::string GenerateDepthWiseConvolutionCode(
   }
   c += "  FLT4 bias_val = " + biases.ReadLinearFLT4("Z") + ";\n";
   c += "  FLT4 res0 = TO_FLT4(r) + bias_val;\n";
-  c += "  " + dst_tensor.GetAddress("address", "X", "Y", "Z") + "\n";
-  c += PostProcess(linked_operations, "res0", "Z", "address");
-  c += "  " + dst_tensor.Write3D("res0", "address") + "\n";
+  const LinkingContext context{"res0", "X", "Y", "Z"};
+  c += PostProcess(linked_operations, context);
+  c += "  " + dst_tensor.Write3D("res0", "X", "Y", "Z") + "\n";
   c += "}\n";
 
   return c;
@@ -162,7 +179,7 @@ DepthWiseConvolution::DepthWiseConvolution(
     : GPUOperation(definition),
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       stride_(attr.strides.w, attr.strides.h),
-      padding_(attr.padding.prepended.w, attr.padding.prepended.h),
+      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
       dilation_(attr.dilations.w, attr.dilations.h),
       channel_multiplier_(attr.weights.shape.o),
       work_group_size_(8, 8, 1) {}
@@ -201,10 +218,10 @@ DepthWiseConvolution& DepthWiseConvolution::operator=(
 }
 
 Status DepthWiseConvolution::Compile(const CreationContext& creation_context) {
+  const bool stride_correction = definition_.batch_support && stride_.x != 1;
   const auto code = GenerateDepthWiseConvolutionCode(
-      definition_.src_tensors[0], definition_.dst_tensors[0],
-      definition_.precision, biases_, channel_multiplier_, linked_operations_,
-      *creation_context.device);
+      definition_, stride_correction, biases_, channel_multiplier_,
+      linked_operations_, *creation_context.device);
   return creation_context.cache->GetOrCreateCLKernel(
       code, "main_function", *creation_context.context,
       *creation_context.device, &kernel_);
@@ -216,21 +233,23 @@ Status DepthWiseConvolution::BindArguments() {
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(weights_));
   RETURN_IF_ERROR(kernel_.SetMemoryAuto(biases_.GetMemoryPtr()));
   RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtr()));
+  RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[0]->GetMemoryPtrForWriting()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dilation_));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
+  RETURN_IF_ERROR(
+      kernel_.SetBytesAuto(int2(dilation_.x * src_[0]->Batch(), dilation_.y)));
   if (!IsSpecializedCase(channel_multiplier_)) {
     RETURN_IF_ERROR(kernel_.SetBytesAuto(int32_t(channel_multiplier_)));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetSizeWithDepth()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetSizeWithDepth()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
   return OkStatus();
 }
 
 int3 DepthWiseConvolution::GetGridSize() const {
-  const int grid_x = dst_[0]->Width();
+  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
   const int grid_y = dst_[0]->Height();
   const int grid_z = dst_[0]->Depth();
   return int3(grid_x, grid_y, grid_z);

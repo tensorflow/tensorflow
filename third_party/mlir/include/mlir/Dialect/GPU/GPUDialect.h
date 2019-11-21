@@ -36,17 +36,31 @@ namespace gpu {
 class GPUDialect : public Dialect {
 public:
   /// Create the dialect in the given `context`.
-  GPUDialect(MLIRContext *context);
+  explicit GPUDialect(MLIRContext *context);
+  /// Get dialect namespace.
+  static StringRef getDialectNamespace() { return "gpu"; }
+
+  /// Get the name of the attribute used to annotate the modules that contain
+  /// kernel modules.
+  static StringRef getContainerModuleAttrName() {
+    return "gpu.container_module";
+  }
 
   /// Get the canonical string name of the dialect.
   static StringRef getDialectName();
 
-  /// Get the name of the attribute used to annotate outlined kernel functions.
+  /// Get the name of the attribute used to annotate external kernel functions.
   static StringRef getKernelFuncAttrName() { return "gpu.kernel"; }
+
+  /// Get the name of the attribute used to annotate kernel modules.
+  static StringRef getKernelModuleAttrName() { return "gpu.kernel_module"; }
 
   /// Returns whether the given function is a kernel function, i.e., has the
   /// 'gpu.kernel' attribute.
-  static bool isKernel(FuncOp function);
+  static bool isKernel(Operation *op);
+
+  LogicalResult verifyOperationAttribute(Operation *op,
+                                         NamedAttribute attr) override;
 };
 
 /// Utility class for the GPU dialect to represent triples of `Value`s
@@ -66,7 +80,7 @@ class LaunchOp : public Op<LaunchOp, OpTrait::AtLeastNOperands<6>::Impl,
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, Value *gridSizeX,
+  static void build(Builder *builder, OperationState &result, Value *gridSizeX,
                     Value *gridSizeY, Value *gridSizeZ, Value *blockSizeX,
                     Value *blockSizeY, Value *blockSizeZ,
                     ArrayRef<Value *> operands);
@@ -98,8 +112,8 @@ public:
   LogicalResult verify();
 
   /// Custom syntax support.
-  void print(OpAsmPrinter *p);
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
+  void print(OpAsmPrinter &p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
 
   static StringRef getOperationName() { return "gpu.launch"; }
 
@@ -131,12 +145,12 @@ class LaunchFuncOp : public Op<LaunchFuncOp, OpTrait::AtLeastNOperands<6>::Impl,
 public:
   using Op::Op;
 
-  static void build(Builder *builder, OperationState *result, FuncOp kernelFunc,
+  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     Value *gridSizeX, Value *gridSizeY, Value *gridSizeZ,
                     Value *blockSizeX, Value *blockSizeY, Value *blockSizeZ,
                     ArrayRef<Value *> kernelOperands);
 
-  static void build(Builder *builder, OperationState *result, FuncOp kernelFunc,
+  static void build(Builder *builder, OperationState &result, FuncOp kernelFunc,
                     KernelDim3 gridSize, KernelDim3 blockSize,
                     ArrayRef<Value *> kernelOperands);
 
@@ -144,6 +158,9 @@ public:
   StringRef kernel();
   /// The number of operands passed to the kernel function.
   unsigned getNumKernelOperands();
+  /// The name of the kernel module specified by the operation's `kernel_module`
+  /// attribute.
+  StringRef getKernelModuleName();
   /// The i-th operand passed to the kernel function.
   Value *getKernelOperand(unsigned i);
 
@@ -161,8 +178,17 @@ public:
   static constexpr unsigned kNumConfigOperands = 6;
 
 private:
-  /// The name of the function attribute specifying the kernel to launch.
+  // This needs to quietly verify if attributes with names defined below are
+  // present since it is run before the verifier of this op.
+  friend LogicalResult GPUDialect::verifyOperationAttribute(Operation *,
+                                                            NamedAttribute);
+
+  /// The name of the symbolRef attribute specifying the kernel to launch.
   static StringRef getKernelAttrName() { return "kernel"; }
+
+  /// The name of the symbolRef attribute specifying the name of the module
+  /// containing the kernel to launch.
+  static StringRef getKernelModuleAttrName() { return "kernel_module"; }
 };
 
 #define GET_OP_CLASSES

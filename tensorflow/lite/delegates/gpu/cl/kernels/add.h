@@ -27,7 +27,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-// Add operation inherited from ElementwiseOperation, but it is much more
+// Add operation inherited from ElementwiseOperation, but it is more
 // complicated than usual elementwise, that is why it has own versions for
 // Compile. Add operation support not equal tensors on input (for possibility to
 // remove Padding operation with zeroes in Z dimension)
@@ -45,19 +45,16 @@ class Add : public ElementwiseOperation {
   Add& operator=(const Add&) = delete;
 
   void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const std::string& src, const std::string& z_coord,
-                          const std::string& address) const override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
   std::string GetArgsDeclaration() const override;
   Status BindArguments(CLKernel* kernel) override;
 
  private:
   std::string GetElementWiseCode(
-      const TensorDescriptor& src_descriptor,
-      const TensorDescriptor& dst_descriptor, CalculationsPrecision precision,
+      const OperationDef& op_def,
       const std::vector<ElementwiseOperation*>& linked_operations);
 
   int link_index_;
-  std::string inv_divisor_name_;
   std::vector<int> src_depthes_;
   int dst_depth_;
 };

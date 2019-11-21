@@ -15,6 +15,7 @@ limitations under the License.
 #include <deque>
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/kernels/data/parallel_map_dataset_op.h"
 #include "tensorflow/core/kernels/data/stats_utils.h"
@@ -38,6 +39,14 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("sloppy", &sloppy_));
+    has_ragged_keys_ = ctx->HasAttr("ragged_keys");
+    if (has_ragged_keys_) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("ragged_keys", &ragged_keys_));
+      OP_REQUIRES_OK(ctx,
+                     ctx->GetAttr("ragged_value_types", &ragged_value_types_));
+      OP_REQUIRES_OK(ctx,
+                     ctx->GetAttr("ragged_split_types", &ragged_split_types_));
+    }
     for (int i = 0; i < dense_shapes_.size(); ++i) {
       bool shape_ok = true;
       if (dense_shapes_[i].dims() == -1) {
@@ -66,6 +75,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       }
       elements_per_stride_.push_back(dense_shape.num_elements());
     }
+    metrics::RecordParseDenseFeature(dense_keys_.size());
+    metrics::RecordParseSparseFeature(sparse_keys_.size());
   }
 
  protected:
@@ -137,17 +148,26 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
                   errors::InvalidArgument("Duplicate key not allowed: ",
                                           sparse_keys_[d]));
     }
+    for (int d = 0; d < ragged_keys_.size(); ++d) {
+      config.ragged.push_back(
+          {ragged_keys_[d], ragged_value_types_[d], ragged_split_types_[d]});
+      auto result = key_to_output_index.insert({ragged_keys_[d], 0});
+      OP_REQUIRES(ctx, result.second,
+                  errors::InvalidArgument("Duplicate key not allowed: ",
+                                          ragged_keys_[d]));
+    }
     int i = 0;
     for (auto it = key_to_output_index.begin(); it != key_to_output_index.end();
          it++) {
       it->second = i++;
     }
 
-    *output =
-        new Dataset(ctx, input, dense_defaults, sparse_keys_, dense_keys_,
-                    std::move(key_to_output_index), std::move(config),
-                    num_parallel_calls, sparse_types_, dense_types_,
-                    dense_shapes_, output_types_, output_shapes_, sloppy_);
+    *output = new Dataset(ctx, input, dense_defaults, sparse_keys_, dense_keys_,
+                          std::move(key_to_output_index), std::move(config),
+                          num_parallel_calls, sparse_types_, dense_types_,
+                          dense_shapes_, output_types_, output_shapes_, sloppy_,
+                          has_ragged_keys_, ragged_keys_, ragged_value_types_,
+                          ragged_split_types_);
   }
 
  private:
@@ -162,21 +182,28 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             const DataTypeVector& dense_types,
             const std::vector<PartialTensorShape>& dense_shapes,
             const DataTypeVector& output_types,
-            const std::vector<PartialTensorShape>& output_shapes, bool sloppy)
+            const std::vector<PartialTensorShape>& output_shapes, bool sloppy,
+            bool has_ragged_keys, std::vector<string> ragged_keys,
+            const DataTypeVector& ragged_value_types,
+            const DataTypeVector& ragged_split_types)
         : DatasetBase(DatasetContext(ctx)),
           input_(input),
           dense_defaults_(std::move(dense_defaults)),
           sparse_keys_(std::move(sparse_keys)),
           dense_keys_(std::move(dense_keys)),
+          ragged_keys_(std::move(ragged_keys)),
           key_to_output_index_(std::move(key_to_output_index)),
           config_(std::move(config)),
           num_parallel_calls_(num_parallel_calls),
           sparse_types_(sparse_types),
           dense_types_(dense_types),
+          ragged_value_types_(ragged_value_types),
+          ragged_split_types_(ragged_split_types),
           dense_shapes_(dense_shapes),
           output_types_(output_types),
           output_shapes_(output_shapes),
-          sloppy_(sloppy) {
+          sloppy_(sloppy),
+          has_ragged_keys_(has_ragged_keys) {
       input_->Ref();
     }
 
@@ -244,19 +271,46 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       b->BuildAttrValue(dense_shapes_, &dense_shapes_attr);
       b->BuildAttrValue(sloppy_, &sloppy_attr);
 
-      TF_RETURN_IF_ERROR(b->AddDataset(this,
-                                       {
-                                           {0, input_graph_node},
-                                           {1, num_parallle_calls_node},
-                                       },
-                                       {{2, dense_defaults_nodes}},
-                                       {{"sparse_keys", sparse_keys_attr},
-                                        {"dense_keys", dense_keys_attr},
-                                        {"sparse_types", sparse_types_attr},
-                                        {"Tdense", dense_attr},
-                                        {"dense_shapes", dense_shapes_attr},
-                                        {"sloppy", sloppy_attr}},
-                                       output));
+      if (has_ragged_keys_) {
+        AttrValue ragged_keys_attr;
+        AttrValue ragged_value_types_attr;
+        AttrValue ragged_split_types_attr;
+        b->BuildAttrValue(ragged_keys_, &ragged_keys_attr);
+        b->BuildAttrValue(ragged_value_types_, &ragged_value_types_attr);
+        b->BuildAttrValue(ragged_split_types_, &ragged_split_types_attr);
+
+        TF_RETURN_IF_ERROR(
+            b->AddDataset(this,
+                          {
+                              {0, input_graph_node},
+                              {1, num_parallle_calls_node},
+                          },
+                          {{2, dense_defaults_nodes}},
+                          {{"sparse_keys", sparse_keys_attr},
+                           {"dense_keys", dense_keys_attr},
+                           {"sparse_types", sparse_types_attr},
+                           {"Tdense", dense_attr},
+                           {"dense_shapes", dense_shapes_attr},
+                           {"sloppy", sloppy_attr},
+                           {"ragged_keys", ragged_keys_attr},
+                           {"ragged_value_types", ragged_value_types_attr},
+                           {"ragged_split_types", ragged_split_types_attr}},
+                          output));
+      } else {
+        TF_RETURN_IF_ERROR(b->AddDataset(this,
+                                         {
+                                             {0, input_graph_node},
+                                             {1, num_parallle_calls_node},
+                                         },
+                                         {{2, dense_defaults_nodes}},
+                                         {{"sparse_keys", sparse_keys_attr},
+                                          {"dense_keys", dense_keys_attr},
+                                          {"sparse_types", sparse_types_attr},
+                                          {"Tdense", dense_attr},
+                                          {"dense_shapes", dense_shapes_attr},
+                                          {"sloppy", sloppy_attr}},
+                                         output));
+      }
       return Status::OK();
     }
 
@@ -294,22 +348,8 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
             for (int d = 0; d < dataset_->dense_keys_.size(); ++d) {
               int output_index =
                   dataset_->key_to_output_index_.at(dataset_->dense_keys_[d]);
-              DCHECK(example_result.dense_values[d].dtype() ==
-                     dataset_->output_dtypes()[output_index])
-                  << "Got wrong type for FastParseExample return value " << d
-                  << " (expected "
-                  << DataTypeString(dataset_->output_dtypes()[output_index])
-                  << ", got "
-                  << DataTypeString(example_result.dense_values[d].dtype())
-                  << ").";
-              DCHECK(dataset_->output_shapes()[output_index].IsCompatibleWith(
-                  example_result.dense_values[d].shape()))
-                  << "Got wrong shape for FastParseExample return value " << d
-                  << " (expected "
-                  << dataset_->output_shapes()[output_index].DebugString()
-                  << ", got "
-                  << example_result.dense_values[d].shape().DebugString()
-                  << ").";
+              CheckOutputTensor(example_result.dense_values[d], d,
+                                output_index);
               (*output)[output_index] = example_result.dense_values[d];
             }
             for (int d = 0; d < dataset_->sparse_keys_.size(); ++d) {
@@ -322,23 +362,24 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
               serialized_sparse_t(0) = example_result.sparse_indices[d];
               serialized_sparse_t(1) = example_result.sparse_values[d];
               serialized_sparse_t(2) = example_result.sparse_shapes[d];
-              DCHECK(serialized_sparse.dtype() ==
-                     dataset_->output_dtypes()[output_index])
-                  << "Got wrong type for FastParseExample return value " << d
-                  << " (expected "
-                  << DataTypeString(dataset_->output_dtypes()[output_index])
-                  << ", got " << DataTypeString(serialized_sparse.dtype())
-                  << ").";
-              DCHECK(dataset_->output_shapes()[output_index].IsCompatibleWith(
-                  serialized_sparse.shape()))
-                  << "Got wrong shape for FastParseExample return value " << d
-                  << " (expected "
-                  << dataset_->output_shapes()[output_index].DebugString()
-                  << ", got " << serialized_sparse.shape().DebugString()
-                  << ").";
+              CheckOutputTensor(serialized_sparse, d, output_index);
             }
-            // TODO(b/123360128): Add component name to streamz metrics without
-            // breaking TFX metrics.
+            for (int d = 0; d < dataset_->ragged_keys_.size(); ++d) {
+              int output_index =
+                  dataset_->key_to_output_index_.at(dataset_->ragged_keys_[d]);
+              (*output)[output_index] =
+                  Tensor(ctx->allocator({}), DT_VARIANT, {});
+              Tensor serialized_ragged =
+                  Tensor(ctx->allocator({}), DT_VARIANT, {2});
+              auto serialized_ragged_t = serialized_ragged.vec<Variant>();
+              serialized_ragged_t(0) = example_result.ragged_splits[d];
+              serialized_ragged_t(1) = example_result.ragged_values[d];
+              (*output)[output_index] =
+                  Tensor(ctx->allocator({}), DT_VARIANT, {});
+              Tensor& ragged_wrapper = (*output)[output_index];
+              ragged_wrapper.scalar<Variant>()() = serialized_ragged;
+              CheckOutputTensor(ragged_wrapper, d, output_index);
+            }
             if (stats_aggregator) {
               stats_aggregator->IncrementCounter(
                   stats_utils::kExamplesCount, "trainer",
@@ -369,6 +410,21 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
+      inline void CheckOutputTensor(const Tensor& tensor, size_t value_index,
+                                    size_t output_index) const {
+        DCHECK(tensor.dtype() == dataset_->output_dtypes()[output_index])
+            << "Got wrong type for FastParseExample return value "
+            << value_index << " (expected "
+            << DataTypeString(dataset_->output_dtypes()[output_index])
+            << ", got " << DataTypeString(tensor.dtype()) << ").";
+        DCHECK(dataset_->output_shapes()[output_index].IsCompatibleWith(
+            tensor.shape()))
+            << "Got wrong shape for FastParseExample return value "
+            << value_index << " (expected "
+            << dataset_->output_shapes()[output_index].DebugString() << ", got "
+            << tensor.shape().DebugString() << ").";
+      }
+
       const Dataset* dataset_;
     };
 
@@ -376,15 +432,19 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
     const std::vector<Tensor> dense_defaults_;
     const std::vector<string> sparse_keys_;
     const std::vector<string> dense_keys_;
+    const std::vector<string> ragged_keys_;
     const std::map<string, int> key_to_output_index_;
     const example::FastParseExampleConfig config_;
     const int64 num_parallel_calls_;
     const DataTypeVector sparse_types_;
     const DataTypeVector dense_types_;
+    const DataTypeVector ragged_value_types_;
+    const DataTypeVector ragged_split_types_;
     const std::vector<PartialTensorShape> dense_shapes_;
     const DataTypeVector output_types_;
     const std::vector<PartialTensorShape> output_shapes_;
     const bool sloppy_;
+    const bool has_ragged_keys_;
   };
 
   const int graph_def_version_;
@@ -393,11 +453,15 @@ class ParseExampleDatasetOp : public UnaryDatasetOpKernel {
   bool sloppy_;
   std::vector<string> sparse_keys_;
   std::vector<string> dense_keys_;
+  std::vector<string> ragged_keys_;
   DataTypeVector sparse_types_;
   DataTypeVector dense_types_;
+  DataTypeVector ragged_value_types_;
+  DataTypeVector ragged_split_types_;
   std::vector<PartialTensorShape> dense_shapes_;
   std::vector<bool> variable_length_;
   std::vector<std::size_t> elements_per_stride_;
+  bool has_ragged_keys_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("ParseExampleDataset").Device(DEVICE_CPU),

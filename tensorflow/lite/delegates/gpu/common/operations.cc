@@ -120,6 +120,8 @@ std::string ToString(enum OperationType op) {
       return "subtract";
     case OperationType::TANH:
       return "tanh";
+    case OperationType::TRANSPOSE:
+      return "transpose";
     case OperationType::UPSAMPLE_2D:
       return "upsample_2d";
     default:
@@ -141,6 +143,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
+          {"div", OperationType::DIV},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"hard_swish", OperationType::HARD_SWISH},
           {"log", OperationType::LOG},
@@ -150,6 +153,7 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"multiply_scalar", OperationType::MULTIPLY_SCALAR},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
+          {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
           {"relu", OperationType::RELU},
           {"resize", OperationType::RESIZE},
@@ -161,8 +165,10 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"softmax", OperationType::SOFTMAX},
           {"sqrt", OperationType::SQRT},
           {"square", OperationType::SQUARE},
+          {"squared_diff", OperationType::SQUARED_DIFF},
           {"subtract", OperationType::SUB},
           {"tanh", OperationType::TANH},
+          {"transpose", OperationType::TRANSPOSE},
           {"upsample_2d", OperationType::UPSAMPLE_2D},
       });
   auto op = operations->find(name);
@@ -319,13 +325,15 @@ BHWC CalculateOutputShape(const BHWC& input,
 }
 
 BHWC CalculateOutputShape(const BHWC& input, const SliceAttributes& attr) {
-  return BHWC(input.b, StridedSize(attr.ends.h - attr.starts.h, attr.strides.h),
+  return BHWC(StridedSize(attr.ends.b - attr.starts.b, attr.strides.b),
+              StridedSize(attr.ends.h - attr.starts.h, attr.strides.h),
               StridedSize(attr.ends.w - attr.starts.w, attr.strides.w),
               StridedSize(attr.ends.c - attr.starts.c, attr.strides.c));
 }
 
 BHWC CalculateOutputShape(const BHWC& input, const PadAttributes& attr) {
-  return BHWC(input.b, attr.appended.h + attr.prepended.h + input.h,
+  return BHWC(attr.appended.b + attr.prepended.b + input.b,
+              attr.appended.h + attr.prepended.h + input.h,
               attr.appended.w + attr.prepended.w + input.w,
               attr.appended.c + attr.prepended.c + input.c);
 }
@@ -411,6 +419,11 @@ float CalculateResizeScale(int32_t input_size, int32_t output_size,
 
 BHWC CalculateOutputShape(const BHWC& input, const Upsample2DAttributes& attr) {
   return BHWC(input.b, attr.new_shape.h, attr.new_shape.w, input.c);
+}
+
+BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr) {
+  return BHWC(input.get(attr.perm.b), input.get(attr.perm.h),
+              input.get(attr.perm.w), input.get(attr.perm.c));
 }
 
 }  // namespace gpu

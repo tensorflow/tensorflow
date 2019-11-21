@@ -29,12 +29,12 @@ limitations under the License.
 #define IS_MOBILE_PLATFORM
 
 #elif defined(__APPLE__)
-#define PLATFORM_POSIX
 #include "TargetConditionals.h"
-#if TARGET_IPHONE_SIMULATOR
+#if TARGET_IPHONE_SIMULATOR || TARGET_OS_IPHONE
+#define PLATFORM_POSIX_IOS
 #define IS_MOBILE_PLATFORM
-#elif TARGET_OS_IPHONE
-#define IS_MOBILE_PLATFORM
+#else
+#define PLATFORM_POSIX
 #endif
 
 #elif defined(_WIN32)
@@ -62,11 +62,5 @@ limitations under the License.
     defined(_M_X64)
 #define PLATFORM_IS_X86
 #endif
-
-// A temporary hack for the sake of TensorFlow Data Validation, which uses the
-// same version of RE2 that TensorFlow uses and so needs some way to know when
-// to use absl::string_view rather than re2::StringPiece. This will be removed
-// in a future release of TensorFlow.
-#define PLATFORM_RE2_STRINGPIECE_IS_NOW_ABSL_STRING_VIEW
 
 #endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_

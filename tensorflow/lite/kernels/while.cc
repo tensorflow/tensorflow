@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace tflite {
 namespace ops {
-namespace custom {
+namespace builtin {
 namespace while_kernel {
 
 namespace {
@@ -333,6 +333,6 @@ TfLiteRegistration* Register_WHILE() {
   return &r;
 }
 
-}  // namespace custom
+}  // namespace builtin
 }  // namespace ops
 }  // namespace tflite

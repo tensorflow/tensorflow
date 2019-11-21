@@ -13,6 +13,7 @@ package(
 
 JAVA_SRCS = glob([
     "src/main/java/org/tensorflow/lite/*.java",
+    "src/main/java/org/tensorflow/lite/annotations/*.java",
 ]) + ["//tensorflow/lite/delegates/nnapi/java/src/main/java/org/tensorflow/lite/nnapi:nnapi_delegate_src"]
 
 # Building tensorflow-lite.aar including 4 variants of .so
@@ -24,10 +25,20 @@ aar_with_jni(
     android_library = ":tensorflowlite",
 )
 
-# EXPERIMENTAL: AAR target that supports TensorFlow op execution with TFLite.
+# EXPERIMENTAL: AAR target for using TensorFlow ops with TFLite. Note that this
+# .aar contains *only* the Flex delegate for using select tf ops; clients must
+# also include the core `tensorflow-lite` runtime.
+aar_with_jni(
+    name = "tensorflow-lite-select-tf-ops",
+    android_library = ":tensorflowlite_flex",
+)
+
+# DEPRECATED: AAR target that supports TensorFlow op execution with TFLite.
+# Please use `tensorflowlite-select-tf-ops` instead (along with the standard
+# `tensorflowlite` AAR).
 aar_with_jni(
     name = "tensorflow-lite-with-select-tf-ops",
-    android_library = ":tensorflowlite_flex",
+    android_library = ":tensorflowlite_flex_deprecated",
 )
 
 # EXPERIMENTAL: AAR target for GPU acceleration. Note that this .aar contains
@@ -50,12 +61,31 @@ android_library(
 )
 
 # EXPERIMENTAL: Android target that supports TensorFlow op execution with TFLite.
+# Note that this library contains *only* the Flex delegate and its Java wrapper for using
+# select TF ops; clients must also include the core `tensorflowlite` runtime.
 android_library(
     name = "tensorflowlite_flex",
-    srcs = JAVA_SRCS,
+    srcs = ["//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate"],
     manifest = "AndroidManifest.xml",
     proguard_specs = ["proguard.flags"],
     deps = [
+        ":tensorflowlite_java",
+        ":tensorflowlite_native_flex",
+        "@org_checkerframework_qual",
+    ],
+)
+
+# DEPRECATED: Android target that supports TensorFlow op execution with TFLite.
+# Please use `tensorflowlite_flex`.
+android_library(
+    name = "tensorflowlite_flex_deprecated",
+    srcs = JAVA_SRCS + [
+        "//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate",
+    ],
+    manifest = "AndroidManifest.xml",
+    proguard_specs = ["proguard.flags"],
+    deps = [
+        ":tensorflowlite",
         ":tensorflowlite_native_flex",
         "@org_checkerframework_qual",
     ],
@@ -98,10 +128,11 @@ java_library(
 # EXPERIMENTAL: Java target that supports TensorFlow op execution with TFLite.
 java_library(
     name = "tensorflowlitelib_flex",
-    srcs = JAVA_SRCS,
+    srcs = ["//tensorflow/lite/delegates/flex/java/src/main/java/org/tensorflow/lite/flex:flex_delegate"],
     javacopts = JAVACOPTS,
     deps = [
         ":libtensorflowlite_flex_jni.so",
+        ":tensorflowlitelib",
         "@org_checkerframework_qual",
     ],
 )
@@ -113,6 +144,7 @@ java_test(
     javacopts = JAVACOPTS,
     tags = [
         "no_mac",  # TODO(b/122888913): libtensorflowlite_test_jni broke on mac.
+        "v1only",
     ],
     test_class = "org.tensorflow.lite.TensorFlowLiteTest",
     visibility = ["//visibility:private"],
@@ -219,7 +251,10 @@ java_test(
 java_test(
     name = "InterpreterFlexTest",
     size = "small",
-    srcs = ["src/test/java/org/tensorflow/lite/InterpreterFlexTest.java"],
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterFlexTest.java",
+        "src/test/java/org/tensorflow/lite/TestUtils.java",
+    ],
     data = [
         "//tensorflow/lite:testdata/multi_add_flex.bin",
     ],
@@ -234,6 +269,7 @@ java_test(
     test_class = "org.tensorflow.lite.InterpreterFlexTest",
     visibility = ["//visibility:private"],
     deps = [
+        ":tensorflowlitelib",
         ":tensorflowlitelib_flex",
         "@com_google_truth",
         "@junit",
@@ -246,6 +282,8 @@ java_test(
     srcs = ["src/test/java/org/tensorflow/lite/TensorTest.java"],
     data = [
         "src/testdata/add.bin",
+        "src/testdata/int32.bin",
+        "src/testdata/int64.bin",
     ],
     javacopts = JAVACOPTS,
     tags = [
@@ -265,7 +303,16 @@ filegroup(
     srcs = [
         "src/test/java/org/tensorflow/lite/InterpreterMobileNetTest.java",
         "src/test/java/org/tensorflow/lite/InterpreterTest.java",
+        "src/test/java/org/tensorflow/lite/TensorFlowLiteTest.java",
         "src/test/java/org/tensorflow/lite/nnapi/NnApiDelegateTest.java",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "portable_flex_tests",
+    srcs = [
+        "src/test/java/org/tensorflow/lite/InterpreterFlexTest.java",
     ],
     visibility = ["//visibility:public"],
 )
@@ -310,10 +357,7 @@ tflite_jni_binary(
 tflite_jni_binary(
     name = "libtensorflowlite_flex_jni.so",
     deps = [
-        "//tensorflow/lite/delegates/flex:delegate",
-        "//tensorflow/lite/delegates/nnapi/java/src/main/native",
-        "//tensorflow/lite/java/src/main/native",
-        "//tensorflow/lite/java/src/main/native:init_tensorflow",
+        "//tensorflow/lite/delegates/flex/java/src/main/native",
     ],
 )
 

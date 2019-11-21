@@ -256,6 +256,13 @@ inline std::ostream& operator<<(std::ostream& os,
 }
 #endif  // ENABLE_MKLDNN_V1
 
+template <typename T>
+inline bool array_cmp(const T* a1, const T* a2, size_t size) {
+  for (size_t i = 0; i < size; ++i)
+    if (a1[i] != a2[i]) return false;
+  return true;
+}
+
 class MklDnnShape {
  private:
   typedef struct {
@@ -274,6 +281,40 @@ class MklDnnShape {
   MklShapeData data_;
 
   typedef std::remove_extent<mkldnn_dims_t>::type mkldnn_dim_t;
+
+  // Helper function to compare mkldnn_blocking_desc_t.
+  inline bool blocking_desc_is_equal(const mkldnn_blocking_desc_t& lhs,
+                                     const mkldnn_blocking_desc_t& rhs,
+                                     int ndims) const {
+    return lhs.offset_padding == rhs.offset_padding &&
+           array_cmp(lhs.block_dims, rhs.block_dims, ndims) &&
+           array_cmp(lhs.strides[0], rhs.strides[0], ndims) &&
+           array_cmp(lhs.strides[1], rhs.strides[1], ndims) &&
+           array_cmp(lhs.padding_dims, rhs.padding_dims, ndims) &&
+           array_cmp(lhs.offset_padding_to_data, rhs.offset_padding_to_data,
+                     ndims);
+  }
+
+  // Helper function to compare mkldnn_wino_desc_t.
+  inline bool wino_desc_is_equal(const mkldnn_wino_desc_t& lhs,
+                                 const mkldnn_wino_desc_t& rhs) const {
+    return lhs.wino_format == rhs.wino_format && lhs.alpha == rhs.alpha &&
+           lhs.ic == rhs.ic && lhs.oc == rhs.oc &&
+           lhs.ic_block == rhs.ic_block && lhs.oc_block == rhs.oc_block &&
+           lhs.ic2_block == rhs.ic2_block && lhs.oc2_block == rhs.oc2_block &&
+           lhs.r == rhs.r;
+  }
+
+  // Helper function to compare mkldnn_rnn_packed_desc_t.
+  inline bool rnn_packed_desc_is_equal(
+      const mkldnn_rnn_packed_desc_t& lhs,
+      const mkldnn_rnn_packed_desc_t& rhs) const {
+    return lhs.format == rhs.format && lhs.n_parts == rhs.n_parts &&
+           lhs.offset_compensation == rhs.offset_compensation &&
+           lhs.size == rhs.size && lhs.n == rhs.n &&
+           array_cmp(lhs.parts, rhs.parts, lhs.n_parts) &&
+           array_cmp(lhs.part_pack_size, rhs.part_pack_size, lhs.n_parts);
+  }
 #define INVALID_DIM_SIZE -1
 
  public:
@@ -296,14 +337,23 @@ class MklDnnShape {
                                    const memory::desc& md2) const {
     mkldnn_memory_desc_t mdd1 = md1.data;
     mkldnn_memory_desc_t mdd2 = md2.data;
-    const char* d1 = reinterpret_cast<const char*>(&mdd1);
-    const char* d2 = reinterpret_cast<const char*>(&mdd2);
 
-    size_t md_size = sizeof(mdd1);
-    for (size_t i = 0; i < md_size; i++) {
-      if (*d1++ != *d2++) {
-        return false;
-      }
+    assert(mdd1.primitive_kind == mkldnn::primitive::kind::memory);
+    assert(mdd2.primitive_kind == mkldnn::primitive::kind::memory);
+    bool base_equal = mdd1.ndims == mdd2.ndims &&
+                      array_cmp(mdd1.dims, mdd2.dims, mdd1.ndims) &&
+                      mdd1.data_type == mdd2.data_type &&
+                      mdd1.format == mdd2.format;
+    if (!base_equal) return false;
+    if (mdd1.format == memory::format::blocked) {
+      return blocking_desc_is_equal(mdd1.layout_desc.blocking,
+                                    mdd2.layout_desc.blocking, mdd1.ndims);
+    } else if (mdd1.format == memory::format::wino_fmt) {
+      return wino_desc_is_equal(mdd1.layout_desc.wino_desc,
+                                mdd2.layout_desc.wino_desc);
+    } else if (mdd1.format == memory::format::rnn_packed) {
+      return rnn_packed_desc_is_equal(mdd1.layout_desc.rnn_packed_desc,
+                                      mdd2.layout_desc.rnn_packed_desc);
     }
     return true;
   }
@@ -482,7 +532,7 @@ class MklDnnShape {
   /// We use lazy evaluation and create it only when needed. Input format can
   /// also be Blocked format.
   inline void SetTfLayout(size_t dims, const memory::dims& sizes,
-                          MKL_TENSOR_FORMAT format, bool is_2d = false) {
+                          MKL_TENSOR_FORMAT format) {
     DCHECK_EQ(dims, sizes.size())
         << "SetTfLayout: Number of dimensions does not"
            "match with dimension array";
@@ -492,7 +542,7 @@ class MklDnnShape {
     }
     data_.tf_data_format_ = format;
     if (format != MKL_TENSOR_FORMAT_BLOCKED) {
-      if (is_2d) {
+      if (dims == 2) {
         data_.map_[0] = MklDnnDims::Dim_N;
         data_.map_[1] = MklDnnDims::Dim_C;
       } else {
@@ -1010,9 +1060,11 @@ memory::data_type MklDnnType<qint32>() {
 }
 template <>
 memory::data_type MklDnnType<bfloat16>() {
-  // TODO(nhasabni): Enable MKL-DNN bfloat16 type later.
-  // Currently, falling back to f32 to get compilation working.
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+  return memory::data_type::bf16;
+#else
   return memory::data_type::f32;
+#endif
 }
 
 #ifdef ENABLE_MKLDNN_V1

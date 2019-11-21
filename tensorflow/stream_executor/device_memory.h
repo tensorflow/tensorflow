@@ -84,6 +84,12 @@ class DeviceMemoryBase {
   void *opaque() { return opaque_; }
   const void *opaque() const { return opaque_; }
 
+  // Returns the payload of this memory region.
+  uint64 payload() const { return payload_; }
+
+  // Sets payload to given value.
+  void SetPayload(uint64 payload) { payload_ = payload; }
+
   // Returns whether the two DeviceMemoryBase segments are identical (both in
   // their opaque pointer and size).
   bool IsSameAs(const DeviceMemoryBase &other) const {
@@ -103,6 +109,7 @@ class DeviceMemoryBase {
  private:
   void *opaque_;  // Platform-dependent value representing allocated memory.
   uint64 size_;   // Size in bytes of this allocation.
+  uint64 payload_ = 0;  // Payload data associtated with this allocation.
 };
 
 // Typed wrapper around "void *"-like DeviceMemoryBase.
@@ -122,7 +129,9 @@ class DeviceMemory final : public DeviceMemoryBase {
   // regions, this effectively amounts to a cast from a void*.
   explicit DeviceMemory(const DeviceMemoryBase &other)
       : DeviceMemoryBase(const_cast<DeviceMemoryBase &>(other).opaque(),
-                         other.size()) {}
+                         other.size()) {
+    SetPayload(other.payload());
+  }
 
   // Returns the number of elements of type ElemT that constitute this
   // allocation.
@@ -178,7 +187,6 @@ class SharedDeviceMemory final : public DeviceMemoryBase {
   // Returns whether this is a single-element allocation.
   bool IsScalar() const { return ElementCount() == 1; }
 };
-
 
 // Host-side representation of packed-and-aligned vector datatypes on the device
 // side. Since these can appear in device kernel signatures, we support
