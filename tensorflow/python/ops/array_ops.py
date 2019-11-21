@@ -442,8 +442,8 @@ def broadcast_dynamic_shape(shape_x, shape_y):
 
   Example:
 
-  >>> shape_x = [1, 2, 3]
-  >>> shape_y = [5, 1, 3]
+  >>> shape_x = (1, 2, 3)
+  >>> shape_y = (5, 1, 3)
   >>> tf.broadcast_dynamic_shape(shape_x, shape_y)
   <tf.Tensor: id=..., shape=(3,), dtype=int32, numpy=array([5, 2, 3], dtype=int32)>
 
@@ -469,8 +469,9 @@ def broadcast_static_shape(shape_x, shape_y):
   `TensorShape` which is the shape of the result of a broadcasting op applied in
   tensors of shapes `shape_x` and `shape_y`.
 
-  For example, if shape_x is [1, 2, 3] and shape_y is [5, 1, 3], the result is a
-  TensorShape whose value is [5, 2, 3].
+  For example, if shape_x is `TensorShape([1, 2, 3])` and shape_y is
+  `TensorShape([5, 1, 3])`, the result is a TensorShape whose value is 
+  `TensorShape([5, 2, 3])`.
 
   This is useful when validating the result of a broadcasting operation when the
   tensors have statically known shapes.
@@ -3160,8 +3161,8 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   For example:
 
   Given the following input,
-  * `hypothesis` is a `tf.SparseTensor` of shape `[2, 1, 1]`
-  * `truth` is a `tf.SparseTensor` of shape `[2, 2, 2]`
+  * `hypothesis` is a `tf.SparseTensor` of shape `(2, 1, 1)`
+  * `truth` is a `tf.SparseTensor` of shape `(2, 2, 2)`
 
   >>> hypothesis = tf.SparseTensor(
   ...   [[0, 0, 0],
@@ -3180,7 +3181,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   array([[inf, 1. ],
          [0.5, 1. ]], dtype=float32)>
 
-  The operaton returns a dense Tensor of shape `[2, 2]` with
+  The operaton returns a dense Tensor of shape `(2, 2)` with
   edit distances normalized by `truth` lengths.
 
   **Note**: It is possible to calculate edit distance between two
@@ -3190,14 +3191,14 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   For the following  inputs,
 
   ```python
-  # 'hypothesis' is a tensor of shape `[2, 1]` with variable-length values:
+  # 'hypothesis' is a tensor of shape `(2, 1)` with variable-length values:
   hypothesis = tf.SparseTensor(
     [[0, 0],
      [1,0]],
     ["a", "b"],
     (2, 1))
 
-  # 'truth' is a tensor of shape `[2, 2]` with variable-length values:
+  # 'truth' is a tensor of shape `(2, 2)` with variable-length values:
   truth = tf.SparseTensor(
     [[0, 1],
      [1, 0],
@@ -3207,7 +3208,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
 
   normalize = True
 
-  # The output would be a dense Tensor of shape `[2,]`, with edit distances
+  # The output would be a dense Tensor of shape `(2,)`, with edit distances
   noramlized by 'truth' lengths.
   # output => array([0., 0.5], dtype=float32)
   ```

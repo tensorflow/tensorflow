@@ -2117,13 +2117,11 @@ def ensure_shape(x, shape, name=None):
   >>> y = x * 2
   >>> print(y.shape)
   TensorShape(None)
-
-  y = tf.ensure_shape(y, (None, 3, 3))
-  print(y.shape)
-  TensorShape([None, 3, 3])
-
+  >>> y = tf.ensure_shape(y, (None, 3, 3))
+  >>> print(y.shape)
+  TensorShape([Dimension(None), Dimension(3), Dimension(3)])
   >>> with tf.compat.v1.Session() as sess:
-  >>> sess.run(y, feed_dict={x: [1, 2, 3]})
+  >>>   sess.run(y, feed_dict={x: [1, 2, 3]})
   Traceback (most recent call last):
       ...
   InvalidArgumentError: Shape of tensor mul [3] is not compatible with
