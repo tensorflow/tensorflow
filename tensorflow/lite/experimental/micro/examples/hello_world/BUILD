@@ -1,8 +1,5 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers "hello world" example.
-
-package(default_visibility = ["//visibility:public"])
-
 licenses(["notice"])  # Apache 2.0
 
 load(
