@@ -30,7 +30,7 @@ using namespace mlir;
 using namespace mlir::linalg;
 
 // Marker used as attribute name in generated Linalg rewriting transformations.
-const char *const mlir::linalg::LinalgTransforms::kLinalgTransformMarker;
+constexpr StringRef mlir::linalg::LinalgTransforms::kLinalgTransformMarker;
 
 LogicalResult mlir::linalg::tileLinalgOpAndSetMarker(PatternRewriter &rewriter,
                                                      Operation *op,
