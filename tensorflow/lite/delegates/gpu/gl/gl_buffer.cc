@@ -35,6 +35,17 @@ Status CopyBuffer(const GlBuffer& read_buffer, const GlBuffer& write_buffer) {
                             write_buffer.offset(), read_buffer.bytes_size());
 }
 
+Status GetSSBOSize(GLuint id, int64_t* size_bytes) {
+  GLuint prev_id;
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glGetIntegerv,
+                                     GL_SHADER_STORAGE_BUFFER_BINDING,
+                                     reinterpret_cast<GLint*>(&prev_id)));
+  gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id,
+                                          prev_id);
+  return TFLITE_GPU_CALL_GL(glGetBufferParameteri64v, GL_SHADER_STORAGE_BUFFER,
+                            GL_BUFFER_SIZE, size_bytes);
+}
+
 GlBuffer::GlBuffer(GlBuffer&& buffer)
     : GlBuffer(buffer.target_, buffer.id_, buffer.bytes_size_, buffer.offset_,
                buffer.has_ownership_) {
@@ -82,6 +93,54 @@ Status GlBuffer::MakeView(size_t offset, size_t bytes_size,
 GlBuffer GlBuffer::MakeRef() {
   return GlBuffer(target_, id_, bytes_size_, offset_,
                   /* has_ownership = */ false);
+}
+
+GlPersistentBuffer::GlPersistentBuffer(GLenum target, GLuint id,
+                                       size_t bytes_size, size_t offset,
+                                       bool has_ownership, void* data)
+    : GlBuffer(target, id, bytes_size, offset, has_ownership), data_(data) {}
+
+GlPersistentBuffer::GlPersistentBuffer()
+    : GlPersistentBuffer(GL_INVALID_ENUM, GL_INVALID_INDEX, 0, 0, false,
+                         nullptr) {}
+
+GlPersistentBuffer::GlPersistentBuffer(GlPersistentBuffer&& buffer)
+    : GlBuffer(std::move(buffer)), data_(buffer.data_) {}
+
+GlPersistentBuffer& GlPersistentBuffer::operator=(GlPersistentBuffer&& buffer) {
+  if (this != &buffer) {
+    data_ = buffer.data_;
+    GlBuffer::operator=(std::move(buffer));
+  }
+  return *this;
+}
+
+GlPersistentBuffer::~GlPersistentBuffer() {
+  if (!data_) return;
+  gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id());
+  glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+}
+
+Status CreatePersistentBuffer(size_t size, GlPersistentBuffer* gl_buffer) {
+  PFNGLBUFFERSTORAGEEXTPROC glBufferStorageEXT = nullptr;
+  glBufferStorageEXT = reinterpret_cast<PFNGLBUFFERSTORAGEEXTPROC>(
+      eglGetProcAddress("glBufferStorageEXT"));
+  if (!glBufferStorageEXT) {
+    return UnavailableError("glBufferStorageEXT is not supported");
+  }
+  gl_buffer_internal::BufferId id;
+  gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, id.id());
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(
+      glBufferStorageEXT, GL_SHADER_STORAGE_BUFFER, size, nullptr,
+      GL_MAP_COHERENT_BIT_EXT | GL_MAP_READ_BIT | GL_MAP_WRITE_BIT |
+          GL_MAP_PERSISTENT_BIT_EXT));
+  void* data = nullptr;
+  RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(
+      glMapBufferRange, &data, GL_SHADER_STORAGE_BUFFER, 0, size,
+      GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT_EXT));
+  *gl_buffer = GlPersistentBuffer{
+      GL_SHADER_STORAGE_BUFFER, id.Release(), size, 0, true, data};
+  return OkStatus();
 }
 
 }  // namespace gl

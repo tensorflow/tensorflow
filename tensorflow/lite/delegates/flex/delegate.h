@@ -33,8 +33,7 @@ namespace tflite {
 //   ... build interpreter ...
 //
 //   if (delegate) {
-//     interpreter->ModifyGraphWithDelegate(
-//         delegate.get(), /*allow_dynamic_tensors=*/true);
+//     interpreter->ModifyGraphWithDelegate(delegate.get());
 //   }
 //   ... run inference ...
 //   ... destroy interpreter ...

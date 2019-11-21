@@ -109,6 +109,10 @@ tf_module {
     argspec: "args=[\'image\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "generate_bounding_box_proposals"
+    argspec: "args=[\'scores\', \'bbox_deltas\', \'image_info\', \'anchors\', \'nms_threshold\', \'pre_nms_topn\', \'min_size\', \'post_nms_topn\', \'name\'], varargs=None, keywords=None, defaults=[\'0.7\', \'6000\', \'16\', \'300\', \'None\'], "
+  }
+  member_method {
     name: "grayscale_to_rgb"
     argspec: "args=[\'images\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -135,6 +139,10 @@ tf_module {
   member_method {
     name: "non_max_suppression_padded"
     argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'pad_to_max_output_size\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "non_max_suppression_with_scores"
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size\', \'iou_threshold\', \'score_threshold\', \'soft_nms_sigma\', \'name\'], varargs=None, keywords=None, defaults=[\'0.5\', \'-inf\', \'0.0\', \'None\'], "
   }
   member_method {
     name: "pad_to_bounding_box"

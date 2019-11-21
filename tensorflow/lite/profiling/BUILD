@@ -1,8 +1,9 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 common_copts = [
     "-Wall",
@@ -37,6 +38,7 @@ cc_library(
     hdrs = ["profile_buffer.h"],
     copts = common_copts,
     deps = [
+        ":memory_info",
         ":time",
         "//tensorflow/lite/core/api",
     ],
@@ -46,6 +48,13 @@ cc_library(
     name = "time",
     srcs = ["time.cc"],
     hdrs = ["time.h"],
+    copts = common_copts,
+)
+
+cc_library(
+    name = "memory_info",
+    srcs = ["memory_info.cc"],
+    hdrs = ["memory_info.h"],
     copts = common_copts,
 )
 
@@ -60,12 +69,31 @@ cc_test(
     ],
 )
 
+cc_test(
+    name = "memory_info_test",
+    srcs = ["memory_info_test.cc"],
+    copts = common_copts,
+    tags = [
+        # Some low-level checks, like heap size check, may break in asan, msan
+        # and tsan. So, disable such tests.
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":memory_info",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 cc_library(
     name = "profile_summarizer",
     srcs = ["profile_summarizer.cc"],
     hdrs = ["profile_summarizer.h"],
     copts = common_copts,
     deps = [
+        ":memory_info",
         ":profile_buffer",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
@@ -83,6 +111,7 @@ cc_test(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/kernels:kernel_util",
+        "//tensorflow/lite/kernels:subgraph_test_util",
         "//tensorflow/lite/kernels:test_util",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",

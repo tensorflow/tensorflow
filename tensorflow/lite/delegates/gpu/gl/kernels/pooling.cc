@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -40,7 +41,7 @@ Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
     return InvalidArgumentError("Padding is bigger than kernel.");
   }
 
-  std::vector<UniformParameter> parameters = {
+  std::vector<Variable> parameters = {
       {"input_data_0_h", input->tensor.shape.h},
       {"input_data_0_w", input->tensor.shape.w},
       {"stride", int2(attr.strides.w, attr.strides.h)},
@@ -86,6 +87,7 @@ Status GenerateMaxPoolingCode(const Pooling2DAttributes& attr,
   *generated_code = {
       /*parameters=*/std::move(parameters),
       /*objects=*/{},
+      /*shared_variables=*/{},
       /*workload=*/uint3(),
       /*workgroup=*/uint3(),
       /*source_code=*/std::move(source),
@@ -100,30 +102,34 @@ Status GenerateAveragePoolingCode(const Pooling2DAttributes& attr,
                                   GeneratedCode* generated_code) {
   auto input = ctx.graph->FindInputs(ctx.node->id)[0];
 
-  std::vector<UniformParameter> parameters = {
+  std::vector<Variable> parameters = {
       {"input_data_0_h", input->tensor.shape.h},
       {"input_data_0_w", input->tensor.shape.w},
       {"stride", int2(attr.strides.w, attr.strides.h)},
       {"offset", int2(attr.padding.prepended.w, attr.padding.prepended.h)},
       {"window_h", attr.kernel.h},
       {"window_w", attr.kernel.w},
-      {"multiplier", 1.0f / static_cast<float>(attr.kernel.h * attr.kernel.w)},
   };
 
   std::string source = R"(
+  int window_size = 0;
   for (int a = 0; a < $window_h$; ++a) {
     for (int b = 0; b < $window_w$; ++b) {
       ivec2 coord = gid.xy * $stride$ - $offset$ + ivec2(b, a);
       if (coord.x >= 0 && coord.y >= 0 && coord.x < $input_data_0_w$ && coord.y < $input_data_0_h$) {
         value_0 += $input_data_0[coord.x, coord.y, gid.z]$;
+        window_size++;
       }
     }
   }
-  value_0 *= $multiplier$;
+  // If window_size==0, window covered nothing. This situation is a sign of
+  // incorrectly constructed operation. NaNs are expected as output.
+  value_0 /= float(window_size);
 )";
   *generated_code = {
       /*parameters=*/std::move(parameters),
       /*objects=*/{},
+      /*shared_variables=*/{},
       /*workload=*/uint3(),
       /*workgroup=*/uint3(),
       /*source_code=*/std::move(source),

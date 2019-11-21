@@ -113,5 +113,55 @@ TEST(RunHandlerUtilTest, TestComputeInterOpStealingRanges) {
   }
 }
 
+TEST(RunHandlerUtilTest, TestExponentialRequestDistribution) {
+  int num_active_requests = 3;
+  int num_threads = 10;
+  std::vector<int> actual_distribution =
+      ChooseRequestsWithExponentialDistribution(num_active_requests,
+                                                num_threads);
+
+  std::vector<int> expected_distribution{0, 0, 0, 0, 0, 1, 1, 1, 2, 2};
+  ASSERT_EQ(actual_distribution, expected_distribution);
+}
+
+TEST(RunHandlerUtilTest, TestParamFromEnvWithDefault) {
+  std::vector<double> result = ParamFromEnvWithDefault(
+      "RUN_HANDLER_TEST_ENV", std::vector<double>{0, 0, 0});
+  EXPECT_EQ(result.size(), 3);
+  EXPECT_EQ(result[0], 0);
+  EXPECT_EQ(result[1], 0);
+  EXPECT_EQ(result[2], 0);
+
+  std::vector<int> result2 = ParamFromEnvWithDefault("RUN_HANDLER_TEST_ENV",
+                                                     std::vector<int>{0, 0, 0});
+  EXPECT_EQ(result2.size(), 3);
+  EXPECT_EQ(result2[0], 0);
+  EXPECT_EQ(result2[1], 0);
+  EXPECT_EQ(result2[2], 0);
+
+  bool result3 =
+      ParamFromEnvBoolWithDefault("RUN_HANDLER_TEST_ENV_BOOL", false);
+  EXPECT_EQ(result3, false);
+
+  // Set environment variable.
+  EXPECT_EQ(setenv("RUN_HANDLER_TEST_ENV", "1,2,3", true), 0);
+  result = ParamFromEnvWithDefault("RUN_HANDLER_TEST_ENV",
+                                   std::vector<double>{0, 0, 0});
+  EXPECT_EQ(result.size(), 3);
+  EXPECT_EQ(result[0], 1);
+  EXPECT_EQ(result[1], 2);
+  EXPECT_EQ(result[2], 3);
+  result2 = ParamFromEnvWithDefault("RUN_HANDLER_TEST_ENV",
+                                    std::vector<int>{0, 0, 0});
+  EXPECT_EQ(result.size(), 3);
+  EXPECT_EQ(result2[0], 1);
+  EXPECT_EQ(result2[1], 2);
+  EXPECT_EQ(result2[2], 3);
+
+  EXPECT_EQ(setenv("RUN_HANDLER_TEST_ENV_BOOL", "true", true), 0);
+  result3 = ParamFromEnvBoolWithDefault("RUN_HANDLER_TEST_ENV_BOOL", false);
+  EXPECT_EQ(result3, true);
+}
+
 }  // namespace
 }  // namespace tensorflow

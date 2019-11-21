@@ -58,16 +58,6 @@ void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space) {
 namespace tensorflow {
 namespace tensorrt {
 
-void* TRTCudaAllocator::allocate(uint64_t size, uint64_t alignment,
-                                 uint32_t flags) {
-  assert((alignment & (alignment - 1)) == 0);  // zero or a power of 2.
-  void* memory;
-  cudaMalloc(&memory, size);
-  return memory;
-}
-
-void TRTCudaAllocator::free(void* memory) { cudaFree(memory); }
-
 void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
                                    uint32_t flags) {
   if (size == 0) return nullptr;

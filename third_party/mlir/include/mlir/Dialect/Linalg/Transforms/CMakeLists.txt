@@ -1,0 +1,3 @@
+set(LLVM_TARGET_DEFINITIONS LinalgTransformPatterns.td)
+mlir_tablegen(LinalgTransformPatterns.h.inc -gen-rewriters)
+add_public_tablegen_target(MLIRLinalgTransformPatternsIncGen)

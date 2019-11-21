@@ -20,11 +20,12 @@ limitations under the License.
 #include <iosfwd>
 #include <memory>
 #include <string>
-#include "tensorflow/core/lib/core/error_codes.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
+
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 
@@ -46,7 +47,11 @@ class Status {
 
   /// Copy the specified status.
   Status(const Status& s);
-  void operator=(const Status& s);
+  Status& operator=(const Status& s);
+#ifndef SWIG
+  Status(Status&& s) noexcept;
+  Status& operator=(Status&& s) noexcept;
+#endif  // SWIG
 
   static Status OK() { return Status(); }
 
@@ -105,6 +110,10 @@ class StatusGroup {
   static Status MakeDerived(const Status& s);
   static bool IsDerived(const Status& s);
 
+  // Enable warning and error log collection for appending to the aggregated
+  // status. This function may be called more than once.
+  static void ConfigureLogHistory();
+
   // Return a merged status with combined child status messages with a summary.
   Status as_summary_status() const;
   // Return a merged status with combined child status messages with
@@ -116,22 +125,39 @@ class StatusGroup {
   // Augment this group with the child status `status`.
   void Update(const Status& status);
 
+  // Attach recent warning and error log messages
+  void AttachLogMessages();
+  bool HasLogMessages() const { return !recent_logs_.empty(); }
+
  private:
   bool ok_ = true;
   size_t num_ok_ = 0;
   std::vector<Status> children_;
+  std::vector<std::string> recent_logs_;  // recent warning and error logs
 };
 
 inline Status::Status(const Status& s)
-    : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
+    : state_((s.state_ == nullptr) ? nullptr : new State(*s.state_)) {}
 
-inline void Status::operator=(const Status& s) {
+inline Status& Status::operator=(const Status& s) {
   // The following condition catches both aliasing (when this == &s),
   // and the common case where both s and *this are ok.
   if (state_ != s.state_) {
     SlowCopyFrom(s.state_.get());
   }
+  return *this;
 }
+
+#ifndef SWIG
+inline Status::Status(Status&& s) noexcept : state_(std::move(s.state_)) {}
+
+inline Status& Status::operator=(Status&& s) noexcept {
+  if (state_ != s.state_) {
+    state_ = std::move(s.state_);
+  }
+  return *this;
+}
+#endif  // SWIG
 
 inline bool Status::operator==(const Status& x) const {
   return (this->state_ == x.state_) || (ToString() == x.ToString());

@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/constant_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -72,6 +73,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
     : OpKernel(ctx, StripTensorDataFromNodeDef(ctx)),
       tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
+  MEMDEBUG_CACHE_OP(ctx->def().name().c_str());
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
                           *proto, AllocatorAttributes(), &tensor_));
@@ -399,17 +401,12 @@ void PlaceholderOp::Compute(OpKernelContext* ctx) {
 REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_CPU), PlaceholderOp);
 REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_CPU),
                         PlaceholderOp);
-// The following GPU kernel registration is used to address the situation that
-// a placeholder is added in a GPU device context and soft placement is false.
-// Since a placeholder should never be executed, adding these GPU kernels has
-// no effect on graph execution.
-REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_GPU), PlaceholderOp);
-REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_GPU),
+// The following GPU/Default kernel registration is used to address the
+// situation that a placeholder is added in a GPU device context and soft
+// placement is false. Since a placeholder should never be executed, adding
+// these GPU kernels has no effect on graph execution.
+REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_DEFAULT),
                         PlaceholderOp);
-
-#if TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("Placeholder").Device(DEVICE_SYCL), PlaceholderOp);
-REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_SYCL),
+REGISTER_KERNEL_BUILDER(Name("PlaceholderV2").Device(DEVICE_DEFAULT),
                         PlaceholderOp);
-#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

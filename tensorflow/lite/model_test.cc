@@ -315,6 +315,22 @@ TEST(BasicFlatBufferModel, TestBuildFromModel) {
   ASSERT_NE(interpreter, nullptr);
 }
 
+// Test reading the minimum runtime string from metadata in a Model flatbuffer.
+TEST(BasicFlatBufferModel, TestReadRuntimeVersionFromModel) {
+  // First read a model that doesn't have the runtime string.
+  auto model1 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_model.bin");
+  ASSERT_TRUE(model1);
+  ASSERT_EQ(model1->GetMinimumRuntime(), "");
+
+  // Read a model that has minimum runtime string populated.
+  auto model2 = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/test_min_runtime.bin");
+  ASSERT_TRUE(model2);
+  // Check that we have read the runtime string correctly.
+  ASSERT_EQ(model2->GetMinimumRuntime(), "1.10.0");
+}
+
 // TODO(aselle): Add tests for serialization of builtin op data types.
 // These tests will occur with the evaluation tests of individual operators,
 // not here.

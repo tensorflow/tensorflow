@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_tensor.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/resource_var.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -32,7 +33,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace tensorflow {
-class XlaAllocator;
 
 // Struct that represents a possibly-absent Tensor.
 struct OptionalTensor {
@@ -104,74 +104,6 @@ class VariableInfo {
 Status LockVariables(absl::Span<VariableInfo> variables)
     EXCLUSIVE_LOCK_FUNCTION();
 
-// Adapter class that wraps a Tensorflow allocator as an XLA allocator.
-// Assumes that the Tensorflow allocator permits asynchronous deallocation:
-// see comment on `AllowsAsynchronousDeallocation()`.
-class XlaAllocator : public se::DeviceMemoryAllocator {
- public:
-  XlaAllocator(const se::Platform* platform, Allocator* wrapped);
-  ~XlaAllocator() override;
-  xla::StatusOr<se::OwningDeviceMemory> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure) override;
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override;
-
-  // The Tensorflow BFC allocator used on GPU allows host-side deallocation
-  // before GPU execution takes place. Tensorflow uses the ordering of the main
-  // compute stream to enforce a happens-before relationship between a memory
-  // allocation and code that reuses the same memory. If Tensorflow adds
-  // support for multiple GPU streams or allocators with different ordering
-  // requirements, this code may need to change.
-  // (This attribute has no effect on CPU.)
-  bool AllowsAsynchronousDeallocation() const override { return true; }
-
- private:
-  Allocator* wrapped_;
-};
-
-// Adapter class that wraps per-device TF allocators as an XLA allocator.
-// Assumes that the Tensorflow allocator permits asynchronous deallocation;
-// see comment on `AllowsAsynchronousDeallocation()`.
-class MultiDeviceAdapter : public se::DeviceMemoryAllocator {
- public:
-  MultiDeviceAdapter(
-      const se::Platform* platform,
-      std::vector<std::unique_ptr<tensorflow::Allocator>> tf_allocators)
-      : DeviceMemoryAllocator(platform),
-        tf_allocators_(std::move(tf_allocators)) {
-    for (const auto& tf_allocator : tf_allocators_) {
-      per_device_allocators_.emplace_back(platform, tf_allocator.get());
-    }
-  }
-
-  xla::StatusOr<se::OwningDeviceMemory> Allocate(
-      int device_ordinal, uint64 size, bool retry_on_failure) override {
-    CHECK_LT(device_ordinal, per_device_allocators_.size());
-    return per_device_allocators_[device_ordinal].Allocate(device_ordinal, size,
-                                                           retry_on_failure);
-  }
-
-  Status Deallocate(int device_ordinal, se::DeviceMemoryBase mem) override {
-    CHECK_LT(device_ordinal, per_device_allocators_.size());
-    return per_device_allocators_[device_ordinal].Deallocate(device_ordinal,
-                                                             mem);
-  }
-
-  // The Tensorflow BFC allocator used on GPU allows host-side deallocation
-  // before GPU execution takes place. Tensorflow uses the ordering of the main
-  // compute stream to enforce a happens-before relationship between a memory
-  // allocation and code that reuses the same memory. If Tensorflow adds
-  // support for multiple GPU streams or allocators with different ordering
-  // requirements, this code may need to change.
-  // (This attribute has no effect on CPU.)
-  bool AllowsAsynchronousDeallocation() const override { return true; }
-
- private:
-  std::vector<tensorflow::XlaAllocator> per_device_allocators_;
-  // The wrapped TF allocators backing per_device_allocators_ (XlaAllocator does
-  // not take ownership of its underlying Allocator).
-  std::vector<std::unique_ptr<tensorflow::Allocator>> tf_allocators_;
-};
-
 // Helper class to perform the marshalling of TensorFlow inputs and outputs to
 // ShapedBuffers suitable for passing to an XLA computation.
 class XlaComputationLaunchContext {
@@ -218,10 +150,11 @@ class XlaComputationLaunchContext {
   //
   // Assumes that the first `missing_ctx_input_prefix` inputs to the kernel are
   // missing and adjusts input indices accordingly.
-  Status PopulateOutputs(OpKernelContext* ctx,
-                         const XlaCompiler::CompilationResult* kernel,
-                         xla::ScopedShapedBuffer output,
-                         int missing_ctx_input_prefix);
+  Status PopulateOutputs(
+      OpKernelContext* ctx, const XlaCompiler::CompilationResult* kernel,
+      xla::ScopedShapedBuffer output, int missing_ctx_input_prefix,
+      const xla::HloInputOutputAliasConfig& input_output_alias,
+      const std::map<int, OptionalTensor>& resource_var_snapshots);
 
   // Return the argument list. Only valid after PopulateInputs() has been
   // called.
@@ -259,16 +192,6 @@ class XlaTensorBuffer : public TensorBuffer {
 
   void FillAllocationDescription(AllocationDescription* proto) const override {
     proto->set_allocated_bytes(actual_size_);
-  }
-
-  static Tensor MakeTensor(DataType dtype, const TensorShape& shape,
-                           se::DeviceMemoryBase buffer, Allocator* allocator) {
-    size_t expected_size = shape.num_elements() * DataTypeSize(dtype);
-    auto* tensor_buffer = new XlaTensorBuffer(buffer.opaque(), expected_size,
-                                              buffer.size(), allocator);
-    Tensor t(dtype, shape, tensor_buffer);
-    tensor_buffer->Unref();
-    return t;
   }
 
  private:

@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/writer/writer_lib.h"
+
 #include <cstdlib>
 #include <cstring>
 #include <unordered_map>
+
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/experimental/writer/enum_mapping.h"
@@ -24,30 +26,27 @@ limitations under the License.
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
-template <class T>
-using Offset = flatbuffers::Offset<T>;
-template <class T>
-using Vector = flatbuffers::Vector<T>;
-using FlatBufferBuilder = flatbuffers::FlatBufferBuilder;
 
-std::pair<BuiltinOptions, Offset<void>> CreateBuiltinUnion(
-    FlatBufferBuilder* fbb, enum BuiltinOperator op, void* builtin_op_data) {
+std::pair<BuiltinOptions, flatbuffers::Offset<void>> CreateBuiltinUnion(
+    flatbuffers::FlatBufferBuilder* fbb, enum BuiltinOperator op,
+    void* builtin_op_data) {
   switch (op) {
 #include "tensorflow/lite/experimental/writer/option_writer_generated.h"
   }
-  return std::make_pair(BuiltinOptions_NONE, Offset<void>());
+  return std::make_pair(BuiltinOptions_NONE, flatbuffers::Offset<void>());
 }
 
 template <class T_OUTPUT, class T_INPUT>
-Offset<Vector<T_OUTPUT>> InterpreterWriter::ExportVector(FlatBufferBuilder* fbb,
-                                                         const T_INPUT& v) {
+flatbuffers::Offset<flatbuffers::Vector<T_OUTPUT>>
+InterpreterWriter::ExportVector(flatbuffers::FlatBufferBuilder* fbb,
+                                const T_INPUT& v) {
   std::vector<T_OUTPUT> inputs(v.begin(), v.end());
   return fbb->template CreateVector<T_OUTPUT>(inputs);
 }
 
-Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
-    FlatBufferBuilder* fbb) {
-  std::vector<Offset<Operator>> operators;
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Operator>>>
+InterpreterWriter::ExportOperators(flatbuffers::FlatBufferBuilder* fbb) {
+  std::vector<flatbuffers::Offset<Operator>> operators;
 
   std::vector<int> operator_to_opcode;
   // TODO(aselle): Augment this once we put execution plan in schema.
@@ -70,13 +69,13 @@ Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
         interpreter_->node_and_registration(op_index);
     const TfLiteNode& node = node_and_registration->first;
     const TfLiteRegistration& registration = node_and_registration->second;
-    Offset<void> builtin_options;
+    flatbuffers::Offset<void> builtin_options;
     BuiltinOptions builtin_options_type = BuiltinOptions_NONE;
     // Custom data
     // TODO(aselle): Custom options format is not known by default. Just assume
     // for now.
     auto custom_options_format = CustomOptionsFormat_FLEXBUFFERS;
-    Offset<Vector<uint8_t>> custom_options = 0;
+    flatbuffers::Offset<flatbuffers::Vector<uint8_t>> custom_options = 0;
 
     if (!registration.custom_name) {
       // builtin
@@ -112,16 +111,16 @@ Offset<Vector<Offset<Operator>>> InterpreterWriter::ExportOperators(
                                        custom_options, custom_options_format));
   }
 
-  return fbb->template CreateVector<Offset<Operator>>(operators);
+  return fbb->template CreateVector<flatbuffers::Offset<Operator>>(operators);
 }
 
-Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
-    FlatBufferBuilder* fbb) {
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Tensor>>>
+InterpreterWriter::ExportTensors(flatbuffers::FlatBufferBuilder* fbb) {
   // Initialized to -1.
   // A value of -1 means this tensor will not be exported.
   tensor_to_written_tensor_.resize(interpreter_->tensors_size(), -1);
 
-  std::vector<Offset<Tensor>> tensors;
+  std::vector<flatbuffers::Offset<Tensor>> tensors;
 
   // Make a map from tensor index to whether the tensor is a temporary.
   std::vector<bool> tensor_is_temporary(interpreter_->tensors_size(), false);
@@ -165,9 +164,9 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
       // Primitive type.
       TensorType type = TfLiteTypeToSchemaType(tensor->type);
       // Handle quantization
-      const Offset<Vector<float>> null_array;
-      Offset<Vector<float>> scale_array;
-      Offset<Vector<int64_t>> zero_point_array;
+      const flatbuffers::Offset<flatbuffers::Vector<float>> null_array;
+      flatbuffers::Offset<flatbuffers::Vector<float>> scale_array;
+      flatbuffers::Offset<flatbuffers::Vector<int64_t>> zero_point_array;
       if (tensor->params.scale != 0.f) {
         // We have quantization, make a single arugment array (multi channel
         // quant needs updating here).
@@ -175,7 +174,7 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
         zero_point_array =
             fbb->CreateVector<int64_t>({tensor->params.zero_point});
       }
-      Offset<QuantizationParameters> quantization_params =
+      flatbuffers::Offset<QuantizationParameters> quantization_params =
           CreateQuantizationParameters(*fbb, null_array, null_array,
                                        scale_array, zero_point_array);
       // Shape
@@ -189,28 +188,28 @@ Offset<Vector<Offset<Tensor>>> InterpreterWriter::ExportTensors(
                                      quantization_params, tensor->is_variable));
     }
   }
-  return fbb->template CreateVector<Offset<Tensor>>(tensors);
+  return fbb->template CreateVector<flatbuffers::Offset<Tensor>>(tensors);
 }
 
-Offset<Vector<Offset<Buffer>>> InterpreterWriter::ExportBuffers(
-    FlatBufferBuilder* fbb) {
-  std::vector<Offset<Buffer>> buffer_vector;
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
+InterpreterWriter::ExportBuffers(flatbuffers::FlatBufferBuilder* fbb) {
+  std::vector<flatbuffers::Offset<Buffer>> buffer_vector;
   for (auto buffer : buffers_) {
     auto data_offset = fbb->CreateVector(buffer.first, buffer.second);
     buffer_vector.push_back(CreateBuffer(*fbb, data_offset));
   }
-  return fbb->template CreateVector<Offset<Buffer>>(buffer_vector);
+  return fbb->template CreateVector<flatbuffers::Offset<Buffer>>(buffer_vector);
 }
 
-Offset<Vector<Offset<OperatorCode>>> InterpreterWriter::CreateOpCodeTable(
-    FlatBufferBuilder* fbb) {
-  std::vector<Offset<OperatorCode>> codes;
+flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<OperatorCode>>>
+InterpreterWriter::CreateOpCodeTable(flatbuffers::FlatBufferBuilder* fbb) {
+  std::vector<flatbuffers::Offset<OperatorCode>> codes;
   for (auto it : opcodes_) {
     const char* custom_name = it.custom.empty() ? nullptr : it.custom.c_str();
     codes.push_back(CreateOperatorCodeDirect(
         *fbb, static_cast<BuiltinOperator>(it.builtin), custom_name));
   }
-  return fbb->template CreateVector<Offset<OperatorCode>>(codes);
+  return fbb->template CreateVector<flatbuffers::Offset<OperatorCode>>(codes);
 }
 
 template <class T>
@@ -234,9 +233,9 @@ std::vector<int> InterpreterWriter::RemapTensorIndicesToWritten(
 TfLiteStatus InterpreterWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
                                           size_t* size) {
   if (!out || !size) return kTfLiteError;
-  FlatBufferBuilder builder(/*initial_size=*/10240);
+  flatbuffers::FlatBufferBuilder builder(/*initial_size=*/10240);
 
-  std::vector<Offset<SubGraph>> subgraphs_as_vector;
+  std::vector<flatbuffers::Offset<SubGraph>> subgraphs_as_vector;
   {  // subgraph specific stuff
     auto tensors = ExportTensors(&builder);
     std::vector<int> written_inputs =
@@ -250,7 +249,8 @@ TfLiteStatus InterpreterWriter::GetBuffer(std::unique_ptr<uint8_t[]>* out,
     subgraphs_as_vector.push_back(
         CreateSubGraph(builder, tensors, inputs, outputs, ops, /* name */ 0));
   }
-  Offset<Vector<Offset<Buffer>>> buffers = ExportBuffers(&builder);
+  flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<Buffer>>>
+      buffers = ExportBuffers(&builder);
 
   auto description = builder.CreateString("Exported from Interpreter.");
 
@@ -274,7 +274,10 @@ TfLiteStatus InterpreterWriter::Write(const std::string& filename) {
   FILE* fp = fopen(filename.c_str(), "wb");
   if (!fp) return kTfLiteError;
 
-  if (fwrite(buffer.get(), 1, size, fp) != size) return kTfLiteError;
+  if (fwrite(buffer.get(), 1, size, fp) != size) {
+    fclose(fp);
+    return kTfLiteError;
+  }
   if (fclose(fp)) return kTfLiteError;
 
   return kTfLiteOk;

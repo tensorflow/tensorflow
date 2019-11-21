@@ -312,7 +312,7 @@ class SdcaFprint : public OpKernel {
     OP_REQUIRES_OK(context, context->allocate_output(
                                 0, TensorShape({num_elements, 2}), &out));
 
-    const auto in_values = input.flat<string>();
+    const auto in_values = input.flat<tstring>();
     auto out_values = out->matrix<int64>();
 
     for (int64 i = 0; i < num_elements; ++i) {

@@ -49,7 +49,7 @@ class MapDefunBenchmark(test.Benchmark):
           wall_time=mean_us,
           extras={"examples_per_sec": num_iters / (end - start)})
 
-  def benchmarkDefunVsMapFn(self):
+  def benchmark_defun_vs_map_fn(self):
     """Benchmarks to compare the performance of MapDefun vs tf.map_fn."""
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])

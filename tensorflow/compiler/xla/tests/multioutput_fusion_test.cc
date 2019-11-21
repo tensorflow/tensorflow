@@ -62,7 +62,7 @@ class MultiOutputFusionTest : public HloTestBase {
 
   void RunTest2D(bool manual_fusion, int64 size) {
     auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewUnverifiedModule();
+    auto hlo_module = CreateNewVerifiedModule();
 
     const Shape elem_shape0 = ShapeUtil::MakeShapeWithLayout(F32, {}, {});
     const Shape elem_shape2 =
@@ -122,7 +122,7 @@ class MultiOutputFusionTest : public HloTestBase {
 
   void RunTest1D(bool manual_fusion, int size) {
     auto builder = HloComputation::Builder(TestName());
-    auto hlo_module = CreateNewUnverifiedModule();
+    auto hlo_module = CreateNewVerifiedModule();
 
     const Shape elem_shape_F32 =
         ShapeUtil::MakeShapeWithDescendingLayout(F32, {size});

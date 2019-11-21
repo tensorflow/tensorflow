@@ -14,6 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/default/logging.h"
+
+// TODO(b/142492876): Avoid depending on absl internal.
+#include "absl/base/internal/cycleclock.h"
+#include "absl/base/internal/sysinfo.h"
 #include "tensorflow/core/platform/env_time.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -31,67 +35,24 @@ limitations under the License.
 #include <unordered_map>
 
 namespace tensorflow {
+
+void TFAddLogSink(TFLogSink* sink) {
+  // LogSink is not implemented.
+  // If necessary, one can add the log sink support as follows.
+  // 1. Define a global vector<TFLogSink> to keep track of all registered
+  //    TFLogSink objects. Protect the global vector with mutex to make it
+  //    thread-safe.
+  // 2. Add/remove elements from the global vector<TFLogSink> in TFAddLogSink
+  //    and TFRemoveLogSink function
+  // 3. Add logic in LogMessage::GenerateLogMessage() below to dispatch log
+  //    messages to all the registered log sinks.
+}
+
+void TFRemoveLogSink(TFLogSink* sink) {
+  // LogSink is not implemented.
+}
+
 namespace internal {
-
-#if defined(PLATFORM_POSIX_ANDROID)
-void LogMessage::GenerateLogMessage() {
-  int android_log_level;
-  switch (severity_) {
-    case INFO:
-      android_log_level = ANDROID_LOG_INFO;
-      break;
-    case WARNING:
-      android_log_level = ANDROID_LOG_WARN;
-      break;
-    case ERROR:
-      android_log_level = ANDROID_LOG_ERROR;
-      break;
-    case FATAL:
-      android_log_level = ANDROID_LOG_FATAL;
-      break;
-    default:
-      if (severity_ < INFO) {
-        android_log_level = ANDROID_LOG_VERBOSE;
-      } else {
-        android_log_level = ANDROID_LOG_ERROR;
-      }
-      break;
-  }
-
-  std::stringstream ss;
-  const char* const partial_name = strrchr(fname_, '/');
-  ss << (partial_name != nullptr ? partial_name + 1 : fname_) << ":" << line_
-     << " " << str();
-  __android_log_write(android_log_level, "native", ss.str().c_str());
-
-  // Also log to stderr (for standalone Android apps).
-  std::cerr << "native : " << ss.str() << std::endl;
-
-  // Android logging at level FATAL does not terminate execution, so abort()
-  // is still required to stop the program.
-  if (severity_ == FATAL) {
-    abort();
-  }
-}
-
-#else
-
-void LogMessage::GenerateLogMessage() {
-  static EnvTime* env_time = tensorflow::EnvTime::Default();
-  uint64 now_micros = env_time->NowMicros();
-  time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
-  int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
-  const size_t time_buffer_size = 30;
-  char time_buffer[time_buffer_size];
-  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
-           localtime(&now_seconds));
-
-  // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%06d: %c %s:%d] %s\n", time_buffer, micros_remainder,
-          "IWEF"[severity_], fname_, line_, str().c_str());
-}
-#endif
-
 namespace {
 
 int ParseInteger(const char* str, size_t size) {
@@ -141,7 +102,7 @@ struct StringData {
 using VmoduleMap = std::unordered_map<StringData, int, StringData::Hasher>;
 
 // Returns a mapping from module name to VLOG level, derived from the
-// TF_CPP_VMOUDLE environment variable; ownership is transferred to the caller.
+// TF_CPP_VMODULE environment variable; ownership is transferred to the caller.
 VmoduleMap* VmodulesMapFromEnv() {
   // The value of the env var is supposed to be of the form:
   //    "foo=1,bar=2,baz=3"
@@ -180,6 +141,13 @@ VmoduleMap* VmodulesMapFromEnv() {
   return result;
 }
 
+bool EmitThreadIdFromEnv() {
+  const char* tf_env_var_val = getenv("TF_CPP_LOG_THREAD_ID");
+  return tf_env_var_val == nullptr
+             ? false
+             : ParseInteger(tf_env_var_val, strlen(tf_env_var_val)) != 0;
+}
+
 }  // namespace
 
 int64 MinLogLevelFromEnv() {
@@ -215,6 +183,12 @@ int64 MinVLogLevelFromEnv() {
 LogMessage::LogMessage(const char* fname, int line, int severity)
     : fname_(fname), line_(line), severity_(severity) {}
 
+LogMessage& LogMessage::AtLocation(const char* fname, int line) {
+  fname_ = fname;
+  line_ = line;
+  return *this;
+}
+
 LogMessage::~LogMessage() {
   // Read the min log level once during the first call to logging.
   static int64 min_log_level = MinLogLevelFromEnv();
@@ -222,6 +196,70 @@ LogMessage::~LogMessage() {
     GenerateLogMessage();
   }
 }
+
+#if defined(PLATFORM_POSIX_ANDROID)
+void LogMessage::GenerateLogMessage() {
+  int android_log_level;
+  switch (severity_) {
+    case INFO:
+      android_log_level = ANDROID_LOG_INFO;
+      break;
+    case WARNING:
+      android_log_level = ANDROID_LOG_WARN;
+      break;
+    case ERROR:
+      android_log_level = ANDROID_LOG_ERROR;
+      break;
+    case FATAL:
+      android_log_level = ANDROID_LOG_FATAL;
+      break;
+    default:
+      if (severity_ < INFO) {
+        android_log_level = ANDROID_LOG_VERBOSE;
+      } else {
+        android_log_level = ANDROID_LOG_ERROR;
+      }
+      break;
+  }
+
+  std::stringstream ss;
+  const char* const partial_name = strrchr(fname_, '/');
+  ss << (partial_name != nullptr ? partial_name + 1 : fname_) << ":" << line_
+     << " " << str();
+  __android_log_write(android_log_level, "native", ss.str().c_str());
+
+  // Also log to stderr (for standalone Android apps).
+  std::cerr << "native : " << ss.str() << std::endl;
+
+  // Android logging at level FATAL does not terminate execution, so abort()
+  // is still required to stop the program.
+  if (severity_ == FATAL) {
+    abort();
+  }
+}
+
+#else
+
+void LogMessage::GenerateLogMessage() {
+  static bool log_thread_id = EmitThreadIdFromEnv();
+  uint64 now_micros = EnvTime::NowMicros();
+  time_t now_seconds = static_cast<time_t>(now_micros / 1000000);
+  int32 micros_remainder = static_cast<int32>(now_micros % 1000000);
+  const size_t time_buffer_size = 30;
+  char time_buffer[time_buffer_size];
+  strftime(time_buffer, time_buffer_size, "%Y-%m-%d %H:%M:%S",
+           localtime(&now_seconds));
+  const size_t tid_buffer_size = 10;
+  char tid_buffer[tid_buffer_size] = "";
+  if (log_thread_id) {
+    snprintf(tid_buffer, sizeof(tid_buffer), " %7u",
+             absl::base_internal::GetTID());
+  }
+  // TODO(jeff,sanjay): Replace this with something that logs through the env.
+  fprintf(stderr, "%s.%06d: %c%s %s:%d] %s\n", time_buffer, micros_remainder,
+          "IWEF"[severity_], tid_buffer, fname_, line_, str().c_str());
+}
+#endif
 
 int64 LogMessage::MinVLogLevel() {
   static int64 min_vlog_level = MinVLogLevelFromEnv();
@@ -309,6 +347,48 @@ std::ostream* CheckOpMessageBuilder::ForVar2() {
 string* CheckOpMessageBuilder::NewString() {
   *stream_ << ")";
   return new string(stream_->str());
+}
+
+namespace {
+// The following code behaves like AtomicStatsCounter::LossyAdd() for
+// speed since it is fine to lose occasional updates.
+// Returns old value of *counter.
+uint32 LossyIncrement(std::atomic<uint32>* counter) {
+  const uint32 value = counter->load(std::memory_order_relaxed);
+  counter->store(value + 1, std::memory_order_relaxed);
+  return value;
+}
+}  // namespace
+
+bool LogEveryNState::ShouldLog(int n) {
+  return n != 0 && (LossyIncrement(&counter_) % n) == 0;
+}
+
+bool LogFirstNState::ShouldLog(int n) {
+  const uint32 counter_value = counter_.load(std::memory_order_relaxed);
+  if (counter_value < n) {
+    counter_.store(counter_value + 1, std::memory_order_relaxed);
+    return true;
+  }
+  return false;
+}
+
+bool LogEveryPow2State::ShouldLog(int ignored) {
+  const uint32 new_value = LossyIncrement(&counter_) + 1;
+  return (new_value & (new_value - 1)) == 0;
+}
+
+bool LogEveryNSecState::ShouldLog(double seconds) {
+  LossyIncrement(&counter_);
+  const int64 now_cycles = absl::base_internal::CycleClock::Now();
+  int64 next_cycles = next_log_time_cycles_.load(std::memory_order_relaxed);
+  do {
+    if (now_cycles <= next_cycles) return false;
+  } while (!next_log_time_cycles_.compare_exchange_weak(
+      next_cycles,
+      now_cycles + seconds * absl::base_internal::CycleClock::Frequency(),
+      std::memory_order_relaxed, std::memory_order_relaxed));
+  return true;
 }
 
 }  // namespace internal

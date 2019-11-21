@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.utils import misc
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops.variables import Variable
@@ -60,6 +62,21 @@ class MiscTest(test.TestCase):
     self.assertTrue(new_l is l)
     with self.cached_session() as sess:
       self.assertEqual(1, self.evaluate(new_a))
+
+  def test_get_range_len(self):
+    get_range_as_graph = def_function.function(misc.get_range_len)
+    test_range = [(i, constant_op.constant(i)) for i in range(-3, 3)]
+    results = []
+    for i, ti in test_range:
+      for j, tj in test_range:
+        for k, tk in test_range:
+          if k == 0:
+            continue
+          results.append(((i, j, k), get_range_as_graph(ti, tj, tk)))
+
+    for (i, j, k), result_tensor in results:
+      self.assertEqual(
+          len(list(range(i, j, k))), self.evaluate(result_tensor))
 
 
 if __name__ == '__main__':

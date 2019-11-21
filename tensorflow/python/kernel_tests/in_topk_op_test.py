@@ -37,12 +37,12 @@ class InTopKTest(test.TestCase):
 
   def testInTop1(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
-    target = [3, 1]
+    target = [3, 2]
     self._validateInTopK(predictions, target, 1, [True, False])
 
   def testInTop2(self):
     predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
-    target = [0, 2]
+    target = [2, 2]
     self._validateInTopK(predictions, target, 2, [False, True])
 
   def testInTop2Tie(self):
@@ -58,12 +58,12 @@ class InTopKTest(test.TestCase):
 
   def testInTopNan(self):
     predictions = [[0.1, float("nan"), 0.2, 0.4], [0.1, 0.2, 0.3, float("inf")]]
-    target = [0, 2]
+    target = [1, 3]
     self._validateInTopK(predictions, target, 2, [False, False])
 
   def testBadTarget(self):
     predictions = [[0.1, 0.3, 0.2, 0.2], [0.1, 0.3, 0.2, 0.2]]
-    target = [2, 12345]  # must return False for invalid target
+    target = [2, 4]  # must return False for invalid target
     self._validateInTopK(predictions, target, 2, [True, False])
 
   def testTensorK(self):

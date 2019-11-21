@@ -2,6 +2,6 @@ path: "tensorflow.saved_model.experimental"
 tf_module {
   member_method {
     name: "save"
-    argspec: "args=[\'obj\', \'export_dir\', \'signatures\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\', \'options\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }

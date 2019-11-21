@@ -23,10 +23,9 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -354,7 +353,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     map_node_name = "Map" if num_parallel_calls is None else "ParallelMap"
 
     def _make_dataset(node_names):
-      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = base_dataset.apply(testing.assert_next(node_names))
       dataset = dataset.map(map_fn, num_parallel_calls)
       dataset = dataset.batch(100)
       options = dataset_ops.Options()
@@ -363,11 +362,11 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset.with_options(options)
       return dataset
 
-    unoptimized = _make_dataset([map_node_name, "Batch"])
+    unoptimized = _make_dataset([map_node_name, "BatchV2"])
     # Note that because of the `ChooseDataset` fork, we can't use `assert_next`
     # to verify the optimization result.
-    optimized = _make_dataset(["ChooseFastestBranch"]
-                              if expect_optimized else [map_node_name, "Batch"])
+    optimized = _make_dataset(["ChooseFastestBranch"] if expect_optimized else
+                              [map_node_name, "BatchV2"])
     optimized = self._enable_map_vectorization(optimized)
     return unoptimized, optimized
 
@@ -417,7 +416,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     base_dataset = base_dataset.with_options(options)
 
     def _make_dataset(node_names):
-      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = base_dataset.apply(testing.assert_next(node_names))
       dataset = dataset.apply(batching.map_and_batch(map_fn, 100))
       return dataset
 
@@ -449,7 +448,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
 
         return apply_fn
       else:
-        unoptimized_seq.extend(["ParallelMap", "Batch"])
+        unoptimized_seq.extend(["ParallelMap", "BatchV2"])
 
         def apply_fn(dataset):
           return dataset.map(map_fn, 12).batch(2, drop_remainder=True)
@@ -465,7 +464,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     apply_fn_2 = make_apply_fn(fuse_second)
 
     def make_dataset(node_names):
-      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = base_dataset.apply(testing.assert_next(node_names))
       dataset = apply_fn_1(dataset)
       dataset = apply_fn_2(dataset)
       return dataset
@@ -478,25 +477,21 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testOptimizationIgnoreStateful(self):
 
     def map_fn(x):
-      with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
+      with ops.control_dependencies([check_ops.assert_equal(x, np.int64(0))]):
         return array_ops.identity(x)
 
-    base_dataset = dataset_ops.Dataset.from_tensor_slices([[1, 2],
-                                                           [3, 4]]).repeat(5)
-    unoptimized, optimized = self._get_test_datasets(
-        base_dataset, map_fn, expect_optimized=False)
-    replacements = None
-    if not context.executing_eagerly():
-      # In graph mode, the ops have unique names.
-      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
-                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
-    self.assertDatasetsRaiseSameError(unoptimized, optimized,
-                                      errors.InvalidArgumentError, replacements)
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(map_fn)
+    dataset = dataset.batch(10)
+    dataset = self._enable_map_vectorization(dataset, use_choose=False)
+    with self.assertRaises(errors.InvalidArgumentError):
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
 
   def testOptimizationIgnoreRagged(self):
     # Make sure we ignore inputs that might not be uniformly sized
     def map_fn(x):
-      return array_ops.gather(x, 0)
+      return array_ops.gather(x, np.int64(0))
 
     # output_shape = (?,)
     base_dataset = dataset_ops.Dataset.range(20).batch(3, drop_remainder=False)
@@ -509,16 +504,13 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     def map_fn(x):
       return array_ops.tile(x, x)
 
-    base_dataset = dataset_ops.Dataset.range(20).batch(1, drop_remainder=True)
-    unoptimized, optimized = self._get_test_datasets(
-        base_dataset, map_fn, expect_optimized=False)
-    replacements = None
-    if not context.executing_eagerly():
-      # In graph mode, the ops have unique names.
-      replacements = [("OneShotIterator", "OneShotIterator_1", 1),
-                      ("IteratorGetNext", "IteratorGetNext_1", 1)]
-    self.assertDatasetsRaiseSameError(unoptimized, optimized,
-                                      errors.InvalidArgumentError, replacements)
+    dataset = dataset_ops.Dataset.range(10).batch(1)
+    dataset = dataset.map(map_fn)
+    dataset = dataset.batch(10)
+    dataset = self._enable_map_vectorization(dataset, use_choose=False)
+    with self.assertRaises(errors.InvalidArgumentError):
+      get_next = self.getNext(dataset)
+      self.evaluate(get_next())
 
   def testOptimizationWithUnknownBatchShape(self):
     tensor = sparse_tensor.SparseTensor(

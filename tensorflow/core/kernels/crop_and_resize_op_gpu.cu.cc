@@ -15,7 +15,7 @@ limitations under the License.
 
 // See docs in ../ops/image_ops.cc.
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -38,11 +38,12 @@ enum InterpolationMethod {
 
 template <typename T>
 __global__ void CropAndResizeKernel(
-    const int32 nthreads, const T* image_ptr, const float* boxes_ptr,
-    const int32* box_ind_ptr, int num_boxes, int batch, int image_height,
-    int image_width, int crop_height, int crop_width, int depth, int method_id,
-    float extrapolation_value, float* crops_ptr) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+    const int32 nthreads, const T* __restrict__ image_ptr,
+    const float* __restrict__ boxes_ptr, const int32* __restrict__ box_ind_ptr,
+    int num_boxes, int batch, int image_height, int image_width,
+    int crop_height, int crop_width, int depth, int method_id,
+    float extrapolation_value, float* __restrict__ crops_ptr) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
     int idx = out_idx;
     const int d = idx % depth;
@@ -130,11 +131,12 @@ __global__ void CropAndResizeKernel(
 
 template <typename T>
 __global__ void CropAndResizeBackpropImageKernel(
-    const int32 nthreads, const float* grads_ptr, const float* boxes_ptr,
-    const int32* box_ind_ptr, int num_boxes, int batch, int image_height,
-    int image_width, int crop_height, int crop_width, int depth,
-    T* grads_image_ptr, int method_id) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+    const int32 nthreads, const float* __restrict__ grads_ptr,
+    const float* __restrict__ boxes_ptr, const int32* __restrict__ box_ind_ptr,
+    int num_boxes, int batch, int image_height, int image_width,
+    int crop_height, int crop_width, int depth, T* __restrict__ grads_image_ptr,
+    int method_id) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
     int idx = out_idx;
     const int d = idx % depth;
@@ -184,52 +186,53 @@ __global__ void CropAndResizeBackpropImageKernel(
       const float x_lerp = in_x - left_x_index;
 
       const float dtop = (1 - y_lerp) * grads_ptr[out_idx];
-      CudaAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + top_y_index) * image_width +
-                         left_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>((1 - x_lerp) * dtop));
-      CudaAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + top_y_index) * image_width +
-                         right_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>(x_lerp * dtop));
+      GpuAtomicAdd(grads_image_ptr +
+                       ((b_in * image_height + top_y_index) * image_width +
+                        left_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>((1 - x_lerp) * dtop));
+      GpuAtomicAdd(grads_image_ptr +
+                       ((b_in * image_height + top_y_index) * image_width +
+                        right_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>(x_lerp * dtop));
 
       const float dbottom = y_lerp * grads_ptr[out_idx];
-      CudaAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + bottom_y_index) * image_width +
-                         left_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>((1 - x_lerp) * dbottom));
-      CudaAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + bottom_y_index) * image_width +
-                         right_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>(x_lerp * dbottom));
+      GpuAtomicAdd(grads_image_ptr +
+                       ((b_in * image_height + bottom_y_index) * image_width +
+                        left_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>((1 - x_lerp) * dbottom));
+      GpuAtomicAdd(grads_image_ptr +
+                       ((b_in * image_height + bottom_y_index) * image_width +
+                        right_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>(x_lerp * dbottom));
     } else {  // method_id == NEAREST
       const int closest_x_index = roundf(in_x);
       const int closest_y_index = roundf(in_y);
-      CudaAtomicAdd(grads_image_ptr +
-                        ((b_in * image_height + closest_y_index) * image_width +
-                         closest_x_index) *
-                            depth +
-                        d,
-                    static_cast<T>(grads_ptr[out_idx]));
+      GpuAtomicAdd(grads_image_ptr +
+                       ((b_in * image_height + closest_y_index) * image_width +
+                        closest_x_index) *
+                           depth +
+                       d,
+                   static_cast<T>(grads_ptr[out_idx]));
     }
   }
 }
 
 template <typename T>
 __global__ void CropAndResizeBackpropBoxesKernel(
-    const int32 nthreads, const float* grads_ptr, const T* image_ptr,
-    const float* boxes_ptr, const int32* box_ind_ptr, int num_boxes, int batch,
+    const int32 nthreads, const float* __restrict__ grads_ptr,
+    const T* __restrict__ image_ptr, const float* __restrict__ boxes_ptr,
+    const int32* __restrict__ box_ind_ptr, int num_boxes, int batch,
     int image_height, int image_width, int crop_height, int crop_width,
-    int depth, float* grads_boxes_ptr) {
-  CUDA_1D_KERNEL_LOOP(out_idx, nthreads) {
+    int depth, float* __restrict__ grads_boxes_ptr) {
+  GPU_1D_KERNEL_LOOP(out_idx, nthreads) {
     // out_idx = d + depth * (w + crop_width * (h + crop_height * b))
     int idx = out_idx;
     const int d = idx % depth;
@@ -332,10 +335,10 @@ __global__ void CropAndResizeBackpropBoxesKernel(
       dx2 = image_grad_x * 0.5 * (image_width - 1);
     }
 
-    CudaAtomicAdd(grads_boxes_ptr + b * 4 + 0, dy1);
-    CudaAtomicAdd(grads_boxes_ptr + b * 4 + 1, dx1);
-    CudaAtomicAdd(grads_boxes_ptr + b * 4 + 2, dy2);
-    CudaAtomicAdd(grads_boxes_ptr + b * 4 + 3, dx2);
+    GpuAtomicAdd(grads_boxes_ptr + b * 4 + 0, dy1);
+    GpuAtomicAdd(grads_boxes_ptr + b * 4 + 1, dx1);
+    GpuAtomicAdd(grads_boxes_ptr + b * 4 + 2, dy2);
+    GpuAtomicAdd(grads_boxes_ptr + b * 4 + 3, dx2);
   }
 }
 
@@ -369,8 +372,8 @@ struct CropAndResize<GPUDevice, T> {
     }
 
     if (total_count > 0) {
-      GpuLaunchConfig config = GetCudaLaunchConfig(total_count, d);
-      TF_CHECK_OK(CudaLaunchKernel(
+      GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
+      TF_CHECK_OK(GpuLaunchKernel(
           CropAndResizeKernel<T>, config.block_count, config.thread_per_block,
           0, d.stream(), config.virtual_thread_count, image.data(),
           boxes.data(), box_ind.data(), num_boxes, batch, image_height,
@@ -406,7 +409,7 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = batch * image_height * image_width * depth;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(CudaLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           SetZero<T>, config.block_count, config.thread_per_block, 0,
           d.stream(), config.virtual_thread_count, grads_image.data()));
     }
@@ -421,7 +424,7 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(CudaLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           CropAndResizeBackpropImageKernel<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
           grads.data(), boxes.data(), box_ind.data(), num_boxes, batch,
@@ -456,7 +459,7 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     total_count = num_boxes * 4;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(CudaLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           SetZero<float>, config.block_count, config.thread_per_block, 0,
           d.stream(), config.virtual_thread_count, grads_boxes.data()));
     }
@@ -465,7 +468,7 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
       config = GetGpuLaunchConfig(total_count, d);
-      TF_CHECK_OK(CudaLaunchKernel(
+      TF_CHECK_OK(GpuLaunchKernel(
           CropAndResizeBackpropBoxesKernel<T>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
           grads.data(), image.data(), boxes.data(), box_ind.data(), num_boxes,
@@ -490,4 +493,4 @@ template struct CheckValidBoxIndexHelper<GPUDevice>;
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

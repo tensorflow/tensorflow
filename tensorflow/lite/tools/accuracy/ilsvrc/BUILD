@@ -1,10 +1,11 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow/lite:build_def.bzl", "tflite_copts", "tflite_linkopts")
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 common_linkopts = tflite_linkopts() + select({
     "//conditions:default": [],
@@ -23,7 +24,7 @@ cc_library(
         "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/tools:command_line_flags",
-        "//tensorflow/lite/tools/accuracy:android_required_build_flags",
+        "//tensorflow/lite/tools/accuracy/ilsvrc/default:custom_delegates",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
@@ -43,7 +44,6 @@ cc_binary(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
-        "//tensorflow/lite/tools/accuracy:android_required_build_flags",
         "//tensorflow/lite/tools/accuracy:csv_writer",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/memory",

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 #include "tensorflow/lite/delegates/gpu/gl/node_shader.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -40,42 +41,34 @@ class ConvolutionTransposedBuffers : public NodeShader {
     auto attr = absl::any_cast<const ConvolutionTransposedAttributes&>(
         ctx.node->operation.attributes);
     auto weights = attr.weights.shape;
-    const int32_t inner_size_w = (weights.w - 1) / attr.stride.w + 1;
-    const int32_t inner_size_h = (weights.h - 1) / attr.stride.h + 1;
 
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"input_data_0_h", input->tensor.shape.h},
         {"input_data_0_w", input->tensor.shape.w},
         {"src_depth", IntegralDivideRoundUp(weights.i, 4)},
         {"kernel_size", int2(weights.w, weights.h)},
         {"stride", int2(attr.stride.w, attr.stride.h)},
-        {"padding", int2(attr.padding.prepended.w, attr.padding.prepended.h)},
-        {"inner_size", int2(inner_size_w, inner_size_h)},
+        {"padding", int2(weights.w - 1 - attr.padding.prepended.w,
+                         weights.h - 1 - attr.padding.prepended.h)},
     };
 
     std::vector<std::pair<std::string, Object>> objects = {
-        {"weights", MakeReadonlyObject(Get3DSizeForPHWO4I4(attr.weights.shape),
-                                       ConvertToPHWO4I4(attr.weights))}};
+        {"weights",
+         MakeReadonlyObject(Get3DSizeForPHWO4I4(attr.weights.shape),
+                            ConvertToPHWO4I4Transposed(attr.weights))}};
 
     std::string source = R"(
-    ivec2 kernel_offset = $kernel_size$ - ivec2(1,1);
-    ivec2 offset = gid.xy + $padding$ - kernel_offset;
-    offset %= $stride$;
-    offset += $stride$;
-    offset %= $stride$;
-    ivec2 f_offset;
-    f_offset.x = offset.x == 0 ? 0 : ($stride.x$ - offset.x);
-    f_offset.y = offset.y == 0 ? 0 : ($stride.y$ - offset.y);
-    for (int ky = 0; ky < $inner_size.y$; ++ky) {
-      for (int kx = 0; kx < $inner_size.x$; ++kx) {
-        ivec2 index = ivec2(kx, ky) * $stride$ + f_offset;
-        bool inside_kernel = index.x < $kernel_size.x$ && index.y < $kernel_size.y$;
-        ivec2 coord = (gid.xy + index + $padding$ - kernel_offset) / $stride$;
-        bool outside = coord.x < 0 || coord.y < 0 ||
-                       coord.x >= $input_data_0_w$ || coord.y >= $input_data_0_h$;
-        if (inside_kernel && !outside) {
-          index = kernel_offset - index;
-          int i = index.y * $kernel_size.x$ + index.x;
+    #define IN_BOUNDS(p, p0, p1) (all(greaterThanEqual(p, p0)) && all(lessThan(p, p1)))
+
+    ivec2 p0 = ($padding$ + $stride$ - gid.xy % $stride$) % $stride$;
+    for (int y = p0.y; y < $kernel_size.y$; y += $stride.y$) {
+      for (int x = p0.x; x < $kernel_size.x$; x += $stride.x$) {
+      
+        int i = int(float(y * $kernel_size.x$) + float(x));        
+        ivec2 idx = ivec2(vec2(gid.xy + ivec2(x, y)) - vec2($padding$));
+        
+        if (IN_BOUNDS(idx, ivec2(0), ivec2($input_data_0_w$, $input_data_0_h$) * $stride$)) {
+          ivec2 coord = idx / $stride$;
           for (int l = 0; l < $src_depth$; ++l) {
             vec4 src_color = $input_data_0[coord.x, coord.y, l]$;
             value_0.x += dot(src_color, $weights[l * 4 + 0, i, gid.z]$);
@@ -94,6 +87,7 @@ class ConvolutionTransposedBuffers : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/std::move(objects),
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/source,

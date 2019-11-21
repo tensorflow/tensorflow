@@ -25,31 +25,66 @@ limitations under the License.
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Module.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 namespace gpu {
 
-// Enmeration to get target specific intrinsics.
+// Enumeration to get target specific intrinsics.
 enum class TargetIntrinsicID {
-  kShflDownF32 = 0,
-  kShflDownI32,
-  kThreadIdx,
+  kThreadIdx = 0,
   kThreadIdy,
   kThreadIdz,
   kBlockIdx,
   kBlockIdy,
   kBlockIdz,
   kBarrierId,
+  kBlockDimx,
+  kBlockDimy,
+  kBlockDimz,
 };
 
-// Emits a call to the specified target intrinsic with the given operands.
+// Enumeration to get target specific device math function.
+enum class TargetDeviceFunctionID {
+  kPow = 0,
+  kErfcinv,
+  kLog,
+  kLog1p,
+  kSin,
+  kCos,
+  kExp,
+  kExpm1,
+  kSqrt,
+  kRsqrt,
+  kAtan2,
+  kFmod,
+  kRound,
+  kHypot
+};
 
+// Emits IR to call a device function named "callee_name" on the given
+// operand. Returns the IR value that represents the return value.
+llvm::CallInst* EmitDeviceFunctionCall(
+    const std::string& callee_name, absl::Span<llvm::Value* const> operands,
+    absl::Span<const PrimitiveType> input_type, PrimitiveType output_type,
+    absl::Span<const llvm::Attribute::AttrKind> attributes,
+    llvm::IRBuilder<>* b);
+
+// Emits a call to the specified target intrinsic with the given operands.
 // Overloaded intrinsics (for example, "minnum") must include a type
 // in overloaded_types  for each overloaded type. Typically, overloaded
 // intrinsics have only a single overloaded type.
 llvm::CallInst* EmitCallToTargetIntrinsic(
     TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+
+// Annotate the kernel as GPU kernel according to the GPU target.
+void AnnotateFunctionAsGpuKernel(llvm::Module* module, llvm::Function* func,
+                                 llvm::IRBuilder<>* b);
+
+std::string ObtainDeviceFunctionName(TargetDeviceFunctionID func_id,
+                                     PrimitiveType output_type,
+                                     llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla

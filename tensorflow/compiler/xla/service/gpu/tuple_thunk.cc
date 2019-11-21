@@ -22,36 +22,22 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-Status TupleThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                                   se::Stream* stream,
-                                   HloExecutionProfiler* profiler) {
-  auto size = tuple_element_buffers_.size();
-  auto tuple_element_buffer_addresses = absl::make_unique<void*[]>(size);
-  for (int i = 0; i != size; ++i) {
-    tuple_element_buffer_addresses[i] =
+Status TupleThunk::ExecuteOnStream(const ExecuteParams& params) {
+  auto& stream = *params.stream;
+  auto& buffer_allocations = *params.buffer_allocations;
+
+  auto n = tuple_element_buffers_.size();
+  auto tuple_data = absl::make_unique<void*[]>(n);
+  for (int i = 0; i < n; ++i) {
+    tuple_data[i] =
         buffer_allocations.GetDeviceAddress(tuple_element_buffers_[i]).opaque();
   }
-  se::DeviceMemory<void*> dest_buffer_address(
-      buffer_allocations.GetDeviceAddress(dest_buffer_));
 
-  auto host_size = size * sizeof(void*);
-  auto op_profiler = profiler->MakeScopedInstructionProfiler(hlo_instruction());
-  if (!stream
-           ->ThenMemcpy(&dest_buffer_address,
-                        tuple_element_buffer_addresses.get(), host_size)
-           .ok()) {
-    return InternalError(
-        "Unable to launch MemcpyH2D from %p to %p with size %lu",
-        tuple_element_buffer_addresses.get(), dest_buffer_address.opaque(),
-        host_size);
-  }
-  // Free the tuple address buffer when memcpy is done.
-  auto* buffers_raw = tuple_element_buffer_addresses.release();
-  if (!stream->ThenDoHostCallback([buffers_raw] { delete[] buffers_raw; })
-           .ok()) {
-    delete[] buffers_raw;
-    return InternalError("Unable to enqueue host callback!");
-  }
+  auto op_profiler =
+      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+  SafeH2DMemcpy(se::DeviceMemory<void*>(
+                    buffer_allocations.GetDeviceAddress(dest_buffer_)),
+                std::move(tuple_data), n, &stream);
   return Status::OK();
 }
 

@@ -21,54 +21,110 @@ from __future__ import print_function
 import gast
 
 from tensorflow.python.autograph.core import converter
+from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import templates
+from tensorflow.python.autograph.pyct.static_analysis import annos
+
+
+class _Function(object):
+
+  def __init__(self):
+    self.context_name = None
 
 
 class FunctionBodyTransformer(converter.Base):
   """Wraps function bodies around autograph-specific boilerplate."""
 
-  def _name_for_current_scope(self):
-    innermost = self.enclosing_entities[-1]
-    if len(self.enclosing_entities) > 1:
-      parent = self.enclosing_entities[-2]
-      if isinstance(parent, gast.ClassDef):
-        # Methods also take the name of their class.
-        name = '%s/%s' % (parent.name, innermost.name)
-      else:
-        name = innermost.name
-    else:
-      name = innermost.name
+  def visit_Return(self, node):
+    if node.value is None:
+      return node
+    return templates.replace(
+        'return function_context_name.mark_return_value(value)',
+        function_context_name=self.state[_Function].context_name,
+        value=node.value)
 
-    # Sanitize the name.
-    # See https://www.tensorflow.org/api_docs/python/tf/Graph#name_scope
-    # TensorFlow doesn't like leading underscores at the top level.
-    while name[0] == '_':
-      name = name[1:]
-    return name
+  def _function_scope_options(self):
+    """Returns the options with which to create function scopes."""
+    # Top-level function receive the options that were directly requested.
+    # All others receive the options corresponding to a recursive conversion.
+    # Note: this mainly controls the user_requested flag, which is important
+    # primarily because the FunctionScope context also creates a
+    # ControlStatusCtx(autograph=ENABLED) when user_requested is True. See
+    # function_wrappers.py.
+    if self.state[_Function].level == 2:
+      return self.ctx.program.options
+    return self.ctx.program.options.call_options()
 
-  def visit_FunctionDef(self, node):
+  def visit_Lambda(self, node):
+    self.state[_Function].enter()
     node = self.generic_visit(node)
 
-    final_body = []
-    indented_body = node.body
-    if node.body:
-      first_statement = node.body[0]
-      # Skip the docstring, if any.
-      if (isinstance(first_statement, gast.Expr) and
-          isinstance(first_statement.value, gast.Str)):
-        indented_body = indented_body[1:]
-        final_body.append(first_statement)
+    # Only wrap the top-level function. Theoretically, we can and should wrap
+    # everything, but that can lead to excessive boilerplate when lambdas are
+    # nested.
+    # TODO(mdan): Looks more closely for use cases that actually require this.
+    if self.state[_Function].level > 2:
+      self.state[_Function].exit()
+      return node
+
+    scope = anno.getanno(node, anno.Static.SCOPE)
+    function_context_name = self.ctx.namer.new_symbol('lscope',
+                                                      scope.referenced)
+    self.state[_Function].context_name = function_context_name
+    anno.setanno(node, 'function_context_name', function_context_name)
 
     template = """
-      with ag__.function_scope(scope_name):
+      ag__.with_function_scope(
+          lambda function_context: body, function_context_name, options)
+    """
+    node.body = templates.replace_as_expression(
+        template,
+        options=self._function_scope_options().to_ast(),
+        function_context=function_context_name,
+        function_context_name=gast.Str(function_context_name),
+        body=node.body)
+
+    self.state[_Function].exit()
+    return node
+
+  def visit_FunctionDef(self, node):
+    self.state[_Function].enter()
+    scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
+
+    function_context_name = self.ctx.namer.new_symbol('fscope',
+                                                      scope.referenced)
+    self.state[_Function].context_name = function_context_name
+    anno.setanno(node, 'function_context_name', function_context_name)
+
+    node = self.generic_visit(node)
+
+    docstring_node = None
+    if node.body:
+      first_statement = node.body[0]
+      if (isinstance(first_statement, gast.Expr) and
+          isinstance(first_statement.value, gast.Str)):
+        docstring_node = first_statement
+        node.body = node.body[1:]
+
+    template = """
+      with ag__.FunctionScope(
+          function_name, context_name, options) as function_context:
         body
     """
-    scoped_body = templates.replace(
+    wrapped_body = templates.replace(
         template,
-        scope_name=gast.Str(self._name_for_current_scope()),
-        body=indented_body)
-    final_body.extend(scoped_body)
-    node.body = final_body
+        function_name=gast.Str(node.name),
+        context_name=gast.Str(function_context_name),
+        options=self._function_scope_options().to_ast(),
+        function_context=function_context_name,
+        body=node.body)
+
+    if docstring_node is not None:
+      wrapped_body = [docstring_node] + wrapped_body
+
+    node.body = wrapped_body
+
+    self.state[_Function].exit()
     return node
 
 

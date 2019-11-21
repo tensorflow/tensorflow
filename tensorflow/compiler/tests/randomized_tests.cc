@@ -3456,7 +3456,7 @@ int main(int argc, char** argv) {
   std::vector<std::unique_ptr<tensorflow::Device>> devices;
   TF_CHECK_OK(tensorflow::DeviceFactory::AddDevices(
       tensorflow::SessionOptions(), "", &devices));
-  tensorflow::DeviceMgr device_mgr(std::move(devices));
+  tensorflow::StaticDeviceMgr device_mgr(std::move(devices));
 
   tensorflow::Device* ignored;
   TF_QCHECK_OK(

@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <cmath>
+#include <complex>
 #include <cstdlib>
 #include <functional>
 #include <iterator>
@@ -409,10 +410,21 @@ Status HloEvaluator::HandleGetDimensionSize(
   }
 
   const Shape& shape = get_dimension_size->operand(0)->shape();
-  Literal output(ShapeUtil::MakeShape(U32, {}));
+  Literal output(ShapeUtil::MakeShape(S32, {}));
   output.PopulateWithValue(
-      static_cast<uint32>(shape.dimensions(get_dimension_size->dimension())));
+      static_cast<int32>(shape.dimensions(get_dimension_size->dimension())));
   evaluated_[get_dimension_size] = std::move(output);
+  return Status::OK();
+}
+
+Status HloEvaluator::HandleSetDimensionSize(
+    HloInstruction* set_dimension_size) {
+  const Literal& operand_literal =
+      GetEvaluatedLiteralFor(set_dimension_size->operand(0));
+  Literal result(set_dimension_size->shape());
+  memcpy(result.untyped_data(), operand_literal.untyped_data(),
+         operand_literal.size_bytes());
+  evaluated_[set_dimension_size] = std::move(result);
   return Status::OK();
 }
 
@@ -659,8 +671,8 @@ Status HloEvaluator::HandleComplex(HloInstruction* complex) {
     case C128: {
       TF_RETURN_IF_ERROR(
           result.Populate<complex128>([&](absl::Span<const int64> multi_index) {
-            return std::complex<float>(real.Get<double>(multi_index),
-                                       imag.Get<double>(multi_index));
+            return std::complex<double>(real.Get<double>(multi_index),
+                                        imag.Get<double>(multi_index));
           }));
       break;
     }
@@ -782,26 +794,15 @@ Status HloEvaluator::HandleTuple(HloInstruction* tuple) {
 
 namespace {
 
-// Straightforward implementation of 1D DFT transform. Uses passed-in start
-// index and stride to gather inputs from the data vector into the preallocated
-// buffer, computes the result, and writes it back to the same locations in the
-// data vector. Runs in O(length^2) time.
-//
-// Parameters contract_output and expand_input are used to avoid unnecessary
-// calculations. When contract_output is set to true, then only (length / 2) + 1
-// output values are computed. When expand_input is set to true, then
-// (length / 2) + 1 values from the data set are used to re-create the full set
-// of size 'length', on which the transform is then performed.
-//
-void NaiveDft1D(int64 length, int64 start, int64 stride, bool inverse,
-                bool contract_output, bool expand_input,
-                absl::Span<complex128> data, absl::Span<complex128> buffer) {
-  CHECK_GT(data.size(), start + (length - 1) * stride);
-  CHECK_GT(buffer.size(), length - 1);
-
-  // Copy input data to 1D vector.
+// Common code used by 1D implementations, which copies data from the input to
+// the contiguous buffer. Returns true if all copied values are zero.
+bool GatherToBuffer(absl::Span<complex128> data, int64 length, int64 start,
+                    int64 stride, bool expand_input,
+                    absl::Span<complex128> buffer) {
+  CHECK_GE(buffer.size(), length);
   bool input_is_zero = true;
   const int64 ub = expand_input ? length / 2 + 1 : length;
+  CHECK_GE(data.size(), start + (ub - 1) * stride);
   for (int64 k = 0; k < ub; k++) {
     complex128 value = data[start + k * stride];
     input_is_zero &= value == complex128(0.0, 0.0);
@@ -815,27 +816,122 @@ void NaiveDft1D(int64 length, int64 start, int64 stride, bool inverse,
       }
     }
   }
+  return input_is_zero;
+}
 
-  // Do 1D transformation with double precision.
+// Returns (conjugated, if 'inverse' is true) k-th twiddle for the given length.
+inline complex128 Twiddle(int64 k, int64 length, bool inverse) {
+  auto coeff = std::exp(complex128(0.0, -2.0 * M_PI * k / length));
+  return inverse ? std::conj(coeff) : coeff;
+}
+
+// Straightforward implementation of 1D DFT transform of arbitrary length. Uses
+// passed-in start index and stride to gather inputs from the data vector into
+// the preallocated buffer, computes the result, and writes it back to the same
+// locations in the data vector. Runs in O(length^2) time.
+//
+// Parameters contract_output and expand_input are used to avoid unnecessary
+// calculations. When contract_output is set to true, then only (length / 2) + 1
+// output values are computed. When expand_input is set to true, then
+// (length / 2) + 1 values from the data set are used to re-create the full set
+// of size 'length', on which the transform is then performed.
+//
+void NaiveDft1D(int64 length, int64 start, int64 stride, bool inverse,
+                bool contract_output, bool expand_input,
+                absl::Span<complex128> data, absl::Span<complex128> buffer) {
+  const bool input_is_zero =
+      GatherToBuffer(data, length, start, stride, expand_input, buffer);
+
   if (!input_is_zero) {
     const int64 ub = contract_output ? length / 2 + 1 : length;
     for (int64 k = 0; k < ub; k++) {
       complex128 value = complex128(0.0, 0.0);
       for (int n = 0; n < length; n++) {
-        auto coeff = std::exp(complex128(0.0, -2.0 * M_PI * n * k / length));
-        value += (inverse ? std::conj(buffer[n]) : buffer[n]) * coeff;
+        value += buffer[n] * Twiddle(n * k, length, inverse);
       }
       data[start + k * stride] =
-          inverse ? std::conj(value) / complex128(length, 0.0) : value;
+          inverse ? value / complex128(length, 0.0) : value;
     }
+  }
+}
+
+// Non-recursive implementation of the Cooley-Tukey radix-2 decimation in time.
+// Performs 1D FFT transform for the lengths, which are powers of 2. Runs in
+// O(length * log(length)) time. Uses the same parameters as the naive
+// implementation above, except that the preallocated buffer must be at least
+// twice as big as the length of the transform, because the buffer is used to
+// hold both input and output values for each stage of the transform.
+//
+void Fft1D(int64 length, int64 start, int64 stride, bool inverse,
+           bool contract_output, bool expand_input, absl::Span<complex128> data,
+           absl::Span<complex128> buffer) {
+  CHECK(IsPowerOfTwo(static_cast<uint64>(length)));
+  const bool input_is_zero =
+      GatherToBuffer(data, length, start, stride, expand_input, buffer);
+
+  if (!input_is_zero) {
+    auto generate_twiddles = [](int64 length, bool inverse) {
+      std::vector<complex128> twiddles;
+      // Need only half the twiddles.
+      for (int64 k = 0; k < length / 2; k++) {
+        twiddles.push_back(Twiddle(k, length, inverse));
+      }
+      return twiddles;
+    };
+
+    // Indices into the parts of the buffer used for input and output values.
+    int64 in_base = length;
+    int64 out_base = 0;
+
+    // At each stage, we "split" the input data into num_blocks, with block_size
+    // values in each block.
+    for (int64 num_blocks = 1; num_blocks < length; num_blocks *= 2) {
+      // Swap input and output parts of the buffer.
+      std::swap(in_base, out_base);
+      auto twiddles = generate_twiddles(num_blocks * 2, inverse);
+      const int64 block_size = length / num_blocks;
+      const int64 next_iteration_block_size = block_size / 2;
+      for (int64 block = 0; block < num_blocks; block++) {
+        const int64 in_offset = in_base + block * block_size;
+        const int64 out_offset = out_base + block * next_iteration_block_size;
+        // For each (even, odd) pair of values in the block, calculate two
+        // output values as even + twiddle * odd and even - twiddle * odd.
+        for (int64 pair = 0; pair < block_size / 2; pair++) {
+          const complex128 even = buffer[in_offset + pair];
+          const complex128 odd = buffer[in_offset + block_size / 2 + pair];
+          const complex128 twiddled_odd = twiddles[block] * odd;
+          buffer[out_offset + pair] = even + twiddled_odd;
+          buffer[out_offset + length / 2 + pair] = even - twiddled_odd;
+        }
+      }
+    }
+    // Copy computed result back to data.
+    const int64 ub = contract_output ? length / 2 + 1 : length;
+    for (int64 k = 0; k < ub; k++) {
+      complex128 value = buffer[out_base + k];
+      data[start + k * stride] =
+          inverse ? value / complex128(length, 0.0) : value;
+    }
+  }
+}
+
+// Determine, which implementation of 1D transform to use and call it.
+void Dft1D(int64 length, int64 start, int64 stride, bool inverse,
+           bool contract_output, bool expand_input, absl::Span<complex128> data,
+           absl::Span<complex128> buffer) {
+  if (IsPowerOfTwo(static_cast<uint64>(length))) {
+    Fft1D(length, start, stride, inverse, contract_output, expand_input, data,
+          buffer);
+  } else {
+    NaiveDft1D(length, start, stride, inverse, contract_output, expand_input,
+               data, buffer);
   }
 }
 
 // Helper to reverse the order of dimension lengths in the passed-in literal.
 std::vector<int64> GetDimensionLengths(const Literal& literal) {
-  std::vector<int64> lengths = literal.shape().dimensions();
-  absl::c_reverse(lengths);
-  return lengths;
+  auto dimensions = literal.shape().dimensions();
+  return std::vector<int64>(dimensions.rbegin(), dimensions.rend());
 }
 
 // Helper to compute strides for creating linear indices into multidimensional
@@ -906,8 +1002,8 @@ void Sweep(int64 fft_rank, FftType fft_type,
       const int64 stride = fft_strides[sweep_axis];
       const bool expand_input = input_is_truncated && sweep_axis == 0;
       const bool contract_oputput = output_is_truncated && sweep_axis == 0;
-      NaiveDft1D(length, start, stride, inverse, contract_oputput, expand_input,
-                 data, buffer);
+      Dft1D(length, start, stride, inverse, contract_oputput, expand_input,
+            data, buffer);
     } else if (axis == sweep_axis) {
       // Visit only the elements with coordinate 0 along the sweep axis.
       sweep(sweep_axis, axis - 1, start);
@@ -1207,10 +1303,10 @@ Status CheckParameters(const Shape& input_shape, const Shape& output_shape,
 
 }  // namespace
 
-// Flexible but slow implementation of the discrete Fourier transform. All
-// transform types (FFT, IFFT, RFFT, and IRFFT) are supported, as well as the
-// arbitrary rank and length of each dimension of the transform, and arbitrary
-// layouts of the input and output literals.
+// Flexible implementation of the discrete Fourier transform. All transform
+// types (FFT, IFFT, RFFT, and IRFFT) are supported, as well as the arbitrary
+// rank and length of each dimension of the transform, and arbitrary layouts of
+// the input and output literals.
 //
 // The input literal in operand 0 provides input data, which must be complex64
 // for FFT, IFFT, IRFFT transforms and float for RFFT. The transform is computed
@@ -1241,15 +1337,18 @@ Status CheckParameters(const Shape& input_shape, const Shape& output_shape,
 // complex64[64][16][9] input array will use all input values and will produce
 // float[64][16][16] output.
 //
-// The implementation of the 1D transform is a straightforward loop nest. The
-// transforms of higher ranks apply sets of 1D transforms along each axis. For
-// example, the 2D transform is computed by applying 1D transforms to each
-// column followed by applying 1D transforms to each row.
+// The implementation of the 1D transform for lengths, that are powers of 2, is
+// the Cooley-Tukey radix-2 decimation-in-time. For all other 1D transform
+// lengths, a straightforward, but slow, loop nest is used. The transforms of
+// higher ranks apply sets of 1D transforms along each axis. For example, the 2D
+// transform is computed by applying 1D transforms to each column followed by
+// applying 1D transforms to each row.
 //
 // In general, a transform of rank n runs in O(N0*N1*...*Nn*(N0+N1+...+Nn))
-// time, where Ni is the length of the transform's i-th dimension. It is
-// possible to reduce the run time to O(N0*N1*...(log(N0)+log(N1)+...)) by
-// plugging in a more efficient 1D implementation.
+// time, where Ni is the length of the transform's i-th dimension. However, for
+// dimension lengths, which are powers of 2, the run time along these dimensions
+// is reduced to log(Ni) in the summation, giving the runtime of
+// O(N0*N1*...*Nn*(log(N0)+log(N1)+...+log(Nn)) in the best case.
 //
 Status HloEvaluator::HandleFft(HloInstruction* fft) {
   const FftType fft_type = fft->fft_type();
@@ -1275,8 +1374,14 @@ Status HloEvaluator::HandleFft(HloInstruction* fft) {
     // Linearized working data set.
     std::vector<complex128> data(fft_size);
 
-    // Temporary buffer allocated once and used in 1D sweeps.
-    std::vector<complex128> buffer(*absl::c_max_element(fft_lengths));
+    // Temporary buffer allocated once and used in 1D sweeps. For dimension
+    // length values that are powers of 2, the buffer should be twice as large.
+    int64 buffer_size = 0;
+    for (auto len : fft_lengths) {
+      int64 size = IsPowerOfTwo(static_cast<uint64>(len)) ? len * 2 : len;
+      buffer_size = std::max(buffer_size, size);
+    }
+    std::vector<complex128> buffer(buffer_size);
 
     // Sizes of each axis of input and output literals.
     const auto input_lengths = GetDimensionLengths(input_literal);
@@ -1448,8 +1553,9 @@ class OutputBatchIndexToInputIndex {
     int64 index_vector_dim = dim_numbers_.index_vector_dim();
     for (int64 i = 0, e = index_vector_.size(); i < e; i++) {
       index_vector_index_[index_vector_dim] = i;
-      TF_ASSIGN_OR_RETURN(index_vector_[i],
-                          start_indices_.GetIntegralAsS64(index_vector_index_));
+      // TODO(george): OK what should happen here?
+      // seems OK to crash though.
+      index_vector_[i] = *start_indices_.GetIntegralAsS64(index_vector_index_);
     }
     return Status::OK();
   }
@@ -1624,6 +1730,10 @@ Status HloEvaluator::HandleGather(HloInstruction* gather) {
       /*output_shape=*/shape);
 
   const Shape& operand_shape = operand.shape();
+  if (ShapeUtil::IsZeroElementArray(operand_shape)) {
+    evaluated_[gather] = std::move(result);
+    return Status::OK();
+  }
 
   auto gather_inner_loop_body =
       [&](absl::Span<const int64> output_window_index,
@@ -2200,12 +2310,10 @@ static StatusOr<bool> GenerateReduceOutputElement(
   }
 
   if (use_fast_add) {
-    TF_ASSIGN_OR_RETURN(double computed_result,
-                        init_values[0]->GetAsDouble({}));
+    double computed_result = *init_values[0]->GetAsDouble({});
     auto reduction_step =
         [&](absl::Span<const int64> input_index) -> StatusOr<bool> {
-      TF_ASSIGN_OR_RETURN(double argument,
-                          input_args[0]->GetAsDouble(input_index));
+      double argument = *input_args[0]->GetAsDouble(input_index);
       computed_result += argument;
       return true;
     };
@@ -2279,7 +2387,6 @@ Status HloEvaluator::HandleReduce(HloInstruction* instr) {
     arg_dim_steps[dim] = 1;
     arg_dim_counts[dim] = arg_dimensions[dim];
   }
-  auto reduced_dimensions = arg_shape.dimensions();
 
   // Map each dimension in the result to a dimension in arg that isn't
   // being reduced.
@@ -2400,6 +2507,12 @@ std::unique_ptr<Array2D<double>> HloEvaluator::MatmulArray2D(
     const Array2D<double>& lhs, const Array2D<double>& rhs) {
   return MatmulArray2DImpl<double>(
       lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+}
+
+std::unique_ptr<Array2D<int32>> HloEvaluator::MatmulArray2D(
+    const Array2D<int32>& lhs, const Array2D<int32>& rhs) {
+  return MatmulArray2DImpl<int32>(
+      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulS32);
 }
 
 }  // namespace xla

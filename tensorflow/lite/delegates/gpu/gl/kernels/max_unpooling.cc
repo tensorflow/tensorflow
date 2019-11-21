@@ -24,6 +24,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -36,7 +37,7 @@ class MaxUnpooling : public NodeShader {
                       GeneratedCode* generated_code) const final {
     auto attr = absl::any_cast<MaxUnpooling2DAttributes>(
         ctx.node->operation.attributes);
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"stride", int2(attr.strides.w, attr.strides.h)},
         {"offset", int2(attr.padding.prepended.w, attr.padding.prepended.h)},
         {"window_h", attr.kernel.h},
@@ -58,6 +59,7 @@ class MaxUnpooling : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),

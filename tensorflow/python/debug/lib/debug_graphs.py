@@ -17,8 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from six.moves import xrange  # pylint: disable=redefined-builtin
-
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.platform import tf_logging as logging
@@ -319,13 +317,15 @@ class DebugGraph(object):
     Returns:
       A list of the arg names (as strs) that are ref-type.
     """
-    op_def = op_def_registry.get_registered_ops().get(node.op)
+    op_def = op_def_registry.get(node.op)
+    if op_def is None:
+      return []
+
     ref_args = []
-    if op_def:
-      for i, output_arg in enumerate(op_def.output_arg):
-        if output_arg.is_ref:
-          arg_name = node.name if i == 0 else ("%s:%d" % (node.name, i))
-          ref_args.append(arg_name)
+    for i, output_arg in enumerate(op_def.output_arg):
+      if output_arg.is_ref:
+        arg_name = node.name if i == 0 else ("%s:%d" % (node.name, i))
+        ref_args.append(arg_name)
     return ref_args
 
   def _get_copy_nodes(self):
@@ -346,8 +346,7 @@ class DebugGraph(object):
     for node in self._node_inputs:
       inputs = self._node_inputs[node]
 
-      for i in xrange(len(inputs)):
-        inp = inputs[i]
+      for i, inp in enumerate(inputs):
         if is_copy_node(inp):
           # Find the input to the Copy node, which should be the original
           # input to the node.

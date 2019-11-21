@@ -87,14 +87,16 @@ class OriginInfo(
 
 
 # TODO(mdan): This source map should be a class - easier to refer to.
-# TODO(mdan): Drop indices_in_code.
-def create_source_map(nodes, code, filename):
+def create_source_map(nodes, code, filepath):
   """Creates a source map between an annotated AST and the code it compiles to.
 
+  Note: this function assumes nodes nodes, code and filepath correspond to the
+  same code.
+
   Args:
-    nodes: Iterable[ast.AST, ...]
-    code: Text
-    filename: Optional[Text]
+    nodes: Iterable[ast.AST, ...], one or more AST modes.
+    code: Text, the source code in which nodes are found.
+    filepath: Text
 
   Returns:
     Dict[LineLocation, OriginInfo], mapping locations in code to locations
@@ -102,7 +104,7 @@ def create_source_map(nodes, code, filename):
   """
   reparsed_nodes = parser.parse_str(code, preamble_len=0, single_node=False)
   for node in reparsed_nodes:
-    resolve(node, code)
+    resolve(node, code, filepath, node.lineno, node.col_offset)
 
   source_map = {}
 
@@ -115,7 +117,8 @@ def create_source_map(nodes, code, filename):
       if origin_info is None or final_info is None:
         continue
 
-      line_loc = LineLocation(filename, final_info.loc.lineno)
+      # Note: the keys are by line only, excluding the column offset.
+      line_loc = LineLocation(final_info.loc.filename, final_info.loc.lineno)
 
       existing_origin = source_map.get(line_loc)
       if existing_origin is not None:
@@ -128,11 +131,12 @@ def create_source_map(nodes, code, filename):
           if existing_origin.loc.lineno >= origin_info.loc.lineno:
             continue
 
-        # In case of overlaps, keep the leftmost node.
+        # In case of column overlaps, keep the leftmost node.
         if existing_origin.loc.col_offset <= origin_info.loc.col_offset:
           continue
 
       source_map[line_loc] = origin_info
+
   except ValueError:
     if logging.has_verbosity(3):
       for n, rn in zip(nodes, reparsed_nodes):
@@ -151,56 +155,108 @@ def create_source_map(nodes, code, filename):
   return source_map
 
 
-# TODO(znado): Consider refactoring this into a Visitor.
-# TODO(mdan): Does this work correctly with inner functions?
-def resolve(node, source, function=None):
-  """Adds an origin information to node and its subnodes.
+class _Function(object):
+
+  def __init__(self, name):
+    self.name = name
+
+
+class OriginResolver(gast.NodeVisitor):
+  """Annotates an AST with additional source information like file name."""
+
+  def __init__(self, root_node, source_lines, comments_map,
+               context_lineno, context_col_offset,
+               filepath):
+    self._source_lines = source_lines
+    self._comments_map = comments_map
+
+    self._lineno_offset = context_lineno - root_node.lineno
+    self._col_offset = context_col_offset - root_node.col_offset
+
+    self._filepath = filepath
+
+    self._function_stack = []
+
+  def _absolute_lineno(self, node):
+    return node.lineno + self._lineno_offset
+
+  def _absolute_col_offset(self, node):
+    return node.col_offset + self._col_offset
+
+  def _attach_origin_info(self, node):
+    if self._function_stack:
+      function_name = self._function_stack[-1].name
+    else:
+      function_name = None
+
+    source_code_line = self._source_lines[node.lineno - 1]
+    comment = self._comments_map.get(node.lineno)
+
+    loc = Location(self._filepath, self._absolute_lineno(node),
+                   self._absolute_col_offset(node))
+    origin = OriginInfo(loc, function_name, source_code_line, comment)
+    anno.setanno(node, 'lineno', node.lineno)
+    anno.setanno(node, anno.Basic.ORIGIN, origin)
+
+  def visit(self, node):
+    entered_function = False
+    if isinstance(node, gast.FunctionDef):
+      entered_function = True
+      self._function_stack.append(_Function(node.name))
+
+    if hasattr(node, 'lineno'):
+      self._attach_origin_info(node)
+    self.generic_visit(node)
+
+    if entered_function:
+      self._function_stack.pop()
+
+
+def resolve(node, source, context_filepath, context_lineno, context_col_offset):
+  """Adds origin information to an AST, based on the source it was loaded from.
 
   This allows us to map the original source code line numbers to generated
   source code.
 
-  Args:
-    node: gast.AST node. Should be a gast.FunctionDef. This is the node we
-        annotate with origin information.
-    source: Text, the source code. Should satisfy relationship
-        `node in iter_tree(gast.parse(source))`; otherwise the lineno will be
-        unreliable.
-    function: The original function. If it is None then only the line numbers
-        and column offset will be set in the annotation, with the rest of the
-        information being None.
-  """
-  if function:
-    _, function_lineno = tf_inspect.getsourcelines(function)
-    function_filepath = tf_inspect.getsourcefile(function)
-  else:
-    function_lineno = None
-    function_filepath = None
+  Note: the AST may be a part of a larger context (e.g. a function is part of
+  a module that may contain other things). However, this function does not
+  assume the source argument contains the entire context, nor that it contains
+  only code corresponding to node itself. However, it assumes that node was
+  parsed from the given source code.
+  For this reason, two extra arguments are required, and they indicate the
+  location of the node in the original context.
 
+  Args:
+    node: gast.AST, the AST to annotate.
+    source: Text, the source code representing node.
+    context_filepath: Text
+    context_lineno: int
+    context_col_offset: int
+  """
   # TODO(mdan): Pull this to a separate utility.
   code_reader = six.StringIO(source)
-  comment_map = {}
+  comments_map = {}
   for token in tokenize.generate_tokens(code_reader.readline):
     tok_type, tok_string, loc, _, _ = token
     srow, _ = loc
     if tok_type == tokenize.COMMENT:
-      comment_map[srow] = tok_string.strip()[1:].strip()
+      comments_map[srow] = tok_string.strip()[1:].strip()
 
   source_lines = source.split('\n')
-  for n in gast.walk(node):
-    if not hasattr(n, 'lineno'):
-      continue
+  visitor = OriginResolver(node, source_lines, comments_map,
+                           context_lineno, context_col_offset,
+                           context_filepath)
+  visitor.visit(node)
 
-    within_body_offset = n.lineno - node.lineno
 
-    source_code_line = source_lines[n.lineno - 1]
-    if function:
-      source_lineno = function_lineno + within_body_offset
-      function_name = function.__name__
-    else:
-      source_lineno = n.lineno
-      function_name = None
+def resolve_entity(node, source, entity):
+  """Like resolve, but extracts the context informartion from an entity."""
+  lines, lineno = tf_inspect.getsourcelines(entity)
+  filepath = tf_inspect.getsourcefile(entity)
 
-    location = Location(function_filepath, source_lineno, n.col_offset)
-    origin = OriginInfo(location, function_name,
-                        source_code_line, comment_map.get(source_lineno))
-    anno.setanno(n, anno.Basic.ORIGIN, origin)
+  # Poor man's attempt at guessing the column offset: count the leading
+  # whitespace. This might not work well with tabs.
+  definition_line = lines[0]
+  col_offset = len(definition_line) - len(definition_line.lstrip())
+
+  resolve(node, source, filepath, lineno, col_offset)

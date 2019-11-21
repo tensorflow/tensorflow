@@ -81,7 +81,8 @@ def load_data(path='imdb.npz',
   path = get_file(
       path,
       origin=origin_folder + 'imdb.npz',
-      file_hash='599dadb1135973df5b59232a0e9a887c')
+      file_hash=
+      '69664113be75683a8fe16e3ed0ab59fda8886cb3cd7ada244f7d9544e4676b9f')
   with np.load(path, allow_pickle=True) as f:
     x_train, labels_train = f['x_train'], f['y_train']
     x_test, labels_test = f['x_test'], f['y_test']

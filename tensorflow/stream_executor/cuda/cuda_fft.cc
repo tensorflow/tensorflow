@@ -244,8 +244,7 @@ port::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
 port::Status CUDAFftPlan::UpdateScratchAllocator(
     Stream *stream, ScratchAllocator *scratch_allocator) {
   if (scratch_size_bytes_ != 0) {
-    auto allocated =
-        scratch_allocator->AllocateBytes(stream, scratch_size_bytes_);
+    auto allocated = scratch_allocator->AllocateBytes(scratch_size_bytes_);
     if (!allocated.ok() || (scratch_ = allocated.ValueOrDie()) == nullptr) {
       LOG(ERROR) << "failed to allocate work area.";
       return allocated.status();

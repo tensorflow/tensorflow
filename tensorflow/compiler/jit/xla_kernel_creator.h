@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_COMPILER_JIT_CREATE_XLA_LAUNCH_OP_H_
-#define TENSORFLOW_COMPILER_JIT_CREATE_XLA_LAUNCH_OP_H_
+#ifndef TENSORFLOW_COMPILER_JIT_XLA_KERNEL_CREATOR_H_
+#define TENSORFLOW_COMPILER_JIT_XLA_KERNEL_CREATOR_H_
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -39,4 +39,4 @@ class XlaKernelCreator : public CustomKernelCreator {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_JIT_CREATE_XLA_LAUNCH_OP_H_
+#endif  // TENSORFLOW_COMPILER_JIT_XLA_KERNEL_CREATOR_H_

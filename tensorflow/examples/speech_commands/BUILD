@@ -1,18 +1,56 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_py_test")
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
 
 exports_files([
     "LICENSE",
 ])
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+py_binary(
+    name = "accuracy_utils_py",
+    srcs = ["accuracy_utils.py"],
+    main = "accuracy_utils.py",
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_binary(
+    name = "recognize_commands_py",
+    srcs = ["recognize_commands.py"],
+    main = "recognize_commands.py",
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
+
+py_binary(
+    name = "test_streaming_accuracy_py",
+    srcs = ["test_streaming_accuracy.py"],
+    main = "test_streaming_accuracy.py",
+    python_version = "PY2",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":accuracy_utils_py",
+        ":recognize_commands_py",
+        "//tensorflow:tensorflow_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
+    ],
+)
 
 py_library(
     name = "models",
@@ -48,6 +86,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/lite/experimental/microfrontend:audio_microfrontend_py",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -64,6 +103,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -100,6 +140,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -146,6 +187,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -189,6 +231,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -232,6 +275,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 
@@ -286,6 +330,7 @@ tf_py_test(
     ],
     tags = [
         "no_pip",  # b/131330719
+        "v1only",  # uses contrib
     ],
 )
 

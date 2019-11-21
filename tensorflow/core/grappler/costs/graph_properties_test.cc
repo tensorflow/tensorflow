@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+
 #include "tensorflow/cc/framework/scope.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/graph_def_util.h"
@@ -1009,7 +1010,8 @@ TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
     GraphProperties properties(item);
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/false,
-        /*aggressive_shape_inference=*/true));
+        /*aggressive_shape_inference=*/true,
+        /*include_tensor_values=*/true));
     const auto out_props = properties.GetOutputProperties("fill");
     const OpInfo::TensorProperties out_prop0 = out_props[0];
     EXPECT_EQ("float: [4,4]", PropToString(out_prop0));
@@ -1028,7 +1030,8 @@ TEST_F(GraphPropertiesTest, SkippingValueInferenceForLargeTensors) {
     GraphProperties properties(item);
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/false,
-        /*aggressive_shape_inference=*/true));
+        /*aggressive_shape_inference=*/true,
+        /*include_tensor_values=*/true));
     const auto out_props = properties.GetOutputProperties("fill");
     const OpInfo::TensorProperties out_prop0 = out_props[0];
     EXPECT_EQ("float: [1000,1000,1000,1000]", PropToString(out_prop0));
@@ -1248,7 +1251,8 @@ TEST_F(GraphPropertiesTest, ArithmeticFunctionReturnTensorValue) {
     // evaluate output value.
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/true,
-        /*aggressive_shape_inference=*/false));
+        /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/true));
     const auto out_props = properties.GetOutputProperties("MyFunc");
     const OpInfo::TensorProperties out_prop0 = out_props[0];
     EXPECT_EQ("int32: [2]", PropToString(out_prop0));
@@ -1260,7 +1264,8 @@ TEST_F(GraphPropertiesTest, ArithmeticFunctionReturnTensorValue) {
     // With aggressive_shape_inference, output value is evaluated.
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/true,
-        /*aggressive_shape_inference=*/true));
+        /*aggressive_shape_inference=*/true,
+        /*include_tensor_values=*/true));
     const auto out_props = properties.GetOutputProperties("MyFunc");
     const OpInfo::TensorProperties out_prop0 = out_props[0];
     EXPECT_EQ("int32: [2]", PropToString(out_prop0));
@@ -1802,7 +1807,8 @@ TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
     GraphProperties properties(item);
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/false,
-        /*aggressive_shape_inference=*/false));
+        /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/true));
     EXPECT_FALSE(properties.GetOutputProperties("slice").at(0).has_value());
   }
 
@@ -1812,7 +1818,8 @@ TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
     GraphProperties properties(item);
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/false,
-        /*aggressive_shape_inference=*/true));
+        /*aggressive_shape_inference=*/true,
+        /*include_tensor_values=*/true));
     EXPECT_TRUE(properties.GetOutputProperties("slice").at(0).has_value());
     const auto slice_value =
         properties.GetOutputProperties("slice").at(0).value();
@@ -1838,7 +1845,8 @@ TEST_F(GraphPropertiesTest, ValuePropagationThroughArithmeticOps) {
   GraphProperties properties(item);
   TF_CHECK_OK(properties.InferStatically(
       /*assume_valid_feeds=*/false,
-      /*aggressive_shape_inference=*/true));
+      /*aggressive_shape_inference=*/true,
+      /*include_tensor_values=*/true));
 
   // Check output shapes and values.
   const auto& a_plus_one_prop = properties.GetOutputProperties("a_plus_one")[0];
@@ -1881,7 +1889,8 @@ TEST_F(GraphPropertiesTest, ShapeAnnotation) {
     // Without aggressive_shape_inference, ignore annotated information.
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/false,
-        /*aggressive_shape_inference=*/false));
+        /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/true));
     const auto props = properties.GetOutputProperties("Identity");
     EXPECT_EQ(1, props.size());
     const OpInfo::TensorProperties& prop = props[0];
@@ -1895,7 +1904,8 @@ TEST_F(GraphPropertiesTest, ShapeAnnotation) {
     // Use annotated information.
     TF_CHECK_OK(properties.InferStatically(
         /*assume_valid_feeds=*/false,
-        /*aggressive_shape_inference=*/true));
+        /*aggressive_shape_inference=*/true,
+        /*include_tensor_values=*/true));
     const auto props = properties.GetOutputProperties("Identity");
     EXPECT_EQ(1, props.size());
     const OpInfo::TensorProperties& prop = props[0];
@@ -1923,7 +1933,8 @@ TEST_F(GraphPropertiesTest, ShapeAnnotationWithCompatibleShapes) {
   // Use annotated information.
   TF_CHECK_OK(properties.InferStatically(
       /*assume_valid_feeds=*/false,
-      /*aggressive_shape_inference=*/true));
+      /*aggressive_shape_inference=*/true,
+      /*include_tensor_values=*/true));
   const auto props = properties.GetOutputProperties("Identity");
   EXPECT_EQ(1, props.size());
   const OpInfo::TensorProperties& prop = props[0];
@@ -1950,7 +1961,8 @@ TEST_F(GraphPropertiesTest, ShapeAnnotationWithIncompatibleShapes) {
   // Use annotated information.
   TF_CHECK_OK(properties.InferStatically(
       /*assume_valid_feeds=*/false,
-      /*aggressive_shape_inference=*/true));
+      /*aggressive_shape_inference=*/true,
+      /*include_tensor_values=*/true));
   const auto props = properties.GetOutputProperties("Identity");
   EXPECT_EQ(1, props.size());
   const OpInfo::TensorProperties& prop = props[0];
@@ -1977,13 +1989,80 @@ TEST_F(GraphPropertiesTest, ShapeAnnotationWithoutInferenceFn) {
   // Use annotated information.
   TF_CHECK_OK(properties.InferStatically(
       /*assume_valid_feeds=*/false,
-      /*aggressive_shape_inference=*/true));
+      /*aggressive_shape_inference=*/true,
+      /*include_tensor_values=*/true));
   const auto props = properties.GetOutputProperties("TestOpWithNoInferenceFn");
   EXPECT_EQ(1, props.size());
   const OpInfo::TensorProperties& prop = props[0];
   EXPECT_EQ(DT_FLOAT, prop.dtype());
   EXPECT_EQ(2, prop.shape().dim_size());
   EXPECT_EQ("float: [10,100]", PropToString(prop));
+}
+
+TEST_F(GraphPropertiesTest, ShapeAnnotatedFunctionOp) {
+  // A function, which we cannot infer output shape statically.
+  auto f = FunctionDefHelper::Create(
+      // Name
+      "FuncShapeCannotBeInferred",
+      // Inputs
+      {},
+      // Outputs
+      {"output: float"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          // Placeholder without shape attr; unknown rank.
+          {{"p"}, "Placeholder", {}, {{"dtype", DataType::DT_FLOAT}}},
+      },
+      // Returns
+      {{"output", "p:output:0"}});
+  FunctionDefLibrary function_lib;
+  function_lib.add_function()->Swap(&f);
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  TF_CHECK_OK(s.graph()->AddFunctionLibrary(function_lib));
+  tensorflow::Node* func_op;
+  TensorShapeProto output_shape;
+  output_shape.set_unknown_rank(false);
+  output_shape.add_dim()->set_size(1);
+  output_shape.add_dim()->set_size(2);
+  output_shape.add_dim()->set_size(3);
+  output_shape.add_dim()->set_size(4);
+  // The function node, f, includes shape annotation.
+  TF_CHECK_OK(tensorflow::NodeBuilder("f", "FuncShapeCannotBeInferred",
+                                      s.graph()->op_registry())
+                  .Attr("_execution_count", 1)
+                  .Attr("_same_output_for_iterations", true)
+                  .Attr("_output_dtype_vector", {DataType::DT_FLOAT})
+                  .Attr("_output_shape_vector", {output_shape})
+                  .Finalize(s.graph(), &func_op));
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+
+  // InferStatically with aggressive_shape_inference would fail to infer
+  // the output shape of the node f.
+  {
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/false));
+    const auto out_props = properties.GetOutputProperties("f");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: ?", PropToString(out_prop0));
+  }
+  // With aggressive_shape_inference, it skips recursively callying
+  // InferStatically for the function node and outputs annotated shape info.
+  {
+    GraphProperties properties(item);
+    TF_CHECK_OK(properties.InferStatically(
+        /*assume_valid_feeds=*/false,
+        /*aggressive_shape_inference=*/true,
+        /*include_tensor_values=*/true));
+    const auto out_props = properties.GetOutputProperties("f");
+    const OpInfo::TensorProperties out_prop0 = out_props[0];
+    EXPECT_EQ("float: [1,2,3,4]", PropToString(out_prop0));
+  }
 }
 }  // namespace
 }  // namespace grappler

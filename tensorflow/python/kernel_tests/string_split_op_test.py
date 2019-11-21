@@ -29,7 +29,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
-from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -171,8 +170,7 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(shape, [3, 1])
 
 
-class StringSplitV2OpTest(ragged_test_util.RaggedTensorTestCase,
-                          parameterized.TestCase):
+class StringSplitV2OpTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   @parameterized.named_parameters([
       {"testcase_name": "Simple",
@@ -269,35 +267,123 @@ class StringSplitV2OpTest(ragged_test_util.RaggedTensorTestCase,
     # correctly.
     expected_ragged = ragged_factory_ops.constant(
         expected, ragged_rank=input.shape.ndims)
+    actual_ragged_v2 = ragged_string_ops.string_split_v2(input, **kwargs)
+    actual_ragged_v2_input_kwarg = ragged_string_ops.string_split_v2(
+        input=input, **kwargs)
+    self.assertAllEqual(expected_ragged, actual_ragged_v2)
+    self.assertAllEqual(expected_ragged, actual_ragged_v2_input_kwarg)
+
+    # Check that the internal version (which returns a SparseTensor) works
+    # correctly.  Note: the internal version oly supports vector inputs.
+    if input.shape.ndims == 1:
+      expected_sparse = self.evaluate(expected_ragged.to_sparse())
+      actual_sparse_v2 = string_ops.string_split_v2(input, **kwargs)
+      self.assertEqual(expected_sparse.indices.tolist(),
+                       self.evaluate(actual_sparse_v2.indices).tolist())
+      self.assertEqual(expected_sparse.values.tolist(),
+                       self.evaluate(actual_sparse_v2.values).tolist())
+      self.assertEqual(expected_sparse.dense_shape.tolist(),
+                       self.evaluate(actual_sparse_v2.dense_shape).tolist())
+
+  @parameterized.named_parameters([
+      {"testcase_name": "Simple",
+       "input": [b"pigs on the wing", b"animals"],
+       "expected": [[b"pigs", b"on", b"the", b"wing"], [b"animals"]]},
+
+      {"testcase_name": "MultiCharSeparator",
+       "input": [b"1<>2<>3", b"<><>4<>5<><>6<>"],
+       "sep": b"<>",
+       "expected": [[b"1", b"2", b"3"],
+                    [b"", b"", b"4", b"5", b"", b"6", b""]]},
+
+      {"testcase_name": "SimpleSeparator",
+       "input": [b"1,2,3", b"4,5,,6,"],
+       "sep": b",",
+       "expected": [[b"1", b"2", b"3"], [b"4", b"5", b"", b"6", b""]]},
+
+      {"testcase_name": "EmptySeparator",
+       "input": [b"1 2 3", b"  4  5    6  "],
+       "expected": [[b"1", b"2", b"3"], [b"4", b"5", b"6"]]},
+
+      {"testcase_name": "EmptySeparatorEmptyInputString",
+       "input": [b""],
+       "expected": [[]]},
+
+      {"testcase_name": "SimpleSeparatorMaxSplit",
+       "input": [b"1,2,3", b"4,5,,6,"],
+       "sep": b",",
+       "maxsplit": 1,
+       "expected": [[b"1", b"2,3"], [b"4", b"5,,6,"]]},
+
+      {"testcase_name": "EmptySeparatorMaxSplit",
+       "input": [b"1 2 3", b"  4  5    6  "],
+       "maxsplit": 1,
+       "expected": [[b"1", b"2 3"], [b"4", b"5    6  "]]},
+
+      {"testcase_name": "ScalarInput",
+       "input": b"1,2,3",
+       "sep": b",",
+       "expected": [[b"1", b"2", b"3"]]},
+
+      {"testcase_name": "Dense2DInput",
+       "input": [[b"1,2,3", b"4"], [b"5,6", b"7,8,9"]],
+       "sep": b",",
+       "expected": [[[b"1", b"2", b"3"], [b"4"]],
+                    [[b"5", b"6"], [b"7", b"8", b"9"]]]},
+
+      {"testcase_name": "Ragged2DInput",
+       "input": [[b"1,2,3", b"4"], [b"5,6"]],
+       "input_is_ragged": True,
+       "sep": b",",
+       "expected": [[[b"1", b"2", b"3"], [b"4"]], [[b"5", b"6"]]]},
+
+      {"testcase_name": "Ragged3DInput",
+       "input": [[[b"1,2,3", b"4"], [b"5,6"]], [[b"7,8,9"]]],
+       "input_is_ragged": True,
+       "sep": b",",
+       "expected": [[[[b"1", b"2", b"3"], [b"4"]], [[b"5", b"6"]]],
+                    [[[b"7", b"8", b"9"]]]]},
+
+      {"testcase_name": "Ragged4DInput",
+       "input": [[[[b"1,2,3", b"4"], [b"5,6"]], [[b"7,8,9"]]], [[[b""]]]],
+       "input_is_ragged": True,
+       "sep": b",",
+       "expected": [[[[[b"1", b"2", b"3"], [b"4"]], [[b"5", b"6"]]],
+                     [[[b"7", b"8", b"9"]]]], [[[[b""]]]]]},
+
+      {"testcase_name": "Ragged4DInputEmptySeparator",
+       "input": [[[[b"1 2 3", b"4"], [b"5 6"]], [[b"7 8 9"]]], [[[b""]]]],
+       "input_is_ragged": True,
+       "expected": [[[[[b"1", b"2", b"3"], [b"4"]], [[b"5", b"6"]]],
+                     [[[b"7", b"8", b"9"]]]], [[[[]]]]]},
+
+      ])  # pyformat: disable
+  def testSplitV1(self, input, expected, input_is_ragged=False, **kwargs):  # pylint: disable=redefined-builtin
+    # Prepare the input tensor.
+    if input_is_ragged:
+      input = ragged_factory_ops.constant(input, dtype=dtypes.string)
+    else:
+      input = constant_op.constant(input, dtype=dtypes.string)
+
+    expected_ragged = ragged_factory_ops.constant(expected)
     actual_ragged_v1 = ragged_string_ops.strings_split_v1(
         input, result_type="RaggedTensor", **kwargs)
     actual_ragged_v1_input_kwarg = ragged_string_ops.strings_split_v1(
         input=input, result_type="RaggedTensor", **kwargs)
     actual_ragged_v1_source_kwarg = ragged_string_ops.strings_split_v1(
         source=input, result_type="RaggedTensor", **kwargs)
-    actual_ragged_v2 = ragged_string_ops.string_split_v2(input, **kwargs)
-    actual_ragged_v2_input_kwarg = ragged_string_ops.string_split_v2(
-        input=input, **kwargs)
-    self.assertRaggedEqual(expected_ragged, actual_ragged_v1)
-    self.assertRaggedEqual(expected_ragged, actual_ragged_v1_input_kwarg)
-    self.assertRaggedEqual(expected_ragged, actual_ragged_v1_source_kwarg)
-    self.assertRaggedEqual(expected_ragged, actual_ragged_v2)
-    self.assertRaggedEqual(expected_ragged, actual_ragged_v2_input_kwarg)
-
-    # Check that the internal version (which returns a SparseTensor) works
-    # correctly.  Note: the internal version oly supports vector inputs.
-    if input.shape.ndims == 1:
-      expected_sparse = self.evaluate(expected_ragged.to_sparse())
-      actual_sparse_v1 = ragged_string_ops.strings_split_v1(
-          input, result_type="SparseTensor", **kwargs)
-      actual_sparse_v2 = string_ops.string_split_v2(input, **kwargs)
-      for actual_sparse in [actual_sparse_v1, actual_sparse_v2]:
-        self.assertEqual(expected_sparse.indices.tolist(),
-                         self.evaluate(actual_sparse.indices).tolist())
-        self.assertEqual(expected_sparse.values.tolist(),
-                         self.evaluate(actual_sparse.values).tolist())
-        self.assertEqual(expected_sparse.dense_shape.tolist(),
-                         self.evaluate(actual_sparse.dense_shape).tolist())
+    self.assertAllEqual(expected_ragged, actual_ragged_v1)
+    self.assertAllEqual(expected_ragged, actual_ragged_v1_input_kwarg)
+    self.assertAllEqual(expected_ragged, actual_ragged_v1_source_kwarg)
+    expected_sparse = self.evaluate(expected_ragged.to_sparse())
+    actual_sparse_v1 = ragged_string_ops.strings_split_v1(
+        input, result_type="SparseTensor", **kwargs)
+    self.assertEqual(expected_sparse.indices.tolist(),
+                     self.evaluate(actual_sparse_v1.indices).tolist())
+    self.assertEqual(expected_sparse.values.tolist(),
+                     self.evaluate(actual_sparse_v1.values).tolist())
+    self.assertEqual(expected_sparse.dense_shape.tolist(),
+                     self.evaluate(actual_sparse_v1.dense_shape).tolist())
 
   def _py_split(self, strings, **kwargs):
     if isinstance(strings, compat.bytes_or_text_types):

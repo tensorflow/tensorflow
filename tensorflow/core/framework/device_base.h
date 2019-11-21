@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -141,7 +142,7 @@ class DeviceBase {
   // "stream" is used in special circumstances (such as the
   // constructors of Ops) where there is no available OpKernelContext.
   // "default_context" is used by OpKernelContext whenever a device does not
-  // supply a DeviceContext for an op in FillContextMap (e.g. when only
+  // supply a DeviceContext for an op in TryGetDeviceContext() (e.g. when only
   // using a single stream.)
   // "event_mgr" is used to delay deallocation of temporary GPU buffers.
   // TODO(pbar) Work out how to move this out of DeviceBase.
@@ -201,7 +202,9 @@ class DeviceBase {
 
   virtual ScopedAllocatorMgr* GetScopedAllocatorMgr() const { return nullptr; }
 
-  bool has_eigen_cpu_device() const { return !eigen_cpu_devices_.empty(); }
+  virtual bool has_eigen_cpu_device() const {
+    return !eigen_cpu_devices_.empty();
+  }
 
   virtual const Eigen::ThreadPoolDevice* eigen_cpu_device();
 
@@ -288,6 +291,12 @@ class DeviceBase {
   Eigen::SyclDevice* eigen_sycl_device_ = nullptr;
 #endif
 };
+
+// Methods to create and check for Symbolic execution devices.
+// Such devices are mostly used for TF-XLA bridge. TF should not treat these as
+// normal devices.
+void AddSymbolicExecutionDevice(absl::string_view device_name);
+bool IsSymbolicExecutionDevice(absl::string_view device_name);
 
 }  // namespace tensorflow
 

@@ -30,7 +30,7 @@ RandomAccessInputStream::~RandomAccessInputStream() {
 }
 
 Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
-                                           string* result) {
+                                           tstring* result) {
   if (bytes_to_read < 0) {
     return errors::InvalidArgument("Cannot read negative number of bytes");
   }
@@ -48,6 +48,20 @@ Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
   }
   return s;
 }
+
+#if defined(PLATFORM_GOOGLE)
+Status RandomAccessInputStream::ReadNBytes(int64 bytes_to_read,
+                                           absl::Cord* result) {
+  if (bytes_to_read < 0) {
+    return errors::InvalidArgument("Cannot read negative number of bytes");
+  }
+  Status s = file_->Read(pos_, bytes_to_read, result);
+  if (s.ok() || errors::IsOutOfRange(s)) {
+    pos_ += result->size();
+  }
+  return s;
+}
+#endif
 
 // To limit memory usage, the default implementation of SkipNBytes() only reads
 // 8MB at a time.

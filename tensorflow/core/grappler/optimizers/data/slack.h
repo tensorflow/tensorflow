@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/strings/numbers.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/grappler/mutable_graph_view.h"
 #include "tensorflow/core/grappler/optimizers/data/optimizer_base.h"
 
 namespace tensorflow {
@@ -31,6 +32,8 @@ class Slack : public TFDataOptimizerBase {
   ~Slack() override = default;
 
   string name() const override { return "slack"; };
+
+  bool UsesFunctionLibrary() const override { return false; }
 
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
@@ -54,6 +57,9 @@ class Slack : public TFDataOptimizerBase {
 
  private:
   int64 slack_period_ = -1;
+
+  Status RecursivelyHandleOp(const MutableGraphView& graph,
+                             NodeDef* dataset_node);
 };
 
 }  // namespace grappler

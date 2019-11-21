@@ -19,14 +19,17 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import writers
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.lib.io import tf_record
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
@@ -36,7 +39,7 @@ class TFRecordWriterTest(test_base.DatasetTestBase):
 
   def setUp(self):
     super(TFRecordWriterTest, self).setUp()
-    self._num_records = 7
+    self._num_records = 8
 
   def writer_fn(self, filename, compression_type=""):
     input_dataset = readers.TFRecordDataset([filename], compression_type)
@@ -108,6 +111,29 @@ class TFRecordWriterTest(test_base.DatasetTestBase):
     self.assertEqual(self.evaluate(fn()), b"hello")
     for i, r in enumerate(tf_record.tf_record_iterator(self._outputFilename())):
       self.assertAllEqual(self._record(i), r)
+
+  def testShard(self):
+    filename = self._createFile()
+    dataset = readers.TFRecordDataset([filename])
+
+    def reduce_func(key, dataset):
+      shard_filename = string_ops.string_join(
+          [filename, string_ops.as_string(key)])
+      writer = writers.TFRecordWriter(shard_filename)
+      writer.write(dataset.map(lambda _, x: x))
+      return dataset_ops.Dataset.from_tensors(shard_filename)
+
+    dataset = dataset.enumerate()
+    dataset = dataset.apply(
+        grouping.group_by_window(lambda i, _: i % 2, reduce_func,
+                                 dtypes.int64.max))
+
+    get_next = self.getNext(dataset)
+    for i in range(2):
+      shard_filename = (filename + str(i)).encode()
+      self.assertEqual(self.evaluate(get_next()), shard_filename)
+      for j, r in enumerate(tf_record.tf_record_iterator(shard_filename)):
+        self.assertAllEqual(self._record(i + 2*j), r)
 
 
 if __name__ == "__main__":

@@ -78,7 +78,8 @@ std::unique_ptr<SequenceTransformation> NewRemoveSingleInputAdd() {
         auto& attr =
             absl::any_cast<const AddAttributes&>(node->operation.attributes);
         return absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param) ==
-               nullptr;
+                   nullptr &&
+               absl::get_if<float>(&attr.param) == nullptr;
       });
 }
 
@@ -107,6 +108,13 @@ class RemoveIdentityReshape : public NodeTransformation {
         absl::any_cast<const ReshapeAttributes&>(node->operation.attributes);
     if (input_shape != reshape_attr.new_shape) {
       return {TransformStatus::SKIPPED, ""};
+    }
+    auto output = graph->FindOutputs(node->id)[0];
+    const auto& graph_outputs = graph->outputs();
+    if (std::find(graph_outputs.begin(), graph_outputs.end(), output) !=
+        graph_outputs.end()) {
+      return {TransformStatus::SKIPPED,
+              "Can not apply transformation when node output is graph output"};
     }
     Status status = RemoveOneInputOneOutputNode(graph, node);
     if (!status.ok()) {

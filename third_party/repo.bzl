@@ -51,7 +51,7 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
     if result.return_code != 0:
         fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n" +
               "Stderr: {3}").format(
-            " ".join(cmd_and_args),
+            " ".join([str(x) for x in cmd_and_args]),
             result.return_code,
             result.stdout,
             result.stderr,
@@ -61,15 +61,10 @@ def _repos_are_siblings():
     return Label("@foo//bar").workspace_root.startswith("../")
 
 # Apply a patch_file to the repository root directory
-# Runs 'patch -p1'
+# Runs 'patch -p1' on both Windows and Unix.
 def _apply_patch(ctx, patch_file):
-    # Don't check patch on Windows, because patch is only available under bash.
-    if not _is_windows(ctx) and not ctx.which("patch"):
-        fail("patch command is not found, please install it")
-    cmd = _wrap_bash_cmd(
-        ctx,
-        ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)],
-    )
+    patch_command = ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)]
+    cmd = _wrap_bash_cmd(ctx, patch_command)
     _execute_and_check_ret_code(ctx, cmd)
 
 def _apply_delete(ctx, paths):

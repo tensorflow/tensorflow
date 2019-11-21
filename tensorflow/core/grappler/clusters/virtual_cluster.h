@@ -33,11 +33,12 @@ namespace grappler {
 // actual graphs.
 class VirtualCluster : public Cluster {
  public:
-  VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices);
+  explicit VirtualCluster(
+      const std::unordered_map<string, DeviceProperties>& devices);
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
                  std::unique_ptr<OpLevelCostEstimator> node_estimator,
                  std::unique_ptr<ReadyNodeManager> node_manager);
-  VirtualCluster(const DeviceSet* device_set);
+  explicit VirtualCluster(const DeviceSet* device_set);
 
   ~VirtualCluster() override;
 
@@ -45,9 +46,10 @@ class VirtualCluster : public Cluster {
 
   Status Provision() override;
   Status Initialize(const GrapplerItem& item) override;
-  Status Run(const GraphDef& item,
+  Status Run(const GraphDef& graph,
              const std::vector<std::pair<string, Tensor>>& feed,
              const std::vector<string>& fetch, RunMetadata* metadata) override;
+  Status Run(const GrapplerItem& item, RunMetadata* metadata) override;
   const DeviceSet* GetDeviceSet() const override { return device_set_; }
 
  private:

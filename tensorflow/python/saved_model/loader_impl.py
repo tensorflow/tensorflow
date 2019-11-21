@@ -24,6 +24,7 @@ import os
 from google.protobuf import message
 from google.protobuf import text_format
 
+from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
 from tensorflow.python.framework import ops
@@ -37,6 +38,35 @@ from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
+
+
+def parse_saved_model_with_debug_info(export_dir):
+  """Reads the savedmodel as well as the graph debug info.
+
+  Args:
+    export_dir: Directory containing the SavedModel and GraphDebugInfo files.
+
+  Returns:
+    `SavedModel` and `GraphDebugInfo` protocol buffers.
+
+  Raises:
+    IOError: If the saved model file does not exist, or cannot be successfully
+    parsed. Missing graph debug info file is fine.
+  """
+  saved_model = _parse_saved_model(export_dir)
+
+  debug_info_path = os.path.join(
+      saved_model_utils.get_debug_dir(export_dir),
+      constants.DEBUG_INFO_FILENAME_PB)
+  debug_info = graph_debug_info_pb2.GraphDebugInfo()
+  if file_io.file_exists(debug_info_path):
+    with file_io.FileIO(debug_info_path, "rb") as debug_file:
+      try:
+        debug_info.ParseFromString(debug_file.read())
+      except message.DecodeError as e:
+        raise IOError("Cannot parse file %s: %s." % (debug_info_path, str(e)))
+
+  return (saved_model, debug_info)
 
 
 def parse_saved_model(export_dir):
@@ -137,7 +167,7 @@ def _get_main_op_tensor(
 
   Args:
     meta_graph_def_to_load: The meta graph def from the SavedModel to be loaded.
-    init_op_key: name of collection to check; should be one of MAIN_OP_KEY
+    init_op_key: name of the collection to check; should be one of MAIN_OP_KEY
       or the deprecated LEGACY_INIT_OP_KEY
 
   Returns:
@@ -311,7 +341,9 @@ class SavedModelLoader(object):
       RuntimeError: if no metagraphs were found with the associated tags.
     """
     found_match = False
+    available_tags = []
     for meta_graph_def in self._saved_model.meta_graphs:
+      available_tags.append(set(meta_graph_def.meta_info_def.tags))
       if set(meta_graph_def.meta_info_def.tags) == set(tags):
         meta_graph_def_to_load = meta_graph_def
         found_match = True
@@ -322,7 +354,7 @@ class SavedModelLoader(object):
           "MetaGraphDef associated with tags " + str(tags).strip("[]") +
           " could not be found in SavedModel. To inspect available tag-sets in"
           " the SavedModel, please use the SavedModel CLI: `saved_model_cli`"
-      )
+          "\navailable_tags: " + str(available_tags))
     return meta_graph_def_to_load
 
   def load_graph(self, graph, tags, import_scope=None, **saver_kwargs):

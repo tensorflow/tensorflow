@@ -23,12 +23,12 @@ limitations under the License.
 #include "tensorflow/core/graph/default_device.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/testlib.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/util/port.h"
 
@@ -286,6 +286,41 @@ TEST(GrpcSessionTest, FetchMultipleTimes) {
   TF_CHECK_OK(session->Close());
 }
 
+TEST(GrpcSessionTest, DisableOutputPartitionGraphs) {
+  GraphDef graph;
+  string node_names[3];
+  CreateGraphDef(&graph, node_names);
+
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+
+  SessionOptions options = Options(cluster->targets()[0], 1);
+  options.config.mutable_experimental()->set_disable_output_partition_graphs(
+      true);
+
+  std::unique_ptr<Session> session(NewRemote(options));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(graph));
+  {
+    // Just run to target node.
+    TF_CHECK_OK(session->Run({}, {}, {node_names[2]}, nullptr));
+  }
+  {
+    // Attempting to get the partition graphs should fail.
+    RunOptions run_options;
+    run_options.set_output_partition_graphs(true);
+    RunMetadata run_metadata;
+    Status s = session->Run(run_options, {}, {}, {node_names[2]}, nullptr,
+                            &run_metadata);
+    EXPECT_TRUE(errors::IsInvalidArgument(s));
+    EXPECT_TRUE(absl::StrContains(s.error_message(),
+                                  "disable_output_partition_graphs"));
+  }
+
+  TF_CHECK_OK(session->Close());
+}
+
 // A = [3 2; -1 0]; x = rand(2, 1); We want to compute the largest
 // eigenvalue for A, which is 2.0. Iteratively, we do
 //   repeat x = y / y.norm(); y = A * x; end
@@ -501,7 +536,7 @@ TEST(GrpcSessionTest, MultiDevices_String) {
   Graph graph(OpRegistry::Global());
   Tensor a_tensor(DT_STRING, TensorShape({2, 2}));
   for (int i = 0; i < 4; ++i) {
-    a_tensor.flat<string>()(i) = "hello, world";
+    a_tensor.flat<tstring>()(i) = "hello, world";
   }
   Node* a = test::graph::Constant(&graph, a_tensor);
   Node* b = test::graph::Identity(&graph, a);
@@ -525,7 +560,7 @@ TEST(GrpcSessionTest, MultiDevices_String) {
         ASSERT_EQ(outputs[0].dtype(), DT_STRING);
         ASSERT_EQ(outputs[0].NumElements(), 4);
         for (int i = 0; i < outputs[0].NumElements(); ++i) {
-          EXPECT_EQ(outputs[0].flat<string>()(i), "hello, world");
+          EXPECT_EQ(outputs[0].flat<tstring>()(i), "hello, world");
         }
         TF_CHECK_OK(session->Close());
       } else {
@@ -638,6 +673,65 @@ TEST(GrpcSessionTest, Error) {
     Status status = session->Run({}, fetches, {}, nullptr);
     EXPECT_FALSE(status.ok());
     EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+  }
+  // session->Close() shall clean up all states related to the session->
+  // E.g., deregisters subgraph with workers, etc.
+  TF_CHECK_OK(session->Close());
+
+  // Sleep a bit so that most of asynchronous works finishes before
+  // the test process finishes.
+  Env::Default()->SleepForMicroseconds(2000000);
+}
+
+TEST(GrpcSessionTest, ErrorStatusLog) {
+  std::unique_ptr<test::TestCluster> cluster;
+  TF_CHECK_OK(test::TestCluster::MakeTestCluster(Devices(1, 0), 2, &cluster));
+  const string& master = cluster->targets()[0];
+  const string& dev_a = cluster->devices()[0].name();
+  const string& dev_b = cluster->devices()[1].name();
+  LOG(INFO) << "master " << master << "dev_a " << dev_a << "dev_b " << dev_b;
+  GraphDef gdef;
+  std::vector<string> fetches;
+  {
+    Graph g(OpRegistry::Global());
+
+    // a2 = a + error(a)
+    //
+    // Subgraph for "a" fails. The master will cancel the subgraph for
+    // "b" and then returns the Session::Run.
+    auto a = test::graph::Constant(&g, Tensor());
+    a->set_assigned_device_name(dev_a);
+    auto a_err = test::graph::Error(&g, a, "fantasia!", true);
+    a_err->set_assigned_device_name(dev_a);
+    auto a2 = test::graph::Add(&g, a, a_err);
+    a2->set_assigned_device_name(dev_a);
+    fetches.push_back(a2->name());
+
+    // b2 = b + delay(b)
+    //
+    // Subgraph for "b" sleeps at the node "b_delay". When the sleep
+    // finishes, the subgraph "b" will continue execution till it
+    // notices that it is canceled. Meanwhile, subgraph's executor
+    // and its related state (registered ops) should still be alive.
+    auto b = test::graph::Constant(&g, Tensor());
+    b->set_assigned_device_name(dev_b);
+    auto b_delay = test::graph::Delay(&g, b, Microseconds(1000000));
+    b_delay->set_assigned_device_name(dev_b);
+    auto b2 = test::graph::Add(&g, b, b_delay);
+    b2->set_assigned_device_name(dev_b);
+    fetches.push_back(b2->name());
+    g.ToGraphDef(&gdef);
+  }
+  std::unique_ptr<Session> session(NewRemote(Options(master, 1)));
+  ASSERT_TRUE(session != nullptr);
+
+  TF_CHECK_OK(session->Create(gdef));
+  {
+    Status status = session->Run({}, fetches, {}, nullptr);
+    EXPECT_FALSE(status.ok());
+    std::cerr << status << "\n";
+    EXPECT_NE(status.ToString().find("fantasia!"), string::npos);
+    EXPECT_NE(status.ToString().find("ErrorOp: fantasia!"), string::npos);
   }
   // session->Close() shall clean up all states related to the session->
   // E.g., deregisters subgraph with workers, etc.

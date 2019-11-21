@@ -81,7 +81,9 @@ struct CollImplDetails {
   std::vector<int> subdiv_offsets;
   std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
   std::vector<int32>
-      dependencies;  // collective instances on which this node depends
+      dependencies;           // collective instances on which this node depends
+  string communication_hint;  // user-supplied hint for implementation choice,
+                              // e.g. ring or nccl
 };
 
 // Data common to all members of a collective instance.
@@ -138,21 +140,25 @@ class DeviceResolverInterface {
  public:
   virtual ~DeviceResolverInterface() {}
 
-  // Collects DeviceLocality protobufs from all of the devices identified
+  // Collects DeviceAttributes protobufs from all of the devices identified
   // in 'col_params'.
-  virtual void GetDeviceLocalitiesAsync(const CollInstanceParams& inst_params,
-                                        std::vector<DeviceLocality>* localities,
+  virtual void GetAllDeviceAttributesAsync(
+      const std::vector<string>& devices, const std::vector<string>& tasks,
+      std::vector<DeviceAttributes>* attributes,
+      const StatusCallback& done) = 0;
+
+  // Populate *attributes with the DeviceAttributes of the specified
+  // device.
+  virtual void GetDeviceAttributesAsync(const string& device,
+                                        const string& task,
+                                        DeviceAttributes* attributes,
                                         const StatusCallback& done) = 0;
 
-  // Populate *locality with the DeviceLocality of the specified
-  // device.
-  virtual void GetLocalityAsync(const string& device, const string& task,
-                                DeviceLocality* locality,
-                                const StatusCallback& done) = 0;
-
-  // Clear the cache of device data belonging
-  // to the specified task.
+  // Clear the cache of device data belonging to the specified task.
   virtual void ClearTask(const string& task) = 0;
+
+  // Clear the cache of all device data.
+  virtual void ClearCache() = 0;
 };
 
 // Interface that provides resolution of shared CollectiveParams fields.
@@ -255,6 +261,9 @@ class PeerAccessInterface {
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
+
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
 };
 
 class PerStepCollectiveRemoteAccess;
@@ -293,10 +302,10 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   // execution, where safety is defined as: ordered with respect to the
   // collective instances defined in the callee's `wait_for` attribute.
   virtual void WaitForDependencies(const CollectiveParams& col_params) {}
-  // `Launched` unblocks the dependent collective instances by recording that
-  // this callee device has completed the critical portion of the collective
-  // execution.
-  virtual void Launched(const CollectiveParams& col_params) {}
+  // `UnblockDependencies` unblocks the dependent collective instances by
+  // recording that this caller's device has completed the critical portion of
+  // the collective execution.
+  virtual void UnblockDependencies(const CollectiveParams& col_params) {}
 
   // Used to designate an invalid group or instance key.
   static int64 kInvalidId;

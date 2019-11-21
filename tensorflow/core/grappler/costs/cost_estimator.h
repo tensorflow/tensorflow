@@ -17,6 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_COST_ESTIMATOR_H_
 
 #include <cmath>
+#include <unordered_map>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
@@ -40,7 +42,7 @@ struct DeviceInfo {
   // Read bandwidth to intermediate memory in GB per second.
   double intermediate_read_gb_per_sec;
 
-  // Read bandwidth to intermediate memory in GB per second.
+  // Write bandwidth to intermediate memory in GB per second.
   double intermediate_write_gb_per_sec;
 
   DeviceInfo()

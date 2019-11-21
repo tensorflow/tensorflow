@@ -22,7 +22,8 @@ import abc
 
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python.util import nest
 
 
@@ -47,44 +48,13 @@ class CompositeTensor(object):
   ```
   """
 
-  @abc.abstractmethod
-  def _to_components(self):
-    """Decomposes this composite tensor into its component tensors.
+  @abc.abstractproperty
+  def _type_spec(self):
+    """A `TypeSpec` describing the type of this value."""
+    raise NotImplementedError("%s._type_spec()" % type(self).__name__)
 
-    Returns:
-      A nested structure of `tf.Tensor`s and `CompositeTensor`s that can be
-      used to reconstruct this composite tensor (along with metadata returned
-      by `_component_metadata`).
-    """
-    raise NotImplementedError("CompositeTensor._to_components")
-
-  def _component_metadata(self):
-    """Returns any non-tensor metadata needed to reconstruct a composite tensor.
-
-    Returns:
-      A nested structure of metadata that can be used to reconstruct this
-      composite tensor (along with the tensors returned by `_to_components`).
-    """
-    return None
-
-  @abc.abstractmethod
-  def _from_components(cls, components, metadata):  # pylint: disable=no-self-argument
-    """Creates a composite tensor of type `cls` from components.
-
-    Args:
-      components: A nested structure whose values are `tf.Tensor`s or
-        `tf.CompositeTensor`s (as returned by `_to_components`).
-      metadata: A nested structure containing any additional metadata needed to
-        reconstruct the composite tensor (as returned by `_composite_metadata`).
-
-    Returns:
-      A `CompositeTensor` of type `cls`.
-    """
-    raise NotImplementedError("CompositeTensor._from_components")
-
-  @abc.abstractmethod
-  def _shape_invariant_to_components(self, shape=None):
-    """Converts a shape invariant into invariants for individual components.
+  def _shape_invariant_to_type_spec(self, shape):
+    """Returns a TypeSpec given a shape invariant (used by `tf.while_loop`).
 
     Args:
       shape: A `tf.TensorShape` object.  The shape invariant for this
@@ -95,12 +65,11 @@ class CompositeTensor(object):
       A nested structure whose values are `tf.TensorShape` objects, specifying
       the shape invariants for the tensors that comprise this `CompositeTensor`.
     """
-    raise NotImplementedError("CompositeTensor._shape_invariant_to_components")
-
-  @abc.abstractproperty
-  def _is_graph_tensor(self):
-    """Returns True if this tensor's components belong to a TF graph."""
-    raise NotImplementedError("CompositeTensor._is_graph_tensor")
+    # New TypeSpec subclasses generally do not need to implement this --
+    # this method is used for backwards compatibility.  Users of tf.while_loop
+    # can specify a type by passing in TypeSpec instead.
+    raise NotImplementedError("%s._shape_invariant_to_type_spec"
+                              % type(self).__name__)
 
   def _consumers(self):
     """Returns a list of `Operation`s that consume this `CompositeTensor`.
@@ -113,13 +82,13 @@ class CompositeTensor(object):
     """
     consumers = nest.flatten([
         component.consumers()
-        for component in self._to_components()
+        for component in nest.flatten(self, expand_composites=True)
         if getattr(component, "graph", None) is not None
     ])
     return list(set(consumers))
 
 
-pywrap_tensorflow.RegisterType("CompositeTensor", CompositeTensor)
+_pywrap_utils.RegisterType("CompositeTensor", CompositeTensor)
 
 
 def replace_composites_with_components(structure):

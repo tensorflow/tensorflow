@@ -15,7 +15,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-// See docs in ../ops/spectral_ops.cc.
+// See docs in ../ops/fft_ops.cc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/env_var.h"
@@ -94,7 +95,34 @@ class FFTBase : public OpKernel {
     }
 
     OP_REQUIRES_OK(ctx, ctx->allocate_output(0, output_shape, &out));
+
+    if (IsReal()) {
+      if (IsForward()) {
+        OP_REQUIRES(
+            ctx,
+            (in.dtype() == DT_FLOAT && out->dtype() == DT_COMPLEX64) ||
+                (in.dtype() == DT_DOUBLE && out->dtype() == DT_COMPLEX128),
+            errors::InvalidArgument("Wrong types for forward real FFT: in=",
+                                    in.dtype(), " out=", out->dtype()));
+      } else {
+        OP_REQUIRES(
+            ctx,
+            (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_FLOAT) ||
+                (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_DOUBLE),
+            errors::InvalidArgument("Wrong types for backward real FFT: in=",
+                                    in.dtype(), " out=", out->dtype()));
+      }
+    } else {
+      OP_REQUIRES(
+          ctx,
+          (in.dtype() == DT_COMPLEX64 && out->dtype() == DT_COMPLEX64) ||
+              (in.dtype() == DT_COMPLEX128 && out->dtype() == DT_COMPLEX128),
+          errors::InvalidArgument("Wrong types for FFT: in=", in.dtype(),
+                                  " out=", out->dtype()));
+    }
+
     if (input_shape.num_elements() == 0) {
+      DCHECK_EQ(0, output_shape.num_elements());
       return;
     }
 
@@ -129,163 +157,184 @@ class FFTCPU : public FFTBase {
     const auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
     auto device = ctx->eigen_device<CPUDevice>();
 
+    const bool is_complex128 =
+        in.dtype() == DT_COMPLEX128 || out->dtype() == DT_COMPLEX128;
+
     if (!IsReal()) {
       // Compute the FFT using Eigen.
       constexpr auto direction =
           Forward ? Eigen::FFT_FORWARD : Eigen::FFT_REVERSE;
-      if (in.dtype() == DT_COMPLEX64) {
+      if (is_complex128) {
+        DCHECK_EQ(in.dtype(), DT_COMPLEX128);
+        DCHECK_EQ(out->dtype(), DT_COMPLEX128);
+        auto input = Tensor(in).flat_inner_dims<complex128, FFTRank + 1>();
+        auto output = out->flat_inner_dims<complex128, FFTRank + 1>();
+        output.device(device) =
+            input.template fft<Eigen::BothParts, direction>(axes);
+      } else {
+        DCHECK_EQ(in.dtype(), DT_COMPLEX64);
         DCHECK_EQ(out->dtype(), DT_COMPLEX64);
         auto input = Tensor(in).flat_inner_dims<complex64, FFTRank + 1>();
         auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
         output.device(device) =
             input.template fft<Eigen::BothParts, direction>(axes);
-      } else {
-        DCHECK_EQ(DT_COMPLEX128, in.dtype());
-        DCHECK_EQ(DT_COMPLEX128, out->dtype());
-        auto input = Tensor(in).flat_inner_dims<complex128, FFTRank + 1>();
-        auto output = out->flat_inner_dims<complex128, FFTRank + 1>();
-        output.device(device) =
-            input.template fft<Eigen::BothParts, direction>(axes);
       }
     } else {
       if (IsForward()) {
-        auto input = Tensor(in).flat_inner_dims<float, FFTRank + 1>();
-        const auto input_dims = input.dimensions();
-
-        // Slice input to fft_shape on its inner-most dimensions.
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
-        input_slice_sizes[0] = input_dims[0];
-        TensorShape temp_shape{input_dims[0]};
-        for (int i = 1; i <= FFTRank; ++i) {
-          input_slice_sizes[i] = fft_shape[i - 1];
-          temp_shape.AddDim(fft_shape[i - 1]);
+        if (is_complex128) {
+          DCHECK_EQ(in.dtype(), DT_DOUBLE);
+          DCHECK_EQ(out->dtype(), DT_COMPLEX128);
+          DoRealForwardFFT<double, complex128>(ctx, fft_shape, in, out);
+        } else {
+          DCHECK_EQ(in.dtype(), DT_FLOAT);
+          DCHECK_EQ(out->dtype(), DT_COMPLEX64);
+          DoRealForwardFFT<float, complex64>(ctx, fft_shape, in, out);
         }
-
-        auto output = out->flat_inner_dims<complex64, FFTRank + 1>();
-        const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> zero_start_indices;
-
-        // Compute the full FFT using a temporary tensor.
-        Tensor temp;
-        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<complex64>::v(),
-                                               temp_shape, &temp));
-        auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
-        full_fft.device(device) =
-            input.slice(zero_start_indices, input_slice_sizes)
-                .template fft<Eigen::BothParts, Eigen::FFT_FORWARD>(axes);
-
-        // Slice away the negative frequency components.
-        output.device(device) =
-            full_fft.slice(zero_start_indices, output.dimensions());
       } else {
-        // Reconstruct the full FFT and take the inverse.
-        auto input = Tensor(in).flat_inner_dims<complex64, FFTRank + 1>();
-        auto output = out->flat_inner_dims<float, FFTRank + 1>();
-        const auto input_dims = input.dimensions();
-
-        // Calculate the shape of the temporary tensor for the full FFT and the
-        // region we will slice from input given fft_shape. We slice input to
-        // fft_shape on its inner-most dimensions, except the last (which we
-        // slice to fft_shape[-1] / 2 + 1).
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
-        input_slice_sizes[0] = input_dims[0];
-        TensorShape full_fft_shape;
-        full_fft_shape.AddDim(input_dims[0]);
-        for (auto i = 1; i <= FFTRank; i++) {
-          input_slice_sizes[i] =
-              i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
-          full_fft_shape.AddDim(fft_shape[i - 1]);
+        if (is_complex128) {
+          DCHECK_EQ(in.dtype(), DT_COMPLEX128);
+          DCHECK_EQ(out->dtype(), DT_DOUBLE);
+          DoRealBackwardFFT<complex128, double>(ctx, fft_shape, in, out);
+        } else {
+          DCHECK_EQ(in.dtype(), DT_COMPLEX64);
+          DCHECK_EQ(out->dtype(), DT_FLOAT);
+          DoRealBackwardFFT<complex64, float>(ctx, fft_shape, in, out);
         }
-
-        Tensor temp;
-        OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<complex64>::v(),
-                                               full_fft_shape, &temp));
-        auto full_fft = temp.flat_inner_dims<complex64, FFTRank + 1>();
-
-        // Calculate the starting point and range of the source of
-        // negative frequency part.
-        auto neg_sizes = input_slice_sizes;
-        neg_sizes[FFTRank] =
-            fft_shape[FFTRank - 1] - input_slice_sizes[FFTRank];
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> neg_target_indices;
-        neg_target_indices[FFTRank] = input_slice_sizes[FFTRank];
-
-        const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> start_indices;
-        Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> neg_start_indices;
-        neg_start_indices[FFTRank] = 1;
-
-        full_fft.slice(start_indices, input_slice_sizes).device(device) =
-            input.slice(start_indices, input_slice_sizes);
-
-        // First, conduct IFFTs on outer dimensions. We save computation (and
-        // avoid touching uninitialized memory) by slicing full_fft to the
-        // subregion we wrote input to.
-        if (FFTRank > 1) {
-          const auto outer_axes =
-              Eigen::ArrayXi::LinSpaced(FFTRank - 1, 1, FFTRank - 1);
-          full_fft.slice(start_indices, input_slice_sizes).device(device) =
-              full_fft.slice(start_indices, input_slice_sizes)
-                  .template fft<Eigen::BothParts, Eigen::FFT_REVERSE>(
-                      outer_axes);
-        }
-
-        // Reconstruct the full FFT by appending reversed and conjugated
-        // spectrum as the negative frequency part.
-        Eigen::array<bool, FFTRank + 1> reverse_last_axis;
-        for (auto i = 0; i <= FFTRank; i++) {
-          reverse_last_axis[i] = i == FFTRank;
-        }
-
-        if (neg_sizes[FFTRank] != 0) {
-          full_fft.slice(neg_target_indices, neg_sizes).device(device) =
-              full_fft.slice(neg_start_indices, neg_sizes)
-                  .reverse(reverse_last_axis)
-                  .conjugate();
-        }
-
-        auto inner_axis = Eigen::array<int, 1>{FFTRank};
-        output.device(device) =
-            full_fft.template fft<Eigen::RealPart, Eigen::FFT_REVERSE>(
-                inner_axis);
       }
     }
   }
+
+  template <typename RealT, typename ComplexT>
+  void DoRealForwardFFT(OpKernelContext* ctx, uint64* fft_shape,
+                        const Tensor& in, Tensor* out) {
+    // Create the axes (which are always trailing).
+    const auto axes = Eigen::ArrayXi::LinSpaced(FFTRank, 1, FFTRank);
+    auto device = ctx->eigen_device<CPUDevice>();
+    auto input = Tensor(in).flat_inner_dims<RealT, FFTRank + 1>();
+    const auto input_dims = input.dimensions();
+
+    // Slice input to fft_shape on its inner-most dimensions.
+    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
+    input_slice_sizes[0] = input_dims[0];
+    TensorShape temp_shape{input_dims[0]};
+    for (int i = 1; i <= FFTRank; ++i) {
+      input_slice_sizes[i] = fft_shape[i - 1];
+      temp_shape.AddDim(fft_shape[i - 1]);
+    }
+
+    auto output = out->flat_inner_dims<ComplexT, FFTRank + 1>();
+    const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> zero_start_indices;
+
+    // Compute the full FFT using a temporary tensor.
+    Tensor temp;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<ComplexT>::v(),
+                                           temp_shape, &temp));
+    auto full_fft = temp.flat_inner_dims<ComplexT, FFTRank + 1>();
+    full_fft.device(device) =
+        input.slice(zero_start_indices, input_slice_sizes)
+            .template fft<Eigen::BothParts, Eigen::FFT_FORWARD>(axes);
+
+    // Slice away the negative frequency components.
+    output.device(device) =
+        full_fft.slice(zero_start_indices, output.dimensions());
+  }
+
+  template <typename ComplexT, typename RealT>
+  void DoRealBackwardFFT(OpKernelContext* ctx, uint64* fft_shape,
+                         const Tensor& in, Tensor* out) {
+    auto device = ctx->eigen_device<CPUDevice>();
+    // Reconstruct the full FFT and take the inverse.
+    auto input = Tensor(in).flat_inner_dims<ComplexT, FFTRank + 1>();
+    auto output = out->flat_inner_dims<RealT, FFTRank + 1>();
+    const auto input_dims = input.dimensions();
+
+    // Calculate the shape of the temporary tensor for the full FFT and the
+    // region we will slice from input given fft_shape. We slice input to
+    // fft_shape on its inner-most dimensions, except the last (which we
+    // slice to fft_shape[-1] / 2 + 1).
+    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> input_slice_sizes;
+    input_slice_sizes[0] = input_dims[0];
+    TensorShape full_fft_shape;
+    full_fft_shape.AddDim(input_dims[0]);
+    for (auto i = 1; i <= FFTRank; i++) {
+      input_slice_sizes[i] =
+          i == FFTRank ? fft_shape[i - 1] / 2 + 1 : fft_shape[i - 1];
+      full_fft_shape.AddDim(fft_shape[i - 1]);
+    }
+
+    Tensor temp;
+    OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<ComplexT>::v(),
+                                           full_fft_shape, &temp));
+    auto full_fft = temp.flat_inner_dims<ComplexT, FFTRank + 1>();
+
+    // Calculate the starting point and range of the source of
+    // negative frequency part.
+    auto neg_sizes = input_slice_sizes;
+    neg_sizes[FFTRank] = fft_shape[FFTRank - 1] - input_slice_sizes[FFTRank];
+    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> neg_target_indices;
+    neg_target_indices[FFTRank] = input_slice_sizes[FFTRank];
+
+    const Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> start_indices;
+    Eigen::DSizes<Eigen::DenseIndex, FFTRank + 1> neg_start_indices;
+    neg_start_indices[FFTRank] = 1;
+
+    full_fft.slice(start_indices, input_slice_sizes).device(device) =
+        input.slice(start_indices, input_slice_sizes);
+
+    // First, conduct IFFTs on outer dimensions. We save computation (and
+    // avoid touching uninitialized memory) by slicing full_fft to the
+    // subregion we wrote input to.
+    if (FFTRank > 1) {
+      const auto outer_axes =
+          Eigen::ArrayXi::LinSpaced(FFTRank - 1, 1, FFTRank - 1);
+      full_fft.slice(start_indices, input_slice_sizes).device(device) =
+          full_fft.slice(start_indices, input_slice_sizes)
+              .template fft<Eigen::BothParts, Eigen::FFT_REVERSE>(outer_axes);
+    }
+
+    // Reconstruct the full FFT by appending reversed and conjugated
+    // spectrum as the negative frequency part.
+    Eigen::array<bool, FFTRank + 1> reverse_last_axis;
+    for (auto i = 0; i <= FFTRank; i++) {
+      reverse_last_axis[i] = i == FFTRank;
+    }
+
+    if (neg_sizes[FFTRank] != 0) {
+      full_fft.slice(neg_target_indices, neg_sizes).device(device) =
+          full_fft.slice(neg_start_indices, neg_sizes)
+              .reverse(reverse_last_axis)
+              .conjugate();
+    }
+
+    auto inner_axis = Eigen::array<int, 1>{FFTRank};
+    output.device(device) =
+        full_fft.template fft<Eigen::RealPart, Eigen::FFT_REVERSE>(inner_axis);
+  }
 };
 
-// Use labels to distinguish between internal and open source versions
-// of these kernels.
-#ifdef PLATFORM_GOOGLE
-#define FFT_LABEL "eigen"
-#else
-#define FFT_LABEL ""
-#endif
-
-REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_CPU).Label(FFT_LABEL),
-                        FFTCPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_CPU), FFTCPU<true, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_CPU),
                         FFTCPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_CPU),
                         FFTCPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_CPU),
                         FFTCPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_CPU),
                         FFTCPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_CPU),
                         FFTCPU<false, false, 3>);
 
-REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
-                        FFTCPU<true, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("RFFT").Device(DEVICE_CPU), FFTCPU<true, true, 1>);
+REGISTER_KERNEL_BUILDER(Name("IRFFT").Device(DEVICE_CPU),
                         FFTCPU<false, true, 1>);
-REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("RFFT2D").Device(DEVICE_CPU),
                         FFTCPU<true, true, 2>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT2D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IRFFT2D").Device(DEVICE_CPU),
                         FFTCPU<false, true, 2>);
-REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("RFFT3D").Device(DEVICE_CPU),
                         FFTCPU<true, true, 3>);
-REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU).Label(FFT_LABEL),
+REGISTER_KERNEL_BUILDER(Name("IRFFT3D").Device(DEVICE_CPU),
                         FFTCPU<false, true, 3>);
-
-#undef FFT_LABEL
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -315,11 +364,9 @@ class CufftScratchAllocator : public se::ScratchAllocator {
   ~CufftScratchAllocator() override {}
   CufftScratchAllocator(int64 memory_limit, OpKernelContext* context)
       : memory_limit_(memory_limit), total_byte_size_(0), context_(context) {}
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
-    return memory_limit_;
-  }
+  int64 GetMemoryLimitInBytes() override { return memory_limit_; }
   se::port::StatusOr<se::DeviceMemory<uint8>> AllocateBytes(
-      se::Stream* stream, int64 byte_size) override {
+      int64 byte_size) override {
     Tensor temporary_memory;
     if (byte_size > memory_limit_) {
       return se::port::StatusOr<se::DeviceMemory<uint8>>();
@@ -404,16 +451,19 @@ class FFTGPUBase : public FFTBase {
     }
 
     constexpr bool kInPlaceFft = false;
-    const bool is_complex128 = in.dtype() == DT_COMPLEX128;
-    // complex128 real FFT is not supported yet.
-    DCHECK(!IsReal() || !is_complex128);
+    const bool is_complex128 =
+        in.dtype() == DT_COMPLEX128 || out->dtype() == DT_COMPLEX128;
 
     const auto kFftType =
-        IsReal() ? (IsForward() ? se::fft::Type::kR2C : se::fft::Type::kC2R)
-                 : (IsForward() ? (is_complex128 ? se::fft::Type::kZ2ZForward
-                                                 : se::fft::Type::kC2CForward)
-                                : (is_complex128 ? se::fft::Type::kZ2ZInverse
-                                                 : se::fft::Type::kC2CInverse));
+        IsReal()
+            ? (IsForward()
+                   ? (is_complex128 ? se::fft::Type::kD2Z : se::fft::Type::kR2C)
+                   : (is_complex128 ? se::fft::Type::kZ2D
+                                    : se::fft::Type::kC2R))
+            : (IsForward() ? (is_complex128 ? se::fft::Type::kZ2ZForward
+                                            : se::fft::Type::kC2CForward)
+                           : (is_complex128 ? se::fft::Type::kZ2ZInverse
+                                            : se::fft::Type::kC2CInverse));
 
     CufftScratchAllocator scratch_allocator(CufftScratchSize, ctx);
     auto plan =
@@ -424,65 +474,78 @@ class FFTGPUBase : public FFTBase {
 
     if (IsReal()) {
       if (IsForward()) {
-        auto src = AsDeviceMemory<float>(in.flat<float>().data());
-        auto dst = AsDeviceMemory<complex64>(out->flat<complex64>().data());
-        OP_REQUIRES(
-            ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
-            errors::Internal("fft failed : type=", static_cast<int>(kFftType),
-                             " in.shape=", input_shape.DebugString()));
+        if (is_complex128) {
+          DCHECK_EQ(in.dtype(), DT_DOUBLE);
+          DCHECK_EQ(out->dtype(), DT_COMPLEX128);
+          DoFFTInternal<double, complex128>(ctx, stream, plan.get(), kFftType,
+                                            output_distance, in, out);
+        } else {
+          DCHECK_EQ(in.dtype(), DT_FLOAT);
+          DCHECK_EQ(out->dtype(), DT_COMPLEX64);
+          DoFFTInternal<float, complex64>(ctx, stream, plan.get(), kFftType,
+                                          output_distance, in, out);
+        }
       } else {
-        auto src = AsDeviceMemory<complex64>(in.flat<complex64>().data());
-        auto dst = AsDeviceMemory<float>(out->flat<float>().data());
-        OP_REQUIRES(
-            ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
-            errors::Internal("fft failed : type=", static_cast<int>(kFftType),
-                             " in.shape=", input_shape.DebugString()));
-        auto alpha = 1.f / output_distance;
-        OP_REQUIRES(
-            ctx,
-            stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-                .ok(),
-            errors::Internal("BlasScal failed : in.shape=",
-                             input_shape.DebugString()));
+        if (is_complex128) {
+          DCHECK_EQ(in.dtype(), DT_COMPLEX128);
+          DCHECK_EQ(out->dtype(), DT_DOUBLE);
+          DoFFTInternal<complex128, double>(ctx, stream, plan.get(), kFftType,
+                                            output_distance, in, out);
+        } else {
+          DCHECK_EQ(in.dtype(), DT_COMPLEX64);
+          DCHECK_EQ(out->dtype(), DT_FLOAT);
+          DoFFTInternal<complex64, float>(ctx, stream, plan.get(), kFftType,
+                                          output_distance, in, out);
+        }
       }
     } else {
-      if (!is_complex128) {
-        DCHECK_EQ(in.dtype(), DT_COMPLEX64);
-        DCHECK_EQ(out->dtype(), DT_COMPLEX64);
-        auto src = AsDeviceMemory<complex64>(in.flat<complex64>().data());
-        auto dst = AsDeviceMemory<complex64>(out->flat<complex64>().data());
-        OP_REQUIRES(
-            ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
-            errors::Internal("fft failed : type=", static_cast<int>(kFftType),
-                             " in.shape=", input_shape.DebugString()));
-        if (!IsForward()) {
-          float alpha = 1.f / output_distance;
-          OP_REQUIRES(
-              ctx,
-              stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-                  .ok(),
-              errors::Internal("BlasScal failed : in.shape=",
-                               input_shape.DebugString()));
-        }
-      } else {
+      if (is_complex128) {
         DCHECK_EQ(in.dtype(), DT_COMPLEX128);
         DCHECK_EQ(out->dtype(), DT_COMPLEX128);
-        auto src = AsDeviceMemory<complex128>(in.flat<complex128>().data());
-        auto dst = AsDeviceMemory<complex128>(out->flat<complex128>().data());
-        OP_REQUIRES(
-            ctx, stream->ThenFft(plan.get(), src, &dst).ok(),
-            errors::Internal("fft failed : type=", static_cast<int>(kFftType),
-                             " in.shape=", input_shape.DebugString()));
-        if (!IsForward()) {
-          double alpha = 1.0 / output_distance;
-          OP_REQUIRES(
-              ctx,
-              stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
-                  .ok(),
-              errors::Internal("BlasScal failed : in.shape=",
-                               input_shape.DebugString()));
-        }
+        DoFFTInternal<complex128, complex128>(ctx, stream, plan.get(), kFftType,
+                                              output_distance, in, out);
+      } else {
+        DCHECK_EQ(in.dtype(), DT_COMPLEX64);
+        DCHECK_EQ(out->dtype(), DT_COMPLEX64);
+        DoFFTInternal<complex64, complex64>(ctx, stream, plan.get(), kFftType,
+                                            output_distance, in, out);
       }
+    }
+  }
+
+ private:
+  template <typename T>
+  struct RealTypeFromComplexType {
+    typedef T RealT;
+  };
+
+  template <typename T>
+  struct RealTypeFromComplexType<std::complex<T>> {
+    typedef T RealT;
+  };
+
+  template <typename InT, typename OutT>
+  void DoFFTInternal(OpKernelContext* ctx, se::Stream* stream,
+                     se::fft::Plan* plan, const se::fft::Type fft_type,
+                     const uint64 output_distance, const Tensor& in,
+                     Tensor* out) {
+    auto src = AsDeviceMemory<InT>(in.flat<InT>().data());
+    auto dst = AsDeviceMemory<OutT>(out->flat<OutT>().data());
+    const TensorShape& input_shape = in.shape();
+    const TensorShape& output_shape = out->shape();
+    OP_REQUIRES(
+        ctx, stream->ThenFft(plan, src, &dst).ok(),
+        errors::Internal("fft failed : type=", static_cast<int>(fft_type),
+                         " in.shape=", input_shape.DebugString()));
+    if (!IsForward()) {
+      typedef typename RealTypeFromComplexType<OutT>::RealT RealT;
+      RealT alpha = 1.0 / output_distance;
+      OP_REQUIRES(
+          ctx,
+          stream->ThenBlasScal(output_shape.num_elements(), alpha, &dst, 1)
+              .ok(),
+          errors::Internal("BlasScal failed : in.shape=",
+                           input_shape.DebugString()));
     }
   }
 };
@@ -505,49 +568,53 @@ class FFTGPU : public FFTGPUBase {
   bool IsReal() const override { return _Real; }
 };
 
-REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU), FFTGPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_GPU),
+// Register GPU kernels with priority 1 so that if a custom FFT CPU kernel is
+// registered with priority 1 (to override the default Eigen CPU kernel), the
+// CPU kernel does not outrank the GPU kernel.
+REGISTER_KERNEL_BUILDER(Name("FFT").Device(DEVICE_GPU).Priority(1),
+                        FFTGPU<true, false, 1>);
+REGISTER_KERNEL_BUILDER(Name("IFFT").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("FFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IFFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("FFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("IFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 3>);
 
 REGISTER_KERNEL_BUILDER(
-    Name("RFFT").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("RFFT").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<true, true, 1>);
 REGISTER_KERNEL_BUILDER(
-    Name("IRFFT").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("IRFFT").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<false, true, 1>);
 REGISTER_KERNEL_BUILDER(
-    Name("RFFT2D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("RFFT2D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<true, true, 2>);
 REGISTER_KERNEL_BUILDER(
-    Name("IRFFT2D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("IRFFT2D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<false, true, 2>);
 REGISTER_KERNEL_BUILDER(
-    Name("RFFT3D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("RFFT3D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<true, true, 3>);
 REGISTER_KERNEL_BUILDER(
-    Name("IRFFT3D").Device(DEVICE_GPU).HostMemory("fft_length"),
+    Name("IRFFT3D").Device(DEVICE_GPU).HostMemory("fft_length").Priority(1),
     FFTGPU<false, true, 3>);
 
 // Deprecated kernels.
-REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchFFT").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("BatchIFFT").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 1>);
-REGISTER_KERNEL_BUILDER(Name("BatchFFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchFFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("BatchIFFT2D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT2D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 2>);
-REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<true, false, 3>);
-REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU),
+REGISTER_KERNEL_BUILDER(Name("BatchIFFT3D").Device(DEVICE_GPU).Priority(1),
                         FFTGPU<false, false, 3>);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 

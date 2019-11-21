@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <cstdlib>
 #include <iomanip>
 #include <memory>
 #include <mutex>  // NOLINT(build/c++11)
+#include <ostream>
 #include <string>
 
 #include "absl/memory/memory.h"
@@ -36,6 +38,7 @@ using ::tflite::evaluation::TopkAccuracyEvalMetrics;
 
 constexpr char kNumThreadsFlag[] = "num_threads";
 constexpr char kOutputFilePathFlag[] = "output_file_path";
+constexpr char kProtoOutputFilePathFlag[] = "proto_output_file_path";
 
 // TODO(b/130823599): Move to tools/evaluation/stages/topk_accuracy_eval_stage.
 // Computes total number of images processed & aggregates Top-K accuracies
@@ -86,6 +89,8 @@ class ResultsWriter : public ImagenetModelEvaluator::Observer {
   void OnSingleImageEvaluationComplete(uint64_t shard_id,
                                        const TopkAccuracyEvalMetrics& metrics,
                                        const string& image) override;
+
+  TopkAccuracyEvalMetrics AggregatedMetrics();
 
  private:
   // For writing to CSV.
@@ -143,31 +148,48 @@ void ResultsWriter::OnSingleImageEvaluationComplete(
   }
 }
 
+TopkAccuracyEvalMetrics ResultsWriter::AggregatedMetrics() {
+  std::lock_guard<std::mutex> lock(mu_);
+  int num_evaluated;
+  std::vector<double> total_accuracies;
+  AggregateAccuraciesAndNumImages(k_, shard_id_accuracy_metrics_map_,
+                                  shard_id_done_image_count_map_,
+                                  &total_accuracies, &num_evaluated);
+  TopkAccuracyEvalMetrics aggregated_metrics;
+  for (auto accuracy : total_accuracies) {
+    aggregated_metrics.add_topk_accuracies(accuracy);
+  }
+  return aggregated_metrics;
+}
+
 int Main(int argc, char* argv[]) {
-  string output_file_path;
+  std::string output_file_path, proto_output_file_path;
   int num_threads = 4;
   std::vector<tflite::Flag> flag_list = {
       tflite::Flag::CreateFlag(kNumThreadsFlag, &num_threads,
                                "Number of threads."),
       tflite::Flag::CreateFlag(kOutputFilePathFlag, &output_file_path,
                                "Path to output file."),
+      tflite::Flag::CreateFlag(kProtoOutputFilePathFlag,
+                               &proto_output_file_path,
+                               "Path to proto output file."),
   };
   tflite::Flags::Parse(&argc, const_cast<const char**>(argv), flag_list);
 
   std::unique_ptr<ImagenetModelEvaluator> evaluator;
   if (output_file_path.empty()) {
     LOG(ERROR) << "Invalid output file path.";
-    return 0;
+    return EXIT_FAILURE;
   }
 
   if (num_threads <= 0) {
     LOG(ERROR) << "Invalid number of threads.";
-    return 0;
+    return EXIT_FAILURE;
   }
 
   if (ImagenetModelEvaluator::Create(argc, argv, num_threads, &evaluator) !=
       kTfLiteOk)
-    return 0;
+    return EXIT_FAILURE;
 
   std::ofstream output_stream(output_file_path, std::ios::out);
   if (!output_stream) {
@@ -189,8 +211,20 @@ int Main(int argc, char* argv[]) {
       absl::make_unique<CSVWriter>(columns, &output_stream));
   evaluator->AddObserver(&results_writer);
   LOG(ERROR) << "Starting evaluation with: " << num_threads << " threads.";
-  evaluator->EvaluateModel();
-  return 0;
+  if (evaluator->EvaluateModel() != kTfLiteOk) {
+    LOG(ERROR) << "Failed to evaluate the model!";
+    return EXIT_FAILURE;
+  }
+
+  if (!proto_output_file_path.empty()) {
+    std::ofstream proto_out_file(proto_output_file_path,
+                                 std::ios::out | std::ios::binary);
+    TopkAccuracyEvalMetrics metrics = results_writer.AggregatedMetrics();
+    proto_out_file << metrics.SerializeAsString();
+    proto_out_file.close();
+  }
+
+  return EXIT_SUCCESS;
 }
 
 }  // namespace metrics

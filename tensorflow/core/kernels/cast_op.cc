@@ -302,11 +302,6 @@ CURRY_TYPES2(REGISTER_CAST_SYCL, double);
 // HostCast differs from Cast in that its input and output are in host memory.
 REGISTER_KERNEL_BUILDER(Name("_HostCast").Device(DEVICE_CPU), CpuCastOp);
 REGISTER_KERNEL_BUILDER(
-    Name("_HostCast").Device(DEVICE_GPU).HostMemory("x").HostMemory("y"),
+    Name("_HostCast").Device(DEVICE_DEFAULT).HostMemory("x").HostMemory("y"),
     CpuCastOp);
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("_HostCast").Device(DEVICE_SYCL).HostMemory("x").HostMemory("y"),
-    CpuCastOp);
-#endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow

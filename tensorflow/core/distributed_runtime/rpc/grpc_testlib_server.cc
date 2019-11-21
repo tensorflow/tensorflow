@@ -61,7 +61,7 @@ Status FillServerDef(const string& job_spec, const string& job_name,
       my_tasks_per_replica = tasks_per_replica;
     }
     LOG(INFO) << "Peer " << job_def->name() << " " << tasks_per_replica << " {"
-              << str_util::Join(host_ports, ", ") << "}";
+              << absl::StrJoin(host_ports, ", ") << "}";
   }
   if (my_tasks_per_replica == 0) {
     return errors::InvalidArgument("Invalid job specification");

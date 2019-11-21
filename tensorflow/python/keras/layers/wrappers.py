@@ -30,6 +30,7 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -151,6 +152,7 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
+    self._supports_ragged_inputs = True
 
     # It is safe to use the fast, reshape-based approach with all of our
     # built-in Layers.
@@ -222,47 +224,54 @@ class TimeDistributed(Wrapper):
 
     input_shape = K.int_shape(inputs)
     if input_shape[0] and not self._always_use_reshape:
+      inputs, row_lengths = K.convert_inputs_if_ragged(inputs)
+      is_ragged_input = row_lengths is not None
+
       # batch size matters, use rnn-based implementation
       def step(x, _):
-        output = self.layer.call(x, **kwargs)
+        output = self.layer(x, **kwargs)
         return output, []
 
       _, outputs, _ = K.rnn(
           step,
           inputs,
           initial_states=[],
-          input_length=input_shape[1],
+          input_length=row_lengths[0] if is_ragged_input else input_shape[1],
+          mask=mask,
           unroll=False)
-      y = outputs
+      y = K.maybe_convert_to_ragged(is_ragged_input, outputs, row_lengths)
     else:
       # No batch size specified, therefore the layer will be able
       # to process batches of any size.
       # We can go with reshape-based implementation for performance.
-      input_length = input_shape[1]
-      if not input_length:
-        input_length = array_ops.shape(inputs)[1]
-      inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
-      # Shape: (num_samples * timesteps, ...). And track the
-      # transformation in self._input_map.
-      input_uid = generic_utils.object_list_uid(inputs)
-      inputs = array_ops.reshape(inputs, inner_input_shape)
-      self._input_map[input_uid] = inputs
-      # (num_samples * timesteps, ...)
-      if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
-        inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
-        kwargs['mask'] = K.reshape(mask, inner_mask_shape)
-      y = self.layer.call(inputs, **kwargs)
-      # Shape: (num_samples, timesteps, ...)
-      output_shape = self.compute_output_shape(input_shape).as_list()
-      output_shape = self._get_shape_tuple(
-          (-1, input_length), y, 1, output_shape[2:])
-      y = array_ops.reshape(y, output_shape)
+      if isinstance(inputs, ragged_tensor.RaggedTensor):
+        y = self.layer(inputs.values, **kwargs)
+        y = ragged_tensor.RaggedTensor.from_row_lengths(
+            y,
+            inputs.nested_row_lengths()[0])
+      else:
+        input_length = input_shape[1]
+        if not input_length:
+          input_length = array_ops.shape(inputs)[1]
+        inner_input_shape = self._get_shape_tuple((-1,), inputs, 2)
+        # Shape: (num_samples * timesteps, ...). And track the
+        # transformation in self._input_map.
+        input_uid = generic_utils.object_list_uid(inputs)
+        inputs = array_ops.reshape(inputs, inner_input_shape)
+        self._input_map[input_uid] = inputs
+        # (num_samples * timesteps, ...)
+        if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
+          inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
+          kwargs['mask'] = K.reshape(mask, inner_mask_shape)
 
-    # Apply activity regularizer if any:
-    if (hasattr(self.layer, 'activity_regularizer') and
-        self.layer.activity_regularizer is not None):
-      regularization_loss = self.layer.activity_regularizer(y)
-      self.add_loss(regularization_loss, inputs)
+        y = self.layer(inputs, **kwargs)
+
+        # Shape: (num_samples, timesteps, ...)
+        output_shape = self.compute_output_shape(input_shape).as_list()
+        output_shape = self._get_shape_tuple((-1, input_length), y, 1,
+                                             output_shape[2:])
+        y = array_ops.reshape(y, output_shape)
+
     return y
 
   def compute_mask(self, inputs, mask=None):
@@ -385,8 +394,8 @@ class Bidirectional(Wrapper):
    # With custom backward layer
    model = Sequential()
    forward_layer = LSTM(10, return_sequences=True)
-   backard_layer = LSTM(10, activation='relu', return_sequences=True,
-                        go_backwards=True)
+   backward_layer = LSTM(10, activation='relu', return_sequences=True,
+                         go_backwards=True)
    model.add(Bidirectional(forward_layer, backward_layer=backward_layer,
                            input_shape=(5, 10)))
    model.add(Dense(5))
@@ -412,6 +421,12 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    # We don't want to track `layer` since we're already tracking the two copies
+    # of it we actually run.
+    self._setattr_tracking = False
+    super(Bidirectional, self).__init__(layer, **kwargs)
+    self._setattr_tracking = True
+
     # Recreate the forward layer from the original layer config, so that it will
     # not carry over any state from the layer.
     self.forward_layer = self._recreate_layer_from_config(layer)
@@ -449,13 +464,9 @@ class Bidirectional(Wrapper):
     self.return_state = layer.return_state
     self.supports_masking = True
     self._trainable = True
-    self._num_constants = None
-    # We don't want to track `layer` since we're already tracking the two copies
-    # of it we actually run.
-    self._setattr_tracking = False
-    super(Bidirectional, self).__init__(layer, **kwargs)
-    self._setattr_tracking = True
+    self._num_constants = 0
     self.input_spec = layer.input_spec
+    self._supports_ragged_inputs = True
 
   def _verify_layer_config(self):
     """Ensure the forward and backward layers have valid common property."""
@@ -581,6 +592,9 @@ class Bidirectional(Wrapper):
       # input. Update the input_spec to match the inputs.
       full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
                         ] + additional_specs
+      # Removing kwargs since the value are passed with input list.
+      kwargs['initial_state'] = None
+      kwargs['constants'] = None
 
       # Perform the call with temporarily replaced input_spec
       original_input_spec = self.input_spec
@@ -606,32 +620,47 @@ class Bidirectional(Wrapper):
     if generic_utils.has_arg(self.layer.call, 'constants'):
       kwargs['constants'] = constants
 
-    if initial_state is not None and generic_utils.has_arg(
-        self.layer.call, 'initial_state'):
-      forward_inputs = [inputs[0]]
-      backward_inputs = [inputs[0]]
-      pivot = len(initial_state) // 2 + 1
-      # add forward initial state
-      forward_state = inputs[1:pivot]
-      forward_inputs += forward_state
-      if self._num_constants is None:
-        # add backward initial state
-        backward_state = inputs[pivot:]
-        backward_inputs += backward_state
+    if generic_utils.has_arg(self.layer.call, 'initial_state'):
+      if isinstance(inputs, list) and len(inputs) > 1:
+        # initial_states are keras tensors, which means they are passed in
+        # together with inputs as list. The initial_states need to be split into
+        # forward and backward section, and be feed to layers accordingly.
+        forward_inputs = [inputs[0]]
+        backward_inputs = [inputs[0]]
+        pivot = (len(inputs) - self._num_constants) // 2 + 1
+        # add forward initial state
+        forward_inputs += inputs[1:pivot]
+        if not self._num_constants:
+          # add backward initial state
+          backward_inputs += inputs[pivot:]
+        else:
+          # add backward initial state
+          backward_inputs += inputs[pivot:-self._num_constants]
+          # add constants for forward and backward layers
+          forward_inputs += inputs[-self._num_constants:]
+          backward_inputs += inputs[-self._num_constants:]
+        forward_state, backward_state = None, None
+        if 'constants' in kwargs:
+          kwargs['constants'] = None
+      elif initial_state is not None:
+        # initial_states are not keras tensors, eg eager tensor from np array.
+        # They are only passed in from kwarg initial_state, and should be passed
+        # to forward/backward layer via kwarg initial_state as well.
+        forward_inputs, backward_inputs = inputs, inputs
+        half = len(initial_state) // 2
+        forward_state = initial_state[:half]
+        backward_state = initial_state[half:]
       else:
-        # add backward initial state
-        backward_state = inputs[pivot:-self._num_constants]
-        backward_inputs += backward_state
-        # add constants for forward and backward layers
-        forward_inputs += inputs[-self._num_constants:]
-        backward_inputs += inputs[-self._num_constants:]
-      y = self.forward_layer.call(forward_inputs,
-                                  initial_state=forward_state, **kwargs)
-      y_rev = self.backward_layer.call(backward_inputs,
-                                       initial_state=backward_state, **kwargs)
+        forward_inputs, backward_inputs = inputs, inputs
+        forward_state, backward_state = None, None
+
+      y = self.forward_layer(forward_inputs,
+                             initial_state=forward_state, **kwargs)
+      y_rev = self.backward_layer(backward_inputs,
+                                  initial_state=backward_state, **kwargs)
     else:
-      y = self.forward_layer.call(inputs, **kwargs)
-      y_rev = self.backward_layer.call(inputs, **kwargs)
+      y = self.forward_layer(inputs, **kwargs)
+      y_rev = self.backward_layer(inputs, **kwargs)
 
     if self.return_state:
       states = y[1:] + y_rev[1:]
@@ -700,7 +729,7 @@ class Bidirectional(Wrapper):
 
   def get_config(self):
     config = {'merge_mode': self.merge_mode}
-    if self._num_constants is not None:
+    if self._num_constants:
       config['num_constants'] = self._num_constants
 
     if hasattr(self, '_backward_layer_config'):
@@ -715,7 +744,7 @@ class Bidirectional(Wrapper):
   def from_config(cls, config, custom_objects=None):
     # Instead of updating the input, create a copy and use that.
     config = config.copy()
-    num_constants = config.pop('num_constants', None)
+    num_constants = config.pop('num_constants', 0)
     backward_layer_config = config.pop('backward_layer', None)
     if backward_layer_config is not None:
       from tensorflow.python.keras.layers import deserialize as deserialize_layer  # pylint: disable=g-import-not-at-top

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_UTIL_H_
 
 #include <cstdint>
+#include <string>
 #include <vector>
 
 namespace tensorflow {
@@ -45,6 +46,35 @@ void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,
 void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
                                   std::vector<std::uint_fast32_t>* start_vec,
                                   std::vector<std::uint_fast32_t>* end_vec);
+
+// For each of the num_threads determine the index of the active_request whose
+// work queue should be attempted first by that the thread. Return a vector of
+// size num_threads which represents how threads should be distributed across
+// requests.
+std::vector<int> ChooseRequestsWithExponentialDistribution(
+    int num_active_requests, int num_threads);
+
+// Look up environment variable named 'var_name' and return the value if it
+// exist and can be parsed. Return 'default_value' otherwise.
+double ParamFromEnvWithDefault(const std::string& var_name,
+                               double default_value);
+
+// Look up environment variable named 'var_name' and return the value if it
+// exist and can be parsed. The value must be in format val1,val2... Return
+// 'default_value' otherwise.
+std::vector<double> ParamFromEnvWithDefault(const std::string& var_name,
+                                            std::vector<double> default_value);
+
+// Look up environment variable named 'var_name' and return the value if it
+// exist and can be parsed. The value must be in format val1,val2... Return
+// 'default_value' otherwise.
+std::vector<int> ParamFromEnvWithDefault(const std::string& var_name,
+                                         std::vector<int> default_value);
+
+// Look up environment variable named 'var_name' and return the value if it
+// exist and can be parsed. Return 'default_value' otherwise.
+bool ParamFromEnvBoolWithDefault(const std::string& var_name,
+                                 bool default_value);
 
 }  // end namespace tensorflow
 #endif  // TENSORFLOW_CORE_FRAMEWORK_RUN_HANDLER_UTIL_H_

@@ -253,7 +253,7 @@ class CApiFunctionTest : public ::testing::Test {
                        const std::unordered_set<string>& nodes) {
     ASSERT_EQ(nodes.size(), fdef.node_def_size())
         << "Got unexpected number of nodes. Expected: ["
-        << str_util::Join(nodes, ", ")
+        << absl::StrJoin(nodes, ", ")
         << "] Actual nodes in fdef: " << fdef.DebugString();
     for (const NodeDef& node_def : fdef.node_def()) {
       ASSERT_TRUE(nodes.find(node_def.name()) != nodes.end())

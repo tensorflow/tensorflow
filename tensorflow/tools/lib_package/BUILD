@@ -8,7 +8,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "VERSION", "VERSION_MAJOR", "if_macos")
-load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
+load("//tensorflow/core/platform:default/build_config_root.bzl", "tf_additional_license_deps")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -38,7 +38,7 @@ pkg_tar(
 pkg_tar(
     name = "libtensorflow_jni",
     srcs = [
-        "include/tensorflow/jni/LICENSE",
+        ":THIRD_PARTY_TF_JNI_LICENSES",
         "//:LICENSE",
         "//tensorflow/java:libtensorflow_jni",
     ],
@@ -123,10 +123,9 @@ pkg_tar(
 pkg_tar(
     name = "clicenses",
     srcs = [
-        ":include/tensorflow/c/LICENSE",
+        ":THIRD_PARTY_TF_C_LICENSES",
         "//:LICENSE",
     ],
-    package_dir = "include/tensorflow/c",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
     # and https://github.com/bazelbuild/bazel/issues/1580
@@ -148,21 +147,23 @@ genrule(
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft/readme.txt",
+        "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
-        "@gif_archive//:COPYING",
+        "@gif//:COPYING",
         "@highwayhash//:LICENSE",
         "@hwloc//:COPYING",
         "@icu//:icu4c/LICENSE",
-        "@jpeg//:LICENSE.md",
+        "@libjpeg_turbo//:LICENSE.md",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
-        "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@png//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
+        "@six_archive//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -198,10 +199,8 @@ genrule(
             "@grpc//:LICENSE",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
-    ) + if_rocm([
-        "@rocprim_archive//:LICENSE.txt",
-    ]) + tf_additional_license_deps(),
-    outs = ["include/tensorflow/c/LICENSE"],
+    ) + tf_additional_license_deps(),
+    outs = ["THIRD_PARTY_TF_C_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
 )
@@ -219,23 +218,25 @@ genrule(
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft/readme.txt",
+        "@fft2d//:fft2d/readme2d.txt",
         "@gemmlowp//:LICENSE",
-        "@gif_archive//:COPYING",
+        "@gif//:COPYING",
         "@highwayhash//:LICENSE",
         "@hwloc//:COPYING",
         "@icu//:icu4j/main/shared/licenses/LICENSE",
-        "@jpeg//:LICENSE.md",
+        "@libjpeg_turbo//:LICENSE.md",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@local_config_tensorrt//:LICENSE",
         "@nasm//:LICENSE",
         "@nsync//:LICENSE",
-        "@png_archive//:LICENSE",
-        "@protobuf_archive//:LICENSE",
+        "@png//:LICENSE",
+        "@com_google_protobuf//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",
         "@grpc//third_party/address_sorting:LICENSE",
+        "@six_archive//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -265,10 +266,8 @@ genrule(
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
-    ]) + if_rocm([
-        "@rocprim_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
-    outs = ["include/tensorflow/jni/LICENSE"],
+    outs = ["THIRD_PARTY_TF_JNI_LICENSES"],
     cmd = "$(location :concat_licenses.sh) $(SRCS) >$@",
     tools = [":concat_licenses.sh"],
 )

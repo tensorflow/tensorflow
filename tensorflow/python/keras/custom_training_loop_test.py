@@ -58,6 +58,16 @@ class LayerWithMetrics(keras.layers.Layer):
     return inputs
 
 
+class LayerWithTrainingArg(keras.layers.Layer):
+
+  def call(self, inputs, training=None):
+    self.training = training
+    if training:
+      return inputs
+    else:
+      return 0. * inputs
+
+
 def add_loss_step(defun):
   optimizer = keras.optimizer_v2.adam.Adam()
   model = testing_utils.get_model_from_layers([LayerWithLosses()],
@@ -141,6 +151,93 @@ class CustomTrainingLoopTest(keras_parameterized.TestCase):
     eager_result = train_step(defun=False)
     fn_result = train_step(defun=True)
     self.assertAllClose(eager_result, fn_result)
+
+  @parameterized.named_parameters(('eager', False), ('defun', True))
+  def test_training_arg_propagation(self, defun):
+
+    model = testing_utils.get_model_from_layers([LayerWithTrainingArg()],
+                                                input_shape=(1,))
+
+    def train_step(x):
+      return model(x), model(x, training=False), model(x, training=True)
+
+    if defun:
+      train_step = def_function.function(train_step)
+
+    x = array_ops.ones((1, 1))
+    results = train_step(x)
+    self.assertAllClose(results[0], array_ops.zeros((1, 1)))
+    self.assertAllClose(results[1], array_ops.zeros((1, 1)))
+    self.assertAllClose(results[2], array_ops.ones((1, 1)))
+
+  @parameterized.named_parameters(('eager', False), ('defun', True))
+  def test_learning_phase_propagation(self, defun):
+
+    class MyModel(keras.layers.Layer):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer = LayerWithTrainingArg()
+
+      def call(self, inputs):
+        return self.layer(inputs)
+
+    model = MyModel()
+
+    def train_step(x):
+      no_learning_phase_out = model(x)
+      self.assertIsNone(model.layer.training)
+      with keras.backend.learning_phase_scope(0):
+        inf_learning_phase_out = model(x)
+      self.assertEqual(model.layer.training, 0)
+      with keras.backend.learning_phase_scope(1):
+        train_learning_phase_out = model(x)
+      self.assertEqual(model.layer.training, 1)
+      return [
+          no_learning_phase_out, inf_learning_phase_out,
+          train_learning_phase_out
+      ]
+
+    if defun:
+      train_step = def_function.function(train_step)
+
+    x = array_ops.ones((1, 1))
+    results = train_step(x)
+    self.assertAllClose(results[0], array_ops.zeros((1, 1)))
+    self.assertAllClose(results[1], array_ops.zeros((1, 1)))
+    self.assertAllClose(results[2], array_ops.ones((1, 1)))
+
+  @parameterized.named_parameters(('eager', False), ('defun', True))
+  def test_training_arg_priorities(self, defun):
+
+    class MyModel(keras.layers.Layer):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.layer = LayerWithTrainingArg()
+
+      def call(self, inputs, training=False):
+        return self.layer(inputs)
+
+    model = MyModel()
+
+    def train_step(x):
+      explicit_out = model(x, training=True)
+      default_out = model(x)
+      with keras.backend.learning_phase_scope(1):
+        parent_out = model(x, training=False)
+        lr_out = model(x)
+      return [explicit_out, default_out, parent_out, lr_out]
+
+    if defun:
+      train_step = def_function.function(train_step)
+
+    x = array_ops.ones((1, 1))
+    results = train_step(x)
+    self.assertAllClose(results[0], array_ops.ones((1, 1)))
+    self.assertAllClose(results[1], array_ops.zeros((1, 1)))
+    self.assertAllClose(results[2], array_ops.zeros((1, 1)))
+    self.assertAllClose(results[3], array_ops.ones((1, 1)))
 
 
 if __name__ == '__main__':

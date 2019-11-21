@@ -8,9 +8,9 @@ A variant tensor representing the input dataset.
 END
   }
   in_arg {
-  name: "num_workers"
+  name: "num_replicas"
   description: <<END
-A scalar representing the number of workers to distribute this batch across. As
+A scalar representing the number of replicas to distribute this batch across. As
 a result of this transformation the current batch size would end up being
 divided  by this parameter.
 END
@@ -18,6 +18,6 @@ END
   summary: "Creates a dataset that changes the batch size."
   description: <<END
 Creates a dataset that changes the batch size of the dataset to current batch
-size // num_workers.
+size // num_replicas.
 END
 }

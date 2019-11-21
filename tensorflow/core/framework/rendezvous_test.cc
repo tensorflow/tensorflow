@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/rendezvous.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/platform/types.h"
@@ -84,7 +86,7 @@ class LocalRendezvousTest : public ::testing::Test {
 // string -> Tensor<string>
 Tensor V(const string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
-  tensor.scalar<string>()() = content;
+  tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
@@ -92,7 +94,7 @@ Tensor V(const string& content) {
 string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
-  return tensor.scalar<string>()();
+  return tensor.scalar<tstring>()();
 }
 
 Rendezvous::ParsedKey MakeKey(const string& name) {
@@ -105,13 +107,13 @@ Rendezvous::ParsedKey MakeKey(const string& name) {
 }
 
 const Rendezvous::ParsedKey& KeyFoo() {
-  static auto key = MakeKey("foo");
-  return key;
+  static auto* key = new Rendezvous::ParsedKey(MakeKey("foo"));
+  return *key;
 }
 
 const Rendezvous::ParsedKey& KeyBar() {
-  static auto key = MakeKey("bar");
-  return key;
+  static auto* key = new Rendezvous::ParsedKey(MakeKey("bar"));
+  return *key;
 }
 
 TEST_F(LocalRendezvousTest, SendRecv) {
@@ -151,6 +153,126 @@ TEST_F(LocalRendezvousTest, PingPong) {
   TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("secret msg"), val_dead));
   TF_ASSERT_OK(rendez_->Recv(KeyBar(), args, &val, &val_dead));
   EXPECT_EQ("secret msg", V(val));
+}
+
+TEST_F(LocalRendezvousTest, CancelBeforeRecv) {
+  auto* cm = new CancellationManager();
+  Tensor val(DT_STRING);
+  bool is_dead = false;
+  Rendezvous::Args args;
+  args.cancellation_manager = cm;
+  cm->StartCancel();
+  auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(errors::IsCancelled(s));
+  EXPECT_EQ("[_Derived_]RecvAsync is cancelled.", s.error_message());
+  delete cm;
+}
+
+TEST_F(LocalRendezvousTest, CancelAfterRecv) {
+  auto* cm = new CancellationManager();
+  Notification n;
+  SchedClosure([cm, &n]() {
+    Env::Default()->SleepForMicroseconds(10000);
+    cm->StartCancel();
+    n.Notify();
+  });
+  Tensor val(DT_STRING);
+  bool is_dead = false;
+  Rendezvous::Args args;
+  args.cancellation_manager = cm;
+  auto s = rendez_->Recv(KeyFoo(), args, &val, &is_dead);
+  EXPECT_FALSE(s.ok());
+  EXPECT_TRUE(errors::IsCancelled(s));
+  EXPECT_EQ("[_Derived_]RecvAsync is cancelled.", s.error_message());
+  n.WaitForNotification();
+  delete cm;
+}
+
+TEST_F(LocalRendezvousTest, CancelEmptyQueue) {
+  auto* cm = new CancellationManager();
+  Notification n;
+  SchedClosure([this, cm, &n]() {
+    Env::Default()->SleepForMicroseconds(10000);
+    Rendezvous::Args args;
+    TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
+    cm->StartCancel();
+    n.Notify();
+  });
+  Tensor val(DT_STRING);
+  bool is_dead = false;
+  Rendezvous::Args args;
+  args.cancellation_manager = cm;
+  TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &val, &is_dead));
+  EXPECT_EQ("hello", V(val));
+  n.WaitForNotification();
+  delete cm;
+}
+
+TEST_F(LocalRendezvousTest, CancelMultiple) {
+  auto* cm = new CancellationManager();
+  SchedClosure([this, cm]() {
+    Env::Default()->SleepForMicroseconds(10000);
+    Rendezvous::Args args;
+    cm->StartCancel();
+    TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
+    TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
+  });
+  Tensor val(DT_STRING);
+  Rendezvous::Args args;
+  Rendezvous::Args args_with_cancellation;
+  args_with_cancellation.cancellation_manager = cm;
+  Notification n0;
+  Notification n1;
+  Notification n2;
+  Notification n3;
+  Status s0;
+  Status s1;
+  Status s2;
+  Status s3;
+
+  rendez_->RecvAsync(
+      KeyFoo(), args,
+      [&n0, &s0](const Status& s, const Rendezvous::Args& send_args,
+                 const Rendezvous::Args& recv_args, const Tensor& v,
+                 const bool dead) {
+        s0.Update(s);
+        n0.Notify();
+      });
+  rendez_->RecvAsync(
+      KeyFoo(), args_with_cancellation,
+      [&n1, &s1](const Status& s, const Rendezvous::Args& send_args,
+                 const Rendezvous::Args& recv_args, const Tensor& v,
+                 const bool dead) {
+        s1.Update(s);
+        n1.Notify();
+      });
+  rendez_->RecvAsync(
+      KeyFoo(), args,
+      [&n2, &s2](const Status& s, const Rendezvous::Args& send_args,
+                 const Rendezvous::Args& recv_args, const Tensor& v,
+                 const bool dead) {
+        s2.Update(s);
+        n2.Notify();
+      });
+  rendez_->RecvAsync(
+      KeyFoo(), args_with_cancellation,
+      [&n3, &s3](const Status& s, const Rendezvous::Args& send_args,
+                 const Rendezvous::Args& recv_args, const Tensor& v,
+                 const bool dead) {
+        s3.Update(s);
+        n3.Notify();
+      });
+  n0.WaitForNotification();
+  n1.WaitForNotification();
+  n2.WaitForNotification();
+  n3.WaitForNotification();
+  TF_ASSERT_OK(s0);
+  TF_ASSERT_OK(s2);
+  EXPECT_FALSE(s1.ok());
+  EXPECT_FALSE(s3.ok());
+
+  delete cm;
 }
 
 // A simple structure that behaves a bit like a blocking counter.  The
@@ -329,8 +451,35 @@ void BM_SendRecv(int iters) {
 }
 BENCHMARK(BM_SendRecv);
 
+void BM_RecvSend(int iters) {
+  Rendezvous* rendez = NewLocalRendezvous();
+  Tensor orig = V("val");
+  Tensor val(DT_STRING, TensorShape({}));
+  bool is_dead = false;
+  Rendezvous::Args args;
+  if (iters > 0) {
+    while (iters--) {
+      bool received = false;
+      rendez->RecvAsync(
+          KeyFoo(), args,
+          [&val, &received](const Status& s, const Rendezvous::Args& send_args,
+                            const Rendezvous::Args& recv_args,
+                            const Tensor& tensor, bool is_dead) {
+            val = tensor;
+            received = true;
+          });
+      TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
+      CHECK(received);
+    }
+    CHECK_EQ(V(val), V(orig));
+  }
+  rendez->Unref();
+}
+BENCHMARK(BM_RecvSend);
+
 void BM_PingPong(int iters) {
   CHECK_GT(iters, 0);
+  auto* cm = new CancellationManager();
   thread::ThreadPool* pool = new thread::ThreadPool(Env::Default(), "test", 1);
 
   // The main thread sends "foo" for iters times and receives "bar"
@@ -352,12 +501,14 @@ void BM_PingPong(int iters) {
   Tensor bar(DT_STRING, TensorShape({}));
   bool is_dead = false;
   Rendezvous::Args args;
+  args.cancellation_manager = cm;
   for (int i = 0; i < iters; ++i) {
     TF_CHECK_OK(rendez->Send(KeyFoo(), args, foo, is_dead));
     TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));
   }
   CHECK_EQ("bar", V(bar));
   delete pool;
+  delete cm;
 }
 BENCHMARK(BM_PingPong);
 

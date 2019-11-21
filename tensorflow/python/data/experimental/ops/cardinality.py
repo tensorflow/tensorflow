@@ -47,4 +47,5 @@ def cardinality(dataset):
     the cardinality is infinite or unknown, the operation returns the named
     constant `INFINITE_CARDINALITY` and `UNKNOWN_CARDINALITY` respectively.
   """
-  return ged_ops.experimental_dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access
+
+  return ged_ops.dataset_cardinality(dataset._variant_tensor)  # pylint: disable=protected-access

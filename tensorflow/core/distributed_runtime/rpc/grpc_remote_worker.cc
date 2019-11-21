@@ -72,9 +72,10 @@ class GrpcRemoteWorker : public WorkerInterface {
   ~GrpcRemoteWorker() override {}
 
   void GetStatusAsync(const GetStatusRequest* request,
-                      GetStatusResponse* response,
+                      GetStatusResponse* response, bool fail_fast,
                       StatusCallback done) override {
-    IssueRequest(request, response, getstatus_, std::move(done));
+    IssueRequest(request, response, getstatus_, std::move(done), nullptr,
+                 fail_fast);
   }
 
   void CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
@@ -269,18 +270,18 @@ class GrpcRemoteWorker : public WorkerInterface {
   void IssueRequest(const protobuf::Message* request,
                     protobuf::Message* response, const ::grpc::string& method,
                     StatusCallback done, CallOptions* call_opts = nullptr,
-                    int max_retries = kMaxWorkerRpcRetries) {
-    new RPCState<protobuf::Message>(&stub_, cq_, method, *request, response,
-                                    std::move(done), call_opts,
-                                    callback_threadpool_, max_retries);
+                    bool fail_fast = true) {
+    new RPCState<protobuf::Message>(
+        &stub_, cq_, method, *request, response, std::move(done), call_opts,
+        callback_threadpool_, /*max_retries=*/0, fail_fast);
   }
+
   void IssueRequest(const protobuf::Message* request, TensorResponse* response,
                     const ::grpc::string& method, StatusCallback done,
-                    CallOptions* call_opts = nullptr,
-                    int max_retries = kMaxWorkerRpcRetries) {
+                    CallOptions* call_opts = nullptr) {
     new RPCState<TensorResponse>(&stub_, cq_, method, *request, response,
                                  std::move(done), call_opts,
-                                 callback_threadpool_, max_retries);
+                                 callback_threadpool_);
   }
 
   void IssueMarkRecvFinishedRequest(int64 request_id) {

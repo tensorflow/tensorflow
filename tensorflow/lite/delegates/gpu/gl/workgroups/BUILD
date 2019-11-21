@@ -1,14 +1,15 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 cc_library(
     name = "calculator",
     srcs = ["calculator.cc"],
     hdrs = ["calculator.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/gl:gpu_info",
         "//tensorflow/lite/delegates/gpu/gl/compiler:shader_code",
     ],
 )
@@ -19,8 +20,8 @@ cc_library(
     hdrs = ["default_calculator.h"],
     deps = [
         ":calculator",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/gl:gpu_info",
     ],
 )
 
@@ -34,7 +35,7 @@ cc_library(
             ":default_calculator",
             "//tensorflow/lite/delegates/gpu/gl:common_cc_fbs",
             "//tensorflow/lite/delegates/gpu/gl:workgroups_cc_fbs",
-            "//tensorflow/lite/delegates/gpu/gl:gpu_info",
+            "//tensorflow/lite/delegates/gpu/common:gpu_info",
             "//tensorflow/lite/delegates/gpu/gl:metadata_cc_fbs",
             ":calculator",
             "@com_google_absl//absl/memory",
@@ -51,7 +52,7 @@ cc_library(
     deps = [
         ":calculator",
         ":default_calculator",
-        "//tensorflow/lite/delegates/gpu/gl:gpu_info",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
     ] + select({
         "//tensorflow/lite/delegates/gpu:tflite_gpu_binary_release": [],
         "//conditions:default": [
@@ -66,9 +67,9 @@ cc_library(
     hdrs = ["ideal_workgroup_picker.h"],
     deps = [
         ":calculator",
+        "//tensorflow/lite/delegates/gpu/common:gpu_info",
         "//tensorflow/lite/delegates/gpu/common:operations",
         "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common:types",
-        "//tensorflow/lite/delegates/gpu/gl:gpu_info",
     ],
 )

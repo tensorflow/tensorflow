@@ -24,9 +24,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/grappler/utils/tpu.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -55,7 +55,8 @@ bool IsTensorSmall(const OpInfo::TensorProperties& prop) {
 
   // Check type to be int32 or int64.
   if (prop.dtype() != DataType::DT_INT32 &&
-      prop.dtype() != DataType::DT_INT64) {
+      prop.dtype() != DataType::DT_INT64 &&
+      prop.dtype() != DataType::DT_FLOAT) {
     return false;
   }
 
@@ -102,7 +103,8 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
   if (!properties->has_properties()) {
     // This is an expensive call, call it lazily.
     TF_RETURN_IF_ERROR(properties->InferStatically(
-        /*assume_valid_feeds=*/false));
+        /*assume_valid_feeds=*/false, /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/false));
   }
   const auto& output_properties = properties->GetOutputProperties(node.name());
   if (port_id >= output_properties.size()) {
@@ -132,7 +134,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
   }
 
   // Check if op's device is on CPU.
-  if (str_util::StrContains(node.device(), DEVICE_CPU)) {
+  if (absl::StrContains(node.device(), DEVICE_CPU)) {
     *is_candidate = true;
     return Status::OK();
   }
@@ -178,7 +180,7 @@ Status IsNodeOutputPortHostFriendly(const GraphView& graph,
 // Roughly this means checking if the input port is on Host memory.
 bool IsNodeInputPortHostFriendly(const NodeDef& node, int port_id) {
   // If node is on Host, assume its inputs are Host friendly.
-  if (str_util::StrContains(node.device(), DEVICE_CPU)) {
+  if (absl::StrContains(node.device(), DEVICE_CPU)) {
     return true;
   }
 
@@ -221,7 +223,7 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   *is_candidate = false;
 
   // Check if node already on CPU.
-  if (str_util::StrContains(node.device(), DEVICE_CPU)) {
+  if (absl::StrContains(node.device(), DEVICE_CPU)) {
     *is_candidate = true;
     return Status::OK();
   }
@@ -252,7 +254,8 @@ Status IsNodeHostCandidate(const GraphView& graph, GraphProperties* properties,
   if (!properties->has_properties()) {
     // This is an expensive call, call it lazily.
     TF_RETURN_IF_ERROR(properties->InferStatically(
-        /*assume_valid_feeds=*/false));
+        /*assume_valid_feeds=*/false, /*aggressive_shape_inference=*/false,
+        /*include_tensor_values=*/false));
   }
   for (const auto& prop : properties->GetOutputProperties(node.name())) {
     if (!IsTensorSmall(prop)) {
@@ -271,7 +274,7 @@ string TryFindHostDevice(const gtl::FlatSet<string>& devices,
   // Force this node onto the CPU.
   if (device.empty() && has_device_cpu) {
     return "/device:CPU:0";
-  } else if (str_util::StrContains(device, DEVICE_GPU)) {
+  } else if (absl::StrContains(device, DEVICE_GPU)) {
     // Sometimes the cluster can have:
     //   devices = {"/device:CPU:0", "/device:XLA_GPU:0"}
     // and we need to handle them properly.
@@ -337,6 +340,7 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       if (IsConstant(node)) {
         const_nodes.emplace_back(&node, node.device());
       }
+      VLOG(2) << "Moving node " << node.name() << " to device " << device;
       *node.mutable_device() = std::move(device);
     }
   }
@@ -353,6 +357,8 @@ Status PinToHostOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // The consumer is not Host friendly, swap it back to the original device.
       if (!internal::IsNodeInputPortHostFriendly(*fanout.node,
                                                  fanout.port_id)) {
+        VLOG(2) << "Swapping node " << node->name() << " back to device "
+                << device;
         node->set_device(device);
         break;
       }

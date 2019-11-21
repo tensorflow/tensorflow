@@ -273,7 +273,9 @@ const Status& StatusOr<T>::status() const & {
 }
 template <typename T>
 Status StatusOr<T>::status() && {
-  return ok() ? Status::OK() : std::move(this->status_);
+  // Note that we copy instead of moving the status here so that
+  // ~StatusOrData() can call ok() without invoking UB.
+  return ok() ? Status::OK() : this->status_;
 }
 
 template <typename T>
@@ -306,6 +308,31 @@ void StatusOr<T>::IgnoreError() const {
 }
 
 }  // namespace port
+
+#define TF_ASSERT_OK_AND_ASSIGN(lhs, rexpr)                             \
+  TF_ASSERT_OK_AND_ASSIGN_IMPL(                                         \
+      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, \
+      rexpr);
+
+#define TF_ASSERT_OK_AND_ASSIGN_IMPL(statusor, lhs, rexpr)  \
+  auto statusor = (rexpr);                                  \
+  ASSERT_TRUE(statusor.status().ok()) << statusor.status(); \
+  lhs = std::move(statusor.ValueOrDie())
+
+#define TF_STATUS_MACROS_CONCAT_NAME(x, y) TF_STATUS_MACROS_CONCAT_IMPL(x, y)
+#define TF_STATUS_MACROS_CONCAT_IMPL(x, y) x##y
+
+#define TF_ASSIGN_OR_RETURN(lhs, rexpr) \
+  TF_ASSIGN_OR_RETURN_IMPL(             \
+      TF_STATUS_MACROS_CONCAT_NAME(_status_or_value, __COUNTER__), lhs, rexpr)
+
+#define TF_ASSIGN_OR_RETURN_IMPL(statusor, lhs, rexpr) \
+  auto statusor = (rexpr);                             \
+  if (TF_PREDICT_FALSE(!statusor.ok())) {              \
+    return statusor.status();                          \
+  }                                                    \
+  lhs = std::move(statusor.ValueOrDie())
+
 }  // namespace stream_executor
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_LIB_STATUSOR_H_

@@ -36,6 +36,13 @@ class GraphOptimizer {
 
   virtual string name() const = 0;
 
+  // Returns true if the optimizer requires a valid function library to perform
+  // graph optimization. If false, optimized GrapplerItem will have a stub
+  // instead of real function library (all function signatures and attributes
+  // will be valid, but function body will be empty). Most of the optimizers
+  // that do not instantiate functions should return true.
+  virtual bool UsesFunctionLibrary() const = 0;
+
   // Routine called to allow an algorithm to propose a rewritten graph
   // for the graph, feeds and fetches in "item" to run more efficiently
   // on "cluster". If the returned status is Status::OK() then

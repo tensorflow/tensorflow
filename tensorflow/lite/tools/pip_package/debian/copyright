@@ -1,0 +1,7 @@
+Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: python3-tflite-runtime
+Source: https://www.tensorflow.org/
+
+Files: *
+Copyright: Copyright 2019 Google, LLC <packages@tensorflow.org>
+License: Apache-2.0

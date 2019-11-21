@@ -110,7 +110,7 @@ __xla_cpu_runtime_MKLSingleThreadedMatMulF32(const void* run_options_ptr,
                                              int64 m, int64 n, int64 k,
                                              int32 transpose_lhs,
                                              int32 transpose_rhs) {
-  // Set the thread number to 1 for single threaded excution.
+  // Set the thread number to 1 for single threaded execution.
   int prev_num_threads = mkl_set_num_threads_local(1);
   MatMulF32(nullptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
   // Set thread number back to the previous number.
@@ -123,7 +123,7 @@ __xla_cpu_runtime_MKLSingleThreadedMatMulF64(const void* run_options_ptr,
                                              double* rhs, int64 m, int64 n,
                                              int64 k, int32 transpose_lhs,
                                              int32 transpose_rhs) {
-  // Set the thread number to 1 for single threaded excution.
+  // Set the thread number to 1 for single threaded execution.
   int prev_num_threads = mkl_set_num_threads_local(1);
   MatMulF64(nullptr, out, lhs, rhs, m, n, k, transpose_lhs, transpose_rhs);
   // Set thread number back to the previous number.

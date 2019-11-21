@@ -111,8 +111,7 @@ class Dense(keras_layers.Dense, base.Layer):
 
 
 @deprecation.deprecated(
-    date=None,
-    instructions='Use keras.layers.dense instead.')
+    date=None, instructions='Use keras.layers.Dense instead.')
 @tf_export(v1=['layers.dense'])
 def dense(
     inputs, units,
@@ -300,7 +299,7 @@ class Flatten(keras_layers.Flatten, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use keras.layers.flatten instead.')
+    instructions='Use keras.layers.Flatten instead.')
 @tf_export(v1=['layers.flatten'])
 def flatten(inputs, name=None, data_format='channels_last'):
   """Flattens an input tensor while preserving the batch axis (axis 0).

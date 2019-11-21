@@ -83,7 +83,7 @@ def _MaybeDevice(device):
     yield
 
 
-def _ProcessGraphDefParam(graph_def, op_dict):
+def _ProcessGraphDefParam(graph_def):
   """Type-checks and possibly canonicalizes `graph_def`."""
   if not isinstance(graph_def, graph_pb2.GraphDef):
     # `graph_def` could be a dynamically-created message, so try a duck-typed
@@ -103,11 +103,11 @@ def _ProcessGraphDefParam(graph_def, op_dict):
     # import_graph_def not modify the graph_def argument (we'd have to make sure
     # this doesn't break anything else.)
     for node in graph_def.node:
-      if node.op not in op_dict:
+      op_def = op_def_registry.get(node.op)
+      if op_def is None:
         # Assume unrecognized ops are functions for now. TF_ImportGraphDef will
         # report an error if the op is actually missing.
         continue
-      op_def = op_dict[node.op]
       _SetDefaultAttrValues(node, op_def)
 
   return graph_def
@@ -142,14 +142,13 @@ def _FindAttrInOpDef(attr_name, op_def):
   return None
 
 
-def _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def):
+def _RemoveDefaultAttrs(producer_op_list, graph_def):
   """Removes unknown default attrs according to `producer_op_list`.
 
   Removes any unknown attrs in `graph_def` (i.e. attrs that do not appear in
-  the OpDefs in `op_dict`) that have a default value in `producer_op_list`.
+  registered OpDefs) that have a default value in `producer_op_list`.
 
   Args:
-    op_dict: dict mapping operation name to OpDef.
     producer_op_list: OpList proto.
     graph_def: GraphDef proto
   """
@@ -157,7 +156,11 @@ def _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def):
   for node in graph_def.node:
     # Remove any default attr values that aren't in op_def.
     if node.op in producer_op_dict:
-      op_def = op_dict[node.op]
+      op_def = op_def_registry.get(node.op)
+      if op_def is None:
+        # Some custom op registrations won't show up here. That's OK, attribute
+        # stripping just won't be available.
+        continue
       producer_op_def = producer_op_dict[node.op]
       # We make a copy of node.attr to iterate through since we may modify
       # node.attr inside the loop.
@@ -199,7 +202,8 @@ def _ConvertInputMapValues(name, input_map):
 
 
 def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
-                                     return_elements):
+                                     return_elements,
+                                     validate_colocation_constraints):
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
   c_api.TF_ImportGraphDefOptionsSetUniquifyNames(options, True)
@@ -225,6 +229,9 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
     else:
       c_api.TF_ImportGraphDefOptionsAddReturnOperation(options,
                                                        compat.as_str(name))
+
+  c_api.TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+      options, validate_colocation_constraints)
 
 
 def _ProcessNewOps(graph):
@@ -389,15 +396,78 @@ def import_graph_def(graph_def,
       do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
       it refers to an unknown tensor).
   """
-  op_dict = op_def_registry.get_registered_ops()
+  del op_dict
+  return _import_graph_def_internal(
+      graph_def,
+      input_map=input_map,
+      return_elements=return_elements,
+      name=name,
+      producer_op_list=producer_op_list)
 
-  graph_def = _ProcessGraphDefParam(graph_def, op_dict)
+
+def import_graph_def_for_function(  # pylint: disable=invalid-name
+    graph_def, name=None):
+  """Like import_graph_def but does not validate colocation constraints."""
+  return _import_graph_def_internal(
+      graph_def, validate_colocation_constraints=False, name=name)
+
+
+def _import_graph_def_internal(  # pylint: disable=invalid-name
+    graph_def,
+    input_map=None,
+    return_elements=None,
+    validate_colocation_constraints=True,
+    name=None,
+    producer_op_list=None):
+  """Imports the graph from `graph_def` into the current default `Graph`.
+
+  This function provides a way to import a serialized TensorFlow
+  [`GraphDef`](https://www.tensorflow.org/code/tensorflow/core/framework/graph.proto)
+  protocol buffer, and extract individual objects in the `GraphDef` as
+  `tf.Tensor` and `tf.Operation` objects. Once extracted,
+  these objects are placed into the current default `Graph`. See
+  `tf.Graph.as_graph_def` for a way to create a `GraphDef`
+  proto.
+
+  Args:
+    graph_def: A `GraphDef` proto containing operations to be imported into the
+      default graph.
+    input_map: A dictionary mapping input names (as strings) in `graph_def` to
+      `Tensor` objects. The values of the named input tensors in the imported
+      graph will be re-mapped to the respective `Tensor` values.
+    return_elements: A list of strings containing operation names in `graph_def`
+      that will be returned as `Operation` objects; and/or tensor names in
+      `graph_def` that will be returned as `Tensor` objects.
+    validate_colocation_constraints: Whether to validate colocation constraints.
+    name: (Optional.) A prefix that will be prepended to the names in
+      `graph_def`. Note that this does not apply to imported function names.
+      Defaults to `"import"`.
+    producer_op_list: (Optional.) An `OpList` proto with the (possibly stripped)
+      list of `OpDef`s used by the producer of the graph. If provided,
+      unrecognized attrs for ops in `graph_def` that have their default value
+      according to `producer_op_list` will be removed. This will allow some more
+      `GraphDef`s produced by later binaries to be accepted by earlier binaries.
+
+  Returns:
+    A list of `Operation` and/or `Tensor` objects from the imported graph,
+    corresponding to the names in `return_elements`,
+    and None if `returns_elements` is None.
+
+  Raises:
+    TypeError: If `graph_def` is not a `GraphDef` proto,
+      `input_map` is not a dictionary mapping strings to `Tensor` objects,
+      or `return_elements` is not a list of strings.
+    ValueError: If `input_map`, or `return_elements` contains names that
+      do not appear in `graph_def`, or `graph_def` is not well-formed (e.g.
+      it refers to an unknown tensor).
+  """
+  graph_def = _ProcessGraphDefParam(graph_def)
   input_map = _ProcessInputMapParam(input_map)
   return_elements = _ProcessReturnElementsParam(return_elements)
 
   if producer_op_list is not None:
     # TODO(skyewm): make a copy of graph_def so we're not mutating the argument?
-    _RemoveDefaultAttrs(op_dict, producer_op_list, graph_def)
+    _RemoveDefaultAttrs(producer_op_list, graph_def)
 
   graph = ops.get_default_graph()
   with ops.name_scope(name, 'import', input_map.values()) as scope:
@@ -413,8 +483,8 @@ def import_graph_def(graph_def,
 
   scoped_options = c_api_util.ScopedTFImportGraphDefOptions()
   options = scoped_options.options
-  _PopulateTFImportGraphDefOptions(options, prefix, input_map,
-                                   return_elements)
+  _PopulateTFImportGraphDefOptions(options, prefix, input_map, return_elements,
+                                   validate_colocation_constraints)
 
   # _ProcessNewOps mutates the new operations. _mutation_lock ensures a
   # Session.run call cannot occur between creating the TF_Operations in the

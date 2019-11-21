@@ -108,7 +108,7 @@ TEST_P(SpeechTest, DISABLED_HotwordOkGoogleRank1Test) {
       "speech_hotword_model_out_rank1.csv", /*input_tensor=*/"0",
       /*output_tensor=*/"18", /*persistent_tensors=*/"4",
       /*sequence_size=*/40, &os));
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
 }
@@ -120,7 +120,7 @@ TEST_P(SpeechTest, DISABLED_HotwordOkGoogleRank2Test) {
       "speech_hotword_model_out_rank2.csv", /*input_tensor=*/"17",
       /*output_tensor=*/"18", /*persistent_tensors=*/"1",
       /*sequence_size=*/40, &os));
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
 }
@@ -133,7 +133,7 @@ TEST_P(SpeechTest, DISABLED_SpeakerIdOkGoogleTest) {
       /*output_tensor=*/"63",
       /*persistent_tensors=*/"18,19,38,39,58,59",
       /*sequence_size=*/80, &os));
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
 }
@@ -146,7 +146,7 @@ TEST_P(SpeechTest, AsrAmTest) {
                      /*output_tensor=*/"104",
                      /*persistent_tensors=*/"18,19,38,39,58,59,78,79,98,99",
                      /*sequence_size=*/320, &os));
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
 }
@@ -159,7 +159,7 @@ TEST_P(SpeechTest, AsrAmQuantizedTest) {
       /*output_tensor=*/"104",
       /*persistent_tensors=*/"18,19,38,39,58,59,78,79,98,99",
       /*sequence_size=*/320, &os));
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
 }
@@ -170,7 +170,7 @@ TEST_P(SpeechTest, AsrAmQuantizedTest) {
 // results.
 TEST_P(SpeechTest, DISABLED_AsrLmTest) {
   std::ifstream in_file;
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(Init("speech_asr_lm_model.test_spec", &test_driver, &in_file));
   ASSERT_TRUE(
       testing::ParseAndRunTests(&in_file, &test_driver, GetMaxInvocations()))
@@ -185,7 +185,7 @@ TEST_P(SpeechTest, DISABLED_EndpointerTest) {
       /*output_tensor=*/"56",
       /*persistent_tensors=*/"27,28,47,48",
       /*sequence_size=*/320, &os));
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
 }
@@ -198,7 +198,7 @@ TEST_P(SpeechTest, DISABLED_TtsTest) {
                              /*output_tensor=*/"71",
                              /*persistent_tensors=*/"24,25,44,45,64,65,70",
                              /*sequence_size=*/334, &os));
-  testing::TfLiteDriver test_driver(/*use_nnapi=*/false);
+  testing::TfLiteDriver test_driver;
   ASSERT_TRUE(testing::ParseAndRunTests(&os, &test_driver, GetMaxInvocations()))
       << test_driver.GetErrorMessage();
 }

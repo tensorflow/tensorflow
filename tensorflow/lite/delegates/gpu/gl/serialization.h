@@ -27,7 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiled_model_generated.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -46,7 +46,7 @@ class SerializedCompiledModelBuilder {
 
   void AddShader(const std::string& shader_src);
 
-  void AddProgram(const std::vector<UniformParameter>& parameters,
+  void AddProgram(const std::vector<Variable>& parameters,
                   const std::vector<Object>& objects,
                   const uint3& workgroup_size, const uint3& num_workgroups,
                   size_t shader_index);
@@ -69,7 +69,7 @@ class DeserializationHandler {
 
   virtual Status OnShader(absl::Span<const char> shader_src) = 0;
 
-  virtual Status OnProgram(const std::vector<UniformParameter>& parameters,
+  virtual Status OnProgram(const std::vector<Variable>& parameters,
                            const std::vector<Object>& objects,
                            const uint3& workgroup_size,
                            const uint3& num_workgroups,

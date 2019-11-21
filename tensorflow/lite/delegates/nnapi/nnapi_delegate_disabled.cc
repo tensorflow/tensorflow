@@ -19,17 +19,29 @@ namespace tflite {
 
 // Return a non-functional NN API Delegate struct.
 TfLiteDelegate* NnApiDelegate() {
-  static TfLiteDelegate delegate = [] {
-    TfLiteDelegate delegate = TfLiteDelegateCreate();
-    delegate.Prepare = [](TfLiteContext* context,
-                          TfLiteDelegate* delegate) -> TfLiteStatus {
-      // Silently succeed without modifying the graph.
-      return kTfLiteOk;
-    };
-    return delegate;
-  }();
-
-  return &delegate;
+  static StatefulNnApiDelegate* delegate = new StatefulNnApiDelegate();
+  return delegate;
 }
+
+StatefulNnApiDelegate::StatefulNnApiDelegate(Options /* options */)
+    : StatefulNnApiDelegate() {}
+
+StatefulNnApiDelegate::StatefulNnApiDelegate()
+    : TfLiteDelegate(TfLiteDelegateCreate()) {
+  Prepare = DoPrepare;
+}
+
+TfLiteStatus StatefulNnApiDelegate::DoPrepare(TfLiteContext* /* context */,
+                                              TfLiteDelegate* /* delegate */) {
+  return kTfLiteOk;
+}
+
+TfLiteBufferHandle StatefulNnApiDelegate::RegisterNnapiMemory(
+    ANeuralNetworksMemory* memory, CopyToHostTensorFnPtr callback,
+    void* callback_context) {
+  return kTfLiteNullBufferHandle;
+}
+
+int StatefulNnApiDelegate::GetNnApiErrno() const { return 0; }
 
 }  // namespace tflite

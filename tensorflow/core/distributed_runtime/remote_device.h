@@ -29,16 +29,23 @@ class Device;
 class Env;
 class WorkerCacheInterface;
 
+// This callback should have the same definition as DeviceMgr::LookupDevice
+// It assigns *device with pointer to Device of the given 'name', where 'name'
+// is either a full device name, or just the replica-local suffix.
+typedef std::function<Status(StringPiece name, Device** device)>
+    LookupLocalDevice;
+
 // Creates Remote Devices for the provided device attributes. Helpful when the
 // list of attributes is known, and doesn't need to be discovered via RPC.
 void AsRemoteDevices(
     Env* env,
     const protobuf::RepeatedPtrField<DeviceAttributes>& device_attributes,
+    LookupLocalDevice lookup_local_device,
     std::vector<std::unique_ptr<Device>>* remote_devices);
 
 // NewRemoteDevices discovers available devices on the
-// 'remote_worker'.  The implementation uses 'channel_cache' to
-// discover how to communicate with the 'remote_worker' (via gRPC, for
+// 'worker_name'.  The implementation uses 'channel_cache' to
+// discover how to communicate with the 'worker_name' (via gRPC, for
 // example).
 //
 // NewRemoteDevices does not block.
@@ -51,7 +58,7 @@ void AsRemoteDevices(
 typedef std::function<void(const Status&, std::vector<Device*>*)>
     NewRemoteDevicesDone;
 void NewRemoteDevices(Env* env, WorkerCacheInterface* worker_cache,
-                      const string& remote_worker, NewRemoteDevicesDone done);
+                      const string& worker_name, NewRemoteDevicesDone done);
 
 }  // namespace tensorflow
 

@@ -42,12 +42,16 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool has_size = false;
   bool has_shape = false;
   bool has_prod = false;
+  auto is_int = [](const NodeDef& node) -> bool {
+    return node.attr().at("T").type() == DT_INT32 ||
+           node.attr().at("T").type() == DT_INT64;
+  };
   for (const NodeDef& node : item.graph.node()) {
     if (IsShape(node)) {
       has_shape = true;
-    } else if (IsProd(node)) {
+    } else if (IsProd(node) && is_int(node)) {
       has_prod = true;
-    } else if (IsDiv(node)) {
+    } else if (IsDiv(node) && is_int(node)) {
       has_div = true;
     } else if (IsSize(node)) {
       has_size = true;
@@ -87,12 +91,15 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           graph.GetRegularFanin(MutableGraphView::InputPort(fanout.node, 1));
       if (!inferred_properties) {
         // Infer properties lazily in case they are not needed.
-        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        TF_RETURN_IF_ERROR(
+            properties.InferStatically(/*assume_valid_feeds=*/false,
+                                       /*aggressive_shape_inference=*/false,
+                                       /*include_tensor_values=*/false));
         inferred_properties = true;
       }
       const auto& prop =
           properties.GetOutputProperties(reduce_indices.node->name());
-      if (prop.size() < reduce_indices.port_id) {
+      if (prop.size() <= reduce_indices.port_id) {
         continue;
       }
       const TensorShapeProto& reduction_indices_shape =
@@ -138,12 +145,16 @@ Status ShapeOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
           graph.GetRegularFanin(MutableGraphView::InputPort(&node, 0));
       const MutableGraphView::OutputPort input2 =
           graph.GetRegularFanin(MutableGraphView::InputPort(&node, 1));
+      if (input1.node == nullptr || input2.node == nullptr) continue;
       if (!IsSize(*input1.node) || !IsSize(*input2.node)) {
         continue;
       }
       if (!inferred_properties) {
         // Infer properties lazily in case they are not needed.
-        TF_RETURN_IF_ERROR(properties.InferStatically(false));
+        TF_RETURN_IF_ERROR(
+            properties.InferStatically(/*assume_valid_feeds=*/false,
+                                       /*aggressive_shape_inference=*/false,
+                                       /*include_tensor_values=*/false));
         inferred_properties = true;
       }
       const auto& prop1 = properties.GetInputProperties(input1.node->name());

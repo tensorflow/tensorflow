@@ -327,6 +327,11 @@ class SVDBenchmark(test.Benchmark):
       (1, 8, 8),
       (10, 8, 8),
       (100, 8, 8),
+      (1000, 8, 8),
+      (1, 32, 32),
+      (10, 32, 32),
+      (100, 32, 32),
+      (1000, 32, 32),
       (1, 256, 256),
       (10, 256, 256),
       (100, 256, 256),
@@ -365,9 +370,13 @@ class SVDBenchmark(test.Benchmark):
 
 
 if __name__ == "__main__":
+  dtypes_to_test = [np.float32, np.float64]
+  if not test.is_built_with_rocm():
+    # ROCm does not support BLAS operations for complex types
+    dtypes_to_test += [np.complex64, np.complex128]
   for compute_uv in False, True:
     for full_matrices in False, True:
-      for dtype in np.float32, np.float64, np.complex64, np.complex128:
+      for dtype in dtypes_to_test:
         for rows in 1, 2, 5, 10, 32, 100:
           for cols in 1, 2, 5, 10, 32, 100:
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
@@ -382,8 +391,8 @@ if __name__ == "__main__":
                                        compute_uv, full_matrices))
   for compute_uv in False, True:
     for full_matrices in False, True:
-      dtypes = ([np.float32, np.float64]
-                + [np.complex64, np.complex128] * (not compute_uv))
+      dtypes = ([np.float32, np.float64] + [np.complex64, np.complex128] *
+                (not compute_uv) * (not test.is_built_with_rocm()))
       for dtype in dtypes:
         mat_shapes = [(10, 11), (11, 10), (11, 11), (2, 2, 2, 3)]
         if not full_matrices or not compute_uv:
@@ -397,7 +406,7 @@ if __name__ == "__main__":
             _AddTest(SvdGradOpTest, "SvdGrad", name,
                      _GetSvdGradOpTest(dtype, shape, compute_uv, full_matrices))
             # The results are too inacurate for float32.
-            if dtype == np.float64:
+            if dtype in (np.float64, np.complex128):
               _AddTest(
                   SvdGradGradOpTest, "SvdGradGrad", name,
                   _GetSvdGradGradOpTest(dtype, shape, compute_uv,

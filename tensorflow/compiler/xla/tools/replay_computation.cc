@@ -86,8 +86,9 @@ namespace {
 // Command-line opts to this tool.  See main() for descriptions of these
 // fields.
 struct Options {
-  Options()
-      : intra_op_thread_pool_size(tensorflow::port::NumSchedulableCPUs()) {}
+  Options() : intra_op_thread_pool_size(tensorflow::port::MaxParallelism()) {}
+
+  bool NeedsRealData() const { return !use_fake_data && !compile_only; }
 
   string fake_infeed_shape;
   string fake_outfeed_shape;
@@ -106,6 +107,8 @@ struct Options {
   int num_runs = 1;
 
   int intra_op_thread_pool_size;
+
+  bool compile_only = false;
 };
 
 StatusOr<std::unique_ptr<LocalExecutable>> CompileExecutable(
@@ -355,9 +358,9 @@ StatusOr<std::vector<HloSnapshot>> ParseRecordIoFile(absl::string_view filename,
   CHECK(!snapshots.empty())
       << "No proto is successfully parsed from the file - the file possibly "
          "has a mismatched compression option, format, etc.";
-  CHECK(opts.use_fake_data)
-      << "Without --use_fake_data, you must pass an HloSnapshot -- HloProto "
-         "and textual HLO don't carry real data.";
+  CHECK(!opts.NeedsRealData())
+      << "Without --use_fake_data or --compile_only, you must pass an "
+         "HloSnapshot -- HloProto and textual HLO don't carry real data.";
   return snapshots;
 }
 
@@ -373,9 +376,9 @@ StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
   if (s.code() == tensorflow::error::NOT_FOUND) {
     return s;
   }
-  CHECK(opts.use_fake_data)
-      << "Without --use_fake_data, you must pass an HloSnapshot -- HloProto "
-         "and textual HLO don't carry real data.";
+  CHECK(!opts.NeedsRealData())
+      << "Without --use_fake_data or --compile_only, you must pass an "
+         "HloSnapshot -- HloProto and textual HLO don't carry real data.";
   fprintf(stderr, "%s: is not HloSnapshot. Trying HloProto.\n",
           filename.c_str());
 
@@ -388,7 +391,7 @@ StatusOr<HloSnapshot> ParseSingleHloFile(const string& filename,
   HloModuleConfig config;
   config.set_debug_options(GetDebugOptionsFromFlags());
   StatusOr<std::unique_ptr<HloModule>> module =
-      ParseHloString(contents, config);
+      ParseAndReturnUnverifiedModule(contents, config);
   if (module.ok()) {
     *snapshot.mutable_hlo()->mutable_hlo_module() =
         module.ValueOrDie()->ToProto();
@@ -457,6 +460,11 @@ int RealMain(absl::Span<char* const> args, const Options& opts) {
       exit_status = EXIT_FAILURE;
       continue;
     }
+
+    if (opts.compile_only) {
+      continue;
+    }
+
     LocalExecutable* executable = executables[i].ValueOrDie().get();
     LOG(ERROR) << "Running iteration " << i;
     StatusOr<Literal> result_status =
@@ -518,6 +526,9 @@ int main(int argc, char** argv) {
                        &opts.intra_op_thread_pool_size,
                        "How many threads to use in the intra-op thread pool. "
                        "Defaults to the number of CPUs."),
+      tensorflow::Flag("compile_only", &opts.compile_only,
+                       "Whether the input should only be compiled, as opposed "
+                       "to compiled and executed."),
   };
   xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
