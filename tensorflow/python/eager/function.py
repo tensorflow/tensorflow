@@ -2527,7 +2527,14 @@ class Function(object):
     # already.
     executing_eagerly = ctx.executing_eagerly()
     parent_graph = None
+    xla_context_id = 0
     if not executing_eagerly:
+      # We want to force function retracing for each different
+      # XLAControlFlowContext, so add `xla_context_id` to the cache key.
+      tpu_context = _enclosing_xla_context()
+      if tpu_context is not None:
+        xla_context_id = id(tpu_context)
+
       with ops.init_scope():
         # The graph, or whether we're executing eagerly, should be a part of the
         # cache key so we don't improperly capture tensors such as variables.
@@ -2551,9 +2558,6 @@ class Function(object):
       else:
         device_functions = ()
 
-      # We should not be in XLA context in eager mode. So always set
-      # `xla_context_id` to 0.
-      xla_context_id = 0
     else:
       colocation_stack = tuple(default_graph._colocation_stack.peek_objs())
       if (uses_distribution_strategy
@@ -2564,14 +2568,6 @@ class Function(object):
         device_functions = tuple(default_graph._device_functions_outer_to_inner)
       else:
         device_functions = ()
-
-      # We want to force function retracing for each different
-      # XLAControlFlowContext, so add `xla_context_id` to the cache key.
-      tpu_context = _enclosing_xla_context()
-      if tpu_context is not None:
-        xla_context_id = id(tpu_context)
-      else:
-        xla_context_id = 0
 
     in_cross_replica_context = False
     try:
