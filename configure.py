@@ -1161,27 +1161,28 @@ def system_specific_test_config(env):
   # single list of filters for the .bazelrc file.
 
   # Filters to use with both --test_tag_filters and --build_tag_filters
-  common_filters = ['-benchmark-test', '-no_oss']
-  # Additional filters for --test_tag_filters beyond those in common_filters
-  addl_test_filters = ['-oss_serial']
+  test_and_build_filters = ['-benchmark-test', '-no_oss']
+  # Additional filters for --test_tag_filters beyond those in
+  # test_and_build_filters
+  test_only_filters = ['-oss_serial']
   if is_windows():
-    common_filters.append('-no_windows')
+    test_and_build_filters.append('-no_windows')
     if env.get('TF_NEED_CUDA', None) == '1':
-      common_filters += ['-no_windows_gpu', '-no_gpu']
+      test_and_build_filters += ['-no_windows_gpu', '-no_gpu']
     else:
-      common_filters.append('-gpu')
+      test_and_build_filters.append('-gpu')
   elif is_macos():
-    common_filters += ['-gpu', '-nomac', '-no_mac']
+    test_and_build_filters += ['-gpu', '-nomac', '-no_mac']
   elif is_linux():
     if env.get('TF_NEED_CUDA', None) == '1':
-      common_filters.append('-no_gpu')
+      test_and_build_filters.append('-no_gpu')
       write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
     else:
-      common_filters.append('-gpu')
+      test_and_build_filters.append('-gpu')
   write_to_bazelrc('test --test_tag_filters=%s'
-                   % ','.join(common_filters + addl_test_filters))
+                   % ','.join(test_and_build_filters + test_only_filters))
   write_to_bazelrc('test --build_tag_filters=%s'
-                   % ','.join(common_filters))
+                   % ','.join(test_and_build_filters))
 
 
 def set_system_libs_flag(environ_cp):
