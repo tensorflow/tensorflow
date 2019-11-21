@@ -147,3 +147,16 @@ def LowerTanhGradOp :
       (TF_MulOp $dy,
                 (TF_SubOp (TF_ConstOp (GetScalarOfType<1> $y)),
                           (TF_SquareOp $y)))>;
+
+//===----------------------------------------------------------------------===//
+// ZerosLike op patterns.
+//===----------------------------------------------------------------------===//
+
+def CreateTFShapeOp : NativeCodeCall<
+    "$_builder.create<TF::ShapeOp>($0->getLoc(), $1, $2)">;
+
+// TODO(hinsu): Support inputs of TensorList types.
+def LowerZerosLikeOp :
+  Pat<(TF_ZerosLikeOp:$src_op TensorOf<[AnyInteger, AnyFloat]>:$input),
+      (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<0> $input)),
+                        (CreateTFShapeOp $src_op, $input, /*use 32bit*/ConstBoolAttrFalse))>;
