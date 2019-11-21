@@ -157,9 +157,25 @@ bool ModularFileSystem::FilesExist(const std::vector<std::string>& files,
 
 Status ModularFileSystem::GetChildren(const std::string& dir,
                                       std::vector<std::string>* result) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->get_children == nullptr)
+    return errors::Unimplemented(tensorflow::strings::StrCat(
+        "Filesystem for ", dir, " does not support GetChildren()"));
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dir);
+  char** children;
+  const int num_children =
+      ops_->get_children(filesystem_.get(), translated_name.c_str(), &children,
+                         plugin_status.get());
+  if (num_children >= 0) {
+    for (int i = 0; i < num_children; i++) {
+      result->push_back(std::string(children[i]));
+      free(children[i]);
+    }
+    free(children);
+  }
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
