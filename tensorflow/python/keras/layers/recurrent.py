@@ -82,7 +82,7 @@ class StackedRNNCells(Layer):
       if not hasattr(cell, 'call'):
         raise ValueError('All cells must have a `call` method. '
                          'received cells:', cells)
-      if not hasattr(cell, 'state_size'):
+      if not ('state_size' in dir(cell) or hasattr(cell, 'state_size')):
         raise ValueError('All cells must have a '
                          '`state_size` attribute. '
                          'received cells:', cells)
@@ -391,7 +391,7 @@ class RNN(Layer):
     if not hasattr(cell, 'call'):
       raise ValueError('`cell` should have a `call` method. '
                        'The RNN was passed:', cell)
-    if not hasattr(cell, 'state_size'):
+    if not ('state_size' in dir(cell) or hasattr(cell, 'state_size')):
       raise ValueError('The RNN cell should have '
                        'an attribute `state_size` '
                        '(tuple of integers, '
