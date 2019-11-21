@@ -20,19 +20,6 @@ py_library(
     name = "keras",
     srcs = [
         "__init__.py",
-        "applications/__init__.py",
-        "applications/densenet.py",
-        "applications/imagenet_utils.py",
-        "applications/inception_resnet_v2.py",
-        "applications/inception_v3.py",
-        "applications/mobilenet.py",
-        "applications/mobilenet_v2.py",
-        "applications/nasnet.py",
-        "applications/resnet.py",
-        "applications/resnet_v2.py",
-        "applications/vgg16.py",
-        "applications/vgg19.py",
-        "applications/xception.py",
         "datasets/__init__.py",
         "datasets/boston_housing.py",
         "datasets/cifar.py",
@@ -68,11 +55,11 @@ py_library(
         ":saving",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/keras/applications",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/saved_model",
-        "@keras_applications_archive//:keras_applications",
     ],
 )
 
@@ -742,18 +729,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 20,
-)
-
-tf_py_test(
-    name = "applications_test",
-    size = "medium",
-    srcs = ["applications/applications_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:client_testlib",
-    ],
-    shard_count = 11,
 )
 
 tf_py_test(
