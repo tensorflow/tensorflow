@@ -610,7 +610,12 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+    // Use CuDNN grouped conv when filter is 1x1, 3x3, 5x5, 7x7.
+    // See cudnn release note 7.6.3. (https://docs.nvidia.com/deeplearning/sdk/c
+    // udnn-release-notes/rel_763.html#rel_763)
+    bool use_cudnn = use_cudnn_ && (in_depth == 1 || (use_cudnn_grouped_conv_ &&
+        filter_rows == filter_cols && filter_rows == 1 && filter_rows == 3 &&
+        filter_rows == 5 && filter_rows == 7));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -1095,7 +1100,12 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
 
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
-    bool use_cudnn = use_cudnn_ && (in_depth == 1 || use_cudnn_grouped_conv_);
+    // Use CuDNN grouped conv when filter is 1x1, 3x3, 5x5, 7x7.
+    // See cudnn release note 7.6.3. (https://docs.nvidia.com/deeplearning/sdk/c
+    // udnn-release-notes/rel_763.html#rel_763)
+    bool use_cudnn = use_cudnn_ && (in_depth == 1 || (use_cudnn_grouped_conv_ &&
+        filter_rows == filter_cols && filter_rows == 1 && filter_rows == 3 &&
+        filter_rows == 5 && filter_rows == 7));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropFilter: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
