@@ -80,6 +80,12 @@ extern const char* kModelSplit;
 extern const char* kLstmCalibrated;
 extern const char* kLstmQuantized;
 
+// Test model with a minimum op.
+extern const char* kModelWithMinimumOp;
+
+// Test model with a maximum op.
+extern const char* kModelWithMaximumOp;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:
