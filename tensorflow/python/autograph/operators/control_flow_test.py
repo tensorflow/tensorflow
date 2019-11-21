@@ -36,6 +36,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
@@ -256,6 +257,52 @@ class ForLoopTest(test.TestCase):
 
     self.evaluate(test_fn())
     self.assertEqual(self.evaluate(v.read_value()), 1234)
+
+  def test_tf_ragged_tensor(self):
+    s = control_flow.for_stmt(
+        ragged_factory_ops.constant([[1], [2, 4], [3]]),
+        extra_test=lambda s: True,
+        body=lambda i, s: (s * 10 + i[0],),
+        get_state=lambda: (),
+        set_state=lambda _: None,
+        init_vars=(0,))
+    self.assertEqual(self.evaluate(s), (123,))
+
+  def test_tf_ragged_tensor_higher_dimensional(self):
+    ragged_3d = [
+        [[1], [1, 1], [1]],
+        [[2], [2]],
+    ]
+    s = control_flow.for_stmt(
+        ragged_factory_ops.constant(ragged_3d),
+        extra_test=lambda s: True,
+        body=lambda i, s: (s * 10 + i[0][0],),
+        get_state=lambda: (),
+        set_state=lambda _: None,
+        init_vars=(0,))
+    self.assertEqual(self.evaluate(s), (12,))
+
+  def test_tf_ragged_tensor_no_loop_vars(self):
+    v = variables.Variable(0, dtype=dtypes.int32)
+    self.evaluate(v.initializer)
+
+    def stateless_with_side_effects(i):
+      v.assign(v.read_value() * 10 + i[0])
+
+    # tf.function required for the automatic control dependencies.
+    @def_function.function(autograph=False)
+    def test_fn():
+      control_flow.for_stmt(
+          ragged_factory_ops.constant([[1], [2, 4], [3]]),
+          extra_test=None,
+          body=stateless_with_side_effects,
+          get_state=lambda: (),
+          set_state=lambda _: None,
+          init_vars=())
+
+    self.evaluate(test_fn())
+    # Note: 123 = ((0*10 + 1)*10+2)*10+3 (first element of each row).
+    self.assertEqual(self.evaluate(v.read_value()), 123)
 
 
 @test_util.run_all_in_graph_and_eager_modes
