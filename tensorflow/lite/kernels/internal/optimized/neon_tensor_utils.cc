@@ -316,6 +316,15 @@ const int8_t* ShuffleVectors(const int8_t* vectors, const int n_batch,
   return reinterpret_cast<const int8_t*>(shuffled_vectors);
 }
 
+// Notes about the speed of this version vs. the baseline (from memory):
+// - With 256K of L1, we can keep a lot of vectors in cache.
+//   I recall a reasonable speedup just by rearranging the loop to have
+//   row on the outside and batch on the inside.
+// - I also recall getting a nice speedup from sdot.
+// - I tried many times to do better than the current implementation, using
+//   loop unrolling and instruction reordering to avoid stalls, etc.
+//   but I was not able to do significantly better. This code is, however,
+//   much worse than what the processor spec sheet suggests is possible.
 static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* vectors, const float* scaling_factors, int n_batch,
@@ -334,6 +343,8 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
       const int8* vec_ptr = shuffled_vectors + (batch * m_cols);
       const float* scaling_factors_ptr = scaling_factors + batch;
       const uint64_t wide_rows = m_rows * sizeof(float);
+      const int8* mat_ptr2 = matrix + ((row + 2) * m_cols);
+      const int8* mat_ptr3 = matrix + ((row + 3) * m_cols);
 
       asm volatile(
           // Zero out the accumulator registers.
@@ -346,6 +357,10 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
 
           // Read 16 more bytes from a pair of matrix rows.
           "ld1 {v12.16b}, [%[mat_ptr0]], #16\n"
+
+          // Prefetch two rows ahead.
+          "prfm pldl1strm, [%[mat_ptr2]]\n"
+          "prfm pldl1strm, [%[mat_ptr3]]\n"
 
           // Read from input vectors 4 times; 64 bytes total.
           // Each 16-byte register contains parts of 4 vectors; see the
@@ -363,6 +378,10 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           ".word 0x4f8ce940  // sdot v0.4s, v10.16b, v12.4b[2]\n"
           "ld1 {v11.16b}, [%[vec_ptr]], #16\n"
           ".word 0x4face961  // sdot v1.4s, v11.16b, v12.4b[3]\n"
+
+          // Update prefetch pointers.
+          "add %[mat_ptr2], %[mat_ptr2], #16\n"
+          "add %[mat_ptr3], %[mat_ptr3], #16\n"
 
           // Re-use those vectors for the next row as well.
           "ld1 {v13.16b}, [%[mat_ptr1]], #16\n"
@@ -421,7 +440,8 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
           "st2 {v9.s, v10.s}[2], [%[result_ptr]], %[wide_rows]\n"
           "st2 {v9.s, v10.s}[3], [%[result_ptr]], %[wide_rows]\n"
           : [ mat_ptr0 ] "+r"(mat_ptr0), [ mat_ptr1 ] "+r"(mat_ptr1),
-            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr)
+            [ vec_ptr ] "+r"(vec_ptr), [ result_ptr ] "+r"(result_ptr),
+            [ mat_ptr2 ] "+r"(mat_ptr2), [ mat_ptr3 ] "+r"(mat_ptr3)
           : [ mat_ptr0_end ] "r"(mat_ptr0_end),
             [ scaling_factors_ptr ] "r"(scaling_factors_ptr),
             [ wide_rows ] "r"(wide_rows)
@@ -544,6 +564,83 @@ static void DotprodMatrixBatchFourVectorMultiplyAccumulate(
   }
 
   free(shuffled_vectors_free);
+}
+
+// The DotprodMatrixBatchFourVectorMultiplyAccumulate kernel processes 4
+// vectors in the same time as the baseline processes 1 vector. However, it
+// requires 4 vectors of input.
+//
+// To take advantage of this speed difference, we add some zero-valued
+// vectors to the batch so that n_batch is a multiple of 4. Then we execute
+// DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate on that padded batch,
+// then extract just the results we want at the end (ignoring the extra padding
+// outputs).
+//
+// The relative cost of the padding is large when the matrix is smaller than
+// 128x128, so we don't use this code path on small matrices. On larger
+// matrices, the computation cost dwarfs the padding cost, making this code
+// viable.
+//
+// If we ignore the cost of padding, this kernel is:
+//    1x the speed of NeonMatrixBatchVectorMultiplyImpl for n_batch = 1
+//    2x the speed of NeonMatrixBatchVectorMultiplyImpl for n_batch = 2
+//    3x the speed of NeonMatrixBatchVectorMultiplyImpl for n_batch = 3
+//    ...
+//
+// We don't use this kernel when n_batch = 1 because the baseline kernel
+// is fine for that case.
+void DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* vectors, const float* scaling_factors, int n_batch,
+    float* __restrict__ result) {
+  const int kWeightsPerUint32 = 4;
+
+  // Round to the nearest multiple of 4.
+  int batch_round_up = n_batch;
+  if (n_batch % 4 != 0) {
+    batch_round_up += (4 - n_batch % 4);
+  }
+  TFLITE_CHECK_LE(n_batch, batch_round_up);
+
+  void* padded_vectors_free;
+  const int padded_vectors_size = batch_round_up * m_cols;
+  int8_t* padded_vectors = reinterpret_cast<int8_t*>(aligned_alloc(
+      kWeightsPerUint32, padded_vectors_size, &padded_vectors_free));
+  memset(padded_vectors, 0, padded_vectors_size);
+
+  void* padded_result_free;
+  const int result_size = n_batch * m_rows * sizeof(float);
+  const int padded_result_size = batch_round_up * m_rows * sizeof(float);
+  float* padded_result = reinterpret_cast<float*>(aligned_alloc(
+      kWeightsPerUint32, padded_result_size, &padded_result_free));
+  memcpy(padded_result, result, result_size);
+  memset(reinterpret_cast<char*>(padded_result) + result_size, 0,
+         padded_result_size - result_size);
+
+  // Copy the input into the padded data structure.
+  TFLITE_CHECK_LE(n_batch * m_cols, padded_vectors_size);
+  memcpy(padded_vectors, vectors, n_batch * m_cols);
+
+  void* padded_scaling_factors_free;
+  const int padded_scaling_factors_size = batch_round_up * sizeof(float);
+  float* padded_scaling_factors = reinterpret_cast<float*>(
+      aligned_alloc(kWeightsPerUint32, padded_scaling_factors_size,
+                    &padded_scaling_factors_free));
+  TFLITE_CHECK_LE(n_batch * sizeof(float), padded_scaling_factors_size);
+  TFLITE_CHECK_LE(batch_round_up * sizeof(float), padded_scaling_factors_size);
+  memset(padded_scaling_factors, 0, batch_round_up * sizeof(float));
+  memcpy(padded_scaling_factors, scaling_factors, n_batch * sizeof(float));
+
+  // Call the main kernel.
+  DotprodMatrixBatchFourVectorMultiplyAccumulate(
+      matrix, m_rows, m_cols, padded_vectors, padded_scaling_factors,
+      batch_round_up, padded_result);
+
+  memcpy(result, padded_result, result_size);
+
+  free(padded_result_free);
+  free(padded_vectors_free);
+  free(padded_scaling_factors_free);
 }
 
 static void DotprodSparseMatrixBatchVectorMultiplyAccumulate(
@@ -935,6 +1032,11 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
       // Benchmarks suggest that it's always better to use the batch code
       // when we can, even on small matrices.
       DotprodMatrixBatchFourVectorMultiplyAccumulate(
+          matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
+      return;
+    } else if (result_stride == 1 && n_batch >= 2 &&
+               m_rows * m_cols >= 128 * 128) {
+      DotprodMatrixBatchPaddedFourVectorMultiplyAccumulate(
           matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result);
       return;
     }
