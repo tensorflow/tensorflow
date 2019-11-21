@@ -614,8 +614,8 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     // See cudnn release note 7.6.3. (https://docs.nvidia.com/deeplearning/sdk/c
     // udnn-release-notes/rel_763.html#rel_763)
     bool use_cudnn = use_cudnn_ && (in_depth == 1 || (use_cudnn_grouped_conv_ &&
-        filter_rows == filter_cols && filter_rows == 1 && filter_rows == 3 &&
-        filter_rows == 5 && filter_rows == 7));
+        filter_rows == filter_cols && (filter_rows == 1 || filter_rows == 3 ||
+        filter_rows == 5 || filter_rows == 7)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -1104,8 +1104,8 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     // See cudnn release note 7.6.3. (https://docs.nvidia.com/deeplearning/sdk/c
     // udnn-release-notes/rel_763.html#rel_763)
     bool use_cudnn = use_cudnn_ && (in_depth == 1 || (use_cudnn_grouped_conv_ &&
-        filter_rows == filter_cols && filter_rows == 1 && filter_rows == 3 &&
-        filter_rows == 5 && filter_rows == 7));
+        filter_rows == filter_cols && (filter_rows == 1 || filter_rows == 3 ||
+        filter_rows == 5 || filter_rows == 7)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropFilter: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
