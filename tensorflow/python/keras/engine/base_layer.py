@@ -2117,7 +2117,7 @@ class Layer(module.Module):
         # to avoid creating symbolic Tensors that will later pollute any eager
         # operations.
         with tf_utils.maybe_init_scope(self):
-          self.build(control_flow_ops.tuple(tuple(input_list)))
+          self.build(inputs)
       # We must set self.built since user defined build functions are not
       # constrained to set self.built.
       self.built = True
