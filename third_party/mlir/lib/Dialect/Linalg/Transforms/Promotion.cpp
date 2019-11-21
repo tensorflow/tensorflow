@@ -55,11 +55,6 @@ static llvm::cl::opt<bool> clPromoteDynamic(
     llvm::cl::desc("Test generation of dynamic promoted buffers"),
     llvm::cl::cat(clOptionsCategory), llvm::cl::init(false));
 
-static AffineMap getAffineDifferenceMap(MLIRContext *context) {
-  AffineExpr d0(getAffineDimExpr(0, context)), d1(getAffineDimExpr(1, context));
-  return AffineMap::get(2, 0, {d0 - d1});
-}
-
 static Value *allocBuffer(Type elementType, Value *size, bool dynamicBuffers) {
   auto *ctx = size->getContext();
   auto width = llvm::divideCeil(elementType.getIntOrFloatBitWidth(), 8);

@@ -32,7 +32,7 @@ namespace linalg {
 
 // Marker used as attribute name in generated Linalg rewriting transformations.
 struct LinalgTransforms {
-  static constexpr auto kLinalgTransformMarker =
+  static constexpr StringRef kLinalgTransformMarker =
       "__internal_linalg_transform__";
 };
 

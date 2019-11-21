@@ -740,6 +740,17 @@ class ComputationBuilder(object):
     """Clear metadata for operations that are about to be enqueued."""
     self._builder.ClearOpMetadata()
 
+  def SetSharding(self, sharding):
+    """Set sharding that will be attached to all instructions until cleared."""
+    self._builder.SetSharding(sharding)
+
+  def ClearSharding(self):
+    """Clears the sharding.
+
+    Ops will be shared according to the default placement policy.
+    """
+    self._builder.ClearSharding()
+
   def CreateToken(self):
     """Enqueues a CreateToken op onto the computation.
 
@@ -1810,6 +1821,20 @@ class ConvolutionDimensionNumbers(object):
     self.output_batch_dimension = 0
     self.output_feature_dimension = 0
     self.output_spatial_dimensions = []
+
+
+class OpSharding(object):
+  """Python representation of a xla.OpSharding protobuf."""
+  __slots__ = ('type', 'tile_assignment_dimensions', 'tile_assignment_devices',
+               'tuple_shardings')
+
+  Type = _xla.OpSharding_Type
+
+  def __init__(self):
+    self.type = self.Type.REPLICATED
+    self.tile_assignment_dimensions = []
+    self.tile_assignment_devices = []
+    self.tuple_shardings = []
 
 
 class PrecisionConfig(object):

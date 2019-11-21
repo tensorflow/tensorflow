@@ -82,8 +82,7 @@ DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                         Builder* builder) {
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseElementsAttr::get<int64_t>(ty, values)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, values);
 }
 
 // Given the start indices and slice sizes for a dynamic-slice that can be

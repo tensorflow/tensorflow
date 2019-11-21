@@ -268,6 +268,30 @@ class InferenceRunner {
   virtual Status Run() = 0;
 };
 
+// Encapsulated compilation/runtime tradeoffs.
+enum class InferenceUsage {
+  UNKNOWN,
+
+  // InferenceRunner will be used only once. Therefore, it is important to
+  // minimize bootstrap time as well.
+  FAST_SINGLE_ANSWER,
+
+  // Prefer maximizing the throughput. Same inference runner will be used
+  // repeatedly on different inputs.
+  SUSTAINED_SPEED,
+};
+
+// Defines aspects to control while instantiating a runner.
+enum class InferencePriority {
+  UNKNOWN,
+
+  MIN_LATENCY,
+
+  MAX_PRECISION,
+
+  MIN_MEMORY_USAGE,
+};
+
 }  // namespace gpu
 }  // namespace tflite
 

@@ -263,6 +263,30 @@ class TF_DerivedResultTypeListAttr<int idx> : DerivedAttr<
           "mlir::ResultElementTypeIterator(values.end())};"
 >;
 
+// A derived attribute that returns the shape of the first result type.
+def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
+  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
+
+// A derived attribute that returns the element type of the tensor held by a
+// named resource-type operand or result.
+class TF_DerivedOperandOrResultHandleTypeAttr<string name> : DerivedTypeAttr<
+  "auto resource_type =\n"
+  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
+  "  .cast<TF::ResourceType>();\n"
+  "assert(!resource_type.getSubtypes().empty() && \"unknown type\");\n"
+  "return mlir::getElementTypeOrSelf(*resource_type.getSubtypes().begin());">;
+
+
+// A derived attribute that returns the shape of the tensor held by a named
+// resource-type operand or result.
+class TF_DerivedOperandOrResultHandleShapeAttr<string name> : DerivedAttr<
+  "ShapedType",
+  "auto resource_type =\n"
+  "  mlir::getElementTypeOrSelf(this->" # name # "())\n"
+  "  .cast<TF::ResourceType>();\n"
+  "assert(!resource_type.getSubtypes().empty() && \"unknown shape\");\n"
+  "return resource_type.getSubtypes().begin()->cast<ShapedType>();">;
+
 def TF_IntTypeAttr : TypeAttrBase<"IntegerType", "integer type"> {
   let returnType = "Type";
 }

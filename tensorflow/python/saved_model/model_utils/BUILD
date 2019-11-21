@@ -50,7 +50,7 @@ py_library(
 py_test(
     name = "export_output_test",
     srcs = ["export_output_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":export_output",
@@ -85,7 +85,7 @@ py_library(
 py_test(
     name = "export_test",
     srcs = ["export_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":export_utils",
@@ -112,7 +112,7 @@ py_library(
 py_test(
     name = "mode_keys_test",
     srcs = ["mode_keys_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":mode_keys",
