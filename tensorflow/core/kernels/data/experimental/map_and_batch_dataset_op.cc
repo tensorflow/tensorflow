@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/input_colocation_exemption_registry.h"
 #include "tensorflow/core/common_runtime/metrics.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -170,9 +171,12 @@ class MapAndBatchDatasetOp::Dataset : public DatasetBase {
           num_parallel_calls_(std::make_shared<model::SharedState>(
               params.dataset->num_parallel_calls_, mu_, cond_var_)),
           max_batch_results_(
-              std::min(kMaxBatchResults, (params.dataset->num_parallel_calls_ +
-                                          params.dataset->batch_size_ - 1) /
-                                             params.dataset->batch_size_)) {}
+              params.dataset->num_parallel_calls_ == model::kAutotune
+                  ? kMaxBatchResults
+                  : std::min(kMaxBatchResults,
+                             (params.dataset->num_parallel_calls_ +
+                              params.dataset->batch_size_ - 1) /
+                                 params.dataset->batch_size_)) {}
 
     ~Iterator() override {
       mutex_lock l(*mu_);
