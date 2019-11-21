@@ -22,6 +22,10 @@ pip --version
 pip install portpicker
 pip install *.whl
 
+# Make bazel version the same as the env that invokes this script
+source tensorflow/tools/ci_build/release/common.sh
+update_bazel_linux ${BAZEL_VERSION}
+
 # Use default configuration
 yes "" | python configure.py
 
