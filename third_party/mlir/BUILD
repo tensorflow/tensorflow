@@ -2120,8 +2120,19 @@ gentbl(
     ],
 )
 
+filegroup(
+    name = "LinalgTransformPatternsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
+        ":AffineOpsTdFiles",
+        ":LinalgLibraryOpsTdFiles",
+        ":LinalgOpsTdFiles",
+        ":OpBaseTdFiles",
+    ],
+)
+
 gentbl(
-    name = "LinalgTransformPatterns",
+    name = "LinalgTransformPatternsIncGen",
     tbl_outs = [
         (
             "-gen-rewriters",
@@ -2131,9 +2142,7 @@ gentbl(
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td",
     td_srcs = [
-        "include/mlir/IR/OpBase.td",
-        ":LinalgOpsTdFiles",
-        ":LinalgLibraryOpsTdFiles",
+        ":LinalgTransformPatternsTdFiles",
     ],
 )
 
@@ -2157,12 +2166,13 @@ cc_library(
         "include/mlir/Dialect/Linalg/IR/LinalgTraits.h",
         "include/mlir/Dialect/Linalg/IR/LinalgTypes.h",
         "include/mlir/Dialect/Linalg/Passes.h",
-        "include/mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.h.inc",
+        "include/mlir/Dialect/Linalg/Transforms/LinalgTransforms.h",
         "include/mlir/Dialect/Linalg/Utils/Intrinsics.h",
         "include/mlir/Dialect/Linalg/Utils/Utils.h",
     ],
     includes = ["include"],
     deps = [
+        "LinalgTransformPatternsIncGen",
         ":AffineOps",
         ":AffineToStandardTransforms",
         ":Analysis",
@@ -2294,7 +2304,7 @@ gentbl(
     tblgen = ":mlir-tblgen",
     td_file = "include/mlir/Dialect/VectorOps/VectorTransformPatterns.td",
     td_srcs = [
-        "include/mlir/IR/OpBase.td",
+        ":OpBaseTdFiles",
         ":StdOpsTdFiles",
         ":VectorOpsTdFiles",
     ],
