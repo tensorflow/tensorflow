@@ -1627,6 +1627,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
+        ":LinalgToLLVM",
         ":NVVMDialect",
         ":Parser",
         ":Pass",
@@ -2148,6 +2149,35 @@ gentbl(
 )
 
 cc_library(
+    name = "LinalgToLLVM",
+    srcs = [
+        "lib/Conversion/LinalgToLLVM/LinalgToLLVM.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":AffineToStandardTransforms",
+        ":Analysis",
+        ":CFGTransforms",
+        ":EDSC",
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Linalg",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        ":VectorConversions",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "Linalg",
     srcs = [
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
@@ -2155,7 +2185,6 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
         "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
-        "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
         "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/Promotion.cpp",
         "lib/Dialect/Linalg/Transforms/Tiling.cpp",
@@ -2191,7 +2220,6 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":Transforms",
-        ":VectorConversions",
         "@llvm//:core",
         "@llvm//:support",
     ],
