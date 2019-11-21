@@ -26,6 +26,7 @@ py_test(
     name = "xla_client_test",
     srcs = ["xla_client_test.py"],
     main = "xla_client_test.py",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_oss"],  # TODO(phawkins): This test passes, but requires --config=monolithic.
     deps = [
