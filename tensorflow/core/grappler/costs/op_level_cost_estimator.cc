@@ -40,6 +40,7 @@ constexpr char kDepthwiseConv2dNativeBackpropInput[] =
     "DepthwiseConv2dNativeBackpropInput";
 constexpr char kMatMul[] = "MatMul";
 constexpr char kXlaEinsum[] = "XlaEinsum";
+constexpr char kEinsum[] = "Einsum";
 constexpr char kSparseMatMul[] = "SparseMatMul";
 constexpr char kSparseTensorDenseMatMul[] = "SparseTensorDenseMatMul";
 constexpr char kPlaceholder[] = "Placeholder";
@@ -196,7 +197,8 @@ int64 CwiseOutputElementCount(const TensorShapeProto& input_shape_1,
 // Helper function for determining whether there are repeated indices in the
 // input Einsum equation.
 bool CheckRepeatedDimensions(const string& dim_str) {
-  for (int idx = 0; idx < dim_str.size() - 1; idx++) {
+  int str_size = dim_str.size();
+  for (int idx = 0; idx < str_size - 1; idx++) {
     if (dim_str.find(dim_str[idx], idx + 1) != std::string::npos) {
       return true;
     }
@@ -290,6 +292,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(kQuantizedMatMulV2,
                             wrap(&OpLevelCostEstimator::PredictMatMul));
   device_cost_impl_.emplace(kXlaEinsum,
+                            wrap(&OpLevelCostEstimator::PredictEinsum));
+  device_cost_impl_.emplace(kEinsum,
                             wrap(&OpLevelCostEstimator::PredictEinsum));
 
   device_cost_impl_.emplace(kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp));

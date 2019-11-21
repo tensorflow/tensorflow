@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -55,7 +55,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testMapParallelization(self, function, should_be_parallel):
     next_nodes = ["ParallelMap"] if should_be_parallel else ["Map"]
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(next_nodes)).map(function)
+        testing.assert_next(next_nodes)).map(function)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
@@ -70,7 +70,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     def fn(x):
       return x + captured_t
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(["ParallelMap"])).map(fn)
+        testing.assert_next(["ParallelMap"])).map(fn)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True
@@ -85,7 +85,7 @@ class MapParallelizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     def fn(x):
       return x + captured_t
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(["Map"])).map(fn)
+        testing.assert_next(["Map"])).map(fn)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_parallelization = True

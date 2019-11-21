@@ -1574,6 +1574,31 @@ class NestedNetworkTest(test.TestCase):
     self.assertLen(model.get_updates_for(ph), 2)
     self.assertLen(model.get_updates_for(None), 0)
 
+  def test_dict_mapping_input(self):
+
+    class ReturnFirst(keras.layers.Layer):
+
+      def call(self, inputs):
+        b, _ = inputs
+        return b
+
+    # Checks that inputs are put in same order as the
+    # Model was constructed with.
+    b = keras.Input(shape=(10,), name='b')
+    a = keras.Input(shape=(10,), name='a')
+    outputs = ReturnFirst()([b, a])
+
+    b_val = array_ops.ones((10, 10))
+    a_val = array_ops.zeros((10, 10))
+
+    model = keras.Model([b, a], outputs)
+    res = model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
+
+    reversed_model = keras.Model([a, b], outputs)
+    res = reversed_model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
+
 
 @keras_parameterized.run_all_keras_modes
 class AddLossTest(keras_parameterized.TestCase):

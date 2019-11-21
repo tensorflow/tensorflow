@@ -57,12 +57,15 @@ struct TFE_ContextOptions {
   TFE_ContextDevicePlacementPolicy device_placement_policy{
       TFE_DEVICE_PLACEMENT_SILENT};
   TFE_ContextMirroringPolicy mirroring_policy{TFE_MIRRORING_NONE};
+  // If true, lazily copy the remote inputs of a function to the target devices.
+  bool lazy_remote_inputs_copy = false;
 };
 
 struct TFE_Context {
   TFE_Context(const tensorflow::SessionOptions& opts,
               TFE_ContextDevicePlacementPolicy default_device_placement_policy,
               TFE_ContextMirroringPolicy default_mirroring_policy, bool async,
+              const bool lazy_remote_inputs_copy,
               const tensorflow::DeviceMgr* device_mgr, bool device_mgr_owned,
               tensorflow::Rendezvous* rendezvous,
               const tensorflow::CustomKernelCreator* custom_kernel_creator)
@@ -72,8 +75,8 @@ struct TFE_Context {
                 default_device_placement_policy),
             static_cast<tensorflow::ContextMirroringPolicy>(
                 default_mirroring_policy),
-            async, device_mgr, device_mgr_owned, rendezvous,
-            custom_kernel_creator)) {}
+            async, lazy_remote_inputs_copy, device_mgr, device_mgr_owned,
+            rendezvous, custom_kernel_creator)) {}
 
   ~TFE_Context() {
     // TODO(iga): Add a separate API method to shutdown TFE_Context so that we
@@ -100,12 +103,6 @@ struct TFE_TensorHandle {
   }
 
   tensorflow::TensorHandle* handle;
-
-  // Create a symbolic tensor.
-  TFE_TensorHandle(TF_Output t, TF_DataType dtype)
-      : handle(new tensorflow::TensorHandle(
-            tensorflow::OutputGraphNode{t.oper, t.index},
-            static_cast<tensorflow::DataType>(dtype))) {}
 };
 
 struct TFE_TensorDebugInfo {
@@ -281,26 +278,6 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
                           const tensorflow::AttrValue& default_value,
                           const char* attr_name, TF_Status* status);
 }  // namespace tensorflow
-
-struct TFE_TraceContext {
-  TF_Graph* const graph;
-
-  unsigned int node_counter = 0;
-  // Each tensor handle will have its ref count incremented when it's added as a
-  // map key, and decremented when this object is destroyed.
-  std::map<tensorflow::TensorHandle*, TF_Output> input_tensor_map;
-  std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>* input_tensors =
-      nullptr;
-
-  explicit TFE_TraceContext(TF_Graph* graph) : graph(graph) {}
-
-  ~TFE_TraceContext() {
-    delete input_tensors;
-    for (auto input : input_tensor_map) {
-      input.first->Unref();
-    }
-  }
-};
 
 struct TFE_CancellationManager {
   tensorflow::CancellationManager cancellation_manager;

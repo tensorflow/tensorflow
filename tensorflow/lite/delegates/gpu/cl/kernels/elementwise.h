@@ -48,6 +48,33 @@ class ElementwiseOneInput : public ElementwiseOperation {
 ElementwiseOneInput CreateElementwiseOneInput(const OperationDef& definition,
                                               const OperationType& op_type);
 
+// Class for simple two input operations without any parameters, for example
+// sub, div and etc.
+class ElementwiseTwoInput : public ElementwiseOperation {
+ public:
+  explicit ElementwiseTwoInput(const OperationDef& definition,
+                               const OperationType& op_type)
+      : ElementwiseOperation(definition), op_type_(op_type) {}
+
+  // Move only
+  ElementwiseTwoInput(ElementwiseTwoInput&& operation);
+  ElementwiseTwoInput& operator=(ElementwiseTwoInput&& operation);
+  ElementwiseTwoInput(const ElementwiseTwoInput&) = delete;
+  ElementwiseTwoInput& operator=(const ElementwiseTwoInput&) = delete;
+
+  void SetLinkIndex(int index) override;
+  std::string GetCoreCode(const LinkingContext& context) const override;
+  std::string GetArgsDeclaration() const override;
+  Status BindArguments(CLKernel* kernel) override;
+
+ private:
+  int link_index_;
+  OperationType op_type_;
+};
+
+ElementwiseTwoInput CreateElementwiseTwoInput(const OperationDef& definition,
+                                              const OperationType& op_type);
+
 }  // namespace cl
 }  // namespace gpu
 }  // namespace tflite

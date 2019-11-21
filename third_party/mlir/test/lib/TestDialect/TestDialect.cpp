@@ -16,6 +16,8 @@
 // =============================================================================
 
 #include "TestDialect.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Module.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Transforms/FoldUtils.h"
@@ -28,6 +30,18 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 namespace {
+
+// Test support for interacting with the AsmPrinter.
+struct TestOpAsmInterface : public OpAsmDialectInterface {
+  using OpAsmDialectInterface::OpAsmDialectInterface;
+
+  void getAsmResultNames(Operation *op,
+                         OpAsmSetValueNameFn setNameFn) const final {
+    if (auto asmOp = dyn_cast<AsmDialectInterfaceOp>(op))
+      setNameFn(asmOp, "result");
+  }
+};
+
 struct TestOpFolderDialectInterface : public OpFolderDialectInterface {
   using OpFolderDialectInterface::OpFolderDialectInterface;
 
@@ -110,8 +124,16 @@ TestDialect::TestDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "TestOps.cpp.inc"
       >();
-  addInterfaces<TestOpFolderDialectInterface, TestInlinerInterface>();
+  addInterfaces<TestOpAsmInterface, TestOpFolderDialectInterface,
+                TestInlinerInterface>();
   allowUnknownOperations();
+}
+
+LogicalResult TestDialect::verifyOperationAttribute(Operation *op,
+                                                    NamedAttribute namedAttr) {
+  if (namedAttr.first == "test.invalid_attr")
+    return op->emitError() << "invalid to use 'test.invalid_attr'";
+  return success();
 }
 
 LogicalResult TestDialect::verifyRegionArgAttribute(Operation *op,
@@ -218,6 +240,7 @@ static void print(OpAsmPrinter &p, WrappingRegionOp op) {
 //===----------------------------------------------------------------------===//
 // Test PolyForOp - parse list of region arguments.
 //===----------------------------------------------------------------------===//
+
 static ParseResult parsePolyForOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> ivsInfo;
   // Parse list of region arguments without a delimiter.
@@ -229,6 +252,21 @@ static ParseResult parsePolyForOp(OpAsmParser &parser, OperationState &result) {
   auto &builder = parser.getBuilder();
   SmallVector<Type, 4> argTypes(ivsInfo.size(), builder.getIndexType());
   return parser.parseRegion(*body, ivsInfo, argTypes);
+}
+
+//===----------------------------------------------------------------------===//
+// Test OpAsmInterface.
+//===----------------------------------------------------------------------===//
+
+void AsmInterfaceOp::getAsmResultNames(
+    function_ref<void(Value *, StringRef)> setNameFn) {
+  // Give a name to the first and middle results.
+  setNameFn(firstResult(), "first");
+  if (!llvm::empty(middleResults()))
+    setNameFn(*middleResults().begin(), "middle_results");
+
+  // Use default numbering for the last result.
+  setNameFn(getResult(getNumResults() - 1), "");
 }
 
 //===----------------------------------------------------------------------===//
@@ -268,9 +306,14 @@ LogicalResult TestOpWithVariadicResultsAndFolder::fold(
 SmallVector<Type, 2> mlir::OpWithInferTypeInterfaceOp::inferReturnTypes(
     llvm::Optional<Location> location, ArrayRef<Value *> operands,
     ArrayRef<NamedAttribute> attributes, ArrayRef<Region> regions) {
-  if (location)
-    mlir::emitError(*location) << "expected to fail";
-  return SmallVector<Type, 2>{nullptr};
+  if (operands[0]->getType() != operands[1]->getType()) {
+    if (location)
+      mlir::emitError(*location)
+          << "operand type mismatch " << operands[0]->getType() << " vs "
+          << operands[1]->getType();
+    return {nullptr};
+  }
+  return {operands[0]->getType()};
 }
 
 // Static initialization for Test dialect registration.

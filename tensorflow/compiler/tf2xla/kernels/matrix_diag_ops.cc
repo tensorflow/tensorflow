@@ -26,6 +26,30 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// Calculates the diagonal length of a diagonal.
+static inline int ComputeDiagLen(int diag_index, int num_rows, int num_cols) {
+  return std::min(num_rows + std::min(0, diag_index),
+                  num_cols - std::max(0, diag_index));
+}
+
+// Checks if a diagonal is to be aligned left or right.
+static inline bool IsLeftAligned(int diag_index, bool left_align_superdiagonal,
+                                 bool left_align_subdiagonal) {
+  return (diag_index >= 0 && left_align_superdiagonal) ||
+         (diag_index <= 0 && left_align_subdiagonal);
+}
+
+// Reads the diagonal packing alignment.
+void ReadAlignment(OpKernelConstruction* context,
+                   bool* left_align_superdiagonal,
+                   bool* left_align_subdiagonal) {
+  string align;
+  OP_REQUIRES_OK(context, context->GetAttr("align", &align));
+
+  *left_align_superdiagonal = align == "LEFT_LEFT" || align == "LEFT_RIGHT";
+  *left_align_subdiagonal = align == "LEFT_LEFT" || align == "RIGHT_LEFT";
+}
+
 // Reads or infers lower_diag_index and upper_diag_index from kernel's input
 // parameter "k". Also validates their values.
 std::pair<int64, int64> ProcessDiagIndex(XlaOpKernelContext* context) {
@@ -94,7 +118,9 @@ xla::XlaOp SetMatrixDiag(const xla::XlaOp input, const xla::XlaOp diag,
                          const TensorShape& input_shape, const int64 diag_rank,
                          const int64 num_diags, const int64 lower_diag_index,
                          const int64 upper_diag_index, const int64 max_diag_len,
-                         const int64 num_rows, const int64 num_cols) {
+                         const int64 num_rows, const int64 num_cols,
+                         const bool left_align_superdiagonal,
+                         const bool left_align_subdiagonal) {
   // Creates a padding config.
   const int input_rank = input_shape.dims();
   xla::PaddingConfig padding_config;
@@ -108,29 +134,26 @@ xla::XlaOp SetMatrixDiag(const xla::XlaOp input, const xla::XlaOp diag,
   // XLA can fuse multiple Broadcasts and Selects so this shouldn't be slow.
   //
   // For example,
-  //   diag = [[2, 3, 0], k = (-1, 1), and num_rows = 4.
+  //   diag = [[0, 2, 3], k = (-1, 1), num_cols = 4, and align="RIGHT_LEFT".
   //           [4, 5, 6],
   //           [7, 8, 9]]
-  // The expected output is [[4, 2, 0],
-  //                         [7, 5, 4],
-  //                         [0, 8, 6],
-  //                         [0, 0, 9]]
+  // The expected output is [[7, 4, 2, 0],
+  //                         [0, 8, 5, 3],
+  //                         [0, 0, 9, 6]].
   // The 1st diagonal is created by:
-  // 1) Extracting diag_slice = [1, 2, 0].
-  // 2) Padding the vector to be as long as num_rows,
-  //      diag_slice = [1, 2, 0, 0],
-  //    then broadcasting diag_slice row-wise to a full matrix,
-  //      diag_broadcast = [[1, 1, 1],
-  //                        [2, 2, 2],
-  //                        [0, 0, 0],
-  //                        [0, 0, 0]]
+  // 1) Extracting diag_slice = [0, 2, 3] which is right-aligned.
+  // 2) Padding the vector (in the same direction) to be as long as num_cols,
+  //      diag_slice = [0, 0, 2, 3],
+  //    then broadcasting diag_slice column-wise to a full matrix,
+  //      diag_broadcast = [[0, 0, 2, 3],
+  //                        [0, 0, 2, 3],
+  //                        [0, 0, 2, 3]].
   //    The padding value can be anything because it will not appear in the
   //    results after masking. Here, we use zero.
   // 3) Masking diag_broadcast with a mask of the shape of the 1st diagonal.
-  //      mask = [[0, 1, 0],  -->  output = [[x, 2, x],
-  //              [0, 0, 1],                 [x, x, 3],
-  //              [0, 0, 0],                 [x, x, x],
-  //              [0, 0, 0]]                 [x, x, x]],
+  //      mask = [[0, 0, 1, 0],  -->  output = [[x, x, 2, x],
+  //              [0, 0, 0, 1],                 [x, x, x, 3],
+  //              [0, 0, 0, 0]]                 [x, x, x, x]],
   //    where x denotes the existing input contents.
   std::vector<int64> broadcast_dimensions(input_rank - 1);
   absl::c_iota(broadcast_dimensions, 0);
@@ -140,6 +163,8 @@ xla::XlaOp SetMatrixDiag(const xla::XlaOp input, const xla::XlaOp diag,
     // Extracts a single diagonal.
     auto diag_slice = diag;
     if (num_diags > 1) {
+      // The result of SliceInDim has dims: [<batch_dim>, 1, max_diag_len].
+      // We call Collapse to make the dims: [<batch_dim>, max_diag_len].
       const int64 mapped_diag_index = upper_diag_index - diag_index;
       diag_slice = xla::Collapse(
           xla::SliceInDim(diag, mapped_diag_index, mapped_diag_index + 1, 1,
@@ -147,20 +172,51 @@ xla::XlaOp SetMatrixDiag(const xla::XlaOp input, const xla::XlaOp diag,
           {diag_rank - 2, diag_rank - 1});
     }
 
-    // Pads if necessary. Always pad at the end because shorter diagonals in
-    // the input come padded at the end.
-    const int64 padding_length =
-        ((diag_index <= 0) ? num_cols : num_rows) - max_diag_len;
-    const xla::XlaOp zero = xla::ScalarLike(input, 0);
-    if (padding_length > 0) {
+    // Pad if necessary.
+    // - If the diagonal has the longest length, i.e., min(num_rows, num_cols),
+    //   no padding is necessary. It is broadcast column-wise if it is a sub-
+    //   diagonal, row-wise if superdiagonal.
+    // - Otherwise, pad and keep the old alignment (shorter diagonals in the
+    //   input come pre-padded). max_len in the table refers to max_diag_len.
+    //   -------------------------------------------------------------------
+    //   | Diag  | Align | Broadcast   |   padding_low   |   padding_high  |
+    //   -------------------------------------------------------------------
+    //   | Super | Left  | Row-wise    |        0        | #rows - max_len |
+    //   |       | Right | Column-wise | #cols - max_len |        0        |
+    //   -------------------------------------------------------------------
+    //   | Sub   | Left  | Column-wise |        0        | #cols - max_len |
+    //   |       | Right | Row-wise    | #rows - max_len |        0        |
+    //   -------------------------------------------------------------------
+    if (num_cols - num_rows <= diag_index && diag_index <= 0) {
+      broadcast_dimensions.back() = input_rank - 1;  // Column-wise.
+    } else if (0 <= diag_index && diag_index <= num_cols - num_rows) {
+      broadcast_dimensions.back() = input_rank - 2;  // Row-wise.
+    } else {
+      int length_to_pad_to;
+      if ((diag_index > 0 && left_align_superdiagonal) ||
+          (diag_index < 0 && !left_align_subdiagonal)) {
+        length_to_pad_to = num_rows;
+        broadcast_dimensions.back() = input_rank - 2;  // Row-wise.
+      } else {
+        length_to_pad_to = num_cols;
+        broadcast_dimensions.back() = input_rank - 1;  // Column-wise.
+      }
+      int padding_low = length_to_pad_to - max_diag_len;
+      int padding_high = 0;
+      if (IsLeftAligned(diag_index, left_align_superdiagonal,
+                        left_align_subdiagonal)) {
+        std::swap(padding_low, padding_high);
+      }
       padding_config.mutable_dimensions(input_rank - 2)
-          ->set_edge_padding_high(padding_length);
+          ->set_edge_padding_low(padding_low);
+      padding_config.mutable_dimensions(input_rank - 2)
+          ->set_edge_padding_high(padding_high);
+
+      const xla::XlaOp zero = xla::ScalarLike(input, 0);
       diag_slice = xla::Pad(diag_slice, zero, padding_config);
     }
 
-    // Broadcasts column-wise for subdiagonals; row-wise for superdiagonals.
-    broadcast_dimensions.back() =
-        (diag_index <= 0) ? input_rank - 1 : input_rank - 2;
+    // Broadcast and mask.
     xla::XlaOp diag_broadcast = xla::BroadcastInDim(
         diag_slice, input_shape.dim_sizes(), broadcast_dimensions);
     const auto mask = xla::GetDiagonalMask(output, diag_index);
@@ -173,11 +229,17 @@ xla::XlaOp SetMatrixDiag(const xla::XlaOp input, const xla::XlaOp diag,
 
 class MatrixDiagOp : public XlaOpKernel {
  public:
-  explicit MatrixDiagOp(OpKernelConstruction* context) : XlaOpKernel(context) {}
+  explicit MatrixDiagOp(OpKernelConstruction* context) : XlaOpKernel(context) {
+    // MatrixDiagV3-specific.
+    if (context->HasAttr("align")) {
+      ReadAlignment(context, &left_align_superdiagonal_,
+                    &left_align_subdiagonal_);
+    }
+  }
 
   void Compile(XlaOpKernelContext* context) override {
     OP_REQUIRES(
-        context, context->num_inputs() >= 1,
+        context, context->num_inputs() >= kNumV1Inputs,
         errors::InvalidArgument("MatrixDiag op must have at least one input"));
     const TensorShape diag_shape = context->InputShape(0);
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(diag_shape),
@@ -199,7 +261,7 @@ class MatrixDiagOp : public XlaOpKernel {
     // MatrixDiag and MatrixDiagV2 both use this OpKernel. MatrixDiag only has
     // one input, so we have to check the number of inputs before reading
     // additional parameters for MatrixDiagV2.
-    if (context->num_inputs() > 1) {
+    if (context->num_inputs() > kNumV1Inputs) {
       std::tie(lower_diag_index, upper_diag_index) = ProcessDiagIndex(context);
       OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(2, &num_rows));
       OP_REQUIRES_OK(context, context->ConstantInputAsIntScalar(3, &num_cols));
@@ -252,12 +314,24 @@ class MatrixDiagOp : public XlaOpKernel {
     context->SetOutput(
         0, SetMatrixDiag(output, diag, output_shape, diag_rank, num_diags,
                          lower_diag_index, upper_diag_index, max_diag_len,
-                         num_rows, num_cols));
+                         num_rows, num_cols, left_align_superdiagonal_,
+                         left_align_subdiagonal_));
   }
+
+ private:
+  bool left_align_superdiagonal_ = true;
+  bool left_align_subdiagonal_ = true;
+  static constexpr int kNumV1Inputs = 1;
 };
 
 REGISTER_XLA_OP(Name("MatrixDiag"), MatrixDiagOp);
 REGISTER_XLA_OP(Name("MatrixDiagV2")
+                    .CompileTimeConstantInput("k")
+                    .CompileTimeConstantInput("num_rows")
+                    .CompileTimeConstantInput("num_cols")
+                    .CompileTimeConstantInput("padding_value"),
+                MatrixDiagOp);
+REGISTER_XLA_OP(Name("MatrixDiagV3")
                     .CompileTimeConstantInput("k")
                     .CompileTimeConstantInput("num_rows")
                     .CompileTimeConstantInput("num_cols")
@@ -268,7 +342,13 @@ class MatrixDiagPartOp : public XlaOpKernel {
  public:
   explicit MatrixDiagPartOp(OpKernelConstruction* context)
       : XlaOpKernel(context),
-        is_gpu_(context->device_type().type_string() == DEVICE_GPU_XLA_JIT) {}
+        is_gpu_(context->device_type().type_string() == DEVICE_GPU_XLA_JIT) {
+    // MatrixDiagPartV3-specific.
+    if (context->HasAttr("align")) {
+      ReadAlignment(context, &left_align_superdiagonal_,
+                    &left_align_subdiagonal_);
+    }
+  }
 
   void Compile(XlaOpKernelContext* context) override {
     const TensorShape input_shape = context->InputShape(0);
@@ -290,7 +370,7 @@ class MatrixDiagPartOp : public XlaOpKernel {
     // MatrixDiagPart and MatrixDiagPartV2 both use this OpKernel.
     // MatrixDiagPart only has one input, so we have to check the number of
     // inputs before reading additional parameters in MatrixDiagV2.
-    if (context->num_inputs() > 1) {
+    if (context->num_inputs() > kNumV1Inputs) {
       std::tie(lower_diag_index, upper_diag_index) = ProcessDiagIndex(context);
       padding_value = context->Input(2);
     }
@@ -314,25 +394,34 @@ class MatrixDiagPartOp : public XlaOpKernel {
     // Computes output.
     xla::XlaOp input = context->Input(0);
     std::vector<xla::XlaOp> diag_list;
-    xla::PaddingConfig padding_config;
+    xla::PaddingConfig padding_config =
+        xla::MakeNoPaddingConfig(input_rank - 1);
     if (num_diags == 1) {
       context->SetOutput(
           0, is_gpu_ ? xla::GetMatrixDiagonalViaGather(input, upper_diag_index)
                      : xla::GetMatrixDiagonal(input, upper_diag_index));
       return;
     }
-    padding_config = xla::MakeNoPaddingConfig(input_rank - 1);
     for (int diag_index = upper_diag_index; diag_index >= lower_diag_index;
          --diag_index) {
       xla::XlaOp single_diag =
           is_gpu_ ? xla::GetMatrixDiagonalViaGather(input, diag_index)
                   : xla::GetMatrixDiagonal(input, diag_index);
-      const int64 diag_length =
-          (diag_index >= 0) ? (num_cols - diag_index) : (num_rows + diag_index);
-      const int64 padding_length = max_diag_len - diag_length;
-      if (padding_length > 0) {
-        padding_config.mutable_dimensions(input_rank - 2)
-            ->set_edge_padding_high(padding_length);
+      const int64 diag_len = ComputeDiagLen(diag_index, num_rows, num_cols);
+      const int64 padding_len = max_diag_len - diag_len;
+      if (padding_len > 0) {
+        if (IsLeftAligned(diag_index, left_align_superdiagonal_,
+                          left_align_subdiagonal_)) {
+          padding_config.mutable_dimensions(input_rank - 2)
+              ->set_edge_padding_low(0);
+          padding_config.mutable_dimensions(input_rank - 2)
+              ->set_edge_padding_high(padding_len);
+        } else {
+          padding_config.mutable_dimensions(input_rank - 2)
+              ->set_edge_padding_low(padding_len);
+          padding_config.mutable_dimensions(input_rank - 2)
+              ->set_edge_padding_high(0);
+        }
         single_diag = xla::Pad(single_diag, padding_value, padding_config);
       }
       diag_list.emplace_back(single_diag);
@@ -344,6 +433,9 @@ class MatrixDiagPartOp : public XlaOpKernel {
 
  private:
   const bool is_gpu_;
+  bool left_align_superdiagonal_ = true;
+  bool left_align_subdiagonal_ = true;
+  static constexpr int kNumV1Inputs = 1;
 };
 
 REGISTER_XLA_OP(Name("MatrixDiagPart"), MatrixDiagPartOp);
@@ -351,11 +443,21 @@ REGISTER_XLA_OP(Name("MatrixDiagPartV2")
                     .CompileTimeConstantInput("k")
                     .CompileTimeConstantInput("padding_value"),
                 MatrixDiagPartOp);
+REGISTER_XLA_OP(Name("MatrixDiagPartV3")
+                    .CompileTimeConstantInput("k")
+                    .CompileTimeConstantInput("padding_value"),
+                MatrixDiagPartOp);
 
 class MatrixSetDiagOp : public XlaOpKernel {
  public:
   explicit MatrixSetDiagOp(OpKernelConstruction* context)
-      : XlaOpKernel(context) {}
+      : XlaOpKernel(context) {
+    // MatrixSetDiagV3-specific.
+    if (context->HasAttr("align")) {
+      ReadAlignment(context, &left_align_superdiagonal_,
+                    &left_align_subdiagonal_);
+    }
+  }
 
   void Compile(XlaOpKernelContext* context) override {
     const TensorShape input_shape = context->InputShape(0);
@@ -378,7 +480,7 @@ class MatrixSetDiagOp : public XlaOpKernel {
     // reading additional parameters in MatrixSetDiagV2.
     int64 lower_diag_index = 0;
     int64 upper_diag_index = 0;
-    if (context->num_inputs() > 2) {
+    if (context->num_inputs() > kNumV1Inputs) {
       std::tie(lower_diag_index, upper_diag_index) = ProcessDiagIndex(context);
     }
 
@@ -419,15 +521,21 @@ class MatrixSetDiagOp : public XlaOpKernel {
     context->SetOutput(
         0, SetMatrixDiag(input, diag, input_shape, diag_rank, num_diags,
                          lower_diag_index, upper_diag_index, max_diag_len,
-                         num_rows, num_cols));
+                         num_rows, num_cols, left_align_superdiagonal_,
+                         left_align_subdiagonal_));
   }
 
  private:
+  bool left_align_superdiagonal_ = true;
+  bool left_align_subdiagonal_ = true;
+  static constexpr int kNumV1Inputs = 2;
   TF_DISALLOW_COPY_AND_ASSIGN(MatrixSetDiagOp);
 };
 
 REGISTER_XLA_OP(Name("MatrixSetDiag"), MatrixSetDiagOp);
 REGISTER_XLA_OP(Name("MatrixSetDiagV2").CompileTimeConstantInput("k"),
+                MatrixSetDiagOp);
+REGISTER_XLA_OP(Name("MatrixSetDiagV3").CompileTimeConstantInput("k"),
                 MatrixSetDiagOp);
 
 }  // namespace tensorflow

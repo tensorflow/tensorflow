@@ -374,6 +374,10 @@ class FuncGraph(ops.Graph):
       old_strategy_stack = self._distribution_strategy_stack
       self._distribution_strategy_stack = list(
           graph._distribution_strategy_stack)
+      uses_distribution_strategy = (
+          self._distribution_strategy_stack and
+          self._distribution_strategy_stack[-1].strategy.extended
+          ._retrace_functions_for_each_device)
       # We ignore device placements from any outer scopes while tracing the
       # function when possible, to avoid hard-coding them in the function
       # graph. "Default" placements come from the PartitionedCallOp's placement,
@@ -382,12 +386,12 @@ class FuncGraph(ops.Graph):
       # restored.
       old_device_stack = self._device_function_stack
       if context.executing_eagerly():
-        if self._distribution_strategy_stack:
+        if uses_distribution_strategy:
           self._device_function_stack = self._device_function_stack.copy()
           self._add_device_to_stack(context.context().device_name)
       else:
-        if (self._distribution_strategy_stack
-            or device_stack_has_callable(graph._device_function_stack)):
+        if (uses_distribution_strategy or
+            device_stack_has_callable(graph._device_function_stack)):
           # Hard-code devices from device functions in the function body
           self._device_function_stack = graph._device_function_stack.copy()
 
@@ -1270,36 +1274,3 @@ def dismantle_func_graph(func_graph):
   """
   func_graph.clear_captures()
   ops.dismantle_graph(func_graph)
-
-
-def add_exit_callback_to_default_func_graph(fn):
-  """Add a callback to run when the default function graph goes out of scope.
-
-  Usage:
-
-  ```python
-  @tf.function
-  def fn(x, v):
-    expensive = expensive_object(v)
-    add_exit_callback_to_default_func_graph(lambda: expensive.release())
-    return g(x, expensive)
-
-  fn(x=tf.constant(...), v=...)
-  # `expensive` has been released.
-  ```
-
-  Args:
-    fn: A callable that takes no arguments and whose output is ignored.
-      To be executed when exiting func graph scope.
-
-  Raises:
-    RuntimeError: If executed when the current defualt graph is not a FuncGraph,
-      or not currently executing in function creation mode (e.g., if inside
-      an init_scope).
-  """
-  default_graph = ops.get_default_graph()
-  if not default_graph._building_function:  # pylint: disable=protected-access
-    raise RuntimeError(
-        "Cannot add scope exit callbacks when not building a function.  "
-        "Default graph: {}".format(default_graph))
-  default_graph._add_scope_exit_callback(fn)  # pylint: disable=protected-access

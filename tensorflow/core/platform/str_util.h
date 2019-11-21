@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -74,6 +75,16 @@ bool ConsumePrefix(StringPiece* s, StringPiece expected);
 // If "*s" ends with "expected", remove it and return true.
 // Otherwise, return false.
 bool ConsumeSuffix(StringPiece* s, StringPiece expected);
+
+// If "s" starts with "expected", return a view into "s" after "expected" but
+// keep "s" unchanged.
+// Otherwise, return the original "s".
+TF_MUST_USE_RESULT StringPiece StripPrefix(StringPiece s, StringPiece expected);
+
+// If "s" ends with "expected", return a view into "s" until "expected" but
+// keep "s" unchanged.
+// Otherwise, return the original "s".
+TF_MUST_USE_RESULT StringPiece StripSuffix(StringPiece s, StringPiece expected);
 
 // Return lower-cased version of s.
 string Lowercase(StringPiece s);

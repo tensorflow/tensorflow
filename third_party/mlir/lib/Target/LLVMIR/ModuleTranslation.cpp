@@ -52,7 +52,7 @@ llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
     return llvm::ConstantInt::get(llvmType, intAttr.getValue());
   if (auto floatAttr = attr.dyn_cast<FloatAttr>())
     return llvm::ConstantFP::get(llvmType, floatAttr.getValue());
-  if (auto funcAttr = attr.dyn_cast<SymbolRefAttr>())
+  if (auto funcAttr = attr.dyn_cast<FlatSymbolRefAttr>())
     return functionMapping.lookup(funcAttr.getValue());
   if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
     auto *sequentialType = cast<llvm::SequentialType>(llvmType);
@@ -194,7 +194,7 @@ LogicalResult ModuleTranslation::convertOperation(Operation &opInst,
   auto convertCall = [this, &builder](Operation &op) -> llvm::Value * {
     auto operands = lookupValues(op.getOperands());
     ArrayRef<llvm::Value *> operandsRef(operands);
-    if (auto attr = op.getAttrOfType<SymbolRefAttr>("callee")) {
+    if (auto attr = op.getAttrOfType<FlatSymbolRefAttr>("callee")) {
       return builder.CreateCall(functionMapping.lookup(attr.getValue()),
                                 operandsRef);
     } else {
@@ -283,17 +283,29 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
 // definitions.
 void ModuleTranslation::convertGlobals() {
   for (auto op : mlirModule.getOps<LLVM::GlobalOp>()) {
-    llvm::Constant *cst;
-    llvm::Type *type;
-    // String attributes are treated separately because they cannot appear as
-    // in-function constants and are thus not supported by getLLVMConstant.
-    if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
-      cst = llvm::ConstantDataArray::getString(
-          llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
-      type = cst->getType();
-    } else {
-      type = op.getType().getUnderlyingType();
-      cst = getLLVMConstant(type, op.getValueOrNull(), op.getLoc());
+    llvm::Type *type = op.getType().getUnderlyingType();
+    llvm::Constant *cst = llvm::UndefValue::get(type);
+    if (op.getValueOrNull()) {
+      // String attributes are treated separately because they cannot appear as
+      // in-function constants and are thus not supported by getLLVMConstant.
+      if (auto strAttr = op.getValueOrNull().dyn_cast_or_null<StringAttr>()) {
+        cst = llvm::ConstantDataArray::getString(
+            llvmModule->getContext(), strAttr.getValue(), /*AddNull=*/false);
+        type = cst->getType();
+      } else {
+        cst = getLLVMConstant(type, op.getValueOrNull(), op.getLoc());
+      }
+    } else if (Block *initializer = op.getInitializerBlock()) {
+      llvm::IRBuilder<> builder(llvmModule->getContext());
+      for (auto &op : initializer->without_terminator()) {
+        if (failed(convertOperation(op, builder)) ||
+            !isa<llvm::Constant>(valueMapping.lookup(op.getResult(0)))) {
+          emitError(op.getLoc(), "unemittable constant value");
+          return;
+        }
+      }
+      ReturnOp ret = cast<ReturnOp>(initializer->getTerminator());
+      cst = cast<llvm::Constant>(valueMapping.lookup(ret.getOperand(0)));
     }
 
     auto addrSpace = op.addr_space().getLimitedValue();

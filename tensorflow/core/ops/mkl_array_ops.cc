@@ -105,7 +105,7 @@ REGISTER_OP("_MklQuantizeV2")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
     .Attr(
         "round_mode: {'HALF_AWAY_FROM_ZERO', 'HALF_TO_EVEN'} = "
-        "'HALF_TO_EVEN'")
+        "'HALF_AWAY_FROM_ZERO'")
     .Attr("narrow_range: bool = false")
     .Attr("axis: int = -1")
     .Attr("ensure_minimum_range: float = 0.01")

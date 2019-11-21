@@ -36,6 +36,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
+#include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
@@ -131,10 +132,14 @@ static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
     if (incompatible_shape_error.getValue()) {
       mlir::emitError(loc, "non-broadcastable operands");
     } else {
-      result_type = UnrankedTensorType::get(builder->getI1Type());
+      return UnrankedTensorType::get(builder->getI1Type());
     }
   }
-  return result_type;
+
+  auto ranked_type = result_type.dyn_cast<RankedTensorType>();
+  if (!ranked_type) return UnrankedTensorType::get(builder->getI1Type());
+
+  return RankedTensorType::get(ranked_type.getShape(), builder->getI1Type());
 }
 
 // Returns dimension index for the given TensorFlow axis that supports negative
@@ -305,6 +310,24 @@ void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// BatchMatMulOp
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulToMatMul>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulV2Op
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulV2ToMatMul>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // BiasAddOp
 //===----------------------------------------------------------------------===//
 
@@ -417,14 +440,6 @@ template <typename OpT,
 static LogicalResult Verify(OpT op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
-
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
 
   int axis_idx = std::is_same<OpT, ConcatOp>() ? 0 : 1;
   Value *axis = *op.getODSOperands(axis_idx).begin();
@@ -742,6 +757,19 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// FillOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(FillOp op) {
+  if (!IsOfRankOrUnranked(op.dims(), 1))
+    return op.emitOpError() << "requires dims to be a 1D tensor";
+  if (!IsOfRankOrUnranked(op.value(), 0))
+    return op.emitOpError() << "requires value to be a scalar";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FusedBatchNormOp
 //===----------------------------------------------------------------------===//
 
@@ -1003,14 +1031,6 @@ static LogicalResult Verify(OneHotOp op) {
 static LogicalResult Verify(PackOp op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
-
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
 
   if (failed(VerifyTypesCompatibility(values,
                                       /*mask_one_dim=*/false,
@@ -1324,17 +1344,17 @@ void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(ShapeNOp op) {
-  const uint64_t n_attr = op.N().getZExtValue();
+  const size_t num_tensors = op.N();
 
-  if (op.getNumOperands() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " operand(s), got "
+  if (op.getNumOperands() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " operand(s), got "
                             << op.getNumOperands() << " operand(s)";
 
-  if (op.getNumResults() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " result(s), got "
+  if (op.getNumResults() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " result(s), got "
                             << op.getNumResults() << " result(s)";
 
-  for (auto i : llvm::seq<uint64_t>(0, n_attr)) {
+  for (auto i : llvm::seq<uint64_t>(0, num_tensors)) {
     auto verification = VerifyShapeOperandAndResult(
         op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
     if (failed(verification)) return verification;
@@ -1839,7 +1859,11 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 }
 
 // Parses a type registered to this dialect.
-Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
+Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
+  StringRef data;
+  if (parser.parseKeyword(&data)) return Type();
+
+  Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
   auto typeKind = llvm::StringSwitch<unsigned>(data)
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
   .Case(name, TensorFlowTypes::enumerant)
@@ -1862,14 +1886,14 @@ Type TensorFlowDialect::parseType(StringRef data, Location loc) const {
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
     case TensorFlowTypes::RESOURCE:
-      return ParseResourceType(data, loc);
+      return ParseResourceType(parser, loc);
     case TensorFlowTypes::VARIANT:
-      return ParseVariantType(data, loc);
+      return ParseVariantType(parser, loc);
   }
 }
 
 // Prints a type registered to this dialect.
-void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
+void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
   assert(ty.isa<TensorFlowType>());
   switch (ty.getKind()) {
     default:
@@ -1889,46 +1913,26 @@ void TensorFlowDialect::printType(Type ty, raw_ostream &os) const {
 
 namespace {
 template <typename TypeWithSubtype>
-Type ParseTypeWithSubtype(MLIRContext *context, StringRef type_with_subtype,
-                          StringRef spec, Location loc) {
-  bool success = spec.consume_front(type_with_subtype);
-  DCHECK(success) << spec.str();
-
+Type ParseTypeWithSubtype(MLIRContext *context, DialectAsmParser &parser,
+                          Location loc) {
   // Default type without inferred subtypes.
-  if (spec.empty()) return TypeWithSubtype::get(context);
-
-  if (!spec.consume_front("<") || !spec.consume_back(">"))
-    return emitError(loc) << "tf." << type_with_subtype
-                          << " delimiter <...> mismatch",
-           nullptr;
+  if (failed(parser.parseOptionalLess())) return TypeWithSubtype::get(context);
 
   // Most types with subtypes have only one subtype.
-  SmallVector<StringRef, 1> subtype_specs;
-  llvm::SplitString(spec, subtype_specs, ",");
-  if (subtype_specs.empty())
-    return emitError(loc) << "invalid type: tf." << type_with_subtype << "<>",
-           nullptr;
-
   SmallVector<TensorType, 1> subtypes;
-  subtypes.reserve(subtype_specs.size());
-  for (StringRef subtype_spec : subtype_specs) {
-    subtype_spec = subtype_spec.trim();
-    Type type = mlir::parseType(subtype_spec, context);
-    if (!type) {
-      return emitError(loc) << "invalid type: " << subtype_spec, nullptr;
-    }
+  do {
+    TensorType tensor_ty;
+    if (parser.parseType(tensor_ty)) return Type();
+    subtypes.push_back(tensor_ty);
+  } while (succeeded(parser.parseOptionalComma()));
 
-    if (TensorType tensor_ty = type.dyn_cast<TensorType>()) {
-      subtypes.push_back(tensor_ty);
-    } else {
-      return emitError(loc) << "expected TensorType. Found: " << type, nullptr;
-    }
-  }
+  if (parser.parseGreater()) return Type();
   return TypeWithSubtype::getChecked(subtypes, context, loc);
 }
 
 template <typename TypeWithSubtype>
-void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
+void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty,
+                          DialectAsmPrinter &os) {
   os << type;
   ArrayRef<TensorType> subtypes = ty.getSubtypes();
   if (subtypes.empty()) return;
@@ -1939,22 +1943,23 @@ void PrintTypeWithSubtype(StringRef type, TypeWithSubtype ty, raw_ostream &os) {
 }
 }  // anonymous namespace
 
-Type TensorFlowDialect::ParseResourceType(StringRef spec, Location loc) const {
-  return ParseTypeWithSubtype<ResourceType>(getContext(), "resource", spec,
-                                            loc);
+Type TensorFlowDialect::ParseResourceType(DialectAsmParser &parser,
+                                          Location loc) const {
+  return ParseTypeWithSubtype<ResourceType>(getContext(), parser, loc);
 }
 
 void TensorFlowDialect::PrintResourceType(ResourceType ty,
-                                          raw_ostream &os) const {
+                                          DialectAsmPrinter &os) const {
   return PrintTypeWithSubtype("resource", ty, os);
 }
 
-Type TensorFlowDialect::ParseVariantType(StringRef spec, Location loc) const {
-  return ParseTypeWithSubtype<VariantType>(getContext(), "variant", spec, loc);
+Type TensorFlowDialect::ParseVariantType(DialectAsmParser &parser,
+                                         Location loc) const {
+  return ParseTypeWithSubtype<VariantType>(getContext(), parser, loc);
 }
 
 void TensorFlowDialect::PrintVariantType(VariantType ty,
-                                         raw_ostream &os) const {
+                                         DialectAsmPrinter &os) const {
   return PrintTypeWithSubtype("variant", ty, os);
 }
 

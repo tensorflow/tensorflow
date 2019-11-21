@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
@@ -51,8 +52,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
                                        tensor_arena_size, error_reporter);
 
   // Allocate memory from the tensor_arena for the model's tensors
-  TfLiteStatus allocation_status = interpreter.AllocateTensors();
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, allocation_status);
+  TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
   // Obtain a pointer to the model's input tensor
   TfLiteTensor* input = interpreter.input(0);

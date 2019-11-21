@@ -41,6 +41,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tfdev
 from tensorflow.python.framework import dtypes as dtypes_module
@@ -633,7 +634,7 @@ def _get_available_gpus():
   """
   if ops.executing_eagerly_outside_functions():
     # Returns names of devices directly.
-    return [name for name in context.list_devices() if 'GPU' in name]
+    return [d.name for d in config.list_logical_devices('GPU')]
 
   global _LOCAL_DEVICES
   if _LOCAL_DEVICES is None:

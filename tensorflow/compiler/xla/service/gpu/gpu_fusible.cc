@@ -42,14 +42,14 @@ void AppendParams(const HloInstruction& instr,
   }
 }
 
-bool CodegensIntoLoop(const HloInstruction& instr) {
+bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   CHECK_NE(instr.opcode(), HloOpcode::kFusion) << "`instr` has to be unfused.";
   if (instr.opcode() == HloOpcode::kReduce &&
       !IsReductionFromOrToContiguousDimensions(instr)) {
     return true;
   }
-  // Reduce window codegens into loop only when windows overlap, i.e. stride is
-  // less than window size.
+  // Avoid fusing reduce-window when stride is less than window size to minimize
+  // the number of reads of the same elements.
   if (instr.opcode() == HloOpcode::kReduceWindow) {
     for (const auto& dim : instr.window().dimensions()) {
       if (dim.size() > dim.stride()) {
@@ -347,10 +347,10 @@ bool CreatesNestedLoop(const HloInstruction& producer,
   // nothing to do.
   auto producer_has_loop_codegen = [&](const HloInstruction& instr) {
     if (producer.opcode() != HloOpcode::kFusion) {
-      return CodegensIntoLoop(producer);
+      return IfFusedReadsElementsMultipleTimes(producer);
     }
     for (const auto& instr : producer.fused_instructions()) {
-      if (CodegensIntoLoop(*instr)) {
+      if (IfFusedReadsElementsMultipleTimes(*instr)) {
         return true;
       }
     }
@@ -363,7 +363,7 @@ bool CreatesNestedLoop(const HloInstruction& producer,
   // If consumer is a non-fusion instruction then we have to check if it
   // generates a loop.
   if (consumer.opcode() != HloOpcode::kFusion) {
-    return CodegensIntoLoop(consumer);
+    return IfFusedReadsElementsMultipleTimes(consumer);
   }
 
   // If consumer is a fusion then we have to check if the output of producer is
@@ -392,7 +392,7 @@ bool CreatesNestedLoop(const HloInstruction& producer,
       }
       visited.insert(cur);
 
-      if (CodegensIntoLoop(*cur)) {
+      if (IfFusedReadsElementsMultipleTimes(*cur)) {
         return true;
       }
       for (const auto& user : cur->users()) {

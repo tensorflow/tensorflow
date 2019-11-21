@@ -211,6 +211,13 @@ def TF_ConvnetDataFormatAttr : StringBasedAttr<
 //===----------------------------------------------------------------------===//
 // Type attributes
 
+// A derived attribute that returns the size of `idx`-th ODS-declared variadic
+// operand.
+class TF_DerivedOperandSizeAttr<int idx> : DerivedAttr<
+  "size_t",
+  "auto range = getODSOperands(" # idx # ");\n"
+  "return std::distance(range.begin(), range.end());">;
+
 // A derived attribute that returns the element type of `idx`-th ODS-declared
 // operand. If the `idx`-th operand is a variadic operand, then this attribute
 // just returns the element type of its first tensor, which is only meaningful
@@ -229,6 +236,13 @@ class TF_DerivedOperandTypeListAttr<int idx> : DerivedAttr<
   "return {mlir::OperandElementTypeIterator(values.begin()), "
           "mlir::OperandElementTypeIterator(values.end())};"
 >;
+
+// A derived attribute that returns the size of `idx`-th ODS-declared variadic
+// result.
+class TF_DerivedResultSizeAttr<int idx> : DerivedAttr<
+  "size_t",
+  "auto range = getODSResults(" # idx # ");\n"
+  "return std::distance(range.begin(), range.end());">;
 
 // A derived attribute that returns the element type of `idx`-th ODS-declared
 // result. If the `idx`-th result is a variadic result, then this attribute

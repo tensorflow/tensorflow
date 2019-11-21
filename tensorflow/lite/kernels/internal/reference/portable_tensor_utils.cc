@@ -14,16 +14,19 @@ limitations under the License.
 ==============================================================================*/
 #include <algorithm>
 #include <cmath>
-#include <cstdlib>
+#include <cstdint>
 #include <cstring>
+#include <limits>
+#include <utility>
 
+#include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/activation_functor.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 #include "tensorflow/lite/kernels/internal/round.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
@@ -36,12 +39,6 @@ namespace {
 const int32_t kInt16Max = std::numeric_limits<int16_t>::max();
 const int32_t kInt16Min = std::numeric_limits<int16_t>::min();
 }  // namespace
-
-float PortableClip(float f, float abs_limit) {
-  float result = (abs_limit < f) ? abs_limit : f;
-  result = (-abs_limit > result) ? -abs_limit : result;
-  return result;
-}
 
 template <typename T>
 bool PortableIsZeroVectorImpl(const T* vector, int v_size, T zero_value) {
@@ -96,14 +93,46 @@ void PortableSymmetricQuantizeFloats(const float* values, const int size,
 
 void PortableAsymmetricQuantizeFloats(const float* values, const int size,
                                       int8_t* quantized_values,
-                                      float scaling_factor, int32_t offset) {
+                                      float* scaling_factor, int32_t* offset) {
   const int32_t kMinScale = -128;
   const int32_t kMaxScale = 127;
+  const double qmin_double = kMinScale;
+  const double qmax_double = kMaxScale;
+  float rmin = 0.0, rmax = 0.0;
+  const auto minmax = std::minmax_element(values, values + size);
+  rmin = rmin < *minmax.first ? rmin : *minmax.first;
+  rmax = rmax > *minmax.second ? rmax : *minmax.second;
+  if (rmin == rmax) {
+    *scaling_factor = 0;
+    *offset = 0;
+  } else {
+    const double scale = (rmax - rmin) / (qmax_double - qmin_double);
+    const double zero_point_from_min = qmin_double - rmin / scale;
+    const double zero_point_from_max = qmax_double - rmax / scale;
+    const double zero_point_from_min_error =
+        std::abs(qmin_double) + std::abs(rmin / scale);
+    const double zero_point_from_max_error =
+        std::abs(qmax_double) + std::abs(rmax / scale);
+    const double zero_point_double =
+        zero_point_from_min_error < zero_point_from_max_error
+            ? zero_point_from_min
+            : zero_point_from_max;
+    int8 nudged_zero_point = 0;
+    if (zero_point_double < qmin_double) {
+      nudged_zero_point = kMinScale;
+    } else if (zero_point_double > qmax_double) {
+      nudged_zero_point = kMaxScale;
+    } else {
+      nudged_zero_point = static_cast<int8>(round(zero_point_double));
+    }
+    *scaling_factor = scale;
+    *offset = nudged_zero_point;
+  }
   const float scaling_factor_inv =
-      scaling_factor == 0 ? 0 : 1.0 / scaling_factor;
+      *scaling_factor == 0 ? 0 : 1.0 / *scaling_factor;
   for (int i = 0; i < size; ++i) {
     const int32_t quantized_value = static_cast<int32_t>(
-        TfLiteRound(offset + values[i] * scaling_factor_inv));
+        TfLiteRound(*offset + values[i] * scaling_factor_inv));
     quantized_values[i] =
         std::min(kMaxScale, std::max(kMinScale, quantized_value));
   }
@@ -276,7 +305,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output) {
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulateImpl(
       input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
       n_output, output_zp, output);
@@ -286,7 +315,7 @@ void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output) {
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulateImpl(
       input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
       n_output, output_zp, output);
@@ -578,7 +607,7 @@ void PortableVectorScalarMultiply(const int8_t* vector, const int v_size,
 void PortableClipVector(const float* vector, int v_size, float abs_limit,
                         float* result) {
   for (int v = 0; v < v_size; v++) {
-    *result++ = PortableClip(*vector++, abs_limit);
+    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
   }
 }
 
@@ -594,22 +623,22 @@ void PortableReductionSumVector(const float* input_vector, float* output_vector,
 
 void PortableMeanStddevNormalization(const float* input_vector,
                                      float* output_vector, int v_size,
-                                     int n_batch, float normalization_epsilon) {
+                                     int n_batch) {
   for (int batch = 0; batch < n_batch; ++batch) {
     float sum = 0.0f;
-    float sum_sq = 0.0f;
     for (int i = 0; i < v_size; ++i) {
       sum += input_vector[i];
-      sum_sq += input_vector[i] * input_vector[i];
     }
     const float mean = sum / v_size;
-    float stddev_inv = 0.0f;
-    const float variance = sum_sq / v_size - mean * mean;
-    if (variance == 0) {
-      stddev_inv = 1.0f / std::sqrt(normalization_epsilon);
-    } else {
-      stddev_inv = 1.0f / std::sqrt(variance);
+    float sum_diff_sq = 0.0f;
+    for (int i = 0; i < v_size; ++i) {
+      const float diff = input_vector[i] - mean;
+      sum_diff_sq += diff * diff;
     }
+    const float variance = sum_diff_sq / v_size;
+    constexpr float kNormalizationConstant = 1e-8f;
+    const float stddev_inv =
+        1.0f / std::sqrt(variance + kNormalizationConstant);
     for (int i = 0; i < v_size; ++i) {
       output_vector[i] = (input_vector[i] - mean) * stddev_inv;
     }

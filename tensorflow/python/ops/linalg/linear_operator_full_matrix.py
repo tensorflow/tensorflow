@@ -141,12 +141,14 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
 
       super(LinearOperatorFullMatrix, self).__init__(
           dtype=self._matrix.dtype,
-          graph_parents=[self._matrix],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self._matrix])
 
   def _check_matrix(self, matrix):
     """Static check of the `matrix` argument."""

@@ -31,34 +31,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace data {
-namespace {
-Status FindStatefulOps(const GraphDef& graph_def,
-                       std::vector<string>* stateful_op_names) {
-  FunctionLibraryDefinition lib_def(OpRegistry::Global(), graph_def.library());
-
-  // Iterate over all nodes in the graph.
-  for (const auto& node : graph_def.node()) {
-    // Each Dataset graph has a _Retval op in the end which is marked stateful
-    if (node.op() == FunctionLibraryDefinition::kRetOp) continue;
-    if (!IsNodeStateful(lib_def, node).ok()) {
-      stateful_op_names->push_back(node.op());
-    }
-  }
-
-  // Iterate over all functions.
-  for (const auto& fdef : graph_def.library().function()) {
-    if (!fdef.signature().is_stateful()) continue;
-    for (const auto& node : fdef.node_def()) {
-      if (!IsNodeStateful(lib_def, node).ok()) {
-        stateful_op_names->push_back(
-            absl::StrCat(node.op(), " in function: ", fdef.signature().name()));
-      }
-    }
-  }
-
-  return Status::OK();
-}
-}  // namespace
 
 /* static */ constexpr const char* const DatasetToGraphOp::kAllowStateful;
 /* static */ constexpr const char* const
@@ -77,16 +49,19 @@ DatasetToGraphOp::DatasetToGraphOp(OpKernelConstruction* ctx)
       int64 state_change_option;
       OP_REQUIRES_OK(ctx,
                      ctx->GetAttr(kExternalStatePolicy, &state_change_option));
-      external_state_policy_ = ExternalStatePolicy(state_change_option);
+      external_state_policy_ =
+          SerializationContext::ExternalStatePolicy(state_change_option);
     }
   } else {
     if (ctx->HasAttr(kAllowStateful)) {
       bool allow_stateful;
       OP_REQUIRES_OK(ctx, ctx->GetAttr(kAllowStateful, &allow_stateful));
       if (allow_stateful) {
-        external_state_policy_ = ExternalStatePolicy::kWarn;
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kWarn;
       } else {
-        external_state_policy_ = ExternalStatePolicy::kFail;
+        external_state_policy_ =
+            SerializationContext::ExternalStatePolicy::kFail;
       }
     }
   }
@@ -101,8 +76,7 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
   DatasetBase* dataset;
   OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
   SerializationContext::Params params;
-  params.check_external_state =
-      (external_state_policy_ == ExternalStatePolicy::kFail);
+  params.external_state_policy = external_state_policy_;
 
   GraphDef graph_def;
   Status s = AsGraphDef(ctx, dataset, SerializationContext(params), &graph_def);
@@ -113,21 +87,6 @@ void DatasetToGraphOp::Compute(OpKernelContext* ctx) {
         s.error_message()));
     return;
   }
-  // In case we allow stateful ops, we walk the graph and find all the stateful
-  // ops in the Graph. We then log a warning indicating what ops' state we are
-  // going to throw away.
-  if (external_state_policy_ == ExternalStatePolicy::kWarn) {
-    std::vector<string> stateful_op_names;
-    OP_REQUIRES_OK(ctx, FindStatefulOps(graph_def, &stateful_op_names));
-    if (!stateful_op_names.empty()) {
-      LOG(WARNING)
-          << "We found the following stateful ops in the dataset "
-             "construction graph whose state would not be serialized and might "
-             "cause subtle bugs: "
-          << absl::StrJoin(stateful_op_names, ", ");
-    }
-  }
-
   if (strip_device_assignment_) {
     auto library = graph_def.mutable_library();
     for (auto& function : (*library->mutable_function())) {

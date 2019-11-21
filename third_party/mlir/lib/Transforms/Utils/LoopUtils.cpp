@@ -747,7 +747,7 @@ static Loops stripmineSink(loop::ForOp forOp, Value *factor,
     // Insert newForOp before the terminator of `t`.
     OpBuilder b(t.getBodyBuilder());
     Value *stepped = b.create<AddIOp>(t.getLoc(), iv, forOp.step());
-    Value *less = b.create<CmpIOp>(t.getLoc(), CmpIPredicate::SLT,
+    Value *less = b.create<CmpIOp>(t.getLoc(), CmpIPredicate::slt,
                                    forOp.upperBound(), stepped);
     Value *ub =
         b.create<SelectOp>(t.getLoc(), less, forOp.upperBound(), stepped);
@@ -1118,11 +1118,12 @@ void mlir::mapLoopToProcessorIds(loop::ForOp forOp,
   for (unsigned i = 1, e = processorId.size(); i < e; ++i)
     mul = b.create<AddIOp>(loc, b.create<MulIOp>(loc, mul, numProcessors[i]),
                            processorId[i]);
-  Value *lb = b.create<AddIOp>(loc, forOp.lowerBound(), mul);
+  Value *lb = b.create<AddIOp>(loc, forOp.lowerBound(),
+                               b.create<MulIOp>(loc, forOp.step(), mul));
   forOp.setLowerBound(lb);
 
-  Value *step = numProcessors.front();
-  for (auto *numProcs : numProcessors.drop_front())
+  Value *step = forOp.step();
+  for (auto *numProcs : numProcessors)
     step = b.create<MulIOp>(loc, step, numProcs);
   forOp.setStep(step);
 }

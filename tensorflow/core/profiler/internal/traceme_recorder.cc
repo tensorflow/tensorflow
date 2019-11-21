@@ -14,9 +14,11 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
-#include <cstddef>
+#include <stddef.h>
 
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -79,7 +81,7 @@ class EventQueue {
     size_t end = end_.load(std::memory_order_relaxed);
     new (&end_block_->events[end++ - end_block_->start].event)
         TraceMeRecorder::Event(std::move(event));
-    if (ABSL_PREDICT_FALSE(end - end_block_->start == Block::kNumSlots)) {
+    if (TF_PREDICT_FALSE(end - end_block_->start == Block::kNumSlots)) {
       auto* new_block = new Block{end, nullptr};
       end_block_->next = new_block;
       end_block_ = new_block;
@@ -117,7 +119,7 @@ class EventQueue {
     event.~Event();  // Events must be individually destroyed.
     // If we reach the end of a block, we own it and should delete it.
     // The next block is present: end always points to something.
-    if (ABSL_PREDICT_FALSE(start_ - start_block_->start == Block::kNumSlots)) {
+    if (TF_PREDICT_FALSE(start_ - start_block_->start == Block::kNumSlots)) {
       auto* next_block = start_block_->next;
       delete start_block_;
       start_block_ = next_block;

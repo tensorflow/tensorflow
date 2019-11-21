@@ -209,7 +209,7 @@ ParseResult AffineApplyOp::parse(OpAsmParser &parser, OperationState &result) {
   unsigned numDims;
   if (parser.parseAttribute(mapAttr, "map", result.attributes) ||
       parseDimAndSymbolList(parser, result.operands, numDims) ||
-      parser.parseOptionalAttributeDict(result.attributes))
+      parser.parseOptionalAttrDict(result.attributes))
     return failure();
   auto map = mapAttr.getValue();
 
@@ -1261,7 +1261,7 @@ ParseResult parseAffineForOp(OpAsmParser &parser, OperationState &result) {
   AffineForOp::ensureTerminator(*body, builder, result.location);
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   // Set the operands list as resizable so that we can freely modify the bounds.
@@ -1654,7 +1654,7 @@ ParseResult parseAffineIfOp(OpAsmParser &parser, OperationState &result) {
   }
 
   // Parse the optional attribute list.
-  if (parser.parseOptionalAttributeDict(result.attributes))
+  if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
   return success();
@@ -1788,7 +1788,7 @@ ParseResult AffineLoadOp::parse(OpAsmParser &parser, OperationState &result) {
       parser.parseOperand(memrefInfo) ||
       parser.parseAffineMapOfSSAIds(mapOperands, mapAttr, getMapAttrName(),
                                     result.attributes) ||
-      parser.parseOptionalAttributeDict(result.attributes) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(memrefInfo, type, result.operands) ||
       parser.resolveOperands(mapOperands, indexTy, result.operands) ||
@@ -1881,7 +1881,7 @@ ParseResult AffineStoreOp::parse(OpAsmParser &parser, OperationState &result) {
                  parser.parseAffineMapOfSSAIds(mapOperands, mapAttr,
                                                getMapAttrName(),
                                                result.attributes) ||
-                 parser.parseOptionalAttributeDict(result.attributes) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
                  parser.parseColonType(type) ||
                  parser.resolveOperand(storeValueInfo, type.getElementType(),
                                        result.operands) ||
@@ -1935,6 +1935,81 @@ void AffineStoreOp::getCanonicalizationPatterns(
   /// load(memrefcast) -> load
   results.insert<MemRefCastFolder>(getOperationName(), context);
   results.insert<SimplifyAffineOp<AffineStoreOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// AffineMinOp
+//===----------------------------------------------------------------------===//
+//
+//   %0 = affine.min (d0) -> (1000, d0 + 512) (%i0)
+//
+
+static ParseResult parseAffineMinOp(OpAsmParser &parser,
+                                    OperationState &result) {
+  auto &builder = parser.getBuilder();
+  auto indexType = builder.getIndexType();
+  SmallVector<OpAsmParser::OperandType, 8> dim_infos;
+  SmallVector<OpAsmParser::OperandType, 8> sym_infos;
+  AffineMapAttr mapAttr;
+  return failure(
+      parser.parseAttribute(mapAttr, AffineMinOp::getMapAttrName(),
+                            result.attributes) ||
+      parser.parseOperandList(dim_infos, OpAsmParser::Delimiter::Paren) ||
+      parser.parseOperandList(sym_infos,
+                              OpAsmParser::Delimiter::OptionalSquare) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.resolveOperands(dim_infos, indexType, result.operands) ||
+      parser.resolveOperands(sym_infos, indexType, result.operands) ||
+      parser.addTypeToList(indexType, result.types));
+}
+
+static void print(OpAsmPrinter &p, AffineMinOp op) {
+  p << op.getOperationName() << ' '
+    << op.getAttr(AffineMinOp::getMapAttrName());
+  auto begin = op.operand_begin();
+  auto end = op.operand_end();
+  unsigned numDims = op.map().getNumDims();
+  p << '(';
+  p.printOperands(begin, begin + numDims);
+  p << ')';
+
+  if (begin + numDims != end) {
+    p << '[';
+    p.printOperands(begin + numDims, end);
+    p << ']';
+  }
+  p.printOptionalAttrDict(op.getAttrs(), /*elidedAttrs=*/{"map"});
+}
+
+static LogicalResult verify(AffineMinOp op) {
+  // Verify that operand count matches affine map dimension and symbol count.
+  if (op.getNumOperands() != op.map().getNumDims() + op.map().getNumSymbols())
+    return op.emitOpError(
+        "operand count and affine map dimension and symbol count must match");
+  return success();
+}
+
+OpFoldResult AffineMinOp::fold(ArrayRef<Attribute> operands) {
+  // Fold the affine map.
+  // TODO(andydavis, ntv) Fold more cases: partial static information,
+  // min(some_affine, some_affine + constant, ...).
+  SmallVector<Attribute, 2> results;
+  if (failed(map().constantFold(operands, results)))
+    return {};
+
+  // Compute and return min of folded map results.
+  int64_t min = std::numeric_limits<int64_t>::max();
+  int minIndex = -1;
+  for (unsigned i = 0, e = results.size(); i < e; ++i) {
+    auto intAttr = results[i].cast<IntegerAttr>();
+    if (intAttr.getInt() < min) {
+      min = intAttr.getInt();
+      minIndex = i;
+    }
+  }
+  if (minIndex < 0)
+    return {};
+  return results[minIndex];
 }
 
 #define GET_OP_CLASSES

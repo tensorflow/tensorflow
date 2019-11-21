@@ -40,6 +40,17 @@ MemoryUsage GetMemoryUsage() {
   return result;
 }
 
+void MemoryUsage::SummaryToStream(std::ostream* stream) const {
+  *stream << "memory usage: max resident set size = " << max_rss_kb / 1024.0
+          << " MB, total malloc-ed size = "
+          << total_allocated_bytes / 1024.0 / 1024.0 << " MB";
+}
+
+void MemoryUsage::ShortSummaryToStream(std::ostream* stream) const {
+  *stream << "max_rss_mb=" << max_rss_kb / 1024.0
+          << " total_malloced_mb=" << total_allocated_bytes / 1024.0 / 1024.0;
+}
+
 }  // namespace memory
 }  // namespace profiling
 }  // namespace tflite

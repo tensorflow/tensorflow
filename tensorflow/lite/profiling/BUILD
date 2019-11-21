@@ -38,6 +38,7 @@ cc_library(
     hdrs = ["profile_buffer.h"],
     copts = common_copts,
     deps = [
+        ":memory_info",
         ":time",
         "//tensorflow/lite/core/api",
     ],
@@ -92,6 +93,7 @@ cc_library(
     hdrs = ["profile_summarizer.h"],
     copts = common_copts,
     deps = [
+        ":memory_info",
         ":profile_buffer",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",

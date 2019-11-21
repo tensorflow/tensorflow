@@ -123,8 +123,8 @@ inline void RunGraphTransformations(
 
 // List of all graph transformations
 DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
-DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixSetDiagV2ToV1)
-DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixDiagV2ToV1)
+DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixSetDiagV2OrV3ToV1)
+DECLARE_GRAPH_TRANSFORMATION(ConvertMatrixDiagV2OrV3ToV1)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
 DECLARE_GRAPH_TRANSFORMATION(ConvertReorderAxes)
 DECLARE_GRAPH_TRANSFORMATION(ConvertSqueezeToReshape)
@@ -215,6 +215,7 @@ DECLARE_GRAPH_TRANSFORMATION(UnpartitionEmbeddingLookup)
 DECLARE_GRAPH_TRANSFORMATION(ShuffleFCWeights)
 DECLARE_GRAPH_TRANSFORMATION(ResolveFakeQuantArgsFromVars)
 DECLARE_GRAPH_TRANSFORMATION(ResolveGatherAttributes)
+DECLARE_GRAPH_TRANSFORMATION(IdentifyNearestUpsample)
 
 class PropagateDefaultMinMax : public GraphTransformation {
  public:

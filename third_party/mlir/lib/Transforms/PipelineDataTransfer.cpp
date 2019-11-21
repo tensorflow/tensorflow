@@ -218,7 +218,7 @@ static void findMatchingStartFinishInsts(
       // We can double buffer regardless of dealloc's outside the loop.
       if (isa<DeallocOp>(user))
         continue;
-      if (!forOp.getBody()->findAncestorInstInBlock(*user)) {
+      if (!forOp.getBody()->findAncestorOpInBlock(*user)) {
         LLVM_DEBUG(llvm::dbgs()
                        << "can't pipeline: buffer is live out of loop\n";);
         escapingUses = true;

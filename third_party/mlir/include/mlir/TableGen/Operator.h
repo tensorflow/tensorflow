@@ -172,6 +172,10 @@ public:
   // Returns the dialect of the op.
   const Dialect &getDialect() const { return dialect; }
 
+  // Prints the contents in this operator to the given `os`. This is used for
+  // debugging purposes.
+  void print(llvm::raw_ostream &os) const;
+
 private:
   // Populates the vectors containing operands, attributes, results and traits.
   void populateOpStructure();

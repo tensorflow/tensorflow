@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
@@ -68,10 +69,12 @@ constexpr int kOpProfilingEnabledDefault = false;
 // Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
-  explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
+  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
       : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
+    profiler_.Reset();
+    profiler_.StartProfiling();
   }
 
   void OnSingleRunStart(RunType run_type) override;
@@ -95,7 +98,13 @@ class GemmlowpProfilingListener : public BenchmarkListener {
 };
 
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
+  // Note: we have started profiling when this listener is created. In order
+  // not to count events during the WARMUP phase, we need to stop profiling and
+  // process already-recorded profile events when the WARMUP run starts and
+  // restart profiling at the REGULAR run.
+  if (run_type == WARMUP) {
+    OnSingleRunEnd();
+  } else if (run_type == REGULAR) {
     profiler_.Reset();
     profiler_.StartProfiling();
   }
@@ -599,18 +608,21 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     }
   }
 
-  if (interpreter_->AllocateTensors() != kTfLiteOk) {
-    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
-    return kTfLiteError;
-  }
-
-  // Install profilers if necessary.
+  // Install profilers if necessary but *before* any memory allocations inside
+  // the TFLite interpreter because the installed profiler might profile memory
+  // usage information.
   if (params_.Get<bool>("enable_op_profiling")) {
     profiling_listener_.reset(new ProfilingListener(
         interpreter_.get(),
         params_.Get<int32_t>("max_profiling_buffer_entries")));
     AddListener(profiling_listener_.get());
   }
+
+  if (interpreter_->AllocateTensors() != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
+    return kTfLiteError;
+  }
+
 #ifdef GEMMLOWP_PROFILING
   gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
   AddListener(gemmlowp_profiling_listener_.get());

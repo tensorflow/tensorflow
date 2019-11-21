@@ -6,8 +6,6 @@ package(
         "//tensorflow/core/lib/random:__pkg__",
         # tensorflow/core/lib/strings:proto_serialization uses on gtl:inlined_vector
         "//tensorflow/core/lib/strings:__pkg__",
-        # tensorflow/core/platform:env depends on gtl:stl_util
-        "//tensorflow/core/platform:__subpackages__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )
@@ -129,12 +127,6 @@ cc_library(
 )
 
 cc_library(
-    name = "stl_util",
-    hdrs = ["stl_util.h"],
-    deps = ["@com_google_absl//absl/meta:type_traits"],
-)
-
-cc_library(
     name = "top_n",
     hdrs = ["top_n.h"],
     deps = ["//tensorflow/core/platform:logging"],
@@ -164,7 +156,6 @@ filegroup(
         "iterator_range.h",
         "manual_constructor.h",
         "map_util.h",
-        "stl_util.h",
         "top_n.h",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
@@ -203,7 +194,6 @@ filegroup(
         "map_util.h",
         "optional.h",
         "priority_queue_util.h",
-        "stl_util.h",
         "subtle/map_traits.h",
         "top_n.h",
     ],

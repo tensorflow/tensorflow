@@ -26,7 +26,9 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
+#include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/SymbolTable.h"  // TF:local_config_mlir
+#include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 
 namespace mlir {
@@ -47,6 +49,22 @@ static bool IsStrArrayAttr(Attribute attr) {
 //===----------------------------------------------------------------------===//
 // TensorFlowSavedModelDialect Op's
 //===----------------------------------------------------------------------===//
+
+LogicalResult VerifyTensorTypesCompatible(Type t1, Type t2) {
+  if (!t1.isa<TensorType>() || !t2.isa<TensorType>()) {
+    return failure();
+  }
+  return verifyCompatibleShape(t1.cast<TensorType>(), t2.cast<TensorType>());
+}
+
+static LogicalResult Verify(GlobalTensorOp global_tensor) {
+  if (failed(VerifyTensorTypesCompatible(
+          global_tensor.type(), global_tensor.value().Attribute::getType()))) {
+    return global_tensor.emitError() << "'type' and 'value' attributes should "
+                                        "have compatible tensor types";
+  }
+  return success();
+}
 
 #define GET_OP_CLASSES
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
@@ -88,11 +106,11 @@ LogicalResult TensorFlowSavedModelDialect::verifyRegionArgAttribute(
     Operation *op, unsigned region_index, unsigned arg_index,
     NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.bound_input") {
-    if (!named_attr.second.isa<SymbolRefAttr>()) {
+    if (!named_attr.second.isa<FlatSymbolRefAttr>()) {
       return op->emitError() << "'tf_saved_model.bound_input' attribute should "
-                                "be a SymbolRefAttr";
+                                "be a FlatSymbolRefAttr";
     }
-    auto symbol_name = named_attr.second.cast<SymbolRefAttr>().getValue();
+    auto symbol_name = named_attr.second.cast<FlatSymbolRefAttr>().getValue();
     auto module = op->getParentOfType<ModuleOp>();
     auto global_tensor = module.lookupSymbol<GlobalTensorOp>(symbol_name);
     if (!global_tensor) {
@@ -151,9 +169,13 @@ static LogicalResult VerifySavedModelModule(
   }
   SymbolTable symbol_table(module);
   auto symbol_uses = SymbolTable::getSymbolUses(module);
+  if (!symbol_uses.hasValue()) {
+    return module.emitError() << "modules with 'tf_saved_model.semantics' must "
+                                 "have analyzable symbol uses";
+  }
   for (auto symbol_use : *symbol_uses) {
-    auto func =
-        symbol_table.lookup<FuncOp>(symbol_use.getSymbolRef().getValue());
+    auto func = symbol_table.lookup<FuncOp>(
+        symbol_use.getSymbolRef().cast<FlatSymbolRefAttr>().getValue());
     if (func && !GetExportedNames(func).empty()) {
       return symbol_use.getUser()
           ->emitError("exported function cannot be internally referenced")
@@ -232,6 +254,20 @@ SmallVector<StringRef, 2> GetExportedNames(Operation *op) {
     }
   }
   return ret;
+}
+
+bool IsExported(Operation *op) { return !GetExportedNames(op).empty(); }
+
+bool HasTfSavedModelSemantics(ModuleOp module) {
+  return module.getAttr("tf_saved_model.semantics") != nullptr;
+}
+
+GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
+                                const SymbolTable &symbol_table) {
+  auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
+      arg_index, "tf_saved_model.bound_input");
+  if (!attr) return nullptr;
+  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
 }
 
 }  // namespace tf_saved_model

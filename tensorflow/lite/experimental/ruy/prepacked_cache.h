@@ -47,7 +47,7 @@ enum CachePolicy { kNoCache, kCacheLHSOnGemV };
 // be done in a multi-threaded context.
 class PrepackedCache {
  public:
-  static constexpr int kDefaultEjectionThresholdBytes = 1 << 20;
+  static constexpr int kDefaultEjectionThresholdBytes = 1 << 28;
 
   using CacheKey = std::pair<void *, void *>;
 

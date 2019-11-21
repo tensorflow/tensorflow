@@ -84,20 +84,20 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int16_t* output) {
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulate(
       input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
-      shift, n_batch, n_input, n_output, output_zp, scratch, output);
+      shift, n_batch, n_input, n_output, output_zp, scratch, output, context);
 }
 
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* input_zeropoint_times_weights,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
     int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
-    int32_t* scratch, int8_t* output) {
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulate(
       input, input_zeropoint_times_weights, input_to_gate_weights, multiplier,
-      shift, n_batch, n_input, n_output, output_zp, scratch, output);
+      shift, n_batch, n_input, n_output, output_zp, scratch, output, context);
 }
 
 void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
@@ -215,8 +215,6 @@ void Sub1Vector(const int16_t* vector, int v_size, int16_t* result) {
   PortableSub1Vector(vector, v_size, result);
 }
 
-float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
-
 // Check if all entries of a vector are zero for float.
 bool IsZeroVector(const float* vector, int v_size) {
   return NEON_OR_PORTABLE(IsZeroVector, vector, v_size);
@@ -251,8 +249,8 @@ void SymmetricQuantizeFloats(const float* values, const int size,
 }
 
 void AsymmetricQuantizeFloats(const float* values, const int size,
-                              int8_t* quantized_values, float scaling_factor,
-                              int32_t offset) {
+                              int8_t* quantized_values, float* scaling_factor,
+                              int32_t* offset) {
   NEON_OR_PORTABLE(AsymmetricQuantizeFloats, values, size, quantized_values,
                    scaling_factor, offset);
 }
@@ -264,10 +262,8 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
 }
 
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch,
-                             float normalization_epsilon) {
-  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
-                                  normalization_epsilon);
+                             int v_size, int n_batch) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 
 }  // namespace tensor_utils

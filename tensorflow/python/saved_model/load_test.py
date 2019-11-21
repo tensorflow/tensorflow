@@ -54,6 +54,7 @@ from tensorflow.python.lib.io import file_io
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import cond_v2
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -685,6 +686,77 @@ class LoadTest(test.TestCase, parameterized.TestCase):
       loss = imported.g(x)
     grad = t.gradient(loss, [imported.weight, imported.bias])
     self.assertAllClose(grad, [3.5, 2.0])
+
+  def test_while_loop_backprop(self, cycles):
+    weight = variables.Variable(2., trainable=True)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtypes.float32, shape=(None, None))])
+    def g(x):
+      """Adds rows of matrix x after multiplying each entry by v."""
+      i_0 = constant_op.constant(0)
+      s_0 = constant_op.constant([0., 0.])
+      cond = lambda i, _: i < array_ops.shape(x)[1]
+      body = lambda i, s: (i + 1, s + weight * x[:, i])
+      i_end, s_end = control_flow_ops.while_loop(cond, body, (i_0, s_0))
+      del i_end
+      return s_end
+
+    root = tracking.AutoTrackable()
+    root.weight = weight
+    root.g = g
+    imported = cycle(root, cycles)
+
+    def get_gradient(obj):
+      with backprop.GradientTape() as t:
+        x = constant_op.constant([[1., 2., 3.], [1., -2, 3.]])
+        y = obj.g(x)
+        self.assertAllClose(y, obj.weight * [6., 2.])
+        loss = math_ops.reduce_sum(y)  # weight * 8.
+        self.assertAllEqual(t.watched_variables(), [obj.weight])
+        return t.gradient(loss, obj.weight)
+
+    imported_gradient = get_gradient(imported)
+    original_gradient = get_gradient(root)
+    self.assertIsNotNone(original_gradient)
+    self.assertAllClose(original_gradient, 8.)
+    self.assertIsNotNone(imported_gradient)
+    self.assertAllClose(imported_gradient, 8.)
+
+  def _test_restored_func_with_captured_var_backprop(self, cycles, dtype):
+    weight = variables.Variable(2., trainable=True, dtype=dtype)
+
+    @def_function.function(input_signature=[
+        tensor_spec.TensorSpec(dtype=dtype, shape=())])
+    def g(x):
+      return x * weight
+
+    root = tracking.AutoTrackable()
+    root.weight = weight
+    root.g = g
+    imported = cycle(root, cycles)
+
+    def get_gradient(obj):
+      with backprop.GradientTape() as t:
+        x = constant_op.constant(2.)
+        y = obj.g(x)
+        self.assertAllClose(y, obj.weight * 2.)
+        self.assertAllEqual(t.watched_variables(), [obj.weight])
+        return t.gradient(y, obj.weight)
+
+    imported_gradient = get_gradient(imported)
+    original_gradient = get_gradient(root)
+    self.assertIsNotNone(original_gradient)
+    self.assertAllClose(original_gradient, 2.)
+    self.assertIsNotNone(imported_gradient)
+    self.assertAllClose(imported_gradient, 2.)
+
+  def test_restored_func_with_captured_var_backprop_float32(self, cycles):
+    self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float32)
+
+  def test_restored_func_with_captured_var_backprop_float64(self, cycles):
+    self.skipTest("b/144573917")
+    self._test_restored_func_with_captured_var_backprop(cycles, dtypes.float64)
 
   def test_callable(self, cycles):
     class M1(tracking.AutoTrackable):

@@ -25,12 +25,12 @@ namespace tensorflow {
 // Add the TF to TFLite passes, specified in the pass_config, into a
 // pass_manager.
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::PassManager* pass_manager);
+                                mlir::OpPassManager* pass_manager);
 
 // Add the Quantization passes, specified in the quant_specs, into a pass
 // manager.
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
-                           mlir::PassManager* pass_manager);
+                           mlir::OpPassManager* pass_manager);
 
 }  // namespace tensorflow
 

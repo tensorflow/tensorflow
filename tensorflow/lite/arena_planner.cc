@@ -232,6 +232,10 @@ TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
   return kTfLiteOk;
 }
 
+bool ArenaPlanner::HasNonPersistentMemory() {
+  return arena_.GetBufferSize() != 0;
+}
+
 TfLiteStatus ArenaPlanner::Commit() {
   TF_LITE_ENSURE_STATUS(arena_.Commit(context_));
   TF_LITE_ENSURE_STATUS(persistent_arena_.Commit(context_));
