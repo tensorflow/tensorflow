@@ -120,21 +120,21 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // sometimes referred to as "the real hero".
   auto get_real_hero =
       [&](const HloInstruction* instr) -> const HloInstruction* {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      auto fused_expression_root = instr->fused_expression_root();
-      if (instr->IsMultiOutputFusion()) {
-        // If possible, we want to pick a reduction-to-vector operand of the
-        // fusion root, because it has the most constraints.
-        for (const auto* inst : fused_expression_root->operands()) {
-          if (IsReductionFromOrToContiguousDimensions(*inst)) {
-            return inst;
-          }
-        }
-        return fused_expression_root->operands()[0];
-      }
+    if (instr->opcode() != HloOpcode::kFusion) {
+      return instr;
+    }
+    auto fused_expression_root = instr->fused_expression_root();
+    if (!instr->IsMultiOutputFusion()) {
       return fused_expression_root;
     }
-    return instr;
+    // If possible, we want to pick a reduction-to-vector operand of the
+    // fusion root, because it has the most constraints.
+    for (const auto* inst : fused_expression_root->operands()) {
+      if (IsReductionFromOrToContiguousDimensions(*inst)) {
+        return inst;
+      }
+    }
+    return fused_expression_root->operands()[0];
   };
 
   // Multi-output fusion kernels share a common parallel loop. The loop
