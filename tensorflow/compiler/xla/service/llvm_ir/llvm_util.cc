@@ -607,20 +607,6 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setHasUWTable();
 
-  if (module_config.debug_options().xla_cpu_enable_fast_math()) {
-    function->addFnAttr("unsafe-fp-math", "true");
-    function->addFnAttr("no-signed-zeros-fp-math", "true");
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_nans()) {
-      function->addFnAttr("no-nans-fp-math", "true");
-    }
-    if (!module_config.debug_options().xla_cpu_fast_math_honor_infs()) {
-      function->addFnAttr("no-infs-fp-math", "true");
-    }
-    if (module_config.debug_options().xla_cpu_fast_math_honor_division()) {
-      function->addFnAttr("reciprocal-estimates", "none");
-    }
-  }
-
   // Add the optize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
