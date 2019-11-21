@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Training-related part of the Keras engine.
-"""
+"""V1 Training-related part of the Keras engine."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -43,6 +42,7 @@ from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import network
+from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
@@ -55,7 +55,6 @@ from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import losses_utils
-from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -67,19 +66,17 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.compat import collections_abc
-from tensorflow.python.util.tf_export import keras_export
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   issparse = None
 
-_keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
-                                        'keras api usage', 'method')
+_keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras/model_v1',
+                                        'keras model v1 usage', 'method')
 
 
-@keras_export('keras.models.Model', 'keras.Model')
-class Model(network.Network, version_utils.VersionSelector):
+class Model(training_lib.Model):
   """`Model` groups layers into an object with training and inference features.
 
   There are two ways to instantiate a `Model`:
@@ -145,7 +142,7 @@ class Model(network.Network, version_utils.VersionSelector):
 
   def __init__(self, *args, **kwargs):
     super(Model, self).__init__(*args, **kwargs)
-    _keras_api_gauge.get_cell('model').set(True)
+    _keras_api_gauge.get_cell('model_v1').set(True)
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
@@ -403,7 +400,7 @@ class Model(network.Network, version_utils.VersionSelector):
       # time the model gets called on training data.
       return
     self._is_compiled = True
-    _keras_api_gauge.get_cell('compile').set(True)
+    _keras_api_gauge.get_cell('compile_v1').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
@@ -760,9 +757,7 @@ class Model(network.Network, version_utils.VersionSelector):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
-    _keras_api_gauge.get_cell('fit').set(True)
-    # Legacy graph support is contained in `training_v1.Model`.
-    version_utils.disallow_legacy_graph('Model', 'fit')
+    _keras_api_gauge.get_cell('fit_v1').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -882,8 +877,7 @@ class Model(network.Network, version_utils.VersionSelector):
     Raises:
         ValueError: in case of invalid arguments.
     """
-    _keras_api_gauge.get_cell('evaluate').set(True)
-    version_utils.disallow_legacy_graph('Model', 'evaluate')
+    _keras_api_gauge.get_cell('evaluate_v1').set(True)
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
@@ -962,8 +956,7 @@ class Model(network.Network, version_utils.VersionSelector):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
-    _keras_api_gauge.get_cell('predict').set(True)
-    version_utils.disallow_legacy_graph('Model', 'predict')
+    _keras_api_gauge.get_cell('predict_v1').set(True)
     self._check_call_args('predict')
 
     func = self._select_training_loop(x)
@@ -1254,7 +1247,6 @@ class Model(network.Network, version_utils.VersionSelector):
       `Model.fit` now supports generators, so there is no longer any need to use
       this endpoint.
     """
-    _keras_api_gauge.get_cell('fit_generator').set(True)
     return self.fit(
         generator,
         steps_per_epoch=steps_per_epoch,
@@ -1287,7 +1279,6 @@ class Model(network.Network, version_utils.VersionSelector):
       `Model.evaluate` now supports generators, so there is no longer any need
       to use this endpoint.
     """
-    _keras_api_gauge.get_cell('evaluate_generator').set(True)
     self._check_call_args('evaluate_generator')
 
     return self.evaluate(
@@ -1315,7 +1306,6 @@ class Model(network.Network, version_utils.VersionSelector):
       `Model.predict` now supports generators, so there is no longer any need
       to use this endpoint.
     """
-    _keras_api_gauge.get_cell('predict_generator').set(True)
     return self.predict(
         generator,
         steps=steps,

@@ -176,11 +176,13 @@ py_library(
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
+        "engine/training_v1.py",
         "engine/training_v2.py",
         "engine/training_v2_utils.py",
         "metrics.py",  # Need base_layer
         "models.py",
         "utils/metrics_utils.py",
+        "utils/version_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -1244,6 +1246,17 @@ tf_py_test(
     name = "generic_utils_test",
     size = "small",
     srcs = ["utils/generic_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
+    name = "version_utils_test",
+    size = "small",
+    srcs = ["utils/version_utils_test.py"],
     additional_deps = [
         ":keras",
         "@absl_py//absl/testing:parameterized",
