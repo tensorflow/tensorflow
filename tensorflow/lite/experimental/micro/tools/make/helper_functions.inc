@@ -316,7 +316,7 @@ $(PRJDIR)$(2)/particle/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/exper
 	@python tensorflow/lite/experimental/micro/tools/make/transform_source.py \
         --platform=particle \
         --third_party_headers="$(4)" < $$< | \
-        sed -E 's@#include <string.h>@//#include <string.h> /* Patched by helper_functions.inc for Particle compatibility */@g' > $$@
+        sed -E 's@#include <string.h>@ //#include <string.h> /* Patched by helper_functions.inc for Particle compatibility */@g' > $$@
 
 $(PRJDIR)$(2)/particle/%: tensorflow/lite/experimental/micro/tools/make/templates/%
 	@mkdir -p $$(dir $$@)
