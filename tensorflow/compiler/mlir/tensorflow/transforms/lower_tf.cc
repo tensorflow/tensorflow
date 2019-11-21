@@ -35,8 +35,7 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                                Builder *builder) {
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseElementsAttr::get<int64_t>(ty, values)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, values);
 }
 
 // Returns a 1-d i64 elements attribute populated with numbers from start to
@@ -50,8 +49,7 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   std::iota(vals.begin(), vals.end(), start);
 
   TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get<int64_t>(ty, vals)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, vals);
 }
 
 // Returns int or float DenseElementsAttr with scalar shape with the given
