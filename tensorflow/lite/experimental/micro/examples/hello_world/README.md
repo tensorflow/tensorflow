@@ -346,11 +346,6 @@ cp ./BUILD/DISCO_F746NG/GCC_ARM/mbed.bin /Volumes/DIS_F746NG/
 Copying the file will initiate the flashing process. Once this is complete, you
 should see an animation on the device's screen.
 
-
-```
-screen /dev/tty.usbmodem14403 9600
-```
-
 In addition to this animation, debug information is logged by the board while
 the program is running. To view it, establish a serial connection to the board
 using a baud rate of `9600`. On OSX and Linux, the following command should
