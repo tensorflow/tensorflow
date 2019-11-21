@@ -49,6 +49,104 @@ class Vector_Op<string mnemonic, list<OpTrait> traits = []> :
   let parser = [{ return ::parse$cppClass(parser, result); }];
 }
 
+// TODO(andydavis, ntv) Add an attribute to specify a different algebra
+// with operators other than the current set: {*, +}.
+// TODO(andydavis) Consider using AffineMaps to express contracting, batch
+// and free dimension pairs.
+def VectorContractionOp :
+  Vector_Op<"contract", [NoSideEffect]>,
+    Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
+               Variadic<TupleOf<[Index]>>:$masks)>,
+    Results<(outs AnyVector)> {
+  let summary = "vector contraction operation";
+  let description = [{
+    Computes the sum of products of vector elements along contracting
+    dimension pairs from 2 vectors of rank M and N respectively, adds this
+    intermediate result to the accumulator argument of rank K, and returns a
+    vector result of rank K (where K = num_lhs_free_dims + num_rhs_free_dims +
+    num_batch_dims (see dimension type descriptions below)).
+
+    Optional vector mask arguments specify the dynamic dimension sizes of
+    valid data within the lhs/rhs vector arguments.
+
+    Dimensions for the arguments and result type fall into three categories:
+    *) Contracting: contracting dimensions are present in the lhs and rhs
+                    arguments but not in the output (or optional accumulator
+                    argument). These are the dimensions along which the vector
+                    contraction op computes the sum of products, and contracting
+                    dimension pair dimension sizes must match between lhs/rhs.
+    *) Batch: batch dimensions are non-contracting dimensions and so are
+              present in the output and in the accumulator argument. The lhs
+              and rhs co-iterate along the batch dimension and so dimension
+              sizes must match across all arguments and result.
+    *) Free: free dimensions are non-contraction, non-batch dimensions and
+             are present in the output and accumulator argument. The lhs and
+             rhs free dimensions are unrelated to each other and do not
+             co-iterate.
+
+    Contracting and batch dimensions are specified as dimension pairs
+    of logical dimension numbers: the first in the pair represents the lhs
+    logical dimension number and the second in the pair represents the
+    associated rhs logical dimension number. A dimension pair binds together
+    logical dimension numbers from the lhs/rhs which co-iterate together, either
+    as contracting or batch dimensions.
+
+    Examples:
+
+      // 2D vector contraction with one contracting dimension (matmul).
+      %3 = vector.contract %0, %1, %2
+        { contracting_dim_map = [[1, 0]] }
+          : vector<4x3xf32>, vector<3x7xf32> into vector<4x7xf32>
+
+      // 4D to 3D vector contraction with two contracting dimensions and
+      // one batch dimension.
+      %4 = vector.contract %0, %1, %2
+        { batch_dim_map = [[1, 0]], contracting_dim_map = [[0, 2], [2, 1]] }
+          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x5xf32>
+
+      // 4D vector contraction with two contracting dimensions and optional
+      // vector mask arguments.
+      %lhs_mask = vector.make_tuple %size0, %size1, %size2, %size3
+        : tuple<index, index, index, index>
+      %rhs_mask = vector.make_tuple %size4, %size5, %size6, %size7
+        : tuple<index, index, index, index>
+
+      %5 = vector.contract %0, %1, %2, %lhs_mask, %rhs_mask
+        { contracting_dim_map = [[0, 2], [2, 1]] }
+         : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
+  }];
+  let extraClassDeclaration = [{
+    VectorType getLhsType() {
+      return lhs()->getType().cast<VectorType>();
+    }
+    VectorType getRhsType() {
+      return rhs()->getType().cast<VectorType>();
+    }
+    VectorType getAccType() {
+      return acc()->getType().cast<VectorType>();
+    }
+    TupleType getLHSVectorMaskType() {
+      if (llvm::size(masks()) != 2) return TupleType();
+      return getOperand(3)->getType().cast<TupleType>();
+    }
+    TupleType getRHSVectorMaskType() {
+      if (llvm::size(masks()) != 2) return TupleType();
+      return getOperand(4)->getType().cast<TupleType>();
+    }
+    VectorType getResultType() {
+      return getResult()->getType().cast<VectorType>();
+    }
+    static StringRef getContractingDimMapAttrName() {
+      return "contracting_dim_map";
+    }
+    static StringRef getBatchDimMapAttrName() {
+      return "batch_dim_map";
+    }
+    std::vector<std::pair<int64_t, int64_t>> getContractingDimMap();
+    std::vector<std::pair<int64_t, int64_t>> getBatchDimMap();
+  }];
+}
+
 def VectorExtractElementOp :
   Vector_Op<"extractelement", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
@@ -389,6 +487,23 @@ def VectorTypeCastOp :
     MemRefType getResultMemRefType() {
       return getResult()->getType().cast<MemRefType>();
     }
+  }];
+}
+
+// TODO(andydavis) Morph this operation into a VectorMaskOp.
+def VectorIndexTupleOp :
+  Vector_Op<"make_index_tuple", [NoSideEffect]>,
+    Arguments<(ins Variadic<Index>:$operands)>,
+    Results<(outs TupleOf<[Index]>)> {
+  let summary = "creates a tuple of operand values";
+  let description = [{
+    Creates and returns a tuple of its operands which must be of index type.
+
+    Example:
+
+      %1 = vector.make_index_tuple %size0, %size1, %size2
+        : tuple<index, index, index>
+
   }];
 }
 #endif // VECTOR_OPS

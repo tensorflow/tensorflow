@@ -22,10 +22,9 @@
 #include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/IR/RegionGraphTraits.h"
 #include "mlir/Transforms/FoldUtils.h"
+#include "mlir/Transforms/RegionUtils.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DepthFirstIterator.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -115,56 +114,6 @@ protected:
   }
 
 private:
-  /// Erase the unreachable blocks within the provided regions. Returns success
-  /// if any blocks were erased, failure otherwise.
-  LogicalResult eraseUnreachableBlocks(MutableArrayRef<Region> regions) {
-    // Set of blocks found to be reachable within a given region.
-    llvm::df_iterator_default_set<Block *, 16> reachable;
-    // If any blocks were found to be dead.
-    bool erasedDeadBlocks = false;
-
-    SmallVector<Region *, 1> worklist;
-    worklist.reserve(regions.size());
-    for (Region &region : regions)
-      worklist.push_back(&region);
-    while (!worklist.empty()) {
-      Region *region = worklist.pop_back_val();
-      if (region->empty())
-        continue;
-
-      // If this is a single block region, just collect the nested regions.
-      if (std::next(region->begin()) == region->end()) {
-        for (Operation &op : region->front())
-          for (Region &region : op.getRegions())
-            worklist.push_back(&region);
-        continue;
-      }
-
-      // Mark all reachable blocks.
-      reachable.clear();
-      for (Block *block : depth_first_ext(&region->front(), reachable))
-        (void)block /* Mark all reachable blocks */;
-
-      // Collect all of the dead blocks and push the live regions onto the
-      // worklist.
-      for (Block &block : llvm::make_early_inc_range(*region)) {
-        if (!reachable.count(&block)) {
-          block.dropAllDefinedValueUses();
-          block.erase();
-          erasedDeadBlocks = true;
-          continue;
-        }
-
-        // Walk any regions within this block.
-        for (Operation &op : block)
-          for (Region &region : op.getRegions())
-            worklist.push_back(&region);
-      }
-    }
-
-    return success(erasedDeadBlocks);
-  }
-
   // Look over the provided operands for any defining operations that should
   // be re-added to the worklist. This function should be called when an
   // operation is modified or removed, as it may trigger further
@@ -264,7 +213,7 @@ bool GreedyPatternRewriteDriver::simplify(MutableArrayRef<Region> regions,
 
     // After applying patterns, make sure that the CFG of each of the regions is
     // kept up to date.
-    changed |= succeeded(eraseUnreachableBlocks(regions));
+    changed |= succeeded(simplifyRegions(regions));
   } while (changed && ++i < maxIterations);
   // Whether the rewrite converges, i.e. wasn't changed in the last iteration.
   return !changed;

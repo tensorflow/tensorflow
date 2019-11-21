@@ -28,6 +28,7 @@ import tokenize
 import gast
 import six
 
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 
 
@@ -81,7 +82,7 @@ def dedent_block(code_string):
         # TODO(mdan): We could attempt to convert tabs to spaces by unix rule.
         # See:
         # https://docs.python.org/3/reference/lexical_analysis.html#indentation
-        raise ValueError(
+        raise errors.UnsupportedLanguageElementError(
             'code mixing tabs and spaces for intentation is not allowed')
       if len(tok_string) >= block_level:
         tok_string = tok_string[block_level:]
@@ -143,7 +144,7 @@ def _attempt_to_parse_lambda_source(source, original_source,
   # Note: the ValueError may be raised by parse_str.
   except (SyntaxError, ValueError) as e:
     def fail():
-      raise ValueError(
+      raise errors.UnsupportedLanguageElementError(
           'could not parse the source code:'
           '\n\n{}\n'
           'This error may be avoided by creating the lambda in a standalone'

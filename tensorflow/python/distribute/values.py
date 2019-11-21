@@ -537,13 +537,13 @@ class PerReplicaSpec(type_spec.TypeSpec):
 
   def __init__(self, value_specs, device_map, logical_device):
     if isinstance(device_map, tuple):
-      device_map = _deserialize_device_map(device_map)
+      device_map = self._deserialize_device_map(device_map)
     self._value_specs = tuple(value_specs)
     self._device_map = device_map
     self._logical_device = logical_device
 
   def _serialize(self):
-    device_map = _serialize_device_map(self._device_map)
+    device_map = self._serialize_device_map(self._device_map)
     return (self._value_specs, device_map, self._logical_device)
 
   @property
@@ -608,33 +608,6 @@ class Mirrored(DistributedDelegate):
     if conv_fn and callable(conv_fn):
       return conv_fn()
     return obj
-
-
-def _serialize_device_map(device_map):
-  if isinstance(device_map, SingleDeviceMap):
-    return ("single", device_map.all_devices[0])
-  elif isinstance(device_map, ReplicaDeviceMap):
-    return ("replica", device_map.all_devices)
-  elif isinstance(device_map, WorkerDeviceMap):
-    return ("worker", device_map.all_devices,
-            device_map.num_replicas_per_worker)
-  else:
-    raise ValueError("device_map type %s is unsupported "
-                     % type(device_map).__name__)
-
-
-def _deserialize_device_map(device_map_info):
-  """Deserialize a DeviceMap object from a tuple of values."""
-  device_map_type = device_map_info[0]
-  device_map_args = device_map_info[1:]
-  if device_map_type == "single":
-    return SingleDeviceMap(*device_map_args)
-  elif device_map_type == "replica":
-    return ReplicaDeviceMap(*device_map_args)
-  elif device_map_type == "worker":
-    return WorkerDeviceMap(*device_map_args)
-  else:
-    raise ValueError("Unexpected value in state tuple")
 
 
 def _assign_on_device(device, variable, tensor):

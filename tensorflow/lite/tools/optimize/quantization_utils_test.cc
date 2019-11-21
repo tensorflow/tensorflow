@@ -65,7 +65,8 @@ TEST_F(QuantizationUtilsTest, NumElements) {
 
   tensor.shape = {};
   EXPECT_EQ(kTfLiteOk, NumElements(tensor, &num_elements));
-  EXPECT_EQ(num_elements, 0);
+  // Scalars with empty shape have 1 element.
+  EXPECT_EQ(num_elements, 1);
 
   tensor.shape = {1, 2, 3, -1};
   EXPECT_EQ(kTfLiteError, NumElements(tensor, &num_elements));

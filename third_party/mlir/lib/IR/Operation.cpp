@@ -531,6 +531,21 @@ unsigned Operation::getSuccessorOperandIndex(unsigned index) {
   return getNumOperands() - postSuccessorOpCount;
 }
 
+Optional<std::pair<unsigned, unsigned>>
+Operation::decomposeSuccessorOperandIndex(unsigned operandIndex) {
+  assert(!isKnownNonTerminator() && "only terminators may have successors");
+  assert(operandIndex < getNumOperands());
+  unsigned currentOperandIndex = getNumOperands();
+  auto *successorOperandCounts = getTrailingObjects<unsigned>();
+  for (unsigned i = 0, e = getNumSuccessors(); i < e; i++) {
+    unsigned successorIndex = e - i - 1;
+    currentOperandIndex -= successorOperandCounts[successorIndex];
+    if (currentOperandIndex <= operandIndex)
+      return std::make_pair(successorIndex, operandIndex - currentOperandIndex);
+  }
+  return None;
+}
+
 auto Operation::getSuccessorOperands(unsigned index) -> operand_range {
   unsigned succOperandIndex = getSuccessorOperandIndex(index);
   return {operand_iterator(this, succOperandIndex),

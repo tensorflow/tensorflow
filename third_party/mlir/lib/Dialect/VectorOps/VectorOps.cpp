@@ -44,6 +44,185 @@ mlir::vector::VectorOpsDialect::VectorOpsDialect(MLIRContext *context)
 }
 
 //===----------------------------------------------------------------------===//
+// VectorContractionOp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseVectorContractionOp(OpAsmParser &parser,
+                                            OperationState &result) {
+  OpAsmParser::OperandType lhsInfo;
+  OpAsmParser::OperandType rhsInfo;
+  OpAsmParser::OperandType accInfo;
+  SmallVector<OpAsmParser::OperandType, 2> masksInfo;
+  SmallVector<Type, 2> types;
+  Type resultVectorType;
+  auto loc = parser.getCurrentLocation();
+  if (parser.parseOperand(lhsInfo) || parser.parseComma() ||
+      parser.parseOperand(rhsInfo) || parser.parseComma() ||
+      parser.parseOperand(accInfo) ||
+      parser.parseTrailingOperandList(masksInfo) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonTypeList(types) ||
+      parser.parseKeywordType("into", resultVectorType) ||
+      parser.resolveOperand(lhsInfo, types[0], result.operands) ||
+      parser.resolveOperand(rhsInfo, types[1], result.operands) ||
+      parser.resolveOperand(accInfo, resultVectorType, result.operands) ||
+      parser.addTypeToList(resultVectorType, result.types))
+    return failure();
+
+  if (masksInfo.empty())
+    return success();
+  if (masksInfo.size() != 2)
+    return parser.emitError(parser.getNameLoc(),
+                            "expected zero or exactly 2 vector mask operands");
+  auto indexType = parser.getBuilder().getIndexType();
+  auto lhsType = types[0].cast<VectorType>();
+  auto rhsType = types[1].cast<VectorType>();
+  SmallVector<Type, 2> maskTypes;
+  SmallVector<Type, 4> lhsMaskElementTypes(lhsType.getRank(), indexType);
+  maskTypes.push_back(
+      TupleType::get(lhsMaskElementTypes, parser.getBuilder().getContext()));
+  SmallVector<Type, 4> rhsMaskElementTypes(rhsType.getRank(), indexType);
+  maskTypes.push_back(
+      TupleType::get(rhsMaskElementTypes, parser.getBuilder().getContext()));
+  if (parser.resolveOperands(masksInfo, maskTypes, loc, result.operands))
+    return failure();
+  return success();
+}
+
+static void print(OpAsmPrinter &p, VectorContractionOp op) {
+  p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
+  p << ", " << *op.acc();
+  if (llvm::size(op.masks()) == 2) {
+    p << ", " << **op.masks().begin();
+    p << ", " << **(op.masks().begin() + 1);
+  }
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType() << " into "
+    << op.getResultType();
+}
+
+static bool verifyDimMap(VectorType lhsType, VectorType rhsType,
+                         const std::vector<std::pair<int64_t, int64_t>> &map) {
+  for (auto &dimPair : map) {
+    if (dimPair.first < 0 || dimPair.first >= lhsType.getRank() ||
+        dimPair.second < 0 || dimPair.second >= rhsType.getRank() ||
+        lhsType.getDimSize(dimPair.first) != rhsType.getDimSize(dimPair.second))
+      return false;
+  }
+  return true;
+}
+
+static bool verifyOutputShape(
+    VectorType lhsType, VectorType rhsType, VectorType accType,
+    VectorType resType,
+    const std::vector<std::pair<int64_t, int64_t>> &contractingDimMap,
+    const std::vector<std::pair<int64_t, int64_t>> &batchDimMap) {
+  DenseSet<int64_t> lhsContractingDimSet;
+  DenseSet<int64_t> rhsContractingDimSet;
+  for (auto &dimPair : contractingDimMap) {
+    lhsContractingDimSet.insert(dimPair.first);
+    rhsContractingDimSet.insert(dimPair.second);
+  }
+  DenseSet<int64_t> rhsBatchDimSet;
+  for (auto &dimPair : batchDimMap)
+    rhsBatchDimSet.insert(dimPair.second);
+
+  // Add free and batch dimensions from 'lhsType' to 'expectedResultDims'.
+  SmallVector<int64_t, 4> expectedResultDims;
+  for (int64_t i = 0, e = lhsType.getRank(); i < e; ++i) {
+    if (lhsContractingDimSet.count(i) > 0)
+      continue;
+    expectedResultDims.push_back(lhsType.getDimSize(i));
+  }
+
+  // Add free dimensions from 'rhsType' to 'expectedResultDims'.
+  for (int64_t i = 0, e = rhsType.getRank(); i < e; ++i) {
+    if (rhsContractingDimSet.count(i) > 0 || rhsBatchDimSet.count(i) > 0)
+      continue;
+    expectedResultDims.push_back(rhsType.getDimSize(i));
+  }
+
+  // Verify dimension from 'resType' against 'expectedResultDims'.
+  if (resType.getShape().size() != expectedResultDims.size() ||
+      accType.getShape().size() != expectedResultDims.size())
+    return false;
+  for (int64_t i = 0, e = resType.getRank(); i < e; ++i) {
+    if (resType.getDimSize(i) != expectedResultDims[i] ||
+        accType.getDimSize(i) != expectedResultDims[i])
+      return false;
+  }
+  return true;
+}
+
+static LogicalResult verify(VectorContractionOp op) {
+  auto lhsType = op.getLhsType();
+  auto rhsType = op.getRhsType();
+  auto accType = op.getAccType();
+  auto resType = op.getResultType();
+  auto contractingDimMap = op.getContractingDimMap();
+  auto batchDimMap = op.getBatchDimMap();
+
+  // Verify at least one contracting dimension pair was specified.
+  if (contractingDimMap.empty())
+    return op.emitOpError("expected at least one contracting dimension pair");
+
+  // Verify contracting dimension map was properly constructed.
+  if (!verifyDimMap(lhsType, rhsType, contractingDimMap))
+    return op.emitOpError("invalid contracting dimension map");
+
+  // Verify batch dimension map was properly constructed.
+  if (!verifyDimMap(lhsType, rhsType, batchDimMap))
+    return op.emitOpError("invalid batch dimension map");
+
+  // Verify 'accType' and 'resType' shape.
+  if (!verifyOutputShape(lhsType, rhsType, accType, resType, contractingDimMap,
+                         batchDimMap))
+    return op.emitOpError("invalid accumulator/result vector shape");
+
+  // Verify that either two vector masks are set or none are set.
+  auto lhsMaskType = op.getLHSVectorMaskType();
+  auto rhsMaskType = op.getRHSVectorMaskType();
+  if ((lhsMaskType && !rhsMaskType) || (!lhsMaskType && rhsMaskType))
+    return op.emitOpError("invalid number of vector masks specified");
+  if (lhsMaskType && rhsMaskType) {
+    // Verify tuple element size is != rank.
+    if (lhsMaskType.getTypes().size() != lhsType.getShape().size() ||
+        rhsMaskType.getTypes().size() != rhsType.getShape().size())
+      return op.emitOpError("invalid number of vector mask elements");
+    // Verify all tuple elements are index type.
+    for (auto eltType : lhsMaskType.getTypes()) {
+      if (!eltType.isa<IndexType>())
+        return op.emitOpError("vector mask element must have index type");
+    }
+  }
+  return success();
+}
+
+static std::vector<std::pair<int64_t, int64_t>> getDimMap(Attribute attr) {
+  std::vector<std::pair<int64_t, int64_t>> dimMap;
+  auto dimPairs = attr.dyn_cast_or_null<ArrayAttr>();
+  if (!dimPairs)
+    return dimMap;
+  for (auto dimPairAttr : dimPairs) {
+    auto dimPair = dimPairAttr.cast<ArrayAttr>();
+    assert(dimPair.size() == 2);
+    auto lhsDim = dimPair.begin()->cast<IntegerAttr>().getInt();
+    auto rhsDim = std::prev(dimPair.end())->cast<IntegerAttr>().getInt();
+    dimMap.push_back({lhsDim, rhsDim});
+  }
+  return dimMap;
+}
+
+std::vector<std::pair<int64_t, int64_t>>
+VectorContractionOp::getContractingDimMap() {
+  return getDimMap(getAttr(getContractingDimMapAttrName()));
+}
+
+std::vector<std::pair<int64_t, int64_t>> VectorContractionOp::getBatchDimMap() {
+  return getDimMap(getAttr(getBatchDimMapAttrName()));
+}
+
+//===----------------------------------------------------------------------===//
 // VectorExtractElementOp
 //===----------------------------------------------------------------------===//
 
@@ -538,6 +717,36 @@ static LogicalResult verify(VectorTypeCastOp &op) {
   auto resultType = inferVectorTypeCastResultType(op.getMemRefType());
   if (op.getResultMemRefType() != resultType)
     return op.emitOpError("expects result type to be: ") << resultType;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// VectorIndexTupleOp
+//===----------------------------------------------------------------------===//
+
+ParseResult parseVectorIndexTupleOp(OpAsmParser &parser,
+                                    OperationState &result) {
+  auto indexType = parser.getBuilder().getIndexType();
+  Type resultType;
+  SmallVector<OpAsmParser::OperandType, 4> operandInfo;
+  return failure(
+      parser.parseOperandList(operandInfo) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(resultType) ||
+      parser.resolveOperands(operandInfo, indexType, result.operands) ||
+      parser.addTypeToList(resultType, result.types));
+}
+
+static void print(OpAsmPrinter &p, VectorIndexTupleOp &op) {
+  p << op.getOperationName() << ' ';
+  p.printOperands(op.operands());
+  p << " : " << op.getResult()->getType();
+}
+
+static LogicalResult verify(VectorIndexTupleOp &op) {
+  for (auto operand : op.getOperands())
+    if (!operand->getType().isa<IndexType>())
+      return op.emitOpError("all operands must be of index type");
   return success();
 }
 

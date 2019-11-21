@@ -182,8 +182,9 @@ This operation takes zero operands, a
 `value`, and returns a single result of
 [TensorType](../../LangRef.md#tensor-type). An operation inherits from the
 [CRTP](https://en.wikipedia.org/wiki/Curiously_recurring_template_pattern)
-`mlir::Op` class which also takes some optional *traits* to customize its
-behavior. These traits may provide additional accessors, verification, etc.
+`mlir::Op` class which also takes some optional [*traits*](../../Traits.md) to
+customize its behavior. These traits may provide additional accessors,
+verification, etc.
 
 ```c++
 class ConstantOp : public mlir::Op<ConstantOp,
