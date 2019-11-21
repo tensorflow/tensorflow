@@ -987,7 +987,7 @@ def select_data_adapter(x, y):
         "input: {}, {}".format(
             _type_name(x), _type_name(y)))
   elif len(adapter_cls) > 1:
-    logging.warn(
+    raise RuntimeError(
         "Data adapters should be mutually exclusive for "
         "handling inputs. Found multiple adapters {} to handle "
         "input: {}, {}".format(
