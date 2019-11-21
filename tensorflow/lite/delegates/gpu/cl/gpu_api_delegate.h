@@ -21,6 +21,7 @@ limitations under the License.
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/delegates/gpu/delegate.h"
 
 #ifdef SWIG
 #define TFL_CAPI_EXPORT
@@ -39,11 +40,6 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-enum TfLiteGpuInferencePriority {
-  TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION = 0,
-  TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY = 1,
-};
 
 // Shader compilation options.
 typedef struct {

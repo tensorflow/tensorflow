@@ -48,24 +48,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class InferenceUsage {
-  // InferenceRunner will be used only once. Therefore, it is important to
-  // minimize bootstrap time as well.
-  FAST_SINGLE_ANSWER,
-
-  // Prefer maximizing the throughput. Same inference runner will be used
-  // repeatedly on different inputs.
-  SUSTAINED_SPEED,
-};
-
-enum class InferencePriority {
-  MIN_LATENCY,
-
-  MAX_PRECISION,
-
-  MIN_MEMORY_USAGE,
-};
-
 struct InferenceOptions {
   InferenceUsage usage = InferenceUsage::SUSTAINED_SPEED;
 
