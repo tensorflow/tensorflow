@@ -45,7 +45,6 @@ namespace profiler {
 class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
  public:
   StepStatsCuptiTracerAdaptor(const CuptiTracerCollectorOptions& option,
-                              const std::string prefix, int num_gpus,
                               uint64 start_walltime_ns, uint64 start_gpu_ns,
                               StepStatsCollector* trace_collector)
       : CuptiTraceCollector(option),
@@ -54,15 +53,15 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
         num_activity_events_(0),
         start_walltime_ns_(start_walltime_ns),
         start_gpu_ns_(start_gpu_ns),
-        num_gpus_(num_gpus),
-        per_device_adaptor_(num_gpus) {
-    for (int i = 0; i < num_gpus; ++i) {  // for each device id.
+        num_gpus_(option.num_gpus),
+        per_device_adaptor_(option.num_gpus) {
+    for (int i = 0; i < num_gpus_; ++i) {  // for each device id.
       per_device_adaptor_[i].stream_device =
-          strings::StrCat(prefix, "/device:GPU:", i, "/stream:");
+          strings::StrCat("/device:GPU:", i, "/stream:");
       per_device_adaptor_[i].memcpy_device =
-          strings::StrCat(prefix, "/device:GPU:", i, "/memcpy");
+          strings::StrCat("/device:GPU:", i, "/memcpy");
       per_device_adaptor_[i].sync_device =
-          strings::StrCat(prefix, "/device:GPU:", i, "/sync");
+          strings::StrCat("/device:GPU:", i, "/sync");
     }
   }
 
@@ -313,11 +312,11 @@ Status GpuTracer::DoStart() {
 #endif
 
   CuptiTracerCollectorOptions collector_options;
+  collector_options.num_gpus = cupti_tracer_->NumGpus();
   uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64 start_walltime_ns = tensorflow::EnvTime::NowNanos();
-  int num_gpus = cupti_tracer_->NumGpus();
   step_stats_cupti_adaptor_ = absl::make_unique<StepStatsCuptiTracerAdaptor>(
-      collector_options, "", num_gpus, start_walltime_ns, start_gputime_ns,
+      collector_options, start_walltime_ns, start_gputime_ns,
       &trace_collector_);
 
   AnnotationStack::Enable(true);
