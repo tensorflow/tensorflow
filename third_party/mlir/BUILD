@@ -1805,6 +1805,7 @@ cc_binary(
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
     data = [
         ":tools/libcuda-runtime-wrappers.so",
+        "@local_config_mlir//test/mlir-cpu-runner:libmlir_runner_utils.so",
     ],
     deps = [
         ":GPUDialect",
