@@ -33,8 +33,3 @@ readable_run make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
 TARGET=${TARGET} \
 TAGS="portable_optimized" \
 generate_particle_zip
-
-readable_run tensorflow/lite/experimental/micro/tools/ci_build/install_particle_cli.sh
-
-readable_run tensorflow/lite/experimental/micro/tools/ci_build/test_particle_library.sh \
-tensorflow/lite/experimental/micro/tools/make/gen/particle_x86_64/prj/tensorflow_lite.zip

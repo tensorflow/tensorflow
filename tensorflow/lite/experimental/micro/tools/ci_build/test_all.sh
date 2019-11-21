@@ -25,7 +25,7 @@ cd ${ROOT_DIR}
 pwd
 
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile \
-  clean clean_downloads
+clean clean_downloads
 
 # Add all the test scripts for the various supported platforms here. This
 # emables running all the tests together has part of the continuous integration
@@ -42,6 +42,9 @@ tensorflow/lite/experimental/micro/tools/ci_build/test_bluepill.sh
 
 echo "Running Sparkfun tests at `date`"
 tensorflow/lite/experimental/micro/tools/ci_build/test_sparkfun.sh
+
+echo "Running Particle tests at `date`"
+tensorflow/lite/experimental/micro/tools/ci_build/test_particle.sh
 
 echo "Running x86 tests at `date`"
 tensorflow/lite/experimental/micro/tools/ci_build/test_x86.sh
