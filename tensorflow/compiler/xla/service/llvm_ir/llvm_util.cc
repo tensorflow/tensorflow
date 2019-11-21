@@ -607,6 +607,11 @@ llvm::Function* CreateCpuFunction(llvm::FunctionType* function_type,
   // created by the JIT compiled code.
   function->setHasUWTable();
 
+  // Tensorflow always flushes denormals to zero, let LLVM know that flushing
+  // denormals is safe. This allows vectorization using ARM's neon instruction
+  // set.
+  function->addFnAttr("denormal-fp-math", "preserve-sign");
+
   // Add the optize attribute to the function if optimizing for size. This
   // controls internal behavior of some optimization passes (e.g. loop
   // unrolling).
