@@ -300,7 +300,7 @@ static LogicalResult deleteDeadness(MutableArrayRef<Region> regions,
     // Delete block arguments.
     // The entry block has an unknown contract with their enclosing block, so
     // skip it.
-    for (Block &block : llvm::drop_begin(region, 1)) {
+    for (Block &block : llvm::drop_begin(region.getBlocks(), 1)) {
       // Iterate in reverse to avoid shifting later arguments when deleting
       // earlier arguments.
       for (unsigned i = 0, e = block.getNumArguments(); i < e; i++)
