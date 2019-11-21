@@ -1003,9 +1003,8 @@ def PolyForOp : TEST_Op<"polyfor">
 //===----------------------------------------------------------------------===//
 // Test OpAsmInterface.
 
-def AsmInterfaceOp : TEST_Op<"asm_interface_op",
-    [DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
-  let results = (outs AnyType:$firstResult, Variadic<AnyType>:$middleResults,
+def AsmInterfaceOp : TEST_Op<"asm_interface_op"> {
+  let results = (outs AnyType:$first, Variadic<AnyType>:$middle_results,
                       AnyType);
 }
 
