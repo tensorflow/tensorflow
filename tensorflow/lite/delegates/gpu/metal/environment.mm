@@ -63,6 +63,17 @@ GpuType GetGpuType() {
       max_feature_set = std::max(max_feature_set, type.second);
     }
   }
+#elif defined(__MAC_10_5) && __MAC_OS_X_VERSION_MIN_REQUIRED >= __MAC_10_5
+  std::vector<std::pair<MTLFeatureSet, int>> features;
+  if (@available(macOS 10.15, *)) {
+    features.emplace_back(MTLFeatureSet_macOS_GPUFamily2_v1, 12);
+  }
+  id<MTLDevice> device = GetBestSupportedMetalDevice();
+  for (auto &type : features) {
+    if ([device supportsFeatureSet:type.first]) {
+      max_feature_set = std::max(max_feature_set, type.second);
+    }
+  }
 #endif
   switch (max_feature_set) {
     case 7:
