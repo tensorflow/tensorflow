@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/environment.h"
 
 #import <Metal/Metal.h>
-#import <UIKit/UIKit.h>
 
 #include <unordered_map>
 #include <utility>
