@@ -611,8 +611,10 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
     bool use_cudnn = use_cudnn_ && (in_depth == 1 || (use_cudnn_grouped_conv_ &&
-        IsCudnnSupportedFilterSize(filter_rows, filter_cols, in_depth,
-                                   out_depth)));
+        IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                   /*filter_cols=*/filter_cols,
+                                   /*in_depth=*/in_depth,
+                                   /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropInput: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
@@ -1098,8 +1100,10 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     // If in_depth==1, this operation is just a standard convolution.
     // Depthwise convolution is a special case of cuDNN's grouped convolution.
     bool use_cudnn = use_cudnn_ && (in_depth == 1 || (use_cudnn_grouped_conv_ &&
-        IsCudnnSupportedFilterSize(filter_rows, filter_cols, in_depth,
-                                   out_depth)));
+        IsCudnnSupportedFilterSize(/*filter_rows=*/filter_rows,
+                                   /*filter_cols=*/filter_cols,
+                                   /*in_depth=*/in_depth,
+                                   /*out_depth=*/out_depth)));
 
     VLOG(2) << "DepthwiseConv2dNativeBackpropFilter: "
             << " Input: [" << batch << ", " << input_rows << ", " << input_cols
