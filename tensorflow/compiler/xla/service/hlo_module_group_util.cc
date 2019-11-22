@@ -62,7 +62,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
     }
     if (predecessor->IsCrossModuleAllReduce()) {
       for (HloInstruction* instr :
-           metadata_.GetAllReduceGroup(*predecessor->all_reduce_id())) {
+           metadata_.GetAllReduceGroup(*predecessor->channel_id())) {
         if (unique.insert(instr).second) {
           predecessors.push_back(instr);
         }
@@ -82,8 +82,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
       instruction_group.push_back(companion);
     }
   } else if (instruction->IsCrossModuleAllReduce()) {
-    instruction_group =
-        metadata_.GetAllReduceGroup(*instruction->all_reduce_id());
+    instruction_group = metadata_.GetAllReduceGroup(*instruction->channel_id());
   } else {
     instruction_group.push_back(instruction);
   }
@@ -99,14 +98,15 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalPredecessors(
   if (instruction->opcode() == HloOpcode::kRecvDone &&
       !DynCast<HloRecvDoneInstruction>(instruction)->is_host_transfer()) {
     // Send is a remote predecessor of RecvDone.
-    HloInstruction* send = metadata_.GetChannel(instruction->channel_id()).send;
+    HloInstruction* send =
+        metadata_.GetChannel(*instruction->channel_id()).send;
     add_unique_predecessor(send);
   }
   if (instruction->opcode() == HloOpcode::kSend &&
       !DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
     // Recv is a remote predecessor of Send.
     HloInstruction* recv_done =
-        metadata_.GetChannel(instruction->channel_id()).recv_done;
+        metadata_.GetChannel(*instruction->channel_id()).recv_done;
     CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
     CHECK_EQ(recv_done->operand_count(), 1);
     HloInstruction* recv = recv_done->mutable_operand(0);
@@ -139,7 +139,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
     }
     if (successor->IsCrossModuleAllReduce()) {
       for (HloInstruction* instr :
-           metadata_.GetAllReduceGroup(*successor->all_reduce_id())) {
+           metadata_.GetAllReduceGroup(*successor->channel_id())) {
         if (unique.insert(instr).second) {
           successors.push_back(instr);
         }
@@ -160,8 +160,7 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
       instruction_group.push_back(companion);
     }
   } else if (instruction->IsCrossModuleAllReduce()) {
-    instruction_group =
-        metadata_.GetAllReduceGroup(*instruction->all_reduce_id());
+    instruction_group = metadata_.GetAllReduceGroup(*instruction->channel_id());
   } else {
     instruction_group.push_back(instruction);
   }
@@ -179,14 +178,15 @@ std::vector<HloInstruction*> HloModuleGroupUtil::GlobalSuccessors(
     // Send is a remote successor of Recv.
     const HloInstruction* recv_done = instruction->users().front();
     CHECK(recv_done->opcode() == HloOpcode::kRecvDone);
-    HloInstruction* send = metadata_.GetChannel(instruction->channel_id()).send;
+    HloInstruction* send =
+        metadata_.GetChannel(*instruction->channel_id()).send;
     add_unique_successor(send);
   }
   if (instruction->opcode() == HloOpcode::kSend &&
       !DynCast<HloSendInstruction>(instruction)->is_host_transfer()) {
     // RecvDone is a remote successor of Send.
     HloInstruction* recv_done =
-        metadata_.GetChannel(instruction->channel_id()).recv_done;
+        metadata_.GetChannel(*instruction->channel_id()).recv_done;
     add_unique_successor(recv_done);
   }
   return successors;
@@ -256,7 +256,7 @@ Status HloModuleGroupUtil::VisitTopologicalOrder(
         instruction_group.push_back(companion);
       }
     } else if (hlo->IsCrossModuleAllReduce()) {
-      instruction_group = metadata_.GetAllReduceGroup(*hlo->all_reduce_id());
+      instruction_group = metadata_.GetAllReduceGroup(*hlo->channel_id());
     } else {
       instruction_group.push_back(hlo);
     }

@@ -39,8 +39,8 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testResidualWrapper(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
-    x = ops.convert_to_tensor(np.array([[1., 1., 1.]]))
-    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]))
+    x = ops.convert_to_tensor(np.array([[1., 1., 1.]]), dtype="float32")
+    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
     base_cell = rnn_cell_impl.GRUCell(
         3, kernel_initializer=init_ops.constant_initializer(0.5),
         bias_initializer=init_ops.constant_initializer(0.5))
@@ -62,8 +62,8 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testResidualWrapperWithSlice(self):
     wrapper_type = rnn_cell_wrapper_v2.ResidualWrapper
-    x = ops.convert_to_tensor(np.array([[1., 1., 1., 1., 1.]]))
-    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]))
+    x = ops.convert_to_tensor(np.array([[1., 1., 1., 1., 1.]]), dtype="float32")
+    m = ops.convert_to_tensor(np.array([[0.1, 0.1, 0.1]]), dtype="float32")
     base_cell = rnn_cell_impl.GRUCell(
         3, kernel_initializer=init_ops.constant_initializer(0.5),
         bias_initializer=init_ops.constant_initializer(0.5))
@@ -225,7 +225,7 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
   def testDropoutWrapperSerialization(self):
     wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
-    cell = layers.LSTMCell(10)
+    cell = layers.GRUCell(10)
     wrapper = wrapper_cls(cell)
     config = wrapper.get_config()
 
@@ -248,6 +248,17 @@ class RNNCellWrapperTest(test.TestCase, parameterized.TestCase):
 
     reconstructed_wrapper = wrapper_cls.from_config(config)
     self.assertFalse(reconstructed_wrapper._dropout_state_filter(None))
+
+  def testDroputWrapperWithKerasLSTMCell(self):
+    wrapper_cls = rnn_cell_wrapper_v2.DropoutWrapper
+    cell = layers.LSTMCell(10)
+
+    with self.assertRaisesRegexp(ValueError, "does not work with "):
+      wrapper_cls(cell)
+
+    cell = layers.LSTMCell_v2(10)
+    with self.assertRaisesRegexp(ValueError, "does not work with "):
+      wrapper_cls(cell)
 
 
 if __name__ == "__main__":

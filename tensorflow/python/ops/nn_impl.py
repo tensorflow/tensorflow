@@ -24,17 +24,18 @@ from tensorflow.python.compat import compat
 from tensorflow.python.distribute import distribution_strategy_context as ds
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
+from tensorflow.python.ops import gen_sparse_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import util as losses_util
 from tensorflow.python.util.deprecation import deprecated_args
@@ -253,9 +254,9 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight,
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
 
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term
@@ -329,30 +330,40 @@ def weighted_cross_entropy_with_logits(labels=None,
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
   allows one to trade off recall and precision by up- or down-weighting the
   cost of a positive error relative to a negative error.
+
   The usual cross-entropy cost is defined as:
+
       labels * -log(sigmoid(logits)) +
           (1 - labels) * -log(1 - sigmoid(logits))
-  A value `pos_weights > 1` decreases the false negative count, hence increasing
+
+  A value `pos_weight > 1` decreases the false negative count, hence increasing
   the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and
+  Conversely setting `pos_weight < 1` decreases the false positive count and
   increases the precision.
   This can be seen from the fact that `pos_weight` is introduced as a
   multiplicative coefficient for the positive labels term
   in the loss expression:
+
       labels * -log(sigmoid(logits)) * pos_weight +
           (1 - labels) * -log(1 - sigmoid(logits))
+
   For brevity, let `x = logits`, `z = labels`, `q = pos_weight`.
   The loss is:
+
         qz * -log(sigmoid(x)) + (1 - z) * -log(1 - sigmoid(x))
       = qz * -log(1 / (1 + exp(-x))) + (1 - z) * -log(exp(-x) / (1 + exp(-x)))
       = qz * log(1 + exp(-x)) + (1 - z) * (-log(exp(-x)) + log(1 + exp(-x)))
       = qz * log(1 + exp(-x)) + (1 - z) * (x + log(1 + exp(-x))
       = (1 - z) * x + (qz +  1 - z) * log(1 + exp(-x))
       = (1 - z) * x + (1 + (q - 1) * z) * log(1 + exp(-x))
+
   Setting `l = (1 + (q - 1) * z)`, to ensure stability and avoid overflow,
   the implementation uses
+
       (1 - z) * x + l * (log(1 + exp(-abs(x))) + max(-x, 0))
+
   `logits` and `labels` must have the same type and shape.
+
   Args:
     labels: A `Tensor` of the same type and shape as `logits`.
     logits: A `Tensor` of type `float32` or `float64`.
@@ -363,6 +374,7 @@ def weighted_cross_entropy_with_logits(labels=None,
   Returns:
     A `Tensor` of the same shape as `logits` with the componentwise
     weighted logistic losses.
+
   Raises:
     ValueError: If `logits` and `labels` do not have the same shape.
   """
@@ -487,31 +499,8 @@ def relu_layer(x, weights, biases, name=None):
     return nn_ops.relu(xw_plus_b, name=name)
 
 
-def _swish_shape(op):
-  """Shape helper function for swish and _swish_grad function below."""
-  return [op.inputs[0].shape]
-
-
-@function.Defun(shape_func=_swish_shape, func_name="swish_grad", noinline=True)
-def _swish_grad(features, grad):
-  """Gradient of Swish function defined below."""
-  sigmoid_features = math_ops.sigmoid(features)
-  activation_grad = (
-      sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
-  return grad * activation_grad
-
-
-# Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x) around
-# for backprop, effectively doubling the tensor's memory consumption. We use a
-# @Defun decorator with noinline=True so that sigmoid(features) is re-computed
-# during backprop, and we can free the sigmoid(features) expression immediately
-# after use during the forward pass.
 @tf_export("nn.swish")
-@function.Defun(
-    grad_func=_swish_grad,
-    shape_func=_swish_shape,
-    func_name="swish",
-    noinline=True)
+@custom_gradient.custom_gradient
 def swish(features):
   # pylint: disable=g-doc-args
   """Computes the Swish activation function: `x * sigmoid(x)`.
@@ -528,7 +517,75 @@ def swish(features):
   """
   # pylint: enable=g-doc-args
   features = ops.convert_to_tensor(features, name="features")
-  return features * math_ops.sigmoid(features)
+
+  def grad(dy):
+    """Gradient for the Swish activation function"""
+    # Naively, x * tf.nn.sigmoid(x) requires keeping both x and sigmoid(x)
+    # around for backprop, effectively doubling the tensor's memory consumption.
+    # We use a control dependency here so that sigmoid(features) is re-computed
+    # during backprop (the control dep prevents it being de-duped with the
+    # forward pass) and we can free the sigmoid(features) expression immediately
+    # after use during the forward pass.
+    with ops.control_dependencies([dy]):
+      sigmoid_features = math_ops.sigmoid(features)
+    activation_grad = (
+        sigmoid_features * (1.0 + features * (1.0 - sigmoid_features)))
+    return dy * activation_grad
+
+  return features * math_ops.sigmoid(features), grad
+
+
+# pylint: disable=redefined-builtin
+@tf_export("linalg.normalize")
+def normalize(tensor, ord="euclidean", axis=None, name=None):
+  """Normalizes `tensor` along dimension `axis` using specified norm.
+
+  This uses `tf.linalg.norm` to compute the norm along `axis`.
+
+  This function can compute several different vector norms (the 1-norm, the
+  Euclidean or 2-norm, the inf-norm, and in general the p-norm for p > 0) and
+  matrix norms (Frobenius, 1-norm, 2-norm and inf-norm).
+
+  Args:
+    tensor: `Tensor` of types `float32`, `float64`, `complex64`, `complex128`
+    ord: Order of the norm. Supported values are `'fro'`, `'euclidean'`, `1`,
+      `2`, `np.inf` and any positive real number yielding the corresponding
+      p-norm. Default is `'euclidean'` which is equivalent to Frobenius norm if
+      `tensor` is a matrix and equivalent to 2-norm for vectors.
+      Some restrictions apply: a) The Frobenius norm `'fro'` is not defined for
+        vectors, b) If axis is a 2-tuple (matrix norm), only `'euclidean'`,
+        '`fro'`, `1`, `2`, `np.inf` are supported. See the description of `axis`
+        on how to compute norms for a batch of vectors or matrices stored in a
+        tensor.
+    axis: If `axis` is `None` (the default), the input is considered a vector
+      and a single vector norm is computed over the entire set of values in the
+      tensor, i.e. `norm(tensor, ord=ord)` is equivalent to
+      `norm(reshape(tensor, [-1]), ord=ord)`. If `axis` is a Python integer, the
+      input is considered a batch of vectors, and `axis` determines the axis in
+      `tensor` over which to compute vector norms. If `axis` is a 2-tuple of
+      Python integers it is considered a batch of matrices and `axis` determines
+      the axes in `tensor` over which to compute a matrix norm.
+      Negative indices are supported. Example: If you are passing a tensor that
+        can be either a matrix or a batch of matrices at runtime, pass
+        `axis=[-2,-1]` instead of `axis=None` to make sure that matrix norms are
+        computed.
+    name: The name of the op.
+
+  Returns:
+    normalized: A normalized `Tensor` with the same shape as `tensor`.
+    norm: The computed norms with the same shape and dtype `tensor` but the
+      final axis is 1 instead. Same as running
+      `tf.cast(tf.linalg.norm(tensor, ord, axis keepdims=True), tensor.dtype)`.
+
+  Raises:
+    ValueError: If `ord` or `axis` is invalid.
+  """
+  with ops.name_scope(name, "normalize", [tensor]) as name:
+    tensor = ops.convert_to_tensor(tensor)
+    norm = linalg_ops.norm(tensor, ord, axis, keepdims=True)
+    norm = math_ops.cast(norm, tensor.dtype)
+    normalized = tensor / norm
+    return normalized, norm
 
 
 @tf_export(v1=["math.l2_normalize", "linalg.l2_normalize", "nn.l2_normalize"])
@@ -650,6 +707,22 @@ def zero_fraction(value, name=None):
     return array_ops.identity(zero_fraction_float32, "fraction")
 
 
+# copybara:strip_begin
+# TODO(b/138808492): Remove code inside copybara
+# to make TPU code and CPU code consistent.
+def _enclosing_tpu_context():
+  # pylint: disable=protected-access
+  context = ops.get_default_graph()._get_control_flow_context()
+  # pylint: enable=protected-access
+  while context is not None and not isinstance(
+      context, control_flow_ops.XLAControlFlowContext):
+    context = context.outer_context
+  return context
+
+
+# copybara:strip_end
+
+
 # pylint: disable=redefined-builtin
 @tf_export(v1=["nn.depthwise_conv2d"])
 def depthwise_conv2d(input,
@@ -708,6 +781,25 @@ def depthwise_conv2d(input,
     filter = ops.convert_to_tensor(filter, name="filter_in")
     if rate is None:
       rate = [1, 1]
+
+    # copybara:strip_begin
+    # TODO(b/138808492): Remove code inside copybara
+    # to make TPU code and CPU code consistent.
+    # Use depthwise_conv2d_native if executing on TPU.
+    if _enclosing_tpu_context() is not None:
+      if data_format == "NCHW":
+        dilations = [1, 1, rate[0], rate[1]]
+      else:
+        dilations = [1, rate[0], rate[1], 1]
+      return nn_ops.depthwise_conv2d_native(
+          input=input,
+          filter=filter,
+          strides=strides,
+          padding=padding,
+          data_format=data_format,
+          dilations=dilations,
+          name=name)
+    # copybara:strip_end
 
     def op(input_converted, _, padding):
       return nn_ops.depthwise_conv2d_native(
@@ -1302,7 +1394,7 @@ def batch_normalization(x,
       normalized over (the 'depth' dimension(s)), and dimension 1 for the
       others which are being normalized over.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=True)` during training, or running averages
+      `tf.nn.moments(..., keepdims=True)` during training, or running averages
       thereof during inference.
     * In the common case where the 'depth' dimension is the last dimension in
       the input tensor `x`, they may be one dimensional tensors of the same
@@ -1311,10 +1403,11 @@ def batch_normalization(x,
       fully-connected layers, and `[batch, height, width, depth]` for
       convolutions.
       `mean` and `variance` in this case would typically be the outputs of
-      `tf.nn.moments(..., keep_dims=False)` during training, or running averages
+      `tf.nn.moments(..., keepdims=False)` during training, or running averages
       thereof during inference.
 
-  See Source: [Batch Normalization: Accelerating Deep Network Training by
+  See equation 11 in Algorithm 2 of source: 
+  [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
   (http://arxiv.org/abs/1502.03167).
 
@@ -1331,6 +1424,12 @@ def batch_normalization(x,
 
   Returns:
     the normalized, scaled, offset tensor.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://arxiv.org/abs/1502.03167)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   with ops.name_scope(name, "batchnorm", [x, mean, variance, scale, offset]):
     inv = math_ops.rsqrt(variance + variance_epsilon)
@@ -1354,6 +1453,7 @@ def fused_batch_norm(
     is_training=True,
     name=None):
   r"""Batch normalization.
+
 
   See Source: [Batch Normalization: Accelerating Deep Network Training by
   Reducing Internal Covariate Shift; S. Ioffe, C. Szegedy]
@@ -1379,6 +1479,12 @@ def fused_batch_norm(
 
   Raises:
     ValueError: If mean or variance is not None when is_training is True.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
@@ -1425,7 +1531,6 @@ def fused_batch_norm(
       name=name)
   return y, batch_mean, batch_var
 
-
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
 def batch_norm_with_global_normalization(t=None,
                                          m=None,
@@ -1465,6 +1570,12 @@ def batch_norm_with_global_normalization(t=None,
 
   Returns:
      A batch-normalized `t`.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing
+    Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   t = deprecated_argument_lookup("input", input, "t", t)
   m = deprecated_argument_lookup("mean", mean, "m", m)
@@ -1507,6 +1618,11 @@ def batch_norm_with_global_normalization_v2(input,
 
   Returns:
      A batch-normalized `t`.
+
+  References:
+    Batch Normalization - Accelerating Deep Network Training by Reducing Internal Covariate Shift:
+      [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
+      ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
   return batch_norm_with_global_normalization(t=input,
                                               m=mean,
@@ -1836,12 +1952,6 @@ def nce_loss(weights,
              name="nce_loss"):
   """Computes and returns the noise-contrastive estimation training loss.
 
-  See [Noise-contrastive estimation: A new estimation principle for
-  unnormalized statistical
-  models](http://www.jmlr.org/proceedings/papers/v9/gutmann10a/gutmann10a.pdf).
-  Also see our [Candidate Sampling Algorithms
-  Reference](https://www.tensorflow.org/extras/candidate_sampling.pdf)
-
   A common use case is to use this method for training, and calculate the full
   sigmoid loss for evaluation or inference. In this case, you must set
   `partition_strategy="div"` for the two losses to be consistent, as in the
@@ -1901,9 +2011,9 @@ def nce_loss(weights,
     remove_accidental_hits:  A `bool`.  Whether to remove "accidental hits"
         where a sampled class equals one of the target classes.  If set to
         `True`, this is a "Sampled Logistic" loss instead of NCE, and we are
-        learning to generate log-odds instead of log probabilities.  See
-        our [Candidate Sampling Algorithms Reference]
-        (https://www.tensorflow.org/extras/candidate_sampling.pdf).
+        learning to generate log-odds instead of log probabilities. See
+        our Candidate Sampling Algorithms Reference
+        ([pdf](https://www.tensorflow.org/extras/candidate_sampling.pdf)).
         Default is False.
     partition_strategy: A string specifying the partitioning strategy, relevant
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
@@ -1912,6 +2022,12 @@ def nce_loss(weights,
 
   Returns:
     A `batch_size` 1-D tensor of per-example NCE losses.
+
+  References:
+    Noise-contrastive estimation - A new estimation principle for unnormalized
+    statistical models:
+      [Gutmann et al., 2010](http://proceedings.mlr.press/v9/gutmann10a)
+      ([pdf](http://proceedings.mlr.press/v9/gutmann10a/gutmann10a.pdf))
   """
   logits, labels = _compute_sampled_logits(
       weights=weights,
@@ -2068,11 +2184,9 @@ def sampled_softmax_loss(weights,
         logits=logits)
   ```
 
-  See our [Candidate Sampling Algorithms Reference]
-  (https://www.tensorflow.org/extras/candidate_sampling.pdf)
-
-  Also see Section 3 of [Jean et al., 2014](http://arxiv.org/abs/1412.2007)
-  ([pdf](http://arxiv.org/pdf/1412.2007.pdf)) for the math.
+  See our Candidate Sampling Algorithms Reference
+  ([pdf](https://www.tensorflow.org/extras/candidate_sampling.pdf)).
+  Also see Section 3 of (Jean et al., 2014) for the math.
 
   Args:
     weights: A `Tensor` of shape `[num_classes, dim]`, or a list of `Tensor`
@@ -2103,6 +2217,11 @@ def sampled_softmax_loss(weights,
   Returns:
     A `batch_size` 1-D tensor of per-example sampled softmax losses.
 
+  References:
+    On Using Very Large Target Vocabulary for Neural Machine Translation:
+      [Jean et al., 2014]
+      (https://aclanthology.coli.uni-saarland.de/papers/P15-1001/p15-1001)
+      ([pdf](http://aclweb.org/anthology/P15-1001))
   """
   logits, labels = _compute_sampled_logits(
       weights=weights,

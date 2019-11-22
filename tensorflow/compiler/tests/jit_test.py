@@ -22,10 +22,10 @@ import os
 import numpy as np
 
 from tensorflow.compiler.tests import test_utils
-from tensorflow.contrib.compiler import jit
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
+from tensorflow.python.compiler.xla import jit
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function

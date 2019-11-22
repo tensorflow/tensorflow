@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
@@ -35,9 +36,11 @@ class DefaultCommandQueue : public CommandQueue {
   }
 
   Status WaitForCompletion() override {
-    // TODO(akulik): may be let a user to choose what wait method to use.
+    // TODO(akulik): Maybe let the user choose which wait method to use.
     return GlActiveSyncWait();
   }
+
+  Status Flush() override { return OkStatus(); }
 };
 
 // On Adreno do flush periodically as this affects performance. Command queue
@@ -54,6 +57,20 @@ class AdrenoCommandQueue : public DefaultCommandQueue {
   Status Dispatch(const GlProgram& program, const uint3& workgroups) final {
     RETURN_IF_ERROR(DefaultCommandQueue::Dispatch(program, workgroups));
     if ((++program_counter_ % flush_every_n_) == 0) {
+      glFlush();
+    }
+    return OkStatus();
+  }
+
+  Status WaitForCompletion() override {
+    program_counter_ = 0;
+    return DefaultCommandQueue::WaitForCompletion();
+  }
+
+  Status Flush() final {
+    // Flush exactly once after the last dispatch.
+    if (program_counter_ != 0) {
+      program_counter_ = 0;
       glFlush();
     }
     return OkStatus();

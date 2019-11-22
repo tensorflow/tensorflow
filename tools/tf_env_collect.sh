@@ -153,6 +153,21 @@ LD_DEBUG=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
 find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
 
+{
+  echo
+  echo '== tensorflow installed from info =================='
+  pip show tensorflow
+
+  echo
+  echo '== python version  =============================================='
+  echo '(major, minor, micro, releaselevel, serial)'
+  python -c 'import sys; print(sys.version_info[:])'
+  
+  echo
+  echo '== bazel version  ==============================================='
+  bazel version
+} >> ${OUTPUT_FILE}
+
 # Remove any words with google.
 mv $OUTPUT_FILE old-$OUTPUT_FILE
 grep -v -i google old-${OUTPUT_FILE} > $OUTPUT_FILE

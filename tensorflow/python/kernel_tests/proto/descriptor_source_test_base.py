@@ -51,18 +51,16 @@ class DescriptorSourceTestBase(test.TestCase):
   #
   # The generated descriptor should capture the subset of `test_example.proto`
   # used in `test_base.simple_test_case()`.
-  def _createDescriptorFile(self):
-    set_proto = FileDescriptorSet()
+  def _createDescriptorProto(self):
+    proto = FileDescriptorSet()
 
-    file_proto = set_proto.file.add(
-        name='types.proto',
-        package='tensorflow',
-        syntax='proto3')
+    file_proto = proto.file.add(
+        name='types.proto', package='tensorflow', syntax='proto3')
     enum_proto = file_proto.enum_type.add(name='DataType')
     enum_proto.value.add(name='DT_DOUBLE', number=0)
     enum_proto.value.add(name='DT_BOOL', number=1)
 
-    file_proto = set_proto.file.add(
+    file_proto = proto.file.add(
         name='test_example.proto',
         package='tensorflow.contrib.proto',
         dependency=['types.proto'])
@@ -123,9 +121,12 @@ class DescriptorSourceTestBase(test.TestCase):
         type_name='.tensorflow.contrib.proto.TestValue',
         label=FieldDescriptorProto.LABEL_OPTIONAL)
 
+    return proto
+
+  def _writeProtoToFile(self, proto):
     fn = os.path.join(self.get_temp_dir(), 'descriptor.pb')
     with open(fn, 'wb') as f:
-      f.write(set_proto.SerializeToString())
+      f.write(proto.SerializeToString())
     return fn
 
   def _testRoundtrip(self, descriptor_source):
@@ -169,8 +170,12 @@ class DescriptorSourceTestBase(test.TestCase):
   def testWithFileDescriptorSet(self):
     # First try parsing with a local proto db, which should fail.
     with self.assertRaisesOpError('No descriptor found for message type'):
-      self._testRoundtrip('local://')
+      self._testRoundtrip(b'local://')
 
     # Now try parsing with a FileDescriptorSet which contains the test proto.
-    descriptor_file = self._createDescriptorFile()
-    self._testRoundtrip(descriptor_file)
+    proto = self._createDescriptorProto()
+    proto_file = self._writeProtoToFile(proto)
+    self._testRoundtrip(proto_file)
+
+    # Finally, try parsing the descriptor as a serialized string.
+    self._testRoundtrip(b'bytes://' + proto.SerializeToString())

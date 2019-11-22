@@ -697,6 +697,5 @@ TEST(ComparisonsTest, QuantizedInt8LessEqualWithBroadcast) {
         << "With shape number " << i;
   }
 }
-
 }  // namespace
 }  // namespace tflite

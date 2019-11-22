@@ -27,15 +27,13 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/tensor_coding.h"
-#include "tensorflow/core/platform/tracing.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/util/util.h"
 
 // IMPLEMENTATION NOTE:
@@ -149,7 +147,7 @@ void GPUUtil::SetProtoFromGPU(const Tensor& tensor, Device* dev,
   char* buf = nullptr;
   const int64 total_bytes = is_dead ? 0 : tensor.TotalBytes();
   if (total_bytes > 0) {
-    tracing::ScopedAnnotation annotation("SetProtoFromGPU");
+    profiler::ScopedAnnotation annotation("SetProtoFromGPU");
     alloc = GPUProcessState::singleton()->GetGpuHostAllocator(0);
     buf = static_cast<char*>(
         alloc->AllocateRaw(Allocator::kAllocatorAlignment, total_bytes));
@@ -384,9 +382,8 @@ string GPUUtil::MemoryDebugString(const Device* device, Tensor* tensor) {
       buf.resize(num_bytes);
       DeviceMemoryBase gpu_ptr(ptr, num_bytes);
       auto s = dev_info->stream->parent()->SynchronousMemcpyD2H(
-          gpu_ptr, num_bytes, gtl::string_as_array(&buf));
-      strings::StrAppend(&ret,
-                         PrintMemory(gtl::string_as_array(&buf), num_bytes));
+          gpu_ptr, num_bytes, &*buf.begin());
+      strings::StrAppend(&ret, PrintMemory(&*buf.begin(), num_bytes));
     }
   }
   return ret;

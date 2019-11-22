@@ -136,13 +136,13 @@ namespace toco {
   AddMessageF("Creating %s replacing equivalent subgraph", LogName(*l2norm_op));
 
   // Erase the subgraph that is now replaced by L2Normalization
-  model->operators.erase(FindOp(*model, square_op));
-  DeleteOpAndArraysIfUnused(model, sum_op);
+  DeleteOpAndArrays(model, square_op);
+  DeleteOpAndArrays(model, sum_op);
   if (add_op) {
-    DeleteOpAndArraysIfUnused(model, add_op);
+    DeleteOpAndArrays(model, add_op);
   }
-  DeleteOpAndArraysIfUnused(model, sqrt_or_rsqrt_op);
-  DeleteOpAndArraysIfUnused(model, div_or_mul_op);
+  DeleteOpAndArrays(model, sqrt_or_rsqrt_op);
+  DeleteOpAndArrays(model, div_or_mul_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

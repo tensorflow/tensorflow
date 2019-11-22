@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import re
 
+from tensorflow.python import tf2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import tracking
@@ -113,8 +114,12 @@ class Module(tracking.AutoTrackable):
             "identifiers (e.g. a valid class name)." % name)
 
     self._name = name
-    with ops.name_scope(name) as scope_name:
-      self._scope_name = scope_name
+    if tf2.enabled():
+      with ops.name_scope_v2(name) as scope_name:
+        self._name_scope = ops.name_scope_v2(scope_name)
+    else:
+      with ops.name_scope(name, skip_on_eager=False) as scope_name:
+        self._scope_name = scope_name
 
   @property
   def name(self):
@@ -128,12 +133,15 @@ class Module(tracking.AutoTrackable):
   @property
   def name_scope(self):
     """Returns a `tf.name_scope` instance for this class."""
-    # TODO(tomhennigan) Memoize once name scopes are re-entrant.
-    return ops.name_scope(self._scope_name)
+    if tf2.enabled():
+      return self._name_scope
+    else:
+      # In TF1 name_scope is not re-entrant in eager so we cannot memoize it.
+      return ops.name_scope(self._scope_name, skip_on_eager=False)
 
   @property
   def variables(self):
-    """Sequence of variables owned by this module and it's submodules.
+    """Sequence of variables owned by this module and its submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result
@@ -148,7 +156,7 @@ class Module(tracking.AutoTrackable):
 
   @property
   def trainable_variables(self):
-    """Sequence of variables owned by this module and it's submodules.
+    """Sequence of trainable variables owned by this module and its submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result

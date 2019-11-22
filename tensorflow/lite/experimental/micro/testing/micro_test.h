@@ -125,14 +125,32 @@ extern tflite::ErrorReporter* reporter;
     }                                                                         \
   } while (false)
 
-#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                      \
-  do {                                                                \
-    auto delta = ((x) > (y)) ? ((x) - (y)) : ((y) - (x));             \
-    if (delta > epsilon) {                                            \
-      micro_test::reporter->Report(#x " near " #y " failed at %s:%d", \
-                                   __FILE__, __LINE__);               \
-      micro_test::did_test_fail = true;                               \
-    }                                                                 \
+// TODO(wangtz): Making it more generic once needed.
+#define TF_LITE_MICRO_ARRAY_ELEMENT_EXPECT_NEAR(arr1, idx1, arr2, idx2, \
+                                                epsilon)                \
+  do {                                                                  \
+    auto delta = ((arr1)[(idx1)] > (arr2)[(idx2)])                      \
+                     ? ((arr1)[(idx1)] - (arr2)[(idx2)])                \
+                     : ((arr2)[(idx2)] - (arr1)[(idx1)]);               \
+    if (delta > epsilon) {                                              \
+      micro_test::reporter->Report(                                     \
+          #arr1 "[%d] (%f) near " #arr2 "[%d] (%f) failed at %s:%d",    \
+          static_cast<int>(idx1), static_cast<float>((arr1)[(idx1)]),   \
+          static_cast<int>(idx2), static_cast<float>((arr2)[(idx2)]),   \
+          __FILE__, __LINE__);                                          \
+      micro_test::did_test_fail = true;                                 \
+    }                                                                   \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_NEAR(x, y, epsilon)                              \
+  do {                                                                        \
+    auto delta = ((x) > (y)) ? ((x) - (y)) : ((y) - (x));                     \
+    if (delta > epsilon) {                                                    \
+      micro_test::reporter->Report(                                           \
+          #x " (%f) near " #y " (%f) failed at %s:%d", static_cast<float>(x), \
+          static_cast<float>(y), __FILE__, __LINE__);                         \
+      micro_test::did_test_fail = true;                                       \
+    }                                                                         \
   } while (false)
 
 #define TF_LITE_MICRO_EXPECT_GT(x, y)                                        \
@@ -169,6 +187,24 @@ extern tflite::ErrorReporter* reporter;
                                    __LINE__);                                 \
       micro_test::did_test_fail = true;                                       \
     }                                                                         \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_TRUE(x)                                   \
+  do {                                                                 \
+    if (!x) {                                                          \
+      micro_test::reporter->Report(#x " was not true failed at %s:%d", \
+                                   __FILE__, __LINE__);                \
+      micro_test::did_test_fail = true;                                \
+    }                                                                  \
+  } while (false)
+
+#define TF_LITE_MICRO_EXPECT_FALSE(x)                                   \
+  do {                                                                  \
+    if (x) {                                                            \
+      micro_test::reporter->Report(#x " was not false failed at %s:%d", \
+                                   __FILE__, __LINE__);                 \
+      micro_test::did_test_fail = true;                                 \
+    }                                                                   \
   } while (false)
 
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_MICRO_TESTING_MICRO_TEST_H_

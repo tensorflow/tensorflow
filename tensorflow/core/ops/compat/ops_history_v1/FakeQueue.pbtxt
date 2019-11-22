@@ -1,0 +1,13 @@
+op {
+  name: "FakeQueue"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  is_stateful: true
+}

@@ -121,7 +121,7 @@ Status TestMultipleWrites(size_t compress_input_buf_size,
   for (int attempt = 0; attempt < 2; ++attempt) {
     string actual_result;
     for (int i = 0; i < num_writes; i++) {
-      string decompressed_output;
+      tstring decompressed_output;
       TF_RETURN_IF_ERROR(in.ReadNBytes(data.size(), &decompressed_output));
       strings::StrAppend(&actual_result, decompressed_output);
     }

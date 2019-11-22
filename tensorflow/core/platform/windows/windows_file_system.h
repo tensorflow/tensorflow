@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/file_system.h"
+#include "tensorflow/core/platform/platform.h"
 
 #ifdef PLATFORM_WINDOWS
 #undef DeleteFile

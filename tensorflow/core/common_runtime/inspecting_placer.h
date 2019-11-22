@@ -69,7 +69,7 @@ class InspectingPlacer {
   // TODO(iga): Add a "stack trace" to detect recursion and improve log
   // messages. Currently, we will enter an infinite loop for recursive
   // functions.
-  InspectingPlacer(const Graph* graph, const FunctionStack& stack,
+  InspectingPlacer(const FunctionStack& stack,
                    const FunctionLibraryDefinition* flib_def,
                    const DeviceSet* device_set, const Device* default_device,
                    bool allow_soft_placement, bool log_device_placement);
@@ -80,7 +80,6 @@ class InspectingPlacer {
                                    IOColocationGroups* groups);
 
  private:
-  const Graph& graph_;
   const FunctionStack stack_;
   const FunctionLibraryDefinition& flib_def_;
   const DeviceSet& device_set_;

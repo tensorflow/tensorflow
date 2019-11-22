@@ -12,18 +12,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-@testable import TensorFlowLite
 import XCTest
+
+@testable import TensorFlowLite
 
 class QuantizationParametersTests: XCTestCase {
 
-  func testQuantizationParameters_InitWithCustomValues() {
+  func testInitWithCustomValues() {
     let parameters = QuantizationParameters(scale: 0.5, zeroPoint: 1)
     XCTAssertEqual(parameters.scale, 0.5)
     XCTAssertEqual(parameters.zeroPoint, 1)
   }
 
-  func testQuantizationParameters_Equatable() {
+  func testEquatable() {
     let parameters1 = QuantizationParameters(scale: 0.5, zeroPoint: 1)
     let parameters2 = QuantizationParameters(scale: 0.5, zeroPoint: 1)
     XCTAssertEqual(parameters1, parameters2)
@@ -31,13 +32,5 @@ class QuantizationParametersTests: XCTestCase {
     let parameters3 = QuantizationParameters(scale: 0.4, zeroPoint: 1)
     XCTAssertNotEqual(parameters1, parameters3)
     XCTAssertNotEqual(parameters2, parameters3)
-  }
-}
-
-// MARK: - Extensions
-
-extension QuantizationParameters: Equatable {
-  public static func == (lhs: QuantizationParameters, rhs: QuantizationParameters) -> Bool {
-    return lhs.scale == rhs.scale && lhs.zeroPoint == rhs.zeroPoint
   }
 }

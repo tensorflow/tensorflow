@@ -46,7 +46,7 @@ enum class ObjectType : int {
   BUFFER = 2,
 };
 
-using ObjectSize = absl::variant<uint32_t, uint2, uint3>;
+using ObjectSize = absl::variant<size_t, uint2, uint3>;
 
 // An object represents a reference to or pre-defined constant OpenGL Buffer or
 // Texture. NodeShader is supposed to set all fields but leave binding = 0
@@ -85,8 +85,7 @@ inline const ObjectData* GetData(const Object& object) {
 inline size_t ByteSizeOf(const Object& object);
 
 // @return object that references an object created externally.
-template <typename SizeT>
-inline Object MakeObjectRef(ObjectRef unique_id, const SizeT& size,
+inline Object MakeObjectRef(ObjectRef unique_id, const ObjectSize& size,
                             AccessType access_type) {
   return Object{access_type, DataType::FLOAT32, ObjectType::UNKNOWN, 0,
                 size,        unique_id};
@@ -122,8 +121,8 @@ inline size_t ByteSizeOf(const Object& object) {
   return SizeOf(object.data_type) * /* vec4 */ 4 * NumElements(object.size);
 }
 
-template <typename SizeT>
-Object MakeReadonlyObject(const SizeT& size, const std::vector<float>& data) {
+inline Object MakeReadonlyObject(const ObjectSize& size,
+                                 const std::vector<float>& data) {
   return Object{AccessType::READ,
                 DataType::FLOAT32,
                 ObjectType::UNKNOWN,
@@ -132,8 +131,8 @@ Object MakeReadonlyObject(const SizeT& size, const std::vector<float>& data) {
                 internal_object::ToBytesVector(data, 16)};
 }
 
-template <typename SizeT>
-Object MakeReadonlyTexture(const SizeT& size, const std::vector<float>& data) {
+inline Object MakeReadonlyTexture(const ObjectSize& size,
+                                  const std::vector<float>& data) {
   return Object{AccessType::READ,
                 DataType::FLOAT32,
                 ObjectType::TEXTURE,
@@ -142,8 +141,8 @@ Object MakeReadonlyTexture(const SizeT& size, const std::vector<float>& data) {
                 internal_object::ToBytesVector(data, 16)};
 }
 
-template <typename SizeT>
-Object MakeReadonlyBuffer(const SizeT& size, const std::vector<float>& data) {
+inline Object MakeReadonlyBuffer(const ObjectSize& size,
+                                 const std::vector<float>& data) {
   return Object{AccessType::READ,
                 DataType::FLOAT32,
                 ObjectType::BUFFER,
@@ -153,15 +152,18 @@ Object MakeReadonlyBuffer(const SizeT& size, const std::vector<float>& data) {
 }
 
 inline Object MakeReadonlyObject(const std::vector<float>& data) {
-  return MakeReadonlyObject(IntegralDivideRoundUp(data.size(), 4U), data);
+  return MakeReadonlyObject(
+      IntegralDivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
 }
 
 inline Object MakeReadonlyTexture(const std::vector<float>& data) {
-  return MakeReadonlyTexture(IntegralDivideRoundUp(data.size(), 4U), data);
+  return MakeReadonlyTexture(
+      IntegralDivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
 }
 
 inline Object MakeReadonlyBuffer(const std::vector<float>& data) {
-  return MakeReadonlyBuffer(IntegralDivideRoundUp(data.size(), 4U), data);
+  return MakeReadonlyBuffer(
+      IntegralDivideRoundUp(static_cast<uint32_t>(data.size()), 4U), data);
 }
 
 // TODO(akulik): find better place for functions below.

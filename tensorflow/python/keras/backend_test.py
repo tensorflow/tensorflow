@@ -24,6 +24,7 @@ import scipy.sparse
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -93,6 +94,34 @@ def compare_two_inputs_op_to_numpy(keras_op,
 
 
 class BackendResetTest(test.TestCase, parameterized.TestCase):
+
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_new_config(self):
+    # User defined jit setting
+    config.set_optimizer_jit(False)
+    sess = keras.backend.get_session()
+    default_config = context.context().config
+    self.assertEqual(
+        sess._config.graph_options.optimizer_options.global_jit_level,
+        default_config.graph_options.optimizer_options.global_jit_level)
+    keras.backend.clear_session()
+
+    # New session has the same jit setting
+    sess = keras.backend.get_session()
+    default_config = context.context().config
+    self.assertEqual(
+        sess._config.graph_options.optimizer_options.global_jit_level,
+        default_config.graph_options.optimizer_options.global_jit_level)
+    keras.backend.clear_session()
+
+    # Change respected
+    config.set_optimizer_jit(True)
+    sess = keras.backend.get_session()
+    default_config = context.context().config
+    self.assertEqual(
+        sess._config.graph_options.optimizer_options.global_jit_level,
+        default_config.graph_options.optimizer_options.global_jit_level)
+    keras.backend.clear_session()
 
   # We can't use the normal parameterized decorator because the test session
   # will block graph clearing.
@@ -172,8 +201,8 @@ class BackendUtilsTest(test.TestCase):
                      initial_learning_phase_outside_graph)
 
     with keras.backend.get_graph().as_default():
-      self.assertEqual(keras.backend.learning_phase(),
-                       initial_learning_phase_in_graph)
+      self.assertIs(keras.backend.learning_phase(),
+                    initial_learning_phase_in_graph)
 
     self.assertEqual(keras.backend.learning_phase(),
                      initial_learning_phase_outside_graph)
@@ -244,6 +273,13 @@ class BackendUtilsTest(test.TestCase):
     f = keras.backend.function(x, y)
     f(0)
 
+  def test_cast_to_floatx(self):
+    x = keras.backend.variable(1, dtype='float64')
+    x = keras.backend.cast_to_floatx(x)
+    self.assertEqual(x.dtype.name, 'float32')
+    x = keras.backend.cast_to_floatx(2)
+    self.assertEqual(x.dtype.name, 'float32')
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class BackendVariableTest(test.TestCase):
@@ -309,7 +345,7 @@ class BackendVariableTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class BackendLinearAlgebraTest(test.TestCase):
+class BackendLinearAlgebraTest(test.TestCase, parameterized.TestCase):
 
   def test_dot(self):
     x = keras.backend.ones(shape=(2, 3))
@@ -322,13 +358,47 @@ class BackendLinearAlgebraTest(test.TestCase):
     xy = keras.backend.dot(x, y)
     self.assertEqual(xy.shape.as_list(), [32, 28, 4])
 
-  def test_batch_dot(self):
-    x = keras.backend.ones(shape=(32, 20, 1))
-    y = keras.backend.ones(shape=(32, 30, 20))
-    xy = keras.backend.batch_dot(x, y, axes=[1, 2])
-    self.assertEqual(xy.shape.as_list(), [32, 1, 30])
+  @parameterized.parameters(
+      [(2, 3, 4, 5), (2, 5, 6, 7), (2, 3, 4, 6, 7), (3, 1)],
+      [(2, 20, 1), (2, 30, 20), (2, 1, 30), (1, 2)],
+      [(4, 2, 3), (4, 5, 3), (4, 2, 5), (2, 2)],
+      [(4, 2), (4, 2, 3), (4, 3), (1, 1)],
+      [(4, 2), (4, 2, 3), (4, 3), 1],
+      [(4, 2, 3), (4, 3), (4, 2), (2, 1)],
+  )
+  def test_batch_dot(self, x_shape, y_shape, output_shape, axes):
+    x_val = np.random.random(x_shape)
+    y_val = np.random.random(y_shape)
+    x = keras.backend.variable(x_val)
+    y = keras.backend.variable(y_val)
+    xy = keras.backend.batch_dot(x, y, axes=axes)
+    self.assertEqual(tuple(xy.shape.as_list()), output_shape)
+    xy_val = keras.backend.eval(xy)
+    ref_val = self._reference_batch_dot(x_val, y_val, axes)
+    self.assertAllClose(xy_val, ref_val, atol=1e-5)
 
-    # TODO(fchollet): insufficiently tested.
+  def _reference_batch_dot(self, x, y, axes):
+    if isinstance(axes, int):
+      axes = [axes, axes]
+    elif isinstance(axes, tuple):
+      axes = list(axes)
+    if axes is None:
+      if y.ndim == 2:
+        axes = [x.ndim - 1, y.ndim - 1]
+      else:
+        axes = [x.ndim - 1, y.ndim - 2]
+    if axes[0] < 0:
+      axes[0] += x.ndim
+    if axes[1] < 0:
+      axes[1] += y.ndim
+    result = []
+    axes = [axes[0] - 1, axes[1] - 1]
+    for xi, yi in zip(x, y):
+      result.append(np.tensordot(xi, yi, axes))
+    result = np.array(result)
+    if result.ndim == 1:
+      result = np.expand_dims(result, -1)
+    return result
 
   def test_reduction_ops(self):
     ops_to_test = [
@@ -760,6 +830,8 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
       y = keras.backend.pool2d(x, (2, 2), strides=(2, 2), pool_mode='other')
 
   def test_pool3d(self):
+    if test.is_built_with_rocm():
+      self.skipTest('Pooling with 3D tensors is not supported in ROCm')
     val = np.random.random((10, 3, 10, 10, 10))
     x = keras.backend.variable(val)
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(1, 1, 1),
@@ -1632,6 +1704,7 @@ class BackendCrossEntropyLossesTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.with_control_flow_v2
 class TestCTC(test.TestCase):
 
   def test_ctc_decode(self):

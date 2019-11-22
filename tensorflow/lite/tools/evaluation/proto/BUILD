@@ -13,6 +13,11 @@
 # limitations under the License.
 # ==============================================================================
 
+load(
+    "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_py",
+)
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -34,6 +39,14 @@ cc_proto_library(
 java_proto_library(
     name = "evaluation_stages_java_proto",
     deps = ["evaluation_stages_proto"],
+)
+
+tf_proto_library_py(
+    name = "evaluation_stages",  # bzl adds _py
+    srcs = [
+        "evaluation_stages.proto",
+    ],
+    visibility = ["//visibility:public"],
 )
 
 proto_library(

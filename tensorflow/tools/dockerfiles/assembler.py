@@ -32,13 +32,13 @@ import collections
 import copy
 import errno
 import itertools
+import json
 import multiprocessing
 import os
 import platform
 import re
 import shutil
 import sys
-import json
 
 from absl import app
 from absl import flags
@@ -162,6 +162,7 @@ flags.DEFINE_string(
 # Note: can add python references with e.g.
 # !!python/name:builtins.str
 # !!python/name:__main__.funcname
+# (but this may not be considered safe?)
 SCHEMA_TEXT = """
 header:
   type: string
@@ -475,13 +476,13 @@ def main(argv):
 
   # Read the full spec file, used for everything
   with open(FLAGS.spec_file, 'r') as spec_file:
-    tag_spec = yaml.load(spec_file)
+    tag_spec = yaml.safe_load(spec_file)
 
   # Get existing partial contents
   partials = gather_existing_partials(FLAGS.partial_dir)
 
   # Abort if spec.yaml is invalid
-  schema = yaml.load(SCHEMA_TEXT)
+  schema = yaml.safe_load(SCHEMA_TEXT)
   v = TfDockerTagValidator(schema, partials=partials)
   if not v.validate(tag_spec):
     eprint('> Error: {} is an invalid spec! The errors are:'.format(

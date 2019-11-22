@@ -22,13 +22,13 @@ removing existing functionality.
 
 See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 
+@@AutoShardPolicy
 @@Counter
 @@CheckpointInputPipelineHook
 @@CsvDataset
 @@DatasetStructure
 @@DistributeOptions
 @@MapVectorizationOptions
-@@NestedStructure
 @@OptimizationOptions
 @@Optional
 @@OptionalStructure
@@ -50,6 +50,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@cardinality
 @@choose_from_datasets
 @@copy_to_device
+@@dense_to_ragged_batch
 @@dense_to_sparse_batch
 @@enumerate_dataset
 @@from_variant
@@ -87,6 +88,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
+from tensorflow.python.data.experimental.ops.batching import dense_to_ragged_batch
 from tensorflow.python.data.experimental.ops.batching import dense_to_sparse_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch
 from tensorflow.python.data.experimental.ops.batching import map_and_batch_with_legacy_function
@@ -95,6 +97,7 @@ from tensorflow.python.data.experimental.ops.cardinality import cardinality
 from tensorflow.python.data.experimental.ops.cardinality import INFINITE as INFINITE_CARDINALITY
 from tensorflow.python.data.experimental.ops.cardinality import UNKNOWN as UNKNOWN_CARDINALITY
 from tensorflow.python.data.experimental.ops.counter import Counter
+from tensorflow.python.data.experimental.ops.distribute_options import AutoShardPolicy
 from tensorflow.python.data.experimental.ops.distribute_options import DistributeOptions
 from tensorflow.python.data.experimental.ops.enumerate_ops import enumerate_dataset
 from tensorflow.python.data.experimental.ops.error_ops import ignore_errors
@@ -130,19 +133,18 @@ from tensorflow.python.data.experimental.ops.threading_options import ThreadingO
 from tensorflow.python.data.experimental.ops.unique import unique
 from tensorflow.python.data.experimental.ops.writers import TFRecordWriter
 from tensorflow.python.data.ops.dataset_ops import AUTOTUNE
-from tensorflow.python.data.ops.dataset_ops import DatasetStructure
+from tensorflow.python.data.ops.dataset_ops import DatasetSpec as DatasetStructure
 from tensorflow.python.data.ops.dataset_ops import from_variant
 from tensorflow.python.data.ops.dataset_ops import get_structure
 from tensorflow.python.data.ops.dataset_ops import to_variant
 from tensorflow.python.data.ops.iterator_ops import get_next_as_optional
 from tensorflow.python.data.ops.optional_ops import Optional
-from tensorflow.python.data.ops.optional_ops import OptionalStructure
-from tensorflow.python.data.util.structure import NestedStructure
-from tensorflow.python.data.util.structure import RaggedTensorStructure
-from tensorflow.python.data.util.structure import SparseTensorStructure
-from tensorflow.python.data.util.structure import Structure
-from tensorflow.python.data.util.structure import TensorArrayStructure
-from tensorflow.python.data.util.structure import TensorStructure
+from tensorflow.python.data.ops.optional_ops import OptionalSpec as OptionalStructure
+from tensorflow.python.data.util.structure import _RaggedTensorStructure as RaggedTensorStructure
+from tensorflow.python.data.util.structure import _SparseTensorStructure as SparseTensorStructure
+from tensorflow.python.data.util.structure import _TensorArrayStructure as TensorArrayStructure
+from tensorflow.python.data.util.structure import _TensorStructure as TensorStructure
+from tensorflow.python.framework.type_spec import TypeSpec as Structure
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

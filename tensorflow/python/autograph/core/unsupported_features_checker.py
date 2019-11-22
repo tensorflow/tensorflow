@@ -20,22 +20,31 @@ from __future__ import print_function
 
 import gast
 
+from tensorflow.python.autograph.pyct import errors
 
-class UnsupportedFeaturesChecker(gast.NodeTransformer):
+
+class UnsupportedFeaturesChecker(gast.NodeVisitor):
   """Quick check for Python features we know we don't support.
 
   Any features detected will cause AutoGraph to not compile a function.
   """
 
+  def visit_Attribute(self, node):
+    if (node.attr is not None
+        and node.attr.startswith('__') and not node.attr.endswith('__')):
+      raise errors.UnsupportedLanguageElementError(
+          'mangled names are not yet supported by AutoGraph')
+
   # These checks could potentially be replaced with inspect.isgeneratorfunction
   # to avoid a getsource/parse/ast-walk round trip.
   def visit_Yield(self, node):
-    raise NotImplementedError('Generators are not supported by AutoGraph')
+    raise errors.UnsupportedLanguageElementError(
+        'generators are not supported by AutoGraph')
 
   def visit_YieldFrom(self, node):
-    raise NotImplementedError('Generators are not supported by AutoGraph')
+    raise errors.UnsupportedLanguageElementError(
+        'generators are not supported by AutoGraph')
 
 
 def verify(node):
   UnsupportedFeaturesChecker().visit(node)
-

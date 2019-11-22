@@ -143,6 +143,8 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                       tensor_spec.TensorSpec([4], name="a")),
        TwoTensorsSpec([5, 3], dtypes.int32, [3], dtypes.bool,
                       tensor_spec.TensorSpec([4], name="b"))),
+      ("Non-TypeSpec",
+       TwoTensorsSpec([5, 3], dtypes.int32, [8], dtypes.bool), 5),
       )
   def testInequality(self, v1, v2):
     # pylint: disable=g-generic-assert
@@ -267,8 +269,6 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertEqual(spec._flat_tensor_specs,
                      [tensor_spec.TensorSpec([5], dtypes.int32),
                       tensor_spec.TensorSpec([5, 8], dtypes.float32)])
-    self.assertEqual(spec._flat_shapes, [[5], [5, 8]])
-    self.assertEqual(spec._flat_types, [dtypes.int32, dtypes.float32])
 
   def testRepr(self):
     spec = TwoTensorsSpec([5, 3], dtypes.int32, None, dtypes.bool)
@@ -277,6 +277,11 @@ class TypeSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         "TwoTensorsSpec(%r, %r, %r, %r, %r)" %
         (tensor_shape.TensorShape([5, 3]), dtypes.int32,
          tensor_shape.TensorShape(None), dtypes.bool, "red"))
+
+  def testFromValue(self):
+    value = TwoTensors([1, 2, 3], [1.0, 2.0], "red")
+    spec = type_spec.type_spec_from_value(value)
+    self.assertEqual(spec, TwoTensorsSpec.from_value(value))
 
 if __name__ == "__main__":
   googletest.main()

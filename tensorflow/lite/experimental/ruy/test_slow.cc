@@ -32,6 +32,8 @@ TEST(RuyTest, TestBigNarrowMuls) {
     TestRCC<TestSetType>(width, 401, 601);
     TestRCC<TestSetType>(587, 443, width);
   }
+  TestRCC<TestSetType>(7, 45984,
+                       5);  // Large enough to trigger row-sum overflows.
   TestRCC<TestSetType>(512, 256, 16);
 }
 
@@ -56,6 +58,14 @@ TEST(RuyTest, TestBigPowerOfTwoDepthWithAvoidAliasing) {
   TestLinearAllOrders<TestSetType>(70, 1024, 80);
   TestLinearAllOrders<TestSetType>(60, 2048, 70);
   TestLinearAllOrders<TestSetType>(40, 4096, 50);
+}
+
+TEST(RuyTest, TestGEMV) {
+  for (int size = 1025; size <= 1409; size += 384) {
+    for (int depth = 350; depth < 500; depth += 47) {
+      TestLinearAllOrders<TestSetType>(size, depth, 1);
+    }
+  }
 }
 
 }  // namespace ruy

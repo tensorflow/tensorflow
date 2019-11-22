@@ -53,12 +53,10 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:errors",
         "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/util:nest",
-        "//tensorflow/python/data/util:structure",
     ],
 )
 
@@ -335,21 +333,12 @@ py_library(
 )
 
 py_library(
-    name = "sleep",
-    srcs = ["sleep.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:experimental_dataset_ops_gen",
-        "//tensorflow/python/data/ops:dataset_ops",
-    ],
-)
-
-py_library(
     name = "snapshot",
     srcs = [
         "snapshot.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python/data/ops:dataset_ops",
@@ -402,6 +391,17 @@ py_library(
         "//tensorflow/python:experimental_dataset_ops_gen",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:function",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
+    name = "testing",
+    srcs = ["testing.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
@@ -476,7 +476,6 @@ py_library(
         ":resampling",
         ":scan_ops",
         ":shuffle_ops",
-        ":sleep",
         ":snapshot",
         ":stats_ops",
         ":take_while_ops",

@@ -12,11 +12,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PLATFORM_GRPC_SERVICES_H_
 #define TENSORFLOW_CORE_PLATFORM_GRPC_SERVICES_H_
 
+#include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/profiler/profiler_analysis.grpc.pb.h"
 #include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
 
 #if !defined(PLATFORM_GOOGLE)
-
 namespace tensorflow {
 namespace grpc {
 

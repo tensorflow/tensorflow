@@ -32,8 +32,8 @@ namespace functor {
 
 template <>
 struct DenseUpdate<CPUDevice, string, ASSIGN> {
-  void operator()(const CPUDevice& d, typename TTypes<string>::Flat params,
-                  typename TTypes<string>::ConstFlat update) {
+  void operator()(const CPUDevice& d, typename TTypes<tstring>::Flat params,
+                  typename TTypes<tstring>::ConstFlat update) {
     if (params.dimension(0) == 1) {
       params.data()->resize(update.data()->size());
       auto work = [&params, &update](int64 start, int64 end) {
@@ -57,9 +57,9 @@ struct DenseUpdate<CPUDevice, string, ASSIGN> {
         // first element of the tensor seems as good a guess as any of the sizes
         // of the strings contained within...
         estimated_string_size =
-            std::max(update.data()[0].size(), sizeof(string));
+            std::max(update.data()[0].size(), sizeof(tstring));
       } else {
-        estimated_string_size = sizeof(string);
+        estimated_string_size = sizeof(tstring);
       }
       d.parallelFor(
           params.dimension(0),

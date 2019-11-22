@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/threadpool_interface.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -97,6 +98,7 @@ class Executor {
     TensorStore* tensor_store = nullptr;
     ScopedStepContainer* step_container = nullptr;
     CollectiveExecutor* collective_executor = nullptr;
+    thread::ThreadPoolInterface* user_intra_op_threadpool = nullptr;
 
     // If true, calls Sync() on the device.
     bool sync_on_finish = false;
@@ -109,7 +111,7 @@ class Executor {
   virtual void RunAsync(const Args& args, DoneCallback done) = 0;
 
   // Synchronous wrapper for RunAsync().
-  Status Run(const Args& args) {
+  virtual Status Run(const Args& args) {
     Status ret;
     Notification n;
     RunAsync(args, [&ret, &n](const Status& s) {
@@ -131,6 +133,8 @@ class Executor {
 struct LocalExecutorParams {
   Device* device;
 
+  const SessionMetadata* session_metadata = nullptr;
+
   // The library runtime support.
   FunctionLibraryRuntime* function_library = nullptr;
 
@@ -143,8 +147,7 @@ struct LocalExecutorParams {
   Executor::RendezvousFactory rendezvous_factory;
 };
 ::tensorflow::Status NewLocalExecutor(const LocalExecutorParams& params,
-                                      std::unique_ptr<const Graph> graph,
-                                      Executor** executor);
+                                      const Graph& graph, Executor** executor);
 
 // A class to help run multiple executors in parallel and wait until
 // all of them are complete.

@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/egl_context.h"
 
+#include <cstring>
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
@@ -49,37 +51,44 @@ Status CreateContext(EGLDisplay display, EGLContext shared_context,
   if (context == EGL_NO_CONTEXT) {
     return InternalError("No EGL error, but eglCreateContext failed.");
   }
-  *egl_context = EglContext(context, display, config);
+  *egl_context = EglContext(context, display, config, true);
   return OkStatus();
 }
 
 bool HasExtension(EGLDisplay display, const char* name) {
-  return strstr(eglQueryString(display, EGL_EXTENSIONS), name);
+  return std::strstr(eglQueryString(display, EGL_EXTENSIONS), name);
 }
 
 }  // namespace
 
 void EglContext::Invalidate() {
   if (context_ != EGL_NO_CONTEXT) {
-    eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
-    eglDestroyContext(display_, context_);
+    if (has_ownership_) {
+      eglMakeCurrent(display_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+      eglDestroyContext(display_, context_);
+    }
     context_ = EGL_NO_CONTEXT;
   }
+  has_ownership_ = false;
 }
 
 EglContext::EglContext(EglContext&& other)
     : context_(other.context_),
       display_(other.display_),
-      config_(other.config_) {
+      config_(other.config_),
+      has_ownership_(other.has_ownership_) {
   other.context_ = EGL_NO_CONTEXT;
+  other.has_ownership_ = false;
 }
 
 EglContext& EglContext::operator=(EglContext&& other) {
   if (this != &other) {
     Invalidate();
-    std::swap(context_, other.context_);
+    using std::swap;
+    swap(context_, other.context_);
     display_ = other.display_;
     config_ = other.config_;
+    swap(has_ownership_, other.has_ownership_);
   }
   return *this;
 }

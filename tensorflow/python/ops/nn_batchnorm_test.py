@@ -364,7 +364,7 @@ class SufficientStatisticsTest(test.TestCase):
       if d in set(axes):
         count *= x.shape[d]
     if not keep_dims:
-      shift = np.squeeze(shift, axis=axis)
+      shift = np.asarray(shift)
     return count, m_ss, v_ss, shift
 
   def _opSuffStats(self, x, axes, shift, keep_dims):

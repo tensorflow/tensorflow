@@ -54,8 +54,7 @@ namespace toco {
 
   // Remove the node and its output array.
   AddMessageF("Removed final %s", LogName(*dequantize_op));
-  model->EraseArray(output);
-  model->operators.erase(dequantize_it);
+  DeleteOpAndArrays(model, dequantize_op);
   *modified = true;
   return ::tensorflow::Status::OK();
 }

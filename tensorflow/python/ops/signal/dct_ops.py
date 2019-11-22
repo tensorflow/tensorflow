@@ -27,6 +27,7 @@ from tensorflow.python.ops import math_ops as _math_ops
 from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.util.tf_export import tf_export
 
+
 def _validate_dct_arguments(input_tensor, dct_type, n, axis, norm):
   """Checks that DCT/IDCT arguments are compatible and well formed."""
   if axis != -1:
@@ -65,8 +66,8 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
   @end_compatibility
 
   Args:
-    input: A `[..., samples]` `float32` `Tensor` containing the signals to
-      take the DCT of.
+    input: A `[..., samples]` `float32`/`float64` `Tensor` containing the
+      signals to take the DCT of.
     type: The DCT type to perform. Must be 1, 2 or 3.
     n: The length of the transform. If length is less than sequence length,
       only the first n elements of the sequence are considered for the DCT.
@@ -78,7 +79,8 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     name: An optional name for the operation.
 
   Returns:
-    A `[..., samples]` `float32` `Tensor` containing the DCT of `input`.
+    A `[..., samples]` `float32`/`float64` `Tensor` containing the DCT of
+    `input`.
 
   Raises:
     ValueError: If `type` is not `1`, `2` or `3`, `axis` is
@@ -90,9 +92,8 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
   """
   _validate_dct_arguments(input, type, n, axis, norm)
   with _ops.name_scope(name, "dct", [input]):
-    # We use the RFFT to compute the DCT and TensorFlow only supports float32
-    # for FFTs at the moment.
-    input = _ops.convert_to_tensor(input, dtype=_dtypes.float32)
+    input = _ops.convert_to_tensor(input)
+    zero = _ops.convert_to_tensor(0.0, dtype=input.dtype)
 
     seq_len = (
         tensor_shape.dimension_value(input.shape[-1]) or
@@ -102,14 +103,14 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
         input = input[..., 0:n]
       else:
         rank = len(input.shape)
-        padding = [[0, 0] for i in range(rank)]
+        padding = [[0, 0] for _ in range(rank)]
         padding[rank - 1][1] = n - seq_len
         padding = _ops.convert_to_tensor(padding, dtype=_dtypes.int32)
         input = _array_ops.pad(input, paddings=padding)
 
     axis_dim = (tensor_shape.dimension_value(input.shape[-1])
                 or _array_ops.shape(input)[-1])
-    axis_dim_float = _math_ops.cast(axis_dim, _dtypes.float32)
+    axis_dim_float = _math_ops.cast(axis_dim, input.dtype)
 
     if type == 1:
       dct1_input = _array_ops.concat([input, input[..., -2:0:-1]], axis=-1)
@@ -119,7 +120,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     if type == 2:
       scale = 2.0 * _math_ops.exp(
           _math_ops.complex(
-              0.0, -_math_ops.range(axis_dim_float) * _math.pi * 0.5 /
+              zero, -_math_ops.range(axis_dim_float) * _math.pi * 0.5 /
               axis_dim_float))
 
       # TODO(rjryan): Benchmark performance and memory usage of the various
@@ -130,7 +131,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
 
       if norm == "ortho":
         n1 = 0.5 * _math_ops.rsqrt(axis_dim_float)
-        n2 = n1 * _math_ops.sqrt(2.0)
+        n2 = n1 * _math.sqrt(2.0)
         # Use tf.pad to make a vector of [n1, n2, n2, n2, ...].
         weights = _array_ops.pad(
             _array_ops.expand_dims(n1, 0), [[0, axis_dim - 1]],
@@ -142,7 +143,7 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
     elif type == 3:
       if norm == "ortho":
         n1 = _math_ops.sqrt(axis_dim_float)
-        n2 = n1 * _math_ops.sqrt(0.5)
+        n2 = n1 * _math.sqrt(0.5)
         # Use tf.pad to make a vector of [n1, n2, n2, n2, ...].
         weights = _array_ops.pad(
             _array_ops.expand_dims(n1, 0), [[0, axis_dim - 1]],
@@ -152,12 +153,12 @@ def dct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disabl
         input *= axis_dim_float
       scale = 2.0 * _math_ops.exp(
           _math_ops.complex(
-              0.0,
+              zero,
               _math_ops.range(axis_dim_float) * _math.pi * 0.5 /
               axis_dim_float))
       dct3 = _math_ops.real(
           fft_ops.irfft(
-              scale * _math_ops.complex(input, 0.0),
+              scale * _math_ops.complex(input, zero),
               fft_length=[2 * axis_dim]))[..., :axis_dim]
 
       return dct3
@@ -183,8 +184,8 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
   @end_compatibility
 
   Args:
-    input: A `[..., samples]` `float32` `Tensor` containing the signals to take
-      the DCT of.
+    input: A `[..., samples]` `float32`/`float64` `Tensor` containing the
+      signals to take the DCT of.
     type: The IDCT type to perform. Must be 1, 2 or 3.
     n: For future expansion. The length of the transform. Must be `None`.
     axis: For future expansion. The axis to compute the DCT along. Must be `-1`.
@@ -193,7 +194,8 @@ def idct(input, type=2, n=None, axis=-1, norm=None, name=None):  # pylint: disab
     name: An optional name for the operation.
 
   Returns:
-    A `[..., samples]` `float32` `Tensor` containing the IDCT of `input`.
+    A `[..., samples]` `float32`/`float64` `Tensor` containing the IDCT of
+    `input`.
 
   Raises:
     ValueError: If `type` is not `1`, `2` or `3`, `n` is not `None, `axis` is

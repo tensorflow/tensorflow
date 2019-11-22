@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_server_lib.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -77,8 +79,26 @@ unsigned char TF_SetXlaEnableLazyCompilation(unsigned char enable) {
   return original;
 }
 
-void TF_SetXLaAutoJitMode(const char* mode) {
+unsigned char TF_SetTfXlaCpuGlobalJit(unsigned char enable) {
+  tensorflow::MarkForCompilationPassFlags* flags =
+      tensorflow::GetMarkForCompilationPassFlags();
+  bool original = flags->tf_xla_cpu_global_jit;
+  flags->tf_xla_cpu_global_jit = static_cast<bool>(enable);
+  return static_cast<unsigned char>(original);
+}
+
+void TF_SetXlaAutoJitMode(const char* mode) {
   tensorflow::SetXlaAutoJitFlagFromFlagString(mode);
+}
+
+unsigned char TF_GetXlaConstantFoldingDisabled() {
+  return static_cast<unsigned char>(
+      tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding);
+}
+
+void TF_SetXlaConstantFoldingDisabled(unsigned char should_enable) {
+  tensorflow::GetBuildXlaOpsPassFlags()->tf_xla_disable_constant_folding =
+      static_cast<bool>(should_enable);
 }
 
 void TF_SetXlaMinClusterSize(int size) {
@@ -498,18 +518,8 @@ TFE_TensorHandle* TFE_DequeueVariantTensor(TF_Session* session, int tensor_id,
   return createTFEDequeue(ctx, TF_VARIANT, queue, status);
 }
 
-static void CheckOk(TF_Status* status) {
-  CHECK_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
-}
-
 void TFE_TensorHandlePrintDebugString(TFE_TensorHandle* handle) {
   auto* status = TF_NewStatus();
-  if (!TFE_TensorHandleIsConcrete(handle)) {
-    VLOG(1) << "Symbolic tensor: " << handle;
-    TF_DeleteStatus(status);
-    return;
-  }
-
   TF_Tensor* t = TFE_TensorHandleResolve(handle, status);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
 
@@ -586,7 +596,10 @@ struct TF_CheckpointReader : public tensorflow::checkpoint::CheckpointReader {
 TF_CheckpointReader* TF_NewCheckpointReader(const char* filename,
                                             TF_Status* status) {
   TF_CheckpointReader* reader = new TF_CheckpointReader(filename, status);
-  if (!status->status.ok()) return nullptr;
+  if (!status->status.ok()) {
+    TF_DeleteCheckpointReader(reader);
+    return nullptr;
+  }
   const auto& m = reader->GetVariableToDataTypeMap();
   for (auto it = m.begin(); it != m.end(); ++it)
     reader->variable_list.push_back(it->first);
@@ -621,7 +634,7 @@ TF_Tensor* TF_CheckpointReaderGetTensor(TF_CheckpointReader* reader,
   std::unique_ptr<tensorflow::Tensor> tensor;
   reader->GetTensor(name, &tensor, status);
   if (!status->status.ok()) return nullptr;
-  return tensorflow::TF_TensorFromTensor(*tensor.get(), status);
+  return tensorflow::TF_TensorFromTensor(*tensor, status);
 }
 
 void TF_CheckpointReaderGetVariableShape(TF_CheckpointReader* reader,
@@ -663,7 +676,7 @@ void TF_DeleteAttrBuilder(TF_AttrBuilder* builder) { delete builder; }
 void TF_AttrBuilderSetType(TF_AttrBuilder* builder, const char* attr_name,
                            TF_DataType value) {
   auto iter = builder->attr_names.insert(attr_name).first;
-  builder->Set((*iter).c_str(), static_cast<tensorflow::DataType>(value));
+  builder->Set(*iter, static_cast<tensorflow::DataType>(value));
 }
 
 void TF_AttrBuilderSetTypeList(TF_AttrBuilder* builder, const char* attr_name,
@@ -727,13 +740,14 @@ int TF_PickUnusedPortOrDie() {
 }
 
 TFE_TensorHandle* TFE_NewTensorHandleFromScalar(TF_DataType data_type,
-                                                void* data, size_t len) {
+                                                void* data, size_t len,
+                                                TF_Status* status) {
   auto dtype = static_cast<tensorflow::DataType>(data_type);
   DCHECK(tensorflow::DataTypeCanUseMemcpy(dtype));
 
   tensorflow::Tensor tensor(dtype, tensorflow::TensorShape({}));
   std::memcpy(tensorflow::TensorCApi::Buffer(tensor)->data(), data, len);
-  return new TFE_TensorHandle(tensor);
+  return TFE_TensorHandle::CreateLocalHandle(tensor, status);
 }
 
 namespace {
@@ -752,22 +766,28 @@ tensorflow::Status EnableCollectiveOps(const tensorflow::ServerDef& server_def,
     }                                                   \
   } while (0);
 
-  std::unique_ptr<tensorflow::ServerInterface> server;
-  LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &server));
-
+  // New server created for new server_def. Unused if updating server_def.
   tensorflow::GrpcServer* grpc_server =
-      dynamic_cast<tensorflow::GrpcServer*>(server.get());
+      dynamic_cast<tensorflow::GrpcServer*>(ctx->context->GetServer());
   if (grpc_server == nullptr) {
-    LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
-        "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+    std::unique_ptr<tensorflow::ServerInterface> new_server;
+    LOG_AND_RETURN_IF_ERROR(tensorflow::NewServer(server_def, &new_server));
+    grpc_server = dynamic_cast<tensorflow::GrpcServer*>(new_server.get());
+    if (grpc_server == nullptr) {
+      LOG_AND_RETURN_IF_ERROR(tensorflow::errors::Internal(
+          "Currently, TFE_NewContext only supports tensorflow::GrpcServer."));
+    }
+    LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
+
+    LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
+        std::move(new_server), grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr));
+  } else {
+    LOG_AND_RETURN_IF_ERROR(grpc_server->UpdateServerDef(server_def));
+    LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
+        /*new_server=*/nullptr, grpc_server->worker_env()->device_mgr,
+        grpc_server->worker_env()->collective_executor_mgr));
   }
-
-  LOG_AND_RETURN_IF_ERROR(grpc_server->Start());
-
-  LOG_AND_RETURN_IF_ERROR(ctx->context->StoreCollectiveOpsServer(
-      std::move(server), grpc_server->worker_env()->device_mgr,
-      grpc_server->worker_env()->collective_executor_mgr));
-
   return tensorflow::Status::OK();
 #undef LOG_AND_RETURN_IF_ERROR
 }
@@ -787,200 +807,169 @@ TF_CAPI_EXPORT extern void TFE_EnableCollectiveOps(TFE_Context* ctx,
   status->status = EnableCollectiveOps(server_def, ctx);
 }
 
-std::string tensorflow::getTF_OutputDebugString(TF_Output node) {
-  return absl::Substitute("TF_Output($0, $1)", node.oper, node.index);
+TF_ShapeAndTypeList* TF_NewShapeAndTypeList(int num_items) {
+  TF_ShapeAndTypeList* result = new TF_ShapeAndTypeList;
+  result->num_items = num_items;
+  result->items = (num_items == 0) ? nullptr : new TF_ShapeAndType[num_items]();
+  return result;
 }
 
-using tensorflow::getTF_OutputDebugString;
-
-TFE_TensorHandle* TFE_NewTensorHandleFromTFOutput(TF_Output t,
-                                                  TF_DataType dtype) {
-  auto ret = new TFE_TensorHandle(t, dtype);
-  VLOG(1) << "Storing TFOutput " << getTF_OutputDebugString(t)
-          << " into tensor handle " << ret << " with internal handle "
-          << ret->handle;
-  return ret;
+void TF_ShapeAndTypeListSetShape(TF_ShapeAndTypeList* shape_list, int index,
+                                 const int64_t* dims, int num_dims) {
+  DCHECK(index >= 0 && index < shape_list->num_items);
+  TF_ShapeAndType& shape = shape_list->items[index];
+  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  DCHECK(num_dims >= 0) << "Number of dimensions cannot be negative!";
+  shape.num_dims = num_dims;
+  shape.dims = new int64_t[num_dims];
+  memcpy(shape.dims, dims, sizeof(int64_t) * num_dims);
 }
 
-unsigned char TFE_TensorHandleIsConcrete(TFE_TensorHandle* handle) {
-  assert(handle->handle != nullptr);
-  return handle->handle->getSymbolicTensor() == nullptr;
+void TF_ShapeAndTypeListSetUnknownShape(TF_ShapeAndTypeList* shape_list,
+                                        int index) {
+  DCHECK(index >= 0 && index < shape_list->num_items);
+  TF_ShapeAndType& shape = shape_list->items[index];
+  DCHECK(shape.dims == nullptr) << "Shape at " << index << " is already set!";
+  shape.num_dims = -1;
+  shape.dims = nullptr;
 }
 
-TF_Output TFE_GetTFOutputFromTensorHandle(TFE_TensorHandle* handle,
-                                          TF_Status* status) {
-  if (TFE_TensorHandleIsConcrete(handle)) {
-    status->status =
-        tensorflow::errors::Internal("Not a symbolic tensor: ", handle);
-    return TF_Output{nullptr, -1};
+void TF_ShapeAndTypeListSetDtype(TF_ShapeAndTypeList* shape_list, int index,
+                                 TF_DataType dtype) {
+  DCHECK(index >= 0 && index < shape_list->num_items);
+  TF_ShapeAndType& shape_and_type = shape_list->items[index];
+  shape_and_type.dtype = dtype;
+}
+
+void TF_DeleteShapeAndTypeList(TF_ShapeAndTypeList* shape_list) {
+  if (shape_list == nullptr) return;
+  for (size_t i = 0; i < shape_list->num_items; ++i) {
+    delete[] shape_list->items[i].dims;
+  }
+  delete[] shape_list->items;
+  delete shape_list;
+}
+
+void TF_DeleteShapeAndTypeListArray(TF_ShapeAndTypeList** shape_list_array,
+                                    int num_items) {
+  if (shape_list_array == nullptr) return;
+  for (int i = 0; i < num_items; ++i) {
+    TF_DeleteShapeAndTypeList(shape_list_array[i]);
+  }
+  delete[] shape_list_array;
+}
+
+namespace tensorflow {
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+}  // namespace tensorflow
+
+void TFE_InferShapes(TFE_Op* tfe_op, TF_ShapeAndTypeList* input_shapes,
+                     TF_Tensor** input_tensors,
+                     TF_ShapeAndTypeList* input_tensors_as_shapes,
+                     TF_ShapeAndTypeList** input_resource_shapes_and_types,
+                     TF_ShapeAndTypeList** output_shapes,
+                     TF_ShapeAndTypeList*** output_resource_shapes_and_types,
+                     TF_Status* status) {
+  using tensorflow::NodeDef;
+  using tensorflow::OpRegistrationData;
+  using tensorflow::Tensor;
+  using tensorflow::shape_inference::DimensionHandle;
+  using tensorflow::shape_inference::InferenceContext;
+  using tensorflow::shape_inference::ShapeAndType;
+  using tensorflow::shape_inference::ShapeHandle;
+
+  const int num_inputs = input_shapes->num_items;
+  NodeDef node_def;
+  node_def.set_name(tfe_op->operation.Name());
+  node_def.set_op(tfe_op->operation.Name());
+  for (int i = 0; i < num_inputs; ++i) {
+    node_def.add_input("dummy_input");
+  }
+  tfe_op->operation.Attrs().FillAttrValueMap(node_def.mutable_attr());
+
+  const tensorflow::OpRegistrationData* op_reg_data;
+  status->status =
+      tensorflow::OpRegistry::Global()->LookUp(node_def.op(), &op_reg_data);
+  if (!status->status.ok()) return;
+
+  // Initialize a input_tensor vector with `nullptr` values.
+  std::vector<const Tensor*> input_tensors_vector(num_inputs, nullptr);
+  // A vector to keep track of newly created `tf::Tensor` objects.
+  std::vector<Tensor> all_input_tensors;
+  // Update the vector with information from `input_tensors` if provided.
+  if (input_tensors != nullptr) {
+    // Note that we take the address of the elements in `all_input_tensors`
+    // below. Allocate enough space so that no reallocation happens, which will
+    // make the pointers invalid.
+    all_input_tensors.reserve(num_inputs);
+    for (int i = 0; i < num_inputs; ++i) {
+      if (input_tensors[i] == nullptr) continue;
+      all_input_tensors.emplace_back();
+      Tensor& input_tensor = all_input_tensors.back();
+      status->status = TF_TensorToTensor(input_tensors[i], &input_tensor);
+      if (!status->status.ok()) return;
+      input_tensors_vector[i] = &input_tensor;
+    }
   }
 
-  auto* sym_tensor = handle->handle->getSymbolicTensor();
-  CHECK(sym_tensor != nullptr);
-  auto ret = TF_Output{sym_tensor->oper, sym_tensor->index};
-  VLOG(1) << "Retrieving " << getTF_OutputDebugString(ret)
-          << " from tensor handle " << handle;
-  CHECK_GE(sym_tensor->index, 0);
-  return ret;
-}
+  // Create an inference context with dummy values, which will be updated later.
+  InferenceContext c(TF_GRAPH_DEF_VERSION, node_def, op_reg_data->op_def,
+                     std::vector<ShapeHandle>(num_inputs), input_tensors_vector,
+                     {},
+                     std::vector<std::unique_ptr<std::vector<ShapeAndType>>>());
 
-TFE_TraceContext* TFE_NewTraceContext(TF_Graph* graph) {
-  return new TFE_TraceContext(graph);
-}
-
-void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx) { delete trace_ctx; }
-
-// If `handle` is already symbolic, return it. Otherwise map it to a new
-// symbolic tensor (a PlaceHolder op) and return that.
-static TF_Output getOrCreateSymbolicTensor(TFE_TraceContext* trace_ctx,
-                                           tensorflow::TensorHandle* handle,
-                                           TF_Status* status) {
-  VLOG(1) << "Getting symbolic tensor for input tensor handle " << handle
-          << ": " << handle->DebugString();
-
-  auto* sym_tensor = handle->getSymbolicTensor();
-  if (sym_tensor != nullptr) {
-    auto ret = TF_Output{sym_tensor->oper, sym_tensor->index};
-    VLOG(1) << "This handle is a symbolic tensor " << sym_tensor << ": "
-            << getTF_OutputDebugString(ret);
-    return ret;
-  }
-
-  auto find_it = trace_ctx->input_tensor_map.find(handle);
-  if (find_it != trace_ctx->input_tensor_map.end()) {
-    VLOG(1) << "There exists a map entry from this concrete tensor to: "
-            << getTF_OutputDebugString(find_it->second);
-    return find_it->second;
-  }
-
-  auto node_name = tensorflow::strings::StrCat("additional_input_",
-                                               trace_ctx->node_counter++);
-  VLOG(1) << "Adding a place holder node named " << node_name;
-  auto* desc =
-      TF_NewOperation(trace_ctx->graph, "Placeholder", node_name.c_str());
-  TF_SetAttrType(desc, "dtype",
-                 static_cast<TF_DataType>(handle->dtype) /*TF_FLOAT*/);
-  auto* result = TF_FinishOperation(desc, status);
-  if (!status->status.ok()) {
-    return TF_Output{nullptr, -1};
-  }
-
-  auto ret = TF_Output{result, 0};
-  VLOG(1) << "Creating a new map entry to map to: "
-          << getTF_OutputDebugString(ret);
-  trace_ctx->input_tensor_map[handle] = ret;
-  // `handle` could be destroyed before it's read from `input_tensor_map` (say
-  // during a subsequent TFE_FinalizeInputTensorsFromTraceContext() call), so we
-  // increment its ref count to extend its life span to that of `trace_ctx`.
-  handle->Ref();
-  VLOG(1) << "Ref count for handle " << handle
-          << " is 1?: " << handle->RefCountIsOne();
-  return ret;
-}
-
-TF_Operation* TFE_AddEagerOpToGraph(TFE_Op* op, TFE_TraceContext* trace_ctx,
-                                    TFE_TensorHandle** retvals,
-                                    int* num_retvals, TF_Status* status) {
-  VLOG(1) << "Calling TFE_AddEagerOpToGraph() with op " << op << ": "
-          << op->operation.DebugString();
-
-  const auto& op_type = op->operation.Name();
-  auto op_name =
-      tensorflow::strings::StrCat(op_type, "_", trace_ctx->node_counter++);
-  std::unique_ptr<TF_OperationDescription> desc(
-      TF_NewOperation(trace_ctx->graph, op_type.c_str(), op_name.c_str()));
-
-  VLOG(1) << "Adding attrs.";
-  tensorflow::AttrValueMap attrs;
-  op->operation.Attrs().FillAttrValueMap(&attrs);
-  for (const auto& attr : attrs) {
-    desc->node_builder.Attr(attr.first, attr.second);
-  }
-
-  VLOG(1) << "Adding inputs.";
-  const auto& inputs = op->operation.Inputs();
-  size_t inputIndex = 0;
-  const tensorflow::OpDef& op_def = desc->node_builder.op_def();
-  for (const tensorflow::OpDef::ArgDef& input_arg : op_def.input_arg()) {
-    if (input_arg.type_list_attr().empty() && input_arg.number_attr().empty()) {
-      auto symbolic_input =
-          getOrCreateSymbolicTensor(trace_ctx, inputs[inputIndex++], status);
-      if (!status->status.ok()) return nullptr;
-      TF_AddInput(desc.get(), symbolic_input);
+  // Set input_shapes.
+  for (int i = 0; i < num_inputs; ++i) {
+    std::vector<DimensionHandle> dims;
+    const TF_ShapeAndType& input_shape = input_shapes->items[i];
+    if (input_shape.num_dims == InferenceContext::kUnknownRank) {
+      c.SetInput(i, c.UnknownShape());
       continue;
     }
-    size_t list_size = 0;
-    if (!input_arg.type_list_attr().empty()) {
-      const std::string& type_list_attr = input_arg.type_list_attr();
-      const auto& attr_value = attrs[type_list_attr];
-      CHECK(attr_value.value_case() == tensorflow::AttrValue::kList)
-          << "Type list attribute should be a list!";
-      list_size = attr_value.list().type_size();
-    } else {
-      CHECK(!input_arg.number_attr().empty());
-      const auto& attr_value = attrs[input_arg.number_attr()];
-      CHECK(attr_value.value_case() == tensorflow::AttrValue::kI)
-          << "Number attribute should be int!";
-      if (attr_value.i() < 0) {
-        status->status = tensorflow::errors::Internal(
-            "Number attribute for length should be >=0!");
-        return nullptr;
-      }
-      list_size = attr_value.i();
+    for (int j = 0; j < input_shape.num_dims; ++j) {
+      dims.push_back(c.MakeDim(input_shape.dims[j]));
     }
-    std::vector<TF_Output> list_inputs(list_size);
-    for (TF_Output& list_input : list_inputs) {
-      list_input =
-          getOrCreateSymbolicTensor(trace_ctx, inputs[inputIndex++], status);
-      if (!status->status.ok()) return nullptr;
-    }
-    TF_AddInputList(desc.get(), list_inputs.data(), list_inputs.size());
+    c.SetInput(i, c.MakeShape(dims));
   }
 
-  auto* graph_op = TF_FinishOperation(desc.release(), status);
-  if (!status->status.ok()) return nullptr;
+  // TODO(bgogul): Handle input_tensors_as_shapes.
+  // TODO(bgogul): Handle input_resource_shapes_and_types.
 
-  VLOG(1) << "Op finalized; setting return tensors.";
-  *num_retvals = TF_OperationNumOutputs(graph_op);
-  VLOG(1) << "This op has " << *num_retvals << " outputs.";
-  for (int i = 0; i < *num_retvals; ++i) {
-    auto output = TF_Output{graph_op, i};
-    auto dtype = TF_OperationOutputType(output);
-    retvals[i] = TFE_NewTensorHandleFromTFOutput(output, dtype);
+  status->status = c.construction_status();
+  if (!status->status.ok()) return;
+
+  if (op_reg_data->shape_inference_fn == nullptr) {
+    status->status =
+        InvalidArgument("No shape inference function exists for op '",
+                        node_def.op(), "', did you forget to define it?");
+    return;
   }
-  return graph_op;
-}
 
-int TFE_FinalizeInputTensorsFromTraceContext(TFE_TraceContext* trace_ctx) {
-  if (trace_ctx->input_tensors == nullptr) {
-    trace_ctx->input_tensors =
-        new std::vector<std::pair<tensorflow::TensorHandle*, TF_Output>>();
-    trace_ctx->input_tensors->reserve(trace_ctx->input_tensor_map.size());
+  status->status = c.Run(op_reg_data->shape_inference_fn);
+  if (!status->status.ok()) return;
 
-    for (auto input : trace_ctx->input_tensor_map) {
-      trace_ctx->input_tensors->emplace_back(input.first, input.second);
+  // Set output_shapes.
+  TF_ShapeAndTypeList* output_shapes_result =
+      TF_NewShapeAndTypeList(c.num_outputs());
+  for (int i = 0; i < c.num_outputs(); ++i) {
+    ShapeHandle shape_handle = c.output(i);
+    TF_ShapeAndType& shape = output_shapes_result->items[i];
+    shape.num_dims = c.Rank(shape_handle);
+    if (shape.num_dims == InferenceContext::kUnknownRank) {
+      shape.dims = nullptr;
+      continue;
+    }
+    shape.dims = new int64_t[shape.num_dims];
+    for (size_t j = 0; j < shape.num_dims; ++j) {
+      shape.dims[j] = c.Value(c.Dim(shape_handle, j));
     }
   }
-  return trace_ctx->input_tensor_map.size();
+  if (output_shapes != nullptr) *output_shapes = output_shapes_result;
+
+  // TODO(bgogul): Set output_resource_shapes_and_types.
 }
 
-TF_Output TFE_GetInputGraphNodeFromTraceContext(TFE_TraceContext* trace_ctx,
-                                                unsigned int idx) {
-  CHECK(trace_ctx->input_tensors != nullptr);
-  CHECK(trace_ctx->input_tensors->size() > idx);
-  return trace_ctx->input_tensors->at(idx).second;
-}
-
-TFE_TensorHandle* TFE_ConsumeInputConcreteTensorFromTraceContext(
-    TFE_TraceContext* trace_ctx, unsigned int idx) {
-  CHECK(trace_ctx->input_tensors != nullptr);
-  CHECK(trace_ctx->input_tensors->size() > idx);
-  auto* handle = trace_ctx->input_tensors->at(idx).first;
-  VLOG(1) << "Ref count for internal handle " << handle
-          << " is 1?: " << handle->RefCountIsOne();
-  handle->Ref();
-  auto* ret = new TFE_TensorHandle(handle);
-  VLOG(1) << "Returning a new tensor handle " << ret << ": "
-          << handle->DebugString();
-  return ret;
+void TF_ImportGraphDefOptionsSetValidateColocationConstraints(
+    TF_ImportGraphDefOptions* opts, unsigned char enable) {
+  opts->opts.validate_colocation_constraints = enable;
 }

@@ -33,7 +33,7 @@ limitations under the License.
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/kernels/cudnn_pooling_gpu.h"
 #include "tensorflow/core/kernels/pooling_ops_3d_gpu.h"
 #endif
@@ -738,7 +738,7 @@ class MaxPooling3dGradGradOp : public OpKernel {
 TF_CALL_float(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 template <typename T>
 struct LaunchPoolingOp<GPUDevice, T, AVG> {
@@ -826,7 +826,7 @@ struct LaunchMaxPooling3dGradGradOp<GPUDevice, T> {
 TF_CALL_float(REGISTER_GPU_KERNELS) TF_CALL_half(REGISTER_GPU_KERNELS)
 #undef REGISTER_GPU_KERNELS
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T)

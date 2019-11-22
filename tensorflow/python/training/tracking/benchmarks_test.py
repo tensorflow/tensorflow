@@ -26,7 +26,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import util
@@ -111,6 +113,17 @@ class SavingBenchmarks(test.Benchmark):
       checkpoint.m()
 
     self._run(_create_and_call, 3)
+
+  def benchmark_raw_restore(self):
+    checkpoint_path = _save_checkpoint()
+    all_names, all_dtypes = zip(*py_checkpoint_reader.NewCheckpointReader(
+        checkpoint_path).get_variable_to_dtype_map().items())
+
+    def _call_restore_v2():
+      gen_io_ops.restore_v2(checkpoint_path, all_names, [""] * len(all_names),
+                            all_dtypes)
+
+    self._run(_call_restore_v2, 3)
 
 
 if __name__ == "__main__":

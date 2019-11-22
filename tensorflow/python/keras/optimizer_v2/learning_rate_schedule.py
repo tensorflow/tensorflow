@@ -388,7 +388,7 @@ class PolynomialDecay(LearningRateSchedule):
         global_step_recomp = math_ops.minimum(global_step_recomp,
                                               self.decay_steps)
 
-      p = math_ops.div(global_step_recomp, decay_steps_recomp)
+      p = math_ops.divide(global_step_recomp, decay_steps_recomp)
       return math_ops.add(
           math_ops.multiply(initial_learning_rate - end_learning_rate,
                             math_ops.pow(1 - p, power)),
@@ -452,7 +452,7 @@ class InverseTimeDecay(LearningRateSchedule):
     decay_steps = 1.0
     decay_rate = 0.5
     learning_rate_fn = keras.optimizers.schedules.InverseTimeDecay(
-      initial_learning_rate, global_step, decay_steps, decay_rate)
+      initial_learning_rate, decay_steps, decay_rate)
 
     model.compile(optimizer=tf.keras.optimizers.SGD(
                       learning_rate=learning_rate_fn),
@@ -499,7 +499,7 @@ class InverseTimeDecay(LearningRateSchedule):
         p = math_ops.floor(p)
       const = math_ops.cast(constant_op.constant(1), dtype)
       denom = math_ops.add(const, math_ops.multiply(decay_rate, p))
-      return math_ops.div(initial_learning_rate, denom, name=name)
+      return math_ops.divide(initial_learning_rate, denom, name=name)
 
   def get_config(self):
     return {
@@ -549,7 +549,7 @@ class CosineDecay(LearningRateSchedule):
     ```python
     decay_steps = 1000
     lr_decayed_fn = tf.keras.experimental.CosineDecay(
-        initial_learning_rate, global_step, decay_steps)
+        initial_learning_rate, decay_steps)
     ```
 
     You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
@@ -640,7 +640,6 @@ class CosineDecayRestarts(LearningRateSchedule):
     lr_decayed_fn = (
       tf.keras.experimental.CosineDecayRestarts(
           initial_learning_rate,
-          global_step,
           first_decay_steps))
     ```
 
@@ -665,8 +664,6 @@ class CosineDecayRestarts(LearningRateSchedule):
       A 1-arg callable learning rate schedule that takes the current optimizer
       step and outputs the decayed learning rate, a scalar `Tensor` of the same
       type as `initial_learning_rate`.
-    Raises:
-      ValueError: if `global_step` is not supplied.
     """
     super(CosineDecayRestarts, self).__init__()
 
@@ -779,7 +776,7 @@ class LinearCosineDecay(LearningRateSchedule):
     decay_steps = 1000
     lr_decayed_fn = (
       tf.keras.experimental.LinearCosineDecay(
-        initial_learning_rate, global_step, decay_steps))
+        initial_learning_rate, decay_steps))
     ```
 
     You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`
@@ -899,7 +896,7 @@ class NoisyLinearCosineDecay(LearningRateSchedule):
     decay_steps = 1000
     lr_decayed_fn = (
       tf.keras.experimental.NoisyLinearCosineDecay(
-        initial_learning_rate, global_step, decay_steps))
+        initial_learning_rate, decay_steps))
     ```
 
     You can pass this schedule directly into a `tf.keras.optimizers.Optimizer`

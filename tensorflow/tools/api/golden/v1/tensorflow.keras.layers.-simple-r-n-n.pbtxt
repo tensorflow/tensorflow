@@ -56,6 +56,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "input_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "kernel_constraint"
     mtype: "<type \'property\'>"
   }
@@ -121,6 +125,10 @@ tf_class {
   }
   member {
     name: "recurrent_regularizer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "stateful"
     mtype: "<type \'property\'>"
   }
   member {

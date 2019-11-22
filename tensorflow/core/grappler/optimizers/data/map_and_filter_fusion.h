@@ -37,6 +37,8 @@ class MapAndFilterFusion : public TFDataOptimizerBase {
 
   string name() const override { return "map_and_filter_fusion"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();

@@ -24,6 +24,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import collections
 import os
 import re
 import sys
@@ -38,9 +39,12 @@ from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import meta_graph as meta_graph_lib
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import app  # pylint: disable=unused-import
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save
 from tensorflow.python.tools import saved_model_utils
 
 # Set of ops to blacklist.
@@ -155,6 +159,82 @@ def _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key, indent=0):
            meta_graph_def.signature_def[signature_def_key].method_name)
 
 
+def _show_defined_functions(saved_model_dir):
+  """Prints the callable concrete and polymorphic functions of the Saved Model.
+
+  Args:
+    saved_model_dir: Directory containing the SavedModel to inspect.
+  """
+  meta_graphs = saved_model_utils.read_saved_model(saved_model_dir).meta_graphs
+  has_object_graph_def = False
+
+  for meta_graph_def in meta_graphs:
+    has_object_graph_def |= meta_graph_def.HasField('object_graph_def')
+  if not has_object_graph_def:
+    return
+  with ops_lib.Graph().as_default():
+    trackable_object = load.load(saved_model_dir)
+
+  print('\nDefined Functions:', end='')
+  functions = (
+      save._AugmentedGraphView(trackable_object)  # pylint: disable=protected-access
+      .list_functions(trackable_object))
+  functions = sorted(functions.items(), key=lambda x: x[0])
+  for name, function in functions:
+    print('\n  Function Name: \'%s\'' % name)
+    concrete_functions = \
+        function._list_all_concrete_functions_for_serialization()  # pylint: disable=protected-access
+    concrete_functions = sorted(concrete_functions, key=lambda x: x.name)
+    for index, concrete_function in enumerate(concrete_functions, 1):
+      args, kwargs = concrete_function.structured_input_signature
+      print('    Option #%d' % index)
+      print('      Callable with:')
+      _print_args(args, indent=4)
+      if kwargs:
+        _print_args(kwargs, 'Named Argument', indent=4)
+
+
+def _print_args(arguments, argument_type='Argument', indent=0):
+  """Formats and prints the argument of the concrete functions defined in the model.
+
+  Args:
+    arguments: Arguments to format print.
+    argument_type: Type of arguments.
+    indent: How far (in increments of 2 spaces) to indent each line of
+     output.
+  """
+  indent_str = '  ' * indent
+
+  def _maybe_add_quotes(value):
+    is_quotes = '\'' * isinstance(value, str)
+    return is_quotes + str(value) + is_quotes
+
+  def in_print(s, end='\n'):
+    print(indent_str + s, end=end)
+
+  for index, element in enumerate(arguments, 1):
+    if indent == 4:
+      in_print('%s #%d' % (argument_type, index))
+    if isinstance(element, tensor_spec.TensorSpec):
+      print((indent + 1) * '  ' + '%s: %s' % (element.name, repr(element)))
+    elif (isinstance(element, collections.Iterable) and
+          not isinstance(element, dict)):
+      in_print('  DType: %s' % type(element).__name__)
+      in_print('  Value: [', end='')
+      for value in element:
+        print('%s' % _maybe_add_quotes(value), end=', ')
+      print('\b\b]')
+    elif isinstance(element, dict):
+      in_print('  DType: %s' % type(element).__name__)
+      in_print('  Value: {', end='')
+      for (key, value) in element.items():
+        print('\'%s\': %s' % (str(key), _maybe_add_quotes(value)), end=', ')
+      print('\b\b}')
+    else:
+      in_print('  DType: %s' % type(element).__name__)
+      in_print('  Value: %s' % str(element))
+
+
 def _print_tensor_info(tensor_info, indent=0):
   """Prints details of the given tensor_info.
 
@@ -200,6 +280,7 @@ def _show_all(saved_model_dir):
       print('\nsignature_def[\'' + signature_def_key + '\']:')
       _show_inputs_outputs(saved_model_dir, tag_set, signature_def_key,
                            indent=1)
+  _show_defined_functions(saved_model_dir)
 
 
 def get_meta_graph_def(saved_model_dir, tag_set):
@@ -551,7 +632,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
   input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
-    data = np.load(file_io.FileIO(filename, mode='rb'))
+    data = np.load(file_io.FileIO(filename, mode='rb'), allow_pickle=True)
 
     # When a variable_name key is specified for the input file
     if variable_name:

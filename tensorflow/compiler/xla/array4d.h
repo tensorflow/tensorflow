@@ -120,6 +120,21 @@ class Array4D : public Array<T> {
     }
   }
 
+  // Fills all of the {p,x} with the array provided, which specifies {z,y}.
+  void FillWithZY(const Array2D<T>& value) {
+    CHECK_EQ(value.height(), depth());
+    CHECK_EQ(value.width(), height());
+    for (int64 plane = 0; plane < planes(); ++plane) {
+      for (int64 depth = 0; depth < this->depth(); ++depth) {
+        for (int64 height = 0; height < this->height(); ++height) {
+          for (int64 width = 0; width < this->width(); ++width) {
+            (*this)(plane, depth, height, width) = value(depth, height);
+          }
+        }
+      }
+    }
+  }
+
   // Fills all of the {x,y} with the array provided, which specifies {p,z}.
   void FillWithPZ(const Array2D<T>& value) {
     CHECK_EQ(value.height(), planes());

@@ -351,6 +351,16 @@ class ReduceJoinTest(UnicodeTestCase):
       with self.assertRaisesOpError("reduction dimension 2"):
         reduced.eval(feed_dict={placeholder.name: 2})
 
+  def testDeprecatedArgs(self):
+    foobar = constant_op.constant(["foobar"])
+    # Old names: keep_dims and reduction_indices
+    output = string_ops.reduce_join(
+        ["foo", "bar"], reduction_indices=0, keep_dims=True)
+    self.assertAllEqual(foobar, output)
+    # New names keepdims and axis.
+    output = string_ops.reduce_join(["foo", "bar"], axis=0, keepdims=True)
+    self.assertAllEqual(foobar, output)
+
 
 if __name__ == "__main__":
   test.main()

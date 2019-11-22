@@ -49,6 +49,10 @@ class RandomUniformOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
 
     xla::XlaBuilder* b = ctx->builder();
+    LOG(WARNING)
+        << "Warning: Using tf.random.uniform with XLA compilation will ignore "
+           "seeds; consider using tf.random.stateless_uniform instead if "
+           "reproducible behavior is desired.";
     xla::XlaOp result = xla::RngUniform(XlaHelpers::Zero(b, dtype),
                                         XlaHelpers::One(b, dtype), xla_shape);
 
@@ -150,6 +154,8 @@ class RandomShuffleOp : public XlaOpKernel {
 
     // Generate the random swaps for the indices.
     auto swaps_shape = xla::ShapeUtil::MakeShape(xla::S32, {n});
+    LOG(WARNING) << "Warning: Using tf.random.shuffle with XLA compilation "
+                    "will ignore seeds.";
     auto swaps =
         xla::RngUniform(xla::ConstantR0<int32>(builder, 0),
                         xla::ConstantR0<int32>(builder, n), swaps_shape);
@@ -230,6 +236,10 @@ class RandomUniformIntOp : public XlaOpKernel {
 
     auto minval = ctx->Input(1);
     auto maxval = ctx->Input(2);
+    LOG(WARNING)
+        << "Warning: Using tf.random.uniform with XLA compilation will ignore "
+           "seeds; consider using tf.random.stateless_uniform instead if "
+           "reproducible behavior is desired.";
     ctx->SetOutput(0, xla::RngUniform(minval, maxval, xla_shape));
   }
 
@@ -286,6 +296,10 @@ class TruncatedNormalOp : public XlaOpKernel {
     xla::XlaOp one = xla::One(b, xla_shape.element_type());
     xla::XlaOp min_positive =
         xla::MinPositiveNormalValue(b, xla_shape.element_type());
+    LOG(WARNING) << "Warning: Using tf.random.truncated_normal with XLA "
+                    "compilation will ignore seeds; consider using "
+                    "tf.random.stateless_truncated_normal instead if "
+                    "reproducible behavior is desired.";
     auto uniform = xla::RngUniform(min_positive, one, xla_shape);
     ctx->SetOutput(0, TruncatedNormal(uniform));
   }
@@ -293,8 +307,47 @@ class TruncatedNormalOp : public XlaOpKernel {
 
 REGISTER_XLA_OP(Name("TruncatedNormal")
                     .CompileTimeConstantInput("shape")
-                    .TypeConstraint("dtype", DT_FLOAT),
+                    .TypeConstraint("dtype", {DT_FLOAT, DT_DOUBLE}),
                 TruncatedNormalOp);
+
+class ParameterizedTruncatedNormalOp : public XlaOpKernel {
+ public:
+  explicit ParameterizedTruncatedNormalOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {}
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    const DataType dtype = output_type(0);
+
+    TensorShape shape;
+    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsShape(0, &shape));
+    xla::Shape xla_shape;
+    OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype, shape, &xla_shape));
+
+    xla::XlaBuilder* b = ctx->builder();
+
+    xla::XlaOp one = xla::One(b, xla_shape.element_type());
+    xla::XlaOp min_positive =
+        xla::MinPositiveNormalValue(b, xla_shape.element_type());
+    LOG(WARNING) << "Warning: Using tf.random.truncated_normal with XLA "
+                    "compilation will ignore seeds; consider using "
+                    "tf.random.stateless_truncated_normal instead if "
+                    "reproducible behavior is desired.";
+    xla::XlaOp uniform = xla::RngUniform(min_positive, one, xla_shape);
+
+    xla::XlaOp means = ctx->Input(1);
+    xla::XlaOp stddevs = ctx->Input(2);
+    xla::XlaOp minvals = ctx->Input(3);
+    xla::XlaOp maxvals = ctx->Input(4);
+
+    ctx->SetOutput(0, ParameterizedTruncatedNormal(uniform, means, stddevs,
+                                                   minvals, maxvals));
+  }
+};
+
+REGISTER_XLA_OP(Name("ParameterizedTruncatedNormal")
+                    .CompileTimeConstantInput("shape")
+                    .TypeConstraint("dtype", {DT_FLOAT, DT_DOUBLE}),
+                ParameterizedTruncatedNormalOp);
 
 }  // namespace
 }  // namespace tensorflow

@@ -1,10 +1,6 @@
 # Description:
 # TensorFlow Java API.
 
-package(default_visibility = ["//visibility:private"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(":build_defs.bzl", "JAVACOPTS")
 load(":src/gen/gen_ops.bzl", "tf_java_op_gen_srcjar")
 load(
@@ -17,13 +13,18 @@ load(
     "tf_java_test",
 )
 
+package(
+    default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
 java_library(
     name = "tensorflow",
     srcs = [
         ":java_op_sources",
         ":java_sources",
     ],
-    data = [":libtensorflow_jni"] + tf_binary_additional_srcs(),
+    data = tf_binary_additional_srcs() + [":libtensorflow_jni"],
     javacopts = JAVACOPTS,
     plugins = [":processor"],
     visibility = ["//visibility:public"],
@@ -38,8 +39,8 @@ filegroup(
         "src/main/java/org/tensorflow/types/*.java",
     ]),
     visibility = [
-        "//tensorflow/contrib/android:__pkg__",
         "//tensorflow/java:__pkg__",
+        "//tensorflow/tools/android/inference_interface:__pkg__",
     ],
 )
 

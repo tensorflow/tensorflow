@@ -197,6 +197,19 @@ gentbl(
     ]),
 )
 
+cc_library(
+    name = "utils_tablegen",
+    srcs = glob([
+        "utils/TableGen/GlobalISel/*.cpp",
+    ]),
+    hdrs = glob([
+        "utils/TableGen/GlobalISel/*.h",
+    ]),
+    deps = [
+        ":tablegen",
+    ],
+)
+
 # Binary targets used by Tensorflow.
 cc_binary(
     name = "llvm-tblgen",
@@ -210,7 +223,8 @@ cc_binary(
     deps = [
         ":config",
         ":support",
-        ":table_gen",
+        ":tablegen",
+        ":utils_tablegen",
     ],
 )
 
@@ -244,6 +258,7 @@ llvm_target_list = [
             ("-gen-dag-isel", "lib/Target/AArch64/AArch64GenDAGISel.inc"),
             ("-gen-fast-isel", "lib/Target/AArch64/AArch64GenFastISel.inc"),
             ("-gen-global-isel", "lib/Target/AArch64/AArch64GenGlobalISel.inc"),
+            ("-gen-global-isel-combiner -combiners=AArch64PreLegalizerCombinerHelper", "lib/Target/AArch64/AArch64GenGICombiner.inc"),
             ("-gen-callingconv", "lib/Target/AArch64/AArch64GenCallingConv.inc"),
             ("-gen-subtarget", "lib/Target/AArch64/AArch64GenSubtargetInfo.inc"),
             ("-gen-disassembler", "lib/Target/AArch64/AArch64GenDisassemblerTables.inc"),
@@ -398,6 +413,26 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+py_binary(
+    name = "lit",
+    srcs = ["utils/lit/lit.py"] + glob(["utils/lit/lit/**/*.py"]),
+)
+
+cc_binary(
+    name = "count",
+    srcs = ["utils/count/count.c"],
+)
+
+cc_binary(
+    name = "not",
+    srcs = ["utils/not/not.cpp"],
+    copts = llvm_copts,
+    linkopts = llvm_linkopts,
+    deps = [
+        ":support",
+    ],
+)
+
 cc_library(
     name = "aarch64_asm_parser",
     srcs = glob([
@@ -443,6 +478,7 @@ cc_library(
         ":aarch64_utils",
         ":analysis",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",
@@ -452,6 +488,7 @@ cc_library(
         ":selection_dag",
         ":support",
         ":target",
+        ":transform_utils",
     ],
 )
 
@@ -854,6 +891,7 @@ cc_library(
         ":arm_info",
         ":arm_utils",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",
@@ -1079,7 +1117,6 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/AVR"],
     deps = [
         ":config",
-        ":mc",
         ":support",
     ],
 )
@@ -1341,6 +1378,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":bitstream_reader",
         ":config",
         ":core",
         ":support",
@@ -1370,6 +1408,47 @@ cc_library(
         ":core",
         ":mc",
         ":object",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "bitstream_reader",
+    srcs = glob([
+        "lib/Bitstream/Reader/*.c",
+        "lib/Bitstream/Reader/*.cpp",
+        "lib/Bitstream/Reader/*.inc",
+        "lib/Bitstream/Reader/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Bitstream/Reader/*.h",
+        "include/llvm/Bitstream/Reader/*.def",
+        "include/llvm/Bitstream/Reader/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "cf_guard",
+    srcs = glob([
+        "lib/Transforms/CFGuard/*.c",
+        "lib/Transforms/CFGuard/*.cpp",
+        "lib/Transforms/CFGuard/*.inc",
+        "lib/Transforms/CFGuard/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/CFGuard/*.h",
+        "include/llvm/Transforms/CFGuard/*.def",
+        "include/llvm/Transforms/CFGuard/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":core",
         ":support",
     ],
 )
@@ -1533,6 +1612,27 @@ cc_library(
 )
 
 cc_library(
+    name = "debug_info_gsym",
+    srcs = glob([
+        "lib/DebugInfo/GSYM/*.c",
+        "lib/DebugInfo/GSYM/*.cpp",
+        "lib/DebugInfo/GSYM/*.inc",
+        "lib/DebugInfo/GSYM/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/DebugInfo/GSYM/*.h",
+        "include/llvm/DebugInfo/GSYM/*.def",
+        "include/llvm/DebugInfo/GSYM/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":mc",
+        ":support",
+    ],
+)
+
+cc_library(
     name = "debug_info_msf",
     srcs = glob([
         "lib/DebugInfo/MSF/*.c",
@@ -1685,6 +1785,7 @@ cc_library(
         ":config",
         ":core",
         ":mc",
+        ":selection_dag",
         ":support",
         ":target",
         ":transform_utils",
@@ -2001,6 +2102,7 @@ cc_library(
         ":objc_arc",
         ":object",
         ":passes",
+        ":remarks",
         ":scalar",
         ":support",
         ":target",
@@ -2146,6 +2248,7 @@ cc_library(
     copts = llvm_copts,
     deps = [
         ":binary_format",
+        ":bit_reader",
         ":config",
         ":object",
         ":option",
@@ -2693,6 +2796,7 @@ cc_library(
         ":mc",
         ":mc_parser",
         ":support",
+        ":text_api",
     ],
 )
 
@@ -2713,6 +2817,7 @@ cc_library(
     deps = [
         ":config",
         ":debug_info_code_view",
+        ":mc",
         ":object",
         ":support",
     ],
@@ -2730,6 +2835,26 @@ cc_library(
         "include/llvm/Option/*.h",
         "include/llvm/Option/*.def",
         "include/llvm/Option/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":config",
+        ":support",
+    ],
+)
+
+cc_library(
+    name = "orc_error",
+    srcs = glob([
+        "lib/ExecutionEngine/OrcError/*.c",
+        "lib/ExecutionEngine/OrcError/*.cpp",
+        "lib/ExecutionEngine/OrcError/*.inc",
+        "lib/ExecutionEngine/OrcError/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/ExecutionEngine/OrcError/*.h",
+        "include/llvm/ExecutionEngine/OrcError/*.def",
+        "include/llvm/ExecutionEngine/OrcError/*.inc",
     ]),
     copts = llvm_copts,
     deps = [
@@ -2759,6 +2884,8 @@ cc_library(
         ":jit_link",
         ":mc",
         ":object",
+        ":orc_error",
+        ":passes",
         ":runtime_dyld",
         ":support",
         ":target",
@@ -2987,10 +3114,12 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/RISCV"],
     deps = [
+        ":analysis",
         ":asm_printer",
         ":code_gen",
         ":config",
         ":core",
+        ":global_i_sel",
         ":mc",
         ":riscv_desc",
         ":riscv_info",
@@ -3101,6 +3230,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":bitstream_reader",
         ":config",
         ":support",
     ],
@@ -3486,7 +3616,7 @@ cc_library(
 )
 
 cc_library(
-    name = "table_gen",
+    name = "tablegen",
     srcs = glob([
         "lib/TableGen/*.c",
         "lib/TableGen/*.cpp",
@@ -3562,13 +3692,27 @@ cc_library(
         "lib/TextAPI/*.c",
         "lib/TextAPI/*.cpp",
         "lib/TextAPI/*.inc",
+        "lib/TextAPI/ELF/*.cpp",
+        "lib/TextAPI/MachO/*.cpp",
+        "lib/TextAPI/MachO/*.h",
         "lib/TextAPI/*.h",
     ]),
     hdrs = glob([
         "include/llvm/TextAPI/*.h",
         "include/llvm/TextAPI/*.def",
         "include/llvm/TextAPI/*.inc",
-    ]),
+    ]) + [
+        "include/llvm/TextAPI/ELF/TBEHandler.h",
+        "include/llvm/TextAPI/ELF/ELFStub.h",
+        "include/llvm/TextAPI/MachO/Architecture.def",
+        "include/llvm/TextAPI/MachO/PackedVersion.h",
+        "include/llvm/TextAPI/MachO/InterfaceFile.h",
+        "include/llvm/TextAPI/MachO/Symbol.h",
+        "include/llvm/TextAPI/MachO/ArchitectureSet.h",
+        "include/llvm/TextAPI/MachO/TextAPIWriter.h",
+        "include/llvm/TextAPI/MachO/TextAPIReader.h",
+        "include/llvm/TextAPI/MachO/Architecture.h",
+    ],
     copts = llvm_copts,
     deps = [
         ":binary_format",
@@ -3720,6 +3864,7 @@ cc_library(
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/WebAssembly"],
     deps = [
         ":config",
+        ":mc",
         ":mc_disassembler",
         ":support",
         ":web_assembly_desc",
@@ -3808,6 +3953,7 @@ cc_library(
     deps = [
         ":analysis",
         ":asm_printer",
+        ":cf_guard",
         ":code_gen",
         ":config",
         ":core",

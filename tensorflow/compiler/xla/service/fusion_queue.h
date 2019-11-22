@@ -15,11 +15,27 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_FUSION_QUEUE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_FUSION_QUEUE_H_
 
-#include <utility>
+#include <string>
+#include <vector>
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 
 namespace xla {
+
+// Fusion configuration.
+using FusionConfig = std::vector<std::vector<bool>>;
+
+// Converts fusion config to string format.
+static std::string FusionConfigToString(const FusionConfig& config) {
+  std::string s;
+  for (const auto& edge_list : config) {
+    for (bool edge : edge_list) {
+      absl::StrAppend(&s, edge ? "1" : "0");
+    }
+  }
+  return s;
+}
 
 // A queue interface that allows implementations to choose fusion candidates in
 // custom order.
@@ -46,6 +62,9 @@ class FusionQueue {
   // A callback passed to the queue implementation to notify the removal of an
   // instruction.
   virtual void RemoveInstruction(HloInstruction* instruction) = 0;
+
+  // Returns the fusion configuration.
+  virtual const std::vector<bool>* FusionConfiguration() = 0;
 };
 
 }  // namespace xla

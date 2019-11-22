@@ -36,7 +36,7 @@ namespace {
 template <typename T, typename IntType>
 __global__ void concat_fixed_kernel(
     GpuDeviceArrayStruct<const T*> input_ptr_data, int split_size,
-    int total_rows, int total_cols, T* output) {
+    int total_rows, int total_cols, T* __restrict__ output) {
   const T** input_ptrs = GetGpuDeviceArrayOnDevice(&input_ptr_data);
   IntType gidx = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -70,11 +70,7 @@ __global__ void concat_variable_kernel(
   IntType num_inputs = input_ptr_data.size;
 
   // verbose declaration needed due to template
-#if GOOGLE_CUDA
-  extern __shared__ __align__(sizeof(T)) unsigned char smem[];
-#elif TENSORFLOW_USE_ROCM
-  HIP_DYNAMIC_SHARED(unsigned char, smem);
-#endif
+  GPU_DYNAMIC_SHARED_MEM_DECL(sizeof(T), unsigned char, smem);
   IntType* smem_col_scan = reinterpret_cast<IntType*>(smem);
 
   if (useSmem) {

@@ -87,7 +87,7 @@ class TestIsSymbolicTensor(test.TestCase):
 
       def __init__(self, input_):
         self._input = input_
-        self.value = ops.convert_to_tensor(42.)
+        self.value = ops.convert_to_tensor([[42.]])
 
       @property
       def dtype(self):
@@ -123,14 +123,14 @@ class TestIsSymbolicTensor(test.TestCase):
 
     # User-land.
     model = keras.Sequential([
-        keras.layers.InputLayer([]),
+        keras.layers.InputLayer((1,)),
         PlumbingLayer(Foo),  # Makes a `Foo` object.
     ])
     # Let's ensure Keras graph history is preserved by composing the models.
     model = keras.Model(model.inputs, model(model.outputs))
     # Now we instantiate the model and verify we have a `Foo` object, not a
     # `Tensor`.
-    y = model(ops.convert_to_tensor(7.))
+    y = model(ops.convert_to_tensor([[7.]]))
     self.assertIsInstance(y, Foo)
     # Confirm that (custom) loss sees `Foo` instance, not Tensor.
     obtained_prediction_box = [None]

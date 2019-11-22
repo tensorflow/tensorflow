@@ -13,10 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <cstdarg>
+#include <cstdint>
 #include <initializer_list>
+
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -87,7 +90,8 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput(output);
-
+    // The CPU kernel now ignores `depthwise_multiplier`. However delegates
+    // like NNAPI still relies on the attribute.
     int input_depth = GetShape(input_)[3];
     int output_depth = GetShape(filter_)[3];
     int depth_mul = output_depth / input_depth;
@@ -581,12 +585,21 @@ class QuantizedDepthwiseConvolutionOpModel
   void SetInput(std::initializer_list<float> data) {
     QuantizeAndPopulate<uint8_t>(input_, data);
   }
+  void SetInput(const std::vector<float>& data) {
+    QuantizeAndPopulate<uint8_t>(input_, data);
+  }
 
   void SetFilter(std::initializer_list<float> data) {
     QuantizeAndPopulate<uint8_t>(filter_, data);
   }
+  void SetFilter(const std::vector<float>& data) {
+    QuantizeAndPopulate<uint8_t>(filter_, data);
+  }
 
   void SetBias(std::initializer_list<float> data) {
+    QuantizeAndPopulate<int32_t>(bias_, data);
+  }
+  void SetBias(const std::vector<float>& data) {
     QuantizeAndPopulate<int32_t>(bias_, data);
   }
 
@@ -603,6 +616,52 @@ class QuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
     return *kKernelMap;
   }
 };
+
+// Only enable this test for neon.
+#ifdef USE_NEON
+TEST_F(QuantizedDepthwiseConvolutionOpTest, LargeOutputChannelTest) {
+  const TensorData input({TensorType_UINT8, {1, 4, 4, 2400}, -63.5, 64});
+  const TensorData filter({TensorType_UINT8, {1, 3, 3, 2400}, -63.5, 64});
+  const TensorData output({TensorType_UINT8, {}, -127, 128});
+  const Padding padding = Padding_VALID;
+
+  // Populate input, filter & bias data.
+  const int input_size = 1 * 4 * 4 * 2400;
+  const int filter_size = 1 * 3 * 3 * 2400;
+  const int bias_size = 2400;
+  std::vector<float> input_data(input_size);
+  std::vector<float> filter_data(filter_size);
+  std::vector<float> bias_data(bias_size);
+  for (int i = 0; i < input_size; ++i) {
+    input_data[i] = UniformRandomFloat(-1, -1);
+  }
+  for (int i = 0; i < filter_size; ++i) {
+    filter_data[i] = UniformRandomFloat(-1, -1);
+  }
+  for (int i = 0; i < bias_size; ++i) {
+    bias_data[i] = UniformRandomFloat(-1, -1);
+  }
+
+  // Make sure reference impl & optimized impl produce the same result.
+  QuantizedDepthwiseConvolutionOpModel reference_impl(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_REF(), input, filter, output,
+      padding);
+  reference_impl.SetInput(input_data);
+  reference_impl.SetFilter(filter_data);
+  reference_impl.SetBias(bias_data);
+  reference_impl.Invoke();
+
+  QuantizedDepthwiseConvolutionOpModel optimized_impl(
+      ops::builtin::Register_DEPTHWISE_CONVOLUTION_GENERIC_OPT(), input, filter,
+      output, padding);
+  optimized_impl.SetInput(input_data);
+  optimized_impl.SetFilter(filter_data);
+  optimized_impl.SetBias(bias_data);
+  optimized_impl.Invoke();
+
+  EXPECT_THAT(reference_impl.GetOutput(), optimized_impl.GetOutput());
+}
+#endif
 
 // In this test we set the input and output scales so that the results match
 // exactly the 'non-quantized' version.
@@ -1589,9 +1648,9 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimpleTest) {
   m.Invoke();
   EXPECT_THAT(
       m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({40.5, 48, 27, 40, 0.5, -4, -24, -36})));
+      ElementsAreArray(ArrayFloatNear({43, 48, 21, 22, 3, -4, -30, -54})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({80, 95, 53, 79, 0, -9, -49, -73}));
+              ElementsAreArray({85, 95, 41, 43, 5, -9, -61, -109}));
 }
 
 // Same as previous test, except the shift will be negative for the outputs.
@@ -1637,9 +1696,9 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   m.Invoke();
   EXPECT_THAT(
       m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({40, 50, 14.5, 16.5, 0, -2, -32, -42})));
+      ElementsAreArray(ArrayFloatNear({43, 48, 18.5, 22, 3, -4, -28.5, -36})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({79, 99, 28, 32, -1, -5, -65, -85}));
+              ElementsAreArray({85, 95, 36, 43, 5, -9, -58, -73}));
 }
 
 // Same as previous test, except the shift will be mixed for the outputs.
@@ -1685,9 +1744,9 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
   m.Invoke();
   EXPECT_THAT(
       m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({40, 48, 27, 16.5, 0, -4, -24, -42})));
+      ElementsAreArray(ArrayFloatNear({43, 48, 21, 22, 3, -4, -30, -36})));
   EXPECT_THAT(m.GetOutput(),
-              ElementsAreArray({79, 95, 53, 32, -1, -9, -49, -85}));
+              ElementsAreArray({85, 95, 41, 43, 5, -9, -61, -73}));
 }
 
 TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {

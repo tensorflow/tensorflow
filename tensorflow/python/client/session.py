@@ -18,18 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import re
 import threading
 import warnings
 
 import numpy as np
+import wrapt
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import device
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import errors
@@ -41,7 +42,11 @@ from tensorflow.python.training.experimental import mixed_precision_global_state
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc
 
+_python_session_create_counter = monitoring.Counter(
+    '/tensorflow/api/python/session_create_counter',
+    'Counter for number of sessions created in Python.')
 
 class SessionInterface(object):
   """Base class for implementations of TensorFlow client sessions."""
@@ -70,9 +75,9 @@ class SessionInterface(object):
 
 
 def _get_indexed_slices_value_from_fetches(fetched_vals):
-  return ops.IndexedSlicesValue(fetched_vals[0], fetched_vals[1],
-                                fetched_vals[2]
-                                if len(fetched_vals) == 3 else None)
+  return ops.IndexedSlicesValue(
+      fetched_vals[0], fetched_vals[1],
+      fetched_vals[2] if len(fetched_vals) == 3 else None)
 
 
 def _get_feeds_for_indexed_slices(feed, feed_val):
@@ -108,28 +113,25 @@ def _get_feeds_for_indexed_slices(feed, feed_val):
 _REGISTERED_EXPANSIONS = [
     # SparseTensors are fetched as SparseTensorValues. They can be fed
     # SparseTensorValues or normal tuples.
-    (sparse_tensor.SparseTensor,
-     lambda fetch: (
-         [fetch.indices, fetch.values, fetch.dense_shape],
-         lambda fetched_vals: sparse_tensor.SparseTensorValue(*fetched_vals)),
-     lambda feed, feed_val: list(zip(
-         [feed.indices, feed.values, feed.dense_shape], feed_val)),
+    (sparse_tensor.SparseTensor, lambda fetch: ([
+        fetch.indices, fetch.values, fetch.dense_shape
+    ], lambda fetched_vals: sparse_tensor.SparseTensorValue(*fetched_vals)),
+     lambda feed, feed_val: list(
+         zip([feed.indices, feed.values, feed.dense_shape], feed_val)),
      lambda feed: [feed.indices, feed.values, feed.dense_shape]),
     # IndexedSlices are fetched as IndexedSlicesValues. They can be fed
     # IndexedSlicesValues or normal tuples.
     (ops.IndexedSlices,
-     lambda fetch: (
-         [fetch.values, fetch.indices] if fetch.dense_shape is None
-         else [fetch.values, fetch.indices, fetch.dense_shape],
-         _get_indexed_slices_value_from_fetches),
+     lambda fetch: ([fetch.values, fetch.indices] if fetch.dense_shape is None
+                    else [fetch.values, fetch.indices, fetch.dense_shape
+                         ], _get_indexed_slices_value_from_fetches),
      _get_feeds_for_indexed_slices,
-     lambda feed: [feed.values, feed.indices] if feed.dense_shape is None
-     else [feed.values, feed.indices, feed.dense_shape]),
+     lambda feed: [feed.values, feed.indices] if feed.dense_shape is None else
+     [feed.values, feed.indices, feed.dense_shape]),
     # The default catches all other types and performs no expansions.
-    (object,
-     lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
-     lambda feed, feed_val: [(feed, feed_val)],
-     lambda feed: [feed])]
+    (object, lambda fetch: ([fetch], lambda fetched_vals: fetched_vals[0]),
+     lambda feed, feed_val: [(feed, feed_val)], lambda feed: [feed])
+]
 
 # pylint: enable=g-long-lambda
 
@@ -176,8 +178,8 @@ def register_session_run_conversion_functions(
     feed_function: A callable that takes feed_key and feed_value as input, and
       returns a list of tuples (feed_tensor, feed_val), feed_key must have type
       `tensor_type`, and feed_tensor must have type `tf.Tensor`. Each feed
-      function describes how to unpack a single fed value and map it to feeds
-      of one or more tensors and their corresponding values.
+      function describes how to unpack a single fed value and map it to feeds of
+      one or more tensors and their corresponding values.
     feed_function_for_partial_run: A callable for specifying tensor values to
       feed when setting up a partial run, which takes a `tensor_type` type
       object as input, and returns a list of Tensors.
@@ -232,8 +234,8 @@ class _FetchMapper(object):
     """Build results that match the original shape of the fetch.
 
     Args:
-      values: List of values returned by run(). The values correspond
-        exactly to the list tensors or ops returned by unique_fetches().
+      values: List of values returned by run(). The values correspond exactly to
+        the list tensors or ops returned by unique_fetches().
 
     Returns:
       A struct of the same shape as the original fetch object handled by
@@ -250,19 +252,19 @@ class _FetchMapper(object):
     this function is called.
 
     Args:
-      fetch: An arbitrary fetch structure: singleton, list, tuple,
-        namedtuple, or dict.
+      fetch: An arbitrary fetch structure: singleton, list, tuple, namedtuple,
+        or dict.
 
     Returns:
       An instance of a subclass of `_FetchMapper` that handles the shape.
     """
     if fetch is None:
-      raise TypeError('Fetch argument %r has invalid type %r' % (fetch,
-                                                                 type(fetch)))
+      raise TypeError('Fetch argument %r has invalid type %r' %
+                      (fetch, type(fetch)))
     elif isinstance(fetch, (list, tuple)):
       # NOTE(touts): This is also the code path for namedtuples.
       return _ListFetchMapper(fetch)
-    elif isinstance(fetch, collections.Mapping):
+    elif isinstance(fetch, collections_abc.Mapping):
       return _DictFetchMapper(fetch)
     elif _is_attrs_instance(fetch):
       return _AttrsFetchMapper(fetch)
@@ -273,8 +275,8 @@ class _FetchMapper(object):
           fetches, contraction_fn = fetch_fn(fetch)
           return _ElementFetchMapper(fetches, contraction_fn)
     # Did not find anything.
-    raise TypeError('Fetch argument %r has invalid type %r' % (fetch,
-                                                               type(fetch)))
+    raise TypeError('Fetch argument %r has invalid type %r' %
+                    (fetch, type(fetch)))
 
 
 class _ElementFetchMapper(_FetchMapper):
@@ -292,8 +294,8 @@ class _ElementFetchMapper(_FetchMapper):
     the corresponding tensor or op.
 
     Args:
-      fetches: List of objects, as returned by a fetch_fn defined
-        in _REGISTERED_EXPANSIONS.
+      fetches: List of objects, as returned by a fetch_fn defined in
+        _REGISTERED_EXPANSIONS.
       contraction_fn: Callable as returned by a fetch_fn.
     """
     self._unique_fetches = []
@@ -350,10 +352,10 @@ def _uniquify_fetches(fetch_mappers):
   for m in fetch_mappers:
     m_value_indices = []
     for f in m.unique_fetches():
-      j = seen_fetches.get(f)
+      j = seen_fetches.get(id(f))
       if j is None:
         j = len(seen_fetches)
-        seen_fetches[f] = j
+        seen_fetches[id(f)] = j
         unique_fetches.append(f)
       m_value_indices.append(j)
     value_indices.append(m_value_indices)
@@ -369,7 +371,10 @@ class _ListFetchMapper(_FetchMapper):
     Args:
       fetches: List, tuple, or namedtuple of fetches.
     """
-    self._fetch_type = type(fetches)
+    if isinstance(fetches, wrapt.ObjectProxy):
+      self._fetch_type = type(fetches.__wrapped__)
+    else:
+      self._fetch_type = type(fetches)
     self._mappers = [_FetchMapper.for_fetch(fetch) for fetch in fetches]
     self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
 
@@ -428,9 +433,7 @@ class _AttrsFetchMapper(_FetchMapper):
     """
     values = _get_attrs_values(fetches)
     self._fetch_type = type(fetches)
-    self._mappers = [
-        _FetchMapper.for_fetch(fetch) for fetch in values
-    ]
+    self._mappers = [_FetchMapper.for_fetch(fetch) for fetch in values]
     self._unique_fetches, self._value_indices = _uniquify_fetches(self._mappers)
 
   def unique_fetches(self):
@@ -462,10 +465,10 @@ class _FetchHandler(object):
     """Creates a fetch handler.
 
     Args:
-      graph: Graph of the fetches.   Used to check for fetchability
-        and to convert all fetches to tensors or ops as needed.
-      fetches: An arbitrary fetch structure: singleton, list, tuple,
-        namedtuple, or dict.
+      graph: Graph of the fetches.   Used to check for fetchability and to
+        convert all fetches to tensors or ops as needed.
+      fetches: An arbitrary fetch structure: singleton, list, tuple, namedtuple,
+        or dict.
       feeds: A feed dict where keys are Tensors.
       feed_handles: A dict from feed Tensors to TensorHandle objects used as
         direct feeds.
@@ -491,13 +494,19 @@ class _FetchHandler(object):
       if (isinstance(fetch, ops.Tensor) and
           (fetch.op.type == 'GetSessionHandle' or
            fetch.op.type == 'GetSessionHandleV2')):
-        self._fetch_handles[fetch] = fetch.op.inputs[0].dtype
-    self._final_fetches = [x for x in self._fetches if x not in feeds]
+        self._fetch_handles[fetch.experimental_ref()] = fetch.op.inputs[0].dtype
+    self._final_fetches = [
+        x for x in self._fetches if x.experimental_ref() not in feeds
+    ]
 
   def _assert_fetchable(self, graph, op):
     if not graph.is_fetchable(op):
-      raise ValueError(
-          'Operation %r has been marked as not fetchable.' % op.name)
+      raise errors.InaccessibleTensorError(
+          'Operation %r has been marked as not fetchable. Typically this'
+          ' happens when it is defined in another function or code block.'
+          ' Use return values,explicit Python locals or TensorFlow collections'
+          ' to access it.'
+          % op.name)
 
   def fetches(self):
     """Return the unique names of tensors to fetch.
@@ -528,8 +537,7 @@ class _FetchHandler(object):
 
     Args:
       session: The enclosing session.  Used for tensor handles.
-      tensor_values: List of values matching the list returned
-        by fetches().
+      tensor_values: List of values matching the list returned by fetches().
 
     Returns:
       A structure of the same shape as the original `fetches` argument but
@@ -545,16 +553,16 @@ class _FetchHandler(object):
       else:
         # If the fetch was in the feeds, use the fed value, otherwise
         # use the returned value.
-        if self._fetches[i] in self._feed_handles:
+        if self._fetches[i].experimental_ref() in self._feed_handles:
           # A fetch had a corresponding direct TensorHandle feed. Call eval()
           # to obtain the Tensor value from the TensorHandle.
-          value = self._feed_handles[self._fetches[i]].eval()
+          value = self._feed_handles[self._fetches[i].experimental_ref()].eval()
         else:
-          value = self._feeds.get(self._fetches[i])
+          value = self._feeds.get(self._fetches[i].experimental_ref())
         if value is None:
           value = tensor_values[j]
           j += 1
-        dtype = self._fetch_handles.get(self._fetches[i])
+        dtype = self._fetch_handles.get(self._fetches[i].experimental_ref())
         if dtype:
           full_values.append(session_ops.TensorHandle(value, dtype, session))
         else:
@@ -630,17 +638,18 @@ class BaseSession(SessionInterface):
 
     Args:
       target: (Optional) The TensorFlow execution engine to connect to.
-      graph: (Optional) The graph to be used. If this argument is None,
-        the default graph will be used.
+      graph: (Optional) The graph to be used. If this argument is None, the
+        default graph will be used.
       config: (Optional) ConfigProto proto used to configure the session. If no
-        config is specified, the global default will be used. The global
-        default can be configured via the tf.config APIs.
+        config is specified, the global default will be used. The global default
+        can be configured via the tf.config APIs.
 
     Raises:
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow session.
       TypeError: If one of the arguments has the wrong type.
     """
+    _python_session_create_counter.get_cell().increase_by(1)
     if graph is None:
       self._graph = ops.get_default_graph()
     else:
@@ -648,15 +657,16 @@ class BaseSession(SessionInterface):
         raise TypeError('graph must be a tf.Graph, but got %s' % type(graph))
       self._graph = graph
 
-    self._opened = False
     self._closed = False
 
-    self._current_version = 0
-    self._extend_lock = threading.Lock()
     if target is not None:
       try:
         self._target = compat.as_bytes(target)
       except TypeError:
+        if isinstance(target, config_pb2.ConfigProto):
+          raise TypeError('target must be a string, but got %s.'
+                          ' Did you do "Session(config)" instead of'
+                          ' "Session(config=config)"?' % type(target))
         raise TypeError('target must be a string, but got %s' % type(target))
     else:
       self._target = None
@@ -668,8 +678,8 @@ class BaseSession(SessionInterface):
       config = context.context().config
 
     if not isinstance(config, config_pb2.ConfigProto):
-      raise TypeError(
-          'config must be a tf.ConfigProto, but got %s' % type(config))
+      raise TypeError('config must be a tf.ConfigProto, but got %s' %
+                      type(config))
 
     if (mixed_precision_global_state.mixed_precision_graph_rewrite_is_enabled
         and config.graph_options.rewrite_options.auto_mixed_precision !=
@@ -919,11 +929,11 @@ class BaseSession(SessionInterface):
     collected into this argument and passed back.
 
     Args:
-      fetches: A single graph element, a list of graph elements,
-        or a dictionary whose values are graph elements or lists of graph
-        elements (described above).
-      feed_dict: A dictionary that maps graph elements to values
-        (described above).
+      fetches: A single graph element, a list of graph elements, or a dictionary
+        whose values are graph elements or lists of graph elements (described
+        above).
+      feed_dict: A dictionary that maps graph elements to values (described
+        above).
       options: A [`RunOptions`] protocol buffer
       run_metadata: A [`RunMetadata`] protocol buffer
 
@@ -987,11 +997,11 @@ class BaseSession(SessionInterface):
 
     Args:
       handle: A handle for a sequence of partial runs.
-      fetches: A single graph element, a list of graph elements,
-        or a dictionary whose values are graph elements or lists of graph
-        elements (see documentation for `run`).
-      feed_dict: A dictionary that maps graph elements to values
-        (described above).
+      fetches: A single graph element, a list of graph elements, or a dictionary
+        whose values are graph elements or lists of graph elements (see
+        documentation for `run`).
+      feed_dict: A dictionary that maps graph elements to values (described
+        above).
 
     Returns:
       Either a single value if `fetches` is a single graph element, or
@@ -1031,8 +1041,8 @@ class BaseSession(SessionInterface):
       for tensor_type, _, _, feed_fn in _REGISTERED_EXPANSIONS:
         if isinstance(feed, tensor_type):
           return feed_fn(feed)
-      raise TypeError('Feed argument %r has invalid type %r' % (feed,
-                                                                type(feed)))
+      raise TypeError('Feed argument %r has invalid type %r' %
+                      (feed, type(feed)))
 
     # Check session.
     if self._closed:
@@ -1070,8 +1080,8 @@ class BaseSession(SessionInterface):
     # Set up a graph with feeds and fetches for partial run.
     def _setup_fn(session, feed_list, fetch_list, target_list):
       self._extend_graph()
-      return tf_session.TF_SessionPRunSetup_wrapper(
-          session, feed_list, fetch_list, target_list)
+      return tf_session.TF_SessionPRunSetup_wrapper(session, feed_list,
+                                                    fetch_list, target_list)
 
     # pylint: disable=protected-access
     final_fetches = [t._as_tf_output() for t in fetch_handler.fetches()]
@@ -1088,8 +1098,8 @@ class BaseSession(SessionInterface):
       for tensor_type, _, feed_fn, _ in _REGISTERED_EXPANSIONS:
         if isinstance(feed, tensor_type):
           return feed_fn(feed, feed_val)
-      raise TypeError('Feed argument %r has invalid type %r' % (feed,
-                                                                type(feed)))
+      raise TypeError('Feed argument %r has invalid type %r' %
+                      (feed, type(feed)))
 
     # Check session.
     if self._closed:
@@ -1112,8 +1122,8 @@ class BaseSession(SessionInterface):
             subfeed_t = self.graph.as_graph_element(
                 subfeed, allow_tensor=True, allow_operation=False)
           except Exception as e:
-            raise TypeError(
-                'Cannot interpret feed_dict key as Tensor: ' + e.args[0])
+            raise TypeError('Cannot interpret feed_dict key as Tensor: ' +
+                            e.args[0])
 
           if isinstance(subfeed_val, ops.Tensor):
             raise TypeError('The value of a feed cannot be a tf.Tensor object. '
@@ -1127,8 +1137,8 @@ class BaseSession(SessionInterface):
           if isinstance(subfeed_val, int) and _convert_to_numpy_obj(
               subfeed_dtype, subfeed_val) != subfeed_val:
             raise TypeError(
-                'Type of feed value ' + str(subfeed_val) + ' with type ' + str(
-                    type(subfeed_val)) +
+                'Type of feed value ' + str(subfeed_val) + ' with type ' +
+                str(type(subfeed_val)) +
                 ' is not compatible with Tensor type ' + str(subfeed_dtype) +
                 '. Try explicitly setting the type of the feed tensor'
                 ' to a larger type (e.g. int64).')
@@ -1137,20 +1147,20 @@ class BaseSession(SessionInterface):
                                              session_ops.TensorHandle)
           if is_tensor_handle_feed:
             np_val = subfeed_val.to_numpy_array()
-            feed_handles[subfeed_t] = subfeed_val
+            feed_handles[subfeed_t.experimental_ref()] = subfeed_val
           else:
             np_val = np.asarray(subfeed_val, dtype=subfeed_dtype)
 
           if (not is_tensor_handle_feed and
               not subfeed_t.get_shape().is_compatible_with(np_val.shape)):
-            raise ValueError('Cannot feed value of shape %r for Tensor %r, '
-                             'which has shape %r' %
-                             (np_val.shape, subfeed_t.name,
-                              str(subfeed_t.get_shape())))
+            raise ValueError(
+                'Cannot feed value of shape %r for Tensor %r, '
+                'which has shape %r' %
+                (np_val.shape, subfeed_t.name, str(subfeed_t.get_shape())))
           if not self.graph.is_feedable(subfeed_t):
             raise ValueError('Tensor %s may not be fed.' % subfeed_t)
 
-          feed_dict_tensor[subfeed_t] = np_val
+          feed_dict_tensor[subfeed_t.experimental_ref()] = np_val
           feed_map[compat.as_bytes(subfeed_t.name)] = (subfeed_t, subfeed_val)
 
     # Create a fetch handler to take care of the structure of fetches.
@@ -1191,16 +1201,16 @@ class BaseSession(SessionInterface):
     it will return `None`.
 
     Args:
-      fetches: A value or list of values to fetch. See `tf.Session.run`
-        for details of the allowable fetch types.
-      feed_list: (Optional.) A list of `feed_dict` keys. See
-        `tf.Session.run` for details of the allowable feed key types.
+      fetches: A value or list of values to fetch. See `tf.Session.run` for
+        details of the allowable fetch types.
+      feed_list: (Optional.) A list of `feed_dict` keys. See `tf.Session.run`
+        for details of the allowable feed key types.
       accept_options: (Optional.) If `True`, the returned `Callable` will be
         able to accept `tf.compat.v1.RunOptions` and `tf.compat.v1.RunMetadata`
         as optional keyword arguments `options` and `run_metadata`,
         respectively, with the same syntax and semantics as `tf.Session.run`,
-        which is useful for certain use cases (profiling and debugging) but
-        will result in measurable slowdown of the `Callable`'s
+        which is useful for certain use cases (profiling and debugging) but will
+        result in measurable slowdown of the `Callable`'s
         performance. Default: `False`.
 
     Returns:
@@ -1220,8 +1230,7 @@ class BaseSession(SessionInterface):
       # strings here.
       def _generic_run(*feed_args, **kwargs):
         feed_dict = {
-            feed: feed_val
-            for feed, feed_val in zip(feed_list, feed_args)
+            feed: feed_val for feed, feed_val in zip(feed_list, feed_args)
         }
         return self.run(fetches, feed_dict=feed_dict, **kwargs)
 
@@ -1238,6 +1247,7 @@ class BaseSession(SessionInterface):
     # pylint: disable=protected-access
     fetch_list = [t._as_tf_output() for t in fetch_handler.fetches()]
     target_list = [op._c_op for op in fetch_handler.targets()]
+
     # pylint: enable=protected-access
 
     def _callable_template_with_options_and_metadata(fetch_list,
@@ -1250,8 +1260,8 @@ class BaseSession(SessionInterface):
           compat.as_bytes(options.SerializeToString())) if options else None
       run_metadata_ptr = tf_session.TF_NewBuffer() if run_metadata else None
       try:
-        results = self._call_tf_sessionrun(
-            options_ptr, {}, fetch_list, target_list, run_metadata_ptr)
+        results = self._call_tf_sessionrun(options_ptr, {}, fetch_list,
+                                           target_list, run_metadata_ptr)
         if fetch_handler:
           results = fetch_handler.build_results(self, results)
         else:
@@ -1294,8 +1304,8 @@ class BaseSession(SessionInterface):
       # In all other cases, we must use `fetch_handler` to build the
       # results for us.
       def _fetch_handler_run():
-        results = self._call_tf_sessionrun(
-            None, {}, fetch_list, target_list, None)
+        results = self._call_tf_sessionrun(None, {}, fetch_list, target_list,
+                                           None)
         return fetch_handler.build_results(self, results)
 
       return _fetch_handler_run
@@ -1329,16 +1339,17 @@ class BaseSession(SessionInterface):
       tf.errors.OpError: Or one of its subclasses on error.
     """
     # pylint: disable=protected-access
-    feeds = dict((t._as_tf_output(), v) for t, v in feed_dict.items())
+    feeds = dict((t.deref()._as_tf_output(), v) for t, v in feed_dict.items())
     fetches = [t._as_tf_output() for t in fetch_list]
     targets = [op._c_op for op in target_list]
+
     # pylint: enable=protected-access
 
     def _run_fn(feed_dict, fetch_list, target_list, options, run_metadata):
       # Ensure any changes to the graph are reflected in the runtime.
       self._extend_graph()
-      return self._call_tf_sessionrun(
-          options, feed_dict, fetch_list, target_list, run_metadata)
+      return self._call_tf_sessionrun(options, feed_dict, fetch_list,
+                                      target_list, run_metadata)
 
     def _prun_fn(handle, feed_dict, fetch_list):
       if target_list:
@@ -1367,6 +1378,11 @@ class BaseSession(SessionInterface):
         except KeyError:
           pass
       message = error_interpolation.interpolate(message, self._graph)
+      if 'only supports NHWC tensor format' in message:
+        message += ('\nA possible workaround: Try disabling Grappler optimizer'
+                    '\nby modifying the config for creating the session eg.'
+                    '\nsession_config.graph_options.rewrite_options.'
+                    'disable_meta_optimizer = True')
       raise type(e)(node_def, op, message)
 
   def _extend_graph(self):
@@ -1419,18 +1435,18 @@ class BaseSession(SessionInterface):
         np_val = np.array(handle.handle, dtype=np.object)
         feed_name = handle_mover[0]
         feed_tensor = feed_map[feed_name][0]
-        feed_dict[feed_tensor] = np_val
+        feed_dict[feed_tensor.experimental_ref()] = np_val
       return handles
 
   def _call_tf_sessionrun(self, options, feed_dict, fetch_list, target_list,
                           run_metadata):
-    return tf_session.TF_SessionRun_wrapper(
-        self._session, options, feed_dict, fetch_list, target_list,
-        run_metadata)
+    return tf_session.TF_SessionRun_wrapper(self._session, options, feed_dict,
+                                            fetch_list, target_list,
+                                            run_metadata)
 
   def _call_tf_sessionprun(self, handle, feed_dict, fetch_list):
-    return tf_session.TF_SessionPRun_wrapper(
-        self._session, handle, feed_dict, fetch_list)
+    return tf_session.TF_SessionPRun_wrapper(self._session, handle, feed_dict,
+                                             fetch_list)
 
   # pylint: disable=protected-access
   class _Callable(object):
@@ -1468,9 +1484,11 @@ class BaseSession(SessionInterface):
       # NOTE(mrry): It is possible that `self._session.__del__()` could be
       # called before this destructor, in which case `self._session._session`
       # will be `None`.
-      if self._handle is not None and self._session._session is not None:
-        tf_session.TF_SessionReleaseCallable(
-            self._session._session, self._handle)
+      if (self._handle is not None and self._session._session is not None and
+          not self._session._closed):
+        tf_session.TF_SessionReleaseCallable(self._session._session,
+                                             self._handle)
+
   # pylint: enable=protected-access
 
   # TODO(b/74355905): Reimplement `Session.make_callable()` using this method
@@ -1557,15 +1575,14 @@ class Session(BaseSession):
     the session constructor.
 
     Args:
-      target: (Optional.) The execution engine to connect to.
-        Defaults to using an in-process engine. See
-        [Distributed TensorFlow](https://tensorflow.org/deploy/distributed)
-        for more examples.
+      target: (Optional.) The execution engine to connect to. Defaults to using
+        an in-process engine. See
+        [Distributed TensorFlow](https://tensorflow.org/deploy/distributed) for
+          more examples.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional.) A
         [`ConfigProto`](https://www.tensorflow.org/code/tensorflow/core/protobuf/config.proto)
-        protocol buffer with configuration options for the session.
-
+          protocol buffer with configuration options for the session.
     """
     super(Session, self).__init__(target, graph, config=config)
     # NOTE(mrry): Create these on first `__enter__` to avoid a reference cycle.
@@ -1714,8 +1731,8 @@ class InteractiveSession(BaseSession):
     the session constructor.
 
     Args:
-      target: (Optional.) The execution engine to connect to.
-        Defaults to using an in-process engine.
+      target: (Optional.) The execution engine to connect to. Defaults to using
+        an in-process engine.
       graph: (Optional.) The `Graph` to be launched (described above).
       config: (Optional) `ConfigProto` proto used to configure the session.
     """

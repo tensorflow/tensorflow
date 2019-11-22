@@ -25,32 +25,6 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-// TODO(yangke): revisit these operations and in particular, see if we can
-// combine all of them into just one operation without causing nvcc to
-// timeout.
-template <typename Device, typename T, int Dims, typename IndexType>
-struct ShuffleAndReverse {
-  void operator()(const Device& d,
-                  typename TTypes<T, Dims, IndexType>::ConstTensor input,
-                  const Eigen::DSizes<IndexType, Dims>& order,
-                  const Eigen::array<bool, Dims>& reverse_dims,
-                  typename TTypes<T, Dims, IndexType>::Tensor output) {
-    output.device(d) = input.shuffle(order).reverse(reverse_dims);
-  }
-};
-
-template <typename Device, typename T, int Dims, typename IndexType>
-struct InflatePadAndShuffle {
-  void operator()(
-      const Device& d, typename TTypes<T, Dims, IndexType>::ConstTensor input,
-      const Eigen::DSizes<IndexType, Dims>& strides,
-      const Eigen::array<Eigen::IndexPair<IndexType>, Dims>& pad_dims,
-      const Eigen::DSizes<IndexType, Dims>& order,
-      typename TTypes<T, Dims, IndexType>::Tensor output) {
-    output.device(d) = input.inflate(strides).pad(pad_dims).shuffle(order);
-  }
-};
-
 template <typename Device, typename Input, typename Filter, typename Output,
           typename OutputKernel>
 void SpatialConvolutionFunc(const Device& d, Output output, Input input,
@@ -129,33 +103,82 @@ struct SpatialConvolution<Device, Eigen::half, OutputKernel> {
 };
 
 template <typename Device, typename T>
-struct SpatialConvolutionBackwardInput {
+struct SpatialConvolutionBackwardInputFunc {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
-                  typename TTypes<T, 4>::ConstTensor kernel,
+                  typename TTypes<T, 4>::ConstTensor filter,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int row_stride, int col_stride, int row_dilation,
-                  int col_dilation) {
-    // Need to swap row/col when calling Eigen.
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation) {
     input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
-        kernel, output_backward, input_backward.dimension(2),
+        filter, output_backward, input_backward.dimension(2),
+        input_backward.dimension(1), col_stride, row_stride, col_dilation,
+        row_dilation);
+  }
+};
+
+// GPU version requires all tensors to be indexable by int32.
+template <typename T>
+struct SpatialConvolutionBackwardInputFunc<Eigen::GpuDevice, T> {
+  void operator()(const Eigen::GpuDevice& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation) {
+    To32Bit(input_backward).device(d) = Eigen::SpatialConvolutionBackwardInput(
+        To32Bit(filter), To32Bit(output_backward), input_backward.dimension(2),
         input_backward.dimension(1), col_stride, row_stride, col_dilation,
         row_dilation);
   }
 };
 
 template <typename Device, typename T>
-struct SpatialConvolutionBackwardFilter {
-  void operator()(const Device& d,
-                  typename TTypes<T, 4>::Tensor kernel_backward,
-                  typename TTypes<T, 4>::ConstTensor input,
+struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc {
+  void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int row_stride, int col_stride, int row_dilation,
-                  int col_dilation) {
-    // Need to swap row/col when calling Eigen.
-    kernel_backward.device(d) = Eigen::SpatialConvolutionBackwardKernel(
-        input, output_backward, kernel_backward.dimension(1),
-        kernel_backward.dimension(0), col_stride, row_stride, col_dilation,
-        row_dilation);
+                  Eigen::DenseIndex padded_cols, Eigen::DenseIndex padded_rows,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation, Eigen::DenseIndex pad_left,
+                  Eigen::DenseIndex pad_top) {
+    // We have to slice the result of a spatial convolution backward
+    // input, before assigning it to the `input_backward` to remove padding.
+    //
+    // TODO(ezhulenev): Pass explicit paddings to Eigen and do not materialize
+    // intermediate result in memory before slicing.
+    input_backward.device(d) =
+        Eigen::SpatialConvolutionBackwardInput(
+            filter, output_backward, padded_cols, padded_rows, col_stride,
+            row_stride, col_dilation, row_dilation)
+            .eval()
+            .slice(Eigen::DSizes<Eigen::DenseIndex, 4>{0, pad_left, pad_top, 0},
+                   input_backward.dimensions());
+  }
+};
+
+// GPU version requires all tensors to be indexable by int32.
+template <typename T>
+struct SpatialConvolutionBackwardInputWithExplicitPaddingFunc<Eigen::GpuDevice,
+                                                              T> {
+  void operator()(const Eigen::GpuDevice& d,
+                  typename TTypes<T, 4>::Tensor input_backward,
+                  typename TTypes<T, 4>::ConstTensor filter,
+                  typename TTypes<T, 4>::ConstTensor output_backward,
+                  Eigen::DenseIndex padded_cols, Eigen::DenseIndex padded_rows,
+                  Eigen::DenseIndex col_stride, Eigen::DenseIndex row_stride,
+                  Eigen::DenseIndex col_dilation,
+                  Eigen::DenseIndex row_dilation, Eigen::DenseIndex pad_left,
+                  Eigen::DenseIndex pad_top) {
+    To32Bit(input_backward).device(d) =
+        Eigen::SpatialConvolutionBackwardInput(
+            To32Bit(filter), To32Bit(output_backward), padded_cols, padded_rows,
+            col_stride, row_stride, col_dilation, row_dilation)
+            .eval()
+            .slice(Eigen::DSizes<Eigen::DenseIndex, 4>{0, pad_left, pad_top, 0},
+                   input_backward.dimensions());
   }
 };
 
@@ -230,6 +253,8 @@ struct TransformFilter {
   }
 };
 
+// TODO This functor is not used anywhere and should be removed,
+// but it defines some eigen templates that are referenced in other kernels.
 template <typename Device, typename T, typename IndexType>
 struct TransformDepth {
   void operator()(const Device& d,

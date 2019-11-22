@@ -1,10 +1,9 @@
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
+    licenses = ["notice"],  # Apache 2.0
 )
-
-licenses(["notice"])  # Apache 2.0
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "feature_column_py",
@@ -46,7 +45,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:engine",
         "@six_archive//:six",
     ],
 )
@@ -54,6 +53,8 @@ py_library(
 py_library(
     name = "feature_column_v2",
     srcs = [
+        "dense_features.py",
+        "dense_features_v2.py",
         "feature_column_v2.py",
         "sequence_feature_column.py",
         "serialization.py",
@@ -84,7 +85,9 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:generic_utils",
+        "//tensorflow/python/keras:layers_base",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -107,11 +110,22 @@ tf_py_test(
     additional_deps = [
         ":feature_column_test_main_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
         "no_windows",
     ],
+)
+
+tf_py_test(
+    name = "dense_features_test",
+    srcs = ["dense_features_test.py"],
+    additional_deps = [
+        ":feature_column_test_main_lib",
+    ],
+    python_version = "PY3",
+    tags = ["no_pip"],
 )
 
 py_library(
@@ -147,12 +161,23 @@ tf_py_test(
     name = "feature_column_v2_test",
     srcs = ["feature_column_v2_test.py"],
     additional_deps = [":feature_column_v2_test_main_lib"],
+    python_version = "PY3",
     shard_count = 5,
     tags = [
         "no_cuda_on_cpu_tap",
         "no_pip",
         "no_windows",
     ],
+)
+
+tf_py_test(
+    name = "dense_features_v2_test",
+    srcs = ["dense_features_v2_test.py"],
+    additional_deps = [
+        ":feature_column_v2_test_main_lib",
+    ],
+    python_version = "PY3",
+    tags = ["no_pip"],
 )
 
 py_library(
@@ -180,7 +205,6 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/estimator:estimator_py",
         "//third_party/py/numpy",
     ],
 )
@@ -215,12 +239,13 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
+    python_version = "PY3",
 )
 
 py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -232,4 +257,16 @@ py_test(
         "//tensorflow/python:util",
         "//tensorflow/python/keras:layers",
     ],
+)
+
+tf_py_test(
+    name = "serialization_test",
+    srcs = ["serialization_test.py"],
+    additional_deps = [
+        ":feature_column_v2",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:util",
+    ],
+    python_version = "PY3",
 )

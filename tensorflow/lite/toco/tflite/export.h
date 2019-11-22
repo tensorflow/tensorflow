@@ -28,6 +28,7 @@ enum class QuantizedBufferType { NONE, INT8, FLOAT16 };
 // The parameters for exporting a TFLite model.
 struct ExportParams {
   bool allow_custom_ops = false;
+  bool allow_dynamic_tensors = true;
   bool enable_select_tf_ops = false;
   QuantizedBufferType quantize_weights = QuantizedBufferType::NONE;
 };

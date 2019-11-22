@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for `tf.data.experimental.unbatch()`."""
+"""Tests for `tf.data.Dataset.unbatch()`."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -53,6 +53,12 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(data, [(i,) * 3 for i in range(10)])
+
+  def testUnbatchNestedDataset(self):
+    data = dataset_ops.Dataset.from_tensors(
+        [dataset_ops.Dataset.range(10) for _ in range(10)])
+    data = data.unbatch().flat_map(lambda x: x)
+    self.assertDatasetProduces(data, list(range(10)) * 10)
 
   def testUnbatchDatasetWithStrings(self):
     data = tuple([math_ops.range(10) for _ in range(3)])

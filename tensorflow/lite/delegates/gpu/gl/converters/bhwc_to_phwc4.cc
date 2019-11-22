@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/converters/util.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_shader.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -86,13 +86,13 @@ Status ConverterBhwcToPhwc4::Convert(const BHWC& shape, const GlBuffer& source,
   if (shape.b != 1) {
     return UnimplementedError("BhwcToPhwc4: Batch size is not equal to 1.");
   }
-  uint3 workload = uint3(shape.w, shape.h, shape.c);
+  uint3 workload = uint3(shape.w, shape.h, IntegralDivideRoundUp(shape.c, 4));
   uint3 num_workgroups = IntegralDivideRoundUp(workload, workgroup_size_);
 
-  RETURN_IF_ERROR(program_.SetParameter(UniformParameter{
-      "sizes_",
-      int4(static_cast<int32_t>(workload.x), static_cast<int32_t>(workload.y),
-           static_cast<int32_t>(workload.z), static_cast<int32_t>(shape.c))}));
+  RETURN_IF_ERROR(program_.SetParameter(
+      {"sizes_",
+       int4(static_cast<int32_t>(workload.x), static_cast<int32_t>(workload.y),
+            static_cast<int32_t>(workload.z), static_cast<int32_t>(shape.c))}));
   RETURN_IF_ERROR(source.BindToIndex(0));
   RETURN_IF_ERROR(destination->BindToIndex(1));
   if (command_queue) {

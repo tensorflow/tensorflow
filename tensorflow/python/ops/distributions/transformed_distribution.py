@@ -91,7 +91,7 @@ def _pick_scalar_condition(pred, cond_true, cond_false):
   # tf.select even though we use tf.select to implement it.
   pred_ = _static_value(pred)
   if pred_ is None:
-    return array_ops.where(pred, cond_true, cond_false)
+    return array_ops.where_v2(pred, cond_true, cond_false)
   return cond_true if pred_ else cond_false
 
 

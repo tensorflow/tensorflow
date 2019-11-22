@@ -15,11 +15,68 @@ limitations under the License.
 
 #include "tensorflow/core/framework/run_handler_util.h"
 
-#include <algorithm>
 #include <cmath>
+
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/str_util.h"
 
 namespace tensorflow {
+
+double ParamFromEnvWithDefault(const std::string& var_name,
+                               double default_value) {
+  const char* val = std::getenv(var_name.c_str());
+  double num;
+  return (val && strings::safe_strtod(val, &num)) ? num : default_value;
+}
+
+std::vector<double> ParamFromEnvWithDefault(const std::string& var_name,
+                                            std::vector<double> default_value) {
+  const char* val = std::getenv(var_name.c_str());
+  if (!val) {
+    return default_value;
+  }
+  std::vector<string> splits = str_util::Split(val, ",");
+  std::vector<double> result;
+  result.reserve(splits.size());
+  for (auto& split : splits) {
+    double num;
+    if (strings::safe_strtod(split, &num)) {
+      result.push_back(num);
+    } else {
+      LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";
+      return default_value;
+    }
+  }
+  return result;
+}
+
+std::vector<int> ParamFromEnvWithDefault(const std::string& var_name,
+                                         std::vector<int> default_value) {
+  const char* val = std::getenv(var_name.c_str());
+  if (!val) {
+    return default_value;
+  }
+  std::vector<string> splits = str_util::Split(val, ",");
+  std::vector<int> result;
+  result.reserve(splits.size());
+  for (auto& split : splits) {
+    int num;
+    if (strings::safe_strto32(split, &num)) {
+      result.push_back(num);
+    } else {
+      LOG(ERROR) << "Wrong format for " << var_name << ". Use default value.";
+      return default_value;
+    }
+  }
+  return result;
+}
+
+bool ParamFromEnvBoolWithDefault(const std::string& var_name,
+                                 bool default_value) {
+  const char* val = std::getenv(var_name.c_str());
+  return (val) ? str_util::Lowercase(val) == "true" : default_value;
+}
 
 void ComputeInterOpSchedulingRanges(int num_active_requests, int num_threads,
                                     int min_threads_per_request,
@@ -73,6 +130,56 @@ void ComputeInterOpStealingRanges(int num_threads, int min_threads_per_domain,
     start_vec->at(i) = steal_start;
     end_vec->at(i) = steal_end;
   }
+}
+
+std::vector<int> ChooseRequestsWithExponentialDistribution(
+    int num_active_requests, int num_threads) {
+  // Fraction of the total threads that will be evenly distributed across
+  // requests. The rest of threads will be exponentially distributed across
+  // requests.
+  static const double kCapacityFractionForEvenDistribution =
+      ParamFromEnvWithDefault("TF_RUN_HANDLER_EXP_DIST_EVEN_FRACTION", 0.5);
+
+  // For the threads that will be exponentially distributed across requests,
+  // a request will get allocated (kPowerBase - 1) times as much threads as
+  // threads allocated to all requests that arrive after it. For example, the
+  // oldest request will be allocated num_threads*(kPowerBase-1)/kPowerBase
+  // number of threads.
+  static const double kPowerBase =
+      ParamFromEnvWithDefault("TF_RUN_HANDLER_EXP_DIST_POWER_BASE", 2.0);
+
+  std::vector<int> request_idx_list;
+  request_idx_list.resize(num_threads);
+  // Each request gets at least this number of threads that steal from it first.
+  int min_threads_per_request =
+      num_threads * kCapacityFractionForEvenDistribution / num_active_requests;
+  min_threads_per_request =
+      std::max(static_cast<int>(ParamFromEnvWithDefault(
+                   "TF_RUN_HANDLER_EXP_DIST_MIN_EVEN_THREADS", 1)),
+               min_threads_per_request);
+  min_threads_per_request =
+      std::min(static_cast<int>(ParamFromEnvWithDefault(
+                   "TF_RUN_HANDLER_EXP_DIST_MAX_EVEN_THREADS", 3)),
+               min_threads_per_request);
+
+  int num_remaining_threads =
+      std::max(0, num_threads - num_active_requests * min_threads_per_request);
+  int request_idx = -1;
+  int num_threads_next_request = 0;
+
+  for (int tid = 0; tid < num_threads; ++tid) {
+    if (num_threads_next_request <= 0) {
+      request_idx = std::min(num_active_requests - 1, request_idx + 1);
+      int num_extra_threads_next_request =
+          std::ceil(num_remaining_threads * (kPowerBase - 1.0) / kPowerBase);
+      num_remaining_threads -= num_extra_threads_next_request;
+      num_threads_next_request =
+          num_extra_threads_next_request + min_threads_per_request;
+    }
+    num_threads_next_request--;
+    request_idx_list[tid] = request_idx;
+  }
+  return request_idx_list;
 }
 
 }  // namespace tensorflow

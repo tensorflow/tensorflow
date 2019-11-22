@@ -21,32 +21,45 @@ import time
 
 import numpy as np
 
-from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import optimization
-from tensorflow.python.data.experimental.ops import sleep
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
 
+NON_PARALLEL = "non_parallel"
+EXPERIMENTAL_PARALLEL = "experimental_parallel"
+CORE_PARALLEL = "core_parallel"
 
-def _make_fake_dataset_fn():
+
+def _make_fake_dataset_fn(initial_delay_us, remainder_delay_us):
   """Returns a dataset that emulates a remote storage data source.
 
   Returns a dataset factory which creates a dataset with 100 elements that
   emulates the performance characteristic of a file-based dataset stored in a
   remote storage. In particular, the first element will take an order of
-  magnitude longer to produce than the remaining elements (1s vs. 1ms).
+  magnitude longer to produce than the remaining elements (100ms vs. 1ms).
+
+  Args:
+    initial_delay_us: How long to wait before producing the first element.
+    remainder_delay_us: How long to wait before producing subsequent elements.
   """
 
   def fake_dataset_fn(unused):
+    """Returns a function that creates a dataset with the specified delays."""
     del unused
 
     def make_dataset(time_us, num_elements):
-      return dataset_ops.Dataset.range(num_elements).apply(sleep.sleep(time_us))
+      dataset = dataset_ops.Dataset.range(num_elements)
+      if time_us > 0:
+        dataset = dataset.apply(testing.sleep(time_us))
+      return dataset
 
-    return make_dataset(1000 * 1000, 0).concatenate(make_dataset(1000,
-                                                                 100)).take(100)
+    if not initial_delay_us:
+      return make_dataset(remainder_delay_us, 100)
+
+    return make_dataset(initial_delay_us,
+                        0).concatenate(make_dataset(remainder_delay_us, 100))
 
   return fake_dataset_fn
 
@@ -54,52 +67,96 @@ def _make_fake_dataset_fn():
 class ParallelInterleaveBenchmark(test.Benchmark):
   """Benchmarks for `tf.data.experimental.parallel_interleave()`."""
 
-  def _benchmark(self, dataset_fn, iters, num_elements):
-    with ops.Graph().as_default():
-      options = dataset_ops.Options()
-      options.experimental_optimization.apply_default_optimizations = False
-      dataset = dataset_fn().with_options(options)
-      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
-      with session.Session() as sess:
-        deltas = []
-        for _ in range(iters):
-          start = time.time()
-          for _ in range(num_elements):
-            sess.run(next_element.op)
-          end = time.time()
-          deltas.append(end - start)
-
-    mean_wall_time = np.mean(deltas) / num_elements
-    self.report_benchmark(iters=iters, wall_time=mean_wall_time)
-
-  def benchmark_sequential_interleave(self):
-
-    def dataset_fn():
-      return dataset_ops.Dataset.range(1).repeat().interleave(
-          _make_fake_dataset_fn(), cycle_length=10)
-
-    self._benchmark(dataset_fn=dataset_fn, iters=10, num_elements=100)
-
-  def benchmark_parallel_interleave_v1(self):
-    """Benchmark for parallel interleave that does not support autotuning."""
-
-    def dataset_fn():
-      return dataset_ops.Dataset.range(1).repeat().apply(
+  def apply_interleave(self, interleave_version, dataset, interleave_fn,
+                       cycle_length, num_parallel_calls):
+    if interleave_version == NON_PARALLEL:
+      return dataset.interleave(interleave_fn, cycle_length=cycle_length)
+    elif interleave_version == EXPERIMENTAL_PARALLEL:
+      return dataset.apply(
           interleave_ops.parallel_interleave(
-              _make_fake_dataset_fn(), cycle_length=10))
+              interleave_fn, cycle_length=cycle_length))
+    elif interleave_version == CORE_PARALLEL:
+      if not num_parallel_calls:
+        num_parallel_calls = cycle_length
+      return dataset.interleave(
+          interleave_fn,
+          cycle_length=cycle_length,
+          num_parallel_calls=num_parallel_calls)
+    else:
+      raise ValueError("Unknown version: " + interleave_version)
 
-    self._benchmark(dataset_fn=dataset_fn, iters=100, num_elements=1000)
+  def make_dataset(self,
+                   interleave_version,
+                   initial_delay,
+                   remainder_delay,
+                   cycle_length,
+                   num_parallel_calls=None):
+    dataset = dataset_ops.Dataset.range(1).repeat()
+    interleave_fn = _make_fake_dataset_fn(initial_delay, remainder_delay)
+    return self.apply_interleave(interleave_version, dataset, interleave_fn,
+                                 cycle_length, num_parallel_calls)
 
-  def benchmark_parallel_interleave_v2(self):
-    """Benchmark for parallel interleave that supports autotuning."""
+  def _benchmark(self,
+                 interleave_version,
+                 num_elements,
+                 initial_delay_us=0,
+                 remainder_delay_us=0,
+                 cycle_length=10,
+                 iters=100,
+                 num_parallel_calls=None,
+                 name=None):
+    ds = self.make_dataset(interleave_version, initial_delay_us,
+                           remainder_delay_us, cycle_length, num_parallel_calls)
+    ds = ds.skip(num_elements)
+    deltas = []
+    for _ in range(iters):
+      start = time.time()
+      next(iter(ds))
+      deltas.append(time.time() - start)
+    self.report_benchmark(iters=iters, wall_time=np.median(deltas), name=name)
 
-    def dataset_fn():
-      return dataset_ops.Dataset.range(1).repeat().interleave(
-          _make_fake_dataset_fn(),
-          cycle_length=10, num_parallel_calls=optimization.AUTOTUNE)
+  def benchmark_remote_file_simulation(self):
+    for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+      self._benchmark(
+          version,
+          initial_delay_us=100 * 1000,
+          remainder_delay_us=1000,
+          num_elements=5000,
+          name="remote_file_simulation_" + version)
 
-    self._benchmark(dataset_fn=dataset_fn, iters=100, num_elements=1000)
+  def benchmark_fast_input(self):
+    for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+      self._benchmark(
+          version, num_elements=200000, name="fast_input_" + version)
+
+  # Measure the overhead of parallel interleaves compared to non-parallel
+  # interleave.
+  def benchmark_single_cycle(self):
+    for version in [NON_PARALLEL, EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+      self._benchmark(
+          version,
+          cycle_length=1,
+          num_elements=200000,
+          name="single_cycle_" + version)
+
+  # Compare with a more reasonable cycle length. Experimental interleave
+  # cannot be compared here because it sets num_parallel_calls = cycle_length.
+  def benchmark_single_parallel_call(self):
+    self._benchmark(
+        CORE_PARALLEL,
+        num_elements=200000,
+        num_parallel_calls=1,
+        name="single_parallel_call_" + CORE_PARALLEL)
+
+  def benchmark_long_cycle(self):
+    for version in [EXPERIMENTAL_PARALLEL, CORE_PARALLEL]:
+      self._benchmark(
+          version,
+          cycle_length=1000,
+          num_elements=100000,
+          name="long_cycle_" + version)
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

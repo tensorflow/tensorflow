@@ -18,19 +18,19 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/command_queue.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_buffer.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_shader.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/object.h"
 #include "tensorflow/lite/delegates/gpu/gl/object_manager.h"
 #include "tensorflow/lite/delegates/gpu/gl/runtime/shared_buffer.h"
 #include "tensorflow/lite/delegates/gpu/gl/runtime_options.h"
 #include "tensorflow/lite/delegates/gpu/gl/stats.h"
-#include "tensorflow/lite/delegates/gpu/gl/uniform_parameter.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -45,7 +45,7 @@ class Runtime {
 
   // Takes parameters and objects and prepares GL program.
   Status AddProgram(const GlShader& shader,
-                    const std::vector<UniformParameter>& parameters,
+                    const std::vector<Variable>& parameters,
                     const std::vector<Object>& objects,
                     const uint3& num_workgroups);
 
@@ -58,6 +58,8 @@ class Runtime {
 
   // Gets access to objects created while executing generated code.
   const ObjectManager* internal_objects() const { return &internal_objects_; }
+
+  CommandQueue* command_queue() { return command_queue_; }
 
   RuntimeStats stats() const {
     RuntimeStats stats;

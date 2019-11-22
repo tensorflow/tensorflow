@@ -27,11 +27,10 @@ namespace tensorflow {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T, typename Tindices, bool ADJ_A, bool ADJ_B>
-__global__ void SparseTensorDenseMatMulKernel(int nnz, int m, int b_rows,
-                                              int b_cols, int p,
-                                              const Tindices* a_indices,
-                                              const T* a_values, const T* b,
-                                              T* out) {
+__global__ void SparseTensorDenseMatMulKernel(
+    int nnz, int m, int b_rows, int b_cols, int p,
+    const Tindices* __restrict__ a_indices, const T* __restrict__ a_values,
+    const T* __restrict__ b, T* __restrict__ out) {
   // out_{ij} = sum_k {a_ik b_kj}
   // out = A * B', out_{ij} = sum_k {a_ik (b')_kj}; b'_{kj} = b_{jk}
   const int n = (ADJ_B) ? b_cols : b_rows;

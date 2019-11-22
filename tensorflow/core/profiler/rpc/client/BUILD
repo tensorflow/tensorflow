@@ -1,18 +1,13 @@
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-
 tf_cuda_library(
     name = "capture_profile",
-    srcs = [
-        "capture_profile.cc",
-    ],
-    hdrs = [
-        "capture_profile.h",
-    ],
+    srcs = ["capture_profile.cc"],
+    hdrs = ["capture_profile.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":dump_tpu_profile",
@@ -21,7 +16,6 @@ tf_cuda_library(
         "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -37,7 +31,7 @@ cc_library(
         "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler:protos_all_cc",
+        "//tensorflow/core/profiler:op_profile_proto_cc",
     ],
 )
 
@@ -61,7 +55,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core/profiler:protos_all_cc",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

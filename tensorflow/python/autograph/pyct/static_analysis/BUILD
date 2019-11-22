@@ -1,8 +1,8 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "all_files",
@@ -37,6 +37,7 @@ py_library(
 py_test(
     name = "activity_test",
     srcs = ["activity_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",
@@ -66,6 +67,9 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_oss_py35",
+        # TODO(mdan): Remove this tag once no_oss_py35 is properly supported.
+        "no_oss",
         "no_pip",
         "nopip",
     ],
@@ -82,6 +86,7 @@ py_test(
     name = "liveness_test",
     testonly = True,
     srcs = ["liveness_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",
@@ -123,6 +128,7 @@ py_test(
 py_test(
     name = "reaching_definitions_test",
     srcs = ["reaching_definitions_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",

@@ -130,6 +130,8 @@ TfLiteRegistration* Register_SQUARED_DIFFERENCE();
 TfLiteRegistration* Register_FILL();
 TfLiteRegistration* Register_MIRROR_PAD();
 TfLiteRegistration* Register_QUANTIZE();
+TfLiteRegistration* Register_HARD_SWISH_REF();
+TfLiteRegistration* Register_DEPTH_TO_SPACE_REF();
 
 namespace {
 
@@ -217,6 +219,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
              Register_RESIZE_NEAREST_NEIGHBOR_REF());
   AddBuiltin(BuiltinOperator_SKIP_GRAM, Register_SKIP_GRAM());
   AddBuiltin(BuiltinOperator_SPACE_TO_DEPTH, Register_SPACE_TO_DEPTH_REF());
+  AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE_REF());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE_REF());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN_REF());
@@ -280,6 +283,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_FILL, Register_FILL());
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());
   AddBuiltin(BuiltinOperator_QUANTIZE, Register_QUANTIZE());
+  AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH_REF());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

@@ -414,7 +414,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = bf16[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=0}
   %convert.1 = f32[]
@@ -429,7 +429,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = bf16[]
       all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=1}
   %convert.2 = f32[]
@@ -486,7 +486,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   %all-reduce.ar.1 = f32[2,1]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.1,
       sharding={maximal device=0}
   %bitcast.1 = f32[2]{0} bitcast(f32[2,1]{1,0} %all-reduce.ar.1)
@@ -499,7 +499,7 @@ ENTRY %entrycomp (p: f32[2,1]) -> (f32[2], f32[2]) {
   %all-reduce.ar.2 = f32[2,1]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.1,
       sharding={maximal device=1}
   %bitcast.2 = f32[2]{0} bitcast(f32[2,1]{1,0} %all-reduce.ar.2)
@@ -549,7 +549,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.f32,
       sharding={maximal device=0}
   %multiply.1 = f32[]
@@ -564,7 +564,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.f32,
       sharding={maximal device=1}
   %multiply.2 = f32[]
@@ -624,7 +624,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = bf16[]
       all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=0}
   %convert.1 = f32[]
@@ -642,7 +642,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = bf16[]
       all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=1}
   %convert.2 = f32[]
@@ -709,7 +709,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = bf16[]
       all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=0}
   %convert.1 = f32[]
@@ -727,7 +727,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = bf16[]
       all-reduce(%constant.bf16),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=1}
   %convert.2 = f32[]
@@ -772,7 +772,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.1,
       sharding={maximal device=0}
   %all-reduce.1 = f32[]
@@ -787,7 +787,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.1,
       sharding={maximal device=1}
   %all-reduce.2 = f32[]
@@ -840,7 +840,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum,
       sharding={maximal device=0}
   %add.11 = f32[]
@@ -858,7 +858,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum,
       sharding={maximal device=0}
   %add.21 = f32[]
@@ -919,7 +919,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.f32,
       sharding={maximal device=0}
   %sub.1 = f32[]
@@ -934,7 +934,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.f32,
       sharding={maximal device=1}
   %sub.2 = f32[]
@@ -991,7 +991,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %ar11 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum,
       sharding={maximal device=0}
   %add11 = f32[]
@@ -1000,7 +1000,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %ar12 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=2,
+      channel_id=2,
       to_apply=%sum,
       sharding={maximal device=0}
   %add12 = f32[]
@@ -1015,7 +1015,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %ar21 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum,
       sharding={maximal device=1}
   %add21 = f32[]
@@ -1024,7 +1024,7 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %ar22 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=2,
+      channel_id=2,
       to_apply=%sum,
       sharding={maximal device=1}
   %add22 = f32[]
@@ -1083,13 +1083,13 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %ar11 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum,
       sharding={maximal device=0}
   %ar12 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=2,
+      channel_id=2,
       to_apply=%sum,
       sharding={maximal device=0}
   %add11 = f32[]
@@ -1107,13 +1107,13 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   %ar21 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum,
       sharding={maximal device=1}
   %ar22 = f32[]
       all-reduce(%p),
       replica_groups={{0},{1}},
-      all_reduce_id=2,
+      channel_id=2,
       to_apply=%sum,
       sharding={maximal device=1}
   %add21 = f32[]
@@ -1182,7 +1182,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %all-reduce.ar.1 = bf16[]
       all-reduce(%p),
       replica_groups={{0}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=0}
   %convert.1 = f32[]
@@ -1197,7 +1197,7 @@ ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %all-reduce.ar.2 = bf16[]
       all-reduce(%constant.bf16),
       replica_groups={{0}},
-      all_reduce_id=1,
+      channel_id=1,
       to_apply=%sum.bf16,
       sharding={maximal device=1}
   %convert.2 = f32[]
@@ -1276,9 +1276,9 @@ HloModule foobar
 
 ENTRY %entrycomp (p: bf16[]) -> (f32[], f32[]) {
   %p = bf16[] parameter(0)
-  %all-reduce.0 = f32[] all-reduce(%p), all_reduce_id=1, replica_groups={{0,1}},
+  %all-reduce.0 = f32[] all-reduce(%p), channel_id=1, replica_groups={{0,1}},
     to_apply=%sum.f32, sharding={maximal device=0}
-  %all-reduce.1 = f32[] all-reduce(%p), all_reduce_id=1, replica_groups={{0,1}},
+  %all-reduce.1 = f32[] all-reduce(%p), channel_id=1, replica_groups={{0,1}},
     to_apply=%sum.f32, sharding={maximal device=1}
   %all-reduce.2 = f32[] all-reduce(%all-reduce.0), replica_groups={{0,1}},
     to_apply=%sum.f32, sharding={maximal device=0}

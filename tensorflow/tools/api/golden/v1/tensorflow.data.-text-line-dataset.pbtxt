@@ -8,6 +8,10 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "element_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "output_classes"
     mtype: "<type \'property\'>"
   }
@@ -26,6 +30,10 @@ tf_class {
   member_method {
     name: "apply"
     argspec: "args=[\'self\', \'transformation_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "as_numpy_iterator"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "batch"

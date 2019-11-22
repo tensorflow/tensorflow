@@ -22,20 +22,27 @@ import abc
 import numpy as np
 import six
 
-from tensorflow.python import pywrap_tensorflow
+from tensorflow.python import _pywrap_utils
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import tensor_spec
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
+from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
+# Use LazyLoader to avoid circular dependencies.
+tensor_spec = LazyLoader(
+    "tensor_spec", globals(),
+    "tensorflow.python.framework.tensor_spec")
+ops = LazyLoader(
+    "ops", globals(),
+    "tensorflow.python.framework.ops")
 
-# TODO(b/133606651) Export this as "TypeSpec" (or experimental.TypeSpec?) and
-# deprecate the tf.data.experimental.Structure endpoint.
-@tf_export("data.experimental.Structure")
+
+@tf_export("TypeSpec", v1=["TypeSpec", "data.experimental.Structure"])
 @six.add_metaclass(abc.ABCMeta)
 class TypeSpec(object):
   """Specifies a TensorFlow value type.
@@ -43,6 +50,13 @@ class TypeSpec(object):
   A `tf.TypeSpec` provides metadata describing an object accepted or returned
   by TensorFlow APIs.  Concrete subclasses, such as `tf.TensorSpec` and
   `tf.RaggedTensorSpec`, are used to describe different value types.
+
+  For example, `tf.function`'s `input_signature` argument accepts a list
+  (or nested structure) of `TypeSpec`s.
+
+  Creating new subclasses of TypeSpec (outside of TensorFlow core) is not
+  currently supported.  In particular, we may make breaking changes to the
+  private methods and properties defined by this base class.
   """
   # === Subclassing ===
   #
@@ -78,10 +92,10 @@ class TypeSpec(object):
     # consider two `TypeSpec`s compatible if they have the same type, and
     # the values returned by `_serialize` are compatible (where
     # `tf.TensorShape`, `tf.TensorSpec`, and `tf.DType` are checked for
-    # compatibility using their `is_comptaible_with` method; and all other
+    # compatibility using their `is_compatible_with` method; and all other
     # types are considered compatible if they are equal).
     if not isinstance(spec_or_value, TypeSpec):
-      spec_or_value = TypeSpec.from_value(spec_or_value)
+      spec_or_value = type_spec_from_value(spec_or_value)
     if type(self) is not type(spec_or_value):
       return False
     return self.__is_compatible(self._serialize(),
@@ -110,44 +124,6 @@ class TypeSpec(object):
     merged = self.__most_specific_compatible_type_serialization(
         self._serialize(), other._serialize())  # pylint: disable=protected-access
     return self._deserialize(merged)
-
-  @staticmethod
-  def from_value(value):
-    """Returns a `TypeSpec` that represents the given `value`.
-
-    Args:
-      value: A value that can be accepted or returned by TensorFlow APIs.
-
-    Returns:
-      A `TypeSpec` that is compatible with `value`.
-
-    Raises:
-      TypeError: If a TypeSpec cannot be built for `value`, because its type
-        is not supported.
-    """
-    if isinstance(value, ops.Tensor):
-      # Note: we do not include Tensor names when constructing TypeSpecs.
-      return tensor_spec.TensorSpec(value.shape, value.dtype)
-
-    # TODO(b/133606651) Uncomment the following two lines when CompositeTensor
-    # is updated to define a _type_spec field:
-    #
-    # if isinstance(value, composite_tensor.CompositeTensor):
-    #   return value._type_spec  # pylint: disable=protected-access
-
-    for entry in reversed(TypeSpec._TYPE_CONVERSION_FUNCTION_REGISTRY):
-      type_object, converter_fn, allow_subclass = entry
-      if ((type(value) is type_object) or  # pylint: disable=unidiomatic-typecheck
-          (allow_subclass and isinstance(value, type_object))):
-        return converter_fn(value)
-
-    # Fallback: try converting value to a tensor.
-    try:
-      tensor = ops.convert_to_tensor(value)
-    except (ValueError, TypeError):
-      raise TypeError("Could not build a TypeSpec for %r with type %s" %
-                      (value, type(value).__name__))
-    return TypeSpec.from_value(tensor)
 
   # === Component encoding for values ===
 
@@ -257,20 +233,6 @@ class TypeSpec(object):
     """A list of TensorSpecs compatible with self._to_tensor_list(v)."""
     return nest.flatten(self._component_specs, expand_composites=True)
 
-  # TODO(b/133606651) Remove this attribute once code in tf.data has been
-  # refactored to use _flat_tensor_specs instead.
-  @property
-  def _flat_shapes(self):
-    """The `tf.TensorShape`s for the tensor list encoding."""
-    return [spec.shape for spec in self._flat_tensor_specs]
-
-  # TODO(b/133606651) Remove this attribute once code in tf.data has been
-  # refactored to use _flat_tensor_specs instead.
-  @property
-  def _flat_types(self):
-    """The `tf.DType`s for the tensor list encoding."""
-    return [spec.dtype for spec in self._flat_tensor_specs]
-
   # === Serialization for types ===
 
   @abc.abstractmethod
@@ -279,7 +241,8 @@ class TypeSpec(object):
 
     The serialization may contain the following value types: boolean,
     integer, string, float, None, `TensorSpec`, `tf.TensorShape`, `tf.DType`,
-    `np.ndarray`, `TypeSpec`, and nested tuples of any of the above.
+    `np.ndarray`, `TypeSpec`, and nested tuples, namedtuples, dicts, and
+    OrderedDicts of any of the above.
 
     This method is used to provide default definitions for: equality
     testing (__eq__, __ne__), hashing (__hash__), pickling (__reduce__),
@@ -298,7 +261,8 @@ class TypeSpec(object):
 
   def __eq__(self, other):
     # pylint: disable=protected-access
-    return self.__get_cmp_key() == other.__get_cmp_key()
+    return (type(other) is type(self) and
+            self.__get_cmp_key() == other.__get_cmp_key())
 
   def __ne__(self, other):
     return not self == other
@@ -331,7 +295,7 @@ class TypeSpec(object):
 
   def __check_tensor_list(self, tensor_list):
     expected = self._flat_tensor_specs
-    specs = [tensor_spec.TensorSpec.from_tensor(t) for t in tensor_list]
+    specs = [type_spec_from_value(t) for t in tensor_list]
     if len(specs) != len(expected):
       raise ValueError("Incompatible input: wrong number of tensors")
     for i, (s1, s2) in enumerate(zip(specs, expected)):
@@ -346,60 +310,67 @@ class TypeSpec(object):
 
   def __make_cmp_key(self, value):
     """Converts `value` to a hashable key."""
-    if isinstance(value, (int, float, bool, dtypes.DType, TypeSpec,
-                          tensor_spec.TensorSpec)):
+    if isinstance(value, (int, float, bool, dtypes.DType, TypeSpec)):
       return value
-    elif isinstance(value, compat.bytes_or_text_types):
+    if isinstance(value, compat.bytes_or_text_types):
       return value
-    elif value is None:
+    if value is None:
       return value
-    elif isinstance(value, tuple):
+    if isinstance(value, dict):
+      return tuple([
+          tuple([self.__make_cmp_key(key),
+                 self.__make_cmp_key(value[key])])
+          for key in sorted(value.keys())
+      ])
+    if isinstance(value, tuple):
       return tuple([self.__make_cmp_key(v) for v in value])
-    elif isinstance(value, tensor_shape.TensorShape):
+    if isinstance(value, list):
+      return (list, tuple([self.__make_cmp_key(v) for v in value]))
+    if isinstance(value, tensor_shape.TensorShape):
       if value.ndims is None:
         # Note: we include a type object in the tuple, to ensure we can't get
         # false-positive matches (since users can't include type objects).
         return (tensor_shape.TensorShape, None)
-      else:
-        return (tensor_shape.TensorShape, tuple(value.as_list()))
-    elif isinstance(value, np.ndarray):
+      return (tensor_shape.TensorShape, tuple(value.as_list()))
+    if isinstance(value, np.ndarray):
       return (np.ndarray, value.shape,
               TypeSpec.__nested_list_to_tuple(value.tolist()))
-    else:
-      raise ValueError("Unsupported value type %s returned by "
-                       "%s._serialize" %
-                       (type(value).__name__, type(self).__name__))
+    raise ValueError("Unsupported value type %s returned by "
+                     "%s._serialize" %
+                     (type(value).__name__, type(self).__name__))
 
   @staticmethod
   def __nested_list_to_tuple(value):
     """Converts a nested list to a corresponding nested tuple."""
     if isinstance(value, list):
       return tuple(TypeSpec.__nested_list_to_tuple(v) for v in value)
-    else:
-      return value
+    return value
 
   @staticmethod
   def __is_compatible(a, b):
     """Returns true if the given type serializations compatible."""
     if type(a) is not type(b):
       return False
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       return (len(a) == len(b) and
               all(TypeSpec.__is_compatible(x, y) for (x, y) in zip(a, b)))
-    elif isinstance(a, (TypeSpec, tensor_shape.TensorShape, dtypes.DType,
-                        tensor_spec.TensorSpec)):
+    if isinstance(a, dict):
+      return (len(a) == len(b) and sorted(a.keys()) == sorted(b.keys()) and all(
+          TypeSpec.__is_compatible(a[k], b[k]) for k in a.keys()))
+    if isinstance(a, (TypeSpec, tensor_shape.TensorShape, dtypes.DType)):
       return a.is_compatible_with(b)
-    else:
-      return a == b
+    return a == b
 
   @staticmethod
   def __most_specific_compatible_type_serialization(a, b):
-    """Helper for most_specific_comptaible_type.
+    """Helper for most_specific_compatible_type.
 
     Combines two type serializations as follows:
 
     * If they are both tuples of the same length, then recursively combine
       the respective tuple elements.
+    * If they are both dicts with the same keys, then recursively combine
+      the respective dict elements.
     * If they are both TypeSpecs, then combine using
       TypeSpec.most_specific_comptible_type.
     * If they are both TensorShapes, then combine using
@@ -421,27 +392,28 @@ class TypeSpec(object):
     """
     if type(a) is not type(b):
       raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-    if isinstance(a, tuple):
+    if isinstance(a, (list, tuple)):
       if len(a) != len(b):
         raise ValueError("Types are not compatible: %r vs %r" % (a, b))
       return tuple(TypeSpec.__most_specific_compatible_type_serialization(x, y)
                    for (x, y) in zip(a, b))
-    elif isinstance(a, tensor_shape.TensorShape):
+    if isinstance(a, dict):
+      a_keys, b_keys = sorted(a.keys()), sorted(b.keys())
+      if len(a) != len(b) or a_keys != b_keys:
+        raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+      return {
+          k: TypeSpec.__most_specific_compatible_type_serialization(a[k], b[k])
+          for k in a_keys
+      }
+    if isinstance(a, tensor_shape.TensorShape):
       return a.most_specific_compatible_shape(b)
-    elif isinstance(a, tensor_spec.TensorSpec):
-      if a.dtype != b.dtype:
-        raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-      shape = a.shape.most_specific_compatible_shape(b.shape)
-      name = a.name if a.name == b.name else None
-      return tensor_spec.TensorSpec(shape, a.dtype, name)
-    elif isinstance(a, list):
+    if isinstance(a, list):
       raise AssertionError("_serialize() should not return list values.")
-    elif isinstance(a, TypeSpec):
+    if isinstance(a, TypeSpec):
       return a.most_specific_compatible_type(b)
-    else:
-      if a != b:
-        raise ValueError("Types are not compatible: %r vs %r" % (a, b))
-      return a
+    if a != b:
+      raise ValueError("Types are not compatible: %r vs %r" % (a, b))
+    return a
 
 
 class BatchableTypeSpec(TypeSpec):
@@ -491,6 +463,69 @@ class BatchableTypeSpec(TypeSpec):
     return tensor_list
 
 
+def type_spec_from_value(value):
+  """Returns a `TypeSpec` that represents the given `value`.
+
+  Args:
+    value: A value that can be accepted or returned by TensorFlow APIs.
+
+  Returns:
+    A `TypeSpec` that is compatible with `value`.
+
+  Raises:
+    TypeError: If a TypeSpec cannot be built for `value`, because its type
+      is not supported.
+  """
+  spec = _type_spec_from_value(value)
+  if spec is not None:
+    return spec
+
+  # Fallback: try converting value to a tensor.
+  try:
+    tensor = ops.convert_to_tensor(value)
+    spec = _type_spec_from_value(tensor)
+    if spec is not None:
+      return spec
+  except (ValueError, TypeError) as e:
+    logging.vlog(
+        3, "Failed to convert %r to tensor: %s" % (type(value).__name__, e))
+
+  raise TypeError("Could not build a TypeSpec for %r with type %s" %
+                  (value, type(value).__name__))
+
+
+def _type_spec_from_value(value):
+  """Returns a `TypeSpec` that represents the given `value`."""
+  if isinstance(value, ops.Tensor):
+    # Note: we do not include Tensor names when constructing TypeSpecs.
+    return tensor_spec.TensorSpec(value.shape, value.dtype)
+
+  if isinstance(value, composite_tensor.CompositeTensor):
+    return value._type_spec  # pylint: disable=protected-access
+
+  # If `value` is a list and all of its elements can be represented by the same
+  # batchable type spec, then we can represent the entire list using a single
+  # type spec that captures the type accurately (unlike the `convert_to_tensor`
+  # fallback).
+  if isinstance(value, list) and value:
+    subspecs = [_type_spec_from_value(v) for v in value]
+    if isinstance(subspecs[0], BatchableTypeSpec):
+      merged_subspec = subspecs[0]
+      try:
+        for subspec in subspecs[1:]:
+          merged_subspec = merged_subspec.most_specific_compatible_type(subspec)
+        return merged_subspec._batch(len(subspecs))  # pylint: disable=protected-access
+      except (ValueError, TypeError):
+        pass  # incompatible subspecs
+
+  for entry in reversed(_TYPE_CONVERSION_FUNCTION_REGISTRY):
+    type_object, converter_fn, allow_subclass = entry
+    if ((type(value) is type_object) or  # pylint: disable=unidiomatic-typecheck
+        (allow_subclass and isinstance(value, type_object))):
+      return converter_fn(value)
+
+  return None
+
 _TYPE_CONVERSION_FUNCTION_REGISTRY = []
 
 
@@ -515,4 +550,4 @@ def register_type_spec_from_value_converter(type_object, converter_fn,
       (type_object, converter_fn, allow_subclass))
 
 
-pywrap_tensorflow.RegisterType("TypeSpec", TypeSpec)
+_pywrap_utils.RegisterType("TypeSpec", TypeSpec)

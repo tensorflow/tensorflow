@@ -28,7 +28,6 @@ from tensorflow.python.debug.lib import common
 from tensorflow.python.debug.lib import debug_service_pb2_grpc
 from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.platform import gfile
-from tensorflow.python.platform import tf_logging
 from tensorflow.python.profiler import tfprof_logger
 
 
@@ -94,11 +93,6 @@ def _source_file_paths_outside_tensorflow_py_library(code_defs, id_to_string):
       f for f in non_tf_files
       if not source_utils.guess_is_tensorflow_py_library(f) and gfile.Exists(f))
   return non_tf_files
-
-
-def grpc_message_length_bytes():
-  """Maximum gRPC message length in bytes."""
-  return 4 * 1024 * 1024
 
 
 def _send_call_tracebacks(destinations,
@@ -169,20 +163,14 @@ def _send_call_tracebacks(destinations,
       debugged_source_files.append(source_files)
 
   for destination in destinations:
-    channel = grpc.insecure_channel(destination)
+    no_max_message_sizes = [("grpc.max_receive_message_length", -1),
+                            ("grpc.max_send_message_length", -1)]
+    channel = grpc.insecure_channel(destination, options=no_max_message_sizes)
     stub = debug_service_pb2_grpc.EventListenerStub(channel)
     stub.SendTracebacks(call_traceback)
     if send_source:
-      for path, source_files in zip(
-          source_file_paths, debugged_source_files):
-        if source_files.ByteSize() < grpc_message_length_bytes():
-          stub.SendSourceFiles(source_files)
-        else:
-          tf_logging.warn(
-              "The content of the source file at %s is not sent to "
-              "gRPC debug server %s, because the message size exceeds "
-              "gRPC message length limit (%d bytes)." % (
-                  path, destination, grpc_message_length_bytes()))
+      for source_files in debugged_source_files:
+        stub.SendSourceFiles(source_files)
 
 
 def send_graph_tracebacks(destinations,

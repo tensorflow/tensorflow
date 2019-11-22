@@ -239,9 +239,9 @@ def fold_batch_norms(input_graph_def):
 
     conv_op = node_from_map(input_node_map,
                             node.input[INPUT_ORDER[node.op].index("conv_op")])
-    if conv_op.op != "Conv2D":
-      tf_logging.warning(
-          "Didn't find expected Conv2D input to '%s'" % node.name)
+    if conv_op.op != "Conv2D" and conv_op.op != "DepthwiseConv2dNative":
+      tf_logging.warning("Didn't find expected Conv2D or DepthwiseConv2dNative"
+                         " input to '%s'" % node.name)
       continue
 
     weights_op = node_from_map(input_node_map, conv_op.input[1])
@@ -251,7 +251,10 @@ def fold_batch_norms(input_graph_def):
                          " run first?" % (conv_op.name, weights_op))
       continue
     weights = values_from_const(weights_op)
-    channel_count = weights.shape[3]
+    if conv_op.op == "Conv2D":
+      channel_count = weights.shape[3]
+    elif conv_op.op == "DepthwiseConv2dNative":
+      channel_count = weights.shape[2] * weights.shape[3]
 
     mean_op = node_from_map(input_node_map,
                             node.input[INPUT_ORDER[node.op].index("mean_op")])
@@ -329,10 +332,18 @@ def fold_batch_norms(input_graph_def):
     scaled_weights = np.copy(weights)
     it = np.nditer(
         scaled_weights, flags=["multi_index"], op_flags=["readwrite"])
-    while not it.finished:
-      current_scale = scale_value[it.multi_index[3]]
-      it[0] *= current_scale
-      it.iternext()
+    if conv_op.op == "Conv2D":
+      while not it.finished:
+        current_scale = scale_value[it.multi_index[3]]
+        it[0] *= current_scale
+        it.iternext()
+    elif conv_op.op == "DepthwiseConv2dNative":
+      channel_multiplier = weights.shape[3]
+      while not it.finished:
+        current_scale = scale_value[it.multi_index[2] * channel_multiplier +
+                                    it.multi_index[3]]
+        it[0] *= current_scale
+        it.iternext()
     scaled_weights_op = node_def_pb2.NodeDef()
     scaled_weights_op.op = "Const"
     scaled_weights_op.name = weights_op.name

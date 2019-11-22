@@ -80,6 +80,21 @@ NodeDef* AddScalarConstNode(int64 v, MutableGraphView* graph);
 template <>
 NodeDef* AddScalarConstNode(StringPiece v, MutableGraphView* graph);
 
+// Retrieves the value of a const node. Returns an error
+// if the node is not const, or its value is of a different type.
+template <typename T>
+Status GetScalarConstNodeValue(const NodeDef& node, T* value) {
+  // is_same is an idiomatic hack for making it compile if not instantiated.
+  // Replacing with false will result in a compile-time error.
+  static_assert(!std::is_same<T, T>::value,
+                "Invalid specialization of this method fo rtype T.");
+}
+
+template <>
+Status GetScalarConstNodeValue(const NodeDef& node, int64* value);
+template <>
+Status GetScalarConstNodeValue(const NodeDef& node, bool* value);
+
 // Checks whether the two graphs are the same.
 bool Compare(const GraphDef& g1, const GraphDef& g2);
 
@@ -112,6 +127,10 @@ NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
 // Gets the ith input to a node in the graph.
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
                       int64 i);
+
+// Gets the attr corresponding to a dataset node's output types, if it exists.
+Status GetDatasetOutputTypesAttr(const NodeDef& node,
+                                 DataTypeVector* output_types);
 
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.

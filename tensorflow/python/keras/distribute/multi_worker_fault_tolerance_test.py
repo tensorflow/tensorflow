@@ -19,9 +19,10 @@ from __future__ import division
 from __future__ import print_function
 import json
 import os
+import signal
 import sys
+import tempfile
 import threading
-
 from absl.testing import parameterized
 from tensorflow.python.distribute import collective_all_reduce_strategy as collective_strategy
 from tensorflow.python.distribute import combinations
@@ -31,7 +32,7 @@ from tensorflow.python.distribute import multi_worker_test_base as test_base
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras.distribute import multi_worker_testing_utils
-from tensorflow.python.keras.distribute import multi_worker_training_state
+from tensorflow.python.keras.distribute import multi_worker_training_state as training_state
 from tensorflow.python.platform import test
 
 
@@ -83,7 +84,7 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
           mode=['graph'],
           strategy_cls=[collective_strategy.CollectiveAllReduceStrategy],
           required_gpus=[0, 1],
-          file_format=['h5'],  # TODO(rchao): Support TF format.
+          file_format=['h5', 'tf'],
           preemption_callback=[
               PreemptionAtEpochBoundarySimulatingCallback,
               PreemptionAtBatchBoundarySimulatingCallback
@@ -127,21 +128,10 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
     def _independent_worker_fn(*args, **kwargs):  # pylint: disable=unused-argument
       with test.mock.patch.object(dc, '_run_std_server',
                                   self._make_mock_run_std_server()):
-        # Condition variable that blocks the thread that represents the
-        # restarted chief.
-        cv = kwargs.get('cv', None)
         # `before_restart` is True for the threads that represent the original
         # chief and non-chief worker, and False for threads that represent the
         # restarted chief and non-chief workers.
         before_restart = kwargs['before_restart']
-        if kwargs['new_chief']:
-          # `new_chief` is only True for the restarted chief thread. It waits
-          # until non-chief is preempted and restarted to simulate the causality
-          # where chief's restart results from non-chief's failure.
-          cv.acquire()
-          while not hasattr(cv, 'preempted'):
-            cv.wait()
-          cv.release()
 
         # Model building under strategy scope. Following is the code we expect
         # the user runs on every worker.
@@ -150,6 +140,7 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
         steps = 3
         train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
             batch_size, steps)
+
         with strategy.scope():
           model = multi_worker_testing_utils.get_mnist_model((28, 28, 1))
 
@@ -157,9 +148,15 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
         # following code: one represents the restart of the non-chief, and one
         # represents the restart of the chief as a result of the restart of the
         # non-chief (so the training can continue in sync).
-        def start_new_thread(new_chief=False):
+        def start_new_thread(new_chief):
           new_thread_tf_config = json.loads(os.environ['TF_CONFIG'])
+
+          # Update the ports in new chief and new worker threads.
           new_thread_tf_config['cluster']['worker'] = kwargs['reserved_ports']
+
+          # Since both new chief and new worker threads are started from the
+          # worker thread, we need to overwrite the tf config task index.
+          new_thread_tf_config['task']['index'] = 0 if new_chief else 1
           return self._run_task_in_thread(
               task_fn=_independent_worker_fn,
               cluster_spec=None,
@@ -167,15 +164,7 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
               task_id=None,
               tf_config=new_thread_tf_config,
               before_restart=False,
-              cv=cv,
               new_chief=new_chief)
-
-        if test_base.is_chief() and before_restart:
-          # Chief to start a new thread (that will be blocked by a condition
-          # variable until the non-chief's new thread is started). The thread
-          # for (recovered) chief is started before entering `fit()` because
-          # the original chief thread will eventually hang and be ignored.
-          start_new_thread(new_chief=True)
 
         try:
 
@@ -189,8 +178,7 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
               # `_ckpt_saved_epoch` attribute is set at the end of every epoch.
               self.test_obj.assertEqual(
                   K.eval(self.model._ckpt_saved_epoch) ==
-                  multi_worker_training_state.CKPT_SAVED_EPOCH_UNUSED_VALUE,
-                  epoch == 0)
+                  training_state.CKPT_SAVED_EPOCH_UNUSED_VALUE, epoch == 0)
 
           callbacks_list = [
               callbacks.ModelCheckpoint(
@@ -202,15 +190,13 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
           if before_restart:
             callbacks_list.append(preemption_callback())
 
-          self.assertFalse(
-              hasattr(model, multi_worker_training_state.CKPT_SAVED_EPOCH))
+          self.assertFalse(hasattr(model, training_state.CKPT_SAVED_EPOCH))
           history = model.fit(
               x=train_ds,
               epochs=num_epoch,
               steps_per_epoch=steps,
               callbacks=callbacks_list)
-          self.assertFalse(
-              hasattr(model, multi_worker_training_state.CKPT_SAVED_EPOCH))
+          self.assertFalse(hasattr(model, training_state.CKPT_SAVED_EPOCH))
 
           # `history` of the training result is collected to be compared against
           # each other. It is expected that the training results (loss and
@@ -225,22 +211,17 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
           self._barrier._counter = 0
           self._barrier._flag = False
 
-          # Now that the non-chief has been preempted, it notifies the thread
-          # that simulates the restarted chief to start so they can be back in
-          # sync.
-          cv.acquire()
-          cv.preempted = True
-          cv.notify()
-          cv.release()
-
-          # At this point we should discard the original non-chief thread, and
-          # start the new thread that simulates the restarted non-chief, hence
-          # joining the thread and return.
-          self.join_independent_workers([start_new_thread()])
+          # At this point we block the original non-chief thread, and
+          # start the new threads that simulate the restarted chief and
+          # non-chief, joining the threads and return.
+          new_chief_thread = start_new_thread(new_chief=True)
+          new_worker_thread = start_new_thread(new_chief=False)
+          self.join_independent_workers([new_chief_thread, new_worker_thread])
           return
 
         # Successful end of a `fit()` call.
-        self._successful_thread_ends += 1
+        with self._lock:
+          self._successful_thread_ends += 1
         self.assertFalse(before_restart)
 
     # Common parameters
@@ -248,24 +229,39 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
     num_epoch = 3
     # History list storing the results for preemption and no preemption cases.
     self._histories = []
-    # Pass `saving_filepath` from the parent thread to ensure every worker has
-    # the same filepath to save.
-    saving_filepath = os.path.join(self.get_temp_dir(),
-                                   'checkpoint.' + file_format)
+    # Lock required to prevent race condition between two threads.
+    self._lock = threading.Lock()
     strategy = get_strategy_object(strategy_cls)
+
+    def handler(signum, frame):
+      del signum, frame
+      # `session.run()` within `model.fit()` can time out. Skipping it as it
+      # doesn't represent the failure of this test.
+      self.skipTest('Skipping test due to `session.run()` timeout.')
+
+    signal.signal(signal.SIGALRM, handler)
+    # Alarming within 5 min before the test timeouts and fails.
+    signal.alarm(240)
+
+    def get_saving_dir_and_filepath():
+      saving_dir = tempfile.mkdtemp(prefix=self.get_temp_dir())
+      saving_filepath = os.path.join(saving_dir, 'checkpoint.' + file_format)
+      return saving_dir, saving_filepath
 
     # Case 1: Training for `num_epoch` without preemptions.
     cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
     self._barrier = dc._Barrier(2)
     self._successful_thread_ends = 0
+    # Get a new temporary filepath to save the checkpoint to.
+    saving_dir, saving_filepath = get_saving_dir_and_filepath()
     threads = self.run_multiple_tasks_in_threads(
         _independent_worker_fn,
         cluster_spec,
+        # Pass `saving_filepath` from the parent thread to ensure every worker
+        # has the same filepath to save.
         saving_filepath=saving_filepath,
         before_restart=False,
         new_chief=False)
-    if os.path.exists(saving_filepath):
-      os.remove(saving_filepath)
     threads_to_join = []
     if strategy.extended.experimental_between_graph:
       for ts in threads.values():
@@ -273,12 +269,23 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
     else:
       threads_to_join = [threads['worker'][0]]
     self.join_independent_workers(threads_to_join)
+
+    # `self.test_skipped_reason` could be set when a non-main thread attempts
+    # to skip the test.
+    # `multi_worker_test_base.skip_if_grpc_server_cant_be_started()` is an
+    # example of where this can be set. Since raising `SkipTest` in a non-main
+    # thread doesn't actually skip the test, we check if the test should be
+    # skipped here once we have joined the threads.
+    if getattr(self, 'test_skipped_reason', None) is not None:
+      self.skipTest(self.test_skipped_reason)
+
+    self.assertTrue(
+        training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath))
     self.assertEqual(self._successful_thread_ends, 2)
 
     # Case 2: Training for `num_epoch` epoch with preemptions.
     # The preemption is simulated at both epoch boundary and batch boundary.
     cluster_spec = test_base.create_cluster_spec(num_workers=num_workers)
-    cv = threading.Condition()
     self._barrier = dc._Barrier(2)
     # Ports reserved for new threads simulating recovery.
     reserved_ports = [
@@ -286,16 +293,17 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
         for _ in range(num_workers)
     ]
     self._successful_thread_ends = 0
+    # Get a new temporary filepath to save the checkpoint to.
+    saving_dir, saving_filepath = get_saving_dir_and_filepath()
     threads = self.run_multiple_tasks_in_threads(
         _independent_worker_fn,
         cluster_spec,
+        # Pass `saving_filepath` from the parent thread to ensure every worker
+        # has the same filepath to save.
         saving_filepath=saving_filepath,
         reserved_ports=reserved_ports,
         before_restart=True,
-        cv=cv,
         new_chief=False)
-    if os.path.exists(saving_filepath):
-      os.remove(saving_filepath)
     threads_to_join = []
     if strategy.extended.experimental_between_graph:
       # Only join the non-chief thread since the first thread for chief will
@@ -304,6 +312,11 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
     else:
       threads_to_join = [threads['worker'][0]]
     self.join_independent_workers(threads_to_join)
+    if getattr(self, 'test_skipped_reason', None) is not None:
+      self.skipTest(self.test_skipped_reason)
+
+    self.assertTrue(
+        training_state.remove_checkpoint_if_exists(saving_dir, saving_filepath))
     self.assertEqual(self._successful_thread_ends, 2)
 
     def assert_all_elements_are_identical(list_to_check):
@@ -319,6 +332,12 @@ class KerasMultiWorkerFaultToleranceTest(test_base.IndependentWorkerTestBase,
         [history['loss'][-1] for history in self._histories])
     # The length of `self._histories` would be num_workers * num_runs (3).
     self.assertLen(self._histories, 4)
+
+    # Results from case 1 should have 3 full epochs.
+    self.assertLen(self._histories[0]['acc'], 3)
+    # Results from case 2 should only have 2 full epochs because it restarted at
+    # epoch 1.
+    self.assertLen(self._histories[-1]['acc'], 2)
 
 
 if __name__ == '__main__':

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/map_parallelization.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -32,7 +33,6 @@ namespace {
 
 constexpr char kMapDataset[] = "MapDataset";
 constexpr char kParallelMapDataset[] = "ParallelMapDataset";
-constexpr int kAutotune = -1;
 
 NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
   // The inputs of the node to be parallelized could be changed by the
@@ -44,7 +44,8 @@ NodeDef MakeParallelMap(const string& name, MutableGraphView* graph) {
   graph_utils::SetUniqueGraphNodeName(kParallelMapDataset, graph->graph(),
                                       &parallel_map);
   parallel_map.set_op(kParallelMapDataset);
-  auto* num_parallel_calls = graph_utils::AddScalarConstNode(kAutotune, graph);
+  auto* num_parallel_calls = graph_utils::AddScalarConstNode(
+      static_cast<int32>(data::model::kAutotune), graph);
   parallel_map.add_input(num_parallel_calls->name());
 
   return parallel_map;

@@ -23,22 +23,15 @@ namespace data {
 
 class FilterDatasetOp : public UnaryDatasetOpKernel {
  public:
-  static constexpr const char kDatasetType[] = "Filter";
-  static constexpr const char kInputDataset[] = "input_dataset";
-  static constexpr const char kOtherArguments[] = "other_arguments";
-  static constexpr const char kPredicate[] = "predicate";
-  static constexpr const char kTarguments[] = "Targuments";
-  static constexpr const char kOutputTypes[] = "output_types";
-  static constexpr const char kOutputShapes[] = "output_shapes";
+  static constexpr const char* const kDatasetType = "Filter";
+  static constexpr const char* const kInputDataset = "input_dataset";
+  static constexpr const char* const kOtherArguments = "other_arguments";
+  static constexpr const char* const kPredicate = "predicate";
+  static constexpr const char* const kTarguments = "Targuments";
+  static constexpr const char* const kOutputTypes = "output_types";
+  static constexpr const char* const kOutputShapes = "output_shapes";
 
-  explicit FilterDatasetOp(OpKernelConstruction* ctx)
-      : UnaryDatasetOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, FunctionMetadata::Create(ctx, kPredicate, /*params=*/{},
-                                                 &func_metadata_));
-    OP_REQUIRES(ctx, func_metadata_->short_circuit_info().indices.size() <= 1,
-                errors::InvalidArgument(
-                    "predicate function has more than one return value."));
-  }
+  explicit FilterDatasetOp(OpKernelConstruction* ctx);
 
  protected:
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,

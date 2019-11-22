@@ -14,6 +14,7 @@ RUN /install/install_proto3.sh
 RUN /install/install_buildifier.sh
 RUN /install/install_auditwheel.sh
 RUN /install/install_golang.sh
+RUN /install/install_gcc6.sh
 
 # The following line installs the Python cross-compilation toolchain. All the
 # preceding dependencies should be kept in sync with the main CPU docker file.

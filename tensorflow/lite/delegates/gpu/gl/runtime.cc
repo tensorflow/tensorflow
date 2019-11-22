@@ -22,13 +22,18 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_call.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_errors.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_program.h"
 #include "tensorflow/lite/delegates/gpu/gl/gl_texture.h"
+#include "tensorflow/lite/delegates/gpu/gl/object.h"
 #include "tensorflow/lite/delegates/gpu/gl/portable_gl31.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
@@ -42,8 +47,9 @@ struct TextureF16Maker {
   Status operator()(const uint2& size) const {
     return CreateReadOnlyImageTextureF16(size, data, gl_texture);
   }
-  Status operator()(const uint32_t& size) const {
-    return CreateReadOnlyImageTextureF16(uint2(size, 1U), data, gl_texture);
+  Status operator()(const size_t& size) const {
+    return CreateReadOnlyImageTextureF16(uint2(static_cast<uint32_t>(size), 1U),
+                                         data, gl_texture);
   }
   absl::Span<const uint16_t> data;
   GlTexture* gl_texture;
@@ -56,8 +62,9 @@ struct TextureF32Maker {
   Status operator()(const uint2& size) const {
     return CreateReadOnlyImageTexture(size, data, gl_texture);
   }
-  Status operator()(const uint32_t& size) const {
-    return CreateReadOnlyImageTexture(uint2(size, 1U), data, gl_texture);
+  Status operator()(const size_t& size) const {
+    return CreateReadOnlyImageTexture(uint2(static_cast<uint32_t>(size), 1U),
+                                      data, gl_texture);
   }
   absl::Span<const float> data;
   GlTexture* gl_texture;
@@ -112,8 +119,9 @@ struct TextureRefMaker {
   Status operator()(const uint2& size) const {
     return CreateReadWriteRgbaImageTexture(type, size, gl_texture);
   }
-  Status operator()(const uint32_t& size) const {
-    return CreateReadWriteRgbaImageTexture(type, uint2(size, 1U), gl_texture);
+  Status operator()(const size_t& size) const {
+    return CreateReadWriteRgbaImageTexture(
+        type, uint2(static_cast<uint32_t>(size), 1U), gl_texture);
   }
   DataType type;
   GlTexture* gl_texture;
@@ -187,7 +195,7 @@ Runtime::Runtime(const RuntimeOptions& options, const GpuInfo& gpu_info,
 }
 
 Status Runtime::AddProgram(const GlShader& shader,
-                           const std::vector<UniformParameter>& parameters,
+                           const std::vector<Variable>& parameters,
                            const std::vector<Object>& objects,
                            const uint3& num_workgroups) {
   GlProgram program;
@@ -330,260 +338,245 @@ Status Runtime::PrepareForExecution() {
 
 namespace {
 
-struct FitSizeFunc {
-  bool operator()(const uint3& size) const {
-    auto s = absl::get_if<uint3>(&b);
-    if (!s) return false;
-    *result = uint3(std::max(s->x, size.x), std::max(s->y, size.y),
-                    std::max(s->z, size.z));
-    return true;
-  }
+const size_t kNotAssigned = std::numeric_limits<size_t>::max();
 
-  bool operator()(const uint2& size) const {
-    auto s = absl::get_if<uint2>(&b);
-    if (!s) return false;
-    *result = uint2(std::max(s->x, size.x), std::max(s->y, size.y));
-    return true;
-  }
-
-  bool operator()(uint32_t size) const {
-    auto s = absl::get_if<uint32_t>(&b);
-    if (!s) return false;
-    *result = std::max(*s, size);
-    return true;
-  }
-
-  const ObjectSize& b;
-  ObjectSize* result;
+struct CombinedUsageRecords {
+  std::vector<TensorUsageRecord<size_t>> buffers;
+  std::vector<TensorUsageRecord<size_t>> textures_1d;
+  std::vector<TensorUsageRecord<uint2>> textures_2d;
+  std::vector<TensorUsageRecord<uint3>> textures_3d;
+  std::vector<size_t> usage_refs;
 };
 
-// Makes new size which combines largest dimensions of both given sizes.
-//
-// @return false if sizes have different number of dimensions
-bool FitSize(const ObjectSize& a, const ObjectSize& b, ObjectSize* result) {
-  return absl::visit(FitSizeFunc{b, result}, a);
+template <typename TensorSizeT>
+void UpdateUsageRecord(TensorUsageRecord<TensorSizeT>* usage_rec,
+                       size_t task_id) {
+  usage_rec->first_task = std::min(usage_rec->first_task, task_id);
+  usage_rec->last_task = std::max(usage_rec->last_task, task_id);
 }
 
-// Texture fitting policy is:
-//  - 1D: source texture will always fit into target because it is linear
-//  - 2D: source texture should fit without growing target texture
-//  - 3D: source texture should fit without growing target texture
-//
-struct TextureFitPolicy {
-  bool operator()(const uint3& size) const {
-    auto s = absl::get_if<uint3>(&target);
-    return s && size.x <= s->x && size.y <= s->y && size.z <= s->z;
-  }
-
-  bool operator()(const uint2& size) const {
-    auto s = absl::get_if<uint2>(&target);
-    return s && size.x <= s->x && size.y <= s->y;
-  }
-
-  bool operator()(uint32_t size) const {
-    return absl::get_if<uint32_t>(&target);
-  }
-
-  const ObjectSize& target;
-};
-
-// Makes new size which combines largest dimensions of both given sizes.
-//
-// @return false if sizes have different number of dimensions
-bool WillTextureFit(const ObjectSize& source, const ObjectSize& target) {
-  return absl::visit(TextureFitPolicy{target}, source);
-}
-
-struct TextureNumElementsFunc {
-  size_t operator()(const uint3& size) const {
-    auto s = absl::get_if<uint3>(&target);
-    return s ? size.z * s->x * s->y + size.y * s->x + size.x : 0;
-  }
-
-  size_t operator()(const uint2& size) const {
-    auto s = absl::get_if<uint2>(&target);
-    return s ? size.y * s->x + size.x : 0;
-  }
-
-  size_t operator()(uint32_t size) const {
-    auto s = absl::get_if<uint32_t>(&target);
-    return s ? size : 0;
-  }
-
-  const ObjectSize& target;
-};
-
-// @return estimated number of elements if target texture is used to keep source
-// texture data assuming XYZ layout.
-size_t TextureNumElements(const ObjectSize& source, const ObjectSize& target) {
-  return absl::visit(TextureNumElementsFunc{target}, source);
-}
-
-// Checks whether the given object fits into 'to' object. Returns number of
-// bytes used if an object fits, or 0 otherwise.
-//
-// Fitting policy:
-//   - buffer will always fit into another buffer because they all are linear.
-//   - textures are handles by the policy above
-//
-size_t WillItFit(const Object& object, const Object& to) {
-  if (object.object_type != to.object_type ||
-      object.data_type != to.data_type) {
-    return 0;
-  }
-  switch (object.object_type) {
-    case ObjectType::BUFFER:
-      return ByteSizeOf(object);
-    case ObjectType::TEXTURE: {
-      if (!WillTextureFit(object.size, to.size)) return 0;
-      // Expand 'to' dimensions to ensure an object fits.
-      ObjectSize new_texture_size;
-      if (!FitSize(object.size, to.size, &new_texture_size)) return 0;
-      return /* RGBA = */ 4 * SizeOf(object.data_type) *
-             TextureNumElements(object.size, new_texture_size);
+struct AddUsageRecordForTextureFunc {
+  void operator()(const uint3& size) const {
+    auto& usage_ref = usage_records->usage_refs[object_ref];
+    if (usage_ref == kNotAssigned) {
+      usage_ref = usage_records->textures_3d.size();
+      usage_records->textures_3d.emplace_back(/*tensor_size=*/size,
+                                              /*first_task=*/program_id,
+                                              /*last_task=*/program_id);
+    } else {
+      UpdateUsageRecord(&usage_records->textures_3d[usage_ref], program_id);
     }
-    default:
-      return 0;
   }
+
+  void operator()(const uint2& size) const {
+    auto& usage_ref = usage_records->usage_refs[object_ref];
+    if (usage_ref == kNotAssigned) {
+      usage_ref = usage_records->textures_2d.size();
+      usage_records->textures_2d.emplace_back(/*tensor_size=*/size,
+                                              /*first_task=*/program_id,
+                                              /*last_task=*/program_id);
+    } else {
+      UpdateUsageRecord(&usage_records->textures_2d[usage_ref], program_id);
+    }
+  }
+
+  void operator()(size_t size) const {
+    auto& usage_ref = usage_records->usage_refs[object_ref];
+    if (usage_ref == kNotAssigned) {
+      usage_ref = usage_records->textures_1d.size();
+      usage_records->textures_1d.emplace_back(/*tensor_size=*/size,
+                                              /*first_task=*/program_id,
+                                              /*last_task=*/program_id);
+    } else {
+      UpdateUsageRecord(&usage_records->textures_1d[usage_ref], program_id);
+    }
+  }
+
+  CombinedUsageRecords* usage_records;
+  const ObjectRef& object_ref;
+  const size_t program_id;
+};
+
+// We assume that AddUsageRecord for different objects is called in order of
+// program_id.
+Status AddUsageRecord(CombinedUsageRecords* usage_records, const Object& object,
+                      const size_t program_id) {
+  auto ref = GetRef(object);
+  if (ref >= usage_records->usage_refs.size()) {
+    usage_records->usage_refs.resize(ref + 1, kNotAssigned);
+  }
+  auto& usage_ref = usage_records->usage_refs[ref];
+  if (object.object_type == ObjectType::BUFFER) {
+    if (usage_ref == kNotAssigned) {
+      usage_ref = usage_records->buffers.size();
+      usage_records->buffers.emplace_back(
+          /*tensor_size=*/NumElements(object.size),
+          /*first_task=*/program_id,
+          /*last_task=*/program_id);
+    } else {
+      UpdateUsageRecord(&usage_records->buffers[usage_ref], program_id);
+    }
+    return OkStatus();
+  }
+  if (object.object_type == ObjectType::TEXTURE) {
+    absl::visit(AddUsageRecordForTextureFunc{usage_records, ref, program_id},
+                object.size);
+    return OkStatus();
+  }
+  return InternalError("Unexpected object type");
+}
+
+Status ApplyBuffersAssignment(
+    const ObjectsAssignment<size_t>& assignment,
+    const std::vector<size_t>& global_ref_to_usage_rec,
+    const std::vector<Object*>& global_ref_to_object_ptr,
+    std::vector<ObjectRef>* global_ref_to_shared_ref,
+    std::vector<Object>* shared_objects) {
+  std::vector<ObjectRef> assigned_id_to_shared_ref(
+      assignment.object_sizes.size(), kInvalidObjectRef);
+  for (size_t global_ref = 0; global_ref < global_ref_to_usage_rec.size();
+       ++global_ref) {
+    const auto& usage_rec_id = global_ref_to_usage_rec[global_ref];
+    Object* object = global_ref_to_object_ptr[global_ref];
+    if (usage_rec_id == kNotAssigned || object == nullptr ||
+        object->object_type != ObjectType::BUFFER) {
+      // Skip objects with other data type and non-buffers.
+      continue;
+    }
+
+    // id of shared object, returned by memory allocation algorithm.
+    size_t assigned_id = assignment.object_ids[usage_rec_id];
+
+    // id of corresponding shared object in vector share_objects.
+    ObjectRef shared_ref = assigned_id_to_shared_ref[assigned_id];
+
+    if (shared_ref == kInvalidObjectRef) {
+      // We need to create new shared object for current buffer.
+      shared_ref = shared_objects->size();
+      Object shared_object = *object;
+      shared_object.access = AccessType::READ_WRITE;
+      shared_object.object = shared_ref;
+      shared_object.size = assignment.object_sizes[assigned_id];
+      shared_objects->push_back(std::move(shared_object));
+      assigned_id_to_shared_ref[assigned_id] = shared_ref;
+    }
+    (*global_ref_to_shared_ref)[global_ref] = shared_ref;
+  }
+  return OkStatus();
+}
+
+template <typename ObjectSizeT>
+Status ApplyTexturesAssignment(
+    const ObjectsAssignment<ObjectSizeT>& assignment,
+    const std::vector<size_t>& global_ref_to_usage_rec,
+    const std::vector<Object*>& global_ref_to_object_ptr,
+    std::vector<ObjectRef>* global_ref_to_shared_ref,
+    std::vector<Object>* shared_objects) {
+  std::vector<ObjectRef> assigned_id_to_shared_ref(
+      assignment.object_sizes.size(), kInvalidObjectRef);
+  for (size_t global_ref = 0; global_ref < global_ref_to_usage_rec.size();
+       ++global_ref) {
+    const auto& usage_rec_id = global_ref_to_usage_rec[global_ref];
+    Object* object = global_ref_to_object_ptr[global_ref];
+    if (usage_rec_id == kNotAssigned || object == nullptr ||
+        object->object_type != ObjectType::TEXTURE ||
+        !absl::get_if<ObjectSizeT>(&object->size)) {
+      // Skip objects with other data type, non-textures and textures with wrong
+      // number of dimensions.
+      continue;
+    }
+
+    // id of shared object, returned by memory allocation algorithm.
+    size_t assigned_id = assignment.object_ids[usage_rec_id];
+
+    // id of corresponding shared object in vector share_objects.
+    ObjectRef shared_ref = assigned_id_to_shared_ref[assigned_id];
+
+    if (shared_ref == kInvalidObjectRef) {
+      // We need to create new shared object for current texture.
+      shared_ref = shared_objects->size();
+      Object shared_object = *object;
+      shared_object.access = AccessType::READ_WRITE;
+      shared_object.object = shared_ref;
+      shared_object.size = assignment.object_sizes[assigned_id];
+      shared_objects->push_back(std::move(shared_object));
+      assigned_id_to_shared_ref[assigned_id] = shared_ref;
+    }
+    (*global_ref_to_shared_ref)[global_ref] = shared_ref;
+  }
+  return OkStatus();
 }
 
 }  // namespace
 
-// Algorithm works as follows:
-//
-//   1. First it collects usage intervals for each object reference.
-//      For example: buffer #3 is introduced in program #2 and used for the
-//      last time in program #7.
-//
-//   2. Iterates through all programs where for every object reference
-//      assigns shared object from the pool. When object reference is used
-//      for the last time, corresponding shared object is returned back to
-//      the pool.
-//
-//   3. Shared object pool grows when there are no free shared object
-//      available.
-//
-//   4. Shared object size may increase when object reference requests bigger
-//      size.
-//
-// Therefore, in the end all references are remapped to ids in the range
-// [0..num_shared_objects]. To avoid ref space collision with global reference
-// all shared objects are allocated in internal_objects_.
+// Assign shared objects to internal objects, using memory allocation
+// algorithms. Usage records for the algorithms are calculated separately for
+// each data type and object type.
 Status Runtime::AssignInternalObjects(std::vector<Object>* shared_objects) {
-  // Build interval set for objects to know where each object is introduced
-  // and used for the last time.
-  std::vector<std::pair<int32_t, int32_t>> usage_intervals;
-  for (int32_t i = 0; i < programs_.size(); ++i) {
+  // Build tensor usage records, clusterized by object type and data type.
+  std::map<DataType, CombinedUsageRecords> usage_records_by_data_type;
+  std::vector<Object*> global_ref_to_object_ptr;
+  for (size_t i = 0; i < programs_.size(); ++i) {
     for (auto& object : programs_[i].refs) {
       auto ref = GetRef(object);
-      if (ref >= usage_intervals.size()) {
-        usage_intervals.resize(ref + 1, std::make_pair(programs_.size(), -1));
+      if (ref >= global_ref_to_object_ptr.size()) {
+        global_ref_to_object_ptr.resize(ref + 1, nullptr);
       }
-      auto& it = usage_intervals[ref];
-      it.first = std::min(it.first, i);
-      it.second = std::max(it.second, i);
+      if (global_ref_to_object_ptr[ref] == nullptr) {
+        global_ref_to_object_ptr[ref] = &object;
+      }
+      RETURN_IF_ERROR(AddUsageRecord(
+          &usage_records_by_data_type[object.data_type], object, i));
     }
   }
 
-  std::vector<bool> is_used_shared_object;
-  std::vector<ObjectRef> global_ref_to_shared_ref(usage_intervals.size(),
-                                                  kInvalidObjectRef);
+  std::vector<ObjectRef> global_ref_to_shared_ref(
+      global_ref_to_object_ptr.size(), kInvalidObjectRef);
+
+  // Calculate and apply shared objects assignment for each data type.
+  for (const auto& it : usage_records_by_data_type) {
+    const CombinedUsageRecords& usage_records = it.second;
+    if (!usage_records.buffers.empty()) {
+      ObjectsAssignment<size_t> buffer_assignment;
+      RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.buffers,
+                                             MemoryStrategy::GREEDY_BEST,
+                                             &buffer_assignment));
+      RETURN_IF_ERROR(ApplyBuffersAssignment(
+          buffer_assignment, usage_records.usage_refs, global_ref_to_object_ptr,
+          &global_ref_to_shared_ref, shared_objects));
+    }
+    if (!usage_records.textures_1d.empty()) {
+      ObjectsAssignment<size_t> texture_1d_assignment;
+      RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.textures_1d,
+                                             MemoryStrategy::GREEDY_BEST,
+                                             &texture_1d_assignment));
+      RETURN_IF_ERROR(ApplyTexturesAssignment(
+          texture_1d_assignment, usage_records.usage_refs,
+          global_ref_to_object_ptr, &global_ref_to_shared_ref, shared_objects));
+    }
+    if (!usage_records.textures_2d.empty()) {
+      ObjectsAssignment<uint2> texture_2d_assignment;
+      RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.textures_2d,
+                                             MemoryStrategy::GREEDY_IN_ORDER,
+                                             &texture_2d_assignment));
+      RETURN_IF_ERROR(ApplyTexturesAssignment(
+          texture_2d_assignment, usage_records.usage_refs,
+          global_ref_to_object_ptr, &global_ref_to_shared_ref, shared_objects));
+    }
+    if (!usage_records.textures_3d.empty()) {
+      ObjectsAssignment<uint3> texture_3d_assignment;
+      RETURN_IF_ERROR(AssignObjectsToTensors(usage_records.textures_3d,
+                                             MemoryStrategy::GREEDY_IN_ORDER,
+                                             &texture_3d_assignment));
+      RETURN_IF_ERROR(ApplyTexturesAssignment(
+          texture_3d_assignment, usage_records.usage_refs,
+          global_ref_to_object_ptr, &global_ref_to_shared_ref, shared_objects));
+    }
+  }
 
   for (size_t i = 0; i < programs_.size(); ++i) {
-    auto& program = programs_[i];
-    // list of object indices to return to the pool.
-    std::vector<ObjectRef> object_refs_to_return;
-
-    // Assign to every internal buffer, that is not yet allocated, appropriate
-    // shared buffer from a heap of unused.
-    for (auto& object : program.refs) {
-      const ObjectRef ref = GetRef(object);
-      ObjectRef shared_ref = global_ref_to_shared_ref[ref];
-      const auto& usage = usage_intervals[ref];
-
-      if (usage.first == i) {
-        // First time a reference is introduced. Assign shared object.
-        if (shared_ref != kInvalidObjectRef) {
-          return InternalError(
-              "Internal object is introduced for the first time but is already "
-              "assigned");
-        }
-
-        // Try to find a free shared object that is as close as possible by
-        // size. Here we assume that number of shared objects is relatively
-        // small (< 100), therefore, search linearly over all of them.
-        size_t selected_waste_bytes = 0;
-        for (int32_t b = 0; b < shared_objects->size(); ++b) {
-          // Check whether shared object is available.
-          if (is_used_shared_object[b]) continue;
-          auto& shared_object = (*shared_objects)[b];
-
-          // Bytes needed to fit object in the shared object.
-          size_t alloc_bytes = WillItFit(object, shared_object);
-          if (alloc_bytes == 0) continue;
-
-          // Prefer shared object that will waste less memory.
-          size_t shared_byte_size = ByteSizeOf(shared_object);
-          // sizes are unsigned, therefore '-' may undeflow. Take smallest.
-          size_t waste_bytes = std::min(shared_byte_size - alloc_bytes,
-                                        alloc_bytes - shared_byte_size);
-          if (shared_ref == kInvalidObjectRef ||
-              waste_bytes < selected_waste_bytes) {
-            selected_waste_bytes = waste_bytes;
-            shared_ref = b;
-          }
-        }
-
-        if (shared_ref == kInvalidObjectRef) {
-          // Didn't find an object to share. Create new one.
-          shared_ref = shared_objects->size();
-          Object shared_object = object;
-          shared_object.access = AccessType::READ_WRITE;
-          shared_object.object = shared_ref;
-          if (shared_object.object_type == ObjectType::BUFFER) {
-            // Make a buffer linear.
-            shared_object.size = NumElements(object.size);
-          }
-          shared_objects->push_back(std::move(shared_object));
-          is_used_shared_object.push_back(false);
-        } else {
-          // Check chosen shared object and update it's size.
-          Object& shared_object = (*shared_objects)[shared_ref];
-          switch (object.object_type) {
-            case ObjectType::BUFFER:
-              shared_object.size = std::max(NumElements(object.size),
-                                            NumElements(shared_object.size));
-              break;
-            case ObjectType::TEXTURE: {
-              if (!FitSize(object.size, shared_object.size,
-                           &shared_object.size)) {
-                return InternalError(
-                    "Already assigned shared texture does not fit an object");
-              }
-              break;
-            }
-            default:
-              return InternalError("Unexpected shared object type");
-          }
-        }
-      }
-
-      // Mark shared object as used and map internal object to it.
-      is_used_shared_object[shared_ref] = true;
-      global_ref_to_shared_ref[ref] = shared_ref;
-      object.object = shared_ref;
-
-      // At this point we want to return unused object, but it should be
-      // returned later to avoid re-using the same object in this operation
-      // for a different purpose.
-      if (usage.second == i) {
-        object_refs_to_return.push_back(shared_ref);
-      }
-    }
-
-    // Mark all returned objects from this program as unused.
-    for (size_t ref : object_refs_to_return) {
-      is_used_shared_object[ref] = false;
+    for (auto& object : programs_[i].refs) {
+      object.object = global_ref_to_shared_ref[GetRef(object)];
     }
   }
   return OkStatus();

@@ -60,11 +60,7 @@ class KernelThunk : public Thunk {
 
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
-
-  // Executes the kernel for the thunk on "stream", which must be non-null.
-  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
-                         se::Stream* stream, const RunId& run_id,
-                         HloExecutionProfiler* profiler) override;
+  Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
   // Buffers passed to the kernel as arguments.

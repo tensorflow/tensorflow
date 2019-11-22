@@ -130,20 +130,30 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_FLOAT32:
       bytes_required *= sizeof(float);
       break;
-    case TensorType_INT8:
-      bytes_required *= sizeof(int8_t);
-      break;
-    case TensorType_UINT8:
-      bytes_required *= sizeof(uint8_t);
+    case TensorType_FLOAT16:
+      bytes_required *= sizeof(uint16_t);
       break;
     case TensorType_INT32:
       bytes_required *= sizeof(int32_t);
       break;
+    case TensorType_UINT8:
+      bytes_required *= sizeof(uint8_t);
+      break;
+    case TensorType_INT8:
+      bytes_required *= sizeof(int8_t);
+      break;
     case TensorType_INT64:
       bytes_required *= sizeof(int64_t);
       break;
-    case TensorType_FLOAT16:
-      // FALLTHROUGH_INTENDED;
+    case TensorType_BOOL:
+      bytes_required *= sizeof(bool);
+      break;
+    case TensorType_INT16:
+      bytes_required *= sizeof(uint16_t);
+      break;
+    case TensorType_COMPLEX64:
+      bytes_required *= sizeof(std::complex<float>);
+      break;
     default:
       ReportError(error_reporter, "Tensor %s invalid type: %d",
                   tensor.name()->c_str(), tensor.type());
