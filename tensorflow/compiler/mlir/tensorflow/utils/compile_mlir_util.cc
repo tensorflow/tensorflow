@@ -20,8 +20,12 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
+#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Parser.h"  // TF:local_config_mlir
+#include "mlir/Pass/Pass.h"  // TF:local_config_mlir
+#include "mlir/Pass/PassManager.h"  // TF:local_config_mlir
+#include "mlir/Transforms/Passes.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/transforms/shape_inference.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/dump_mlir_util.h"
@@ -203,12 +207,17 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    xla::XlaComputation* xla_computation,
                                    bool use_tuple_args,
                                    bool always_return_tuple) {
+  mlir::PassManager tf2xla(module_op.getContext());
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass());
+
   {
     // Make sure we catch any error reported by MLIR and forward it to the TF
     // error reporting system. Report a generic error if pass manager failed
     // without emitting a diagnostic.
     mlir::StatusScopedDiagnosticHandler error_handler(module_op.getContext());
-    mlir::LogicalResult result = mlir::xla_hlo::legalizeTF(module_op);
+
+    mlir::LogicalResult result = tf2xla.run(module_op);
     if (failed(result)) {
       return error_handler.Combine(
           errors::Internal("MLIR TF to XLA legalization failed"));
