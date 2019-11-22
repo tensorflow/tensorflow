@@ -42,6 +42,8 @@ struct TFOptimizePass : public FunctionPass<TFOptimizePass> {
   }
 };
 
+}  // namespace
+
 // NOLINTNEXTLINE - MLIR contract is pass by mutable reference.
 void CreateTFStandardPipeline(OpPassManager &pm) {
   OpPassManager &func_pm = pm.nest<FuncOp>();
@@ -60,8 +62,6 @@ void CreateTFStandardPipeline(OpPassManager &pm) {
   func_pm.addPass(CreateTFOptimizePass());
   func_pm.addPass(createCSEPass());
 }
-
-}  // namespace
 
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFOptimizePass() {
   return std::make_unique<TFOptimizePass>();

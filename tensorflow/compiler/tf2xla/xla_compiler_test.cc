@@ -573,48 +573,12 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
 
   XlaCompiler::Options options = DefaultOptions();
   XlaCompiler compiler(options);
-  {
-    // Compiles the graph, with resolve_compile_time_constants enabled.
 
+  {
     std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
     CopyGraph(*graph, graph_copy.get());
 
     XlaCompiler::CompileOptions compile_options;
-    compile_options.resolve_compile_time_constants = true;
-    XlaCompiler::CompilationResult result;
-    TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
-                                       std::move(graph_copy), args,
-                                       /*user_aliases=*/{}, &result));
-
-    ASSERT_EQ(2, result.outputs.size());
-    EXPECT_TRUE(result.outputs[0].is_constant);
-    test::ExpectTensorEqual<int32>(result.outputs[0].constant_value,
-                                   test::AsScalar(7));
-    EXPECT_FALSE(result.outputs[1].is_constant);
-
-    // Tests that the generated computation works.
-    xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
-    std::unique_ptr<xla::GlobalData> param0_data =
-        client_->TransferToServer(param0_literal).ConsumeValueOrDie();
-
-    std::unique_ptr<xla::GlobalData> actual =
-        client_->Execute(*result.computation, {param0_data.get()})
-            .ConsumeValueOrDie();
-    xla::Literal actual_literal =
-        client_->Transfer(*actual).ConsumeValueOrDie();
-
-    xla::Literal expected0 = xla::LiteralUtil::CreateR1<int32>({-7, -42});
-    xla::Literal expected_literal = xla::LiteralUtil::MakeTuple({&expected0});
-    EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
-  }
-
-  {
-    // Compiles the graph, with resolve_compile_time_constants disabled.
-    std::unique_ptr<Graph> graph_copy(new Graph(OpRegistry::Global()));
-    CopyGraph(*graph, graph_copy.get());
-
-    XlaCompiler::CompileOptions compile_options;
-    compile_options.resolve_compile_time_constants = false;
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
                                        std::move(graph_copy), args,
@@ -701,16 +665,12 @@ TEST_F(XlaCompilerTest, ConstantOutputsOfFunctionalNode) {
   XlaCompiler compiler(options);
 
   XlaCompiler::CompileOptions compile_options;
-  compile_options.resolve_compile_time_constants = true;
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
                                      std::move(graph), args,
                                      /*user_aliases=*/{}, &result));
 
   ASSERT_EQ(2, result.outputs.size());
-  EXPECT_TRUE(result.outputs[0].is_constant);
-  test::ExpectTensorEqual<int32>(result.outputs[0].constant_value,
-                                 test::AsScalar(7));
   EXPECT_FALSE(result.outputs[1].is_constant);
 }
 
@@ -1869,7 +1829,6 @@ TEST_F(XlaCompilerTest, DoNotConstantFoldShapeOp) {
 
   XlaCompiler::CompilationResult result;
   auto options = XlaCompiler::CompileOptions();
-  options.resolve_compile_time_constants = false;
   TF_ASSERT_OK(compiler.CompileGraph(options, "test", std::move(graph), args,
                                      /*user_aliases=*/{}, &result));
 

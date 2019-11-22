@@ -16,6 +16,10 @@ application we'll be using has been tested on the following devices:
     from source)
 *   [STM32F746 Discovery kit](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)
     (using Mbed)
+*   [Adafruit EdgeBadge](https://www.adafruit.com/product/4400) (using Arduino
+    IDE)
+*   [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317)
+    (using Arduino IDE)
 
 Learn more about supported platforms in
 [TensorFlow Lite for Microcontrollers](index.md).

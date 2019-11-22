@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -271,7 +272,66 @@ static void CreateDir(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
-// TODO(mihaimaruseac): More implementations to follow in subsequent changes.
+static void DeleteFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_Status* status) {
+  if (unlink(path) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
+                      TF_Status* status) {
+  if (rmdir(path) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void PathExists(const TF_Filesystem* filesystem, const char* path,
+                       TF_Status* status) {
+  if (access(path, F_OK) != 0)
+    TF_SetStatusFromIOError(status, errno, path);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void Stat(const TF_Filesystem* filesystem, const char* path,
+                 TF_FileStatistics* stats, TF_Status* status) {
+  struct stat sbuf;
+  if (stat(path, &sbuf) != 0) {
+    TF_SetStatusFromIOError(status, errno, path);
+  } else {
+    stats->length = sbuf.st_size;
+    stats->mtime_nsec = sbuf.st_mtime * (1000 * 1000 * 1000);
+    stats->is_directory = S_ISDIR(sbuf.st_mode);
+    TF_SetStatus(status, TF_OK, "");
+  }
+}
+
+static int RemoveSpecialDirectoryEntries(const struct dirent* d) {
+  return strcmp(d->d_name, ".") != 0 && strcmp(d->d_name, "..") != 0;
+}
+
+static int GetChildren(const TF_Filesystem* filesystem, const char* path,
+                       char*** entries, TF_Status* status) {
+  struct dirent** dir_entries = nullptr;
+  /* we don't promise entries would be sorted */
+  int num_entries =
+      scandir(path, &dir_entries, RemoveSpecialDirectoryEntries, nullptr);
+  if (num_entries < 0) {
+    TF_SetStatusFromIOError(status, errno, path);
+  } else {
+    *entries = static_cast<char**>(calloc(num_entries, sizeof((*entries)[0])));
+    for (int i = 0; i < num_entries; i++) {
+      (*entries)[i] = strdup(dir_entries[i]->d_name);
+      free(dir_entries[i]);
+    }
+    free(dir_entries);
+  }
+
+  return num_entries;
+}
 
 }  // namespace tf_posix_filesystem
 
@@ -298,6 +358,19 @@ void TF_InitPlugin(TF_Status* status) {
       tf_posix_filesystem::NewAppendableFile,
       tf_posix_filesystem::NewReadOnlyMemoryRegionFromFile,
       tf_posix_filesystem::CreateDir,
+      /*recursively_create_dir=*/nullptr,
+      tf_posix_filesystem::DeleteFile,
+      tf_posix_filesystem::DeleteDir,
+      /*delete_recursively=*/nullptr,
+      /*rename_file=*/nullptr,
+      /*copy_file=*/nullptr,
+      tf_posix_filesystem::PathExists,
+      /*paths_exist=*/nullptr,
+      tf_posix_filesystem::Stat,
+      /*is_directory=*/nullptr,
+      /*get_file_size=*/nullptr,
+      /*translate_name=*/nullptr,
+      tf_posix_filesystem::GetChildren,
       nullptr,
   };
 

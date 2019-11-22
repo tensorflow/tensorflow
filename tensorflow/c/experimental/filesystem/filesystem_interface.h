@@ -527,11 +527,13 @@ typedef struct TF_FilesystemOps {
   ///     of type `TF_Status*`.
   ///
   /// If `statuses` is not null, plugins must fill each element with detailed
-  /// status for each file, as if calling `path_exists` on each one.
+  /// status for each file, as if calling `path_exists` on each one. Core
+  /// TensorFlow initializes the `statuses` array and plugins must use
+  /// `TF_SetStatus` to set each element instead of dirrectly assigning.
   ///
   /// DEFAULT IMPLEMENTATION: Checks existence of every file. Needs
   /// `path_exists`.
-  bool (*paths_exist)(const TF_Filesystem* filesystem, const char** paths,
+  bool (*paths_exist)(const TF_Filesystem* filesystem, char** paths,
                       int num_files, TF_Status** statuses);
 
   /// Obtains statistics for the given `path`.
@@ -609,13 +611,12 @@ typedef struct TF_FilesystemOps {
   ///
   /// The returned entries are paths relative to `path`.
   ///
-  /// Caller passes `nullptr` for `entries`. Plugins must allocate `entries`
-  /// to hold all names that need to be returned and return the size of
-  /// `entries`.
+  /// Plugins must allocate `entries` to hold all names that need to be returned
+  /// and return the size of `entries`. Caller takes ownership of `entries`
+  /// after the call.
   ///
   /// In case of error, plugins must set `status` to a value different than
-  /// `TF_OK`, return -1 and leave `entries` unchanged (i.e., `nullptr`, freeing
-  /// any allocated memory).
+  /// `TF_OK`, free memory allocated for `entries` and return -1.
   ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if all children were returned.

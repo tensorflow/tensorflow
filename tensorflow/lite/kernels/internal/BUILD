@@ -423,6 +423,7 @@ cc_library(
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
+        "reference/integer_ops/transpose_conv.h",
         "reference/logistic.h",
         "reference/maximum_minimum.h",
         "reference/mul.h",
@@ -565,11 +566,10 @@ cc_library(
         ":common",
         ":compatibility",
         ":round",
-        ":types",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
-        "//tensorflow/lite/kernels:op_macros",
+        "@gemmlowp",
     ],
 )
 
@@ -589,16 +589,11 @@ cc_library(
         ":cpu_check",
         ":portable_tensor_utils",
         ":round",
-        ":types",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/ruy",
         "//tensorflow/lite/experimental/ruy:detect_arm",
-        "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
-        "//tensorflow/lite/kernels:op_macros",
-        "@arm_neon_2_x86_sse",
-        "@gemmlowp//:fixedpoint",
     ],
 )
 

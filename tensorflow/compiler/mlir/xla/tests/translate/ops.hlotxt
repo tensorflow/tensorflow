@@ -317,6 +317,14 @@ ENTRY %dummy_main (Arg_0.1: f32[]) -> f32[] {
   ROOT %floor.2 = f32[16] floor(f32[16] %arg0.1)
 }
 
+// CHECK-LABEL:  func @test_get_dimension_size
+// CHECK-SAME:  ([[ARG:%.*]]: tensor<4x2xf32>)
+%test_get_dimension_size (Arg_0.1: f32[4,2]) -> s32[] {
+  %Arg_0.1 = f32[4,2] parameter(0)
+  // CHECK-NEXT:  "xla_hlo.get_dimension_size"([[ARG]]) {dimension = 1 : i32, name = "{{.*}}"} : (tensor<4x2xf32>) -> tensor<i32>
+  ROOT %get-dimension-size.2 = s32[] get-dimension-size(f32[4,2] %Arg_0.1), dimensions={1}
+}
+
 // CHECK-LABEL:  func @test_imag
 %test_imag (Arg_0.1: c64[4]) -> f32[4] {
   %Arg_0.1 = c64[4] parameter(0)

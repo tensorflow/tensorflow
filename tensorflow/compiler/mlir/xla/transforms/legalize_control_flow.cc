@@ -15,7 +15,9 @@ limitations under the License.
 
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Block.h"  // TF:local_config_mlir
 #include "mlir/IR/BlockAndValueMapping.h"  // TF:local_config_mlir
@@ -26,6 +28,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
+#include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -39,33 +42,91 @@ struct LegalizeControlFlow : public mlir::FunctionPass<LegalizeControlFlow> {
   void runOnFunction() override;
 };
 
-bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
-  // Converts an xla while loop into control flow. This mostly generates the
-  // right MLIR boilerplate for calling the body / condition functions, then
-  // branching on their results appropriately. The operation should look similar
-  // to below:
+// Replaces terminators for the newly created blocks from a targe region.
+// These terminators are replaced with branch operations to a target block.
+LogicalResult ReplaceTerminators(Region* region, Block* target_block,
+                                 Location loc,
+                                 const BlockAndValueMapping& mapper,
+                                 OpBuilder* builder) {
+  for (auto& old_block : region->getBlocks()) {
+    Block* block = mapper.lookup(&old_block);
+    auto return_op = dyn_cast<xla_hlo::ReturnOp>(block->getTerminator());
+    if (!return_op) continue;
+    builder->setInsertionPointToEnd(block);
+    builder->create<mlir::BranchOp>(
+        loc, target_block, llvm::to_vector<4>(return_op.getOperands()));
+    return_op.erase();
+  }
+
+  return success();
+}
+
+LogicalResult LowerConditionalOp(mlir::xla_hlo::ConditionalOp conditional_op) {
+  Operation* op_inst = conditional_op.getOperation();
+  mlir::OpBuilder builder(conditional_op);
+  auto orig_block = op_inst->getBlock();
+  auto* tail_block = orig_block->splitBlock(op_inst);
+  auto loc = conditional_op.getLoc();
+
+  // Duplicate the true and false regions in the block between the sections
+  // before and after the conditional.
+  BlockAndValueMapping mapper;
+  conditional_op.true_branch().cloneInto(orig_block->getParent(),
+                                         Region::iterator(tail_block), mapper);
+  conditional_op.false_branch().cloneInto(orig_block->getParent(),
+                                          Region::iterator(tail_block), mapper);
+
+  // Determine the blocks for the start of the true and false regions.
+  Block* true_block = mapper.lookup(&conditional_op.true_branch().front());
+  Block* false_block = mapper.lookup(&conditional_op.false_branch().front());
+
+  // Perform the conditional branch into the true/false cases.
+  builder.setInsertionPointToEnd(orig_block);
+
+  // Extract the predicate for checking branching, then branch to the true and
+  // false regions appropriately.
+  auto cond_value =
+      builder.create<mlir::ExtractElementOp>(loc, conditional_op.pred());
+  builder.create<mlir::CondBranchOp>(loc, cond_value, true_block,
+                                     conditional_op.true_arg(), false_block,
+                                     conditional_op.false_arg());
+
+  // Replace the true case's return operations with a branch to the tail of
+  // the condition.
+  if (failed(ReplaceTerminators(&conditional_op.true_branch(), tail_block, loc,
+                                mapper, &builder)))
+    return failure();
+  if (failed(ReplaceTerminators(&conditional_op.false_branch(), tail_block, loc,
+                                mapper, &builder)))
+    return failure();
+
+  tail_block->addArguments(conditional_op.getResult()->getType());
+  conditional_op.getResult()->replaceAllUsesWith(tail_block->getArgument(0));
+
+  op_inst->erase();
+  return success();
+}
+
+LogicalResult LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
+  // Converts an XLA while loop into control flow. This generates a set of MLIR
+  // blocks and branches, along with inlining the regions provided by the XLA
+  // while loop. The structure should be similar to below:
   //
   //   <prior operations>
-  //   %0 = "xla_hlo.while"(%arg0) {body: @loop, cond: @cond}
+  //   %0 = "xla_hlo.while"(%arg0) {^cond(...){...}, ^body(...){...}}
   //   <post operations>
-  auto* opInst = while_op.getOperation();
+  auto* op_inst = while_op.getOperation();
   mlir::OpBuilder builder(while_op);
   auto loc = while_op.getLoc();
-
-  llvm::SmallVector<Value*, 4> operands;
-  operands.reserve(while_op.getNumOperands());
-  for (auto operand : while_op.getOperands()) {
-    operands.push_back(operand);
-  }
 
   // Break the block into four sections:
   // orig_block - operations before the while and the branch into looping check.
   // tail_block - operations after the while loop completes.
   // cond_block - check the looping condition, then conditionally branch into
   //              the loop or, if condition is false, jump to the tail branch.
-  // body_block - call the loop body, then jump back to the condition block.
-  auto* orig_block = opInst->getBlock();
-  auto* tail_block = orig_block->splitBlock(opInst);
+  // body_block - inlined loop body, then jump back to the condition block.
+  auto* orig_block = op_inst->getBlock();
+  auto* tail_block = orig_block->splitBlock(op_inst);
 
   BlockAndValueMapping mapper;
   while_op.cond().cloneInto(orig_block->getParent(),
@@ -81,22 +142,22 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
   //     <prior operations>
   //     br ^cond(%arg0) // Jumps to the condition statement.
   builder.setInsertionPointToEnd(orig_block);
-  builder.create<mlir::BranchOp>(loc, cond_block, operands);
+  builder.create<mlir::BranchOp>(loc, cond_block, while_op.getOperand());
 
-  // Updates the condition blocks by replacing the return op with an
+  // Updates the inlined condition blocks by replacing the return op with an
   // extract_element and conditional branch. This changes the block below:
   //   ^cond(%0):
-  //     %1 = <some operations> -> tensor<i1> // Helper condition function.
+  //     <inlined conditional region>
   //    "xla_hlo".return(%1)
   //
   //  Into:
   //   ^cond(%0):
-  //     %1 = <some operations> -> tensor<i1> // Helper condition function
+  //     <inlined conditional region>
   //     %2 = extract_element %1[] : tensor<i1> // Extract the condition value.
   //     cond_br %2, ^body(%0), ^tail(%0) // Branch.
   builder.setInsertionPointToStart(cond_block);
 
-  // Replace the xla_hlo::ReturnOp with a call back to the condition block.
+  // Replace the xla_hlo::ReturnOp with a branch back to the condition block.
   // This is required as the xla_hlo::ReturnOp is used to mark the end of a
   // block for regions nested inside of a operations (MLIR ReturnOp cannot be
   // nested within an non-function region).
@@ -111,62 +172,57 @@ bool LowerWhileOp(mlir::xla_hlo::WhileOp while_op) {
     auto cond_value = builder.create<mlir::ExtractElementOp>(loc, return_value);
 
     // Get the body block arguments.
-    llvm::SmallVector<Value*, 4> body_block_arguments(cond_block->args_begin(),
-                                                      cond_block->args_end());
-
+    llvm::SmallVector<Value*, 4> successor_args(cond_block->args_begin(),
+                                                cond_block->args_end());
     builder.create<mlir::CondBranchOp>(loc, cond_value, body_block,
-                                       body_block_arguments, tail_block,
-                                       body_block_arguments);
-
-    return_op.getOperation()->erase();
+                                       successor_args, tail_block,
+                                       successor_args);
+    return_op.erase();
   }
 
   // Updates the body blocks by replace the return op with an branch to the
   // conditional block. This changes the block below:
   //   ^body(%0):
-  //     %1 = call @body(%0) : (...) -> tensor<i1> // Helper body function.
+  //     <inlined body block>
   //    "xla_hlo".return(%1)
   //
   //  Into:
   //   ^body(%0):
-  //     %1 = call @body(%0) : (...) -> tensor<i1> // Helper body function.
+  //     <inlined body block>
   //     br ^cond(%0) // Branch.
   for (auto& block : while_op.body()) {
     auto new_block = mapper.lookup(&block);
-    builder.setInsertionPointToEnd(new_block);
     auto return_op =
         dyn_cast<mlir::xla_hlo::ReturnOp>(new_block->getTerminator());
     if (!return_op) continue;
-
-    llvm::SmallVector<Value*, 4> body_results(return_op.operand_begin(),
-                                              return_op.operand_end());
-    builder.create<mlir::BranchOp>(loc, cond_block, body_results);
-    return_op.getOperation()->erase();
+    builder.setInsertionPointToEnd(new_block);
+    builder.create<mlir::BranchOp>(loc, cond_block,
+                                   llvm::to_vector<4>(return_op.getOperands()));
+    return_op.erase();
   }
-
-  // Setup the tail block:
-  //   ^tail(%5):
-  //     <post operations>
-  llvm::SmallVector<Value*, 4> tail_block_arguments;
-  tail_block_arguments.reserve(while_op.getNumOperands());
 
   // Erase the original while loop.
-  for (int i = 0; i < while_op.getNumOperands(); i++) {
-    tail_block->addArgument(while_op.getOperand(i)->getType());
-    while_op.getResult(i)->replaceAllUsesWith(tail_block->getArgument(i));
-  }
-  opInst->erase();
+  tail_block->addArgument(while_op.getType());
+  while_op.getResult()->replaceAllUsesWith(tail_block->getArgument(0));
+  op_inst->erase();
 
-  return false;
+  return success();
 }
 
 void LegalizeControlFlow::runOnFunction() {
   auto func = getFunction();
-  llvm::SmallVector<WhileOp, 4> control_flow_ops;
-  func.walk([&](WhileOp op) { control_flow_ops.push_back(op); });
+  llvm::SmallVector<ConditionalOp, 4> conditional_ops;
+  func.walk([&](ConditionalOp op) { conditional_ops.push_back(op); });
 
-  for (auto& op : control_flow_ops) {
-    if (LowerWhileOp(op)) return signalPassFailure();
+  for (auto& op : conditional_ops) {
+    if (failed(LowerConditionalOp(op))) return signalPassFailure();
+  }
+
+  llvm::SmallVector<WhileOp, 4> while_ops;
+  func.walk([&](WhileOp op) { while_ops.push_back(op); });
+
+  for (auto& op : while_ops) {
+    if (failed(LowerWhileOp(op))) return signalPassFailure();
   }
 }
 }  // namespace

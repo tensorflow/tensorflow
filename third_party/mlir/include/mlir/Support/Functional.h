@@ -19,6 +19,7 @@
 #define MLIR_SUPPORT_FUNCTIONAL_H_
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/Casting.h"
 
 /// This file provides some simple template functional-style sugar to operate

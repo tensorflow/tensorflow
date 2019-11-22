@@ -16,6 +16,7 @@ package_group(
         "//learning/brain/google/xla/kernels/...",
         "//learning/brain/swift/swift_mlir/...",
         "//tensorflow/compiler/mlir/...",
+        "//tensorflow/compiler/tf2xla/...",
         "//tensorflow/compiler/xla/...",
         "//third_party/iree/...",
         "//third_party/mlir_edge/...",
@@ -102,6 +103,7 @@ cc_library(
     srcs = [
         "transforms/generated_legalize_tf.inc",
         "transforms/legalize_tf.cc",
+        "transforms/legalize_tf_control_flow.cc",
     ],
     deps = [
         ":convert_op_folder",
@@ -210,6 +212,7 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
     ],
     alwayslink = 1,
 )

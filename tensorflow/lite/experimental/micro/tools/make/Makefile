@@ -70,6 +70,7 @@ MICROLITE_LIBS := -lm
 # these settings are for the target compiler.
 CXXFLAGS := -O3 -DNDEBUG
 CXXFLAGS += -std=c++11 -g -DTF_LITE_STATIC_MEMORY
+CXXFLAGS += -fno-rtti
 CCFLAGS := -DNDEBUG -g -DTF_LITE_STATIC_MEMORY
 LDOPTS := -L/usr/local/lib
 ARFLAGS := -r
@@ -134,6 +135,7 @@ tensorflow/lite/kernels/internal/reference/integer_ops/conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/depthwise_conv.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h \
 tensorflow/lite/kernels/internal/reference/integer_ops/mul.h \
+tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h \
 tensorflow/lite/kernels/internal/reference/maximum_minimum.h \
 tensorflow/lite/kernels/internal/reference/mul.h \
 tensorflow/lite/kernels/internal/reference/neg.h \

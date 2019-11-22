@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.experimental.kernel_tests import stats_dataset_test_base
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import stats_aggregator
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.platform import test
@@ -29,7 +29,7 @@ class LatencyAllEdgesTest(stats_dataset_test_base.StatsDatasetTestBase):
   def testLatencyStatsOptimization(self):
     aggregator = stats_aggregator.StatsAggregator()
     dataset = dataset_ops.Dataset.from_tensors(1).apply(
-        optimization.assert_next(
+        testing.assert_next(
             ["LatencyStats", "Map", "LatencyStats", "Prefetch",
              "LatencyStats"])).map(lambda x: x * x).prefetch(1)
     options = dataset_ops.Options()

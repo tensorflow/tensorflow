@@ -209,7 +209,7 @@ class PyTpuBuffer {
  private:
   // Initializes a just allocated device buffer. The returned event will be
   // placed into the buffer's `wait_for_use` list.
-  using BufferInitializer = std::function<std::unique_ptr<tpu_driver::Event>(
+  using BufferInitializer = std::function<std::shared_ptr<tpu_driver::Event>(
       tpu_driver::BufferHandle*)>;
   // Allocates and optionally initializes a non-tuple buffer on the device.
   static StatusOr<std::unique_ptr<PyTpuBuffer>> CreateBuffer(
@@ -300,7 +300,7 @@ class PyTpuExecutable {
  private:
   struct ExecuteResult {
     std::unique_ptr<PyTpuBuffer> buffer;
-    std::unique_ptr<tpu_driver::Event> on_execute_finished;
+    std::shared_ptr<tpu_driver::Event> on_execute_finished;
   };
 
   ExecuteResult ExecuteHelper(

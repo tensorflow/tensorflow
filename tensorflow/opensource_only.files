@@ -30,7 +30,6 @@ tensorflow/third_party/clang_toolchain/cc_configure_clang.bzl
 tensorflow/third_party/clang_toolchain/download_clang.bzl
 tensorflow/third_party/codegen.BUILD
 tensorflow/third_party/com_google_absl.BUILD
-tensorflow/third_party/com_google_absl_fix_mac_build.patch
 tensorflow/third_party/common.bzl
 tensorflow/third_party/cub.BUILD
 tensorflow/third_party/curl.BUILD

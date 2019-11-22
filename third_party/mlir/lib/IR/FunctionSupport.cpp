@@ -299,11 +299,7 @@ void mlir::impl::printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
       resultAttrStorage.emplace_back(attrNameBuf);
   ignoredAttrs.append(resultAttrStorage.begin(), resultAttrStorage.end());
 
-  auto attrs = op->getAttrs();
-  if (attrs.size() > ignoredAttrs.size()) {
-    p << "\n  attributes ";
-    p.printOptionalAttrDict(attrs, ignoredAttrs);
-  }
+  p.printOptionalAttrDictWithKeyword(op->getAttrs(), ignoredAttrs);
 
   // Print the body if this is not an external function.
   Region &body = op->getRegion(0);

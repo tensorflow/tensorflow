@@ -12,13 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
 #include "tensorflow/core/profiler/utils/event_span.h"
+
+#include <thread>  // NOLINT
+#include <vector>
 
 #include "absl/strings/match.h"
 
 namespace tensorflow {
 namespace profiler {
+
+namespace {
+
+// Converts from overlapped events to non-overlapped events.
+std::vector<EventTypeSpan> ToNonOverlappedEvents(
+    const std::vector<EventTypeSpan>& overlapped_events) {
+  // TODO(ckluk): Implement this function.
+  return overlapped_events;
+}
+
+}  // namespace.
 
 EventType ClassifyGpuEvent(absl::string_view event_name) {
   if (absl::StartsWithIgnoreCase(event_name, "MEMCPYHtoD"))
@@ -56,8 +69,34 @@ void CombineStepEvents(const StepEvents& src, StepEvents* dst) {
 
 // Converts from overlapped step-events to non-overlapped step-events.
 StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
-  // TODO(ckluk): Implement this function.
-  return overlapped_step_events;
+  size_t num_steps = overlapped_step_events.size();
+  std::vector<std::thread> workers;
+  workers.resize(num_steps);
+  std::vector<int64> step_numbers;
+  step_numbers.resize(num_steps);
+  std::vector<std::vector<EventTypeSpan>> vec;
+  vec.resize(num_steps);
+  int64 i = 0;
+  // Sets up 1 worker per step to convert overlapped events to non-overlapped
+  // events.
+  for (const auto& step_events : overlapped_step_events) {
+    step_numbers[i] = step_events.first;
+    const std::vector<EventTypeSpan>* overlapped_events = &step_events.second;
+    std::vector<EventTypeSpan>* non_overlapped_events = &vec[i];
+    workers[i] = std::thread([overlapped_events, non_overlapped_events]() {
+      *non_overlapped_events = ToNonOverlappedEvents(*overlapped_events);
+    });
+    i += 1;
+  }
+  // Runs the workers in parallel.
+  std::for_each(workers.begin(), workers.end(),
+                [](std::thread& t) { t.join(); });
+  StepEvents non_overlapped_step_events;
+  // Moves non-overlapped events to the corresponding step in the map.
+  for (i = 0; i < step_numbers.size(); i++) {
+    non_overlapped_step_events[step_numbers[i]] = std::move(vec[i]);
+  }
+  return non_overlapped_step_events;
 }
 
 }  // namespace profiler

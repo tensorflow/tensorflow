@@ -750,6 +750,8 @@ class XlaBuilder {
       XlaOp operand, const absl::Span<const int64> out_dim_size,
       const absl::Span<const int64> broadcast_dimensions);
 
+  friend XlaOp Copy(XlaOp operand);
+
   friend XlaOp Pad(XlaOp operand, XlaOp padding_value,
                    const PaddingConfig& padding_config);
 
@@ -1192,6 +1194,24 @@ XlaOp Broadcast(XlaOp operand, absl::Span<const int64> broadcast_sizes);
 //    {2 , 2}}
 XlaOp BroadcastInDim(XlaOp operand, const absl::Span<const int64> out_dim_size,
                      const absl::Span<const int64> broadcast_dimensions);
+
+// Copies the input operand to the output. This operation is for internal
+// purpose and is only used by the compiler for optimization purposes or to
+// ensure correctness. The XLA client should never have to generate this
+// instruction.
+//
+// Copy has two potential use cases:
+//
+// * Create a copy of the operand with a new layout.
+//
+// * Create a copy of the operand in a separately allocated buffer. This is
+//   necessary for some backends if the operand is a parameter or constant and
+//   the operand is returned within a tuple. In this case, the lifetime of the
+//   operand buffer must be the same as the lifetime of the output result.
+//   However, the lifetimes of parameters and constants are managed separately
+//   from the lifetime of the output result. Creating a separate copy of the
+//   parameter or constant buffer resolves this issue.
+XlaOp Copy(XlaOp operand);
 
 // Enqueues a pad operation onto the computation that pads the given value on
 // the edges as well as between the elements of the input. padding_config

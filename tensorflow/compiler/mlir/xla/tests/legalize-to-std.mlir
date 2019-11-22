@@ -14,8 +14,11 @@ func @binary_ops_float(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf
   // CHECK-NEXT:   %3 = divf %2, %arg1 : tensor<4xf32>
   %3 = "xla_hlo.div"(%2, %arg1) {name = "div.6"} : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
 
-  // CHECK-NEXT:   return %3 : tensor<4xf32>
-  return %3 : tensor<4xf32>
+  // CHECK-NEXT:   %4 = remf %3, %arg1 : tensor<4xf32>
+  %4 = "xla_hlo.remainder"(%3, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+
+  // CHECK-NEXT:   return %4 : tensor<4xf32>
+  return %4 : tensor<4xf32>
 }
 
 // CHECK-LABEL: func @binary_ops_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
@@ -32,8 +35,11 @@ func @binary_ops_int(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32
   // CHECK-NEXT:   %3 = divis %2, %arg1 : tensor<4xi32>
   %3 = "xla_hlo.div"(%2, %arg1) {name = "div.6"} : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
 
-  // CHECK-NEXT:   return %3 : tensor<4xi32>
-  return %3 : tensor<4xi32>
+  // CHECK-NEXT:   %4 = remis %3, %arg1 : tensor<4xi32>
+  %4 = "xla_hlo.remainder"(%3, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+
+  // CHECK-NEXT:   return %4 : tensor<4xi32>
+  return %4 : tensor<4xi32>
 }
 
 // Broadcasting is not currently supported.
@@ -61,8 +67,13 @@ func @binary_ops_broadcast(%arg0: tensor<4x4xf32>, %arg1: tensor<4xf32>) -> tens
       name = "div.6", broadcast_dimensions = dense<1> : tensor<1xi64>} :
           (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
 
-  // CHECK-NEXT: return %3 : tensor<4x4xf32>
-  return %3 : tensor<4x4xf32>
+  // CHECK-NEXT: %4 = "xla_hlo.remainder"(%3, %arg1) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
+  %4 = "xla_hlo.remainder"(%3, %arg1) {
+    broadcast_dimensions = dense<1> : tensor<1xi64>} :
+          (tensor<4x4xf32>, tensor<4xf32>) -> tensor<4x4xf32>
+
+  // CHECK-NEXT: return %4 : tensor<4x4xf32>
+  return %4 : tensor<4x4xf32>
 }
 
 // CHECK-LABEL: func @compare_int(%arg0: tensor<4xi32>) -> (tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>, tensor<4xi1>) {

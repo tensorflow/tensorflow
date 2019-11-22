@@ -747,7 +747,7 @@ static Loops stripmineSink(loop::ForOp forOp, Value *factor,
     // Insert newForOp before the terminator of `t`.
     OpBuilder b(t.getBodyBuilder());
     Value *stepped = b.create<AddIOp>(t.getLoc(), iv, forOp.step());
-    Value *less = b.create<CmpIOp>(t.getLoc(), CmpIPredicate::SLT,
+    Value *less = b.create<CmpIOp>(t.getLoc(), CmpIPredicate::slt,
                                    forOp.upperBound(), stepped);
     Value *ub =
         b.create<SelectOp>(t.getLoc(), less, forOp.upperBound(), stepped);

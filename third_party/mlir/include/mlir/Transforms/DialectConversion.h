@@ -338,6 +338,10 @@ public:
     return cast<OpT>(cloneWithoutRegions(op.getOperation()));
   }
 
+  /// Return the converted value that replaces 'key'. Return 'key' if there is
+  /// no such a converted value.
+  Value *getRemappedValue(Value *key);
+
   //===--------------------------------------------------------------------===//
   // PatternRewriter Hooks
   //===--------------------------------------------------------------------===//

@@ -839,11 +839,11 @@ class DatasetBaseIterator : public IteratorBase {
 
   explicit DatasetBaseIterator(const BaseParams& params) : params_(params) {
     params_.dataset->Ref();
-    VLOG(3) << prefix() << " constructor";
+    VLOG(2) << prefix() << " constructor";
   }
 
   ~DatasetBaseIterator() override {
-    VLOG(3) << prefix() << " destructor";
+    VLOG(2) << prefix() << " destructor";
     params_.dataset->Unref();
   }
 
@@ -942,7 +942,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has started work.
   void RecordStart(IteratorContext* ctx, bool stop_output = false) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = Env::Default()->NowNanos();
+      int64 now_nanos = EnvTime::NowNanos();
       if (stop_output && node_->output()) {
         node_->output()->record_stop(now_nanos);
       }
@@ -954,7 +954,7 @@ class DatasetBaseIterator : public IteratorBase {
   // this iterator has stopped work.
   void RecordStop(IteratorContext* ctx, bool start_output = false) {
     if (collect_resource_usage(ctx)) {
-      int64 now_nanos = Env::Default()->NowNanos();
+      int64 now_nanos = EnvTime::NowNanos();
       node_->record_stop(now_nanos);
       if (start_output && node_->output()) {
         node_->output()->record_start(now_nanos);

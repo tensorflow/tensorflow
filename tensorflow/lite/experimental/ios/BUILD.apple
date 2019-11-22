@@ -1,5 +1,6 @@
 # TensorFlow Lite for iOS
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
@@ -67,5 +68,14 @@ cc_library(
     deps = [
         "//tensorflow/lite/delegates/gpu:metal_delegate",
         "//tensorflow/lite/experimental/c:c_api",
+    ],
+)
+
+# Used for building TensorFlowLiteC framework on TAP.
+build_test(
+    name = "framework_build_test",
+    targets = [
+        ":TensorFlowLiteC_framework",
+        ":TensorFlowLiteCWithSelectTfOps_framework",
     ],
 )

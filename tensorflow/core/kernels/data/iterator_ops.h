@@ -44,7 +44,11 @@ class IteratorResource : public ResourceBase {
                                                 std::move(pflr), flr,
                                                 /*iterator=*/nullptr)),
         output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes) {}
+        output_shapes_(output_shapes) {
+    VLOG(2) << "constructor";
+  }
+
+  ~IteratorResource() override { VLOG(2) << "destructor"; }
 
   Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence);

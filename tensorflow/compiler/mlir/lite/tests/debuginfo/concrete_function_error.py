@@ -23,10 +23,9 @@ from __future__ import print_function
 import sys
 from absl import app
 
-from tensorflow import enable_v2_behavior
 import tensorflow.compat.v2 as tf
-
-enable_v2_behavior()
+if hasattr(tf, 'enable_v2_behavior'):
+  tf.enable_v2_behavior()
 
 
 class TestGraphDebugInfo(object):

@@ -165,6 +165,13 @@ def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
+def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite",
+    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
+    BASE_HLO_IsFiniteOp {
+  let arguments = (ins HLO_FpTensor:$x);
+  let results = (outs HLO_PredTensor:$y);
+}
+
 def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_LogOp;
@@ -218,6 +225,7 @@ def HLO_ComplexOp: HLO_Op<"complex",
 
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
   let results = (outs HLO_ComplexTensor);
+  let hasFolder = 1;
 }
 
 def HLO_ImagOp: HLO_Op<
@@ -227,6 +235,7 @@ def HLO_ImagOp: HLO_Op<
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
 }
 
 def HLO_RealOp: HLO_Op<
@@ -236,6 +245,7 @@ def HLO_RealOp: HLO_Op<
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -318,6 +328,30 @@ def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 //===----------------------------------------------------------------------===//
 // XLA control flow op definitions.
 //===----------------------------------------------------------------------===//
+def HLO_ConditionalOp: HLO_Op<"conditional", [NoSideEffect]> {
+  string summary = "Conditional operator";
+
+  string description = [{
+    Returns the result of executing either a true or false function depending on
+    the result of a condition function.
+
+    See https://www.tensorflow.org/xla/operation_semantics#conditional.
+  }];
+
+  let arguments = (ins
+    HLO_PredTensor:$pred,
+    HLO_TensorOrTuple:$true_arg,
+    HLO_TensorOrTuple:$false_arg
+  );
+
+  let regions = (region AnyRegion:$true_branch, AnyRegion:$false_branch);
+
+  let results = (outs HLO_TensorOrTuple);
+
+  // TODO(b/129422361): ConditionalOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   string summary = "While operator";
 
@@ -328,11 +362,11 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
     See https://www.tensorflow.org/xla/operation_semantics#while.
   }];
 
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let arguments = (ins HLO_TensorOrTuple:$val);
 
   let regions = (region AnyRegion:$cond, AnyRegion:$body);
 
-  let results = (outs Variadic<HLO_TensorOrTuple>);
+  let results = (outs HLO_TensorOrTuple);
 
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -381,13 +415,21 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 
   let hasFolder = 1;
 
+  let builders = [OpBuilder<
+                  "Builder *builder, OperationState &results, "
+                  "Value* value, int32_t index">];
+
   // GetTupleElementOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
-   let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
-   let results = (outs HLO_Tuple);
+  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let results = (outs HLO_Tuple);
+
+  let builders = [OpBuilder<
+                  "Builder *builder, OperationState &results, "
+                  "ArrayRef<Value*> values">];
 
   // TupleOp has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
@@ -445,10 +487,6 @@ def HLO_SliceOp: HLO_Op<
                                  DenseIntElementsAttr limit_indices,
                                  DenseIntElementsAttr strides);
   }];
-
-  // TODO(b/129422361) Two of the required arguments comes from the start and
-  // limit indices which aren't handled by the codegen.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
@@ -613,10 +651,6 @@ def HLO_CopyOp: HLO_Op<"copy", [NoSideEffect, SameOperandsAndResultType]> {
 
   let arguments = (ins HLO_Tensor);
   let results = (outs HLO_Tensor);
-
-  // TODO(b/129422361) Implement special handling.
-  // Copy has an HloOpcode, but is not one of the ops defined in xla_builder.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_DotOp: HLO_Op<"dot", [NoSideEffect]>, BASE_HLO_DotOp {
@@ -676,6 +710,15 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   // TODO(b/129422361) Attributes are not supported by the codegen. The
   // optional argument (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
+}
+
+def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
+      BASE_HLO_GetDimensionSizeOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I32Attr:$dimension
+  );
+  let results = (outs HLO_IntTensor);
 }
 
 def HLO_ReshapeOp: HLO_Op<"reshape",

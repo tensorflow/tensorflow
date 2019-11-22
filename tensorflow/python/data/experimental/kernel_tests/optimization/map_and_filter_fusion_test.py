@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -80,8 +80,8 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.named_parameters(*_map_and_filter_fusion_test_cases())
   def testMapFilterFusion(self, function, predicate):
     dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(["Map", "Filter",
-                                  "Map"])).map(function).filter(predicate)
+        testing.assert_next(["Map", "Filter",
+                             "Map"])).map(function).filter(predicate)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_filter_fusion = True
@@ -99,8 +99,7 @@ class MapAndFilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # We are currently not supporting functions with captured inputs.
     dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(["Map",
-                                  "Filter"])).map(function).filter(predicate)
+        testing.assert_next(["Map", "Filter"])).map(function).filter(predicate)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.map_and_filter_fusion = True

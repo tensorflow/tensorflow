@@ -257,6 +257,13 @@ class TensorShapeBase : public TensorShapeRep {
   TensorShapeIter<Shape> begin() const;
   TensorShapeIter<Shape> end() const;
 
+ protected:
+  // Optimized constructor for a shape representing an empty vector.
+  //
+  // This constructor is provided to optimize the default constructor for
+  // `Tensor`.
+  explicit TensorShapeBase(DataType dt);
+
  private:
   void RecomputeNumElements();
   void InitDims(gtl::ArraySlice<int64> dim_sizes);
@@ -322,6 +329,9 @@ class TensorShape : public TensorShapeBase<TensorShape> {
   void CheckDimsEqual(int NDIMS) const;
   // REQUIRES: dims() >= NDIMS
   void CheckDimsAtLeast(int NDIMS) const;
+
+  // For access to TensorShapeBase(DataType).
+  friend class Tensor;
 };
 
 /// Represents the value of one dimension in a TensorShape.
@@ -546,6 +556,19 @@ inline TensorShape::operator const PartialTensorShape&() const {
   // Downcast to the shared representation and upcast to PartialTensorShape
   const TensorShapeRep* rep = this;
   return *static_cast<const PartialTensorShape*>(rep);
+}
+
+template <class Shape>
+inline TensorShapeBase<Shape>::TensorShapeBase(DataType dt) {
+  set_tag(REP16);
+  set_data_type(dt);
+
+  // Optimized implementation of InitDims() where the shape is statically known
+  // to be {0}.
+  set_ndims_byte(1);
+  uint16* dst = as16()->dims_;
+  *dst = 0;
+  set_num_elements(0);
 }
 
 // Declare explicit instantiations in .cc file

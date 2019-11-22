@@ -561,3 +561,19 @@ func @InvalidFuseTileWithBinaryOp(%arg0: tensor<2x3xf32>) -> tensor<2x6xf32> {
 
   // CHECK: %[[TILE:[0-9].*]] = "tfl.tile"
 }
+
+// CHECK-LABEL: FuseHardswish
+func @FuseHardswish(%arg0: tensor<1x112x112x16xf32>) -> tensor<1x56x56x16xf32> {
+  %cst_0 = constant dense<3.0> : tensor<f32>
+  %cst_1 = constant dense<0.166666666> : tensor<f32>
+  %w = constant dense<1.0> : tensor<1x3x3x16xf32>
+  %b = constant dense<10.0> : tensor<16xf32>
+  %2 = "tfl.add"(%arg0, %cst_0) {fused_activation_function = "RELU6"} : (tensor<1x112x112x16xf32>, tensor<f32>) -> tensor<1x112x112x16xf32>
+  %3 = "tfl.mul"(%2, %cst_1) {fused_activation_function = "NONE"} : (tensor<1x112x112x16xf32>, tensor<f32>) -> tensor<1x112x112x16xf32>
+  %4 = tfl.mul %arg0, %3 {fused_activation_function = "NONE"} : tensor<1x112x112x16xf32>
+  %5 = "tfl.depthwise_conv_2d"(%4, %w, %b) {depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 2 : i32, stride_w = 2 : i32} : (tensor<1x112x112x16xf32>, tensor<1x3x3x16xf32>, tensor<16xf32>) -> tensor<1x56x56x16xf32>
+  return %5 : tensor<1x56x56x16xf32>
+
+// CHECK: tfl.hard_swish
+// CHECK: tfl.depthwise_conv_2d
+}

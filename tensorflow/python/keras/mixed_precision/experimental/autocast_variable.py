@@ -155,26 +155,34 @@ class AutoCastVariable(variables.Variable):
   #     strange as they are different Python objects.
 
   # pylint: disable=multiple-statements
-  def set_shape(self, shape): return self._variable.set_shape(self, shape)
+  def set_shape(self, shape):
+    return self._variable.set_shape(self, shape)
 
   @property
-  def trainable(self): return self._variable.trainable
+  def trainable(self):
+    return self._variable.trainable
 
   @property
-  def synchronization(self): return self._variable.synchronization
+  def synchronization(self):
+    return self._variable.synchronization
 
   @property
-  def aggregation(self): return self._variable.aggregation
+  def aggregation(self):
+    return self._variable.aggregation
 
-  def eval(self, session=None): return self._variable.eval(session)
+  def eval(self, session=None):
+    return self._variable.eval(session)
 
-  def initialized_value(self): return self._variable.initialized_value()
+  def initialized_value(self):
+    return self._variable.initialized_value()
 
   @property
-  def initial_value(self): return self._variable.initial_value
+  def initial_value(self):
+    return self._variable.initial_value
 
   @property
-  def constraint(self): return self._variable.constraint
+  def constraint(self):
+    return self._variable.constraint
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     return self._variable.assign(value, use_locking, name, read_value)
@@ -222,27 +230,35 @@ class AutoCastVariable(variables.Variable):
     return self._variable.load(value, session)
 
   @property
-  def name(self): return self._variable.name
+  def name(self):
+    return self._variable.name
 
   @property
-  def _shared_name(self): return self._variable._shared_name  # pylint:disable=protected-access
+  def _shared_name(self):
+    return self._variable._shared_name  # pylint:disable=protected-access
 
   @property
-  def initializer(self): return self._variable.initializer
+  def initializer(self):
+    return self._variable.initializer
 
   @property
-  def device(self): return self._variable.device
+  def device(self):
+    return self._variable.device
 
   @property
-  def op(self): return self._variable.op
+  def op(self):
+    return self._variable.op
 
   @property
-  def graph(self): return self._variable.graph
+  def graph(self):
+    return self._variable.graph
 
   @property
-  def shape(self): return self._variable.shape
+  def shape(self):
+    return self._variable.shape
 
-  def get_shape(self): return self._variable.get_shape()
+  def get_shape(self):
+    return self._variable.get_shape()
 
   def _gather_saveables_for_checkpoint(self):
     # By delegating this method to the wrapped variable, checkpoints with
@@ -265,28 +281,68 @@ class AutoCastVariable(variables.Variable):
   # Also note: We call read_value() instead of value(), because value() causes
   # gradients not to work properly when TPUStrategy is used: b/143380936
 
-  def __add__(self, o): return self.read_value() + o
-  def __radd__(self, o): return o + self.read_value()
-  def __sub__(self, o): return self.read_value() - o
-  def __rsub__(self, o): return o - self.read_value()
-  def __mul__(self, o): return self.read_value() * o
-  def __rmul__(self, o): return o * self.read_value()
-  def __truediv__(self, o): return self.read_value() / o
-  def __rtruediv__(self, o): return o / self.read_value()
-  def __floordiv__(self, o): return self.read_value() // o
+  def __add__(self, o):
+    return self.read_value() + o
 
-  def __rfloordiv__(self, o): return o // self.read_value()
-  def __mod__(self, o): return self.read_value() % o
-  def __rmod__(self, o): return o % self.read_value()
-  def __lt__(self, o): return self.read_value() < o
-  def __le__(self, o): return self.read_value() <= o
-  def __gt__(self, o): return self.read_value() > o
-  def __ge__(self, o): return self.read_value() >= o
-  def __getitem__(self, o): return self.read_value()[o]
-  def __pow__(self, o, modulo=None): return pow(self.read_value(), o, modulo)
-  def __rpow__(self, o): return pow(o, self.read_value())
-  def __neg__(self): return -self.read_value()
-  def __abs__(self): return abs(self.read_value())
+  def __radd__(self, o):
+    return o + self.read_value()
+
+  def __sub__(self, o):
+    return self.read_value() - o
+
+  def __rsub__(self, o):
+    return o - self.read_value()
+
+  def __mul__(self, o):
+    return self.read_value() * o
+
+  def __rmul__(self, o):
+    return o * self.read_value()
+
+  def __truediv__(self, o):
+    return self.read_value() / o
+
+  def __rtruediv__(self, o):
+    return o / self.read_value()
+
+  def __floordiv__(self, o):
+    return self.read_value() // o
+
+  def __rfloordiv__(self, o):
+    return o // self.read_value()
+
+  def __mod__(self, o):
+    return self.read_value() % o
+
+  def __rmod__(self, o):
+    return o % self.read_value()
+
+  def __lt__(self, o):
+    return self.read_value() < o
+
+  def __le__(self, o):
+    return self.read_value() <= o
+
+  def __gt__(self, o):
+    return self.read_value() > o
+
+  def __ge__(self, o):
+    return self.read_value() >= o
+
+  def __getitem__(self, o):
+    return self.read_value()[o]
+
+  def __pow__(self, o, modulo=None):
+    return pow(self.read_value(), o, modulo)
+
+  def __rpow__(self, o):
+    return pow(o, self.read_value())
+
+  def __neg__(self):
+    return -self.read_value()
+
+  def __abs__(self):
+    return abs(self.read_value())
 
   def __div__(self, o):
     try:
@@ -318,8 +374,9 @@ class AutoCastVariable(variables.Variable):
 
   # pylint: enable=multiple-statements
 
-ops.register_tensor_conversion_function(
-    AutoCastVariable, AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
+
+ops.register_tensor_conversion_function(AutoCastVariable,
+                                        AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
 ops.register_dense_tensor_like_type(AutoCastVariable)
 
 
@@ -344,23 +401,6 @@ def create_autocast_variable(variable):
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
     """An AutoCastVariable that also subclasses from DistributedVariable."""
-
-    def __init__(self, maybe_variable, *args, **kwargs):
-      if not args and not kwargs:
-        # The common case: We call the super constructor with a single argument,
-        # which is a variable.
-        super(AutoCastDistributedVariable, self).__init__(maybe_variable)
-      else:
-        # This 'else' branch is needed, as distribution strategies sometimes
-        # clone a distributed variable by doing the following:
-        #
-        #    var = type(var)(var._distribute_strategy, var._device_map, ...)
-        #
-        # In this case, `maybe_variable` will instead be a distribution
-        # strategy. We create the DistributedVariable before wrapping it.
-        distribution_strategy = maybe_variable
-        inner_var = variable.__class__(distribution_strategy, *args, **kwargs)
-        super(AutoCastDistributedVariable, self).__init__(inner_var)
 
     def __repr__(self):
       # pylint: disable=missing-format-attribute

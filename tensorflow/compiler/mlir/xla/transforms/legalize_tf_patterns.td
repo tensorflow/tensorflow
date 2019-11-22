@@ -239,7 +239,7 @@ def IsShapedTensor
 // the conversion, original Concat op operands still refers to the old ops even
 // if HLO constant op is introduced as an replacement for the TensorFlow
 // Constant op.
-def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis), $unused),
+def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
           (HLO_ConcatenateOp $inputs, (GetHLOAxisFromTFAxis $axis, $inputs)),
           [(HasRankedFirstOperand $inputs)]>;
 
@@ -268,10 +268,10 @@ def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
 //===----------------------------------------------------------------------===//
 
 def ZeroPaddingAttr : NativeCodeCall <
-  "DenseElementsAttr::get("
-    "RankedTensorType::get($0.getType().getShape()[0], getElementTypeOrSelf($0.getType())), "
-    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})"
-    ".cast<DenseIntElementsAttr>()">;
+  "DenseIntElementsAttr::get("
+    "RankedTensorType::get($0.getType().getShape()[0],"
+    "                      getElementTypeOrSelf($0.getType())), "
+    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})">;
 
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
   "SliceDenseIntElementsAttrColumn2D("
@@ -380,6 +380,7 @@ foreach Mapping = [
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
+                   [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],

@@ -645,6 +645,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "CheckNumericsV2"
+    argspec: "args=[\'tensor\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "Cholesky"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2173,8 +2177,16 @@ tf_module {
     argspec: "args=[\'input\', \'k\', \'padding_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "MatrixDiagPartV3"
+    argspec: "args=[\'input\', \'k\', \'padding_value\', \'align\', \'name\'], varargs=None, keywords=None, defaults=[\'RIGHT_LEFT\', \'None\'], "
+  }
+  member_method {
     name: "MatrixDiagV2"
     argspec: "args=[\'diagonal\', \'k\', \'num_rows\', \'num_cols\', \'padding_value\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "MatrixDiagV3"
+    argspec: "args=[\'diagonal\', \'k\', \'num_rows\', \'num_cols\', \'padding_value\', \'align\', \'name\'], varargs=None, keywords=None, defaults=[\'RIGHT_LEFT\', \'None\'], "
   }
   member_method {
     name: "MatrixExponential"
@@ -2195,6 +2207,10 @@ tf_module {
   member_method {
     name: "MatrixSetDiagV2"
     argspec: "args=[\'input\', \'diagonal\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "MatrixSetDiagV3"
+    argspec: "args=[\'input\', \'diagonal\', \'k\', \'align\', \'name\'], varargs=None, keywords=None, defaults=[\'RIGHT_LEFT\', \'None\'], "
   }
   member_method {
     name: "MatrixSolve"
@@ -2790,11 +2806,11 @@ tf_module {
   }
   member_method {
     name: "QuantizedDepthwiseConv2DWithBiasAndRelu"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'qint32\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize"
-    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'None\'], "
+    argspec: "args=[\'input\', \'filter\', \'bias\', \'min_input\', \'max_input\', \'min_filter\', \'max_filter\', \'min_freezed_output\', \'max_freezed_output\', \'strides\', \'padding\', \'out_type\', \'dilations\', \'padding_list\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'[1, 1, 1, 1]\', \'[]\', \'None\'], "
   }
   member_method {
     name: "QuantizedInstanceNorm"

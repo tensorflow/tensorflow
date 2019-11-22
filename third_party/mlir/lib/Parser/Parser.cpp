@@ -501,9 +501,19 @@ public:
     return parser.parseToken(Token::l_brace, "expected '{'");
   }
 
+  /// Parse a '{' token if present
+  ParseResult parseOptionalLBrace() override {
+    return success(parser.consumeIf(Token::l_brace));
+  }
+
   /// Parse a `}` token.
   ParseResult parseRBrace() override {
     return parser.parseToken(Token::r_brace, "expected '}'");
+  }
+
+  /// Parse a `}` token if present
+  ParseResult parseOptionalRBrace() override {
+    return success(parser.consumeIf(Token::r_brace));
   }
 
   /// Parse a `:` token.
@@ -594,6 +604,16 @@ public:
   /// Parses a ']' if present.
   ParseResult parseOptionalRSquare() override {
     return success(parser.consumeIf(Token::r_square));
+  }
+
+  /// Parses a '?' if present.
+  ParseResult parseOptionalQuestion() override {
+    return success(parser.consumeIf(Token::question));
+  }
+
+  /// Parses a '*' if present.
+  ParseResult parseOptionalStar() override {
+    return success(parser.consumeIf(Token::star));
   }
 
   /// Returns if the current token corresponds to a keyword.
@@ -2881,7 +2901,7 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
     return failure();
   // Parsed a valid affine map.
   if (exprs.empty())
-    map = AffineMap();
+    map = AffineMap::get(getContext());
   else
     map = AffineMap::get(numDimOperands, dimsAndSymbols.size() - numDimOperands,
                          exprs);
@@ -2892,7 +2912,8 @@ ParseResult AffineParser::parseAffineMapOfSSAIds(AffineMap &map) {
 ///
 ///  affine-map ::= dim-and-symbol-id-lists `->` multi-dim-affine-expr
 ///
-///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
+///  multi-dim-affine-expr ::= `(` `)`
+///  multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)`
 AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
                                             unsigned numSymbols) {
   parseToken(Token::l_paren, "expected '(' at start of affine map range");
@@ -2908,8 +2929,11 @@ AffineMap AffineParser::parseAffineMapRange(unsigned numDims,
   // Parse a multi-dimensional affine expression (a comma-separated list of
   // 1-d affine expressions); the list cannot be empty. Grammar:
   // multi-dim-affine-expr ::= `(` affine-expr (`,` affine-expr)* `)
-  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, false))
+  if (parseCommaSeparatedListUntil(Token::r_paren, parseElt, true))
     return AffineMap();
+
+  if (exprs.empty())
+    return AffineMap::get(getContext());
 
   // Parsed a valid affine map.
   return AffineMap::get(numDims, numSymbols, exprs);

@@ -60,7 +60,13 @@
 #                                  and tensorflow-gpu pip package. Will
 #                                  automatically handle adding/removing of _gpu
 #                                  suffix depending on what project name was
-#                                  passed.
+#                                  passed. Only work for Ubuntu.
+#   TF_BUILD_BOTH_CPU_PACKAGES:    (1 | 0)
+#                                  1 will build both tensorflow (no gpu support)
+#                                  and tensorflow-cpu pip package. Will
+#                                  automatically handle adding/removing of _cpu
+#                                  suffix depending on what project name was
+#                                  passed. Only work for MacOS
 #
 # To-be-deprecated variable(s).
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
@@ -241,11 +247,13 @@ DEFAULT_PIP_TESTS="" # Do not run any tests by default
 DEFAULT_PROJECT_NAME="tensorflow"
 DEFAULT_PIP_TEST_ROOT="pip_test"
 DEFAULT_BUILD_BOTH_GPU_PACKAGES=0
+DEFAULT_BUILD_BOTH_CPU_PACKAGES=0
 # Take in optional global variables
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
 PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
 PIP_TEST_ROOT=${TF_PIP_TEST_ROOT:-$DEFAULT_PIP_TEST_ROOT}
 BUILD_BOTH_GPU_PACKAGES=${TF_BUILD_BOTH_GPU_PACKAGES:-$DEFAULT_BUILD_BOTH_GPU_PACKAGES}
+BUILD_BOTH_CPU_PACKAGES=${TF_BUILD_BOTH_CPU_PACKAGES:-$DEFAULT_BUILD_BOTH_CPU_PACKAGES}
 
 # Local variables
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/${PIP_TEST_ROOT}/whl"
@@ -640,20 +648,38 @@ WHL_DIR=$(dirname "${WHL_PATH}")
 echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
 
 # Build the other GPU package.
-if [ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]; then
-   echo "====================================="\
-   "Building the other GPU pip package."
+if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then
+
+  if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] && [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then
+    die "ERROR: TF_BUILD_BOTH_GPU_PACKAGES and TF_BUILD_BOTH_GPU_PACKAGES cannot both be set. No additional package will be built."
+  fi
+
+  echo "====================================="
+  if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]]; then
+    if ! [[ ${OS_TYPE} == "ubuntu" ]]; then
+      die "ERROR: pip_new.sh only support building both GPU wheels on ubuntu."
+    fi
+    echo "Building the other GPU pip package."
+    PROJECT_SUFFIX="gpu"
+  else
+    if ! [[ ${OS_TYPE} == "macos" ]]; then
+      die "ERROR: pip_new.sh only support building both CPU wheels on macos."
+    fi
+    echo "Building the other CPU pip package."
+    PROJECT_SUFFIX="cpu"
+  fi
+
   # Check container type
-  if ! [[ ${CONTAINER_TYPE} == "gpu" ]]; then
-    die "Error: CONTAINER_TYPE needs to be `GPU` to build GPU packages. Got "\
+  if ! [[ ${CONTAINER_TYPE} == ${PROJECT_SUFFIX} ]]; then
+    die "Error: CONTAINER_TYPE needs to be \"${PROJECT_SUFFIX}\" to build ${PROJECT_SUFFIX} packages. Got"\
         "\"${CONTAINER_TYPE}\" instead."
   fi
-  if [[ "$PROJECT_NAME" == *_gpu ]]; then
-    NEW_PROJECT_NAME=${PROJECT_NAME%"_gpu"}
+  if [[ "$PROJECT_NAME" == *_${PROJECT_SUFFIX} ]]; then
+    NEW_PROJECT_NAME=${PROJECT_NAME%"_${PROJECT_SUFFIX}"}
   else
-    NEW_PROJECT_NAME="${PROJECT_NAME}_gpu"
+    NEW_PROJECT_NAME="${PROJECT_NAME}_${PROJECT_SUFFIX}"
   fi
-  echo "The given gpu \$PROJECT_NAME is ${PROJECT_NAME}. The additional GPU "\
+  echo "The given ${PROJECT_SUFFIX} \$PROJECT_NAME is ${PROJECT_NAME}. The additional ${PROJECT_SUFFIX}"\
   "pip package will have project name ${NEW_PROJECT_NAME}."
 
   ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"

@@ -151,7 +151,7 @@ py_test(
     name = "generate2_test",
     size = "medium",
     srcs = ["generate2_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",

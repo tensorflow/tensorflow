@@ -109,7 +109,7 @@ def gradients(ys,
   ```python
   a = tf.ones([1, 2])
   b = tf.ones([3, 1])
-  g1 = tf.gradients([b], [a], unnconnected_gradients='none')
+  g1 = tf.gradients([b], [a], unconnected_gradients='none')
   sess.run(g1)  # [None]
 
   g2 = tf.gradients([b], [a], unconnected_gradients='zero')
@@ -227,7 +227,7 @@ def gradients_v2(ys,  # pylint: disable=invalid-name
   ```python
   a = tf.ones([1, 2])
   b = tf.ones([3, 1])
-  g1 = tf.gradients([b], [a], unnconnected_gradients='none')
+  g1 = tf.gradients([b], [a], unconnected_gradients='none')
   sess.run(g1)  # [None]
 
   g2 = tf.gradients([b], [a], unconnected_gradients='zero')

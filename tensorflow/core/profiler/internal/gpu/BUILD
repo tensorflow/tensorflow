@@ -39,7 +39,6 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:traceme",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/flags:flag",
     ],
     alwayslink = 1,
 )
@@ -79,9 +78,9 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:platform_base",
         "//tensorflow/stream_executor/cuda:cupti_stub",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )
 
