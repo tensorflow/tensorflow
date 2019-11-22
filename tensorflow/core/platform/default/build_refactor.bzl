@@ -340,7 +340,6 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:tracing.cc",
         ],
         "deps": [
-            "//tensorflow/core/lib/core:errors",
             "//tensorflow/core/lib/hash",
             "//tensorflow/core/platform",
             "//tensorflow/core/platform:logging",
@@ -352,6 +351,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
+        "alwayslink": 1,
     },
     "types": {
         "name": "types_impl",

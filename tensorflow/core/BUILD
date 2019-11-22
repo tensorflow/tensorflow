@@ -2198,7 +2198,6 @@ cc_library(
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
         "//tensorflow/core/platform:regexp",
-        "//tensorflow/core/platform:tracing",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
