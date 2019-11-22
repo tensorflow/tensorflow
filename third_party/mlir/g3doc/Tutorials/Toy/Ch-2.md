@@ -78,7 +78,7 @@ Let's break down the anatomy of this MLIR operation:
         the types of the arguments in parentheses and the type of the return
         values afterward.
 
--   loc("example/file/path":12:1)
+-   `loc("example/file/path":12:1)`
 
     *   This is the location in the source code from which this operation
         originated.
