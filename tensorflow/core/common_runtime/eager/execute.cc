@@ -1091,9 +1091,8 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                               EagerExecutor* executor, Device* dstd,
                               TensorHandle** result) {
   TF_RETURN_IF_ERROR(executor->status());
-  Device* resource_device = (h->dtype == DT_RESOURCE) ? dstd : nullptr;
   TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-      ctx->CanonicalDevice(dstd), dstd, resource_device, h->dtype, ctx,
+      ctx->CanonicalDevice(dstd), dstd, h->resource_device(), h->dtype, ctx,
       result));
 
   // Note that `h` may not be currently ready. However execution order will
