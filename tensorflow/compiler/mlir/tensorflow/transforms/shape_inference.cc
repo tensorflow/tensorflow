@@ -32,6 +32,7 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Transforms/FoldUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
@@ -213,9 +214,13 @@ bool InferShapeForSingleOperation(Operation* op, Dialect* tf_dialect,
 
 LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
                                       int64_t max_iteration) {
-  Dialect* tf_dialect = region->getContext()->getRegisteredDialect(
-      TensorFlowDialect::getDialectNamespace());
+  MLIRContext* ctx = region->getContext();
+  Dialect* tf_dialect = ctx->getRegisteredDialect<TensorFlowDialect>();
+
+  // An operation folder that is used to attempt folding before inference.
+  OperationFolder folder(ctx);
   bool changed = true;
+
   // TODO(aminim): we could have a more efficient traversal by guiding the
   // traversal with a worklist and reconsider only the nodes for which an
   // operand type was inferred. This would need to be careful if working on a
@@ -225,15 +230,17 @@ LogicalResult InferShapeUntilFixPoint(Region* region, int64_t graph_version,
     LLVM_DEBUG(llvm::dbgs()
                << "Shape inference, iteration " << iteration << "\n");
     region->walk([&](Operation* op) {
-      if (op->getDialect() == tf_dialect)
+      if (op->getDialect() != tf_dialect) return;
+
+      // Before attempting inference, just try to fold the operation.
+      if (failed(folder.tryToFold(op)))
         changed |= InferShapeForSingleOperation(op, tf_dialect, graph_version);
     });
   }
   if (changed) {
-    region->getParentOp()->emitWarning()
-        << "Shape inference did not reach stable state after " << max_iteration
-        << " iterations";
-    return failure();
+    return region->getParentOp()->emitWarning()
+           << "Shape inference did not reach stable state after "
+           << max_iteration << " iterations";
   }
   return success();
 }
