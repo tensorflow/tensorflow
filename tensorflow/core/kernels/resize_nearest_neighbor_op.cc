@@ -165,12 +165,12 @@ struct ResizeNearestNeighbor<CPUDevice, T, half_pixel_centers, align_corners> {
       }
     };
     Eigen::Index N = batch_size * out_height * out_width;
-    const int input_bytes =
-        batch_size * in_height * in_width * channels * sizeof(T);
-    const int output_bytes = N * channels * sizeof(T);
+    const int input_bytes = channels * sizeof(T);
+    const int output_bytes = channels * sizeof(T);
     const int compute_cycles = (Eigen::TensorOpCost::ModCost<T>() * 2 +
-                                Eigen::TensorOpCost::DivCost<T>() * 5) *
-                               N;
+                                Eigen::TensorOpCost::DivCost<T>() * 3 +
+                                Eigen::TensorOpCost::AddCost<T>() * 2 +
+                                Eigen::TensorOpCost::MulCost<T>() * 2);
     const Eigen::TensorOpCost cost(input_bytes, output_bytes, compute_cycles);
     d.parallelFor(N, cost, ParallelResize);
     return true;
