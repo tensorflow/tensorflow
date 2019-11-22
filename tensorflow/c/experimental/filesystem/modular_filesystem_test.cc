@@ -794,6 +794,88 @@ TEST_P(ModularFileSystemTest, TestGetFileSizePathIsInvalid) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
+TEST_P(ModularFileSystemTest, TestGetChildren) {
+  const std::string dirpath = GetURIForPath("dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  // If updating, make sure to update expected_children below.
+  const std::vector<std::string> filenames = {
+      GetURIForPath("dir/a_file"),
+      GetURIForPath("dir/another_file"),
+  };
+  for (const auto& filename : filenames) {
+    std::unique_ptr<WritableFile> file;
+    status = env_->NewWritableFile(filename, &file);
+    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  }
+
+  // If updating, make sure to update expected_children below.
+  const std::vector<std::string> dirnames = {
+      GetURIForPath("dir/a_dir"),
+      GetURIForPath("dir/another_dir"),
+  };
+  for (const auto& dirname : dirnames) {
+    status = env_->CreateDir(dirname);
+    if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+  }
+
+  std::vector<std::string> children;
+  status = env_->GetChildren(dirpath, &children);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetChildren() not supported";
+
+  // All entries must show up in the vector.
+  // Must contain only the last name in filenames and dirnames.
+  const std::vector<std::string> expected_children = {"a_file", "another_file",
+                                                      "a_dir", "another_dir"};
+  EXPECT_EQ(children.size(), filenames.size() + dirnames.size());
+  for (const auto& child : expected_children)
+    EXPECT_NE(std::find(children.begin(), children.end(), child),
+              children.end());
+}
+
+TEST_P(ModularFileSystemTest, TestGetChildrenEmpty) {
+  const std::string dirpath = GetURIForPath("dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  std::vector<std::string> children;
+  status = env_->GetChildren(dirpath, &children);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(children.size(), 0);
+}
+
+TEST_P(ModularFileSystemTest, TestGetChildrenOfFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  std::vector<std::string> children;
+  status = env_->GetChildren(filepath, &children);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestGetChildrenPathNotFound) {
+  const std::string target_path = GetURIForPath("a_dir");
+  std::vector<std::string> children;
+  Status status = env_->GetChildren(target_path, &children);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestGetChildrenPathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string target_path = GetURIForPath("a_file/a_new_dir");
+  std::vector<std::string> children;
+  status = env_->GetChildren(target_path, &children);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
 TEST_P(ModularFileSystemTest, TestAppendAndTell) {
   const std::string filename = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;

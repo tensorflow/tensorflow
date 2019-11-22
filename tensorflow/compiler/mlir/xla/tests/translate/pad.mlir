@@ -10,4 +10,3 @@ func @main(%arg: tensor<4x6xf32>, %pad: tensor<f32>) -> tensor<13x19xf32> {
 // CHECK:  [[PADDING_VAL:%.*]] = f32[] parameter(1)
 // CHECK-LABEL:  ROOT
 // CHECK-SAME:  f32[13,19] pad(f32[4,6] [[ARG]], f32[] [[PADDING_VAL]]), padding=2_4_1x3_5_1
-// CHECK:       }

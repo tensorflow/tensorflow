@@ -2199,6 +2199,33 @@ for dtype in dtype_list:
   let hasCanonicalizer = 1;
 }
 
+def TF_IsFiniteOp : TF_Op<"IsFinite", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns which elements of x are finite.";
+
+  let description = [{
+@compatibility(numpy)
+Equivalent to np.isfinite
+@end_compatibility
+
+Example:
+
+```python
+x = tf.constant([5.0, 4.8, 6.8, np.inf, np.nan])
+tf.math.is_finite(x) ==> [True, True, True, False, False]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    I1Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
   let summary = "L2 Loss.";
 

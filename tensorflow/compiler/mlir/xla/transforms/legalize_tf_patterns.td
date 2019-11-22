@@ -380,6 +380,7 @@ foreach Mapping = [
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
+                   [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],
