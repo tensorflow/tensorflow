@@ -157,14 +157,19 @@ Status BufferedInputStream::Seek(int64 position) {
   }
 
   // Position of the buffer within file.
-  const int64 bufpos = Tell();
+  const int64 bufpos  = input_stream_->Tell() - limit_ ;
   if (position < bufpos) {
     // Reset input stream and skip 'position' bytes.
     TF_RETURN_IF_ERROR(Reset());
     return SkipNBytes(position);
   }
-
-  return SkipNBytes(position - bufpos);
+  else if (position < Tell()) {
+    pos_ -= Tell() - position;
+    return Status::OK();
+  }
+  else {
+    return SkipNBytes(position - bufpos);
+  }
 }
 
 template <typename T>
