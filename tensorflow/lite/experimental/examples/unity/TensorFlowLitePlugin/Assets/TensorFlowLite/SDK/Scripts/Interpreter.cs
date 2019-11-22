@@ -172,7 +172,7 @@ namespace TensorFlowLite
     private static extern unsafe void TfLiteInterpreterOptionsDelete(TfLiteInterpreterOptions options);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TfLiteInterpreterOptions TfLiteInterpreterOptionsSetNumThreads(
+    private static extern unsafe void TfLiteInterpreterOptionsSetNumThreads(
         TfLiteInterpreterOptions options,
         int num_threads
     );
