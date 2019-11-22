@@ -88,6 +88,9 @@ message RewriterConfig {
   // Note that this can change the numerical stability of the graph and may
   // require the use of loss scaling to maintain model convergence.
   Toggle auto_mixed_precision = 23;
+  // Convert FP32 graph into BFloat16 graph for training and inference on Intel
+  // CPUs. Default is OFF.
+  Toggle convert_to_bfloat16 = 24;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
 

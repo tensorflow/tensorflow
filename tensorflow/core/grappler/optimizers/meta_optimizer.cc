@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/auto_mixed_precision.h"
 #include "tensorflow/core/grappler/optimizers/auto_parallel.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/convert_to_bfloat16.h"
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
@@ -86,7 +87,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision";
+         name == "loop_optimizer" || name == "auto_mixed_precision" ||
+         name == "convert_to_bfloat16";
 }
 
 // Creates a function library stub from a real function library: copy only
@@ -182,6 +184,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("layout", new GenericLayoutOptimizer());
   MK_OPT("auto_mixed_precision",
          new AutoMixedPrecision(cfg_.auto_mixed_precision()));
+  MK_OPT("convert_to_bfloat16",
+         new BFloat16Converter(cfg_.convert_to_bfloat16()));
   MK_OPT("memory", new MemoryOptimizer(RewriterConfig::MANUAL));
   MK_OPT("arithmetic", new ArithmeticOptimizer(cfg_.arithmetic_optimization()));
   MK_OPT("autoparallel", new AutoParallel(cfg_.auto_parallel().num_replicas()));
@@ -249,6 +253,11 @@ Status MetaOptimizer::InitializeOptimizers(
   }
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
+  }
+  // Specifically registering BFloat16Converter to run after remapper to enable
+  // node fusions.
+  if (cfg_.convert_to_bfloat16() == RewriterConfig::ON) {
+    optimizers->push_back(MakeUnique<BFloat16Converter>());
   }
   if (cfg_.loop_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
@@ -548,8 +557,8 @@ Status MetaOptimizer::RunOptimizer(
     if (errors::IsAborted(status)) {
       // By convention we (ab-)use the Aborted error code to signal that the
       // optimizer returned without performing any changes to the graph.
-      message = strings::StrCat(optimizer->name(),
-                                " did nothing. time = ", duration_ms, "ms.");
+      message = strings::StrCat(optimizer->name(), " did nothing. time = ",
+                                duration_ms, "ms.");
       // Swallow the non-critical error.
       status = Status::OK();
     } else if (errors::IsDeadlineExceeded(status)) {
@@ -843,6 +852,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
          rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          AutoMixedPrecisionEnabled(rewrite_cfg.auto_mixed_precision()) ||
+         rewrite_cfg.convert_to_bfloat16() == RewriterConfig::ON ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }
@@ -927,8 +937,8 @@ Status OptimizeGraph(
             "Either placer did not place the node or Grappler did not "
             "copy the assigned device. Contact Grappler team since latter "
             "is more likely. Node=",
-            node->name(),
-            " Graph: ", optimized_graph->ToGraphDefDebug().DebugString());
+            node->name(), " Graph: ",
+            optimized_graph->ToGraphDefDebug().DebugString());
       }
       node->set_assigned_device_name(node->requested_device());
     }

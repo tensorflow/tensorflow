@@ -1,10 +1,15 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cc_test_mkl", "tf_kernel_library")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_cc_test")
 
 # Platform specific build config
 load(
     "//tensorflow/core/platform:default/build_config_root.bzl",
     "if_static",
+)
+load(
+    "//third_party/mkl:build_defs.bzl",
+    "if_mkl",
+    "mkl_deps",
 )
 
 package(
@@ -582,17 +587,63 @@ tf_cuda_cc_test(
 )
 
 cc_library(
+    name = "convert_to_bfloat16",
+    srcs = ["convert_to_bfloat16.cc"],
+    hdrs = ["convert_to_bfloat16.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer_registry",
+        ":graph_optimizer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:virtual_placer",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+    ] + mkl_deps(),
+)
+
+tf_cc_test_mkl(
+    name = "convert_to_bfloat16_test",
+    srcs = ["convert_to_bfloat16_test.cc"],
+    deps = [
+        ":convert_to_bfloat16",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
     name = "meta_optimizer",
     srcs = ["meta_optimizer.cc"],
     hdrs = [
         "meta_optimizer.h",
     ],
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
         ":arithmetic_optimizer",
         ":auto_mixed_precision",
         ":auto_parallel",
         ":constant_folding",
+        ":convert_to_bfloat16",
         ":custom_graph_optimizer_registry",
         ":debug_stripper",
         ":dependency_optimizer",
