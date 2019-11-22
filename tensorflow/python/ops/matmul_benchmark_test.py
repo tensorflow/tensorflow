@@ -80,9 +80,11 @@ class MatmulBenchmarkTest(googletest.TestCase):
       node { name: "random_uniform/min" op: "Const" device: \"""" + dev + """\" }
       node { name: "random_uniform/max" op: "Const" device: \"""" + dev + """\" }
       node { name: "random_uniform/RandomUniform" op: "RandomUniform" input: "random_uniform/shape" device: \"""" + dev + """\" }
-      node { name: "random_uniform/sub" op: "Sub" input: "random_uniform/max" input: "random_uniform/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform/EnsureShape" op: "EnsureShape" input: "random_uniform/max" device: \"""" + dev + """\" }
+      node { name: "random_uniform/EnsureShape_1" op: "EnsureShape" input: "random_uniform/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform/sub" op: "Sub" input: "random_uniform/EnsureShape" input: "random_uniform/EnsureShape_1" device: \"""" + dev + """\" }
       node { name: "random_uniform/mul" op: "Mul" input: "random_uniform/RandomUniform" input: "random_uniform/sub" device: \"""" + dev + """\" }
-      node { name: "random_uniform" op: "Add" input: "random_uniform/mul" input: "random_uniform/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform" op: "Add" input: "random_uniform/mul" input: "random_uniform/EnsureShape_1" device: \"""" + dev + """\" }
       node { name: "Variable" op: "VariableV2" device: \"""" + dev + """\" }
       node { name: "Variable/Assign" op: "Assign" input: "Variable" input: "random_uniform" device: \"""" + dev + """\" }
       node { name: "Variable/read" op: "Identity" input: "Variable" device: \"""" + dev + """\" }
@@ -90,9 +92,11 @@ class MatmulBenchmarkTest(googletest.TestCase):
       node { name: "random_uniform_1/min" op: "Const" device: \"""" + dev + """\" }
       node { name: "random_uniform_1/max" op: "Const" device: \"""" + dev + """\" }
       node { name: "random_uniform_1/RandomUniform" op: "RandomUniform" input: "random_uniform_1/shape" device: \"""" + dev + """\" }
-      node { name: "random_uniform_1/sub" op: "Sub" input: "random_uniform_1/max" input: "random_uniform_1/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/EnsureShape" op: "EnsureShape" input: "random_uniform_1/max" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/EnsureShape_1" op: "EnsureShape" input: "random_uniform_1/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1/sub" op: "Sub" input: "random_uniform_1/EnsureShape" input: "random_uniform_1/EnsureShape_1" device: \"""" + dev + """\" }
       node { name: "random_uniform_1/mul" op: "Mul" input: "random_uniform_1/RandomUniform" input: "random_uniform_1/sub" device: \"""" + dev + """\" }
-      node { name: "random_uniform_1" op: "Add" input: "random_uniform_1/mul" input: "random_uniform_1/min" device: \"""" + dev + """\" }
+      node { name: "random_uniform_1" op: "Add" input: "random_uniform_1/mul" input: "random_uniform_1/EnsureShape_1" device: \"""" + dev + """\" }
       node { name: "Variable_1" op: "VariableV2" device: \"""" + dev + """\" }
       node { name: "Variable_1/Assign" op: "Assign" input: "Variable_1" input: "random_uniform_1" device: \"""" + dev + """\" }
       node { name: "Variable_1/read" op: "Identity" input: "Variable_1" device: \"""" + dev + """\" }
