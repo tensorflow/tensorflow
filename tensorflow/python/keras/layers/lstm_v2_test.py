@@ -572,6 +572,8 @@ class LSTMV2Test(keras_parameterized.TestCase):
 
   @test_util.run_v2_only
   def test_float64_LSTM(self):
+    if test.is_built_with_rocm:
+      self.skipTest("Double type is yet not supported in ROCm")
     num_samples = 2
     timesteps = 3
     embedding_dim = 4
