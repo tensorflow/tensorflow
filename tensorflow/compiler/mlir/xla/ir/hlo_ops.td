@@ -480,10 +480,6 @@ def HLO_SliceOp: HLO_Op<
                                  DenseIntElementsAttr limit_indices,
                                  DenseIntElementsAttr strides);
   }];
-
-  // TODO(b/129422361) Two of the required arguments comes from the start and
-  // limit indices which aren't handled by the codegen.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
