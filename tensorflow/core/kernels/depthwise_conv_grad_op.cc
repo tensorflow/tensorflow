@@ -574,7 +574,7 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     // Use CuDNN grouped conv (input gradient) when stride = 1, input/output is
     // NCHW and float16(half). See cudnn release note 7.6.3 (https://docs.nvidi
     // a.com/deeplearning/sdk/cudnn-release-notes/rel_763.html#rel_763).
-#ifdef CUDNN_VERSION >= 7603
+#if CUDNN_VERSION >= 7603
     use_cudnn_grouped_conv_ = dtype_ == DT_HALF &&
                               data_format_ == FORMAT_NCHW && stride_ == 1 &&
                               stride_w == 1;
@@ -1070,7 +1070,7 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
     // Use CuDNN grouped conv (filter gradients) when input/output is
     // float16(half). See cudnn release note 7.6.3. (https://docs.nvidia.com/dee
     // plearning/sdk/cudnn-release-notes/rel_763.html#rel_763)
-#ifdef CUDNN_VERSION >= 7603
+#if CUDNN_VERSION >= 7603
     use_cudnn_grouped_conv_ = dtype_ == DT_HALF;
 #else
     use_cudnn_grouped_conv_ = false;
