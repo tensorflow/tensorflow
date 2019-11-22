@@ -1584,6 +1584,47 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.LogicalNot
+//===----------------------------------------------------------------------===//
+
+namespace {
+
+/// Converts `spirv::LogicalNotOp` to the given `NewOp` using the first and the
+/// second operands from the given `ParentOp`.
+template <typename NewOp, typename ParentOp>
+struct ConvertLogicalNotOp : public OpRewritePattern<spirv::LogicalNotOp> {
+  using OpRewritePattern<spirv::LogicalNotOp>::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(spirv::LogicalNotOp logicalNotOp,
+                                     PatternRewriter &rewriter) const override {
+    auto parentOp =
+        dyn_cast_or_null<ParentOp>(logicalNotOp.operand()->getDefiningOp());
+
+    if (!parentOp) {
+      return this->matchFailure();
+    }
+
+    rewriter.replaceOpWithNewOp<NewOp>(
+        /*valuesToRemoveIfDead=*/{parentOp.result()}, logicalNotOp,
+        logicalNotOp.result()->getType(), parentOp.operand1(),
+        parentOp.operand2());
+
+    return this->matchSuccess();
+  }
+};
+} // end anonymous namespace
+
+void spirv::LogicalNotOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<
+      ConvertLogicalNotOp<spirv::INotEqualOp, spirv::IEqualOp>,
+      ConvertLogicalNotOp<spirv::IEqualOp, spirv::INotEqualOp>,
+      ConvertLogicalNotOp<spirv::LogicalNotEqualOp, spirv::LogicalEqualOp>,
+      ConvertLogicalNotOp<spirv::LogicalEqualOp, spirv::LogicalNotEqualOp>>(
+      context);
+}
+
+//===----------------------------------------------------------------------===//
 // spv.loop
 //===----------------------------------------------------------------------===//
 
