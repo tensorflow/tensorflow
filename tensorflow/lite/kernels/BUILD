@@ -528,7 +528,6 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:audio_utils",
         "//tensorflow/lite/kernels/internal:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -562,7 +561,6 @@ cc_library(
         ":op_macros",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:tensor",
     ],
 )
