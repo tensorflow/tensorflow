@@ -730,6 +730,268 @@ TEST_P(ModularFileSystemTest, TestDeleteRecursivelyANestedFile) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
 }
 
+TEST_P(ModularFileSystemTest, TestRenameFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->RenameFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+
+  status = env_->FileExists(filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  status = env_->FileExists(new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileOverwrite) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  status = env_->RenameFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+
+  status = env_->FileExists(filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+  status = env_->FileExists(new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileSourceNotFound) {
+  const std::string filepath = GetURIForPath("a_file");
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  Status status = env_->RenameFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileDestinationParentNotFound) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_dir/a_file");
+  status = env_->RenameFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileSourceIsDirectory) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->RenameFile(dirpath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileTargetIsDirectory) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string dirpath = GetURIForPath("a_dir");
+  status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  status = env_->RenameFile(filepath, dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileSourcePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string old_filepath = GetURIForPath("a_file/x");
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->RenameFile(old_filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileTargetPathIsInvalid) {
+  const std::string old_filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> old_file;
+  Status status = env_->NewWritableFile(old_filepath, &old_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_file/a_new_file");
+  status = env_->RenameFile(old_filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestRenameFileCompareContents) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  status = file->Flush();
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  status = file->Close();
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->RenameFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+
+  uint64 size;
+  status = env_->GetFileSize(new_filepath, &size);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_EQ(size, test_data.size());
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFile) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->CopyFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "CopyFile() not supported";
+
+  status = env_->FileExists(filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  status = env_->FileExists(new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFileOverwrite) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  std::unique_ptr<WritableFile> new_file;
+  status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  status = env_->CopyFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "CopyFile() not supported";
+
+  status = env_->FileExists(filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  status = env_->FileExists(new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFileSourceNotFound) {
+  const std::string filepath = GetURIForPath("a_file");
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  Status status = env_->CopyFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::NOT_FOUND);
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFileSourceIsDirectory) {
+  const std::string dirpath = GetURIForPath("a_dir");
+  Status status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->CopyFile(dirpath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFileTargetIsDirectory) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> new_file;
+  Status status = env_->NewWritableFile(filepath, &new_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string dirpath = GetURIForPath("a_dir");
+  status = env_->CreateDir(dirpath);
+  if (!status.ok()) GTEST_SKIP() << "CreateDir() not supported";
+
+  status = env_->CopyFile(filepath, dirpath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFileSourcePathIsInvalid) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string old_filepath = GetURIForPath("a_file/x");
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->CopyFile(old_filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFileTargetPathIsInvalid) {
+  const std::string old_filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> old_file;
+  Status status = env_->NewWritableFile(old_filepath, &old_file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_file/a_new_file");
+  status = env_->CopyFile(old_filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
+}
+
+TEST_P(ModularFileSystemTest, TestCopyFileCompareContents) {
+  const std::string filepath = GetURIForPath("a_file");
+  std::unique_ptr<WritableFile> file;
+  Status status = env_->NewWritableFile(filepath, &file);
+  if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+
+  const std::string test_data("asdf");
+  status = file->Append(test_data);
+  if (!status.ok()) GTEST_SKIP() << "Append() not supported";
+  status = file->Flush();
+  if (!status.ok()) GTEST_SKIP() << "Flush() not supported";
+  status = file->Close();
+  if (!status.ok()) GTEST_SKIP() << "Close() not supported";
+
+  const std::string new_filepath = GetURIForPath("a_new_file");
+  status = env_->CopyFile(filepath, new_filepath);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "RenameFile() not supported";
+
+  uint64 size;
+  status = env_->GetFileSize(filepath, &size);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_EQ(size, test_data.size());
+
+  status = env_->GetFileSize(new_filepath, &size);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetFileSize() not supported";
+  EXPECT_EQ(size, test_data.size());
+}
+
 TEST_P(ModularFileSystemTest, TestFileExists) {
   const std::string filepath = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;

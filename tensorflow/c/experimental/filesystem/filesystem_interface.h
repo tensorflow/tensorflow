@@ -471,8 +471,8 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_NOT_FOUND` if one of the parents entries in
   ///     either `src` or `dst` doesn't exist or if the specified `src` path
   ///     doesn't exist.
-  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if either `src` or `dst`
-  ///     is a directory or if either of these paths are invalid.
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if either `src` or
+  ///     `dst` is a directory or if either of them is invalid.
   ///   * Might use any other error value for `status` to signal other errors.
   ///
   /// DEFAULT IMPLEMENTATION: Copies file and deletes original. Needs
@@ -494,8 +494,8 @@ typedef struct TF_FilesystemOps {
   ///   * Must set `status` to `TF_NOT_FOUND` if one of the parents entries in
   ///     either `src` or `dst` doesn't exist or if the specified `src` path
   ///     doesn't exist.
-  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if `src` is a directory
-  ///     or if either `src` or `dst` are invalid.
+  ///   * Must set `status` to `TF_FAILED_PRECONDITION` if either `src` or
+  ///     `dst` is a directory or if either of them is invalid.
   ///   * Might use any other error value for `status` to signal other errors.
   ///
   /// DEFAULT IMPLEMENTATION: Reads from `src` and writes to `dst`. Needs
