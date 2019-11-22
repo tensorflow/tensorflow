@@ -244,15 +244,18 @@ class MutableNodeView
 };
 
 class MutationNewNode {
+ public:
+  MutationNewNode() {}
+
  private:
   explicit MutationNewNode(Mutation* mutation, int mutation_counter, int index)
       : mutation_(mutation),
         mutation_counter_(mutation_counter),
         index_(index) {}
 
-  const Mutation* mutation_;
-  const int mutation_counter_;
-  const int index_;
+  Mutation* mutation_ = nullptr;
+  int mutation_counter_ = internal::kMissingSlot;
+  int index_ = internal::kMissingIndex;
 
   friend class Mutation;
 };
@@ -350,12 +353,17 @@ class Mutation {
   void ResetInternal();
 
   using MutableNodeViewDiff = internal::NodeViewDiff<MutableGraphView>;
+
+  // Adds a mutation to the `node`. Mutation function `mutate_fn` must return
+  // `true` if it actually does any mutations. If it returns `false` mutation
+  // will be ignored.
   void AddMutation(MutableNodeView* node,
-                   std::function<void(MutableNodeViewDiff*)> mutate_fn);
+                   std::function<bool(MutableNodeViewDiff*)> mutate_fn);
 
   MutableGraphView* graph_view_ = nullptr;
   int mutation_counter_ = 0;
   std::vector<MutableNodeViewDiff> updated_nodes_;
+  absl::flat_hash_set<int> removed_nodes_;
 
   using MutationNewNodeHolder = internal::NewNode<MutableGraphView>;
   std::vector<MutationNewNodeHolder> new_nodes_;

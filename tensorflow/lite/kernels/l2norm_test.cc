@@ -77,6 +77,14 @@ TEST(L2NormOpTest, SimpleFloatTest) {
               ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
 }
 
+TEST(L2NormOpTest, SimpleFloatWithRankLessThanFourTest) {
+  L2NormOpModel m({1, 6}, TensorType_FLOAT32, ActivationFunctionType_NONE);
+  m.SetInput({-1.1, 0.6, 0.7, 1.2, -0.7, 0.1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput<float>(),
+              ElementsAreArray({-0.55, 0.3, 0.35, 0.6, -0.35, 0.05}));
+}
+
 TEST(L2NormOpTest, MultipleBatchFloatTest) {
   L2NormOpModel m({3, 1, 1, 6}, TensorType_FLOAT32,
                   ActivationFunctionType_NONE);

@@ -17,13 +17,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python import tf2
-from tensorflow.python.framework import dtypes
-from tensorflow.python.util import compat
+from tensorflow.python.eager import monitoring
 from tensorflow.python.util.tf_export import tf_export
 
 _TENSORSHAPE_V2_OVERRIDE = None
+
+_api_usage_gauge = monitoring.BoolGauge(
+    "/tensorflow/api/v2_tensorshape",
+    "Whether tensor_shape.enable_v2_tensorshape() is called.")
 
 
 @tf_export(v1=["enable_v2_tensorshape"])
@@ -75,6 +80,7 @@ def enable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = True
+  _api_usage_gauge.get_cell().set(True)
 
 
 @tf_export(v1=["disable_v2_tensorshape"])
@@ -85,6 +91,7 @@ def disable_v2_tensorshape():
   """
   global _TENSORSHAPE_V2_OVERRIDE  # pylint: disable=invalid-name
   _TENSORSHAPE_V2_OVERRIDE = False
+  _api_usage_gauge.get_cell().set(False)
 
 
 @tf_export(
@@ -173,19 +180,24 @@ def dimension_at_index(shape, index):
 class Dimension(object):
   """Represents the value of one dimension in a TensorShape."""
 
+  __slots__ = ["_value"]
+
   def __init__(self, value):
     """Creates a new Dimension with the given value."""
     if value is None:
       self._value = None
     elif isinstance(value, Dimension):
-      self._value = value.value
-    elif isinstance(value, dtypes.DType):
-      raise TypeError("Cannot convert %s to Dimension" % value)
+      self._value = value
     else:
-      self._value = int(value)
-      if (not isinstance(value, compat.bytes_or_text_types) and
-          self._value != value):
-        raise ValueError("Ambiguous dimension: %s" % value)
+      try:
+        # int(...) compensates for the int/long dichotomy on Python 2.X.
+        # TODO(b/143206389): Remove once we fully migrate to 3.X.
+        self._value = int(value.__index__())
+      except AttributeError:
+        six.raise_from(
+            TypeError("Dimension value must be integer or None or have "
+                      "an __index__ method, got {!r}".format(value)),
+            None)
       if self._value < 0:
         raise ValueError("Dimension %d must be >= 0" % self._value)
 
@@ -245,10 +257,7 @@ class Dimension(object):
     Returns:
       True if this Dimension and `other` are compatible.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     return (self._value is None or other.value is None or
             self._value == other.value)
 
@@ -296,10 +305,7 @@ class Dimension(object):
       ValueError: If `self` and `other` are not compatible (see
         is_compatible_with).
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     self.assert_is_compatible_with(other)
     if self._value is None:
       return Dimension(other.value)
@@ -569,10 +575,7 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `self` modulo `other`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     if self._value is None or other.value is None:
       return Dimension(None)
     else:
@@ -587,10 +590,7 @@ class Dimension(object):
     Returns:
       A Dimension whose value is `other` modulo `self`.
     """
-    try:
-      other = as_dimension(other)
-    except (TypeError, ValueError):
-      return NotImplemented
+    other = as_dimension(other)
     return other % self
 
   def __lt__(self, other):
@@ -737,6 +737,7 @@ class TensorShape(object):
   for details of shape functions and how to register them. Alternatively,
   the shape may be set explicitly using `tf.Tensor.set_shape`.
   """
+  __slots__ = ["_dims"]
 
   def __init__(self, dims):
     """Creates a new TensorShape with the given dimensions.
@@ -749,9 +750,6 @@ class TensorShape(object):
     """
     if dims is None:
       self._dims = None
-    elif isinstance(dims, compat.bytes_or_text_types):
-      raise TypeError("A string has ambiguous TensorShape, please wrap in a "
-                      "list or convert to an int: %s" % dims)
     elif isinstance(dims, tensor_shape_pb2.TensorShapeProto):
       if dims.unknown_rank:
         self._dims = None
@@ -770,7 +768,6 @@ class TensorShape(object):
         # Treat as a singleton dimension
         self._dims = [as_dimension(dims)]
       else:
-        # Got a list of dimensions
         self._dims = [as_dimension(d) for d in dims_iter]
 
   @property
@@ -930,6 +927,16 @@ class TensorShape(object):
         return TensorShape(new_dims)
       except ValueError:
         raise ValueError("Shapes %s and %s are not compatible" % (self, other))
+
+  def __add__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return self.concatenate(other)
+
+  def __radd__(self, other):
+    if not isinstance(other, TensorShape):
+      other = TensorShape(other)
+    return other.concatenate(self)
 
   def concatenate(self, other):
     """Returns the concatenation of the dimension in `self` and `other`.
@@ -1225,33 +1232,3 @@ def unknown_shape(rank=None, **kwargs):
     return TensorShape(None)
   else:
     return TensorShape([Dimension(None)] * rank)
-
-
-def scalar():
-  """Returns a shape representing a scalar."""
-  return TensorShape([])
-
-
-def vector(length):
-  """Returns a shape representing a vector.
-
-  Args:
-    length: The length of the vector, which may be None if unknown.
-
-  Returns:
-    A TensorShape representing a vector of the given length.
-  """
-  return TensorShape([length])
-
-
-def matrix(rows, cols):
-  """Returns a shape representing a matrix.
-
-  Args:
-    rows: The number of rows in the matrix, which may be None if unknown.
-    cols: The number of columns in the matrix, which may be None if unknown.
-
-  Returns:
-    A TensorShape representing a matrix of the given size.
-  """
-  return TensorShape([rows, cols])

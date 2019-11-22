@@ -22,12 +22,16 @@ import six
 
 from tensorflow.python.feature_column import feature_column_v2 as fc_lib
 from tensorflow.python.feature_column import sequence_feature_column as sfc_lib
-from tensorflow.python.keras import utils
 from tensorflow.python.ops import init_ops
+from tensorflow.python.util.lazy_loader import LazyLoader
 
+# Prevent circular dependencies with Keras serialization.
+generic_utils = LazyLoader(
+    'generic_utils', globals(),
+    'tensorflow.python.keras.utils.generic_utils')
 
 _FEATURE_COLUMNS = [
-    fc_lib.BucketizedColumn, fc_lib.EmbeddingColumn,
+    fc_lib.BucketizedColumn, fc_lib.CrossedColumn, fc_lib.EmbeddingColumn,
     fc_lib.HashedCategoricalColumn, fc_lib.IdentityCategoricalColumn,
     fc_lib.IndicatorColumn, fc_lib.NumericColumn,
     fc_lib.SequenceCategoricalColumn, fc_lib.SequenceDenseColumn,
@@ -41,14 +45,14 @@ def serialize_feature_column(fc):
   """Serializes a FeatureColumn or a raw string key.
 
   This method should only be used to serialize parent FeatureColumns when
-  implementing FeatureColumn._get_config(), else serialize_feature_columns()
+  implementing FeatureColumn.get_config(), else serialize_feature_columns()
   is preferable.
 
   This serialization also keeps information of the FeatureColumn class, so
   deserialization is possible without knowing the class type. For example:
 
   a = numeric_column('x')
-  a._get_config() gives:
+  a.get_config() gives:
   {
       'key': 'price',
       'shape': (1,),
@@ -80,8 +84,8 @@ def serialize_feature_column(fc):
   if isinstance(fc, six.string_types):
     return fc
   elif isinstance(fc, fc_lib.FeatureColumn):
-    return utils.serialize_keras_class_and_config(fc.__class__.__name__,
-                                                  fc._get_config())  # pylint: disable=protected-access
+    return generic_utils.serialize_keras_class_and_config(
+        fc.__class__.__name__, fc.get_config())  # pylint: disable=protected-access
   else:
     raise ValueError('Instance: {} is not a FeatureColumn'.format(fc))
 
@@ -92,7 +96,7 @@ def deserialize_feature_column(config,
   """Deserializes a `config` generated with `serialize_feature_column`.
 
   This method should only be used to deserialize parent FeatureColumns when
-  implementing FeatureColumn._from_config(), else deserialize_feature_columns()
+  implementing FeatureColumn.from_config(), else deserialize_feature_columns()
   is preferable. Returns a FeatureColumn for this config.
   TODO(b/118939620): Simplify code if Keras utils support object deduping.
 
@@ -120,25 +124,27 @@ def deserialize_feature_column(config,
   if columns_by_name is None:
     columns_by_name = {}
 
-  (cls, cls_config) = utils.class_and_config_for_serialized_keras_object(
-      config,
-      module_objects=module_feature_column_classes,
-      custom_objects=custom_objects,
-      printable_module_name='feature_column_v2')
+  (cls,
+   cls_config) = generic_utils.class_and_config_for_serialized_keras_object(
+       config,
+       module_objects=module_feature_column_classes,
+       custom_objects=custom_objects,
+       printable_module_name='feature_column_v2')
 
   if not issubclass(cls, fc_lib.FeatureColumn):
     raise ValueError(
         'Expected FeatureColumn class, instead found: {}'.format(cls))
 
   # Always deserialize the FeatureColumn, in order to get the name.
-  new_instance = cls._from_config(  # pylint: disable=protected-access
+  new_instance = cls.from_config(  # pylint: disable=protected-access
       cls_config,
       custom_objects=custom_objects,
       columns_by_name=columns_by_name)
 
   # If the name already exists, re-use the column from columns_by_name,
   # (new_instance remains unused).
-  return columns_by_name.setdefault(new_instance.name, new_instance)
+  return columns_by_name.setdefault(
+      _column_name_with_class_name(new_instance), new_instance)
 
 
 def serialize_feature_columns(feature_columns):
@@ -183,3 +189,20 @@ def deserialize_feature_columns(configs, custom_objects=None):
       deserialize_feature_column(c, custom_objects, columns_by_name)
       for c in configs
   ]
+
+
+def _column_name_with_class_name(fc):
+  """Returns a unique name for the feature column used during deduping.
+
+  Without this two FeatureColumns that have the same name and where
+  one wraps the other, such as an IndicatorColumn wrapping a
+  SequenceCategoricalColumn, will fail to deserialize because they will have the
+  same name in colums_by_name, causing the wrong column to be returned.
+
+  Args:
+    fc: A FeatureColumn.
+
+  Returns:
+    A unique name as a string.
+  """
+  return fc.__class__.__name__ + ':' + fc.name

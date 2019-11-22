@@ -207,14 +207,39 @@ StatusOr<QRBlockResult> QRBlock(XlaOp a, PrecisionConfig::Precision precision) {
     auto new_x = Mul(x, predecessor_mask,
                      /*broadcast_dimensions=*/{num_dims - 2, num_dims - 1}) +
                  Mul(beta, mask, /*broadcast_dimensions=*/batch_dim_indices);
-    a = DynamicUpdateSliceInMinorDims(a, new_x, {j});
+    // Update a[:,j]
+    std::vector<int64> dim_ids(num_dims);
+    std::iota(dim_ids.begin(), dim_ids.end(), 0);
+    new_x = BroadcastInDim(new_x, ConcatVectors(batch_dims, {m, n}),
+                           /*broadcast_dimensions=*/dim_ids);
+    const int64 minor_dim = batch_dims.size();
+    auto iota_mn = Iota(
+        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        minor_dim + 1);
+    a = Select(Eq(iota_mn, j), new_x, a);
 
     // vs[:, j] = v
-    vs = DynamicUpdateSliceInMinorDims(
-        vs, Reshape(v, ConcatVectors(batch_dims, {m, 1})), {j});
+    std::vector<int64> vs_broadcast_dims(batch_dims.size() + 1);
+    std::iota(vs_broadcast_dims.begin(), vs_broadcast_dims.end(), 0);
+    auto vs_zeros = ZerosLike(vs);
+    auto vs_update = Select(
+        Eq(iota_mn, j),
+        Add(vs_zeros, v, /*broadcast_dimensions=*/vs_broadcast_dims), vs_zeros);
+    vs = vs + vs_update;
+
     // taus[j] = tau
-    taus = DynamicUpdateSliceInMinorDims(
-        taus, Reshape(tau, ConcatVectors(batch_dims, {1})), {j});
+    std::vector<int64> tau_broadcast_dims(batch_dims.size());
+    std::iota(tau_broadcast_dims.begin(), tau_broadcast_dims.end(), 0);
+
+    auto iota_n =
+        Iota(builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {n})),
+             minor_dim);
+    auto taus_zeros = ZerosLike(taus);
+    auto taus_update = Select(
+        Eq(iota_n, j),
+        Add(taus_zeros, tau, /*broadcast_dimensions=*/tau_broadcast_dims),
+        taus_zeros);
+    taus = taus + taus_update;
     return std::vector<XlaOp>{a, vs, taus};
   };
 
@@ -258,10 +283,10 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
 
   auto body_fn = [&](XlaOp j, absl::Span<const XlaOp> values,
                      XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+    // w has shape [..., m, n]
     auto w = values[0];
-    auto y = values[1];
-    const auto vs = values[2];
-    const auto taus = values[3];
+    const auto vs = values[1];
+    const auto taus = values[2];
 
     // Want j values in range [1, ... n).
     j = j + ConstantR0<int32>(builder, 1);
@@ -269,6 +294,13 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
     auto v = DynamicSliceInMinorDims(vs, {j}, {1});
     // beta has shape [..., 1]
     auto beta = DynamicSliceInMinorDims(taus, {j}, {1});
+
+    auto iota_mn = Iota(
+        builder, ShapeUtil::MakeShape(S32, ConcatVectors(batch_dims, {m, n})),
+        n_index);
+
+    // y has shape [..., m, n]
+    auto y = Select(Ge(iota_mn, j), ZerosLike(vs), vs);
 
     // yv has shape [..., n, 1]
     auto yv = BatchDot(y, true, v, false, precision);
@@ -280,26 +312,22 @@ StatusOr<XlaOp> ComputeWYRepresentation(PrimitiveType type,
         /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
 
     w = DynamicUpdateSliceInMinorDims(w, z, {j});
-    y = DynamicUpdateSliceInMinorDims(y, v, {j});
 
-    return std::vector<XlaOp>{w, y, vs, taus};
+    return std::vector<XlaOp>{w, vs, taus};
   };
 
   XlaBuilder* builder = vs.builder();
   auto w = Zeros(builder,
                  ShapeUtil::MakeShape(type, ConcatVectors(batch_dims, {m, n})));
-  auto y = w;
   auto v = SliceInMinorDims(vs, {0}, {1});
   auto beta = SliceInMinorDims(taus, {0}, {1});
-  y = UpdateSliceInMinorDims(y, v, {0});
   auto bv =
       Mul(-beta, v,
           /*broadcast_dimensions=*/ConcatVectors(batch_dim_indices, {n_index}));
   w = UpdateSliceInMinorDims(w, bv, {0});
 
-  TF_ASSIGN_OR_RETURN(
-      auto values,
-      ForEachIndex(n - 1, S32, body_fn, {w, y, vs, taus}, "wy", builder));
+  TF_ASSIGN_OR_RETURN(auto values, ForEachIndex(n - 1, S32, body_fn,
+                                                {w, vs, taus}, "wy", builder));
   return values[0];
 }
 

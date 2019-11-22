@@ -126,6 +126,13 @@ TEST(UnpackOpTest, FloatThreeDimensionsOutputs) {
                /*expected_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}});
 }
 
+TEST(UnpackOpTest, FloatVectorToScalar) {
+  Check<float>(/*axis=*/0, /*input_shape=*/{5},
+               /*input_data=*/{1, 2, 3, 4, 5},
+               /*exp_output_shape=*/{{}, {}, {}, {}, {}},
+               /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}});
+}
+
 // int32 tests.
 TEST(UnpackOpTest, IntThreeOutputs) {
   Check<int32_t>(/*axis=*/0, /*input_shape=*/{3, 2},
@@ -156,6 +163,14 @@ TEST(UnpackOpTest, IntThreeDimensionsOutputs) {
                  /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
                  /*expected_output_shape=*/{{2, 2}, {2, 2}},
                  /*expected_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
+                 /*type=*/TensorType_INT32);
+}
+
+TEST(UnpackOpTest, IntVectorToScalar) {
+  Check<int32_t>(/*axis=*/0, /*input_shape=*/{5},
+                 /*input_data=*/{1, 2, 3, 4, 5},
+                 /*exp_output_shape=*/{{}, {}, {}, {}, {}},
+                 /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}},
                  /*type=*/TensorType_INT32);
 }
 
@@ -208,6 +223,14 @@ TEST(UnpackOpTest, Uint8ThreeDimensionsOutputs) {
                  /*type=*/TensorType_UINT8);
 }
 
+TEST(UnpackOpTest, Uint8VectorToScalar) {
+  Check<uint8_t>(/*axis=*/0, /*input_shape=*/{5},
+                 /*input_data=*/{1, 2, 3, 4, 5},
+                 /*exp_output_shape=*/{{}, {}, {}, {}, {}},
+                 /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}},
+                 /*type=*/TensorType_UINT8);
+}
+
 // int8 tests.
 TEST(UnpackOpTest, Int8ThreeOutputs) {
   Check<int8_t>(/*axis=*/0, /*input_shape=*/{3, 2},
@@ -254,6 +277,14 @@ TEST(UnpackOpTest, Int8ThreeDimensionsOutputs) {
                 /*input_data=*/{1, 2, 3, 4, 5, 6, 7, 8},
                 /*expected_output_shape=*/{{2, 2}, {2, 2}},
                 /*expected_output_data=*/{{1, 3, 5, 7}, {2, 4, 6, 8}},
+                /*type=*/TensorType_INT8);
+}
+
+TEST(UnpackOpTest, Int8VectorToScalar) {
+  Check<int8_t>(/*axis=*/0, /*input_shape=*/{5},
+                /*input_data=*/{1, 2, 3, 4, 5},
+                /*exp_output_shape=*/{{}, {}, {}, {}, {}},
+                /*exp_output_data=*/{{1}, {2}, {3}, {4}, {5}},
                 /*type=*/TensorType_INT8);
 }
 

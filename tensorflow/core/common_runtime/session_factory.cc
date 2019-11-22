@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/protobuf/config.pb_text.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -61,7 +61,7 @@ const string RegisteredFactoriesErrorMessageLocked() {
 }
 string SessionOptionsToString(const SessionOptions& options) {
   return strings::StrCat("target: \"", options.target,
-                         "\" config: ", ProtoShortDebugString(options.config));
+                         "\" config: ", options.config.ShortDebugString());
 }
 }  // namespace
 

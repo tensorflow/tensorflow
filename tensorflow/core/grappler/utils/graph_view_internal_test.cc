@@ -52,30 +52,6 @@ absl::flat_hash_map<absl::string_view, int> GetUpdatedNodeNames(
 
 using MutableNodeViewDiff = NodeViewDiff<MutableGraphView>;
 
-TEST(MutableNodeViewDiffTest, SetRemoved) {
-  GraphDef graph = SimpleTestGraphForMutation();
-
-  Status s;
-  MutableGraphView graph_view(&graph, &s);
-  TF_ASSERT_OK(s);
-  auto updated_node_names = GetUpdatedNodeNames(&graph_view);
-
-  MutableNodeView* d_node = graph_view.GetNode("d");
-  ASSERT_NE(d_node, nullptr);
-
-  MutableNodeViewDiff diff(&graph_view, d_node->node_index());
-  EXPECT_TRUE(IsEmpty(&diff));
-  EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
-
-  SetRemoved(&diff, true);
-  EXPECT_FALSE(IsEmpty(&diff));
-  EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
-
-  SetRemoved(&diff, false);
-  EXPECT_TRUE(IsEmpty(&diff));
-  EXPECT_TRUE(IsWellFormed(&diff, updated_node_names));
-}
-
 TEST(MutableNodeViewDiffTest, UpdateName) {
   GraphDef graph = SimpleTestGraphForMutation();
 

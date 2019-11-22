@@ -73,6 +73,16 @@ class ImageClassificationStage : public EvaluationStage {
   std::string ground_truth_label_;
 };
 
+struct ImageLabel {
+  std::string image;
+  std::string label;
+};
+
+// Reads a file containing newline-separated blacklisted image indices and
+// filters them out from image_labels.
+TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
+                                     std::vector<ImageLabel>* image_labels);
+
 }  // namespace evaluation
 }  // namespace tflite
 

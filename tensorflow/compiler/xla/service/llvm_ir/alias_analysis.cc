@@ -134,7 +134,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   // 3. Operands of the given hlo.
   //
   // This set can be increased as we need.
-  std::vector<const BufferValue*> worklist;
+  std::vector<const HloValue*> worklist;
   absl::flat_hash_set<const HloInstruction*> added_to_worklist;
   auto add_buffers_to_worklist =
       [&](const HloInstruction* instruction) {
@@ -149,7 +149,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
         ShapeUtil::ForEachSubshape(
             instruction->shape(),
             [&](const Shape& /*shape*/, const ShapeIndex& index) {
-              for (const BufferValue* buffer :
+              for (const HloValue* buffer :
                    assignment.GetSourceBuffers(instruction, index)) {
                 if (assignment.HasAllocation(*buffer)) {
                   worklist.push_back(buffer);
@@ -171,7 +171,7 @@ llvm::MDNode* AliasAnalysis::GetNoaliasMetadataForBuffer(
   }
 
   std::set<BufferAllocation::Slice> buffers;
-  for (const BufferValue* buffer : worklist) {
+  for (const HloValue* buffer : worklist) {
     const BufferAllocation::Slice noalias_slice =
         assignment.GetAssignedAllocation(*buffer).GetSlice(*buffer);
     // Our buffer must not overlap with the noalias slice.

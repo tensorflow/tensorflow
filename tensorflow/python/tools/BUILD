@@ -1,15 +1,15 @@
 # Description:
 #   Tools for manipulating TensorFlow graphs.
 
+load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_binary")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
-
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "py_binary")
 
 # Transitive dependencies of this target will be included in the pip package.
 py_library(
@@ -70,6 +70,7 @@ py_library(
         "//tensorflow/python:no_contrib",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:py_checkpoint_reader",
         "//tensorflow/python:training",
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/saved_model:loader",
@@ -152,7 +153,7 @@ py_library(
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
         "//tensorflow/python:platform",
-        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:py_checkpoint_reader",
     ],
 )
 
@@ -271,6 +272,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/python",  # TODO(b/34059704): remove when fixed
+        "//tensorflow/python:_pywrap_kernel_registry",
         "//tensorflow/python:platform",
     ],
 )
@@ -332,7 +334,7 @@ py_test(
     data = [
         "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",

@@ -573,6 +573,10 @@ class KerasAccuracyTest(test.TestCase):
           }))
       self.assertAlmostEqual(result, 0.71, 2)  # 2.5/2.7
 
+  def test_get_acc(self):
+    acc_fn = metrics.get('acc')
+    self.assertEqual(acc_fn, metrics.accuracy)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class CosineSimilarityTest(test.TestCase):
@@ -1967,7 +1971,8 @@ def _get_model(compile_metrics):
       loss='mae',
       metrics=compile_metrics,
       optimizer='rmsprop',
-      run_eagerly=testing_utils.should_run_eagerly())
+      run_eagerly=testing_utils.should_run_eagerly(),
+      experimental_run_tf_function=testing_utils.should_run_tf_function())
   return model
 
 

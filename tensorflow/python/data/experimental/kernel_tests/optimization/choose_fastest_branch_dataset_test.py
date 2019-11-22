@@ -19,7 +19,6 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import optimization
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
@@ -48,7 +47,7 @@ class ChooseFastestBranchDatasetTest(test_base.DatasetTestBase,
     self.assertDatasetProduces(
         choose_fastest,
         expected_output=[0, 1, 2, 3, 4],
-        expected_shapes=dataset.output_shapes)
+        expected_shapes=dataset_ops.get_legacy_output_shapes(dataset))
 
   def testCaptureSimple(self):
     dataset = dataset_ops.Dataset.range(10)
@@ -120,7 +119,7 @@ class ChooseFastestBranchDatasetTest(test_base.DatasetTestBase,
     dataset = dataset_ops.Dataset.from_tensors(0).repeat(1000).batch(100)
 
     def branch(dataset):
-      return dataset.apply(batching.unbatch())
+      return dataset.unbatch()
 
     choose_fastest = optimization._ChooseFastestBranchDataset(
         dataset, [branch, branch],
@@ -134,7 +133,7 @@ class ChooseFastestBranchDatasetTest(test_base.DatasetTestBase,
     dataset = dataset_ops.Dataset.from_tensors(0).repeat(1000).batch(100)
 
     def branch(dataset):
-      return dataset.apply(batching.unbatch())
+      return dataset.unbatch()
 
     def make_dataset():
       return optimization._ChooseFastestBranchDataset(

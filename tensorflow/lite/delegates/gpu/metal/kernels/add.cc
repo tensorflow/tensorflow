@@ -66,39 +66,42 @@ std::string GetAddTableCode(int src_count) {
 }
 }  // namespace
 
-std::vector<ComputeTaskDescriptorPtr> Add(int id, ValueId input_id,
+std::vector<ComputeTaskDescriptorPtr> Add(int id,
+                                          const std::vector<ValueId> input_ids,
                                           ValueId output_id,
                                           const AddAttributes& attr,
                                           const RuntimeOptions& options) {
-  auto add_buffer =
-      absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
-  if (!add_buffer) {
-    return {};
-  }
   auto desc = std::make_shared<ComputeTaskDescriptor>();
   desc->id = id;
-  desc->is_linkable = true;
-  desc->shader_source =
-      R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
-    device FLT4* const add_buf) {
-      return value + add_buf[gid.z];
-  })";
-  desc->input_buffers = {{input_id}};
-  desc->output_buffer = {output_id};
-  auto coeffs = options.storage_precision == RuntimeOptions::Precision::FP32
-                    ? VectorToUint8Vector(add_buffer->data)
-                    : VectorFloatToHalf(add_buffer->data);
-  desc->immutable_buffers = {
-      {"device FLT4* const", coeffs},
-  };
-  return {desc};
-}
 
-std::vector<ComputeTaskDescriptorPtr> AddTable(int id,
-                                               std::vector<ValueId> input_ids,
-                                               ValueId output_id) {
-  auto desc = std::make_shared<ComputeTaskDescriptor>();
-  desc->id = id;
+  // Add scalar
+  const float* add_value = absl::get_if<float>(&attr.param);
+  if (add_value) {
+    desc->is_linkable = true;
+    desc->shader_source =
+        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid) {
+      return value + )" +
+        std::to_string(*add_value) + ";}";
+    desc->input_buffers = {{input_ids[0]}};
+    desc->output_buffer = {output_id};
+    return {desc};
+  }
+  // Add vector
+  auto broadcast = absl::get_if<Tensor<Linear, DataType::FLOAT32>>(&attr.param);
+  if (broadcast) {
+    desc->is_linkable = true;
+    desc->shader_source =
+        R"(FLT4 linkable$0(FLT4 value, int linear_index, uint3 gid,
+      device FLT4* const broadcast) { return value + broadcast[gid.z]; })";
+    desc->input_buffers = {{input_ids[0]}};
+    desc->output_buffer = {output_id};
+    desc->immutable_buffers = {
+        {"device FLT4* const",
+         GetByteBufferConverted(broadcast->data, options.storage_precision)},
+    };
+    return {desc};
+  }
+
   desc->is_linkable = false;
   desc->shader_source = GetAddTableCode(input_ids.size());
 
@@ -118,7 +121,7 @@ std::vector<ComputeTaskDescriptorPtr> AddTable(int id,
        [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_ids[0])->second;
          std::vector<int> uniform_params = {dimension.w, dimension.h, 0, 0};
-         return VectorToUint8Vector(uniform_params);
+         return GetByteBuffer(uniform_params);
        }},
   };
 

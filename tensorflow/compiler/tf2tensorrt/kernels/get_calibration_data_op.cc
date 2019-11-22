@@ -16,7 +16,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/compiler/tf2tensorrt/utils/calibration_resource.h"
+#include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/resource_mgr.h"
@@ -39,23 +39,25 @@ class GetCalibrationDataOp : public OpKernel {
     // TODO(laigd): it will allocate the tensor on the device and copy the
     // serialized string to that tensor, and later sess.run() will copy it back
     // to host. We need to optimize this.
-    const string& resource_name = context->input(0).scalar<string>()();
 
+    const string& resource_name = context->input(0).scalar<tstring>()();
     // Get the resource.
-    TRTCalibrationResource* resource = nullptr;
+    TRTEngineCacheResource* resource = nullptr;
     OP_REQUIRES_OK(context, context->resource_manager()->Lookup(
-                                std::string(kCalibrationContainerName),
-                                resource_name, &resource));
+                                std::string(kTfTrtContainerName), resource_name,
+                                &resource));
     core::ScopedUnref sc(resource);
 
     // Serialize the resource as output.
-    string serialized_resource;
-    OP_REQUIRES_OK(context, resource->SerializeToString(&serialized_resource));
+    string serialized_resource = resource->calib_ctx_->TerminateCalibration();
+    OP_REQUIRES(context, !serialized_resource.empty(),
+                errors::Unknown("Calibration table is empty."));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, TensorShape({}), &output));
-    output->scalar<string>()() = serialized_resource;
+
+    output->scalar<tstring>()() = serialized_resource;
   }
 };
 

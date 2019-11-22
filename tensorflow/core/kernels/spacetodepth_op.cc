@@ -190,16 +190,18 @@ struct SpaceToDepthOpFunctor<CPUDevice, T, FORMAT_NHWC> {
 };
 }  // namespace functor
 
-#define REGISTER(type)                                                   \
-  REGISTER_KERNEL_BUILDER(                                               \
-      Name("SpaceToDepth").Device(DEVICE_CPU).TypeConstraint<type>("T"), \
-      SpaceToDepthOp<CPUDevice, type>);
+#define REGISTER(type)                                                \
+  REGISTER_KERNEL_BUILDER(Name("SpaceToDepth")                        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T")              \
+                              .AttrConstraint("data_format", "NHWC"), \
+                          SpaceToDepthOp<CPUDevice, type>);
 
 TF_CALL_ALL_TYPES(REGISTER);
 TF_CALL_qint8(REGISTER);
 #undef REGISTER
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     SpaceToDepthOp<GPUDevice, float>);
@@ -212,6 +214,6 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("SpaceToDepth").Device(DEVICE_GPU).TypeConstraint<uint8>("T"),
     SpaceToDepthOp<GPUDevice, uint8>);
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // end namespace tensorflow

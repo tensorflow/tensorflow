@@ -20,7 +20,7 @@ namespace tensorflow {
 REGISTER2(BinaryOp, CPU, "Igamma", functor::igamma, float, double);
 REGISTER2(BinaryOp, CPU, "IgammaGradA", functor::igamma_grad_a, float, double);
 REGISTER2(BinaryOp, CPU, "Igammac", functor::igammac, float, double);
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER2(BinaryOp, GPU, "Igamma", functor::igamma, float, double);
 REGISTER2(BinaryOp, GPU, "IgammaGradA", functor::igamma_grad_a, float, double);
 REGISTER2(BinaryOp, GPU, "Igammac", functor::igammac, float, double);

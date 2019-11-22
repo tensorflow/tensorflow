@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define EIGEN_USE_GPU
 
@@ -36,7 +36,7 @@ __global__ void DynamicStitchKernel(const int32 slice_size,
                                     T* output) {
   int32* data_indices = GetGpuDeviceArrayOnDevice(&input_indices);
   const T** data_ptrs = GetGpuDeviceArrayOnDevice(&input_ptrs);
-  CUDA_1D_KERNEL_LOOP(output_index, output_size) {
+  GPU_1D_KERNEL_LOOP(output_index, output_size) {
     const int32 slice_id = output_index / slice_size;
     const int32 slice_offset = output_index % slice_size;
     const int32 input_index = data_indices[slice_id];
@@ -57,10 +57,10 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
   const int32 output_size = first_dim_size * slice_size;
   auto config = GetGpuLaunchConfig(output_size, gpu_device);
 
-  TF_CHECK_OK(CudaLaunchKernel(DynamicStitchKernel<T>, config.block_count,
-                               config.thread_per_block, 0, gpu_device.stream(),
-                               slice_size, output_size, input_indices,
-                               input_ptrs, output));
+  TF_CHECK_OK(GpuLaunchKernel(DynamicStitchKernel<T>, config.block_count,
+                              config.thread_per_block, 0, gpu_device.stream(),
+                              slice_size, output_size, input_indices,
+                              input_ptrs, output));
 }
 
 #define REGISTER_GPU(T)                                           \
@@ -79,4 +79,4 @@ TF_CALL_int32(REGISTER_GPU)
 #undef REGISTER_GPU
 
 }  // namespace tensorflow
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM

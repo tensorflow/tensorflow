@@ -126,11 +126,19 @@ bool GenerateRandomCrop(int original_width, int original_height,
   int height = static_cast<int>(lrintf(std::sqrt(min_area / aspect_ratio)));
   int max_height = static_cast<int>(lrintf(std::sqrt(max_area / aspect_ratio)));
 
+  // TODO(b/140767341): Rewrite the generation logic to be more tolerant
+  // of floating point behavior.
   if (lrintf(max_height * aspect_ratio) > original_width) {
     // We must find the smallest max_height satisfying
     // round(max_height * aspect_ratio) <= original_width:
     const float kEps = 0.0000001;
     max_height = static_cast<int>((original_width + 0.5 - kEps) / aspect_ratio);
+    // If due some precision issues, we still cannot guarantee
+    // round(max_height * aspect_ratio) <= original_width, subtract 1 from
+    // max height.
+    if (lrintf(max_height * aspect_ratio) > original_width) {
+      max_height -= 1;
+    }
   }
 
   if (max_height > original_height) {

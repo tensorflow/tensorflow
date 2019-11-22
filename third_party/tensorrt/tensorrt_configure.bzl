@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for TensorRT configuration.
 
 `tensorrt_configure` depends on the following environment variables:
@@ -27,8 +26,8 @@ _TF_TENSORRT_HEADERS_V6 = [
     "NvUtils.h",
     "NvInferPlugin.h",
     "NvInferVersion.h",
-    "NvInferRTSafe.h",
-    "NvInferRTExt.h",
+    "NvInferRuntime.h",
+    "NvInferRuntimeCommon.h",
     "NvInferPluginUtils.h",
 ]
 
@@ -61,6 +60,9 @@ def _create_dummy_repository(repository_ctx):
         "\":tensorrt_include\"": "",
         "\":tensorrt_lib\"": "",
     })
+    _tpl(repository_ctx, "tensorrt/include/tensorrt_config.h", {
+        "%{tensorrt_version}": "",
+    })
 
 def enable_tensorrt(repository_ctx):
     """Returns whether to build with TensorRT support."""
@@ -77,7 +79,24 @@ def _tensorrt_configure_impl(repository_ctx):
             Label(remote_config_repo + ":build_defs.bzl"),
             {},
         )
+        repository_ctx.template(
+            "tensorrt/include/tensorrt_config.h",
+            Label(remote_config_repo + ":tensorrt/include/tensorrt_config.h"),
+            {},
+        )
+        repository_ctx.template(
+            "LICENSE",
+            Label(remote_config_repo + ":LICENSE"),
+            {},
+        )
         return
+
+    # Copy license file in non-remote build.
+    repository_ctx.template(
+        "LICENSE",
+        Label("//third_party/tensorrt:LICENSE"),
+        {},
+    )
 
     if not enable_tensorrt(repository_ctx):
         _create_dummy_repository(repository_ctx)
@@ -113,6 +132,12 @@ def _tensorrt_configure_impl(repository_ctx):
     # Set up BUILD file.
     _tpl(repository_ctx, "BUILD", {
         "%{copy_rules}": "\n".join(copy_rules),
+    })
+
+    # Set up tensorrt_config.h, which is used by
+    # tensorflow/stream_executor/dso_loader.cc.
+    _tpl(repository_ctx, "tensorrt/include/tensorrt_config.h", {
+        "%{tensorrt_version}": trt_version,
     })
 
 tensorrt_configure = repository_rule(

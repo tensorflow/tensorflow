@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -73,10 +74,6 @@ class CompatCheckerTest(unittest.TestCase):
     super(CompatCheckerTest, self).setUp()
     self.test_file = os.path.join(PATH_TO_DIR, "test_config.ini")
 
-  def testDown(self):
-    """Tear down test."""
-    super(CompatCheckerTest, self).tearDown()
-
   def testWithUserConfigInRange(self):
     """Test a set of configs that are supported.
 
@@ -92,7 +89,7 @@ class CompatCheckerTest(unittest.TestCase):
     # Make sure no warning or error messages are recorded.
     self.assertFalse(len(self.compat_checker.error_msg))
     # Make sure total # of successes match total # of configs.
-    cnt = len(USER_CONFIG_IN_RANGE.keys())
+    cnt = len(list(USER_CONFIG_IN_RANGE.keys()))
     self.assertEqual(len(self.compat_checker.successes), cnt)
 
   def testWithUserConfigNotInRange(self):
@@ -110,7 +107,7 @@ class CompatCheckerTest(unittest.TestCase):
     err_msg_list = self.compat_checker.failures
     self.assertTrue(len(err_msg_list))
     # Make sure total # of failures match total # of configs.
-    cnt = len(USER_CONFIG_NOT_IN_RANGE.keys())
+    cnt = len(list(USER_CONFIG_NOT_IN_RANGE.keys()))
     self.assertEqual(len(err_msg_list), cnt)
 
   def testWithUserConfigMissing(self):

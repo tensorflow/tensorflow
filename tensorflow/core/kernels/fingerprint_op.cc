@@ -52,7 +52,7 @@ void FarmhashFingerprint64(TTypes<uint8, 2>::ConstTensor input,
   }
 }
 
-void FarmhashFingerprint64(TTypes<string>::ConstFlat input,
+void FarmhashFingerprint64(TTypes<tstring>::ConstFlat input,
                            TTypes<uint8, 2>::Matrix output) {
   DCHECK_EQ(output.dimension(0), input.dimension(0));
   DCHECK_EQ(output.dimension(1), sizeof(uint64));
@@ -79,7 +79,7 @@ class FingerprintOp : public OpKernel {
                 errors::InvalidArgument("`method` should be a scalar string: ",
                                         method_tensor.shape()));
     // For now, farmhash64 is the only function supported.
-    const string& method = method_tensor.scalar<string>()();
+    const tstring& method = method_tensor.scalar<tstring>()();
     OP_REQUIRES(
         context, method == "farmhash64",
         errors::InvalidArgument("Unsupported fingerprint method: ", method));
@@ -110,14 +110,14 @@ class FingerprintOp : public OpKernel {
         // and each row contains the fingerprint value of corresponding string.
         // To compute fingerprints of multiple strings, this op fingerprints the
         // buffer containing the string fingerprints.
-        FarmhashFingerprint64(input.flat<string>(), temp.tensor<uint8, 2>());
+        FarmhashFingerprint64(input.flat<tstring>(), temp.tensor<uint8, 2>());
         FarmhashFingerprint64(static_cast<const Tensor&>(temp).shaped<uint8, 2>(
                                   {dim0, dim1 * kFingerprintSize}),
                               output->matrix<uint8>());
       } else {
         // In case dim1 == 1, each string computes into its own fingerprint
         // value. There is no need to fingerprint twice.
-        FarmhashFingerprint64(input.flat<string>(), output->matrix<uint8>());
+        FarmhashFingerprint64(input.flat<tstring>(), output->matrix<uint8>());
       }
     } else {
       auto data = input.bit_casted_shaped<uint8, 2>(

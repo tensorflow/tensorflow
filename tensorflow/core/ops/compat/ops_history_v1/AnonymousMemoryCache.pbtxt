@@ -1,0 +1,12 @@
+op {
+  name: "AnonymousMemoryCache"
+  output_arg {
+    name: "handle"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "deleter"
+    type: DT_VARIANT
+  }
+  is_stateful: true
+}

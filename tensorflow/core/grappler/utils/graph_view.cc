@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/utils/graph_view.h"
 
+#include <utility>
+
 #include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -22,8 +24,10 @@ limitations under the License.
 #include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/graph_view_internal.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -258,32 +262,37 @@ MutationNewNode Mutation::AddNode(NodeDef&& node, Status* status) {
 
 void Mutation::AddMutation(
     MutableNodeView* node,
-    std::function<void(MutableNodeViewDiff*)> mutate_fn) {
+    std::function<bool(MutableNodeViewDiff*)> mutate_fn) {
   DCHECK(node->graph_view_ == graph_view_);
   if (node->update_index_ == internal::kMissingIndex) {
+    MutableNodeViewDiff diff(graph_view_, node->node_index_);
+    // If mutation is a no-op return and do not add it to the `updated_nodes_`.
+    if (!mutate_fn(&diff)) return;
     node->update_index_ = updated_nodes_.size();
-    updated_nodes_.emplace_back(graph_view_, node->node_index_);
-    mutate_fn(&updated_nodes_.back());
-  } else {
-    auto& diff = updated_nodes_[node->update_index_];
-    if (!diff.removed) {
-      mutate_fn(&diff);
-    }
+    updated_nodes_.push_back(std::move(diff));
+  } else if (!removed_nodes_.contains(node->node_index_)) {
+    MutableNodeViewDiff& diff = updated_nodes_[node->update_index_];
+    mutate_fn(&diff);
   }
 }
 
 void Mutation::RemoveNode(MutableNodeView* node) {
-  AddMutation(node, [](MutableNodeViewDiff* diff) {
-    // Clear existing MutableNodeViewDiff as when node is removed no change to
-    // its internal state matter.
-    internal::Reset(diff);
-    internal::SetRemoved(diff, true);
-  });
+  auto& update_index = node->update_index_;
+  if (update_index != internal::kMissingIndex) {
+    if (update_index < updated_nodes_.size() - 1) {
+      graph_view_->nodes_[updated_nodes_.back().node_index].update_index_ =
+          update_index;
+      std::swap(updated_nodes_[update_index], updated_nodes_.back());
+    }
+    updated_nodes_.pop_back();
+    update_index = internal::kMissingIndex;
+  }
+  removed_nodes_.insert(node->node_index_);
 }
 
 void Mutation::UpdateNodeName(MutableNodeView* node, absl::string_view name) {
   AddMutation(node, [name](MutableNodeViewDiff* diff) {
-    internal::UpdateName(diff, name);
+    return internal::UpdateName(diff, name);
   });
 }
 
@@ -294,8 +303,9 @@ void Mutation::UpdateNodeName(const MutationNewNode& node,
 }
 
 void Mutation::UpdateNodeOp(MutableNodeView* node, absl::string_view op) {
-  AddMutation(
-      node, [op](MutableNodeViewDiff* diff) { internal::UpdateOp(diff, op); });
+  AddMutation(node, [op](MutableNodeViewDiff* diff) {
+    return internal::UpdateOp(diff, op);
+  });
 }
 
 void Mutation::UpdateNodeOp(const MutationNewNode& node, absl::string_view op) {
@@ -306,7 +316,7 @@ void Mutation::UpdateNodeOp(const MutationNewNode& node, absl::string_view op) {
 void Mutation::UpdateNodeDevice(MutableNodeView* node,
                                 absl::string_view device) {
   AddMutation(node, [device](MutableNodeViewDiff* diff) {
-    internal::UpdateDevice(diff, device);
+    return internal::UpdateDevice(diff, device);
   });
 }
 
@@ -319,7 +329,7 @@ void Mutation::UpdateNodeDevice(const MutationNewNode& node,
 void Mutation::AddOrUpdateRegularFanin(MutableNodeView* node, int index,
                                        const TensorId& fanin) {
   AddMutation(node, [index, fanin](MutableNodeViewDiff* diff) {
-    internal::AddOrUpdateRegularFanin(diff, index, fanin);
+    return internal::AddOrUpdateRegularFanin(diff, index, fanin);
   });
 }
 
@@ -333,7 +343,7 @@ void Mutation::AddOrUpdateRegularFanin(const MutationNewNode& node, int index,
 
 void Mutation::RemoveRegularFanin(MutableNodeView* node, int index) {
   AddMutation(node, [index](MutableNodeViewDiff* diff) {
-    internal::RemoveRegularFanin(diff, index);
+    return internal::RemoveRegularFanin(diff, index);
   });
 }
 
@@ -350,7 +360,7 @@ void Mutation::AddControllingFanin(MutableNodeView* node,
     const int control_index = it != node->controlling_fanins_index_.end()
                                   ? it->second
                                   : internal::kMissingIndex;
-    internal::AddControllingFanin(diff, control_index, fanin_node_name);
+    return internal::AddControllingFanin(diff, control_index, fanin_node_name);
   });
 }
 
@@ -367,7 +377,8 @@ void Mutation::RemoveControllingFanin(MutableNodeView* node,
     const int control_index = it != node->controlling_fanins_index_.end()
                                   ? it->second
                                   : internal::kMissingIndex;
-    internal::RemoveControllingFanin(diff, control_index, fanin_node_name);
+    return internal::RemoveControllingFanin(diff, control_index,
+                                            fanin_node_name);
   });
 }
 
@@ -381,7 +392,7 @@ void Mutation::AddOrUpdateNodeAttr(MutableNodeView* node,
                                    absl::string_view attr_name,
                                    const AttrValue& attr_value) {
   AddMutation(node, [attr_name, attr_value](MutableNodeViewDiff* diff) {
-    internal::AddOrUpdateAttribute(diff, attr_name, attr_value);
+    return internal::AddOrUpdateAttribute(diff, attr_name, attr_value);
   });
 }
 
@@ -396,7 +407,7 @@ void Mutation::AddOrUpdateNodeAttr(const MutationNewNode& node,
 void Mutation::RemoveNodeAttr(MutableNodeView* node,
                               absl::string_view attr_name) {
   AddMutation(node, [attr_name](MutableNodeViewDiff* diff) {
-    internal::RemoveAttribute(diff, attr_name);
+    return internal::RemoveAttribute(diff, attr_name);
   });
 }
 
@@ -407,8 +418,9 @@ void Mutation::RemoveNodeAttr(const MutationNewNode& node,
 }
 
 void Mutation::ResetInternal() {
-  std::vector<MutableNodeViewDiff>().swap(updated_nodes_);
-  std::vector<MutationNewNodeHolder>().swap(new_nodes_);
+  updated_nodes_.clear();
+  removed_nodes_.clear();
+  new_nodes_.clear();
 }
 
 void Mutation::Reset() {
@@ -469,6 +481,7 @@ MutableGraphView::MutableGraphView(GraphDef* graph, Status* status)
     return;
   }
   AddFaninsInternal(&fanins);
+  mutation_.ResetInternal();
   *status = Status::OK();
 }
 
@@ -591,14 +604,19 @@ Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
     std::vector<RenamedOrOverwrittenNode>* renamed_nodes,
     std::vector<int>* inplace_nodes,
     std::vector<int>* empty_diff_node_indices) {
+  // For all nodes to be removed and renamed, mark their original names as
+  // missing and put associated node index in graph.
   for (const auto& diff : mutation_.updated_nodes_) {
-    // For all nodes to be removed and renamed, mark their original names as
-    // missing and put associated node index in graph.
-    if (diff.removed || diff.update_name) {
+    if (diff.update_name) {
       const int index = diff.node_index;
       const string& node_name = nodes_[index].GetName();
       node_names->emplace(node_name, index);
     }
+  }
+
+  for (int node_index : mutation_.removed_nodes_) {
+    const string& node_name = nodes_[node_index].GetName();
+    node_names->emplace(node_name, node_index);
   }
 
   auto name_conflict = [](const absl::string_view node_name) {
@@ -616,8 +634,6 @@ Status MutableGraphView::GetNodeNamesAndPartitionUpdatedNodes(
     auto& diff = mutation_.updated_nodes_[i];
     if (internal::IsEmpty(&diff)) {
       empty_diff_node_indices->emplace_back(diff.node_index);
-      continue;
-    } else if (diff.removed) {
       continue;
     }
     // Get name of updated node after potential mutation.
@@ -699,16 +715,15 @@ Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
         // Check all fanouts of a single port.
         MutableNodeView* fanout_view = regular_fanout.node_view();
         if (fanout_view->update_index_ == internal::kMissingIndex) {
-          if (!overwritten_nodes[fanout_view->node_index_]) {
+          if (mutation_.removed_nodes_.contains(fanout_view->node_index_)) {
+            // Fanout node will be removed, this can be ignored.
+            continue;
+          } else if (!overwritten_nodes[fanout_view->node_index_]) {
             // Fanout is not updated or removed/overwritten.
             return bad_fanout(fanout_view->GetName(), node_name_state.first);
           }
         } else {
           auto& diff = mutation_.updated_nodes_[fanout_view->update_index_];
-          if (diff.removed) {
-            // Fanout node will be removed, this can be ignored.
-            continue;
-          }
           const int last_index = fanout_view->NumRegularFanins() -
                                  diff.num_regular_inputs_to_remove - 1;
           if (regular_fanout.index() > last_index) {
@@ -726,16 +741,15 @@ Status MutableGraphView::RemovedOrMissingNodeFanoutsWellFormed(
     for (const auto& controlled_fanout : node_view.GetControlledFanouts()) {
       MutableNodeView* fanout_view = controlled_fanout.node_view();
       if (fanout_view->update_index_ == internal::kMissingIndex) {
-        if (!overwritten_nodes[fanout_view->node_index_]) {
+        if (mutation_.removed_nodes_.contains(fanout_view->node_index_)) {
+          // Fanout node will be removed, this can be ignored.
+          continue;
+        } else if (!overwritten_nodes[fanout_view->node_index_]) {
           // Fanout is not updated or removed/overwritten.
           return bad_fanout(fanout_view->GetName(), node_name_state.first);
         }
       } else {
         auto& diff = mutation_.updated_nodes_[fanout_view->update_index_];
-        if (diff.removed) {
-          // Fanout node will be removed, this can be ignored.
-          continue;
-        }
         // Check if controlling fanin is removed.
         if (diff.controlling_inputs_to_remove.find(
                 controlled_fanout.fanin_index_) ==
@@ -789,7 +803,7 @@ Status MutableGraphView::CheckNodeNamesAndFanins(
 Status MutableGraphView::CheckKernelRegisteredForNodes() {
   Status s;
   for (auto& diff : mutation_.updated_nodes_) {
-    if (internal::IsEmpty(&diff) || diff.removed) {
+    if (internal::IsEmpty(&diff)) {
       continue;
     }
 
@@ -797,35 +811,38 @@ Status MutableGraphView::CheckKernelRegisteredForNodes() {
     diff.processed_attrs =
         AttrValueMap(node->attr().begin(), node->attr().end());
     for (const auto& attr_to_remove : diff.attrs_to_remove) {
-      diff.processed_attrs.erase(attr_to_remove);
+      (*diff.processed_attrs).erase(attr_to_remove);
     }
     for (const auto& attr_to_add : diff.attrs_to_add) {
-      gtl::InsertOrUpdate(&diff.processed_attrs, attr_to_add.first,
+      gtl::InsertOrUpdate(&(*diff.processed_attrs), attr_to_add.first,
                           attr_to_add.second);
     }
     const string& device = diff.update_device ? diff.device : node->device();
-    if (device.empty()) {
+    DeviceNameUtils::ParsedName name;
+    if (device.empty() || !DeviceNameUtils::ParseFullName(device, &name) ||
+        !name.has_type) {
       continue;
     }
     s = IsKernelRegisteredForNode(diff.update_name ? diff.name : node->name(),
                                   node->has_experimental_debug_info(),
                                   node->experimental_debug_info(),
                                   diff.update_op ? diff.op : node->op(), device,
-                                  AttrSlice(&diff.processed_attrs));
+                                  AttrSlice(&(*diff.processed_attrs)));
     if (!s.ok()) {
-      return errors::InvalidArgument(kMutableGraphViewApplyError,
-                                     s.error_message());
+      LOG(WARNING) << s.error_message();
     }
   }
   for (const auto& new_node_holder : mutation_.new_nodes_) {
     const auto& new_node_def = new_node_holder.node;
-    if (new_node_def.device().empty()) {
+    DeviceNameUtils::ParsedName name;
+    if (new_node_def.device().empty() ||
+        !DeviceNameUtils::ParseFullName(new_node_def.device(), &name) ||
+        !name.has_type) {
       continue;
     }
     s = IsKernelRegisteredForNode(new_node_def);
     if (!s.ok()) {
-      return errors::InvalidArgument(kMutableGraphViewApplyError,
-                                     s.error_message());
+      LOG(WARNING) << s.error_message();
     }
   }
   return Status::OK();
@@ -903,10 +920,8 @@ void MutableGraphView::FixRenamedNodes(
           nodes_[renamed.overwritten_node_index_];
       ReplaceNodeFanouts(&renamed_node, &node_to_overwrite);
       node_index_by_name_.erase(node_to_overwrite.GetName());
-      if (node_to_overwrite.update_index_ != internal::kMissingIndex &&
-          mutation_.updated_nodes_[node_to_overwrite.update_index_].removed) {
-        (*overwritten_name_removed_nodes)[node_to_overwrite.update_index_] =
-            true;
+      if (mutation_.removed_nodes_.contains(node_to_overwrite.node_index_)) {
+        (*overwritten_name_removed_nodes)[node_to_overwrite.node_index_] = true;
       }
     } else {
       // No existing fanouts.
@@ -939,15 +954,7 @@ void MutableGraphView::AddNewNodes(
       node_def->mutable_device()->swap(*new_node.node.mutable_device());
       node_def->mutable_input()->Clear();
       node_def->mutable_attr()->swap(*new_node.node.mutable_attr());
-      if (node_view.update_index_ != internal::kMissingIndex) {
-        // The only case for this to occur is if a node is explicitly marked for
-        // removal. In that case, unlink it from it's associated
-        // MutableNodeViewDiff.
-        mutation_.updated_nodes_[node_view.update_index_].node_index =
-            internal::kMissingIndex;
-        mutation_.updated_nodes_[node_view.update_index_].removed = false;
-        node_view.update_index_ = internal::kMissingIndex;
-      }
+      mutation_.removed_nodes_.erase(node_index);
     } else {
       // New node.
       auto* new_node_def = graph_->add_node();
@@ -1169,8 +1176,7 @@ inline void MutableGraphView::AddControllingFaninInternal(
 
 void MutableGraphView::ApplyNodeUpdates() {
   for (auto& diff : mutation_.updated_nodes_) {
-    if (diff.removed || diff.node_index == internal::kMissingIndex ||
-        internal::IsEmpty(&diff)) {
+    if (internal::IsEmpty(&diff)) {
       continue;
     }
     MutableNodeView& node_view = nodes_[diff.node_index];
@@ -1187,7 +1193,7 @@ void MutableGraphView::ApplyNodeUpdates() {
     if (diff.update_device) {
       node_def->set_device(diff.device);
     }
-    node_def->mutable_attr()->swap(diff.processed_attrs);
+    node_def->mutable_attr()->swap((*diff.processed_attrs));
 
     // Updated fanins. Only one of `regular_inputs_to_remove_` or
     // `regular_inputs_to_add_` can be set.
@@ -1299,15 +1305,12 @@ void MutableGraphView::RemoveNodesInternal(
   std::vector<int> node_indices_to_remove;
   node_indices_to_remove.reserve(mutation_.updated_nodes_.size() +
                                  overwritten_nodes.size());
-  for (int i = 0; i < mutation_.updated_nodes_.size(); ++i) {
-    const auto& diff = mutation_.updated_nodes_[i];
-    if (diff.removed) {
-      auto& node = nodes_[diff.node_index];
-      RemoveAllFaninFanoutInternal(&node);
-      node_indices_to_remove.push_back(diff.node_index);
-      if (!overwritten_name_removed_nodes[i]) {
-        node_index_by_name_.erase(node.GetName());
-      }
+  for (int node_index : mutation_.removed_nodes_) {
+    auto& node = nodes_[node_index];
+    RemoveAllFaninFanoutInternal(&node);
+    node_indices_to_remove.push_back(node_index);
+    if (!overwritten_name_removed_nodes[node_index]) {
+      node_index_by_name_.erase(node.GetName());
     }
   }
   node_indices_to_remove.insert(node_indices_to_remove.end(),
@@ -1359,7 +1362,12 @@ void MutableGraphView::RemoveNodesInternal(
           removed_node_index;
     }
     nodes_.pop_back();
-    graph()->mutable_node()->RemoveLast();
+  }
+  if (!sorted_node_indices_to_remove.empty()) {
+    const int current_size = graph()->node_size();
+    const int num_to_remove = sorted_node_indices_to_remove.size();
+    graph()->mutable_node()->DeleteSubrange(current_size - num_to_remove,
+                                            num_to_remove);
   }
 }
 
@@ -1371,7 +1379,7 @@ const char kMutableGraphViewSortTopologicallyError[] =
 
 // TraversalState is an enum representing the state of a node when it is being
 // traversed via DFS.
-enum TraversalState : uint8_t { NOT_VISITED, PENDING, PROCESSING, PROCESSED };
+enum TraversalState : uint8_t { PENDING, PROCESSING, PROCESSED };
 
 // RecursionStackState is an enum representing the recursion stack state
 // when using DFS iteratively. `ENTER` is the state representing entering into
@@ -1426,7 +1434,7 @@ Status MutableGraphView::SortTopologically(
 
   // Reversed colored post-order DFS traversal. This does not fail on cycles,
   // but there are no guarantees on ordering within a cycle.
-  std::vector<TraversalState> traversal_state(num_nodes, NOT_VISITED);
+  std::vector<TraversalState> traversal_state(num_nodes, PENDING);
   int curr_pos = num_nodes - 1;
   std::vector<int> order(num_nodes);
   std::vector<Edge> edges_in_cycle;
@@ -1436,17 +1444,17 @@ Status MutableGraphView::SortTopologically(
                              std::vector<RecursionStackEntry>* recursion_stack,
                              std::vector<TraversalState>* traversal_state,
                              std::vector<Edge>* edges_in_cycle) {
+    // Ignore NextIteration -> Merge connections to break control flow cycles.
+    if (IsNextIteration(graph_->node(curr_index)) &&
+        IsMerge(graph_->node(fanout_index))) {
+      return;
+    }
     auto& fanout_traversal_state = (*traversal_state)[fanout_index];
     if (fanout_traversal_state == PROCESSING) {
-      // Ignore NextIteration -> Merge cycles.
-      if (!IsNextIteration(graph_->node(curr_index)) ||
-          !IsMerge(graph_->node(fanout_index))) {
-        // Cycle detected.
-        edges_in_cycle->push_back({curr_index, fanout_index});
-      }
-    } else if (fanout_traversal_state == NOT_VISITED) {
+      // Cycle detected.
+      edges_in_cycle->push_back({curr_index, fanout_index});
+    } else if (fanout_traversal_state == PENDING) {
       // Unvisited node, simply add to stack for future traversal.
-      fanout_traversal_state = PENDING;
       recursion_stack->push_back({fanout_index, ENTER});
     }
   };
@@ -1489,19 +1497,18 @@ Status MutableGraphView::SortTopologically(
         // Add the root to stack to start the traversal.
         const int root_index = root_node_view.node_index_;
         auto& root_traversal_state = (*traversal_state)[root_index];
-        if (root_traversal_state == NOT_VISITED) {
-          root_traversal_state = PENDING;
+        if (root_traversal_state == PENDING) {
           recursion_stack.push_back({root_index, ENTER});
         }
         while (!recursion_stack.empty()) {
-          auto curr_pair = recursion_stack.back();
+          auto curr_entry = recursion_stack.back();
           recursion_stack.pop_back();
-          const int curr_index = curr_pair.node_index;
+          const int curr_index = curr_entry.node_index;
           auto& curr_traversal_state = (*traversal_state)[curr_index];
           if (curr_traversal_state == PROCESSED) {
             // Node already processed which can be ignored.
             continue;
-          } else if (curr_pair.recursion_state == EXIT) {
+          } else if (curr_entry.recursion_state == EXIT) {
             // Node from recursion stack where all fanouts were visited.
             // Instead of adding node index to a vector, simply set what its
             // index would be, so there will not be a need for inversion later
@@ -1522,7 +1529,8 @@ Status MutableGraphView::SortTopologically(
 
   // Determine sources to start DFS (nodes with no inputs) and unique fanout
   // nodes.
-  for (const auto& node : nodes_) {
+  for (int i = num_nodes - 1; i >= 0; --i) {
+    auto& node = nodes_[i];
     if (node.NumRegularFanins() + node.NumControllingFanins() == 0) {
       reversed_postorder_dfs(node, &order, &traversal_state, &curr_pos,
                              &edges_in_cycle);
@@ -1645,8 +1653,7 @@ Status MutableGraphView::ApplyMutationInternal() {
   // Node name and associated fanouts.
   absl::flat_hash_map<string, NodeViewFanouts> renamed_fanouts;
   // Removed nodes where name was overwritten by a renamed node.
-  std::vector<bool> overwritten_name_removed_nodes(
-      mutation_.updated_nodes_.size());
+  std::vector<bool> overwritten_name_removed_nodes(nodes_.size());
   // Fix renaming of existing nodes by swapping fanouts and rehashing names.
   // This will also overwrite removed or unmodified nodes.
   FixRenamedNodes(&renamed_nodes, &renamed_fanouts,

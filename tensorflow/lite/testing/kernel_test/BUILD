@@ -1,14 +1,14 @@
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_binary",
+    "tf_cc_test",
+)
+
 package(
     default_visibility = [
         "//visibility:public",
     ],
     licenses = ["notice"],  # Apache 2.0
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_binary",
-    "tf_cc_test",
 )
 
 cc_library(
@@ -37,9 +37,6 @@ tf_cc_test(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
-    ],
-    tags = [
-        "no_oss",
     ],
     deps = [
         ":util",
@@ -87,9 +84,6 @@ cc_test(
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
     ],
-    tags = [
-        "no_oss",
-    ],
     deps = [
         ":input_generator",
         "@com_google_googletest//:gtest_main",
@@ -113,9 +107,6 @@ tf_cc_test(
     srcs = ["diff_analyzer_test.cc"],
     data = [
         "//tensorflow/lite:testdata/test_input.csv",
-    ],
-    tags = [
-        "no_oss",
     ],
     deps = [
         ":diff_analyzer",

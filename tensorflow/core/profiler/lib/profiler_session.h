@@ -33,7 +33,8 @@ class ProfilerSession {
  public:
   // Creates and ProfilerSession and starts profiling.
   static std::unique_ptr<ProfilerSession> Create(
-      ProfilerContext* const context);
+      const profiler::ProfilerOptions& options);
+  static std::unique_ptr<ProfilerSession> Create();
 
   // Deletes an exsiting Profiler and enables starting a new one.
   ~ProfilerSession();
@@ -45,9 +46,9 @@ class ProfilerSession {
 
  private:
   // Constructs an instance of the class and starts profiling
-  explicit ProfilerSession(ProfilerContext* const context);
+  explicit ProfilerSession(const profiler::ProfilerOptions& options);
 
-  // Profiler is neither copyable or movable.
+  // ProfilerSession is neither copyable or movable.
   ProfilerSession(const ProfilerSession&) = delete;
   ProfilerSession& operator=(const ProfilerSession&) = delete;
 

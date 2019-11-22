@@ -207,8 +207,8 @@ bool CheckErrorStats(const ErrorStats& error_stats, int accumulation_depth) {
     // compromise between something that works and something that's simple
     // enough code that doesn't feel too ad-hoc. As above in the float path,
     // abs_mean_diff is subject to a stricter requirement as it is a bias.
-    tolerated_relative_mean_abs_diff = std::sqrt(inverse_size);
-    tolerated_relative_abs_mean_diff = inverse_size;
+    tolerated_relative_mean_abs_diff = std::sqrt(inverse_size) * 0.5;
+    tolerated_relative_abs_mean_diff = inverse_size * 2.;
   }
 
   double tolerated_max_abs_diff =
@@ -363,7 +363,7 @@ void TestSomeGemm(int rows, int depth, int cols,
                   const std::vector<DstScalar>& golden) {
   CpuBackendContext cpu_backend_context;
   std::default_random_engine random_engine;
-  cpu_backend_context.set_max_num_threads(1 + (random_engine() % 8));
+  cpu_backend_context.SetMaxNumThreads(1 + (random_engine() % 8));
 
   const bool use_golden = !golden.empty();
 
@@ -416,8 +416,7 @@ void TestSomeGemm(int rows, int depth, int cols,
   }
 
   GemmParams<AccumScalar, DstScalar> params;
-  if (use_golden || !std::is_floating_point<AccumScalar>::value ||
-      (random_engine() % 2)) {
+  if (use_golden || (random_engine() % 2)) {
     // cpu_backend_gemm supports bias=null only in the float path. Test that
     // in 50% of float testcases.
     params.bias = bias_data.data();

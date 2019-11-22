@@ -1,8 +1,8 @@
+load("//tensorflow:tensorflow.bzl", "py_test")
+
 package(
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
     name = "all_files",
@@ -19,10 +19,11 @@ filegroup(
 py_library(
     name = "core",
     srcs = [
+        "ag_ctx.py",
         "config.py",
         "config_lib.py",
         "converter.py",
-        "function_wrapping.py",
+        "function_wrappers.py",
         "naming.py",
         "unsupported_features_checker.py",
     ],
@@ -58,6 +59,7 @@ py_library(
 py_test(
     name = "converter_test",
     srcs = ["converter_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -67,8 +69,9 @@ py_test(
 )
 
 py_test(
-    name = "function_wrapping_test",
-    srcs = ["function_wrapping_test.py"],
+    name = "function_wrappers_test",
+    srcs = ["function_wrappers_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":core",
@@ -79,6 +82,7 @@ py_test(
 py_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":core",

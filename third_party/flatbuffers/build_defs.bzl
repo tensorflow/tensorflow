@@ -37,7 +37,7 @@ def flatbuffer_library_public(
       flatc_args: Optional, list of additional arguments to pass to flatc.
       reflection_name: Optional, if set this will generate the flatbuffer
         reflection binaries for the schemas.
-      reflection_visiblity: The visibility of the generated reflection Fileset.
+      reflection_visibility: The visibility of the generated reflection Fileset.
       output_to_bindir: Passed to genrule for output to bin directory.
     """
     include_paths_cmd = ["-I %s" % (s) for s in include_paths]

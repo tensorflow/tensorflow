@@ -111,12 +111,12 @@ TEST(TensorUtil, DeepCopy) {
 
   // Test string deep copy
   Tensor str1(DT_STRING, TensorShape({2}));
-  str1.flat<string>()(0) = "foo1";
-  str1.flat<string>()(1) = "foo2";
+  str1.flat<tstring>()(0) = "foo1";
+  str1.flat<tstring>()(1) = "foo2";
   Tensor str2 = tensor::DeepCopy(str1);
-  str2.flat<string>()(0) = "bar1";
-  str2.flat<string>()(1) = "bar2";
-  EXPECT_NE(str2.flat<string>()(0), str1.flat<string>()(0));
+  str2.flat<tstring>()(0) = "bar1";
+  str2.flat<tstring>()(1) = "bar2";
+  EXPECT_NE(str2.flat<tstring>()(0), str1.flat<tstring>()(0));
 }
 
 TEST(TensorUtil, DeepCopySlice) {
@@ -151,7 +151,7 @@ TEST(TensorUtil, DeepCopySlice) {
 
 TEST(TensorUtil, DeepCopySliceString) {
   Tensor x(DT_STRING, TensorShape({10}));
-  x.flat<string>().setConstant("hello");
+  x.flat<tstring>().setConstant("hello");
 
   // Slice 'x' -- y still refers to the same buffer.
   Tensor y = x.Slice(3, 7);
@@ -160,7 +160,7 @@ TEST(TensorUtil, DeepCopySliceString) {
   Tensor z = tensor::DeepCopy(y);
 
   // Set x to be different.
-  x.flat<string>().setConstant("goodbye");
+  x.flat<tstring>().setConstant("goodbye");
 
   EXPECT_EQ(TensorShape({10}), x.shape());
   EXPECT_EQ(TensorShape({4}), y.shape());
@@ -171,11 +171,11 @@ TEST(TensorUtil, DeepCopySliceString) {
 
   // x and y should now all be 'goodbye', but z should be 'hello'.
   for (int i = 0; i < 10; ++i) {
-    EXPECT_EQ("goodbye", x.flat<string>()(i));
+    EXPECT_EQ("goodbye", x.flat<tstring>()(i));
   }
   for (int i = 0; i < 4; ++i) {
-    EXPECT_EQ("goodbye", y.unaligned_flat<string>()(i));
-    EXPECT_EQ("hello", z.flat<string>()(i));
+    EXPECT_EQ("goodbye", y.unaligned_flat<tstring>()(i));
+    EXPECT_EQ("hello", z.flat<tstring>()(i));
   }
 }
 
@@ -202,11 +202,12 @@ TEST(TensorUtil, DeepCopySliceVariant) {
   // Each element of x and y should now be a DT_STRING Tensor containing "foo",
   // but each element of z should be a DT_FLOAT tensor containing 42.0.
   for (int i = 0; i < 10; ++i) {
-    EXPECT_EQ("foo", x.flat<Variant>()(i).get<Tensor>()->scalar<string>()());
+    EXPECT_EQ("foo", x.flat<Variant>()(i).get<Tensor>()->scalar<tstring>()());
   }
   for (int i = 0; i < 4; ++i) {
-    EXPECT_EQ("foo",
-              y.unaligned_flat<Variant>()(i).get<Tensor>()->scalar<string>()());
+    EXPECT_EQ(
+        "foo",
+        y.unaligned_flat<Variant>()(i).get<Tensor>()->scalar<tstring>()());
     EXPECT_EQ(42.0, z.flat<Variant>()(i).get<Tensor>()->scalar<float>()());
   }
 }
@@ -271,7 +272,7 @@ TEST(TensorUtil, Split) {
 TEST(TensorUtil, ConcatSplitStrings) {
   Tensor x(DT_STRING, TensorShape({4, 3}));
   for (int i = 0; i < 4 * 3; ++i) {
-    x.flat<string>()(i) = strings::StrCat("foo_", i);
+    x.flat<tstring>()(i) = strings::StrCat("foo_", i);
   }
 
   std::vector<Tensor> split;
@@ -280,15 +281,15 @@ TEST(TensorUtil, ConcatSplitStrings) {
   TF_ASSERT_OK(tensor::Concat(split, &x_round_tripped));
   ASSERT_EQ(x.shape(), x_round_tripped.shape());
   for (int i = 0; i < 4 * 3; ++i) {
-    EXPECT_EQ(x.flat<string>()(i), x_round_tripped.flat<string>()(i));
+    EXPECT_EQ(x.flat<tstring>()(i), x_round_tripped.flat<tstring>()(i));
   }
 
   // Ensure that no memory is being shared between 'x' and 'x_round_tripped'.
   for (int i = 0; i < 4 * 3; ++i) {
-    x_round_tripped.flat<string>()(i) = strings::StrCat("bar_", i);
+    x_round_tripped.flat<tstring>()(i) = strings::StrCat("bar_", i);
   }
   for (int i = 0; i < 4 * 3; ++i) {
-    EXPECT_NE(x.flat<string>()(i), x_round_tripped.flat<string>()(i));
+    EXPECT_NE(x.flat<tstring>()(i), x_round_tripped.flat<tstring>()(i));
   }
 }
 
@@ -495,18 +496,31 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
 }
 
 template <typename T>
-std::vector<T> VectorWithConstantTail(int size, int tail_length) {
+void VectorWithConstantTail(int size, int tail_length, std::vector<T>* v) {
   CHECK_LE(tail_length, size);
-  std::vector<T> v(size, T(0));
-  for (int i = 0; i < size - tail_length; ++i) {
-    v[i] = T(i + 1);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    T vi = (i >= size - tail_length) ? T() : T(i);
+    v->push_back(vi);
   }
-  return v;
+}
+
+template <>
+void VectorWithConstantTail(int size, int tail_length,
+                            std::vector<std::complex<float>>* v) {
+  CHECK_LE(tail_length, size);
+  v->clear();
+  for (int i = 0; i < size; ++i) {
+    std::complex<float> vi(
+        0.0f, (i >= (size - tail_length)) ? 0.f : static_cast<float>(i));
+    v->push_back(vi);
+  }
 }
 
 template <typename T>
 TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
-  auto values = VectorWithConstantTail<T>(size, tail_length);
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
   Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
   std::copy(values.begin(), values.end(), tensor.flat<T>().data());
   TensorProto tensor_proto;
@@ -516,7 +530,8 @@ TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
 
 template <typename T>
 TensorProto CreateAsProtoField(int size, int tail_length) {
-  auto values = VectorWithConstantTail<T>(size, tail_length);
+  std::vector<T> values;
+  VectorWithConstantTail<T>(size, tail_length, &values);
   Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
   std::copy(values.begin(), values.end(), tensor.flat<T>().data());
   TensorProto tensor_proto;

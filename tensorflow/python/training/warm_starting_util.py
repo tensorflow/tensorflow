@@ -50,7 +50,7 @@ class VocabInfo(
   See `tf.estimator.WarmStartSettings` for examples of using
   VocabInfo to warm-start.
 
-  Attributes:
+  Args:
     new_vocab: [Required] A path to the new vocabulary file (used with the model
       to be trained).
     new_vocab_size: [Required] An integer indicating how many entries of the new
@@ -70,8 +70,14 @@ class VocabInfo(
       linear weights for binary classification / regression).  An axis of 1
       could be used for warm-starting output layers with class vocabularies.
 
-      For example:
+  Returns:
+    A `VocabInfo` which represents the vocabulary information for warm-starting.
 
+  Raises:
+    ValueError: `axis` is neither 0 or 1.
+
+      Example Usage:
+```python
       embeddings_vocab_info = tf.VocabInfo(
           new_vocab='embeddings_vocab',
           new_vocab_size=100,
@@ -100,7 +106,8 @@ class VocabInfo(
           backup_initializer=tf.compat.v1.zeros_initializer(),
           axis=0)
 
-      Currently, only axis=0 and axis=1 are supported.
+      #Currently, only axis=0 and axis=1 are supported.
+  ```
   """
 
   def __new__(cls,
@@ -249,7 +256,6 @@ def _warm_start_var_with_vocab(var,
     # Assume tensor name remains the same.
     prev_tensor_name = _infer_var_name(var)
 
-  # TODO(eddz): Fix functionality for rank-1 Variables (like FC biases).
   total_v_first_axis = sum(v.get_shape().as_list()[0] for v in var)
   for v in var:
     v_shape = v.get_shape().as_list()
@@ -329,14 +335,16 @@ def _get_grouped_variables(vars_to_warm_start):
     ValueError: If vars_to_warm_start is not a string, `None`, a list of
       `Variables`, or a list of strings.
   """
-  if isinstance(vars_to_warm_start, str) or vars_to_warm_start is None:
+  # TODO(b/143899805): Remove unicode checks when deprecating Python2.
+  if isinstance(vars_to_warm_start,
+                six.string_types) or vars_to_warm_start is None:
     # Both vars_to_warm_start = '.*' and vars_to_warm_start = None will match
     # everything (in TRAINABLE_VARIABLES) here.
     logging.info("Warm-starting variables only in TRAINABLE_VARIABLES.")
     list_of_vars = ops.get_collection(
         ops.GraphKeys.TRAINABLE_VARIABLES, scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
-    if all(isinstance(v, str) for v in vars_to_warm_start):
+    if all(isinstance(v, six.string_types) for v in vars_to_warm_start):
       list_of_vars = []
       for v in vars_to_warm_start:
         list_of_vars += ops.get_collection(

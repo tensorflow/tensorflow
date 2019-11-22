@@ -1,6 +1,4 @@
 op {
   graph_op_name: "QuantizeAndDequantizeV2"
-  endpoint {
-    name: "quantization.quantize_and_dequantize"
-  }
+  visibility: HIDDEN
 }

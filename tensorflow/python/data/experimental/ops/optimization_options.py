@@ -20,6 +20,9 @@ from __future__ import print_function
 from tensorflow.python.data.util import options
 from tensorflow.python.util.tf_export import tf_export
 
+# Do not modify.
+_ENABLE_AUTOTUNE_BUFFERS_BY_DEFAULT = False
+
 
 @tf_export("data.experimental.MapVectorizationOptions")
 class MapVectorizationOptions(options.OptionsBase):
@@ -82,6 +85,21 @@ class OptimizationOptions(options.OptionsBase):
       docstring=
       "Whether to automatically tune performance knobs. If None, defaults to "
       "True.")
+
+  autotune_algorithm = options.create_option(
+      name="autotune_algorithm",
+      ty=int,
+      docstring=
+      "When autotuning is enabled (through `autotune`), identifies the "
+      "algorithm to use for the autotuning optimization.")
+
+  autotune_buffers = options.create_option(
+      name="autotune_buffers",
+      ty=bool,
+      docstring=
+      "When autotuning is enabled (through `autotune`), determines whether to "
+      "also autotune buffer sizes for datasets with parallelism. If None,"
+      " defaults to False.")
 
   autotune_cpu_budget = options.create_option(
       name="autotune_cpu_budget",
@@ -198,6 +216,13 @@ class OptimizationOptions(options.OptionsBase):
 
     if self.map_vectorization is not None:
       result.update(self.map_vectorization._static_optimizations())  # pylint: disable=protected-access
+
+    # The default setting for autotune_buffers is based on
+    # _ENABLE_AUTOTUNE_BUFFERS_BY_DEFAULT
+    autotune_buffers = self.autotune_buffers or (
+        self.autotune_buffers is None and _ENABLE_AUTOTUNE_BUFFERS_BY_DEFAULT)
+    if self.autotune is not False and autotune_buffers:  # pylint: disable=g-bool-id-comparison
+      result.add("inject_prefetch")
     return sorted(list(result))
 
   def _static_optimization_configs(self):

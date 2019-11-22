@@ -37,11 +37,17 @@ def _def_file_filter_configure_impl(repository_ctx):
         auto_configure_fail("Couldn't find undname.exe under %s, please check your VC installation and set BAZEL_VC environment variable correctly." % vc_path)
     undname_bin_path = undname.replace("\\", "\\\\")
 
+    dumpbin = find_msvc_tool(repository_ctx, vc_path, "dumpbin.exe")
+    if dumpbin == None:
+        auto_configure_fail("Couldn't find dumpbin.exe under %s, please check your VC installation and set BAZEL_VC environment variable correctly." % vc_path)
+    dumpbin_bin_path = dumpbin.replace("\\", "\\\\")
+
     repository_ctx.template(
         "def_file_filter.py",
         Label("//tensorflow/tools/def_file_filter:def_file_filter.py.tpl"),
         {
             "%{undname_bin_path}": undname_bin_path,
+            "%{dumpbin_bin_path}": dumpbin_bin_path,
         },
     )
     repository_ctx.symlink(Label("//tensorflow/tools/def_file_filter:BUILD.tpl"), "BUILD")

@@ -46,14 +46,15 @@ enum class OperationType {
   DEPTHWISE_CONVOLUTION,
   DIV,
   FULLY_CONNECTED,
+  HARD_SWISH,
   LOG,
   LSTM,
   MAX_UNPOOLING_2D,
   MUL,
   MULTIPLY_SCALAR,
+  PAD,
   POOLING_2D,
   POW,
-  PAD,
   PRELU,
   RELU,
   RESHAPE,
@@ -62,13 +63,14 @@ enum class OperationType {
   SIGMOID,
   SIN,
   SLICE,
-  SOFT_MAX,
+  SOFTMAX,
   SPACE_TO_BATCH,
   SQRT,
   SQUARE,
   SQUARED_DIFF,
   SUB,
   TANH,
+  TRANSPOSE,
   UPSAMPLE_2D,
 };
 
@@ -238,7 +240,7 @@ struct PReLUAttributes {
       alpha;
 };
 
-struct SoftMaxAttributes {
+struct SoftmaxAttributes {
   Axis axis = Axis::UNKNOWN;
 };
 
@@ -287,8 +289,8 @@ enum class PaddingContentType {
 struct PadAttributes {
   PaddingContentType type = PaddingContentType::ZEROS;
 
-  HWC prepended;
-  HWC appended;
+  BHWC prepended;
+  BHWC appended;
 };
 
 // @return shape of a tensor after Pad operation is applied to the given input.
@@ -301,11 +303,11 @@ struct ConstTensorAttributes {
 // Simple slicing without advanced support for shrinking, reverse slicing etc.
 struct SliceAttributes {
   // Specifies start and end dimensions for slicing.
-  HWC starts;
-  HWC ends;
+  BHWC starts;
+  BHWC ends;
 
   // Stride should be >= 1.
-  HWC strides;
+  BHWC strides;
 };
 
 // @return shape of a tensor after Slice2D operation is applied to the given
@@ -330,6 +332,15 @@ BHWC CalculateOutputShape(const BHWC& input,
 struct ReshapeAttributes {
   BHWC new_shape;
 };
+
+struct TransposeAttributes {
+  // A permutation of the dimensions of input tensor
+  BHWC perm;
+};
+
+// @return shape of a tensor after Transpose operation is applied to
+// the given input.
+BHWC CalculateOutputShape(const BHWC& input, const TransposeAttributes& attr);
 
 }  // namespace gpu
 }  // namespace tflite

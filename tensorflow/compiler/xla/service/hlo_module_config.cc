@@ -33,6 +33,9 @@ HloModuleConfig::HloModuleConfig(const ProgramShape& program_shape,
     : entry_computation_layout_(
           ComputationLayout(program_shape, ignore_layouts)) {}
 
+HloModuleConfig::HloModuleConfig(ComputationLayout entry_computation_layout)
+    : entry_computation_layout_(std::move(entry_computation_layout)) {}
+
 void HloModuleConfig::SetDefaultComputationLayout(
     const ProgramShape& program_shape) {
   entry_computation_layout_ = ComputationLayout(program_shape);
@@ -61,6 +64,7 @@ string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::intra_op_parallelism_threads=",
               intra_op_parallelism_threads());
   }
+  StrAppend(&key, "::alias_passthrough_params=", alias_passthrough_params_);
   return key;
 }
 

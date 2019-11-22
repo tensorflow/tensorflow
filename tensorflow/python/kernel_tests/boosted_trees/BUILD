@@ -1,12 +1,12 @@
 # Description:
 #   Kernel tests for Boosted Trees.
 
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
+
 package(
     default_visibility = ["//tensorflow:internal"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 filegroup(
     name = "all_files",

@@ -22,7 +22,7 @@ import java.util.List;
  * Driver for {@link Graph} execution.
  *
  * <p>A {@code Session} instance encapsulates the environment in which {@link Operation}s in a
- * {@link Graph} are executed to compute {@link Tensor}s. For example:
+ * {@link Graph} are executed to compute {@link Tensor Tensors}. For example:
  *
  * <pre>{@code
  * // Let's say graph is an instance of the Graph class
@@ -109,12 +109,13 @@ public final class Session implements AutoCloseable {
   }
 
   /**
-   * Run {@link Operation}s and evaluate {@link Tensor}s.
+   * Run {@link Operation}s and evaluate {@link Tensor Tensors}.
    *
    * <p>A Runner runs the necessary graph fragments to execute every {@link Operation} required to
-   * evaluate the {@link Tensor}s to fetch. The {@link #feed(String,int,Tensor)} call allows callers
-   * to override the value of {@link Tensor}s in the graph by substituting the provided {@link
-   * Tensor}s for the outputs of the operations provided to {@link #feed(String,int,Tensor)}.
+   * evaluate the {@link Tensor Tensors} to fetch. The {@link #feed(String,int,Tensor)} call allows
+   * callers to override the value of {@link Tensor Tensors} in the graph by substituting the
+   * provided {@link Tensor Tensors} for the outputs of the operations provided to {@link
+   * #feed(String,int,Tensor)}.
    */
   public final class Runner {
     /**
@@ -201,7 +202,8 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor
+     * Tensors}.
      */
     public Runner addTarget(String operation) {
       GraphOperation op = operationByName(operation);
@@ -212,9 +214,10 @@ public final class Session implements AutoCloseable {
     }
 
     /**
-     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor}s.
+     * Make {@link #run()} execute {@code operation}, but not return any evaluated {@link Tensor
+     * Tensors}.
      *
-     * @throws execption if the operation is not a {@link GraphOperation}
+     * @throws IllegalArgumentException if the operation is not a {@link GraphOperation}
      */
     public Runner addTarget(Operation operation) {
       if (!(operation instanceof GraphOperation)) {
@@ -226,9 +229,10 @@ public final class Session implements AutoCloseable {
       targets.add((GraphOperation) operation);
       return this;
     }
-    
+
     /**
-     * Make {@link #run()} execute {@code operand}, but not return any evaluated {@link Tensor}s.
+     * Make {@link #run} execute {@code operand}, but not return any evaluated {@link Tensor
+     * Tensors}.
      */
     public Runner addTarget(Operand<?> operand) {
       return addTarget(operand.asOutput().op());
@@ -256,8 +260,8 @@ public final class Session implements AutoCloseable {
     /**
      * Execute the graph fragments necessary to compute all requested fetches.
      *
-     * <p><b>WARNING:</b> The caller assumes ownership of all returned {@link Tensor}s, i.e., the
-     * caller must call {@link Tensor#close()} on all elements of the returned list to free up
+     * <p><b>WARNING:</b> The caller assumes ownership of all returned {@link Tensor Tensors}, i.e.,
+     * the caller must call {@link Tensor#close} on all elements of the returned list to free up
      * resources.
      *
      * <p>TODO(ashankar): Reconsider the return type here. Two things in particular: (a) Make it
@@ -458,7 +462,7 @@ public final class Session implements AutoCloseable {
    * @param inputOpIndices (see inputTensorHandles)
    * @param inputTensorHandles together with inputOpHandles and inputOpIndices specifies the values
    *     that are being "fed" (do not need to be computed) during graph execution.
-   *     inputTensorHandles[i] (which correponds to a Tensor.nativeHandle) is considered to be the
+   *     inputTensorHandles[i] (which corresponds to a Tensor.nativeHandle) is considered to be the
    *     inputOpIndices[i]-th output of the Operation inputOpHandles[i]. Thus, it is required that
    *     inputOpHandles.length == inputOpIndices.length == inputTensorHandles.length.
    * @param outputOpHandles (see outputOpIndices)

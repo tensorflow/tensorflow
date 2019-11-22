@@ -26,20 +26,21 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
+#include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
 namespace tflite {
 namespace gpu {
 namespace gl {
 namespace {
 
-class SoftMax : public NodeShader {
+class Softmax : public NodeShader {
  public:
   Status GenerateCode(const GenerationContext& ctx,
                       GeneratedCode* generated_code) const final {
-    auto input = ctx.graph->FindInputs(ctx.node->id)[0];
-    auto output = ctx.graph->FindOutputs(ctx.node->id)[0];
-    auto attr =
-        absl::any_cast<SoftMaxAttributes>(ctx.node->operation.attributes);
+    const auto* input = ctx.graph->FindInputs(ctx.node->id)[0];
+    const auto* output = ctx.graph->FindOutputs(ctx.node->id)[0];
+    const auto& attr = absl::any_cast<const SoftmaxAttributes&>(
+        ctx.node->operation.attributes);
     if (input->tensor.shape != output->tensor.shape) {
       return InvalidArgumentError("Input and output shape does not match");
     }
@@ -53,7 +54,7 @@ class SoftMax : public NodeShader {
     for (int i = 0; i < reminder; ++i) {
       mask[i] = 1.0f;
     }
-    std::vector<UniformParameter> parameters = {
+    std::vector<Variable> parameters = {
         {"src_depth", IntegralDivideRoundUp(output->tensor.shape.c, 4)},
         {"mask", mask},
     };
@@ -75,6 +76,7 @@ class SoftMax : public NodeShader {
     *generated_code = {
         /*parameters=*/std::move(parameters),
         /*objects=*/{},
+        /*shared_variables=*/{},
         /*workload=*/uint3(output->tensor.shape.w, output->tensor.shape.h, 1),
         /*workgroup=*/uint3(),
         /*source_code=*/std::move(source),
@@ -87,8 +89,8 @@ class SoftMax : public NodeShader {
 
 }  // namespace
 
-std::unique_ptr<NodeShader> NewSoftMaxNodeShader() {
-  return absl::make_unique<SoftMax>();
+std::unique_ptr<NodeShader> NewSoftmaxNodeShader() {
+  return absl::make_unique<Softmax>();
 }
 
 }  // namespace gl

@@ -45,6 +45,7 @@ from __future__ import division
 from __future__ import print_function
 
 import ast
+import os
 import six
 
 from tensorflow.python.framework import test_util
@@ -604,6 +605,89 @@ def t():
 """
     _, new_text = self._upgrade(RenameImports(), text)
     self.assertEqual(expected_text, new_text)
+
+  def testUpgradeInplaceWithSymlink(self):
+    upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
+    os.mkdir(upgrade_dir)
+    file_a = os.path.join(upgrade_dir, "a.py")
+    file_b = os.path.join(upgrade_dir, "b.py")
+
+    with open(file_a, "a") as f:
+      f.write("import foo as f")
+    os.symlink(file_a, file_b)
+
+    upgrader = ast_edits.ASTCodeUpgrader(RenameImports())
+    upgrader.process_tree_inplace(upgrade_dir)
+
+    self.assertTrue(os.path.islink(file_b))
+    self.assertEqual(file_a, os.readlink(file_b))
+    with open(file_a, "r") as f:
+      self.assertEqual("import bar as f", f.read())
+
+  def testUpgradeInPlaceWithSymlinkInDifferentDir(self):
+    upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
+    other_dir = os.path.join(self.get_temp_dir(), "bar")
+    os.mkdir(upgrade_dir)
+    os.mkdir(other_dir)
+    file_c = os.path.join(other_dir, "c.py")
+    file_d = os.path.join(upgrade_dir, "d.py")
+
+    with open(file_c, "a") as f:
+      f.write("import foo as f")
+    os.symlink(file_c, file_d)
+
+    upgrader = ast_edits.ASTCodeUpgrader(RenameImports())
+    upgrader.process_tree_inplace(upgrade_dir)
+
+    self.assertTrue(os.path.islink(file_d))
+    self.assertEqual(file_c, os.readlink(file_d))
+    # File pointed to by symlink is in a different directory.
+    # Therefore, it should not be upgraded.
+    with open(file_c, "r") as f:
+      self.assertEqual("import foo as f", f.read())
+
+  def testUpgradeCopyWithSymlink(self):
+    upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
+    output_dir = os.path.join(self.get_temp_dir(), "bar")
+    os.mkdir(upgrade_dir)
+    file_a = os.path.join(upgrade_dir, "a.py")
+    file_b = os.path.join(upgrade_dir, "b.py")
+
+    with open(file_a, "a") as f:
+      f.write("import foo as f")
+    os.symlink(file_a, file_b)
+
+    upgrader = ast_edits.ASTCodeUpgrader(RenameImports())
+    upgrader.process_tree(upgrade_dir, output_dir, copy_other_files=True)
+
+    new_file_a = os.path.join(output_dir, "a.py")
+    new_file_b = os.path.join(output_dir, "b.py")
+    self.assertTrue(os.path.islink(new_file_b))
+    self.assertEqual(new_file_a, os.readlink(new_file_b))
+    with open(new_file_a, "r") as f:
+      self.assertEqual("import bar as f", f.read())
+
+  def testUpgradeCopyWithSymlinkInDifferentDir(self):
+    upgrade_dir = os.path.join(self.get_temp_dir(), "foo")
+    other_dir = os.path.join(self.get_temp_dir(), "bar")
+    output_dir = os.path.join(self.get_temp_dir(), "baz")
+    os.mkdir(upgrade_dir)
+    os.mkdir(other_dir)
+    file_a = os.path.join(other_dir, "a.py")
+    file_b = os.path.join(upgrade_dir, "b.py")
+
+    with open(file_a, "a") as f:
+      f.write("import foo as f")
+    os.symlink(file_a, file_b)
+
+    upgrader = ast_edits.ASTCodeUpgrader(RenameImports())
+    upgrader.process_tree(upgrade_dir, output_dir, copy_other_files=True)
+
+    new_file_b = os.path.join(output_dir, "b.py")
+    self.assertTrue(os.path.islink(new_file_b))
+    self.assertEqual(file_a, os.readlink(new_file_b))
+    with open(file_a, "r") as f:
+      self.assertEqual("import foo as f", f.read())
 
 
 if __name__ == "__main__":

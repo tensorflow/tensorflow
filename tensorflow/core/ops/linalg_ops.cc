@@ -383,6 +383,15 @@ REGISTER_OP("SelfAdjointEig")
       return Status::OK();
     });
 
+REGISTER_OP("Eig")
+    .Input("input: T")
+    .Output("e: Tout")
+    .Output("v: Tout")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("Tout: {complex64, complex128}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn);
+
 REGISTER_OP("SelfAdjointEigV2")
     .Input("input: T")
     .Output("e: T")
@@ -473,6 +482,14 @@ REGISTER_OP("TridiagonalSolve")
     .Attr("partial_pivoting: bool = True")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(TridiagonalSolveShapeFn);
+
+REGISTER_OP("Einsum")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("equation: string")
+    .Attr("N: int >= 1")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::EinsumShape);
 
 // Deprecated op registrations:
 

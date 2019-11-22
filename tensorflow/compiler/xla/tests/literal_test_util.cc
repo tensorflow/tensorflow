@@ -51,7 +51,8 @@ void WriteLiteralToTempFile(const LiteralSlice& literal, const string& name) {
 // Callback helper that dumps literals to temporary files in the event of a
 // miscomparison.
 void OnMiscompare(const LiteralSlice& expected, const LiteralSlice& actual,
-                  const LiteralSlice& mismatches) {
+                  const LiteralSlice& mismatches,
+                  const ShapeIndex& /*shape_index*/) {
   LOG(INFO) << "expected: " << ShapeUtil::HumanString(expected.shape()) << " "
             << literal_comparison::ToStringTruncated(expected);
   LOG(INFO) << "actual:   " << ShapeUtil::HumanString(actual.shape()) << " "

@@ -37,7 +37,8 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace {
 template <typename Scalar>
 __device__ void ComputePermutationFromTranspositions(
-    int64 num_rows, const int* pivots, Scalar* permutation_indices) {
+    int64 num_rows, const int* __restrict__ pivots,
+    Scalar* __restrict__ permutation_indices) {
   // Fill in the output array with the identity permutation.
   for (int i = 0; i < num_rows; ++i) {
     permutation_indices[i] = Scalar(i);
@@ -61,12 +62,13 @@ __device__ void ComputePermutationFromTranspositions(
 // transpositions.
 template <typename Scalar>
 __global__ void ComputePermutationFromTranspositionsKernel(
-    GpuLaunchConfig config, const int64 num_rows, const int* all_pivots,
-    Scalar* all_permutation_indices) {
+    GpuLaunchConfig config, const int64 num_rows,
+    const int* __restrict__ all_pivots,
+    Scalar* __restrict__ all_permutation_indices) {
   // We only parallelize over batches here. Performance is not critical,
   // since this cheap O(num_rows) kernel always follows an O(num_rows^3)
   // LU factorization.
-  CUDA_1D_KERNEL_LOOP(index, config.virtual_thread_count) {
+  GPU_1D_KERNEL_LOOP(index, config.virtual_thread_count) {
     ComputePermutationFromTranspositions(
         num_rows, all_pivots + index * num_rows,
         all_permutation_indices + index * num_rows);
@@ -222,8 +224,8 @@ class LuOpGpu : public AsyncOpKernel {
     int* pivots_ptr = pivots.flat<int>().data();
     Tidx* permutation_indices_ptr =
         permutation_indices->template flat<Tidx>().data();
-    GpuLaunchConfig cfgPivots = GetCudaLaunchConfig(batch_size, device);
-    TF_CHECK_OK(CudaLaunchKernel(
+    GpuLaunchConfig cfgPivots = GetGpuLaunchConfig(batch_size, device);
+    TF_CHECK_OK(GpuLaunchKernel(
         ComputePermutationFromTranspositionsKernel<Tidx>, cfgPivots.block_count,
         cfgPivots.thread_per_block, 0, device.stream(), cfgPivots, num_rows,
         pivots_ptr, permutation_indices_ptr));

@@ -27,7 +27,7 @@ class FactTest(tf.test.TestCase):
   @test_util.run_deprecated_v1
   def test(self):
     with self.cached_session():
-      print(tf.user_ops.my_fact().eval())
+      print(tf.compat.v1.user_ops.my_fact().eval())
 
 
 if __name__ == '__main__':

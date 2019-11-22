@@ -18,36 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.util import structure as structure_lib
-from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
-from tensorflow.python.util.tf_export import tf_export
-
-# A constant that can be used to enable auto-tuning.
-AUTOTUNE = -1
-tf_export("data.experimental.AUTOTUNE").export_constant(__name__, "AUTOTUNE")
-
-
-# TODO(jsimsa): Support RE matching for both individual transformation (e.g. to
-# account for indexing) and transformation sequence.
-def assert_next(transformations):
-  """A transformation that asserts which transformations happen next.
-
-  Args:
-    transformations: A `tf.string` vector `tf.Tensor` identifying the
-      transformations that are expected to happen next.
-
-  Returns:
-    A `Dataset` transformation function, which can be passed to
-    `tf.data.Dataset.apply`.
-  """
-
-  def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return _AssertNextDataset(dataset, transformations)
-
-  return _apply_fn
 
 
 def model():
@@ -61,21 +32,6 @@ def model():
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
     return dataset_ops._ModelDataset(dataset)  # pylint: disable=protected-access
-
-  return _apply_fn
-
-
-def non_serializable():
-  """A non-serializable identity transformation.
-
-  Returns:
-    A `Dataset` transformation function, which can be passed to
-    `tf.data.Dataset.apply`.
-  """
-
-  def _apply_fn(dataset):
-    """Function from `Dataset` to `Dataset` that applies the transformation."""
-    return _NonSerializableDataset(dataset)
 
   return _apply_fn
 
@@ -98,37 +54,6 @@ def optimize(optimizations=None):
     return dataset_ops._OptimizeDataset(dataset, optimizations)  # pylint: disable=protected-access
 
   return _apply_fn
-
-
-class _AssertNextDataset(dataset_ops.UnaryUnchangedStructureDataset):
-  """A `Dataset` that asserts which transformations happen next."""
-
-  def __init__(self, input_dataset, transformations):
-    """See `assert_next()` for details."""
-    self._input_dataset = input_dataset
-    if transformations is None:
-      raise ValueError("At least one transformation should be specified")
-    self._transformations = ops.convert_to_tensor(
-        transformations, dtype=dtypes.string, name="transformations")
-    variant_tensor = (
-        gen_experimental_dataset_ops.experimental_assert_next_dataset(
-            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-            self._transformations,
-            **dataset_ops.flat_structure(self)))
-    super(_AssertNextDataset, self).__init__(input_dataset, variant_tensor)
-
-
-class _NonSerializableDataset(dataset_ops.UnaryUnchangedStructureDataset):
-  """A `Dataset` that performs non-serializable identity transformation."""
-
-  def __init__(self, input_dataset):
-    """See `non_serializable()` for details."""
-    self._input_dataset = input_dataset
-    variant_tensor = (
-        gen_experimental_dataset_ops.experimental_non_serializable_dataset(
-            self._input_dataset._variant_tensor,  # pylint: disable=protected-access
-            **dataset_ops.flat_structure(self)))
-    super(_NonSerializableDataset, self).__init__(input_dataset, variant_tensor)
 
 
 class _ChooseFastestDataset(dataset_ops.DatasetV2):
@@ -162,20 +87,20 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
       A `Dataset` that has the same elements the inputs.
     """
     self._datasets = list(datasets)
-    self._structure = self._datasets[0]._element_structure  # pylint: disable=protected-access
+    self._element_spec = self._datasets[0].element_spec
     variant_tensor = (
-        gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
+        gen_experimental_dataset_ops.choose_fastest_dataset(
             [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
             num_experiments=num_experiments,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_ChooseFastestDataset, self).__init__(variant_tensor)
 
   def _inputs(self):
     return self._datasets
 
   @property
-  def _element_structure(self):
-    return self._datasets[0]._element_structure  # pylint: disable=protected-access
+  def element_spec(self):
+    return self._element_spec
 
 
 class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
@@ -248,17 +173,13 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
     Returns:
       A `Dataset` that has the same elements the inputs.
     """
-    nested_structure = structure_lib.NestedStructure(
-        dataset_ops.DatasetStructure(
-            structure_lib.convert_legacy_structure(
-                input_dataset.output_types, input_dataset.output_shapes,
-                input_dataset.output_classes)))
+    input_structure = dataset_ops.DatasetSpec(input_dataset.element_spec)
     self._funcs = [
         dataset_ops.StructuredFunctionWrapper(
-            f, "ChooseFastestV2", input_structure=nested_structure)
+            f, "ChooseFastestV2", input_structure=input_structure)
         for f in functions
     ]
-    self._structure = self._funcs[0].output_structure._element_structure  # pylint: disable=protected-access
+    self._element_spec = self._funcs[0].output_structure._element_spec  # pylint: disable=protected-access
 
     self._captured_arguments = []
     for f in self._funcs:
@@ -283,10 +204,10 @@ class _ChooseFastestBranchDataset(dataset_ops.UnaryDataset):
             num_elements_per_branch=num_elements_per_branch,
             branches=[f.function for f in self._funcs],
             other_arguments_lengths=self._capture_lengths,
-            **dataset_ops.flat_structure(self)))
+            **self._flat_structure))
     super(_ChooseFastestBranchDataset, self).__init__(input_dataset,
                                                       variant_tensor)
 
   @property
-  def _element_structure(self):
-    return self._structure
+  def element_spec(self):
+    return self._element_spec

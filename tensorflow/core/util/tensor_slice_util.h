@@ -55,7 +55,7 @@ struct CopyThatWorksWithStringPointer {
 // Eigen makes it extremely difficult to dereference a tensor of string* into
 // string, so we roll our own loop instead.
 template <>
-struct CopyThatWorksWithStringPointer<string> {
+struct CopyThatWorksWithStringPointer<tstring> {
   template <typename SrcTensor, typename DstTensor, typename Shape>
   static void Copy(const SrcTensor& s, Shape s_start, Shape len, DstTensor& d,
                    Shape d_start) {

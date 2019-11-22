@@ -20,7 +20,9 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_block_diag as block_diag
 from tensorflow.python.ops.linalg import linear_operator_lower_triangular as lower_triangular
@@ -56,6 +58,7 @@ def _block_diag_dense(expected_shape, blocks):
   return array_ops.concat(rows, axis=-2)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SquareLinearOperatorBlockDiagTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -208,6 +211,26 @@ class SquareLinearOperatorBlockDiagTest(
         inverse,
         block_diag.LinearOperatorBlockDiag)
     self.assertEqual(2, len(inverse.operators))
+
+  def test_tape_safe(self):
+    matrix = variables_module.Variable([[1., 0.], [0., 1.]])
+    operator = block_diag.LinearOperatorBlockDiag(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_self_adjoint=True,
+                is_positive_definite=True,
+            ),
+            linalg.LinearOperatorFullMatrix(
+                matrix,
+                is_self_adjoint=True,
+                is_positive_definite=True,
+            ),
+        ],
+        is_self_adjoint=True,
+        is_positive_definite=True,
+    )
+    self.check_tape_safe(operator)
 
   def test_is_non_singular_auto_set(self):
     # Matrix with two positive eigenvalues, 11 and 8.

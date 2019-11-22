@@ -1,12 +1,12 @@
 # Description:
 #   TensorFlow Lite minimal example.
 
+load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
 )
-
-load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
 
 cc_binary(
     name = "minimal",

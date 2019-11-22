@@ -169,7 +169,8 @@ StatusOr<int64> CusolverContext::PotrfBufferSize(PrimitiveType type,
 }
 
 #define POTRF_INSTANCE(T, type_prefix)                                    \
-  Status CusolverContext::Potrf(                                          \
+  template <>                                                             \
+  Status CusolverContext::Potrf<T>(                                       \
       se::blas::UpperLower uplo, int n, se::DeviceMemory<T> A, int lda,   \
       se::DeviceMemory<int> lapack_info, se::DeviceMemory<T> workspace) { \
     return CusolverStatusToStatus(DN_SOLVER_FN(potrf, type_prefix)(       \

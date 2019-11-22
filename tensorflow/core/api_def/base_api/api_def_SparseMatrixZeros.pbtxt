@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "SparseMatrixZeros"
+  in_arg {
+    name: "dense_shape"
+    description: "The desired matrix shape."
+  }
+  out_arg {
+    name: "sparse_matrix"
+    description: "An empty CSR matrix with shape `dense_shape`."
+  }
+  summary: "Creates an all-zeros CSRSparseMatrix with shape `dense_shape`."
+}

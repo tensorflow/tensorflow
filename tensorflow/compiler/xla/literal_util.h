@@ -152,6 +152,10 @@ class LiteralUtil {
   // Creates a scalar literal value containing the maximum value of the given
   // primitive type. For floating-point types, returns inf.
   static Literal MaxValue(PrimitiveType primitive_type);
+  // Creates a scalar literal value containing the NaN value of the given
+  // primitive type. Fail for non-inexact types. For complex types, returns a
+  // nan + nan * j value.
+  static StatusOr<Literal> NanValue(PrimitiveType primitive_type);
   // Creates a literal of the given shape where each element is `value`.
   template <typename NativeT>
   static Literal CreateFullWithDescendingLayout(
@@ -222,8 +226,7 @@ class LiteralUtil {
   // in invocation between the above signature and this one.
   static Literal MakeTupleOwned(std::vector<Literal> elements);
 
-  // This overload lets you pass a braced list of Literals to
-  // MakeTupleOwned:
+  // This overload lets you pass a list of Literals to MakeTupleOwned:
   //
   //   LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1(...), ...).
   //
@@ -275,7 +278,7 @@ class LiteralUtil {
   template <
       PrimitiveType type,
       typename T = typename primitive_util::PrimitiveTypeToNative<type>::type>
-  static StatusOr<Literal> CreateRandomLiteral(
+  static StatusOr<Literal> CreateLiteralWithGenerator(
       const Shape& shape,
       const std::function<T(absl::Span<const int64>)>& generator);
 
@@ -558,7 +561,7 @@ template <typename NativeT>
 }
 
 template <PrimitiveType type, typename T>
-/* static */ StatusOr<Literal> LiteralUtil::CreateRandomLiteral(
+/* static */ StatusOr<Literal> LiteralUtil::CreateLiteralWithGenerator(
     const Shape& shape,
     const std::function<T(absl::Span<const int64>)>& generator) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
@@ -574,7 +577,7 @@ template <PrimitiveType type, typename E, typename T>
     const Shape& shape, E* engine, T mean, T stddev) {
   using NativeT = typename primitive_util::PrimitiveTypeToNative<type>::type;
   std::normal_distribution<NativeT> generator(mean, stddev);
-  return CreateRandomLiteral<type, NativeT>(
+  return CreateLiteralWithGenerator<type, NativeT>(
       shape,
       [&](absl::Span<const int64> /*indexes*/) { return generator(*engine); });
 }

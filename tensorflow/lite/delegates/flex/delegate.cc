@@ -39,10 +39,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteDelegate* delegate) {
         context->recommended_num_threads);
   }
 
-  if (!reinterpret_cast<DelegateData*>(delegate->data_)
-           ->Prepare(session_options)
-           .ok()) {
-    context->ReportError(context, "Failed to initialize TensorFlow context.");
+  auto status = reinterpret_cast<DelegateData*>(delegate->data_)
+                    ->Prepare(session_options);
+  if (!status.ok()) {
+    context->ReportError(context, "Failed to initialize TensorFlow context: %s",
+                         status.error_message().c_str());
     return kTfLiteError;
   }
 
@@ -96,7 +97,7 @@ TfLiteStatus CopyFromBufferHandle(TfLiteContext* context,
     }
     DynamicBuffer dynamic_buffer;
 
-    auto tf_data = t.flat<string>();
+    auto tf_data = t.flat<tensorflow::tstring>();
     for (int i = 0; i < t.NumElements(); ++i) {
       dynamic_buffer.AddString(tf_data(i).data(), tf_data(i).size());
     }

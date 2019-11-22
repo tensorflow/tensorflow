@@ -36,6 +36,14 @@ struct RCCSpec : BasicSpec<AccumScalar, DstScalar> {
   static constexpr LayoutSupport kLayoutSupport = LayoutSupport::kRCC;
 };
 
+template <typename AccumScalar, typename DstScalar, typename LhsKernelLayout,
+          typename RhsKernelLayout>
+struct StandardCppKernelLayoutSpec : BasicSpec<AccumScalar, DstScalar> {
+  using StandardCppKernelLhsLayout = LhsKernelLayout;
+  using StandardCppKernelRhsLayout = RhsKernelLayout;
+  static int cache_friendly_traversal_threshold() { return 0; }
+};
+
 using LhsScalar = RUY_TEST_LHSSCALAR;
 using RhsScalar = RUY_TEST_RHSSCALAR;
 using AccumScalar = RUY_TEST_ACCUMSCALAR;
@@ -121,6 +129,34 @@ TEST(TestSpecialSpecs, RCC) {
   using RCCTestSet = TestSet<LhsScalar, RhsScalar, RCCSpec>;
   TestRCC<RCCTestSet>(81, 93, 72);
   TestNonRCC<RCCTestSet>(81, 93, 72, ExpectedOutcome::kDeath);
+}
+
+template <typename LhsKernelLayout, typename RhsKernelLayout>
+void TestStandardCppKernelLayout() {
+  using SpecType =
+      StandardCppKernelLayoutSpec<AccumScalar, DstScalar, LhsKernelLayout,
+                                  RhsKernelLayout>;
+  using TestSetType = TestSet<LhsScalar, RhsScalar, SpecType>;
+  for (int size = 1; size < 10; size++) {
+    TestLinearAllOrders<TestSetType>(size, size, size);
+  }
+  TestLinearAllOrders<TestSetType>(87, 34, 56);
+  TestLinearAllOrders<TestSetType>(123, 234, 78);
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutTrivial1x1) {
+  TestStandardCppKernelLayout<FixedKernelLayout<Order::kColMajor, 1, 1>,
+                              FixedKernelLayout<Order::kColMajor, 1, 1>>();
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutSquare4x4) {
+  TestStandardCppKernelLayout<FixedKernelLayout<Order::kRowMajor, 4, 4>,
+                              FixedKernelLayout<Order::kRowMajor, 4, 4>>();
+}
+
+TEST(TestSpecialSpecs, StandardCppKernelLayoutRectangular4x8) {
+  TestStandardCppKernelLayout<FixedKernelLayout<Order::kColMajor, 1, 4>,
+                              FixedKernelLayout<Order::kColMajor, 1, 8>>();
 }
 
 }  // namespace ruy

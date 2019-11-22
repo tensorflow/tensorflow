@@ -1,11 +1,11 @@
-package(
-    licenses = ["notice"],  # Apache 2.0
-)
-
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:default/build_config.bzl",
     "tf_protos_grappler",
+)
+
+package(
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -78,10 +78,10 @@ cc_library(
     hdrs = ["frame.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":graph_view",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/grappler:graph_view",
         "//tensorflow/core/grappler:op_types",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
@@ -93,6 +93,8 @@ tf_cc_test(
     srcs = ["frame_test.cc"],
     deps = [
         ":frame",
+        ":graph_view",
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -136,6 +138,7 @@ cc_library(
     hdrs = ["grappler_test.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/cc:scope",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session",
@@ -147,6 +150,7 @@ cc_library(
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler:utils",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -174,7 +178,7 @@ cc_library(
     hdrs = ["functions.h"],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:core_cpu_base_no_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
@@ -373,5 +377,33 @@ tf_cc_test(
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "transitive_fanin",
+    srcs = ["transitive_fanin.cc"],
+    hdrs = ["transitive_fanin.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+tf_cc_test(
+    name = "transitive_fanin_test",
+    srcs = ["transitive_fanin_test.cc"],
+    deps = [
+        ":transitive_fanin",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler:utils",
     ],
 )

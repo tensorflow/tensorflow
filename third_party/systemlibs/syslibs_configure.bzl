@@ -1,4 +1,3 @@
-# -*- Python -*-
 """Repository rule for system library autoconfiguration.
 
 `syslibs_configure` depends on the following environment variables:
@@ -16,14 +15,15 @@ VALID_LIBS = [
     "com_github_googleapis_googleapis",
     "com_github_googlecloudplatform_google_cloud_cpp",
     "com_google_protobuf",
-    "com_google_protobuf_cc",
     "com_googlesource_code_re2",
     "curl",
     "cython",
     "double_conversion",
+    "enum34_archive",
     "flatbuffers",
+    "functools32_archive",
     "gast_archive",
-    "gif_archive",
+    "gif",
     "grpc",
     "hwloc",
     "icu",
@@ -33,11 +33,11 @@ VALID_LIBS = [
     "lmdb",
     "nasm",
     "nsync",
+    "opt_einsum_archive",
     "org_sqlite",
     "pasta",
     "pcre",
-    "png_archive",
-    "protobuf_archive",
+    "png",
     "six_archive",
     "snappy",
     "swig",

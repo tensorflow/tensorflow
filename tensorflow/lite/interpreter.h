@@ -20,64 +20,22 @@ limitations under the License.
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <memory>
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/c_api_internal.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
+#include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
-// Map statically from a c++ type to a TfLiteType (used below for safe casts).
-template <class T>
-constexpr TfLiteType typeToTfLiteType() {
-  return kTfLiteNoType;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int>() {
-  return kTfLiteInt32;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int16_t>() {
-  return kTfLiteInt16;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int64_t>() {
-  return kTfLiteInt64;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<float>() {
-  return kTfLiteFloat32;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<unsigned char>() {
-  return kTfLiteUInt8;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int8_t>() {
-  return kTfLiteInt8;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<bool>() {
-  return kTfLiteBool;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<std::complex<float>>() {
-  return kTfLiteComplex64;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<string>() {
-  return kTfLiteString;
-}
-
-template <>
-constexpr TfLiteType typeToTfLiteType<TfLiteFloat16>() {
-  return kTfLiteFloat16;
-}
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
 /// set of output Tensors. All inputs/output tensors are referenced by index.
@@ -296,6 +254,16 @@ class Interpreter {
     return nullptr;
   }
 
+  /// Return a mutable pointer to the given input tensor. The given index must
+  /// be between 0 and inputs().size().
+  TfLiteTensor* input_tensor(size_t index) { return tensor(inputs()[index]); }
+
+  /// Return an immutable pointerto the given input tensor. The given index must
+  /// be between 0 and inputs().size().
+  const TfLiteTensor* input_tensor(size_t index) const {
+    return tensor(inputs()[index]);
+  }
+
   /// Return a mutable pointer into the data of a given input tensor. The given
   /// index must be between 0 and inputs().size().
   template <class T>
@@ -308,6 +276,16 @@ class Interpreter {
   template <class T>
   const T* typed_input_tensor(int index) const {
     return typed_tensor<T>(inputs()[index]);
+  }
+
+  /// Return a mutable pointer to the given output tensor. The given index must
+  /// be between 0 and outputs().size().
+  TfLiteTensor* output_tensor(size_t index) { return tensor(outputs()[index]); }
+
+  /// Return an immutable pointer to the given output tensor. The given index
+  /// must be between 0 and outputs().size().
+  const TfLiteTensor* output_tensor(size_t index) const {
+    return tensor(outputs()[index]);
   }
 
   /// Return a mutable pointer into the data of a given output tensor. The given
@@ -325,13 +303,19 @@ class Interpreter {
   }
 
   /// Change the dimensionality of a given tensor. Note, this is only acceptable
-  /// for tensor indices that are inputs.
+  /// for tensor indices that are inputs or variables.
   /// Returns status of failure or success.
   /// TODO(aselle): Consider implementing ArraySlice equivalent to make this
   ///   more adept at accepting data without an extra copy. Use absl::ArraySlice
   ///   if our partners determine that dependency is acceptable.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
+
+  // This releases memory held by non-persistent tensors. It does NOT re-perform
+  // memory planning.
+  // AllocateTensors needs to be called before next invocation.
+  /// WARNING: Experimental interface, subject to change
+  TfLiteStatus ReleaseNonPersistentMemory();
 
   /// Update allocations for all tensors. This will redim dependent tensors
   /// using the input tensor dimensionality as given. This is relatively
@@ -373,15 +357,22 @@ class Interpreter {
   /// WARNING: This is an experimental API and subject to change.
   void SetCancellationFunction(void* data, bool (*check_cancelled_func)(void*));
 
+  /// Allow a delegate to look at the graph and modify the graph to handle
+  /// parts of the graph themselves. After this is called, the graph may
+  /// contain new nodes that replace 1 more nodes.
+  /// 'delegate' must outlive the interpreter.
+  /// WARNING: This is an experimental API and subject to change.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+
   // Owning handle to a TfLiteDelegate instance.
   using TfLiteDelegatePtr =
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
-  /// Allow a delegate to look at the graph and modify the graph to handle
-  /// parts of the graph themselves. After this is called, the graph may
-  /// contain new nodes that replace 1 more nodes.
+  /// Same as ModifyGraphWithDelegate except this interpreter takes
+  /// ownership of the provided delegate. Be sure to construct the unique_ptr
+  /// with a suitable destruction function.
   /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate);
 
   /// Ensure the data in `tensor.data` is readable. In case delegate is used,
   /// it might require to copy the data from delegate buffer to raw memory.
@@ -453,7 +444,9 @@ class Interpreter {
     return op_reg.profiling_string(context_, node);
   }
 
-  /// Set the value of an external context.
+  // Set the value of an external context. TFLite interpreter doesn't take the
+  // memory ownership of this external context 'ctx', and the context should
+  // outlive the TFLite interpreter.
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
@@ -499,16 +492,6 @@ class Interpreter {
                                  TfLiteExternalContextType type,
                                  TfLiteExternalContext* ctx);
 
-  /// Variant of the public ModifyGraphWithDelegate method that additionally
-  /// Assumes ownership of the provided delegate.
-  /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate) {
-    // Note that we retain ownership of the delegate even if graph modification
-    // fails, as delegate use will be in an indeterminate state at that point.
-    owned_delegates_.push_back(std::move(delegate));
-    return ModifyGraphWithDelegate(owned_delegates_.back().get());
-  }
-
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -529,8 +512,18 @@ class Interpreter {
   // List of active external contexts.
   TfLiteExternalContext* external_contexts_[kTfLiteMaxExternalContexts];
 
+  // The default external cpu backend context. After an TFLite interpreter is
+  // initialized, 'external_contexts_[kTfLiteCpuBackendContext]' is set to point
+  // to this object. However, if this element value is overwritten via calling
+  // 'SetExternalContext(kTfLiteCpuBackendContext, ...)', we will reset this to
+  // nullptr if necessary.
+  std::unique_ptr<ExternalCpuBackendContext> own_external_cpu_backend_context_;
+
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;
+
+  // A map of resources. Owned by interpreter and shared by multiple subgraphs.
+  resource::ResourceMap resources_;
 };
 
 }  // namespace tflite

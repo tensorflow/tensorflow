@@ -17,8 +17,11 @@ limitations under the License.
 
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "tensorflow/lite/c/c_api_internal.h"
+
+typedef struct ANeuralNetworksMemory ANeuralNetworksMemory;
 
 namespace tflite {
 
@@ -73,6 +76,50 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
   // Returns the delegate options.
   static const Options GetOptions(TfLiteDelegate* delegate);
 
+  // Callback function which copies data from ANeuralNetworksMemory to host
+  // tensor CPU buffer. It is the users responsibility to implement these
+  // callbacks for the specific types of shared memory they intend to use.
+  // WARNING: This is an experimental interface that is subject to change.
+  typedef TfLiteStatus (*CopyToHostTensorFnPtr)(TfLiteTensor* tensor,
+                                                ANeuralNetworksMemory* memory,
+                                                size_t memory_offset,
+                                                size_t byte_size,
+                                                void* callback_context);
+
+  // Encapsulates all fields related to memory registration for internal
+  // bookkeeping only.
+  struct MemoryRegistration {
+    ANeuralNetworksMemory* memory;
+    CopyToHostTensorFnPtr callback;
+    void* callback_context;
+  };
+
+  // Register the ANeuralNetworksMemory handle with the delegate. A
+  // TfLiteBufferHandle will be returned to be used with
+  // Interpreter::SetBufferHandle. The callback_context will be passed to the
+  // callback function when invoked.
+  // Note: the returned TfLiteBufferHandle can only be used with a single
+  // Interpreter instance. However, the caller can register the same memory
+  // multiple times to get different handles to use with difference Interpreter
+  // instances
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteBufferHandle RegisterNnapiMemory(ANeuralNetworksMemory* memory,
+                                         CopyToHostTensorFnPtr callback,
+                                         void* callback_context);
+
+  // Returns the vector of known ANeuralNetworksMemory handles.
+  // Note: this function is not intended to be called by developers.
+  // WARNING: This is an experimental interface that is subject to change.
+  static const std::vector<MemoryRegistration>& GetTensorMemoryMap(
+      TfLiteDelegate* delegate);
+
+  // Returns the int value of the ResultCode returned by the latest
+  // failed call to NNAPI, if any. Zero only in case of NO failed calls since
+  // the construction of this instance of StatefulNnApiDelegate.
+  // The error code is reset when the delegate is re-initialized
+  // (i.e. when calling interpreter.ModifyGraphWithDelegate(delegate)).
+  int GetNnApiErrno() const;
+
  private:
   // Encapsulates all delegate data.
   struct Data {
@@ -84,12 +131,40 @@ class StatefulNnApiDelegate : public TfLiteDelegate {
     std::string cache_dir;
     // The unique token string for NNAPI model.
     std::string model_token;
+    // Tensor to ANeuralNetworksMemory mapping.
+    std::vector<MemoryRegistration> tensor_memory_map;
+    // Constains a non zero value if any NNAPI method call
+    // operation returned a non zero result code.
+    int nnapi_errno;
   };
 
   // Implements TfLiteDelegate::Prepare. Please refer to TFLiteDelegate
   // documentation for more info.
   static TfLiteStatus DoPrepare(TfLiteContext* context,
                                 TfLiteDelegate* delegate);
+
+  // Copy the data from delegate buffer handle into raw memory of the given
+  // 'tensor'. The delegate is allowed to allocate the raw
+  // bytes as long as it follows the rules for kTfLiteDynamic tensors.
+  static TfLiteStatus DoCopyFromBufferHandle(TfLiteContext* context,
+                                             TfLiteDelegate* delegate,
+                                             TfLiteBufferHandle buffer_handle,
+                                             TfLiteTensor* tensor);
+
+  // Copy the data from raw memory of the given 'tensor' to delegate buffer
+  // handle. Currently this function is not supported, and calling the function
+  // will result in an error.
+  static TfLiteStatus DoCopyToBufferHandle(TfLiteContext* context,
+                                           TfLiteDelegate* delegate,
+                                           TfLiteBufferHandle buffer_handle,
+                                           TfLiteTensor* tensor);
+
+  // Free the Delegate Buffer Handle. Note: This only frees the handle, but
+  // this doesn't release the underlying resource (e.g. textures). The
+  // resources are either owned by application layer or the delegate.
+  static void DoFreeBufferHandle(TfLiteContext* context,
+                                 TfLiteDelegate* delegate,
+                                 TfLiteBufferHandle* handle);
 
   // Delegate data presented through TfLiteDelegate::data_.
   Data delegate_data_;

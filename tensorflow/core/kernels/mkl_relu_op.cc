@@ -1087,74 +1087,84 @@ class MklLeakyReluGradOp : public MklReluGradOpBase<Device, T, eltwise_relu> {
 };
 
 // register dnn kernels for supported operations and supported types
-#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)             \
-  REGISTER_KERNEL_BUILDER(Name("_MklRelu")                          \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklReluOp<CPUDevice, type>);              \
-  REGISTER_KERNEL_BUILDER(Name("_MklReluGrad")                      \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklReluGradOp<CPUDevice, type>);
+#define REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES(type)        \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklRelu")                                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklReluOp<CPUDevice, type>);                             \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklReluGrad")                                     \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 
 // register dnn kernels for supported operations and supported types
-#define REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES(type)              \
-  REGISTER_KERNEL_BUILDER(Name("_MklElu")                           \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklEluOp<CPUDevice, type>);               \
-  REGISTER_KERNEL_BUILDER(Name("_MklEluGrad")                       \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklEluGradOp<CPUDevice, type>);
+#define REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES(type)         \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklElu")                                          \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklEluOp<CPUDevice, type>);                              \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklEluGrad")                                      \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklEluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES);
 
-#define REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES(type)             \
-  REGISTER_KERNEL_BUILDER(Name("_MklTanh")                          \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklTanhOp<CPUDevice, type>);              \
-  REGISTER_KERNEL_BUILDER(Name("_MklTanhGrad")                      \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklTanhGradOp<CPUDevice, type>);
+#define REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES(type)        \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklTanh")                                         \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklTanhOp<CPUDevice, type>);                             \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklTanhGrad")                                     \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklTanhGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_TANH_MKL_SUPPORTED_KERNELS_TYPES);
 
-#define REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES(type)            \
-  REGISTER_KERNEL_BUILDER(Name("_MklRelu6")                         \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklRelu6Op<CPUDevice, type>);             \
-  REGISTER_KERNEL_BUILDER(Name("_MklRelu6Grad")                     \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklRelu6GradOp<CPUDevice, type>);
+#define REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES(type)       \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklRelu6")                                        \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklRelu6Op<CPUDevice, type>);                            \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklRelu6Grad")                                    \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklRelu6GradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_RELU6_MKL_SUPPORTED_KERNELS_TYPES);
 
-#define REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES(type)        \
-  REGISTER_KERNEL_BUILDER(Name("_MklLeakyRelu")                     \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklLeakyReluOp<CPUDevice, type>);         \
-  REGISTER_KERNEL_BUILDER(Name("_MklLeakyReluGrad")                 \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<type>("T")            \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-                          MklLeakyReluGradOp<CPUDevice, type>);
+#define REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES(type)   \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLeakyRelu")                                    \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklLeakyReluOp<CPUDevice, type>);                        \
+  REGISTER_KERNEL_BUILDER(                                     \
+      Name("_MklLeakyReluGrad")                                \
+          .Device(DEVICE_CPU)                                  \
+          .TypeConstraint<type>("T")                           \
+          .Label(mkl_op_registry::kMklLayoutDependentOpLabel), \
+      MklLeakyReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES);
 TF_CALL_bfloat16(REGISTER_LeakyRelu_MKL_SUPPORTED_KERNELS_TYPES);
 

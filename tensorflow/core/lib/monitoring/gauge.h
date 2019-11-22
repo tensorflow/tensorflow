@@ -223,7 +223,7 @@ Gauge<ValueType, NumLabels>* Gauge<ValueType, NumLabels>::New(
   static_assert(std::is_same<ValueType, int64>::value ||
                     std::is_same<ValueType, string>::value ||
                     std::is_same<ValueType, bool>::value,
-                "Gauge only allows int64 and string types.");
+                "Gauge only allows bool, int64, and string types.");
   return new Gauge<ValueType, NumLabels>(
       MetricDef<MetricKind::kGauge, ValueType, NumLabels>(
           std::forward<MetricDefArgs>(metric_def_args)...));

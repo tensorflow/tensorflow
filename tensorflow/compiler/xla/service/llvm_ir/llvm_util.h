@@ -141,14 +141,6 @@ StatusOr<llvm::Value*> EncodeSelfDescribingShapeConstant(const Shape& shape,
                                                          int32* shape_size,
                                                          llvm::IRBuilder<>* b);
 
-// Inverses the encoding of a Shape protobuf into an LLVM global variable.
-//
-// This is intended to be called from the runtime to decode the llvm::Constants
-// that are created via ConvertShapeToSelfDescribingConstant and subsequently
-// embedded into the program.
-StatusOr<Shape> DecodeSelfDescribingShapeConstant(const void* shape_ptr,
-                                                  int32 size_bytes);
-
 // Converts a given literal to an IR Constant. Literals have known constant
 // values at IR emission time.
 llvm::Constant* ConvertLiteralToIrConstant(const Literal& literal,
@@ -300,18 +292,20 @@ std::pair<llvm::Value*, llvm::Value*> UMulLowHigh32(llvm::IRBuilder<>* b,
 std::pair<llvm::Value*, llvm::Value*> SplitInt64ToInt32s(
     llvm::IRBuilder<>* b, llvm::Value* value_64bits);
 
-// Checks whether a global variable is already created to represent a
-// state passed between RNG calls implemented with Philox algorithm. If not,
-// creates such a variable. Returns the global variable.
-llvm::GlobalVariable* GetOrCreateVariableForPhiloxRngState(
-    llvm::Module* module, llvm::IRBuilder<>* b);
+// Checks whether a global variable is already created to represent the state
+// of a random number generator. If not, creates such a variable. Returns the
+// global variable.
+llvm::GlobalVariable* GetOrCreateVariableRngState(llvm::Module* module,
+                                                  llvm::IRBuilder<>* b);
 
-// Adds a value to the global state variable each time when a RNG hlo is
-// executed. The value of this global state variable is added to the seed
-// of the Philox RNG algorithm so that calling the same RNG Hlo multiple times
-// should rarely produce the same result.
-void IncrementVariableForPhiloxRngState(int64 value, llvm::Module* module,
-                                        llvm::IRBuilder<>* b);
+// Adds a delta value to the global state variable and return the old value of
+// the variable.
+llvm::Value* RngGetAndUpdateState(uint64 delta, llvm::Module* module,
+                                  llvm::IRBuilder<>* b);
+
+// Gets the LLVM address space that should be used for global variables (e.g.
+// XLA's rng state).
+unsigned GetGlobalMemoryAddressSpace(const llvm::Module& module);
 }  // namespace llvm_ir
 }  // namespace xla
 

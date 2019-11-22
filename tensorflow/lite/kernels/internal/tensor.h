@@ -17,26 +17,13 @@ limitations under the License.
 
 #include <complex>
 #include <vector>
+
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/string_util.h"
 
 namespace tflite {
-
-template <>
-inline std::complex<float>* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr
-             ? reinterpret_cast<std::complex<float>*>(tensor->data.c64)
-             : nullptr;
-}
-
-template <>
-inline const std::complex<float>* GetTensorData(const TfLiteTensor* tensor) {
-  return tensor != nullptr
-             ? reinterpret_cast<const std::complex<float>*>(tensor->data.c64)
-             : nullptr;
-}
 
 inline RuntimeShape GetTensorShape(std::vector<int32_t> data) {
   return RuntimeShape(data.size(), data.data());

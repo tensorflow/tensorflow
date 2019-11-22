@@ -2,7 +2,7 @@
 #   keras/distribute package is intended to serve as the centralized place for things
 #   related to dist-strat used by Keras..
 
-load("//tensorflow/core:platform/default/distribute.bzl", "distribute_py_test")
+load("//tensorflow/core/platform:default/distribute.bzl", "distribute_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
@@ -55,6 +55,23 @@ py_library(
         "multi_worker_training_state.py",
     ],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/distribute:multi_worker_util",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_training_state_test",
+    srcs = ["multi_worker_training_state_test.py"],
+    additional_deps = [
+        ":multi_worker_testing_utils",
+        ":multi_worker_training_state",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras",
+    ],
+    shard_count = 4,
 )
 
 py_library(
@@ -80,15 +97,31 @@ py_library(
 )
 
 distribute_py_test(
+    name = "keras_premade_models_test",
+    srcs = ["keras_premade_models_test.py"],
+    full_precision = True,
+    main = "keras_premade_models_test.py",
+    shard_count = 4,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        ":distribute_strategy_test_lib",
+        ":keras_correctness_test_lib",
+    ],
+)
+
+distribute_py_test(
     name = "distribute_strategy_test",
     srcs = ["distribute_strategy_test.py"],
     full_precision = True,
     main = "distribute_strategy_test.py",
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
-        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
+        "notpu",  # TODO(b/142805125): Enable tpu_test_target once fixed on tpu.
         "notsan",
     ],
     deps = [
@@ -117,7 +150,7 @@ py_library(
         "keras_dnn_correctness_test.py",
         "keras_embedding_model_correctness_test.py",
         "keras_image_model_correctness_test.py",
-        "keras_lstm_model_correctness_test.py",
+        "keras_rnn_model_correctness_test.py",
         "keras_stateful_lstm_model_correctness_test.py",
     ],
     deps = [
@@ -148,6 +181,7 @@ distribute_py_test(
     shard_count = 19,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],
@@ -165,6 +199,7 @@ distribute_py_test(
     shard_count = 4,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],
@@ -182,27 +217,29 @@ distribute_py_test(
     shard_count = 8,
     tags = [
         "multi_and_single_gpu",
+        "no_rocm",  # times out on ROCm
         "no_windows_gpu",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Tensorflow also fails.
     deps = [
         ":keras_correctness_test_lib",
     ],
 )
 
 distribute_py_test(
-    name = "keras_lstm_model_correctness_test",
+    name = "keras_rnn_model_correctness_test",
     size = "medium",
-    srcs = ["keras_lstm_model_correctness_test.py"],
+    srcs = ["keras_rnn_model_correctness_test.py"],
     full_precision = True,
-    main = "keras_lstm_model_correctness_test.py",
+    main = "keras_rnn_model_correctness_test.py",
     # Shard count is set to an odd number to distribute tasks across
     # shards more evenly.
     shard_count = 31,
     tags = [
         "multi_and_single_gpu",
+        "no_oss",  # b/136660639
         "no_windows_gpu",
-        "notap",  # b/131937016
         "notsan",
     ],
     deps = [
@@ -277,7 +314,6 @@ cuda_py_test(
         "no_oss",  # http://b/119349471
         "tf_integration_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -311,14 +347,50 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
+        "nomsan",  # b/140958724
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
-    name = "multi_worker_callback_test",
-    srcs = ["multi_worker_callback_test.py"],
+    name = "multi_worker_callback_tf1_test",
+    srcs = ["multi_worker_callback_tf1_test.py"],
+    additional_deps = [
+        ":distribute",
+        "//tensorflow/python:platform",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute:distribute_config",
+        "//tensorflow/python/distribute:distribute_coordinator",
+        ":multi_worker_testing_utils",
+        "//tensorflow/python/keras",
+    ],
+    # TODO(b/132384649): Enable for guitar and oss tests.
+    shard_count = 24,
+    tags = [
+        "manual",
+        "no_oss",
+        "noguitar",
+        "notap",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_callback_tf2_test",
+    srcs = ["multi_worker_callback_tf2_test.py"],
+    additional_deps = [
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
+    ],
+)
+
+cuda_py_test(
+    name = "multi_worker_fault_tolerance_test",
+    srcs = ["multi_worker_fault_tolerance_test.py"],
     additional_deps = [
         ":distribute",
         "//tensorflow/python:platform",
@@ -331,11 +403,11 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     shard_count = 14,
+    # TODO(b/132384649): Enable once fixed.
     tags = [
-        "multi_and_single_gpu",
-        "no_oss",  # TODO(b/132384649): Flakily times out.
+        "no_oss",
+        "nomsan",  # b/140958724
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -351,9 +423,12 @@ cuda_py_test(
         "//tensorflow/python/keras",
     ],
     tags = [
+        "manual",  # b/139844866
         "multi_and_single_gpu",
+        "no_oss",
+        "nomsan",  # b/140958724
+        "notap",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(

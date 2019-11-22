@@ -13,14 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+%include "tensorflow/python/lib/core/strings.i"
 %include "tensorflow/python/platform/base.i"
+
+%{
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/python/lib/core/ndarray_tensor.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
+%}
+
+
 %include "tensorflow/c/tf_datatype.h"
 %include "tensorflow/c/tf_status.h"
 
-%ignore "";
+%ignoreall;
 
 %rename("%s") TF_SetXlaEnableLazyCompilation;
-%rename("%s") TF_SetXLaAutoJitMode;
+%rename("%s") TF_SetTfXlaCpuGlobalJit;
+%rename("%s") TF_SetXlaAutoJitMode;
+%rename("%s") TF_SetXlaConstantFoldingDisabled;
+%rename("%s") TF_GetXlaConstantFoldingDisabled;
 %rename("%s") TF_SetXlaMinClusterSize;
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
@@ -36,28 +48,35 @@ limitations under the License.
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
+%rename("%s") TFE_ContextGetMirroringPolicy;
 %rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
-%rename("%s") TFE_ContextSetAsyncForThread;
+%rename("%s") TFE_ContextSetThreadLocalMirroringPolicy;
 %rename("%s") TFE_ContextSetServerDef;
-%rename("%s") TFE_ContextAsyncWait;
-%rename("%s") TFE_ContextAsyncClearError;
+%rename("%s") TFE_ContextUpdateServerDef;
+%rename("%s") TFE_ContextCheckAlive;
+%rename("%s") TFE_NewExecutor;
+%rename("%s") TFE_DeleteExecutor;
+%rename("%s") TFE_ExecutorIsAsync;
+%rename("%s") TFE_ExecutorWaitForAllPendingNodes;
+%rename("%s") TFE_ExecutorClearError;
+%rename("%s") TFE_ContextSetExecutorForThread;
+%rename("%s") TFE_ContextGetExecutorForThread;
 %rename("%s") TFE_NewProfiler;
 %rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;
 %rename("%s") TFE_ProfilerSerializeToString;
-%rename("%s") TFE_NewProfilerContext;
-%rename("%s") TFE_ProfilerContextSetEagerContext;
-%rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_ProfilerClientStartTracing;
+%rename("%s") TFE_ProfilerClientMonitor;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
 %rename("%s") TFE_Py_RegisterExceptionClass;
+%rename("%s") TFE_Py_RegisterJVPFunction;
 %rename("%s") TFE_Py_RegisterGradientFunction;
 %rename("%s") TFE_Py_RegisterFallbackExceptionClass;
-%rename("%s") TFE_Py_RegisterResourceVariableType;
 %rename("%s") TFE_Py_Execute;
+%rename("%s") TFE_Py_ExecuteCancelable;
 %rename("%s") TFE_Py_FastPathExecute;
 %rename("%s") TFE_Py_RecordGradient;
 %rename("%s") TFE_Py_UID;
@@ -66,23 +85,38 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetRemove;
 %rename("%s") TFE_Py_TapeSetStopOnThread;
 %rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsStopped;
 %rename("%s") TFE_Py_TapeSetIsEmpty;
-%rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetShouldRecordBackprop;
+%rename("%s") TFE_Py_TapeSetPossibleGradientTypes;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
+%rename("%s") TFE_Py_TapeSetRecordOperationBackprop;
+%rename("%s") TFE_Py_TapeSetRecordOperationForwardprop;
 %rename("%s") TFE_Py_TapeGradient;
 %rename("%s") TFE_Py_TapeVariableAccessed;
 %rename("%s") TFE_Py_TapeWatch;
 %rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
+%rename("%s") TFE_Py_ForwardAccumulatorNew;
+%rename("%s") TFE_Py_ForwardAccumulatorSetAdd;
+%rename("%s") TFE_Py_ForwardAccumulatorSetRemove;
+%rename("%s") TFE_Py_ForwardAccumulatorWatch;
+%rename("%s") TFE_Py_ForwardAccumulatorJVP;
+%rename("%s") TFE_Py_ForwardAccumulatorPushState;
+%rename("%s") TFE_Py_ForwardAccumulatorPopState;
+%rename("%s") TFE_Py_PackJVPs;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
+%rename("%s") TFE_ContextOptionsSetMirroringPolicy;
 %rename("%s") TFE_ContextOptionsSetAsync;
+%rename("%s") TFE_ContextOptionsSetLazyRemoteInputsCopy;
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
 %rename("%s") TFE_Py_EnableInteractivePythonLogging;
+%rename("%s") TFE_Py_SetEagerContext;
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
 %rename("%s") TFE_Py_RegisterVSpace;
@@ -147,9 +181,16 @@ limitations under the License.
 %rename("%s") TFE_MonitoringNewSampler2;
 %rename("%s") TFE_MonitoringDeleteSampler2;
 %rename("%s") TFE_MonitoringGetCellSampler2;
+%rename("%s") TFE_NewCancellationManager;
+%rename("%s") TFE_CancellationManagerIsCancelled;
+%rename("%s") TFE_CancellationManagerStartCancel;
+%rename("%s") TFE_DeleteCancellationManager;
+%rename("%s") TF_ImportGraphDefOptionsSetValidateColocationConstraints;
+%rename("%s") TFE_ClearScalarCache;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/python/util/util.h"
 #include "tensorflow/c/c_api_experimental.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -173,6 +214,16 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status) {
 }
 %}
 static PyObject* TF_ListPhysicalDevices(TF_Status* status);
+
+%{
+#include "tensorflow/python/eager/pywrap_tensor_conversion.h"
+
+static PyObject* TFE_ClearScalarCache() {
+  tensorflow::TFE_TensorHandleCache::Get()->Clear();
+  Py_RETURN_NONE;
+}
+%}
+static PyObject* TFE_ClearScalarCache();
 
 %typemap(in) (const void* proto) {
   char* c_string;
@@ -202,6 +253,7 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 }
 
 %typemap(in, numinputs=0) unsigned char* is_list (unsigned char tmp) {
+  tmp = 0;
   $1 = &tmp;
 }
 
@@ -313,6 +365,10 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32;
 
+%rename("%s") TFE_ContextMirroringPolicy;
+%rename("%s") TFE_MIRRORING_NONE;
+%rename("%s") TFE_MIRRORING_ALL;
+
 %include "tensorflow/c/eager/c_api.h"
 
 %typemap(in) TFE_InputTensorHandles* inputs (TFE_InputTensorHandles temp) {
@@ -331,9 +387,37 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
       }
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
+      } else if (tensorflow::swig::IsEagerTensorSlow(elem)) {
+        // Use equivalent of object.__getattribute__ to get the underlying
+        // tf wrapped EagerTensor (if there is one).
+        tensorflow::Safe_PyObjectPtr tf_should_use_attr(
+#if PY_MAJOR_VERSION < 3
+            PyString_InternFromString("_tf_should_use_wrapped_value")
+#else
+            PyUnicode_InternFromString("_tf_should_use_wrapped_value")
+#endif
+        );
+        tensorflow::Safe_PyObjectPtr value_attr(
+            PyObject_GenericGetAttr(elem, tf_should_use_attr.get()));
+        if (value_attr) {
+          // This is an EagerTensor wrapped inside a TFShouldUse wrapped object.
+          (*$1)[i] = EagerTensor_Handle(value_attr.get());
+        } else {
+          // This is a subclass of EagerTensor that we don't support.
+          PyErr_Clear();
+          SWIG_exception_fail(
+              SWIG_TypeError,
+              tensorflow::strings::StrCat(
+                  "Saw an object that is an instance of a strict subclass of "
+                  "EagerTensor, which is not supported.  Item ",
+                  i, " is type: ", elem->ob_type->tp_name)
+                  .c_str());
+        }
       } else if (tensorflow::swig::IsTensor(elem)) {
         // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
         // tensor.
+        tensorflow::Safe_PyObjectPtr name_attr(
+            PyObject_GetAttrString(elem, "name"));
         SWIG_exception_fail(
             SWIG_TypeError,
             tensorflow::strings::StrCat(
@@ -348,15 +432,15 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
                 "    with tf.init_scope():\n",
                 "      added = my_constant * 2\n",
                 "The graph tensor has name: ",
-                TFE_GetPythonString(PyObject_GetAttrString(elem, "name")))
-                .c_str());
+                name_attr ? TFE_GetPythonString(name_attr.get()) : "<unknown>"
+            ).c_str());
       } else {
         SWIG_exception_fail(
             SWIG_TypeError,
             tensorflow::strings::StrCat(
                 "provided list of inputs contains objects other "
                 "than 'EagerTensor'. Item ",
-                i, " is ", elem->ob_type->tp_name).c_str());
+                i, " is type: ", elem->ob_type->tp_name).c_str());
       }
     }
   }
@@ -378,11 +462,11 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {
-  $1 = TF_NewStatus();
+  $1 = GetStatus();
 }
 
 %typemap(freearg) (TF_Status* out_status) {
- TF_DeleteStatus($1);
+ ReturnStatus($1);
 }
 
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status) {
@@ -427,3 +511,5 @@ static PyObject* TF_ListPhysicalDevices(TF_Status* status);
 %typemap(freearg) (TF_Status* out_status);
 %typemap(argout) (TFE_OutputTensorHandles* outputs, TF_Status* out_status);
 %typemap(in) (const void* proto);
+
+%unignoreall

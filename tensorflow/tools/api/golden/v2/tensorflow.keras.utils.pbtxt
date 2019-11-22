@@ -53,6 +53,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'layer\', \'node_index\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "model_to_dot"
+    argspec: "args=[\'model\', \'show_shapes\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\', \'subgraph\'], varargs=None, keywords=None, defaults=[\'False\', \'True\', \'TB\', \'False\', \'96\', \'False\'], "
+  }
+  member_method {
     name: "multi_gpu_model"
     argspec: "args=[\'model\', \'gpus\', \'cpu_merge\', \'cpu_relocation\'], varargs=None, keywords=None, defaults=[\'True\', \'False\'], "
   }
@@ -62,7 +66,11 @@ tf_module {
   }
   member_method {
     name: "plot_model"
-    argspec: "args=[\'model\', \'to_file\', \'show_shapes\', \'show_layer_names\', \'rankdir\'], varargs=None, keywords=None, defaults=[\'model.png\', \'False\', \'True\', \'TB\'], "
+    argspec: "args=[\'model\', \'to_file\', \'show_shapes\', \'show_layer_names\', \'rankdir\', \'expand_nested\', \'dpi\'], varargs=None, keywords=None, defaults=[\'model.png\', \'False\', \'True\', \'TB\', \'False\', \'96\'], "
+  }
+  member_method {
+    name: "register_keras_serializable"
+    argspec: "args=[\'package\', \'name\'], varargs=None, keywords=None, defaults=[\'Custom\', \'None\'], "
   }
   member_method {
     name: "serialize_keras_object"

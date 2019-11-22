@@ -92,6 +92,31 @@ TEST(MfccOpTest, SimpleTest) {
           1e-3)));
 }
 
+TEST(MfccOpTest, ScalarInputRateTest) {
+  BaseMfccOpModel m({TensorType_FLOAT32, {1, 1, 513}}, {TensorType_INT32, {}},
+                    {TensorType_FLOAT32, {}});
+
+  std::vector<float> data(513);
+  for (int i = 0; i < data.size(); ++i) {
+    data[i] = i + 1;
+  }
+  m.PopulateTensor<float>(m.input1(), 0, data.data(),
+                          data.data() + data.size());
+  m.PopulateTensor<int>(m.input2(), {22050});
+
+  m.Invoke();
+
+  std::vector<int> output_shape = m.GetOutputShape();
+  EXPECT_THAT(output_shape, ElementsAre(1, 1, 13));
+  EXPECT_THAT(
+      m.GetOutput(),
+      ElementsAreArray(ArrayFloatNear(
+          {29.13970072, -6.41568601, -0.61903012, -0.96778652, -0.26819878,
+           -0.40907028, -0.15614748, -0.23203119, -0.10481487, -0.1543029,
+           -0.0769791, -0.10806114, -0.06047613},
+          1e-3)));
+}
+
 }  // namespace
 }  // namespace custom
 }  // namespace ops

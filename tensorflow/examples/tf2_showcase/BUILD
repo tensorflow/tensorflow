@@ -1,7 +1,6 @@
-licenses(["notice"])  # Apache 2.0
-
 package(
     default_visibility = ["//visibility:private"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 test_suite(
@@ -27,7 +26,7 @@ py_test(
     ],
     deps = [
         "//tensorflow:tensorflow_py",
-        "//third_party/py/absl:app",
-        "//third_party/py/absl/flags",
+        "@absl_py//absl:app",
+        "@absl_py//absl/flags",
     ],
 )

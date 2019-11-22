@@ -1,0 +1,81 @@
+op {
+  name: "BoostedTreesSparseCalculateBestFeatureSplit"
+  input_arg {
+    name: "node_id_range"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "stats_summary_indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "stats_summary_values"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "stats_summary_shape"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "l1"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "l2"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "tree_complexity"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "min_node_weight"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "node_ids"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "gains"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "feature_dimensions"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "thresholds"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "left_node_contribs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "right_node_contribs"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "split_with_default_directions"
+    type: DT_STRING
+  }
+  attr {
+    name: "logits_dimension"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "split_type"
+    type: "string"
+    default_value {
+      s: "inequality"
+    }
+    allowed_values {
+      list {
+        s: "inequality"
+      }
+    }
+  }
+}

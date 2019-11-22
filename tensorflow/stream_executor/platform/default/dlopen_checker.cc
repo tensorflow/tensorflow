@@ -20,7 +20,7 @@ namespace stream_executor {
 namespace internal {
 namespace DsoLoader {
 
-port::Status MaybeTryDlopenCUDALibraries() {
+port::Status TryDlopenCUDALibraries() {
   auto cudart_status = GetCudaRuntimeDsoHandle();
   auto cublas_status = GetCublasDsoHandle();
   auto cufft_status = GetCufftDsoHandle();
@@ -39,7 +39,7 @@ port::Status MaybeTryDlopenCUDALibraries() {
   }
 }
 
-port::Status MaybeTryDlopenROCmLibraries() {
+port::Status TryDlopenROCmLibraries() {
   auto rocblas_status = GetRocblasDsoHandle();
   auto miopen_status = GetMiopenDsoHandle();
   auto rocfft_status = GetRocfftDsoHandle();
@@ -55,14 +55,26 @@ port::Status MaybeTryDlopenROCmLibraries() {
 
 port::Status MaybeTryDlopenGPULibraries() {
 #if GOOGLE_CUDA
-  return MaybeTryDlopenCUDALibraries();
+  return TryDlopenCUDALibraries();
 #elif TENSORFLOW_USE_ROCM
-  return MaybeTryDlopenROCmLibraries();
+  return TryDlopenROCmLibraries();
 #else
   LOG(INFO) << "Not built with GPU enabled. Skip GPU library dlopen check.";
   return port::Status::OK();
 #endif
 }
+
+port::Status TryDlopenTensorRTLibraries() {
+  auto nvinfer_status = GetNvInferDsoHandle();
+  auto nvinferplugin_status = GetNvInferPluginDsoHandle();
+  if (!nvinfer_status.status().ok() || !nvinferplugin_status.status().ok()) {
+    return port::Status(port::error::INTERNAL,
+                        absl::StrCat("Cannot dlopen all TensorRT libraries."));
+  } else {
+    return port::Status::OK();
+  }
+}
+
 }  // namespace DsoLoader
 }  // namespace internal
 }  // namespace stream_executor

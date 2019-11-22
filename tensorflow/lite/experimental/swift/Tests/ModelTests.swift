@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-@testable import TensorFlowLite
 import XCTest
+
+@testable import TensorFlowLite
 
 class ModelTests: XCTestCase {
 
@@ -39,15 +40,15 @@ class ModelTests: XCTestCase {
     super.tearDown()
   }
 
-  func testModel_InitWithFilePath() {
+  func testInitWithFilePath() {
     XCTAssertNotNil(Model(filePath: modelPath))
   }
 
-  func testModel_InitWithEmptyFilePath_FailsInitialization() {
+  func testInitWithEmptyFilePath_FailsInitialization() {
     XCTAssertNil(Model(filePath: ""))
   }
 
-  func testModel_InitWithInvalidFilePath_FailsInitialization() {
+  func testInitWithInvalidFilePath_FailsInitialization() {
     XCTAssertNil(Model(filePath: "invalid/path"))
   }
 }

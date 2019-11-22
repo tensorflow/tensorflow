@@ -164,7 +164,7 @@ void FuseConvolution2DWithMultiply(const MultiplyScalarAttributes& mul_attr,
     for (int s = 0; s < attr->weights.shape.i; ++s) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -186,7 +186,7 @@ void FuseDepthwiseConvolution2DWithMultiply(
       const float multiplier = mul ? mul->data[d] : *mul_scalar;
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({g, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{g, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -207,7 +207,7 @@ void FuseConvolutionTransposedWithMultiply(
     for (int s = 0; s < attr->weights.shape.i; ++s) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -225,7 +225,7 @@ void FuseFullyConnectedWithMultiply(const MultiplyScalarAttributes& mul_attr,
   for (int d = 0; d < attr->weights.shape.o; ++d) {
     const float multiplier = mul ? mul->data[d] : *mul_scalar;
     for (int s = 0; s < attr->weights.shape.i; ++s) {
-      const int index = attr->weights.shape.LinearIndex({d, 0, 0, s});
+      const int index = attr->weights.shape.LinearIndex({{d, 0, 0, s}});
       attr->weights.data[index] *= multiplier;
     }
     if (!attr->bias.data.empty()) {
@@ -243,7 +243,7 @@ void FuseMultiplyWithConvolution2D(const MultiplyScalarAttributes& mul_attr,
     for (int d = 0; d < attr->weights.shape.o; ++d) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -261,7 +261,7 @@ void FuseMultiplyWithDepthwiseConvolution2D(
     for (int g = 0; g < attr->weights.shape.o; ++g) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({g, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{g, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -279,7 +279,7 @@ void FuseMultiplyWithConvolutionTransposed(
     for (int d = 0; d < attr->weights.shape.o; ++d) {
       for (int k_y = 0; k_y < attr->weights.shape.h; ++k_y) {
         for (int k_x = 0; k_x < attr->weights.shape.w; ++k_x) {
-          const int index = attr->weights.shape.LinearIndex({d, k_y, k_x, s});
+          const int index = attr->weights.shape.LinearIndex({{d, k_y, k_x, s}});
           attr->weights.data[index] *= multiplier;
         }
       }
@@ -294,7 +294,7 @@ void FuseMultiplyWithFullyConnected(const MultiplyScalarAttributes& mul_attr,
   for (int s = 0; s < attr->weights.shape.i; ++s) {
     const float multiplier = mul ? mul->data[s] : *mul_scalar;
     for (int d = 0; d < attr->weights.shape.o; ++d) {
-      const int index = attr->weights.shape.LinearIndex({d, 0, 0, s});
+      const int index = attr->weights.shape.LinearIndex({{d, 0, 0, s}});
       attr->weights.data[index] *= multiplier;
     }
   }

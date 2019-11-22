@@ -173,6 +173,7 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
     frozen_graph_def: Frozen GraphDef.
     in_tensors: List of input tensors for the graph.
     out_tensors: List of output tensors for the graph.
+    graph: `Graph` object.
 
   Raises:
     ValueError:
@@ -203,4 +204,4 @@ def freeze_saved_model(saved_model_dir, input_arrays, input_shapes,
     util.set_tensor_shapes(in_tensors, input_shapes)
 
     frozen_graph_def = util.freeze_graph(sess, in_tensors, out_tensors)
-    return frozen_graph_def, in_tensors, out_tensors
+    return frozen_graph_def, in_tensors, out_tensors, sess.graph

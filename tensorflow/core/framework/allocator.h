@@ -62,6 +62,30 @@ struct AllocationAttributes {
   TF_DISALLOW_COPY_AND_ASSIGN(AllocationAttributes);
 };
 
+// If defined, the runtime will cache Op names in thread-local memory
+// and some allocators will try to tag allocations with the requesting Op.
+#ifdef TENSORFLOW_MEM_DEBUG
+extern thread_local const char* pending_op_name;
+extern thread_local uint64 pending_step_id;
+#define MEMDEBUG_CACHE_OP(N) \
+  do {                       \
+    pending_op_name = (N);   \
+  } while (0)
+#define MEMDEBUG_CACHE_STEPID(N) \
+  do {                           \
+    pending_step_id = (N);       \
+  } while (0)
+#define MEMDEBUG_CACHE_VAL pending_op_name
+#else
+#define MEMDEBUG_CACHE_OP(N) \
+  do {                       \
+  } while (0)
+#define MEMDEBUG_CACHE_STEPID(N) \
+  do {                           \
+  } while (0)
+#define MEMDEBUG_CACHE_VAL nullptr
+#endif
+
 // Runtime statistics collected by an allocator. Exactly the same as
 // stream_executor::AllocatorStats, but independently defined to preserve the
 // mutual independence of StreamExecutor and TensorFlow.
@@ -288,9 +312,13 @@ struct AllocatorAttributes {
   bool gpu_compatible() const { return value & (0x1 << 2); }
   void Merge(AllocatorAttributes other) {
     value |= other.value;
-    scope_id = (scope_id > 0 && other.scope_id == 0)
-                   ? scope_id
-                   : ((scope_id == 0) ? other.scope_id : 0);
+    if (scope_id != other.scope_id) {
+      CHECK(scope_id == 0 || other.scope_id == 0)
+          << "At least one scope_id should be zero to merge "
+             "AllocatorAttributes but found this.scope_id="
+          << scope_id << " and other.scope_id=" << other.scope_id;
+      scope_id = scope_id == 0 ? other.scope_id : scope_id;
+    }
   }
   // Returns true if the fields set in *this is a subset of or equal to
   // those set in other.

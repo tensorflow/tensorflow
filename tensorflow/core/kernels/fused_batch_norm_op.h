@@ -17,13 +17,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_FUSED_BATCH_NORM_OP_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/util/tensor_format.h"
 
 namespace tensorflow {
 namespace functor {
 
-#if GOOGLE_CUDA
+// FusedBatchNormEx op supports side inputs and activations:
+//   (1) batch_norm + activation
+//   (2) batch norm + side input + activation
+enum class FusedBatchNormActivationMode { kIdentity, kRelu };
+
+string ToString(FusedBatchNormActivationMode activation_mode);
+
+Status ParseActivationMode(OpKernelConstruction* context,
+                           FusedBatchNormActivationMode* activation_mode);
+
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // There is a behavior difference between cuDNN v4 and v5 with regard to the
 // scaling factor for function cudnnBatchNormalizationForwardInference.
@@ -55,74 +67,33 @@ struct SetNanFunctor {
   void operator()(const Eigen::GpuDevice& d, typename TTypes<T>::Flat out);
 };
 
-#endif  // GOOGLE_CUDA
+// This is a functor to launch custom CUDA kernel for FusedBatchNorm with side
+// input and activation when 'is_training=False'. In training we rely on cuDNN.
+template <typename Device, typename T, typename U>
+struct FusedBatchNormInferenceFunctor {
+  void operator()(OpKernelContext* context, TensorFormat tensor_format,
+                  typename TTypes<T, 4>::ConstTensor in,
+                  typename TTypes<U>::ConstVec scale,
+                  typename TTypes<U>::ConstVec offset,
+                  typename TTypes<U>::ConstVec estimated_mean,
+                  typename TTypes<U>::ConstVec estimated_variance,
+                  typename TTypes<T, 4>::ConstTensor side_input, U epsilon,
+                  FusedBatchNormActivationMode activation_mode,
+                  typename TTypes<T, 4>::Tensor out);
+};
+
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 // Functor used by FusedBatchNormGradOp to do the computations when
-// is_training=False. Both CPU and GPU will use this functor.
+// is_training=False.
 template <typename Device, typename T, typename U>
 struct FusedBatchNormFreezeGrad {
-  void operator()(const Device& d, const Tensor& y_backprop_input,
+  void operator()(OpKernelContext* context, const Tensor& y_backprop_input,
                   const Tensor& x_input, const Tensor& scale_input,
                   const Tensor& pop_mean_input,
                   const Tensor& pop_variance_input, U epsilon,
                   Tensor* x_backprop_output, Tensor* scale_backprop_output,
-                  Tensor* offset_backprop_output,
-                  typename TTypes<U>::Vec scratch1,
-                  typename TTypes<U>::Vec scratch2) {
-    typename TTypes<T, 4>::ConstTensor y_backprop(
-        y_backprop_input.tensor<T, 4>());
-    typename TTypes<T, 4>::ConstTensor input(x_input.tensor<T, 4>());
-    typename TTypes<U>::ConstVec scale(scale_input.vec<U>());
-    typename TTypes<U>::ConstVec pop_mean(pop_mean_input.vec<U>());
-    typename TTypes<U>::ConstVec pop_var(pop_variance_input.vec<U>());
-    typename TTypes<T, 4>::Tensor x_backprop(x_backprop_output->tensor<T, 4>());
-    typename TTypes<U>::Vec scale_backprop(scale_backprop_output->vec<U>());
-    typename TTypes<U>::Vec offset_backprop(offset_backprop_output->vec<U>());
-
-    const int depth = pop_mean.dimension(0);
-    const int rest_size = input.size() / depth;
-
-    Eigen::DSizes<Eigen::Index, 2> rest_by_depth(rest_size, depth);
-#if !defined(EIGEN_HAS_INDEX_LIST)
-    Eigen::DSizes<Eigen::Index, 2> one_by_depth(1, depth);
-    Eigen::array<int, 1> reduction_axis{0};
-    Eigen::array<int, 2> rest_by_one({rest_size, 1});
-#else
-    Eigen::IndexList<Eigen::type2index<1>, Eigen::Index> one_by_depth;
-    one_by_depth.set(1, depth);
-    Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
-    Eigen::IndexList<Eigen::Index, Eigen::type2index<1> > rest_by_one;
-    rest_by_one.set(0, rest_size);
-#endif
-
-    // offset_backprop  = sum(y_backprop)
-    // scale_backprop = y_backprop * ((x - pop_mean) * rsqrt(pop_var + epsilon))
-    // x_backprop = y_backprop * (scale * rsqrt(pop_var + epsilon))
-
-    auto y_backprop_rest_by_depth =
-        y_backprop.reshape(rest_by_depth).template cast<U>();
-    auto input_rest_by_depth = input.reshape(rest_by_depth).template cast<U>();
-
-    offset_backprop.device(d) = y_backprop_rest_by_depth.sum(reduction_axis);
-
-    // scratch1 = rsqrt(pop_var + epsilon)
-    scratch1.device(d) = (pop_var + pop_var.constant(epsilon)).rsqrt();
-
-    // scratch2 = sum(y_backprop * (x - mean))
-    scratch2.device(d) =
-        (y_backprop_rest_by_depth *
-         (input_rest_by_depth -
-          pop_mean.reshape(one_by_depth).broadcast(rest_by_one)))
-            .sum(reduction_axis);
-
-    x_backprop.reshape(rest_by_depth).device(d) =
-        (y_backprop_rest_by_depth * ((scratch1 * scale)
-                                         .eval()
-                                         .reshape(one_by_depth)
-                                         .broadcast(rest_by_one)))
-            .template cast<T>();
-    scale_backprop.device(d) = scratch2 * scratch1;
-  }
+                  Tensor* offset_backprop_output) {}
 };
 
 }  // namespace functor

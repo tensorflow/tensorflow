@@ -46,15 +46,11 @@ class InterpreterExecutable : public Executable {
                         std::unique_ptr<HloEvaluator> evaluator);
   ~InterpreterExecutable() override;
 
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override
       LOCKS_EXCLUDED(evaluator_lock_);
-
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments) override;
 
   static int64 ShapeSizeBytes(const Shape& shape);
 
