@@ -1085,18 +1085,15 @@ struct HoistInnerOpsSingleIslandGraph : public OpRewritePattern<GraphOp> {
     if (!HasSingleOpInBlock<IslandOp>(&block)) return matchFailure();
 
     FetchOp fetch_op = op.GetFetch();
-    // Check if graph has no target nodes/control rets on `fetch`.
-    Operation::operand_range fetches = fetch_op.fetches();
-    if (!fetches.empty() &&
-        (*std::prev(fetches.end()))->getType().isa<ControlType>())
-      return matchFailure();
-
     auto island_op = llvm::cast<IslandOp>(block.front());
     YieldOp yield_op = island_op.GetYield();
 
     // Map graph results to inner ops results of single island.
     llvm::SmallVector<Value *, 8> new_rets;
-    for (Value *operand : fetches) {
+    for (Value *operand : fetch_op.fetches()) {
+      // Control results should not be propagated out.
+      if (operand->getType().isa<ControlType>()) break;
+
       if (operand->getDefiningOp() != island_op) {
         // Operand is not from island, simply propagate it out.
         new_rets.push_back(operand);
