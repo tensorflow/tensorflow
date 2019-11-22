@@ -90,4 +90,13 @@ FP16ConvMode CudnnConvComputeMode() {
   return FP16ConvMode::kAccurate;
 }
 
+// Use CuDNN depthwise conv when filter is 1x1, 3x3, 5x5, or 7x7.
+// See cudnn release note 7.6.3. (https://docs.nvidia.com/deeplearning/sdk/c
+// udnn-release-notes/rel_763.html#rel_763)
+bool IsCudnnSupportedFilterSize(const int32 filter_rows,
+                                const int32 filter_cols) {
+  return filter_rows == filter_cols && (filter_rows == 1 || filter_rows == 3 ||
+                                        filter_rows == 5 || filter_rows == 7);
+}
+
 }  // namespace tensorflow

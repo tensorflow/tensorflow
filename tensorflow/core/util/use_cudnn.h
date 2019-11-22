@@ -39,6 +39,8 @@ FP16ConvMode CudnnConvComputeMode();
 bool DebugCudnnRnn();
 bool DebugCudnnRnnUseTensorOps();
 int64 DebugCudnnRnnAlgo();
+bool IsCudnnSupportedFilterSize(const int32 filter_rows,
+                                const int32 filter_cols);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_USE_CUDNN_H_
