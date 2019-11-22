@@ -40,9 +40,9 @@ namespace TensorFlowLite
 
     public struct TensorInfo {
       public string name { get; internal set; }
-      public TfLiteType type { get; internal set; }
+      public DataType type { get; internal set; }
       public int[] dimensions { get; internal set; }
-      public TfLiteQuantizationParams quantizationParams { get; internal set; }
+      public QuantizationParams quantizationParams { get; internal set; }
 
       public override string ToString() {
         return string.Format("name: {0}, type: {1}, dimensions: {2}, quantizationParams: {3}",
@@ -168,7 +168,7 @@ namespace TensorFlowLite
     private const string TensorFlowLibrary = "tensorflowlite_c";
 #endif
 
-    public enum TfLiteType {
+    public enum DataType {
       NoType = 0,
       Float32 = 1,
       Int32 = 2,
@@ -182,12 +182,12 @@ namespace TensorFlowLite
       Float16 = 10,
     }
 
-    public struct TfLiteQuantizationParams {
+    public struct QuantizationParams {
       public float scale;
-      public int zero_point;
+      public int zeroPoint;
 
       public override string ToString() {
-        return string.Format("scale: {0} zero_point: {1}", scale, zero_point);
+        return string.Format("scale: {0} zeroPoint: {1}", scale, zeroPoint);
       }
     }
 
@@ -253,7 +253,7 @@ namespace TensorFlowLite
         int output_index);
     
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TfLiteType TfLiteTensorType(TfLiteTensor tensor);
+    private static extern unsafe DataType TfLiteTensorType(TfLiteTensor tensor);
 
     [DllImport (TensorFlowLibrary)]
     private static extern unsafe int TfLiteTensorNumDims(TfLiteTensor tensor);
@@ -268,7 +268,7 @@ namespace TensorFlowLite
     private static extern unsafe IntPtr TfLiteTensorName(TfLiteTensor tensor);
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TfLiteQuantizationParams TfLiteTensorQuantizationParams(TfLiteTensor tensor);
+    private static extern unsafe QuantizationParams TfLiteTensorQuantizationParams(TfLiteTensor tensor);
 
     [DllImport (TensorFlowLibrary)]
     private static extern unsafe int TfLiteTensorCopyFromBuffer(
