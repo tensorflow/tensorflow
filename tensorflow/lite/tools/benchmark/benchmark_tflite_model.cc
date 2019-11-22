@@ -31,13 +31,6 @@ limitations under the License.
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
-#elif defined(__APPLE__)
-#include "TargetConditionals.h"
-#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
-// Only enable metal delegate when using a real iPhone device.
-#define REAL_IPHONE_DEVICE
-#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
-#endif
 #endif
 
 #include "tensorflow/lite/kernels/register.h"
@@ -271,13 +264,9 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("nnapi_accelerator_name",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
+#if defined(__ANDROID__)
   default_params.AddParam("gpu_precision_loss_allowed",
                           BenchmarkParam::Create<bool>(true));
-#endif
-#if defined(REAL_IPHONE_DEVICE)
-  default_params.AddParam("gpu_wait_type",
-                          BenchmarkParam::Create<std::string>(""));
 #endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
@@ -325,16 +314,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
         "nnapi_accelerator_name", &params_,
         "the name of the nnapi accelerator to use (requires Android Q+)"),
     CreateFlag<bool>("use_gpu", &params_, "use gpu"),
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
+#if defined(__ANDROID__)
     CreateFlag<bool>("gpu_precision_loss_allowed", &params_,
                      "Allow to process computation in lower precision than "
                      "FP32 in GPU. By default, it's enabled."),
-#endif
-#if defined(REAL_IPHONE_DEVICE)
-    CreateFlag<std::string>(
-        "gpu_wait_type", &params_,
-        "GPU wait type. Should be one of the following: passive, active, "
-        "do_not_wait, aggressive"),
 #endif
     CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
     CreateFlag<bool>("require_full_delegation", &params_,
@@ -380,13 +363,9 @@ void BenchmarkTfLiteModel::LogParams() {
   }
 #endif
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
+#if defined(__ANDROID__)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
                    << params_.Get<bool>("gpu_precision_loss_allowed") << "]";
-#endif
-#if defined(REAL_IPHONE_DEVICE)
-  TFLITE_LOG(INFO) << "GPU delegate wait type : ["
-                   << params_.Get<std::string>("gpu_wait_type") << "]";
 #endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
@@ -669,31 +648,9 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     }
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
-#elif defined(REAL_IPHONE_DEVICE)
-    TFLGpuDelegateOptions gpu_opts = {0};
-    gpu_opts.allow_precision_loss =
-        params_.Get<bool>("gpu_precision_loss_allowed");
-
-    std::string string_gpu_wait_type =
-        params_.Get<std::string>("gpu_wait_type");
-    if (!string_gpu_wait_type.empty()) {
-      TFLGpuDelegateWaitType wait_type = TFLGpuDelegateWaitTypePassive;
-      if (string_gpu_wait_type == "passive") {
-        wait_type = TFLGpuDelegateWaitTypePassive;
-      } else if (string_gpu_wait_type == "active") {
-        wait_type = TFLGpuDelegateWaitTypeActive;
-      } else if (string_gpu_wait_type == "do_not_wait") {
-        wait_type = TFLGpuDelegateWaitTypeDoNotWait;
-      } else if (string_gpu_wait_type == "aggressive") {
-        wait_type = TFLGpuDelegateWaitTypeAggressive;
-      }
-      gpu_opts.wait_type = wait_type;
-    }
-    Interpreter::TfLiteDelegatePtr delegate(TFLGpuDelegateCreate(&gpu_opts),
-                                            &TFLGpuDelegateDelete);
 #else
-    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
-                        "to be benchmarked on Android or iOS platforms.";
+    TFLITE_LOG(WARN) << "The GPU delegate compile options aren't supported to "
+                        "be benchmarked on non-Android platforms.";
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get());
 #endif

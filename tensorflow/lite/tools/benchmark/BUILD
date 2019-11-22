@@ -106,12 +106,7 @@ cc_library(
     name = "benchmark_tflite_model_lib",
     srcs = ["benchmark_tflite_model.cc"],
     hdrs = ["benchmark_tflite_model.h"],
-    copts = common_copts + select({
-        "//tensorflow:ios": [
-            "-xobjective-c++",
-        ],
-        "//conditions:default": [],
-    }),
+    copts = common_copts,
     deps = [
         ":benchmark_model_lib",
         ":benchmark_utils",
@@ -129,9 +124,6 @@ cc_library(
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/lite/delegates/gpu:delegate",
-        ],
-        "//tensorflow:ios": [
-            "//tensorflow/lite/delegates/gpu:metal_delegate",
         ],
         "//conditions:default": [],
     }),
