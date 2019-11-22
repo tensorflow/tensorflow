@@ -32,8 +32,7 @@ namespace linalg {
 
 // Marker used as attribute name in generated Linalg rewriting transformations.
 struct LinalgTransforms {
-  static constexpr StringRef kLinalgTransformMarker =
-      "__internal_linalg_transform__";
+  static const StringLiteral kLinalgTransformMarker;
 };
 
 // Declarative transformation used in tablegen patterns.
