@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/experimental/micro/micro_optional_debug_tools.h"
 
-#include <inttypes.h>
-
 #include "tensorflow/lite/schema/schema_generated.h"
 namespace tflite {
 namespace {
@@ -124,7 +122,7 @@ void PrintInterpreterState(MicroInterpreter* interpreter) {
       printf("Node %3zu Operator Custom Name %s\n", node_index,
              reg->custom_name);
     } else {
-      printf("Node %3zu Operator Builtin Code %" PRIu32 " %s\n", node_index,
+      printf("Node %3zu Operator Builtin Code %3d %s\n", node_index,
              reg->builtin_code, EnumNamesBuiltinOperator()[reg->builtin_code]);
     }
     printf("  Inputs:");
