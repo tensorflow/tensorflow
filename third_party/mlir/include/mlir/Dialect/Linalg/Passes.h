@@ -41,7 +41,8 @@ createLinalgPromotionPass(bool dynamicBuffers);
 
 std::unique_ptr<OpPassBase<FuncOp>> createLowerLinalgToLoopsPass();
 
-std::unique_ptr<OpPassBase<ModuleOp>> createLowerLinalgToLLVMPass();
+/// Create a pass to convert vector operations to the LLVMIR dialect.
+std::unique_ptr<OpPassBase<ModuleOp>> createConvertLinalgToLLVMPass();
 
 } // namespace linalg
 } // namespace mlir

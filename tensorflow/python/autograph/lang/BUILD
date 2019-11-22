@@ -34,6 +34,7 @@ py_library(
 py_test(
     name = "special_functions_test",
     srcs = ["special_functions_test.py"],
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [
         ":lang",

@@ -250,6 +250,8 @@ bool RegisterKnownJITSymbols() {
                      "Host");
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee),
                      "Host");
+  registry->Register("__truncdfhf2", reinterpret_cast<void*>(__truncdfhf2),
+                     "Host");
 
 #undef REGISTER_CPU_RUNTIME_SYMBOL
 

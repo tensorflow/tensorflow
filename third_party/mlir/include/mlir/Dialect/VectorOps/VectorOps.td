@@ -53,7 +53,7 @@ class Vector_Op<string mnemonic, list<OpTrait> traits = []> :
 // with operators other than the current set: {*, +}.
 // TODO(andydavis) Consider using AffineMaps to express contracting, batch
 // and free dimension pairs.
-def VectorContractionOp :
+def Vector_ContractionOp :
   Vector_Op<"contract", [NoSideEffect]>,
     Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
                Variadic<TupleOf<[Index]>>:$masks)>,
@@ -147,7 +147,7 @@ def VectorContractionOp :
   }];
 }
 
-def VectorExtractElementOp :
+def Vector_ExtractElementOp :
   Vector_Op<"extractelement", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
@@ -174,7 +174,7 @@ def VectorExtractElementOp :
   }];
 }
 
-def VectorStridedSliceOp :
+def Vector_StridedSliceOp :
   Vector_Op<"strided_slice", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
                  TCresVTEtIsSameAsOpBase<0, 0>>]>,
@@ -216,7 +216,7 @@ def VectorStridedSliceOp :
   }];
 }
 
-def VectorOuterProductOp :
+def Vector_OuterProductOp :
   Vector_Op<"outerproduct", [NoSideEffect, SameOperandsAndResultElementType]>,
     Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, Variadic<AnyVector>:$acc)>,
     Results<(outs AnyVector)> {
@@ -255,7 +255,7 @@ def VectorOuterProductOp :
   }];
 }
 
-def VectorTransferReadOp :
+def Vector_TransferReadOp :
   Vector_Op<"transfer_read">,
     Arguments<(ins AnyMemRef:$memref, Variadic<Index>:$indices,
                AffineMapAttr:$permutation_map, AnyType:$padding)>,
@@ -386,7 +386,7 @@ def VectorTransferReadOp :
   }];
 }
 
-def VectorTransferWriteOp :
+def Vector_TransferWriteOp :
   Vector_Op<"transfer_write">,
     Arguments<(ins AnyVector:$vector, AnyMemRef:$memref,
                Variadic<Index>:$indices,
@@ -447,7 +447,7 @@ def VectorTransferWriteOp :
   }];
 }
 
-def VectorTypeCastOp :
+def Vector_TypeCastOp :
   Vector_Op<"type_cast", [NoSideEffect]>,
     Arguments<(ins StaticShapeMemRefOf<[AnyType]>:$memref)>,
     Results<(outs AnyMemRef)> {
@@ -490,8 +490,8 @@ def VectorTypeCastOp :
   }];
 }
 
-// TODO(andydavis) Morph this operation into a VectorMaskOp.
-def VectorIndexTupleOp :
+// TODO(andydavis) Morph this operation into a Vector_MaskOp.
+def Vector_IndexTupleOp :
   Vector_Op<"make_index_tuple", [NoSideEffect]>,
     Arguments<(ins Variadic<Index>:$operands)>,
     Results<(outs TupleOf<[Index]>)> {

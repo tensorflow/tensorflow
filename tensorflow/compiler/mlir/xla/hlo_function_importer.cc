@@ -387,6 +387,12 @@ StatusOr<mlir::Operation*> HloFunctionImporter::ImportInstruction(
                                             instruction->tuple_index())));
       MakeAndReturn(GetTupleElementOp);
     };
+    case HloOpcode::kGetDimensionSize: {
+      attributes.push_back(builder_->getNamedAttr(
+          "dimension", builder_->getIntegerAttr(builder_->getIntegerType(32),
+                                                instruction->dimension())));
+      MakeAndReturn(GetDimensionSizeOp);
+    };
     case HloOpcode::kTranspose: {
       attributes.push_back(builder_->getNamedAttr(
           "permutation", ConvertDimensions(instruction->dimensions())));

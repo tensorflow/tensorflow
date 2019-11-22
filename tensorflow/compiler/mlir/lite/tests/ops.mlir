@@ -167,7 +167,7 @@ func @testSqrtWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 // test invalid Square input
 func @testSquareWithWrongInputType(tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>):
-  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of floating-point or QI8 type or QUI8 type values}}
+  // expected-error @+1 {{tfl.square' op operand #0 must be tensor of floating-point values}}
   %0 = "tfl.square"(%arg0): (tensor<? x i32>) -> tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
@@ -188,12 +188,6 @@ func @testSquare(tensor<? x f32>) -> tensor<? x f32> {
   // CHECK: "tfl.square"(%arg0)
   %0 = "tfl.square"(%arg0): (tensor<? x f32>) -> tensor<? x f32>
   return %0 : tensor<? x f32>
-}
-
-func @testQuantizedSquare(tensor<? x !quant.uniform<u8:f32, 0.1>>) -> tensor<? x !quant.uniform<u8:f32, 0.1>> {
-^bb0(%arg0: tensor<? x !quant.uniform<u8:f32, 0.1>>):
-  %0 = "tfl.square"(%arg0): (tensor<? x !quant.uniform<u8:f32, 0.1>>) -> tensor<? x !quant.uniform<u8:f32, 0.1>>
-  return %0 : tensor<? x !quant.uniform<u8:f32, 0.1>>
 }
 
 func @testQuantizedResizeNearestNeighbor(tensor<? x !quant.uniform<u8:f32, 0.1>>, tensor<? x i32>) -> tensor<? x !quant.uniform<u8:f32, 0.1>> {

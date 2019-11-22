@@ -45,25 +45,14 @@ namespace profiler {
 class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
  public:
   StepStatsCuptiTracerAdaptor(const CuptiTracerCollectorOptions& option,
-                              uint64 start_walltime_ns, uint64 start_gpu_ns,
-                              StepStatsCollector* trace_collector)
+                              uint64 start_walltime_ns, uint64 start_gpu_ns)
       : CuptiTraceCollector(option),
-        trace_collector_(trace_collector),
         num_callback_events_(0),
         num_activity_events_(0),
         start_walltime_ns_(start_walltime_ns),
         start_gpu_ns_(start_gpu_ns),
         num_gpus_(option.num_gpus),
-        per_device_adaptor_(option.num_gpus) {
-    for (int i = 0; i < num_gpus_; ++i) {  // for each device id.
-      per_device_adaptor_[i].stream_device =
-          strings::StrCat("/device:GPU:", i, "/stream:");
-      per_device_adaptor_[i].memcpy_device =
-          strings::StrCat("/device:GPU:", i, "/memcpy");
-      per_device_adaptor_[i].sync_device =
-          strings::StrCat("/device:GPU:", i, "/sync");
-    }
-  }
+        per_device_adaptor_(option.num_gpus) {}
 
   void AddEvent(CuptiTracerEvent&& event) override {
     if (event.device_id >= num_gpus_) return;
@@ -83,18 +72,18 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
     per_device_adaptor_[event.device_id].AddEvent(std::move(event));
   }
   void OnEventsDropped(const std::string& reason, uint32 num_events) override {}
-  void Flush() override {
+  void Flush() override {}
+  void Export(StepStatsCollector* trace_collector) {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
               << " activity events.";
     for (int i = 0; i < num_gpus_; ++i) {
-      per_device_adaptor_[i].Flush(trace_collector_, start_walltime_ns_,
+      per_device_adaptor_[i].Flush(trace_collector, i, start_walltime_ns_,
                                    start_gpu_ns_);
     }
   }
 
  private:
-  StepStatsCollector* trace_collector_;
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
   uint64 start_walltime_ns_;
@@ -124,9 +113,12 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
         events.emplace_back(std::move(event));
       }
     }
-    void Flush(StepStatsCollector* collector, uint64 start_walltime_ns,
-               uint64 start_gpu_ns) {
+    void Flush(StepStatsCollector* collector, int32 device_ordinal,
+               uint64 start_walltime_ns, uint64 start_gpu_ns) {
       absl::MutexLock lock(&mutex);
+      stream_device = absl::StrCat("/device:GPU:", device_ordinal, "/stream:");
+      memcpy_device = absl::StrCat("/device:GPU:", device_ordinal, "/memcpy");
+      sync_device = absl::StrCat("/device:GPU:", device_ordinal, "/sync");
       for (auto& event : events) {
         NodeExecStats* ns = new NodeExecStats;
         ns->set_all_start_micros(
@@ -223,7 +215,7 @@ class StepStatsCuptiTracerAdaptor : public CuptiTraceCollector {
 class GpuTracer : public profiler::ProfilerInterface {
  public:
   GpuTracer(CuptiTracer* cupti_tracer, CuptiInterface* cupti_interface)
-      : cupti_tracer_(cupti_tracer), trace_collector_(&step_stats_) {
+      : cupti_tracer_(cupti_tracer) {
     VLOG(1) << "GpuTracer created.";
   }
   ~GpuTracer() override {}
@@ -253,7 +245,6 @@ class GpuTracer : public profiler::ProfilerInterface {
   CuptiTracer* cupti_tracer_;
   CuptiTracerOptions options_;
   StepStats step_stats_;
-  StepStatsCollector trace_collector_;
   std::unique_ptr<StepStatsCuptiTracerAdaptor> step_stats_cupti_adaptor_;
 };
 
@@ -316,8 +307,7 @@ Status GpuTracer::DoStart() {
   uint64 start_gputime_ns = CuptiTracer::GetTimestamp();
   uint64 start_walltime_ns = tensorflow::EnvTime::NowNanos();
   step_stats_cupti_adaptor_ = absl::make_unique<StepStatsCuptiTracerAdaptor>(
-      collector_options, start_walltime_ns, start_gputime_ns,
-      &trace_collector_);
+      collector_options, start_walltime_ns, start_gputime_ns);
 
   AnnotationStack::Enable(true);
   cupti_tracer_->Enable(options_, step_stats_cupti_adaptor_.get());
@@ -364,7 +354,11 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
       return Status::OK();
     case State::kStoppedOk: {
       // Input run_metadata is shared by profiler interfaces, we need append.
-      trace_collector_.Finalize();
+      StepStatsCollector trace_collector(&step_stats_);
+      if (step_stats_cupti_adaptor_) {
+        step_stats_cupti_adaptor_->Export(&trace_collector);
+      }
+      trace_collector.Finalize();
       for (auto& dev_stats : *step_stats_.mutable_dev_stats()) {
         run_metadata->mutable_step_stats()->add_dev_stats()->Swap(&dev_stats);
       }

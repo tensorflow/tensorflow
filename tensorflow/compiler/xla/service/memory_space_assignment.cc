@@ -158,9 +158,10 @@ void CostAnalysisPrefetchIntervalPicker::Begin(const HloUse& use,
   end_logical_time_ = end_time;
   // Find the earliest time we're allowed to start prefetching.
   for (current_logical_prefetch_time_ = start_time;
+       current_logical_prefetch_time_ <= end_logical_time_ &&
        max_async_copy_to_overlap_ratio_ * async_copy_elapsed_ <
-       GetLogicalIntervalElapsed(current_logical_prefetch_time_,
-                                 end_logical_time_);
+           GetLogicalIntervalElapsed(current_logical_prefetch_time_,
+                                     end_logical_time_);
        ++current_logical_prefetch_time_) {
   }
 }
@@ -172,6 +173,11 @@ int64 CostAnalysisPrefetchIntervalPicker::Next() {
 }
 
 bool CostAnalysisPrefetchIntervalPicker::Done() const {
+  // The end time is inclusive, so we're done if the prefetch time is greater
+  // than that.
+  if (current_logical_prefetch_time_ > end_logical_time_) {
+    return true;
+  }
   float logical_interval_elapsed = GetLogicalIntervalElapsed(
       current_logical_prefetch_time_, end_logical_time_);
   return min_async_copy_to_overlap_ratio_ * async_copy_elapsed_ -

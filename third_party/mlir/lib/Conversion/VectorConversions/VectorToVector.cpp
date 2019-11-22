@@ -355,8 +355,8 @@ struct ConvertFakeForkFromBlockArgsOp : public RewritePattern {
                           leadingSize, unrollFactors);
       extractedVectors.push_back(
           rewriter
-              .create<vector::VectorStridedSliceOp>(op->getLoc(), blockArg,
-                                                    offsets, sizes, strides)
+              .create<vector::StridedSliceOp>(op->getLoc(), blockArg, offsets,
+                                              sizes, strides)
               .getResult());
     }
     rewriter.replaceOp(op, extractedVectors);

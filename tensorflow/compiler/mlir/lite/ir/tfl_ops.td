@@ -298,7 +298,8 @@ class TFL_ConvOp<string mnemonic, string opSummary, int index> :
 //===----------------------------------------------------------------------===//
 // TFL op definitions.
 //===----------------------------------------------------------------------===//
-def TFL_AbsOp : TFL_Op<"abs", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_AbsOp : TFL_Op<"abs", [
+    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Absolute value operator";
 
   let description = [{
@@ -307,9 +308,9 @@ value of each element in `x`. For example, if x is an input element and y is
 an output element, this operation computes \\(y = |x|\\).
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
 }
@@ -558,7 +559,8 @@ def TFL_ConstOp : Op<TFL_Dialect, "pseudo_const", [NoSideEffect,
 
 def TFL_Conv2DOp : TFL_ConvOp<"conv_2d", "Convolution", 0>;
 
-def TFL_CosOp: TFL_Op<"cos", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_CosOp: TFL_Op<"cos", [
+    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Cosine operator";
 
   let description = [{
@@ -1263,7 +1265,7 @@ def TFL_LogicalAndOp : TFL_Op<"logical_and", [NoSideEffect]> {
   let printer = [{ return mlir::impl::printOneResultOp(getOperation(), p); }];
 }
 
-def TFL_LogicalNotOp : TFL_Op<"logical_not", [NoSideEffect]> {
+def TFL_LogicalNotOp : TFL_Op<"logical_not", [NoSideEffect, NoQuantizableResult]> {
   let summary = "Logical NOT operator";
 
   let description = [{
@@ -1311,16 +1313,17 @@ def TFL_LogisticOp: TFL_Op<"logistic", [
   let results = (outs TensorOf<[AnyFloat, QI8, QUI8, QI16, QUI16]>:$y);
 }
 
-def TFL_LogOp: TFL_Op<"log", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_LogOp: TFL_Op<"log", [
+    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Natural logarithm operator";
 
   let description = [{
     Performs element-wise natural logarithm operation on input.
   }];
 
-  let arguments = (ins AnyTensor:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs AnyTensor:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasFolder = 1;
 }
@@ -2038,7 +2041,8 @@ def TFL_SelectOp : TFL_Op<"select", [NoSideEffect,
   let hasOptions = 1;
 }
 
-def TFL_SinOp: TFL_Op<"sin", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_SinOp: TFL_Op<"sin", [
+    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Sine operator";
 
   let description = [{
@@ -2078,7 +2082,8 @@ def TFL_SoftmaxOp : TFL_Op<"softmax", [
   let hasOptions = 1;
 }
 
-def TFL_SqrtOp: TFL_Op<"sqrt", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_SqrtOp: TFL_Op<"sqrt", [
+    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Square root operator";
 
   let description = [{
@@ -2092,16 +2097,17 @@ def TFL_SqrtOp: TFL_Op<"sqrt", [NoSideEffect, SameOperandsAndResultType]> {
   let hasFolder = 1;
 }
 
-def TFL_SquareOp: TFL_Op<"square", [NoSideEffect, SameOperandsAndResultType]> {
+def TFL_SquareOp: TFL_Op<"square", [
+    NoSideEffect, SameOperandsAndResultType, NoQuantizableResult]> {
   let summary = "Square operator";
 
   let description = [{
     Computes element-wise Square of input
   }];
 
-  let arguments = (ins TensorOf<[AnyFloat, QI8, QUI8]>:$x);
+  let arguments = (ins TFL_FpTensor:$x);
 
-  let results = (outs TensorOf<[AnyFloat, QI8, QUI8]>:$y);
+  let results = (outs TFL_FpTensor:$y);
 
   let hasOptions = 0b1;
 

@@ -36,12 +36,12 @@
 #include "mlir/IR/Types.h"
 
 using namespace mlir;
-using vector::VectorTransferReadOp;
-using vector::VectorTransferWriteOp;
+using vector::TransferReadOp;
+using vector::TransferWriteOp;
 
 namespace {
 
-/// Implements lowering of VectorTransferReadOp and VectorTransferWriteOp to a
+/// Implements lowering of TransferReadOp and TransferWriteOp to a
 /// proper abstraction for the hardware.
 ///
 /// For now, we only emit a simple loop nest that performs clipped pointwise
@@ -89,22 +89,22 @@ namespace {
 /// load vectors + mask them. Similarly on the write side, load/mask/store for
 /// implementing RMW behavior.
 ///
-/// Lowers VectorTransferOp into a combination of:
+/// Lowers TransferOp into a combination of:
 ///   1. local memory allocation;
 ///   2. perfect loop nest over:
 ///      a. scalar load/stores from local buffers (viewed as a scalar memref);
 ///      a. scalar store/load to original memref (with clipping).
 ///   3. vector_load/store
 ///   4. local memory deallocation.
-/// Minor variations occur depending on whether a VectorTransferReadOp or
-/// a VectorTransferWriteOp is rewritten.
-template <typename VectorTransferOpTy>
+/// Minor variations occur depending on whether a TransferReadOp or
+/// a TransferWriteOp is rewritten.
+template <typename TransferOpTy>
 struct VectorTransferRewriter : public RewritePattern {
   explicit VectorTransferRewriter(MLIRContext *context)
-      : RewritePattern(VectorTransferOpTy::getOperationName(), 1, context) {}
+      : RewritePattern(TransferOpTy::getOperationName(), 1, context) {}
 
   /// Used for staging the transfer in a local scalar buffer.
-  MemRefType tmpMemRefType(VectorTransferOpTy transfer) const {
+  MemRefType tmpMemRefType(TransferOpTy transfer) const {
     auto vectorType = transfer.getVectorType();
     return MemRefType::get(vectorType.getShape(), vectorType.getElementType(),
                            {}, 0);
@@ -119,8 +119,8 @@ struct VectorTransferRewriter : public RewritePattern {
 /// MemRef dimension. If such a dimension with coalescing properties is found,
 /// `pivs` and `vectorView` are swapped so that the invocation of
 /// LoopNestBuilder captures it in the innermost loop.
-template <typename VectorTransferOpTy>
-void coalesceCopy(VectorTransferOpTy transfer,
+template <typename TransferOpTy>
+void coalesceCopy(TransferOpTy transfer,
                   SmallVectorImpl<edsc::ValueHandle *> *pivs,
                   edsc::VectorView *vectorView) {
   // rank of the remote memory access, coalescing behavior occurs on the
@@ -152,8 +152,8 @@ void coalesceCopy(VectorTransferOpTy transfer,
 
 /// Emits remote memory accesses that are clipped to the boundaries of the
 /// MemRef.
-template <typename VectorTransferOpTy>
-llvm::SmallVector<edsc::ValueHandle, 8> clip(VectorTransferOpTy transfer,
+template <typename TransferOpTy>
+llvm::SmallVector<edsc::ValueHandle, 8> clip(TransferOpTy transfer,
                                              edsc::MemRefView &view,
                                              ArrayRef<edsc::IndexHandle> ivs) {
   using namespace mlir::edsc;
@@ -207,7 +207,7 @@ llvm::SmallVector<edsc::ValueHandle, 8> clip(VectorTransferOpTy transfer,
   return clippedScalarAccessExprs;
 }
 
-/// Lowers VectorTransferReadOp into a combination of:
+/// Lowers TransferReadOp into a combination of:
 ///   1. local memory allocation;
 ///   2. perfect loop nest over:
 ///      a. scalar load from local buffers (viewed as a scalar memref);
@@ -215,7 +215,7 @@ llvm::SmallVector<edsc::ValueHandle, 8> clip(VectorTransferOpTy transfer,
 ///   3. vector_load from local buffer (viewed as a memref<1 x vector>);
 ///   4. local memory deallocation.
 ///
-/// Lowers the data transfer part of a VectorTransferReadOp while ensuring no
+/// Lowers the data transfer part of a TransferReadOp while ensuring no
 /// out-of-bounds accesses are possible. Out-of-bounds behavior is handled by
 /// clipping. This means that a given value in memory can be read multiple
 /// times and concurrently.
@@ -251,8 +251,7 @@ llvm::SmallVector<edsc::ValueHandle, 8> clip(VectorTransferOpTy transfer,
 
 /// Performs the rewrite.
 template <>
-PatternMatchResult
-VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
+PatternMatchResult VectorTransferRewriter<TransferReadOp>::matchAndRewrite(
     Operation *op, PatternRewriter &rewriter) const {
   using namespace mlir::edsc;
   using namespace mlir::edsc::op;
@@ -260,7 +259,7 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
   using IndexedValue =
       TemplatedIndexedValue<intrinsics::std_load, intrinsics::std_store>;
 
-  VectorTransferReadOp transfer = cast<VectorTransferReadOp>(op);
+  TransferReadOp transfer = cast<TransferReadOp>(op);
 
   // 1. Setup all the captures.
   ScopedContext scope(rewriter, transfer.getLoc());
@@ -295,7 +294,7 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
   return matchSuccess();
 }
 
-/// Lowers VectorTransferWriteOp into a combination of:
+/// Lowers TransferWriteOp into a combination of:
 ///   1. local memory allocation;
 ///   2. vector_store to local buffer (viewed as a memref<1 x vector>);
 ///   3. perfect loop nest over:
@@ -314,8 +313,7 @@ VectorTransferRewriter<VectorTransferReadOp>::matchAndRewrite(
 /// TODO(ntv): implement alternatives to clipping.
 /// TODO(ntv): support non-data-parallel operations.
 template <>
-PatternMatchResult
-VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
+PatternMatchResult VectorTransferRewriter<TransferWriteOp>::matchAndRewrite(
     Operation *op, PatternRewriter &rewriter) const {
   using namespace mlir::edsc;
   using namespace mlir::edsc::op;
@@ -323,7 +321,7 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
   using IndexedValue =
       TemplatedIndexedValue<intrinsics::std_load, intrinsics::std_store>;
 
-  VectorTransferWriteOp transfer = cast<VectorTransferWriteOp>(op);
+  TransferWriteOp transfer = cast<TransferWriteOp>(op);
 
   // 1. Setup all the captures.
   ScopedContext scope(rewriter, transfer.getLoc());
@@ -361,7 +359,6 @@ VectorTransferRewriter<VectorTransferWriteOp>::matchAndRewrite(
 /// Populate the given list with patterns that convert from Vector to LLVM.
 void mlir::populateVectorToAffineLoopsConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns) {
-  patterns.insert<VectorTransferRewriter<vector::VectorTransferReadOp>,
-                  VectorTransferRewriter<vector::VectorTransferWriteOp>>(
-      context);
+  patterns.insert<VectorTransferRewriter<vector::TransferReadOp>,
+                  VectorTransferRewriter<vector::TransferWriteOp>>(context);
 }

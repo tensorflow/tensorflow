@@ -42,7 +42,7 @@ static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
                                           int id, int local_device_ordinal) {
   CHECK_EQ(platform_name, "tpu");
   CHECK_EQ(id, local_device_ordinal);  // Every device must be local for now.
-  return std::make_shared<TpuDevice>(id, local_device_ordinal);
+  return std::make_shared<TpuDevice>(id, local_device_ordinal, "tpu");
 }
 
 StatusOr<std::shared_ptr<PyTpuClient>> PyTpuClient::Get(

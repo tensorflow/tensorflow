@@ -509,6 +509,7 @@ edgetpu_ops = [
     "sub",
     "sum",  # high error
     "tanh",
+    "transpose_conv",
 ]
 
 [gen_zipped_test_file(

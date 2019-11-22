@@ -88,12 +88,6 @@ static std::vector<std::pair<int64, int64>> Convert_padding(
   return out;
 }
 
-// Converts the broadcast_sizes attribute into a vector of dimension sizes.
-static std::vector<int64> Convert_broadcast_sizes(
-    mlir::DenseIntElementsAttr broadcast_sizes) {
-  return ConvertDenseIntAttr(broadcast_sizes);
-}
-
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
   int64_t num_groups = groups.getType().getDimSize(0);
@@ -111,10 +105,19 @@ static std::vector<xla::ReplicaGroup> Convert_replica_groups(
   return result;
 }
 
-static std::vector<int64> Convert_permutation(
-    mlir::DenseIntElementsAttr permutation) {
-  return ConvertDenseIntAttr(permutation);
-}
+#define I64_ELEMENTS_ATTR_TO_VECTOR(attribute)   \
+  static std::vector<int64> Convert_##attribute( \
+      mlir::DenseIntElementsAttr attribute) {    \
+    return ConvertDenseIntAttr(attribute);       \
+  }
+
+I64_ELEMENTS_ATTR_TO_VECTOR(broadcast_sizes);
+I64_ELEMENTS_ATTR_TO_VECTOR(permutation);
+I64_ELEMENTS_ATTR_TO_VECTOR(start_indices);
+I64_ELEMENTS_ATTR_TO_VECTOR(limit_indices);
+I64_ELEMENTS_ATTR_TO_VECTOR(strides);
+
+#undef I64_ELEMENTS_ATTR_TO_VECTOR
 
 static std::vector<int64> Convert_ArrayRef(llvm::ArrayRef<int64_t> values) {
   return {values.begin(), values.end()};

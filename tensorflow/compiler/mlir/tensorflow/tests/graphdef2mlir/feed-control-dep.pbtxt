@@ -62,7 +62,7 @@ versions {
 # CHECK:      func @main(%[[ARG_0:[a-z0-9]+]]: tensor<f32>) -> tensor<f32>
 # CHECK:      tf.entry_function = {inputs = "input", outputs = "output_node"}
 # CHECK:        %[[GRAPH:[0-9]+]] = tf_executor.graph
-# CHECK:          %[[CONST:[0-9]+]]:2 = tf_executor.island wraps "tf.Const"()
-# CHECK:          %[[OUTPUT:[0-9]+]]:2 = tf_executor.island wraps "tf.Identity"(%[[CONST]]#0)
-# CHECK:          tf_executor.fetch %[[OUTPUT]]#0
+# CHECK:          %[[CONST:.*]], %[[CONST_control:.*]] = tf_executor.island wraps "tf.Const"()
+# CHECK:          %[[OUTPUT:.*]], %[[OUTPUT_control:.*]] = tf_executor.island wraps "tf.Identity"(%[[CONST]])
+# CHECK:          tf_executor.fetch %[[OUTPUT]]
 # CHECK:        return %[[GRAPH]]

@@ -76,3 +76,8 @@ opt<std::string> quant_stats_file_name("quant-stats",
                                        llvm::cl::desc("<stats file>"),
                                        llvm::cl::value_desc("filename"),
                                        llvm::cl::init(""));
+
+// NOLINTNEXTLINE
+opt<bool> inline_functions(
+    "inline", llvm::cl::desc("Inline function calls within the main function "
+                             "before legalization to TFLite."));

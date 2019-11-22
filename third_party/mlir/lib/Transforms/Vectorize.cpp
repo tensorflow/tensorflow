@@ -833,7 +833,7 @@ static LogicalResult vectorizeRootOrTerminal(Value *iv,
       return LogicalResult::Failure;
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
-    auto transfer = b.create<vector::VectorTransferReadOp>(
+    auto transfer = b.create<vector::TransferReadOp>(
         opInst->getLoc(), vectorType, memoryOp.getMemRef(),
         map(makePtrDynCaster<Value>(), indices),
         AffineMapAttr::get(permutationMap),
@@ -1035,9 +1035,9 @@ static Operation *vectorizeOneOperation(Operation *opInst,
   // Sanity checks.
   assert(!isa<AffineLoadOp>(opInst) &&
          "all loads must have already been fully vectorized independently");
-  assert(!isa<vector::VectorTransferReadOp>(opInst) &&
+  assert(!isa<vector::TransferReadOp>(opInst) &&
          "vector.transfer_read cannot be further vectorized");
-  assert(!isa<vector::VectorTransferWriteOp>(opInst) &&
+  assert(!isa<vector::TransferWriteOp>(opInst) &&
          "vector.transfer_write cannot be further vectorized");
 
   if (auto store = dyn_cast<AffineStoreOp>(opInst)) {
@@ -1064,7 +1064,7 @@ static Operation *vectorizeOneOperation(Operation *opInst,
       return nullptr;
     LLVM_DEBUG(dbgs() << "\n[early-vect]+++++ permutationMap: ");
     LLVM_DEBUG(permutationMap.print(dbgs()));
-    auto transfer = b.create<vector::VectorTransferWriteOp>(
+    auto transfer = b.create<vector::TransferWriteOp>(
         opInst->getLoc(), vectorValue, memRef, indices,
         AffineMapAttr::get(permutationMap));
     auto *res = transfer.getOperation();

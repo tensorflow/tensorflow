@@ -274,8 +274,7 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
 }
 
 static bool isVectorTransferReadOrWrite(Operation &op) {
-  return isa<vector::VectorTransferReadOp>(op) ||
-         isa<vector::VectorTransferWriteOp>(op);
+  return isa<vector::TransferReadOp>(op) || isa<vector::TransferWriteOp>(op);
 }
 
 using VectorizableOpFun = std::function<bool(AffineForOp, Operation &)>;

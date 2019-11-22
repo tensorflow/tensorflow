@@ -1,4 +1,4 @@
-//===- LowerToLLVMDialect.cpp - conversion from Linalg to LLVM dialect ----===//
+//===- LinalgToLLVM.cpp - conversion from Linalg to LLVM dialect ----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h"
 #include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
 #include "mlir/Conversion/LoopToStandard/ConvertLoopToStandard.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"
@@ -373,19 +374,11 @@ static FlatSymbolRefAttr getLibraryCallSymbolRef(Operation *op,
   return fnNameAttr;
 }
 
-namespace {
-// The conversion class from Linalg to LLVMIR.
-class LinalgTypeConverter : public LLVMTypeConverter {
-  using LLVMTypeConverter::LLVMTypeConverter;
-
-public:
-  Type convertType(Type t) override {
-    if (auto result = LLVMTypeConverter::convertType(t))
-      return result;
-    return convertLinalgType(t, *this);
-  }
-};
-} // end anonymous namespace
+Type LinalgTypeConverter::convertType(Type t) {
+  if (auto result = LLVMTypeConverter::convertType(t))
+    return result;
+  return convertLinalgType(t, *this);
+}
 
 // LinalgOpConversion<LinalgOp> creates a new call to the
 // `LinalgOp::getLibraryCallName()` function.
@@ -483,21 +476,20 @@ populateLinalgToStandardConversionPatterns(OwningRewritePatternList &patterns,
 }
 
 /// Populate the given list with patterns that convert from Linalg to LLVM.
-static void
-populateLinalgToLLVMConversionPatterns(LinalgTypeConverter &converter,
-                                       OwningRewritePatternList &patterns,
-                                       MLIRContext *ctx) {
+void mlir::populateLinalgToLLVMConversionPatterns(
+    LinalgTypeConverter &converter, OwningRewritePatternList &patterns,
+    MLIRContext *ctx) {
   patterns.insert<RangeOpConversion, SliceOpConversion, TransposeOpConversion,
                   YieldOpConversion>(ctx, converter);
 }
 
 namespace {
-struct LowerLinalgToLLVMPass : public ModulePass<LowerLinalgToLLVMPass> {
+struct ConvertLinalgToLLVMPass : public ModulePass<ConvertLinalgToLLVMPass> {
   void runOnModule() override;
 };
 } // namespace
 
-void LowerLinalgToLLVMPass::runOnModule() {
+void ConvertLinalgToLLVMPass::runOnModule() {
   auto module = getModule();
 
   // Convert to the LLVM IR dialect using the converter defined above.
@@ -520,10 +512,10 @@ void LowerLinalgToLLVMPass::runOnModule() {
 }
 
 std::unique_ptr<OpPassBase<ModuleOp>>
-mlir::linalg::createLowerLinalgToLLVMPass() {
-  return std::make_unique<LowerLinalgToLLVMPass>();
+mlir::linalg::createConvertLinalgToLLVMPass() {
+  return std::make_unique<ConvertLinalgToLLVMPass>();
 }
 
-static PassRegistration<LowerLinalgToLLVMPass>
+static PassRegistration<ConvertLinalgToLLVMPass>
     pass("convert-linalg-to-llvm",
-         "Lower the operations from the linalg dialect into the LLVM dialect");
+         "Convert the operations from the linalg dialect into the LLVM dialect");

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 
 #include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/tf_op_utils.h"
@@ -35,7 +36,7 @@ class DeviceTfOpMetricsDbBuilder : public OpMetricsDbBuilder {
     OpMetrics* tf_op_metrics = OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
         /*hlo_module_id=*/0, tf_op_name);
     if (tf_op_metrics->category().empty())
-      tf_op_metrics->set_category(tf_op_type);
+      tf_op_metrics->set_category(tf_op_type.data(), tf_op_type.size());
     // The occurrences of a TF-op is the maximum among the occurrences of all
     // HLO-ops that it contains.
     tf_op_metrics->set_occurrences(
@@ -64,7 +65,7 @@ OpMetrics* OpMetricsDbBuilder::LookupOrInsertNewOpMetrics(
   if (op_metrics == nullptr) {
     op_metrics = db_->add_metrics_db();
     op_metrics->set_hlo_module_id(hlo_module_id);
-    op_metrics->set_name(name);
+    op_metrics->set_name(name.data(), name.size());
   }
   return op_metrics;
 }

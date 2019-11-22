@@ -157,10 +157,10 @@ static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
 static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
                                           int id, int local_device_ordinal) {
   if (platform_name == "cpu") {
-    return std::make_shared<CpuDevice>(id, local_device_ordinal);
+    return std::make_shared<CpuDevice>(id, local_device_ordinal, platform_name);
   } else {
     CHECK_EQ(platform_name, "gpu");
-    return std::make_shared<GpuDevice>(id, local_device_ordinal);
+    return std::make_shared<GpuDevice>(id, local_device_ordinal, platform_name);
   }
 }
 
