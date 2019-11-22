@@ -72,7 +72,6 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     ValueError: If input is None.
     
   Usage Example:
-    >>> import tensorflow as tf
     >>> x = tf.zeros(shape=(3,3)) + 4
     >>> y = tf.identity(x)
     >>> print(y)
