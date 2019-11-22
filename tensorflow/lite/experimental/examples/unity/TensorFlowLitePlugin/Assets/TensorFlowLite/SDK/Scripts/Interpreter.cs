@@ -118,6 +118,11 @@ namespace TensorFlowLite
       return GetTensorInfo(tensor);
     }
 
+    /// <summary>
+    /// Returns a string describing version information of the TensorFlow Lite library.
+    /// TensorFlow Lite uses semantic versioning.
+    /// </summary>
+    /// <returns>A string describing version information</returns>
     public static string GetVersion() {
       return Marshal.PtrToStringAnsi(TfLiteVersion());
     }
