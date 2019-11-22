@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -179,10 +181,23 @@ Status ModularFileSystem::GetChildren(const std::string& dir,
 }
 
 Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
-                                           std::vector<std::string>* results) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+                                           std::vector<std::string>* result) {
+  if (ops_->get_matching_paths == nullptr)
+    return internal::GetMatchingPaths(this, Env::Default(), pattern, result);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  char** matches;
+  const int num_matches = ops_->get_matching_paths(
+      filesystem_.get(), pattern.c_str(), &matches, plugin_status.get());
+  if (num_matches >= 0) {
+    for (int i = 0; i < num_matches; i++) {
+      result->push_back(std::string(matches[i]));
+      free(matches[i]);
+    }
+    free(matches);
+  }
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::DeleteFile(const std::string& fname) {
@@ -348,7 +363,7 @@ std::string ModularFileSystem::TranslateName(const std::string& name) const {
 }
 
 void ModularFileSystem::FlushCaches() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
+  if (ops_->flush_caches != nullptr) ops_->flush_caches(filesystem_.get());
 }
 
 Status ModularRandomAccessFile::Read(uint64 offset, size_t n,

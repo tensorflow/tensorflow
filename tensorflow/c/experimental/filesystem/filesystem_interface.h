@@ -646,13 +646,13 @@ typedef struct TF_FilesystemOps {
   ///   '\\' c: matches character c
   ///   lo '-' hi: matches character c for lo <= c <= hi
   ///
-  /// Caller passes `nullptr` for `entries`. Plugins must allocate `entries`
-  /// to hold all names that need to be returned and return the size of
-  /// `entries`.
+  /// Implementations must allocate `entries` to hold all names that need to be
+  /// returned and return the size of `entries`. Caller takes ownership of
+  /// `entries` after the call.
   ///
-  /// In case of error, plugins must set `status` to a value different than
-  /// `TF_OK`, return -1 and leave `entries` unchanged (i.e., `nullptr`, freeing
-  /// any allocated memory)
+  /// In case of error, the implementations must set `status` to a value
+  /// different than `TF_OK`, free any memory that might have been allocated for
+  /// `entries` and return -1.
   ///
   /// Plugins:
   ///   * Must set `status` to `TF_OK` if all matches were returned.

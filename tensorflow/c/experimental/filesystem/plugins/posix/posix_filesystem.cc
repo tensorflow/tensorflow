@@ -432,7 +432,8 @@ void TF_InitPlugin(TF_Status* status) {
       /*get_file_size=*/nullptr,
       /*translate_name=*/nullptr,
       tf_posix_filesystem::GetChildren,
-      nullptr,
+      /*get_matching_paths=*/nullptr,
+      /*flush_caches=*/nullptr,
   };
 
   for (const char* scheme : {"", "file"})

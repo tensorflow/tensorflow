@@ -1329,6 +1329,111 @@ TEST_P(ModularFileSystemTest, TestGetChildrenPathIsInvalid) {
   EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::FAILED_PRECONDITION);
 }
 
+TEST_P(ModularFileSystemTest, TestGetMatchingPaths) {
+  const std::vector<std::string> matching_filenames = {
+      GetURIForPath("a_file"),
+      GetURIForPath("another_file"),
+  };
+  const std::vector<std::string> other_filenames = {
+      GetURIForPath("some_file"),
+      GetURIForPath("yet_another_file"),
+  };
+
+  for (const auto& filename : matching_filenames) {
+    std::unique_ptr<WritableFile> file;
+    Status status = env_->NewWritableFile(filename, &file);
+    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  }
+
+  for (const auto& filename : other_filenames) {
+    std::unique_ptr<WritableFile> file;
+    Status status = env_->NewWritableFile(filename, &file);
+    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  }
+
+  std::vector<std::string> results;
+  Status status = env_->GetMatchingPaths(GetURIForPath("/a*"), &results);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
+  EXPECT_EQ(results.size(), matching_filenames.size());
+  for (const auto& match : matching_filenames)
+    EXPECT_NE(std::find(results.begin(), results.end(), match), results.end());
+}
+
+TEST_P(ModularFileSystemTest, TestGetMatchingPathsEmptyFileSystem) {
+  std::vector<std::string> results;
+  Status status = env_->GetMatchingPaths(GetURIForPath("a*"), &results);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(results.size(), 0);
+}
+
+TEST_P(ModularFileSystemTest, TestGetMatchingPathsEmptyPattern) {
+  const std::vector<std::string> filenames = {
+      GetURIForPath("a_file"),
+      GetURIForPath("another_file"),
+      GetURIForPath("some_file"),
+      GetURIForPath("yet_another_file"),
+  };
+
+  for (const auto& filename : filenames) {
+    std::unique_ptr<WritableFile> file;
+    Status status = env_->NewWritableFile(filename, &file);
+    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  }
+
+  std::vector<std::string> results;
+  Status status = env_->GetMatchingPaths(GetURIForPath(""), &results);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
+  EXPECT_EQ(results.size(), 1);
+  EXPECT_NE(std::find(results.begin(), results.end(), GetURIForPath("")),
+            results.end());
+}
+
+TEST_P(ModularFileSystemTest, TestGetMatchingPathsLiteralMatch) {
+  const std::vector<std::string> filenames = {
+      GetURIForPath("a_file"),
+      GetURIForPath("another_file"),
+      GetURIForPath("some_file"),
+      GetURIForPath("yet_another_file"),
+  };
+
+  for (const auto& filename : filenames) {
+    std::unique_ptr<WritableFile> file;
+    Status status = env_->NewWritableFile(filename, &file);
+    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  }
+
+  std::vector<std::string> results;
+  Status status = env_->GetMatchingPaths(filenames[0], &results);
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
+  EXPECT_EQ(results.size(), 1);
+  EXPECT_NE(std::find(results.begin(), results.end(), filenames[0]),
+            results.end());
+}
+
+TEST_P(ModularFileSystemTest, TestGetMatchingPathsNoMatch) {
+  const std::vector<std::string> filenames = {
+      GetURIForPath("a_file"),
+      GetURIForPath("another_file"),
+      GetURIForPath("some_file"),
+      GetURIForPath("yet_another_file"),
+  };
+
+  for (const auto& filename : filenames) {
+    std::unique_ptr<WritableFile> file;
+    Status status = env_->NewWritableFile(filename, &file);
+    if (!status.ok()) GTEST_SKIP() << "NewWritableFile() not supported";
+  }
+
+  std::vector<std::string> results;
+  Status status = env_->GetMatchingPaths(GetURIForPath("x?y*"), &results);
+  if (!status.ok()) GTEST_SKIP() << "GetMatchingPaths() not supported";
+  EXPECT_PRED2(UninmplementedOrReturnsCode, status, Code::OK);
+  EXPECT_EQ(results.size(), 0);
+}
+
 TEST_P(ModularFileSystemTest, TestAppendAndTell) {
   const std::string filename = GetURIForPath("a_file");
   std::unique_ptr<WritableFile> file;
