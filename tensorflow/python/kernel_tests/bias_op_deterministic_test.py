@@ -39,7 +39,7 @@ class BiasAddDeterministicTest(bias_op_base.BiasAddTestBase,
                                parameterized.TestCase):
 
   def _makeShapeTuple(self, batch_size, channel_count, data_rank, data_dim,
-                        data_layout):
+                      data_layout):
     data_dims = data_rank * (data_dim,)
     if data_layout == 'channels_first':
       shape = (batch_size,) + (channel_count,) + data_dims
