@@ -712,6 +712,15 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
+      BASE_HLO_GetDimensionSizeOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I32Attr:$dimension
+  );
+  let results = (outs HLO_IntTensor);
+}
+
 def HLO_ReshapeOp: HLO_Op<"reshape",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_ReshapeOp {
   let arguments = (ins HLO_Tensor:$operand);

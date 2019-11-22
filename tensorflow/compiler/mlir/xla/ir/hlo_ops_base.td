@@ -134,6 +134,17 @@ class BASE_HLO_FloorOp {
   }];
 }
 
+class BASE_HLO_GetDimensionSizeOp {
+  string summary = "GetDimensionSize operator";
+
+  string description = [{
+    Returns the size of the given dimension of the operand.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#getdimensionsize.
+  }];
+}
+
 class BASE_HLO_ImagOp {
   string summary = "Imag operator";
 
