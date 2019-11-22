@@ -660,8 +660,13 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
     gpu_opts.inference_preference =
         TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-    gpu_opts.is_precision_loss_allowed =
-        params_.Get<bool>("gpu_precision_loss_allowed") ? 1 : 0;
+    if (params_.Get<bool>("gpu_precision_loss_allowed")) {
+      gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+      gpu_opts.inference_priority2 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+      gpu_opts.inference_priority3 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+    }
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
 #elif defined(REAL_IPHONE_DEVICE)
