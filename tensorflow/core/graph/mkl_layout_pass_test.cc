@@ -209,6 +209,7 @@ REGISTER_OP("BFloat16Output2")
 //  Unit tests related to node merge optimization
 /////////////////////////////////////////////////////////////////////
 
+// clang-format off
 TEST_F(MklLayoutPassTest, Basic) {
   InitGraph(
       "node { name: 'A' op: 'Input'}"
@@ -228,13 +229,10 @@ TEST_F(MklLayoutPassTest, Basic) {
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
     CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);    \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
-              "node { name: 'B' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
+              "node { name: 'B' op: '" #INPUT "'}"                         \
               "node { name: 'C' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type:" #T           \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type:" #T " } }"    \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -243,18 +241,14 @@ TEST_F(MklLayoutPassTest, Basic) {
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['A', 'B']}"                                        \
-              "node { name: 'D' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'D' op: '" #INPUT "'}"                         \
               "node { name: 'E' op: 'BiasAdd'"                             \
-              " attr { key: 'T'                value { type:" #T           \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type:" #T " } }"    \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"      \
               " input: ['C', 'D'] }"                                       \
-              "node { name: 'Y' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'Y' op: '" #INPUT "'}"                         \
               "node { name: 'Z' op: 'Zeta'"                                \
-              " attr {key: 'T'                 value { type:" #T           \
-              " } }"                                                       \
+              " attr {key: 'T'                 value { type:" #T " } }"    \
               " input: ['E', 'Y']}");                                      \
                                                                            \
     EXPECT_EQ(                                                             \
@@ -274,13 +268,10 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DWithBias_Positive);
 // Graph contains only Conv2D, no AddBias.
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
-              "node { name: 'B' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
+              "node { name: 'B' op: '" #INPUT "'}"                         \
               "node { name: 'C' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type:" #T           \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type:" #T " } }"    \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -302,13 +293,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_NoAddBias);
 // Conv2D output does not go to BiasAdd.
 #define REGISTER_TEST(NAME, T, INPUT)                                          \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                      \
-    InitGraph("node { name: 'A' op: '" #INPUT                                  \
-              "'}"                                                             \
-              "node { name: 'B' op: '" #INPUT                                  \
-              "'}"                                                             \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                             \
+              "node { name: 'B' op: '" #INPUT "'}"                             \
               "node { name: 'C' op: 'Conv2D'"                                  \
-              " attr { key: 'T'                value { type:" #T               \
-              "} }"                                                            \
+              " attr { key: 'T'                value { type:" #T "} }"         \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"          \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"           \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "     \
@@ -317,13 +305,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_NoAddBias);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, "     \
               "i:1, i:1} } }"                                                  \
               " input: ['A', 'B']}"                                            \
-              "node { name: 'D' op: '" #INPUT                                  \
-              "'}"                                                             \
-              "node { name: 'E' op: '" #INPUT                                  \
-              "'}"                                                             \
+              "node { name: 'D' op: '" #INPUT "'}"                             \
+              "node { name: 'E' op: '" #INPUT "'}"                             \
               "node { name: 'F' op: 'BiasAdd'"                                 \
-              " attr { key: 'T'                value { type:" #T               \
-              "} }"                                                            \
+              " attr { key: 'T'                value { type:" #T "} }"         \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"          \
               " input: ['D', 'E'] }");                                         \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
@@ -341,13 +326,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow1);
 // Merge should not be done in such case.
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
-              "node { name: 'B' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
+              "node { name: 'B' op: '" #INPUT "'}"                         \
               "node { name: 'C' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -356,18 +338,14 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow1);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['A', 'B']}"                                        \
-              "node { name: 'D' op: '" #INPUT                              \
-              "'}"                                                         \
-              "node { name: 'E' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'D' op: '" #INPUT "'}"                         \
+              "node { name: 'E' op: '" #INPUT "'}"                         \
               "node { name: 'F' op: 'BiasAdd'"                             \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"      \
               " input: ['D', 'E'] }"                                       \
               "node { name: 'G' op: 'Zeta'"                                \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " input: ['C', 'E'] }");                                     \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
@@ -385,13 +363,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow2);
 // in such case.
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
-              "node { name: 'B' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
+              "node { name: 'B' op: '" #INPUT "'}"                         \
               "node { name: 'C' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -400,11 +375,9 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow2);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['A', 'B']}"                                        \
-              "node { name: 'D' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'D' op: '" #INPUT "'}"                         \
               "node { name: 'E' op: 'BiasAdd'"                             \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NHCW' } }"      \
               " input: ['C', 'D'] }");                                     \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
@@ -421,14 +394,11 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_AttrMismatch);
 
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
-    InitGraph("node { name: 'A' op: '" #INPUT                                \
-              "'}"                                                           \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
               "node { name: 'B' op: 'Int32Input'}"                           \
-              "node { name: 'C' op: '" #INPUT                                \
-              "'}"                                                           \
+              "node { name: 'C' op: '" #INPUT "'}"                           \
               "node { name: 'D' op: 'Conv2DBackpropFilter'"                  \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"         \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "   \
@@ -438,14 +408,12 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_AttrMismatch);
               "i:1, i:1} } }"                                                \
               " input: ['A', 'B', 'C'] }"                                    \
               "node { name: 'E' op: 'BiasAddGrad'"                           \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " input: ['C'] }");                                            \
     EXPECT_EQ(                                                               \
         DoMklLayoutOptimizationPass(),                                       \
-        "A(" #INPUT ");B(Int32Input);C(" #INPUT                              \
-        ");"                                                                 \
+        "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                         \
         "D(_MklConv2DBackpropFilterWithBias);DMT/_0(Const);DMT/_1(Const);"   \
         "DMT/_2(Const)|A->D;A:control->DMT/_0:control;"                      \
         "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;" \
@@ -460,14 +428,11 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DBackpropFilterFusion_Positive);
 // Conv2DBackpropFilter is different than input to BiasAddGrad.
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
-    InitGraph("node { name: 'A' op: '" #INPUT                                \
-              "'}"                                                           \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
               "node { name: 'B' op: 'Int32Input'}"                           \
-              "node { name: 'C' op: '" #INPUT                                \
-              "'}"                                                           \
+              "node { name: 'C' op: '" #INPUT "'}"                           \
               "node { name: 'D' op: 'Conv2DBackpropFilter'"                  \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"         \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "   \
@@ -477,8 +442,7 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DBackpropFilterFusion_Positive);
               "i:1, i:1} } }"                                                \
               " input: ['A', 'B', 'C'] }"                                    \
               "node { name: 'E' op: 'BiasAddGrad'"                           \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " input: ['A'] }");                                            \
     EXPECT_EQ(                                                               \
@@ -497,14 +461,11 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative1);
 // Different input formats.
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
-    InitGraph("node { name: 'A' op: '" #INPUT                                \
-              "'}"                                                           \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
               "node { name: 'B' op: 'Int32Input'}"                           \
-              "node { name: 'C' op: '" #INPUT                                \
-              "'}"                                                           \
+              "node { name: 'C' op: '" #INPUT "'}"                           \
               "node { name: 'D' op: 'Conv2DBackpropFilter'"                  \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"         \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "   \
@@ -520,8 +481,7 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative1);
               " input: ['A'] }");                                            \
     EXPECT_EQ(                                                               \
         DoMklLayoutOptimizationPass(),                                       \
-        "A(" #INPUT ");B(Int32Input);C(" #INPUT                              \
-        ");"                                                                 \
+        "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                         \
         "D(_MklConv2DBackpropFilter);DMT/_0(Const);DMT/_1(Const);"           \
         "DMT/_2(Const);E(BiasAddGrad)|A->D;A->E;A:control->DMT/_0:control;"  \
         "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;" \
@@ -534,18 +494,14 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative2);
 // before node rewrite. Check this ordering.
 #define REGISTER_TEST(NAME, T, INPUT)                                       \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                   \
-    InitGraph("node { name: 'A' op: '" #INPUT                               \
-              "'}"                                                          \
-              "node { name: 'B' op: '" #INPUT                               \
-              "'}"                                                          \
-              "node { name: 'C' op: '" #INPUT                               \
-              "'}"                                                          \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                          \
+              "node { name: 'B' op: '" #INPUT "'}"                          \
+              "node { name: 'C' op: '" #INPUT "'}"                          \
               "node { name: 'M' op: '_MklInput'}"                           \
               "node { name: 'N' op: '_MklInput'}"                           \
               "node { name: 'O' op: '_MklInput'}"                           \
               "node { name: 'D' op: '_MklConv2DWithBias'"                   \
-              " attr { key: 'T'                value { type: " #T           \
-              " } }"                                                        \
+              " attr { key: 'T'                value { type: " #T " } }"    \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"       \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"        \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "  \
@@ -555,13 +511,11 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative2);
               "i:1, i:1} } }"                                               \
               " input: ['A', 'B', 'C', 'M', 'N', 'O']}"                     \
               "node { name: 'E' op: 'Zeta'"                                 \
-              " attr {key: 'T'                 value { type: " #T           \
-              " } }"                                                        \
+              " attr {key: 'T'                 value { type: " #T " } }"    \
               " input: ['D', 'A']}"                                         \
               "node { name: 'F' op: 'Int32Input'}"                          \
               "node { name: 'G' op: '_MklConv2DBackpropFilter'"             \
-              " attr { key: 'T'                value { type: " #T           \
-              " } }"                                                        \
+              " attr { key: 'T'                value { type: " #T " } }"    \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"       \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"        \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "  \
@@ -569,8 +523,7 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative2);
               " attr { key: 'padding'          value { s: 'SAME' } }"       \
               " input: ['E', 'F', 'A', 'M', 'N', 'O'] }"                    \
               "node { name: 'H' op: 'BiasAddGrad'"                          \
-              " attr { key: 'T'                value { type: " #T           \
-              " } }"                                                        \
+              " attr { key: 'T'                value { type: " #T " } }"    \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"       \
               " input: ['E'] }");                                           \
     EXPECT_EQ(                                                              \
@@ -592,13 +545,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative3);
 #define REGISTER_TEST(NAME, T, INPUT)                                        \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                    \
     CHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);      \
-    InitGraph("node { name: 'A' op: '" #INPUT                                \
-              "'}"                                                           \
-              "node { name: 'B' op: '" #INPUT                                \
-              "'}"                                                           \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                           \
+              "node { name: 'B' op: '" #INPUT "'}"                           \
               "node { name: 'C' op: 'Conv2D'"                                \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"         \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "   \
@@ -607,23 +557,18 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative3);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, "   \
               "i:1, i:1} } }"                                                \
               " input: ['A', 'B']}"                                          \
-              "node { name: 'D' op: '" #INPUT                                \
-              "'}"                                                           \
+              "node { name: 'D' op: '" #INPUT "'}"                           \
               "node { name: 'E' op: 'BiasAdd'"                               \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " input: ['C', 'D'] }"                                         \
-              "node { name: 'X' op: '" #INPUT                                \
-              "'}"                                                           \
+              "node { name: 'X' op: '" #INPUT "'}"                           \
               "node { name: 'Y' op: 'Zeta'"                                  \
-              " attr {key: 'T'                 value { type: " #T            \
-              " } }"                                                         \
+              " attr {key: 'T'                 value { type: " #T " } }"     \
               " input: ['E', 'X']}"                                          \
               "node { name: 'F' op: 'Int32Input'}"                           \
               "node { name: 'G' op: 'Conv2DBackpropInput'"                   \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NCHW' } }"        \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"         \
               " attr { key: 'strides'          value { list: {i: 1, i:1, "   \
@@ -633,8 +578,7 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative3);
               "i:1, i:1} } }"                                                \
               " input: ['F', 'B', 'E']}"                                     \
               "node { name: 'Z' op: 'Zeta'"                                  \
-              " attr {key: 'T'                 value { type: " #T            \
-              " } }"                                                         \
+              " attr {key: 'T'                 value { type: " #T " } }"     \
               " input: ['G', 'X']}");                                        \
     EXPECT_EQ(                                                               \
         DoMklLayoutOptimizationPass(),                                       \
@@ -662,19 +606,15 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd);
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);   \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
               "node { name: 'B' op: 'Int32Input'}"                         \
               "node { name: 'C' op: 'Pad'"                                 \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'Tpaddings'        value { type: DT_INT32 } }" \
               " input: ['A', 'B']}"                                        \
-              "node { name: 'D' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'D' op: '" #INPUT "'}"                         \
               "node { name: 'E' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NHWC' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -683,11 +623,9 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['C', 'D'] }"                                       \
-              "node { name: 'Y' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'Y' op: '" #INPUT "'}"                         \
               "node { name: 'Z' op: 'Zeta'"                                \
-              " attr {key: 'T'                 value { type: " #T          \
-              " } }"                                                       \
+              " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
@@ -720,21 +658,16 @@ REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Positive);
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);   \
-    InitGraph("node { name: 'A1' op: '" #INPUT                             \
-              "'}"                                                         \
-              "node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A1' op: '" #INPUT "'}"                        \
+              "node { name: 'A' op: '" #INPUT "'}"                         \
               "node { name: 'B' op: 'Int32Input'}"                         \
               "node { name: 'C' op: 'Pad'"                                 \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'Tpaddings'        value { type: DT_INT32 } }" \
               " input: ['A', 'B']}"                                        \
-              "node { name: 'D' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'D' op: '" #INPUT "'}"                         \
               "node { name: 'E' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NHWC' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -743,11 +676,9 @@ REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Positive);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['C', 'D'] }"                                       \
-              "node { name: 'Y' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'Y' op: '" #INPUT "'}"                         \
               "node { name: 'Z' op: 'Zeta'"                                \
-              " attr {key: 'T'                 value { type: " #T          \
-              " } }"                                                       \
+              " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
     Node* a1 = FindNode("A1");                                             \
     Node* c = FindNode("C");                                               \
@@ -787,21 +718,16 @@ REGISTER_TEST_FLOAT32(Input_ControlEdge_PadWithConv2D_Positive);
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);   \
-    InitGraph("node { name: 'A1' op: '" #INPUT                             \
-              "'}"                                                         \
-              "node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A1' op: '" #INPUT "'}"                        \
+              "node { name: 'A' op: '" #INPUT "'}"                         \
               "node { name: 'B' op: 'Int32Input'}"                         \
               "node { name: 'C' op: 'Pad'"                                 \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'Tpaddings'        value { type: DT_INT32 } }" \
               " input: ['A', 'B']}"                                        \
-              "node { name: 'D' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'D' op: '" #INPUT "'}"                         \
               "node { name: 'E' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NHWC' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -810,11 +736,9 @@ REGISTER_TEST_FLOAT32(Input_ControlEdge_PadWithConv2D_Positive);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['C', 'D'] }"                                       \
-              "node { name: 'Y' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'Y' op: '" #INPUT "'}"                         \
               "node { name: 'Z' op: 'Zeta'"                                \
-              " attr {key: 'T'                 value { type: " #T          \
-              " } }"                                                       \
+              " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
     Node* a1 = FindNode("A1");                                             \
     Node* c = FindNode("C");                                               \
@@ -847,17 +771,14 @@ REGISTER_TEST_FLOAT32(Output_ControlEdge_PadWithConv2D_Positive);
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);   \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
               "node { name: 'B' op: 'Int32Input'}"                         \
               "node { name: 'C' op: 'Pad'"                                 \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'Tpaddings'        value { type: DT_INT32 } }" \
               " input: ['A', 'B']}"                                        \
               "node { name: 'E' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NHWC' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -866,11 +787,9 @@ REGISTER_TEST_FLOAT32(Output_ControlEdge_PadWithConv2D_Positive);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['C', 'A'] }"                                       \
-              "node { name: 'Y' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'Y' op: '" #INPUT "'}"                         \
               "node { name: 'Z' op: 'Zeta'"                                \
-              " attr {key: 'T'                 value { type: " #T          \
-              " } }"                                                       \
+              " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
               "A(" #INPUT                                                  \
@@ -896,17 +815,14 @@ REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Common_Input);
 #define REGISTER_TEST(NAME, T, INPUT, OUTPUT)                              \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);   \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
               "node { name: 'B' op: 'Int32Input'}"                         \
               "node { name: 'C' op: 'Pad'"                                 \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'Tpaddings'        value { type: DT_INT32 } }" \
               " input: ['A', 'B']}"                                        \
               "node { name: 'E' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NHWC' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -915,8 +831,7 @@ REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Common_Input);
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['C', 'A'] }"                                       \
-              "node { name: 'Z' op: '" #OUTPUT                             \
-              "'"                                                          \
+              "node { name: 'Z' op: '" #OUTPUT "'"                         \
               " input: ['C', 'E']}");                                      \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
               "A(" #INPUT                                                  \
@@ -943,19 +858,15 @@ REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
 #define REGISTER_TEST(NAME, T, INPUT)                                      \
   TEST_F(MklLayoutPassTest, NAME##_##T) {                                  \
     DCHECK_EQ(kTensorOrdering, MklTfTensorOrdering::TENSORS_CONTIGUOUS);   \
-    InitGraph("node { name: 'A' op: '" #INPUT                              \
-              "'}"                                                         \
+    InitGraph("node { name: 'A' op: '" #INPUT "'}"                         \
               "node { name: 'B' op: 'Int32Input'}"                         \
               "node { name: 'C' op: 'Pad'"                                 \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'Tpaddings'        value { type: DT_INT32 } }" \
               " input: ['A', 'B']}"                                        \
-              "node { name: 'D' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'D' op: '" #INPUT "'}"                         \
               "node { name: 'E' op: 'Conv2D'"                              \
-              " attr { key: 'T'                value { type: " #T          \
-              " } }"                                                       \
+              " attr { key: 'T'                value { type: " #T " } }"   \
               " attr { key: 'data_format'      value { s: 'NHWC' } }"      \
               " attr { key: 'use_cudnn_on_gpu' value { b: false } }"       \
               " attr { key: 'strides'          value { list: {i: 1, i:1, " \
@@ -964,11 +875,9 @@ REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
               " attr { key: 'dilations'        value { list: {i: 1, i:1, " \
               "i:1, i:1} } }"                                              \
               " input: ['C', 'D'] }"                                       \
-              "node { name: 'Y' op: '" #INPUT                              \
-              "'}"                                                         \
+              "node { name: 'Y' op: '" #INPUT "'}"                         \
               "node { name: 'Z' op: 'Zeta'"                                \
-              " attr {key: 'T'                 value { type: " #T          \
-              " } }"                                                       \
+              " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
               "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT               \
@@ -980,6 +889,7 @@ REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Negative);
 #undef REGISTER_TEST
+// clang-format on
 
 TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv2DTranspose_Positive) {
   InitGraph(
