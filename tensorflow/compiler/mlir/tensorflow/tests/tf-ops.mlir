@@ -1042,6 +1042,62 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
 
 // -----
 
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+
+// Test invalid 'While' operation verifier that detects incompatible tf.resource
+// subtypes.
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  // expected-error @+1 {{operand type tensor<*x!tf.resource<tensor<32xf32>>> is incompatible with result type}}
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<16xf32>>>)
+
+  return %1 : tensor<!tf.resource<tensor<16xf32>>>
+}
+
+// -----
+
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+
+// Test 'While' operation verifier allows compatible tf.resource subtypes.
+// CHECK-LABEL: func @testWhileResult
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource<tensor<*xf32>>>)
+
+  return %1 : tensor<!tf.resource<tensor<*xf32>>>
+}
+
+// -----
+
+func @testWhileCond(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<i1>)
+func @testWhileBody(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+
+// Test 'While' operation verifier treats tf.resource with subtype and without
+// subtype as compatible types.
+// CHECK-LABEL: func @testWhileResult
+func @testWhileResult(tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>) {
+^bb0(%arg0: tensor<*x!tf.resource<tensor<32xf32>>>):
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false
+  } : (tensor<*x!tf.resource<tensor<32xf32>>>) -> (tensor<!tf.resource>)
+
+  return %1 : tensor<!tf.resource>
+}
+
+// -----
+
 // CHECK-LABEL: func @testValidShape
 func @testValidShape(tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi32>, tensor<?xi32>) {
 ^bb0(%arg0: tensor<1x32x32x16xf32>, %arg1: tensor<*xf32>):
