@@ -19,6 +19,9 @@ using TfLiteInterpreter = System.IntPtr;
 using TfLiteInterpreterOptions = System.IntPtr;
 using TfLiteModel = System.IntPtr;
 using TfLiteTensor = System.IntPtr;
+using TfLiteInterpreterOptions = System.IntPtr;
+using TfLiteDelegate = System.IntPtr;
+
 
 namespace TensorFlowLite
 {
@@ -31,13 +34,27 @@ namespace TensorFlowLite
 
     private TfLiteModel model;
     private TfLiteInterpreter interpreter;
+    private TfLiteDelegate gpudelegate;
+    private TfLiteInterpreterOptions options;
 
-    public Interpreter(byte[] modelData) {
+    public Interpreter(byte[] modelData, bool useGPU = false) {
       GCHandle modelDataHandle = GCHandle.Alloc(modelData, GCHandleType.Pinned);
       IntPtr modelDataPtr = modelDataHandle.AddrOfPinnedObject();
       model = TfLiteModelCreate(modelDataPtr, modelData.Length);
       if (model == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Model");
-      interpreter = TfLiteInterpreterCreate(model, /*options=*/IntPtr.Zero);
+
+      if (useGPU)
+      {
+        options = TfLiteInterpreterOptionsCreate();
+        if (options = IntPtr.Zero) throw new Exception("failed to create options");
+        TfLiteGpuDelegateOptionsV2 delegateOptions = TfLiteGpuDelegateOptionsV2Default();
+        gpudelegate = TfLiteGpuDelegateV2Create(&delegateOptions);
+        if (gpudelegate == IntPtr.Zero) throw new Exception("Failed to create GPU Delegate");
+        TfLiteInterpreterOptionsAddDelegate(options, gpudelegate);
+      }
+      else options = IntPtr.Zero;
+      
+      interpreter = TfLiteInterpreterCreate(model, options);
       if (interpreter == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Interpreter");
     }
 
@@ -50,8 +67,12 @@ namespace TensorFlowLite
       interpreter = IntPtr.Zero;
       if (model != IntPtr.Zero) TfLiteModelDelete(model);
       model = IntPtr.Zero;
+      if (options != IntPtr.Zero) TfLiteInterpreterOptionsDelete(options);
+      options = IntPtr.Zero;
+      if (gpudelegate != IntPtr.Zero) TfLiteGpuDelegateV2Delete(gpudelegate);
+      gpudelegate = IntPtr.Zero;
     }
-
+    
     public void Invoke() {
       ThrowIfError(TfLiteInterpreterInvoke(interpreter));
     }
@@ -152,7 +173,67 @@ namespace TensorFlowLite
         TfLiteTensor tensor,
         IntPtr output_data,
         int output_data_size);
+    
+    enum TfLiteGpuInferenceUsage : Int32 {
+        // Delegate will be used only once, therefore, bootstrap/init time should
+        // be taken into account.
+        TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER = 0,
 
-    #endregion
-  }
+        // Prefer maximizing the throughput. Same delegate will be used repeatedly on
+        // multiple inputs.
+        TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED = 1,
+    };
+
+    enum TfLiteGpuInferencePriority: Int32 {
+        TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION = 0,
+        TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY = 1,
+        TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE = 2,
+    };
+    
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct TfLiteGpuDelegateOptionsV2 {
+        // [OBSOLETE]: to be removed
+        Int32 is_precision_loss_allowed;
+
+        // Preference is defined in TfLiteGpuInferencePreference.
+        TfLiteGpuInferenceUsage inference_preference;
+
+        // Priority is defined in TfLiteGpuInferencePriority.
+        TfLiteGpuInferencePriority inference_priority1;
+        TfLiteGpuInferencePriority inference_priority2;
+        TfLiteGpuInferencePriority inference_priority3;
+    }
+
+
+    [DllImport(TensorFlowLibrary)]
+    private static extern TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default();
+    
+    [DllImport(TensorFlowLibrary)]
+    private static extern unsafe TfLiteDelegate TfLiteGpuDelegateV2Create(
+        TfLiteGpuDelegateOptionsV2 * options);
+
+    [DllImport(TensorFlowLibrary)]
+    private static extern unsafe void TfLiteGpuDelegateV2Delete(
+        TfLiteDelegate del);
+
+    [DllImport(TensorFlowLibrary)]
+    private static extern unsafe TfLiteInterpreterOptions TfLiteInterpreterOptionsCreate();
+
+    [DllImport(TensorFlowLibrary)]
+    private static extern unsafe void TfLiteInterpreterOptionsDelete(
+        TfLiteInterpreterOptions options);
+
+    [DllImport(TensorFlowLibrary)]
+    private static extern unsafe void TfLiteInterpreterOptionsSetNumThreads(
+        TfLiteInterpreterOptions options, Int32 num_threads);
+
+    // NOTE: The caller retains ownership of the delegate and should ensure that it
+    // remains valid for the duration of any created interpreter's lifetime.
+    [DllImport(TensorFlowLibrary)]
+    private static extern unsafe void TfLiteInterpreterOptionsAddDelegate(
+        TfLiteInterpreterOptions options, TfLiteDelegate gpudelegate);
+
+        #endregion
+    }
 }
