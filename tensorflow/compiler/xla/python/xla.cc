@@ -318,6 +318,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("host_id", &Device::host_id,
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
+      .def_property_readonly("platform", &Device::platform_name)
       .def("__str__", &Device::DebugString);
 
   py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
@@ -391,6 +392,12 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Device> device)
               -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
             CHECK(device != nullptr);
+            auto iter = client->id_to_device().find(device->id());
+            if (iter->second != device) {
+              return InvalidArgument(
+                  "Cannot copy value to device '%s' with '%s' backend",
+                  device->DebugString(), client->platform_name());
+            }
             GlobalPyRefManager()->CollectGarbage();
             TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
                                 GetPythonBufferTree(argument));
@@ -436,8 +443,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("make_tuple",
                   [](const std::vector<PyLocalBuffer*> buffers,
                      std::shared_ptr<PyLocalClient> client,
-                     std::shared_ptr<Device> device) {
+                     std::shared_ptr<Device> device)
+                      -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
                     CHECK(device != nullptr);
+                    auto iter = client->id_to_device().find(device->id());
+                    if (iter->second != device) {
+                      return InvalidArgument(
+                          "Cannot make tuple on device '%s' with '%s' backend",
+                          device->DebugString(), client->platform_name());
+                    }
                     return PyLocalBuffer::MakeTuple(
                         buffers, client, device->local_device_ordinal());
                   })
