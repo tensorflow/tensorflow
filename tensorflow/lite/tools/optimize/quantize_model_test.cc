@@ -1149,7 +1149,17 @@ TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
             BuiltinOperator_QUANTIZE);
   EXPECT_EQ(model_.operator_codes[dequant_idx]->builtin_code,
             BuiltinOperator_DEQUANTIZE);
-  auto op = subgraph->operators[1].get();
+  const auto& requant1 = subgraph->operators[1].get();
+  // Check that we have RE operator.
+  auto requant1_builtin_code = model_.operator_codes[requant1->opcode_index].get()->builtin_code;
+  ASSERT_TRUE(requant1_builtin_code == tflite::BuiltinOperator_QUANTIZE);
+
+  const auto& requant2 = subgraph->operators[2].get();
+  // Check that we have RE operator.
+  auto requant2_builtin_code = model_.operator_codes[requant2->opcode_index].get()->builtin_code;
+  ASSERT_TRUE(requant2_builtin_code == tflite::BuiltinOperator_QUANTIZE);
+
+  const auto& op = subgraph->operators[3].get();
 
   // Check that we have MINIMUM or MAXIMUM operator.
   auto op_builtin_code = model_.operator_codes[op->opcode_index].get()->builtin_code;
@@ -1186,13 +1196,15 @@ TEST_P(QuantizeMinimumMaximumTest, VerifyMinimumMaximum) {
   EXPECT_EQ(output->quantization->zero_point,
             input2->quantization->zero_point);
 
-  EXPECT_EQ(subgraph->tensors.size(), 5);
+  EXPECT_EQ(subgraph->tensors.size(), 7);
 
   EXPECT_EQ(subgraph->tensors[0]->name, "input_int8");
   EXPECT_EQ(subgraph->tensors[1]->name, "output_int8");
   EXPECT_EQ(subgraph->tensors[2]->name, "output/y");
-  EXPECT_EQ(subgraph->tensors[3]->name, "input");
-  EXPECT_EQ(subgraph->tensors[4]->name, "output");
+  EXPECT_EQ(subgraph->tensors[3]->name, "input_requantized");
+  EXPECT_EQ(subgraph->tensors[4]->name, "output/y_requantized");
+  EXPECT_EQ(subgraph->tensors[5]->name, "input");
+  EXPECT_EQ(subgraph->tensors[6]->name, "output");
 }
 INSTANTIATE_TEST_SUITE_P(MinimumMaximumTestInst, QuantizeMinimumMaximumTest,
                          testing::ValuesIn({internal::kModelWithMinimumOp,
