@@ -230,7 +230,7 @@ COp::build(..., ArrayRef<Type> resultTypes, Array<Value *> operands,
 ArrayRef<NamedAttribute> attr)`. The pattern in the above calls this `build()`
 method for constructing the `COp`.
 
-In general, arguments in the the result pattern will be passed directly to the
+In general, arguments in the result pattern will be passed directly to the
 `build()` method to leverage the auto-generated `build()` method, list them in
 the pattern by following the exact same order as the ODS `arguments` definition.
 Otherwise, a custom `build()` method that matches the argument list is required.

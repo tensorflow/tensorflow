@@ -206,7 +206,7 @@ CallGraphNode *CallGraph::resolveCallable(CallInterfaceCallable callable,
 //===----------------------------------------------------------------------===//
 // Printing
 
-/// Dump the the graph in a human readable format.
+/// Dump the graph in a human readable format.
 void CallGraph::dump() const { print(llvm::errs()); }
 void CallGraph::print(raw_ostream &os) const {
   os << "// ---- CallGraph ----\n";

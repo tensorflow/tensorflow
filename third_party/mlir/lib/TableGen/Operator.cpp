@@ -153,6 +153,9 @@ bool tblgen::Operator::hasTrait(StringRef trait) const {
     } else if (auto opTrait = dyn_cast<tblgen::InternalOpTrait>(&t)) {
       if (opTrait->getTrait() == trait)
         return true;
+    } else if (auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&t)) {
+      if (opTrait->getTrait() == trait)
+        return true;
     }
   }
   return false;

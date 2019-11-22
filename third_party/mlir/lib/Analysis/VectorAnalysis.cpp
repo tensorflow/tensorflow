@@ -39,15 +39,15 @@ using namespace mlir;
 
 using llvm::SetVector;
 
-Optional<SmallVector<unsigned, 4>>
-mlir::shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape) {
+Optional<SmallVector<int64_t, 4>> mlir::shapeRatio(ArrayRef<int64_t> superShape,
+                                                   ArrayRef<int64_t> subShape) {
   if (superShape.size() < subShape.size()) {
-    return Optional<SmallVector<unsigned, 4>>();
+    return Optional<SmallVector<int64_t, 4>>();
   }
 
   // Starting from the end, compute the integer divisors.
   // Set the boolean `divides` if integral division is not possible.
-  std::vector<unsigned> result;
+  std::vector<int64_t> result;
   result.reserve(superShape.size());
   bool divides = true;
   auto divide = [&divides, &result](int superSize, int subSize) {
@@ -76,11 +76,11 @@ mlir::shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape) {
          "super to sub shape ratio is not of the same size as the super rank");
 
   // Reverse again to get it back in the proper order and return.
-  return SmallVector<unsigned, 4>{result.rbegin(), result.rend()};
+  return SmallVector<int64_t, 4>{result.rbegin(), result.rend()};
 }
 
-Optional<SmallVector<unsigned, 4>> mlir::shapeRatio(VectorType superVectorType,
-                                                    VectorType subVectorType) {
+Optional<SmallVector<int64_t, 4>> mlir::shapeRatio(VectorType superVectorType,
+                                                   VectorType subVectorType) {
   assert(superVectorType.getElementType() == subVectorType.getElementType() &&
          "vector types must be of the same elemental type");
   return shapeRatio(superVectorType.getShape(), subVectorType.getShape());

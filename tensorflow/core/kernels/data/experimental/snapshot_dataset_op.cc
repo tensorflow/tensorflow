@@ -70,7 +70,9 @@ constexpr char kSnapshotWriterWorkerPool[] = "snapshot_writer_worker_pool";
 constexpr char kSeparator[] = "::";
 constexpr char kBookkeeping[] = "Bookkeeping";
 constexpr char kSnapshotReadElements[] = "snapshot_read_elements";
+constexpr char kSnapshotReadThroughput[] = "snapshot_read_throughput";
 constexpr char kSnapshotWrittenElements[] = "snapshot_written_elements";
+constexpr char kSnapshotWriteThroughput[] = "snapshot_write_throughput";
 
 class SnapshotWriter {
  public:
@@ -667,7 +669,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             stats_aggregator->AddScalar(
                 absl::StrCat(dataset()->node_name(), kSeparator,
                              kSnapshotReadElements),
-                static_cast<float>(num_elements_read_), num_elements());
+                static_cast<float>(num_elements_read_), elements_produced_);
           }
 
           if (!buffer_.empty()) {
@@ -689,11 +691,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 absl::Duration d = end - start;
                 time_spent_micros_ += absl::ToInt64Microseconds(d);
                 kbytes_read_ += static_cast<double>(num_bytes) / 1024.0;
+                float read_throughput =
+                    (kbytes_read_ / 1024.0) / (time_spent_micros_ / 1000000.0);
+                if (stats_aggregator) {
+                  stats_aggregator->AddScalar(
+                      absl::StrCat(dataset()->node_name(), kSeparator,
+                                   kSnapshotReadThroughput),
+                      read_throughput, elements_produced_);
+                }
                 elements_produced_++;
                 if (elements_produced_ % 10000 == 0) {
-                  LOG(INFO) << "Current read throughput (MBPS): "
-                            << ((kbytes_read_ / 1024.0) /
-                                (time_spent_micros_ / 1000000.0));
+                  LOG(INFO)
+                      << "Current read throughput (MBPS): " << read_throughput;
                 }
               }
             }
@@ -938,23 +947,32 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               num_bytes += out_tensor.TotalBytes();
             }
 
-            absl::Time end = absl::Now();
-            absl::Duration d = end - start;
-            time_spent_micros_ += absl::ToInt64Microseconds(d);
-            bytes_produced_ += num_bytes;
-            elements_produced_++;
-
-            if (elements_produced_ % 10000 == 0) {
-              LOG(INFO) << "Current write throughput (MBPS): "
-                        << (bytes_produced_ * 1000000.0) /
-                               (time_spent_micros_ * 1024.0 * 1024.0);
-            }
             const auto& stats_aggregator = ctx->stats_aggregator();
             if (stats_aggregator) {
               stats_aggregator->AddScalar(
                   absl::StrCat(dataset()->node_name(), kSeparator,
                                kSnapshotWrittenElements),
-                  static_cast<float>(num_elements_written_), num_elements());
+                  static_cast<float>(num_elements_written_),
+                  elements_produced_);
+            }
+
+            absl::Time end = absl::Now();
+            absl::Duration d = end - start;
+            time_spent_micros_ += absl::ToInt64Microseconds(d);
+            bytes_produced_ += num_bytes;
+            float write_throughput = (bytes_produced_ * 1000000.0) /
+                                     (time_spent_micros_ * 1024.0 * 1024.0);
+            if (stats_aggregator) {
+              stats_aggregator->AddScalar(
+                  absl::StrCat(dataset()->node_name(), kSeparator,
+                               kSnapshotWriteThroughput),
+                  write_throughput, elements_produced_);
+            }
+
+            elements_produced_++;
+            if (elements_produced_ % 10000 == 0) {
+              LOG(INFO) << "Current write throughput (MBPS): "
+                        << write_throughput;
             }
           }
           return Status::OK();

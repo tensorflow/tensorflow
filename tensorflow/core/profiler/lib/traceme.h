@@ -82,7 +82,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(activity_name);
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -97,7 +97,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(std::move(activity_name));
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -127,7 +127,7 @@ class TraceMe {
     DCHECK_GE(level, 1);
     if (TF_PREDICT_FALSE(TraceMeRecorder::Active(level))) {
       new (&no_init_.name) string(name_generator());
-      start_time_ = EnvTime::Default()->NowNanos();
+      start_time_ = EnvTime::NowNanos();
     } else {
       start_time_ = kUntracedActivity;
     }
@@ -148,7 +148,7 @@ class TraceMe {
     if (TF_PREDICT_FALSE(start_time_ != kUntracedActivity)) {
       if (TF_PREDICT_TRUE(TraceMeRecorder::Active())) {
         TraceMeRecorder::Record({kCompleteActivity, std::move(no_init_.name),
-                                 start_time_, EnvTime::Default()->NowNanos()});
+                                 start_time_, EnvTime::NowNanos()});
       }
       no_init_.name.~string();
       start_time_ = kUntracedActivity;

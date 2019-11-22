@@ -268,6 +268,10 @@ class MemorySpaceAssignment {
     // Specifies the upper bound for number of outstanding asynchronous copies,
     // -1 for unlimited.
     int64 max_outstanding_async_copies = -1;
+
+    // If true, tries allocating buffers across (e.g., before and inside a while
+    // loop body) sequential calls (kWhile, kCall, and kConditional).
+    bool allocate_across_sequential_calls = false;
   };
 
   // This class represents an allocation that might either be in the default or
@@ -363,13 +367,14 @@ class MemorySpaceAssignment {
   class CopyAllocation : public Allocation {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
-                   Chunk chunk, int64 start_time, int64 end_time)
+                   Chunk chunk, int64 start_time, int64 end_time,
+                   int64 copy_done_schedule_before_time)
         : Allocation(/*instruction=*/nullptr,
                      /*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
-          copy_done_schedule_before_(end_time) {}
+          copy_done_schedule_before_(copy_done_schedule_before_time) {}
 
     bool is_copy_allocation() const override { return true; }
 
@@ -525,8 +530,8 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // allocations can be in default or alternate memory spaces, or can be
   // prefetches or evictions. Returns true if successful.
   bool FindAllocation(int64 start_time, int64 end_time, int64 last_use_time,
-                      HloPosition defining_position, HloUse use,
-                      const HloValue* buffer, int64 size,
+                      int64 latest_prefetch_time, HloPosition defining_position,
+                      HloUse use, const HloValue* buffer, int64 size,
                       MemorySpaceAssignment::AllocationSequence* allocations);
 
   // Try allocating in alternate memory without any copies. Returns true if
@@ -560,7 +565,7 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, Chunk chunk, int64 start_time,
-                    int64 end_time,
+                    int64 end_time, int64 copy_done_schedule_before_time,
                     MemorySpaceAssignment::AllocationSequence* allocations);
 
   // These methods are used for delaying committing the chunk candidate until

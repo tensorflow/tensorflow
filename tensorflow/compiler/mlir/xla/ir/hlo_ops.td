@@ -165,6 +165,13 @@ def HLO_Expm1Op: HLO_UnaryElementwiseOp<"exponential_minus_one",
 def HLO_FloorOp: HLO_UnaryElementwiseOp<"floor",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpTensor>, BASE_HLO_FloorOp;
 
+def HLO_IsFiniteOp: HLO_UnaryElementwiseOp<"is_finite",
+    [NoSideEffect, SameOperandsAndResultShape], HLO_Tensor>,
+    BASE_HLO_IsFiniteOp {
+  let arguments = (ins HLO_FpTensor:$x);
+  let results = (outs HLO_PredTensor:$y);
+}
+
 def HLO_LogOp: HLO_UnaryElementwiseOp<"log",
     [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor>,
     BASE_HLO_LogOp;
@@ -218,6 +225,7 @@ def HLO_ComplexOp: HLO_Op<"complex",
 
   let arguments = (ins HLO_FpTensor:$lhs, HLO_FpTensor:$rhs);
   let results = (outs HLO_ComplexTensor);
+  let hasFolder = 1;
 }
 
 def HLO_ImagOp: HLO_Op<
@@ -227,6 +235,7 @@ def HLO_ImagOp: HLO_Op<
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
 }
 
 def HLO_RealOp: HLO_Op<
@@ -236,6 +245,7 @@ def HLO_RealOp: HLO_Op<
 
   let arguments = (ins HLO_ComplexTensor);
   let results = (outs HLO_FpTensor);
+  let hasFolder = 1;
 }
 
 //===----------------------------------------------------------------------===//
@@ -477,10 +487,6 @@ def HLO_SliceOp: HLO_Op<
                                  DenseIntElementsAttr limit_indices,
                                  DenseIntElementsAttr strides);
   }];
-
-  // TODO(b/129422361) Two of the required arguments comes from the start and
-  // limit indices which aren't handled by the codegen.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_DynamicSliceOp: HLO_Op<"dynamic-slice",
@@ -704,6 +710,15 @@ def HLO_GatherOp: HLO_Op<"gather", [NoSideEffect]>, BASE_HLO_GatherOp {
   // TODO(b/129422361) Attributes are not supported by the codegen. The
   // optional argument (dimensions) needs to be added as an attribute.
   let hasCustomHLOConverter = 1;
+}
+
+def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
+      BASE_HLO_GetDimensionSizeOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I32Attr:$dimension
+  );
+  let results = (outs HLO_IntTensor);
 }
 
 def HLO_ReshapeOp: HLO_Op<"reshape",

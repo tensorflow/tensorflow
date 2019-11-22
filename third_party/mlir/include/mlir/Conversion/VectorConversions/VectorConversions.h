@@ -14,15 +14,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef MLIR_CONVERSION_VECTORTOLLVM_VECTORTOLLVM_H_
-#define MLIR_CONVERSION_VECTORTOLLVM_VECTORTOLLVM_H_
+#ifndef MLIR_CONVERSION_VECTORCONVERSIONS_VECTORCONVERSIONS_H_
+#define MLIR_CONVERSION_VECTORCONVERSIONS_VECTORCONVERSIONS_H_
+
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 class LLVMTypeConverter;
 class MLIRContext;
 class ModuleOp;
 template <typename T> class OpPassBase;
-class OwningRewritePatternList;
 
 /// Collect a set of patterns to convert from the Vector dialect to affine loops
 /// surrounding ops in different dialects (vector, std etc).
@@ -30,6 +31,13 @@ class OwningRewritePatternList;
 /// Vector -> Std legalizations.
 void populateVectorToAffineLoopsConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns);
+
+/// Collect a set of patterns to convert from the Vector dialect to itself.
+/// Should be merged with populateVectorToAffineLoopsConversionPatterns.
+void populateVectorToVectorConversionPatterns(
+    MLIRContext *context, OwningRewritePatternList &patterns,
+    ArrayRef<int64_t> coarseVectorShape = {},
+    ArrayRef<int64_t> fineVectorShape = {});
 
 /// Collect a set of patterns to convert from the Vector dialect to LLVM.
 void populateVectorToLLVMConversionPatterns(LLVMTypeConverter &converter,
@@ -40,4 +48,4 @@ OpPassBase<ModuleOp> *createLowerVectorToLLVMPass();
 
 } // namespace mlir
 
-#endif // MLIR_CONVERSION_VECTORTOLLVM_VECTORTOLLVM_H_
+#endif // MLIR_CONVERSION_VECTORCONVERSIONS_VECTORCONVERSIONS_H_

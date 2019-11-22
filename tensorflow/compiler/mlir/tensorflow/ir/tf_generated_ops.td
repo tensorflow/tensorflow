@@ -2199,6 +2199,33 @@ for dtype in dtype_list:
   let hasCanonicalizer = 1;
 }
 
+def TF_IsFiniteOp : TF_Op<"IsFinite", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns which elements of x are finite.";
+
+  let description = [{
+@compatibility(numpy)
+Equivalent to np.isfinite
+@end_compatibility
+
+Example:
+
+```python
+x = tf.constant([5.0, 4.8, 6.8, np.inf, np.nan])
+tf.math.is_finite(x) ==> [True, True, True, False, False]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    I1Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
   let summary = "L2 Loss.";
 
@@ -2438,6 +2465,68 @@ def TF_LogicalOrOp : TF_Op<"LogicalOr", [Broadcastable, Commutative, NoSideEffec
 
   let results = (outs
     I1Tensor:$z
+  );
+}
+
+def TF_LookupTableFindV2Op : TF_Op<"LookupTableFindV2", []> {
+  let summary = "Looks up keys in a table, outputs the corresponding values.";
+
+  let description = [{
+The tensor `keys` must of the same type as the keys of the table.
+The output `values` is of the type of the table values.
+
+The scalar `default_value` is the value output for keys not present in the
+table. It must also be of the same type as the table values.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$default_value
+  );
+
+  let results = (outs
+    TF_Tensor:$values
+  );
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableImportV2Op : TF_Op<"LookupTableImportV2", []> {
+  let summary = [{
+Replaces the contents of the table with the specified keys and values.
+  }];
+
+  let description = [{
+The tensor `keys` must be of the same type as the keys of the table.
+The tensor `values` must be of the type of the table values.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$table_handle,
+    TF_Tensor:$keys,
+    TF_Tensor:$values
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr Tin = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr Tout = TF_DerivedOperandTypeAttr<2>;
+}
+
+def TF_LookupTableSizeV2Op : TF_Op<"LookupTableSizeV2", []> {
+  let summary = "Computes the number of elements in the given table.";
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$table_handle
+  );
+
+  let results = (outs
+    I64Tensor:$size
   );
 }
 

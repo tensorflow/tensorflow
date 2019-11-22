@@ -37,6 +37,7 @@ from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.operators import py_builtins
+from tensorflow.python.autograph.pyct import error_utils
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
@@ -53,7 +54,7 @@ def is_autograph_strict_conversion_mode():
 
 
 # TODO(mdan): Export this symbol.
-class AutoGraphError(Exception):
+class AutoGraphError(errors.PyCTError):
   """Base class for all AutoGraph exceptions."""
   pass
 
@@ -68,7 +69,7 @@ class StagingError(AutoGraphError):
   pass
 
 
-class _ErrorMetadata(errors.ErrorMetadataBase):
+class _ErrorMetadata(error_utils.ErrorMetadataBase):
   """AutoGraph-specific error metadata. See base class."""
 
   def create_exception(self, source_error):
@@ -100,8 +101,8 @@ class _ErrorMetadata(errors.ErrorMetadataBase):
               op=source_error.op,
               message=message)
 
-    elif preferred_type in (AutoGraphError, ConversionError, StagingError,
-                            errors_impl.InaccessibleTensorError,
+    elif preferred_type in (errors.PyCTError, AutoGraphError, ConversionError,
+                            StagingError, errors_impl.InaccessibleTensorError,
                             errors_impl.OperatorNotAllowedInGraphError):
       return preferred_type(self.get_message())
 
@@ -379,12 +380,6 @@ def _is_known_loaded_type(f, module_name, entity_name):
   return False
 
 
-def _errors_are_normally_possible(entity, error):
-  if inspect_utils.islambda(entity) and isinstance(error, ValueError):
-    return True
-  return False
-
-
 def converted_call(f,
                    args,
                    kwargs,
@@ -571,10 +566,14 @@ def converted_call(f,
     logging.log(1, 'Error transforming entity %s', target_entity, exc_info=True)
     if is_autograph_strict_conversion_mode():
       raise
-    if _errors_are_normally_possible(target_entity, e):
-      logging.warn(
-          'AutoGraph could not transform %s and will run it as-is.\n'
-          'Cause: %s', target_entity, e)
+
+    if isinstance(e, errors.UnsupportedLanguageElementError):
+      # Repeating the check made upon function entry because the state might
+      # have updated in the meantime.
+      if not conversion.check_cached_unconverted(f, options):
+        logging.warn(
+            'AutoGraph could not transform %s and will run it as-is.\n'
+            'Cause: %s', target_entity, e)
     else:
       logging.warn(
           'AutoGraph could not transform %s and will run it as-is.\n'
@@ -582,6 +581,7 @@ def converted_call(f,
           ' the verbosity to 10 (on Linux, `export AUTOGRAPH_VERBOSITY=10`) and'
           ' attach the full output.\n'
           'Cause: %s', target_entity, e)
+
     return _call_unconverted(f, args, kwargs, options)
 
   with StackTraceMapper(converted_f), tf_stack.CurrentModuleFilter():

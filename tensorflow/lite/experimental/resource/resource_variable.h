@@ -12,14 +12,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_VARIABLE_RESOURCE_VARIABLE_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_VARIABLE_RESOURCE_VARIABLE_H_
-
-#include <unordered_map>
+#ifndef TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_VARIABLE_H_
+#define TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_VARIABLE_H_
 
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 
 namespace tflite {
+namespace resource {
 
 /// WARNING: Experimental interface, subject to change.
 // A resource variable class. It's similar to TensorFlow Resource
@@ -28,7 +28,7 @@ namespace tflite {
 //
 // TODO(b/137042749): TFLite converter cannot convert variables yet.
 // Variable functionalities are only tested with unit tests now.
-class ResourceVariable {
+class ResourceVariable : public ResourceBase {
  public:
   ResourceVariable();
   ResourceVariable(ResourceVariable&& other);
@@ -36,7 +36,7 @@ class ResourceVariable {
   ResourceVariable(const ResourceVariable&) = delete;
   ResourceVariable& operator=(const ResourceVariable&) = delete;
 
-  ~ResourceVariable();
+  ~ResourceVariable() override;
 
   // Assigns data from a tensor. Copies its type, shape and data over.
   TfLiteStatus AssignFrom(const TfLiteTensor* tensor);
@@ -45,6 +45,9 @@ class ResourceVariable {
   // Returns `nullptr` if the variable is never initialized by calling
   // `AssignFrom`.
   TfLiteTensor* GetTensor() { return is_initialized_ ? &tensor_ : nullptr; }
+
+  // Returns true if this resource variable is initialized.
+  bool IsInitialized() override { return is_initialized_; }
 
  private:
   // The tensor (and its buffer stored in `tensor_.data` is fully owned by
@@ -55,8 +58,17 @@ class ResourceVariable {
   bool is_initialized_ = false;
 };
 
-using ResourceVariableMap = std::unordered_map<int, ResourceVariable>;
+// Creates a resource variable, shared among all the subgraphs with the given
+// resource id if there is an existing one.
+// WARNING: Experimental interface, subject to change.
+void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
+                                          int resource_id);
 
+// Returns the corresponding resource variable, or nullptr if none.
+// WARNING: Experimental interface, subject to change.
+ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id);
+
+}  // namespace resource
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_VARIABLE_RESOURCE_VARIABLE_H_
+#endif  // TENSORFLOW_LITE_EXPERIMENTAL_RESOURCE_RESOURCE_VARIABLE_H_

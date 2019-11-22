@@ -8209,3 +8209,5 @@ tf_cc_shared_object(
         "//tensorflow/core:all_kernels_impl",
     ],
 )
+
+exports_files(["ops_testutil.h"])

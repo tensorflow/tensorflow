@@ -44,37 +44,6 @@ using namespace mlir;
 // StandardOpsDialect Interfaces
 //===----------------------------------------------------------------------===//
 namespace {
-struct StdOpAsmInterface : public OpAsmDialectInterface {
-  using OpAsmDialectInterface::OpAsmDialectInterface;
-
-  /// Get a special name to use when printing the given operation. The desired
-  /// name should be streamed into 'os'.
-  void getOpResultName(Operation *op, raw_ostream &os) const final {
-    if (ConstantOp constant = dyn_cast<ConstantOp>(op))
-      return getConstantOpResultName(constant, os);
-  }
-
-  /// Get a special name to use when printing the given constant.
-  static void getConstantOpResultName(ConstantOp op, raw_ostream &os) {
-    Type type = op.getType();
-    Attribute value = op.getValue();
-    if (auto intCst = value.dyn_cast<IntegerAttr>()) {
-      if (type.isIndex()) {
-        os << 'c' << intCst.getInt();
-      } else if (type.cast<IntegerType>().isInteger(1)) {
-        // i1 constants get special names.
-        os << (intCst.getInt() ? "true" : "false");
-      } else {
-        os << 'c' << intCst.getInt() << '_' << type;
-      }
-    } else if (type.isa<FunctionType>()) {
-      os << 'f';
-    } else {
-      os << "cst";
-    }
-  }
-};
-
 /// This class defines the interface for handling inlining with standard
 /// operations.
 struct StdInlinerInterface : public DialectInlinerInterface {
@@ -191,7 +160,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
 #define GET_OP_LIST
 #include "mlir/Dialect/StandardOps/Ops.cpp.inc"
                 >();
-  addInterfaces<StdInlinerInterface, StdOpAsmInterface>();
+  addInterfaces<StdInlinerInterface>();
 }
 
 void mlir::printDimAndSymbolList(Operation::operand_iterator begin,
@@ -1181,6 +1150,31 @@ static LogicalResult verify(ConstantOp &op) {
 OpFoldResult ConstantOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.empty() && "constant has no operands");
   return getValue();
+}
+
+void ConstantOp::getAsmResultNames(
+    function_ref<void(Value *, StringRef)> setNameFn) {
+  Type type = getType();
+  if (auto intCst = getValue().dyn_cast<IntegerAttr>()) {
+    IntegerType intTy = type.dyn_cast<IntegerType>();
+
+    // Sugar i1 constants with 'true' and 'false'.
+    if (intTy && intTy.getWidth() == 1)
+      return setNameFn(getResult(), (intCst.getInt() ? "true" : "false"));
+
+    // Otherwise, build a complex name with the value and type.
+    SmallString<32> specialNameBuffer;
+    llvm::raw_svector_ostream specialName(specialNameBuffer);
+    specialName << 'c' << intCst.getInt();
+    if (intTy)
+      specialName << '_' << type;
+    setNameFn(getResult(), specialName.str());
+
+  } else if (type.isa<FunctionType>()) {
+    setNameFn(getResult(), "f");
+  } else {
+    setNameFn(getResult(), "cst");
+  }
 }
 
 /// Returns true if a constant operation can be built with the given value and
@@ -2537,14 +2531,35 @@ static Type inferSubViewResultType(MemRefType memRefType) {
                          memRefType.getMemorySpace());
 }
 
+void mlir::SubViewOp::build(Builder *b, OperationState &result, Type resultType,
+                            Value *source, unsigned num_offsets,
+                            unsigned num_sizes, unsigned num_strides,
+                            ArrayRef<Value *> offsets, ArrayRef<Value *> sizes,
+                            ArrayRef<Value *> strides) {
+  SmallVector<Value *, 8> operands;
+  operands.reserve(num_offsets + num_sizes + num_strides);
+  operands.append(offsets.begin(), offsets.end());
+  operands.append(sizes.begin(), sizes.end());
+  operands.append(strides.begin(), strides.end());
+  build(b, result, resultType, source, b->getI32IntegerAttr(num_offsets),
+        b->getI32IntegerAttr(num_sizes), b->getI32IntegerAttr(num_strides),
+        operands);
+}
+
 void mlir::SubViewOp::build(Builder *b, OperationState &result, Value *source,
                             ArrayRef<Value *> offsets, ArrayRef<Value *> sizes,
                             ArrayRef<Value *> strides, Type resultType,
                             ArrayRef<NamedAttribute> attrs) {
   if (!resultType)
     resultType = inferSubViewResultType(source->getType().cast<MemRefType>());
-  build(b, result, resultType, source, offsets, sizes, strides);
+  build(b, result, resultType, source, offsets.size(), sizes.size(),
+        strides.size(), offsets, sizes, strides);
   result.addAttributes(attrs);
+}
+
+void mlir::SubViewOp::build(Builder *b, OperationState &result, Type resultType,
+                            Value *source) {
+  build(b, result, resultType, source, 0, 0, 0, {}, {}, {});
 }
 
 static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
@@ -2554,11 +2569,20 @@ static ParseResult parseSubViewOp(OpAsmParser &parser, OperationState &result) {
   SmallVector<OpAsmParser::OperandType, 4> stridesInfo;
   auto indexType = parser.getBuilder().getIndexType();
   Type srcType, dstType;
-  return failure(
-      parser.parseOperand(srcInfo) ||
+  if (parser.parseOperand(srcInfo) ||
       parser.parseOperandList(offsetsInfo, OpAsmParser::Delimiter::Square) ||
       parser.parseOperandList(sizesInfo, OpAsmParser::Delimiter::Square) ||
-      parser.parseOperandList(stridesInfo, OpAsmParser::Delimiter::Square) ||
+      parser.parseOperandList(stridesInfo, OpAsmParser::Delimiter::Square)) {
+    return failure();
+  }
+  auto builder = parser.getBuilder();
+  result.addAttribute("num_offsets",
+                      builder.getI32IntegerAttr(offsetsInfo.size()));
+  result.addAttribute("num_sizes", builder.getI32IntegerAttr(sizesInfo.size()));
+  result.addAttribute("num_strides",
+                      builder.getI32IntegerAttr(stridesInfo.size()));
+
+  return failure(
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(srcType) ||
       parser.resolveOperand(srcInfo, srcType, result.operands) ||
@@ -2577,13 +2601,21 @@ static void print(OpAsmPrinter &p, SubViewOp op) {
   p << "][";
   p.printOperands(op.getDynamicStrides());
   p << ']';
-  p.printOptionalAttrDict(op.getAttrs());
+  SmallVector<StringRef, 3> elidedAttrs = {"num_offsets", "num_sizes",
+                                           "num_strides"};
+  p.printOptionalAttrDict(op.getAttrs(), elidedAttrs);
   p << " : " << op.getOperand(0)->getType() << " to " << op.getType();
 }
 
 static LogicalResult verify(SubViewOp op) {
-  auto baseType = op.getOperand(0)->getType().cast<MemRefType>();
-  auto subViewType = op.getResult()->getType().cast<MemRefType>();
+  auto baseType = op.getBaseMemRefType().cast<MemRefType>();
+  auto subViewType = op.getType();
+
+  // The rank of the base and result subview must match.
+  if (baseType.getRank() != subViewType.getRank()) {
+    return op.emitError(
+        "expected rank of result type to match rank of base type ");
+  }
 
   // The base memref and the view memref should be in the same memory space.
   if (baseType.getMemorySpace() != subViewType.getMemorySpace())
@@ -2603,23 +2635,83 @@ static LogicalResult verify(SubViewOp op) {
   if (failed(getStridesAndOffset(subViewType, subViewStrides, subViewOffset)))
     return op.emitError("result type ") << subViewType << " is not strided";
 
-  unsigned memrefOperandCount = 1;
-  unsigned numDynamicOffsets = llvm::size(op.getDynamicOffsets());
-  unsigned numDynamicSizes = llvm::size(op.getDynamicSizes());
-  unsigned numDynamicStrides = llvm::size(op.getDynamicStrides());
-
-  // Verify that we have the correct number of operands for the result type.
-  if (op.getNumOperands() != memrefOperandCount + numDynamicOffsets +
-                                 numDynamicSizes + numDynamicStrides)
-    return op.emitError("incorrect number of operands for type ")
+  // Num offsets should either be zero or rank of memref.
+  if (op.getNumOffsets() != 0 && op.getNumOffsets() != subViewType.getRank()) {
+    return op.emitError("expected number of dynamic offsets specified to match "
+                        "the rank of the result type ")
            << subViewType;
+  }
 
-  // Verify that the subview layout map has a dynamic offset.
-  if (op.getNumOperands() > 1 &&
-      subViewOffset != MemRefType::getDynamicStrideOrOffset())
-    return op.emitError("subview memref layout map must specify a dynamic "
-                        "offset for type ")
+  // Num sizes should either be zero or rank of memref.
+  if (op.getNumSizes() != 0 && op.getNumSizes() != subViewType.getRank()) {
+    return op.emitError("expected number of dynamic sizes specified to match "
+                        "the rank of the result type ")
            << subViewType;
+  }
+
+  // Num strides should either be zero or rank of memref.
+  if (op.getNumStrides() != 0 && op.getNumStrides() != subViewType.getRank()) {
+    return op.emitError("expected number of dynamic strides specified to match "
+                        "the rank of the result type ")
+           << subViewType;
+  }
+
+  // Verify that if the shape of the subview type is static, then sizes are not
+  // dynamic values, and viceversa.
+  if ((subViewType.hasStaticShape() && op.getNumSizes() != 0) ||
+      (op.getNumSizes() == 0 && !subViewType.hasStaticShape())) {
+    return op.emitError("invalid to specify dynamic sizes when subview result "
+                        "type is statically shaped and viceversa");
+  }
+  if (op.getNumSizes() > 0) {
+    // Verify that non if the shape values of the result type are static.
+    if (llvm::any_of(subViewType.getShape(), [](int64_t dim) {
+          return dim != ShapedType::kDynamicSize;
+        })) {
+      // TODO: This is based on the assumption that number of size arguments are
+      // either 0, or the rank of the result type. It is possible to have more
+      // fine-grained verification where only particular dimensions are
+      // dynamic. That probably needs further changes to the shape op
+      // specification.
+      return op.emitError("expected shape of result type to be fully dynamic "
+                          "when sizes are specified");
+    }
+  }
+
+  // Verify that if dynamic offsets are specified or base memref has dynamic
+  // offset or base memref has dynamic strides, then the subview offset is
+  // dynamic.
+  if ((op.getNumOffsets() > 0 ||
+       baseOffset == MemRefType::getDynamicStrideOrOffset() ||
+       llvm::is_contained(baseStrides,
+                          MemRefType::getDynamicStrideOrOffset())) &&
+      subViewOffset != MemRefType::getDynamicStrideOrOffset()) {
+    return op.emitError(
+        "expected result memref layout map to have dynamic offset");
+  }
+
+  // For now, verify that if dynamic strides are specified, then all the result
+  // memref type have dynamic strides.
+  if (op.getNumStrides() > 0) {
+    if (llvm::any_of(subViewStrides, [](int64_t stride) {
+          return stride != MemRefType::getDynamicStrideOrOffset();
+        })) {
+      return op.emitError("expected result type to have dynamic strides");
+    }
+  }
+
+  // If any of the base memref has dynamic stride, then the corresponding
+  // stride of the subview must also have dynamic stride.
+  assert(baseStrides.size() == subViewStrides.size());
+  for (auto stride : enumerate(baseStrides)) {
+    if (stride.value() == MemRefType::getDynamicStrideOrOffset() &&
+        subViewStrides[stride.index()] !=
+            MemRefType::getDynamicStrideOrOffset()) {
+      return op.emitError(
+          "expected result type to have dynamic stride along a dimension if "
+          "the base memref type has dynamic stride along that dimension");
+    }
+  }
 
   // Verify dynamic strides symbols were added to correct dimensions based
   // on dynamic sizes.
@@ -2773,30 +2865,27 @@ struct SubViewOpShapeFolder : public OpRewritePattern<SubViewOp> {
 };
 
 } // end anonymous namespace
-
 SubViewOp::operand_range SubViewOp::getDynamicOffsets() {
-  if (hasConstantOffsetSizesAndStrides(getBaseMemRefType()) &&
-      hasConstantOffsetSizesAndStrides(getType()))
-    return {operand_end(), operand_end()};
-  return {operand_begin() + 1, operand_begin() + 1 + getType().getRank()};
+  auto numOffsets = getNumOffsets();
+  assert(getNumOperands() >= numOffsets + 1);
+  return {operand_begin() + 1, operand_begin() + 1 + numOffsets};
 }
 
 SubViewOp::operand_range SubViewOp::getDynamicSizes() {
-  if (hasConstantOffsetSizesAndStrides(getBaseMemRefType()) &&
-      hasConstantOffsetSizesAndStrides(getType()))
-    return {operand_end(), operand_end()};
-  unsigned sizesOperandsStart = 1 + getType().getRank();
-  return {operand_begin() + sizesOperandsStart,
-          operand_begin() + sizesOperandsStart + getType().getRank()};
+  auto numSizes = getNumSizes();
+  auto numOffsets = getNumOffsets();
+  assert(getNumOperands() >= numSizes + numOffsets + 1);
+  return {operand_begin() + 1 + numOffsets,
+          operand_begin() + 1 + numOffsets + numSizes};
 }
 
 SubViewOp::operand_range SubViewOp::getDynamicStrides() {
-  if (hasConstantOffsetSizesAndStrides(getBaseMemRefType()) &&
-      hasConstantOffsetSizesAndStrides(getType()))
-    return {operand_end(), operand_end()};
-  unsigned stridesOperandsStart = 1 + 2 * getType().getRank();
-  return {operand_begin() + stridesOperandsStart,
-          operand_begin() + stridesOperandsStart + getType().getRank()};
+  auto numSizes = getNumSizes();
+  auto numOffsets = getNumOffsets();
+  auto numStrides = getNumStrides();
+  assert(getNumOperands() >= numSizes + numOffsets + numStrides + 1);
+  return {operand_begin() + (1 + numOffsets + numSizes),
+          operand_begin() + (1 + numOffsets + numSizes + numStrides)};
 }
 
 void SubViewOp::getCanonicalizationPatterns(OwningRewritePatternList &results,

@@ -341,11 +341,13 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   }
 
   // Helper method to perform and add reduction on a list of dimensions.
-  HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64> dims) {
+  HloInstruction* AddReduce(HloInstruction* hlo, absl::Span<const int64> dims,
+                            PrimitiveType type) {
     HloInstruction* zero = computation_->AddInstruction(
         simplifier_->CreateConstantWithLayoutUpdated(
             LiteralUtil::Zero(hlo->shape().element_type()).Clone()));
-    HloComputation* AddReduce_computation = GetOrCreateScalarAddComputation();
+    HloComputation* AddReduce_computation =
+        GetOrCreateScalarAddComputation(type);
     Shape shape = ShapeUtil::FilterDimensions(
         [&](int64 dim) { return !absl::c_linear_search(dims, dim); },
         hlo->shape());
@@ -397,13 +399,13 @@ class AlgebraicSimplifierVisitor : public DfsHloRewriteVisitor {
   StatusOr<HloInstruction*> OptimizeDotOfReorderContractingDims(
       HloInstruction* dot);
 
-  HloComputation* GetOrCreateScalarAddComputation() {
+  HloComputation* GetOrCreateScalarAddComputation(PrimitiveType type) {
     if (scalar_add_computation_) {
       return scalar_add_computation_;
     }
 
     HloComputation::Builder b("scalar_add_computation");
-    Shape shape = ShapeUtil::MakeShape(F32, {});
+    Shape shape = ShapeUtil::MakeShape(type, {});
     simplifier_->UpdateLayout(&shape);
     auto scalar_lhs = b.AddInstruction(
         HloInstruction::CreateParameter(0, shape, "scalar_lhs"));
@@ -1782,9 +1784,7 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   // If the lhs or rhs have only batch and contracting dimensions, a dot can be
   // rewritten as reduce(mul(broadcast(transpose(x)),broadcast(transpose(y))))
   if (options_.enable_dot_strength_reduction() &&
-      (dot->shape().element_type() == F32 ||
-       dot->shape().element_type() == F16 ||
-       dot->shape().element_type() == BF16) &&
+      ShapeUtil::ElementIsFloating(dot->shape()) &&
       ((dot->dot_dimension_numbers().lhs_batch_dimensions_size() +
             dot->dot_dimension_numbers().lhs_contracting_dimensions_size() ==
         lhs->shape().rank()) ||
@@ -1845,12 +1845,13 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
                         MakeBinaryHlo(HloOpcode::kMultiply, new_lhs, new_rhs));
     std::vector<int64> reduce_dims(
         dot->dot_dimension_numbers().lhs_contracting_dimensions_size());
-    new_dot = AsType(new_dot, F32);
+    PrimitiveType dot_type = dot->shape().element_type() == F64 ? F64 : F32;
+    new_dot = AsType(new_dot, dot_type);
     const int64 outer_dims = std::max(rhs_outer_dims, lhs_outer_dims);
     absl::c_iota(
         reduce_dims,
         outer_dims + dot->dot_dimension_numbers().lhs_batch_dimensions_size());
-    new_dot = AddReduce(new_dot, reduce_dims);
+    new_dot = AddReduce(new_dot, reduce_dims, dot_type);
     new_dot = AsType(new_dot, dot->shape().element_type());
     return ReplaceInstruction(dot, new_dot);
   }

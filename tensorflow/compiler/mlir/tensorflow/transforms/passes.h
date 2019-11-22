@@ -71,8 +71,8 @@ std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorIslandCoarseningPass();
 // Create a pass to prune tf_executor.graph from dead nodes.
 std::unique_ptr<OpPassBase<FuncOp>> CreateTFExecutorGraphPruningPass();
 
-// Prune a tf_executor.graph operation from dead nodes.
-void prune_graph(GraphOp graph);
+// Prunes unreachable operations of a tf_executor.graph operation.
+void PruneGraph(GraphOp graph);
 
 // Sink `tf.Const` operations in the LaunchOp region using them. This is
 // performed in order to limit the number of values implicitly captured in this

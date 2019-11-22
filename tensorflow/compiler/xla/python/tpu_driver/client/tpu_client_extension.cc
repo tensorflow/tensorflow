@@ -61,6 +61,12 @@ PYBIND11_MODULE(tpu_client_extension, m) {
              std::shared_ptr<Device> device)
               -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
             CHECK(device != nullptr);
+            auto iter = client->id_to_device().find(device->id());
+            if (iter->second != device) {
+              return InvalidArgument(
+                  "Cannot copy value to device '%s' with '%s' backend",
+                  device->DebugString(), client->platform_name());
+            }
             GlobalPyRefManager()->CollectGarbage();
             TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
                                 GetPythonBufferTree(argument));
@@ -105,8 +111,15 @@ PYBIND11_MODULE(tpu_client_extension, m) {
       .def_static("make_tuple",
                   [](const std::vector<PyTpuBuffer*> buffers,
                      std::shared_ptr<PyTpuClient> client,
-                     std::shared_ptr<Device> device) {
+                     std::shared_ptr<Device> device)
+                      -> StatusOr<std::unique_ptr<PyTpuBuffer>> {
                     CHECK(device != nullptr);
+                    auto iter = client->id_to_device().find(device->id());
+                    if (iter->second != device) {
+                      return InvalidArgument(
+                          "Cannot make tuple on device '%s' with '%s' backend",
+                          device->DebugString(), client->platform_name());
+                    }
                     return PyTpuBuffer::MakeTuple(
                         buffers, client, device->local_device_ordinal());
                   })

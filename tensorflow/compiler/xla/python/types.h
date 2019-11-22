@@ -468,6 +468,69 @@ struct type_caster<xla::PrecisionConfig> {
   }
 };
 
+template <>
+struct type_caster<xla::OpSharding> {
+ public:
+  PYBIND11_TYPE_CASTER(xla::OpSharding, _("xla::OpSharding"));
+
+  // PyObject -> C++ conversion.
+  bool load(handle handle_obj, bool) {
+    if (handle_obj.is_none()) {
+      return true;
+    }
+
+    // Sets `type` field.
+    handle sharding_type = getattr(handle_obj, "type");
+    if (!sharding_type.is_none()) {
+      value.set_type(sharding_type.cast<xla::OpSharding_Type>());
+    }
+
+    // Sets `tile_assignment_dimensions` field.
+    std::vector<xla::int64> dims;
+    dims = getattr(handle_obj, "tile_assignment_dimensions")
+               .cast<std::vector<xla::int64>>();
+    std::copy(dims.begin(), dims.end(),
+              tensorflow::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_tile_assignment_dimensions()));
+
+    // Sets `tile_assignment_devices` field.
+    std::vector<xla::int64> devices;
+    devices = getattr(handle_obj, "tile_assignment_devices")
+                  .cast<std::vector<xla::int64>>();
+    std::copy(devices.begin(), devices.end(),
+              tensorflow::protobuf::RepeatedFieldBackInserter(
+                  value.mutable_tile_assignment_devices()));
+
+    // Sets `tuple_shardings` field.
+    sequence tuple_shardings =
+        reinterpret_borrow<sequence>(getattr(handle_obj, "tuple_shardings"));
+
+    for (auto tuple_sharding : tuple_shardings) {
+      xla::OpSharding* sharding = value.add_tuple_shardings();
+
+      handle sharding_type = getattr(tuple_sharding, "type");
+      if (!sharding_type.is_none()) {
+        sharding->set_type(sharding_type.cast<xla::OpSharding_Type>());
+      }
+      std::vector<xla::int64> dims;
+      dims = getattr(tuple_sharding, "tile_assignment_dimensions")
+                 .cast<std::vector<xla::int64>>();
+      std::copy(dims.begin(), dims.end(),
+                tensorflow::protobuf::RepeatedFieldBackInserter(
+                    sharding->mutable_tile_assignment_dimensions()));
+
+      std::vector<xla::int64> devices;
+      devices = getattr(tuple_sharding, "tile_assignment_devices")
+                    .cast<std::vector<xla::int64>>();
+      std::copy(devices.begin(), devices.end(),
+                tensorflow::protobuf::RepeatedFieldBackInserter(
+                    sharding->mutable_tile_assignment_devices()));
+    }
+
+    return true;
+  }
+};
+
 }  // namespace detail
 }  // namespace pybind11
 

@@ -26,6 +26,7 @@
 include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 
 def Std_Dialect : Dialect {
@@ -580,7 +581,8 @@ def CondBranchOp : Std_Op<"cond_br", [Terminator]> {
   let hasCanonicalizer = 1;
 }
 
-def ConstantOp : Std_Op<"constant", [NoSideEffect]> {
+def ConstantOp : Std_Op<"constant",
+    [NoSideEffect, DeclareOpInterfaceMethods<OpAsmOpInterface>]> {
   let summary = "constant";
 
   let arguments = (ins AnyAttr:$value);
@@ -1237,7 +1239,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
-def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize, NoSideEffect]> {
+def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
   let summary = "memref subview operation";
   let description = [{
     The "subview" operation converts a memref type to another memref type
@@ -1252,11 +1254,11 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize, NoSideEffect]> {
               dynamic sizes of the result "view" memref type.
     *) Strides: zero or memref-rank number of dynamic strides which are applied
                 multiplicatively to the base memref strides in each dimension.
-    Note on the number of operands for offsets, sizes and strides: either
-    memref-rank number of operands must be set for each of offsets, sizes and
-    strides, or zero operands must be specified for offsets, sizes and strides
-    (in which case the base and subview memrefs must all have constant offset
-     sizes and strides).
+
+    Note on the number of operands for offsets, sizes and strides: For
+    each of these, the number of operands must either be same as the
+    memref-rank number or empty. For the latter, those values will be
+    treated as constants.
 
     Example 1:
 
@@ -1292,11 +1294,62 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize, NoSideEffect]> {
       %1 = subview %0[][][]
         : memref<8x16x4xf32, (d0, d1, d2) -> (d0 * 64 + d1 * 4 + d2)> to
           memref<4x4x4xf32, (d0, d1, d2) -> (d0 * 16 + d1 * 4 + d2 + 8)>
+
+    Example 4:
+
+      %0 = alloc(%arg0, %arg1) : memref<?x?xf32>
+
+      // Subview with constant size, but dynamic offsets and
+      // strides. The resulting memref has a static shape, but if the
+      // base memref has an affine map to describe the layout, the result
+      // memref also uses an affine map to describe the layout. The
+      // strides of the result memref is computed as follows:
+      //
+      // Let #map1 represents the layout of the base memref, and #map2
+      // represents the layout of the result memref. A #mapsubview can be
+      // constructed to map an index from the result memref to the base
+      // memref (note that the description below uses more convenient
+      // naming for symbols, while in affine maps, symbols are
+      // represented as unsigned numbers that identify that symbol in the
+      // given affine map.
+      //
+      // #mapsubview = (d0, d1)[o0, o1, t0, t1] -> (d0 * t0 + o0, d1 * t1 + o1)
+      //
+      // where, o0, o1, ... are offsets, and t0, t1, ... are strides. Then,
+      //
+      // #map2 = #map1.compose(#mapsubview)
+      //
+      // If the layout map is represented as
+      //
+      // #map1 = (d0, d1)[s0, s1, s2] -> (d0 * s1 + d1 * s2 + s0)
+      //
+      // then,
+      //
+      // #map2 = (d0, d1)[s0, s1, s2, o0, o1, t0, t1] ->
+      //              (d0 * s1 * t0 + d1 * s2 * t1 + o0 * s1 + o1 * s2 + s0)
+      //
+      // Representing this canonically
+      //
+      // #map2 = (d0, d1)[r0, r1, r2] -> (d0 * r1 + d1 * r2 + r0)
+      //
+      // where, r0 = o0 * s1 + o1 * s2 + s0, r1 = s1 * t0, r2 = s2 * t1.
+      %1 = subview %0[%i, %j][][%x, %y] :
+        : memref<?x?xf32, (d0, d1)[s0, s1, s2] -> (d0 * s1 + d1 * s2 + s0)> to
+          memref<4x4xf32, (d0, d1)[r0, r1, r2] -> (d0 * r1 + d1 * r2 + r0)>
+
+      // Note that the subview op does not gaurantee that the result
+      // memref is "inbounds" w.r.t to base memref. It is upto the client
+      // to ensure that the subview is accessed in a manner that is
+      // in-bounds.
+
     }
   }];
 
-  let arguments = (ins AnyMemRef:$source, Variadic<Index>:$offsets,
-                   Variadic<Index>:$sizes, Variadic<Index>:$strides);
+  // TODO(b/144779634, ravishankarm) : Use different arguments for
+  // offsets, sizes and strides.
+  let arguments = (ins AnyMemRef:$source, I32Attr:$num_offsets,
+                   I32Attr:$num_sizes, I32Attr:$num_strides,
+                   Variadic<Index>:$operands);
   let results = (outs AnyMemRef);
 
   let builders = [OpBuilder<
@@ -1305,11 +1358,12 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize, NoSideEffect]> {
     "ArrayRef<Value *> strides, Type resultType = Type(), "
     "ArrayRef<NamedAttribute> attrs = {}">,
     OpBuilder<
-    "Builder *builder, OperationState &result, Type resultType, Value *source",
-    [{
-      result.addOperands(source);
-      result.addTypes(resultType);
-    }]>];
+    "Builder *builder, OperationState &result, Type resultType, Value *source">,
+    OpBuilder<
+    "Builder *builder, OperationState &result, Type resultType, Value *source, "
+    "unsigned num_offsets, unsigned num_sizes, unsigned num_strides, "
+    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
+    "ArrayRef<Value *> strides">];
 
   let extraClassDeclaration = [{
     /// Returns the type of the base memref operand.
@@ -1319,6 +1373,21 @@ def SubViewOp : Std_Op<"subview", [SameVariadicOperandSize, NoSideEffect]> {
 
     /// The result of a subview is always a memref.
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
+
+    /// Returns as integer value the number of offset operands.
+    int64_t getNumOffsets() {
+      return num_offsets().getSExtValue();
+    }
+
+    /// Returns as integer value the number of size operands.
+    int64_t getNumSizes() {
+      return num_sizes().getSExtValue();
+    }
+
+    /// Returns as integer value the number of stride operands.
+    int64_t getNumStrides() {
+      return num_strides().getSExtValue();
+    }
 
     /// Returns the dynamic offsets for this subview operation.
     operand_range getDynamicOffsets();

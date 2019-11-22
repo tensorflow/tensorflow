@@ -58,6 +58,7 @@ cc_library(
     srcs = [
         "grpc_tpu_driver.cc",
     ],
+    hdrs = ["grpc_tpu_driver.h"],
     deps = [
         ":tpu_driver",
         "//tensorflow/core/platform:logging",

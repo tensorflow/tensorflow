@@ -643,7 +643,8 @@ struct MatrixVectorData {
 
 MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
                                        bool negative = false,
-                                       bool is_per_channel = false) {
+                                       bool is_per_channel = false,
+                                       bool init_to_one = false) {
   MatrixVectorData data;
   data.rows = rows;
   data.cols = cols;
@@ -660,7 +661,7 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
     data.vectors.push_back(sign * (i % 50));
   }
   data.scale_factors = {1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8};
-  data.results.resize(rows * batch, 0);
+  data.results.resize(rows * batch, init_to_one ? 1 : 0);
 
   data.zeroed_matrix = data.matrix;
 
@@ -715,10 +716,11 @@ MatrixVectorData SetupMatrixVectorData(int rows, int cols, int batch,
   return data;
 }
 
-std::vector<float> TestDotprodMatrixBatchVectorMultiply(int rows, int cols,
-                                                        int batch,
-                                                        bool negative = false) {
-  MatrixVectorData data = SetupMatrixVectorData(rows, cols, batch, negative);
+std::vector<float> TestDotprodMatrixBatchVectorMultiply(
+    int rows, int cols, int batch, bool negative = false,
+    bool init_to_one = false) {
+  MatrixVectorData data =
+      SetupMatrixVectorData(rows, cols, batch, negative, false, init_to_one);
 
   // All partial sums in this computation are small enough to fit in the
   // mantissa of a float, and the scale factors are all integers, so we expect
@@ -777,6 +779,13 @@ TEST(uKernels, DotprodMatrixBatchVectorMultiplyAccumulateTest) {
   ASSERT_THAT(
       TestDotprodMatrixBatchVectorMultiply(4, 32, 2, kNegative),
       testing::ElementsAre(3436, 3522, 1590, 6972, 2516, 20520, 456, 10628));
+
+  // Initialize the results vector with 1s to verify that the code adds
+  // to the results vector instead of zero-ing it first.
+  const bool kInitToOne = true;
+  ASSERT_THAT(
+      TestDotprodMatrixBatchVectorMultiply(4, 32, 2, kNegative, kInitToOne),
+      testing::ElementsAre(3437, 3523, 1591, 6973, 2517, 20521, 457, 10629));
 }
 
 TEST(uKernels, PerChannelDotprodMatrixBatchVectorMultiplyAccumulateTest) {
@@ -1553,10 +1562,21 @@ void BM_DotprodBatchOneMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);
   const int batch = state.range(2);
+  const int copies = state.range(3);
 
-  tflite::tensor_utils::MatrixVectorData data =
-      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  // For some benchmarks we make multiple matrix copies. This allows us to
+  // measure the performance differences of being entirely in cache vs.
+  // out of cache.
+  std::vector<tflite::tensor_utils::MatrixVectorData> datas;
+  for (int i = 0; i < copies; i++) {
+    datas.push_back(
+        tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch));
+  }
+
+  int copy = 0;
   for (auto _ : state) {
+    copy = (copy + 1) % datas.size();
+    auto& data = datas[copy];
     for (int i = 0; i < batch; i++) {
       tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
           data.matrix.data(), data.rows, data.cols,
@@ -1567,33 +1587,48 @@ void BM_DotprodBatchOneMultiply(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_DotprodBatchOneMultiply)
-    ->Args({16, 16, 1})
-    ->Args({16, 16, 4})
-    ->Args({32, 32, 1})
-    ->Args({32, 32, 4})
-    ->Args({64, 64, 1})
-    ->Args({64, 64, 4})
-    ->Args({128, 128, 1})
-    ->Args({128, 128, 4})
-    ->Args({992, 992, 1})
-    ->Args({992, 992, 8})
-    ->Args({1024, 1024, 1})
-    ->Args({1024, 1024, 4})
-    ->Args({1024, 1024, 8})
-    ->Args({640, 2048, 1})
-    ->Args({640, 2048, 4})
-    ->Args({640, 2048, 8})
-    ->Args({2048, 2048, 1})
-    ->Args({2048, 2048, 8});
+    ->Args({16, 16, 1, 1})
+    ->Args({16, 16, 4, 1})
+    ->Args({32, 32, 1, 1})
+    ->Args({32, 32, 4, 1})
+    ->Args({64, 64, 1, 1})
+    ->Args({64, 64, 4, 1})
+    ->Args({128, 128, 1, 1})
+    ->Args({128, 128, 4, 1})
+    ->Args({992, 992, 1, 1})
+    ->Args({992, 992, 8, 1})
+    ->Args({1024, 1024, 1, 1})
+    ->Args({1024, 1024, 1, 8})
+    ->Args({1024, 1024, 4, 1})
+    ->Args({1024, 1024, 4, 8})
+    ->Args({1024, 1024, 8, 1})
+    ->Args({640, 2048, 1, 1})
+    ->Args({640, 2048, 4, 1})
+    ->Args({640, 2048, 8, 1})
+    ->Args({640, 2048, 8, 8})
+    ->Args({2048, 2048, 1, 1})
+    ->Args({2048, 2048, 1, 8})
+    ->Args({2048, 2048, 8, 1});
 
 void BM_DotprodBatchFourMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);
   const int batch = state.range(2);
+  const int copies = state.range(3);
 
-  tflite::tensor_utils::MatrixVectorData data =
-      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  // For some benchmarks we make multiple matrix copies. This allows us to
+  // measure the performance differences of being entirely in cache vs.
+  // out of cache.
+  std::vector<tflite::tensor_utils::MatrixVectorData> datas;
+  for (int i = 0; i < copies; i++) {
+    datas.push_back(
+        tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch));
+  }
+
+  int copy = 0;
   for (auto _ : state) {
+    copy = (copy + 1) % datas.size();
+    auto& data = datas[copy];
     tflite::tensor_utils::MatrixBatchVectorMultiplyAccumulate(
         data.matrix.data(), data.rows, data.cols, data.vectors.data(),
         data.scale_factors.data(), data.batch, &data.results[0], 1);
@@ -1601,32 +1636,57 @@ void BM_DotprodBatchFourMultiply(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_DotprodBatchFourMultiply)
-    ->Args({16, 16, 4})
-    ->Args({32, 32, 4})
-    ->Args({64, 64, 4})
-    ->Args({64, 256, 64})
-    ->Args({64, 256, 256})
-    ->Args({64, 256, 1024})
-    ->Args({64, 256, 12544})
-    ->Args({128, 128, 4})
-    ->Args({640, 640, 4})
-    ->Args({992, 992, 8})
-    ->Args({1024, 1024, 4})
-    ->Args({1024, 1024, 8})
-    ->Args({1024, 1024, 256})
-    ->Args({640, 2048, 4})
-    ->Args({640, 2048, 8})
-    ->Args({2048, 2048, 4})
-    ->Args({2048, 2048, 8});
+    ->Args({16, 16, 4, 1})
+    ->Args({32, 32, 4, 1})
+    ->Args({64, 64, 4, 1})
+    ->Args({64, 256, 64, 1})
+    ->Args({64, 256, 256, 1})
+    ->Args({64, 256, 1024, 1})
+    ->Args({64, 256, 12544, 1})
+    ->Args({128, 128, 2, 1})
+    ->Args({128, 128, 3, 1})
+    ->Args({128, 128, 4, 1})
+    ->Args({128, 128, 5, 1})
+    ->Args({640, 640, 4, 1})
+    ->Args({992, 992, 8, 1})
+    ->Args({1024, 1024, 2, 1})
+    ->Args({1024, 1024, 3, 1})
+    ->Args({1024, 1024, 4, 1})
+    ->Args({1024, 1024, 5, 1})
+    ->Args({1024, 1024, 8, 1})
+    ->Args({1024, 1024, 8, 8})
+    ->Args({1024, 1024, 256, 1})
+    ->Args({640, 2048, 2, 1})
+    ->Args({640, 2048, 3, 1})
+    ->Args({640, 2048, 4, 1})
+    ->Args({640, 2048, 4, 8})
+    ->Args({640, 2048, 8, 1})
+    ->Args({2048, 2048, 3, 1})
+    ->Args({2048, 2048, 4, 1})
+    ->Args({2048, 2048, 4, 8})
+    ->Args({2048, 2048, 5, 1})
+    ->Args({2048, 2048, 8, 1});
 
 void BM_DotprodSparseMultiply(benchmark::State& state) {
   const int rows = state.range(0);
   const int cols = state.range(1);
   const int batch = state.range(2);
 
-  tflite::tensor_utils::MatrixVectorData data =
-      tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch);
+  const int copies = state.range(3);
+
+  // For some benchmarks we make multiple matrix copies. This allows us to
+  // measure the performance differences of being entirely in cache vs.
+  // out of cache.
+  std::vector<tflite::tensor_utils::MatrixVectorData> datas;
+  for (int i = 0; i < copies; i++) {
+    datas.push_back(
+        tflite::tensor_utils::SetupMatrixVectorData(rows, cols, batch));
+  }
+
+  int copy = 0;
   for (auto _ : state) {
+    copy = (copy + 1) % datas.size();
+    auto& data = datas[copy];
     tflite::tensor_utils::SparseMatrixBatchVectorMultiplyAccumulate(
         data.sparse_matrix.data(), data.ledger.data(), data.rows, data.cols,
         data.vectors.data(), data.scale_factors.data(), data.batch,
@@ -1635,17 +1695,17 @@ void BM_DotprodSparseMultiply(benchmark::State& state) {
   }
 }
 BENCHMARK(BM_DotprodSparseMultiply)
-    ->Args({128, 128, 1})
-    ->Args({128, 128, 4})
-    ->Args({640, 640, 4})
-    ->Args({992, 992, 8})
-    ->Args({1024, 1024, 1})
-    ->Args({1024, 1024, 4})
-    ->Args({1024, 1024, 8})
-    ->Args({640, 2048, 1})
-    ->Args({640, 2048, 4})
-    ->Args({640, 2048, 8})
-    ->Args({2048, 2048, 1})
-    ->Args({2048, 2048, 8});
+    ->Args({128, 128, 1, 1})
+    ->Args({128, 128, 4, 1})
+    ->Args({640, 640, 4, 1})
+    ->Args({992, 992, 8, 1})
+    ->Args({1024, 1024, 1, 1})
+    ->Args({1024, 1024, 4, 1})
+    ->Args({1024, 1024, 8, 1})
+    ->Args({640, 2048, 1, 1})
+    ->Args({640, 2048, 4, 1})
+    ->Args({640, 2048, 8, 1})
+    ->Args({2048, 2048, 1, 1})
+    ->Args({2048, 2048, 8, 1});
 
 #endif  // DOTPROD_BENCHMARKS

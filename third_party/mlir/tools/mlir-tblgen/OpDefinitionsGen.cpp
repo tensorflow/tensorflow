@@ -459,6 +459,9 @@ private:
   void emitDecl(raw_ostream &os);
   void emitDef(raw_ostream &os);
 
+  // Generates the OpAsmOpInterface for this operation if possible.
+  void genOpAsmInterface();
+
   // Generates the `getOperationName` method for this op.
   void genOpNameGetter();
 
@@ -575,6 +578,7 @@ OpEmitter::OpEmitter(const Operator &op)
   genTraits();
   // Generate C++ code for various op methods. The order here determines the
   // methods in the generated file.
+  genOpAsmInterface();
   genOpNameGetter();
   genNamedOperandGetters();
   genNamedResultGetters();
@@ -1391,6 +1395,38 @@ void OpEmitter::genOpNameGetter() {
   auto &method = opClass.newMethod("StringRef", "getOperationName",
                                    /*params=*/"", OpMethod::MP_Static);
   method.body() << "  return \"" << op.getOperationName() << "\";\n";
+}
+
+void OpEmitter::genOpAsmInterface() {
+  // If the user only has one results or specifically added the Asm trait,
+  // then don't generate it for them. We specifically only handle multi result
+  // operations, because the name of a single result in the common case is not
+  // interesting(generally 'result'/'output'/etc.).
+  // TODO: We could also add a flag to allow operations to opt in to this
+  // generation, even if they only have a single operation.
+  int numResults = op.getNumResults();
+  if (numResults <= 1 || op.hasTrait("OpAsmOpInterface::Trait"))
+    return;
+
+  SmallVector<StringRef, 4> resultNames(numResults);
+  for (int i = 0; i != numResults; ++i)
+    resultNames[i] = op.getResultName(i);
+
+  // Don't add the trait if none of the results have a valid name.
+  if (llvm::all_of(resultNames, [](StringRef name) { return name.empty(); }))
+    return;
+  opClass.addTrait("OpAsmOpInterface::Trait");
+
+  // Generate the right accessor for the number of results.
+  auto &method = opClass.newMethod("void", "getAsmResultNames",
+                                   "OpAsmSetValueNameFn setNameFn");
+  auto &body = method.body();
+  for (int i = 0; i != numResults; ++i) {
+    body << "  auto resultGroup" << i << " = getODSResults(" << i << ");\n"
+         << "  if (!llvm::empty(resultGroup" << i << "))\n"
+         << "    setNameFn(*resultGroup" << i << ".begin(), \""
+         << resultNames[i] << "\");\n";
+  }
 }
 
 //===----------------------------------------------------------------------===//

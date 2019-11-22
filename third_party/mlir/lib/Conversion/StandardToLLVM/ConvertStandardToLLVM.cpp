@@ -1477,6 +1477,21 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     auto loc = op->getLoc();
     auto viewOp = cast<SubViewOp>(op);
     SubViewOpOperandAdaptor adaptor(operands);
+    // TODO(b/144779634, ravishankarm) : After Tblgen is adapted to support
+    // having multiple variadic operands where each operand can have different
+    // number of entries, clean all of this up.
+    SmallVector<Value *, 2> dynamicOffsets(
+        std::next(operands.begin()),
+        std::next(operands.begin(), 1 + viewOp.getNumOffsets()));
+    SmallVector<Value *, 2> dynamicSizes(
+        std::next(operands.begin(), 1 + viewOp.getNumOffsets()),
+        std::next(operands.begin(),
+                  1 + viewOp.getNumOffsets() + viewOp.getNumSizes()));
+    SmallVector<Value *, 2> dynamicStrides(
+        std::next(operands.begin(),
+                  1 + viewOp.getNumOffsets() + viewOp.getNumSizes()),
+        operands.end());
+
     auto sourceMemRefType = viewOp.source()->getType().cast<MemRefType>();
     auto sourceElementTy =
         lowering.convertType(sourceMemRefType.getElementType())
@@ -1492,8 +1507,8 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
 
     // Early exit for 0-D and operands lesser than `rank` corner cases.
     unsigned rank = sourceMemRefType.getRank();
-    if (viewMemRefType.getRank() == 0 || rank != adaptor.offsets().size() ||
-        rank != adaptor.sizes().size() || rank != adaptor.strides().size())
+    if (viewMemRefType.getRank() == 0 || rank != dynamicOffsets.size() ||
+        rank != dynamicSizes.size() || rank != dynamicStrides.size())
       return matchFailure();
 
     int64_t offset;
@@ -1526,7 +1541,7 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     // Offset.
     Value *baseOffset = sourceMemRef.offset(rewriter, loc);
     for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i) {
-      Value *min = adaptor.offsets()[i];
+      Value *min = dynamicOffsets[i];
       baseOffset = rewriter.create<LLVM::AddOp>(
           loc, baseOffset,
           rewriter.create<LLVM::MulOp>(loc, min, strideValues[i]));
@@ -1535,10 +1550,10 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
 
     // Update sizes and strides.
     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
-      targetMemRef.setSize(rewriter, loc, i, adaptor.sizes()[i]);
+      targetMemRef.setSize(rewriter, loc, i, dynamicSizes[i]);
       targetMemRef.setStride(rewriter, loc, i,
                              rewriter.create<LLVM::MulOp>(
-                                 loc, adaptor.strides()[i], strideValues[i]));
+                                 loc, dynamicStrides[i], strideValues[i]));
     }
 
     rewriter.replaceOp(op, {targetMemRef});

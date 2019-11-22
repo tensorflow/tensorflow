@@ -51,7 +51,7 @@ simple_models = [
 
 
 strategies = [
-    # TODO(b/132702156): include default strategy
+    strategy_combinations.default_strategy,
     strategy_combinations.one_device_strategy,
     strategy_combinations.one_device_strategy_gpu,
     strategy_combinations.mirrored_strategy_with_one_cpu,

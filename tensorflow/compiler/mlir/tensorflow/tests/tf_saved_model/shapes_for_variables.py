@@ -36,7 +36,7 @@ class TestModule(tf.Module):
   # will be superceded by MLIR->MLIR shape inference tests.
   #
   # CHECK:      func {{@[a-zA-Z_0-9]+}}({{.*}}) -> (tensor<f32> {{.*}})
-  # CHECK-NEXT: tf_saved_model.exported_names = ["some_function"]
+  # CHECK:      tf_saved_model.exported_names = ["some_function"]
   def __init__(self):
     super(TestModule, self).__init__()
     self.my_variable = tf.Variable(42.)

@@ -134,11 +134,36 @@ class BASE_HLO_FloorOp {
   }];
 }
 
+class BASE_HLO_GetDimensionSizeOp {
+  string summary = "GetDimensionSize operator";
+
+  string description = [{
+    Returns the size of the given dimension of the operand.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#getdimensionsize.
+  }];
+}
+
 class BASE_HLO_ImagOp {
   string summary = "Imag operator";
 
   string description = [{
     Returns `Imag(operand)` element-wise.
+  }];
+}
+
+class BASE_HLO_IsFiniteOp {
+  string summary = "IsFinite operator";
+
+  string description = [{
+    Tests whether each element of operand is finite, i.e., is not positive or
+    negative infinity, and is not NaN. Returns a tensor of 1-bit integers with
+    the same shape as the input, where each element is nonzero (i.e. true) if
+    and only if the corresponding input element is finite.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions.
   }];
 }
 

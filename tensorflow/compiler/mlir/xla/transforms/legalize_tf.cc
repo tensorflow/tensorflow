@@ -92,8 +92,7 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                                Builder *builder) {
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseElementsAttr::get<int64_t>(ty, values)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, values);
 }
 
 // Converts an ArrayAttr to a 1D 64-bit dense elements attribute.
@@ -101,8 +100,7 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayAttr attr) {
   RankedTensorType ty =
       RankedTensorType::get(static_cast<int64_t>(attr.size()),
                             IntegerType::get(64, attr.getContext()));
-  return DenseElementsAttr::get(ty, attr.getValue())
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, attr.getValue());
 }
 
 static IntegerAttr GetHLOAxisFromTFAxis(ElementsAttr attr, int64_t rank,
@@ -232,8 +230,7 @@ static DenseIntElementsAttr getBiasFeatureDimension(Builder &b,
   auto inputType = input->getType().cast<RankedTensorType>();
   size_t featureDim = getFeatureDimension(format, inputType);
   RankedTensorType type = RankedTensorType::get(1, b.getIntegerType(64));
-  return DenseIntElementsAttr::get(type, featureDim)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(type, featureDim);
 }
 
 //===----------------------------------------------------------------------===//
@@ -269,9 +266,8 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
     }
   }
 
-  return DenseIntElementsAttr::get<int64_t>(
-             RankedTensorType::get({shape[0]}, element_type), values)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(
+      RankedTensorType::get({shape[0]}, element_type), values);
 }
 
 //===----------------------------------------------------------------------===//
@@ -293,7 +289,7 @@ static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
   else
     llvm_unreachable("unhandled element type");
 
-  return DenseIntElementsAttr::get(valType, elementAttr);
+  return DenseElementsAttr::get(valType, elementAttr);
 }
 
 // Returns whether the two values are guaranteed to be broadcastable to the
@@ -354,8 +350,7 @@ static DenseIntElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x,
 
   RankedTensorType type =
       RankedTensorType::get({minRank}, b.getIntegerType(64));
-  return DenseIntElementsAttr::get<int64_t>(type, broadcastDimensions)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(type, broadcastDimensions);
 }
 
 // Return a new TensorType the same rank and dimensions as the input with an
@@ -385,8 +380,7 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   std::iota(vals.begin(), vals.end(), start);
 
   TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get<int64_t>(ty, vals)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, vals);
 }
 
 // Returns the type to use for accumulating the given type.
@@ -781,8 +775,7 @@ class ConvertSigmoidOp : public OpRewritePattern<TF::SigmoidOp> {
         DenseIntElementsAttr::get(
             RankedTensorType::get({shaped_type.getRank()},
                                   rewriter.getIntegerType(64)),
-            shaped_type.getShape())
-            .cast<DenseIntElementsAttr>());
+            shaped_type.getShape()));
 
     auto scaled_input = rewriter.create<xla_hlo::MulOp>(
         op.getLoc(), operand, constant_ones, DenseIntElementsAttr());
@@ -1468,8 +1461,7 @@ class ConvertConv2DBackpropInputOp
     }
     RankedTensorType paddings_ty = mlir::RankedTensorType::get(
         {num_spatial_dims, 2}, rewriter.getIntegerType(64));
-    auto paddings_attr =
-        DenseIntElementsAttr::get<int64_t>(paddings_ty, conv_paddings);
+    auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, conv_paddings);
     auto spatial_dims_attr = GetI64ElementsAttr(spatial_dims, &rewriter);
 
     Value *filter = op.filter();
@@ -1492,8 +1484,7 @@ class ConvertConv2DBackpropInputOp
     Value *result = rewriter.create<xla_hlo::ConvOp>(
         loc, op.getType(), op.out_backprop(), filter,
         /*window_strides=*/GetI64ElementsAttr(ones, &rewriter),
-        /*padding=*/paddings_attr.cast<DenseIntElementsAttr>(),
-        GetI64ElementsAttr(lhs_dilation, &rewriter),
+        /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
         xla_hlo::ConvDimensionNumbers::get(
             /*input_batch_dimension=*/batch_dim_attr,
@@ -1681,8 +1672,7 @@ class ConvertConv2DBackpropFilterOp
 
     RankedTensorType paddings_ty = mlir::RankedTensorType::get(
         {num_spatial_dims, 2}, rewriter.getIntegerType(64));
-    auto paddings_attr =
-        DenseIntElementsAttr::get<int64_t>(paddings_ty, conv_padding);
+    auto paddings_attr = DenseIntElementsAttr::get(paddings_ty, conv_padding);
     auto out_spatial_dims_attr =
         GetI64ElementsAttrForSeq(0, num_spatial_dims, &rewriter);
     auto kernel_spatial_dims_attr =
@@ -1695,8 +1685,7 @@ class ConvertConv2DBackpropFilterOp
     Value *result = rewriter.create<xla_hlo::ConvOp>(
         loc, op.getType(), op.input(), op.out_backprop(),
         /*window_strides=*/GetI64ElementsAttr(window_strides, &rewriter),
-        /*padding=*/paddings_attr.cast<DenseIntElementsAttr>(),
-        GetI64ElementsAttr(lhs_dilation, &rewriter),
+        /*padding=*/paddings_attr, GetI64ElementsAttr(lhs_dilation, &rewriter),
         GetI64ElementsAttr(rhs_dilation, &rewriter),
         xla_hlo::ConvDimensionNumbers::get(
             // Swap batch_dim and feature_dim in the activations.
@@ -1813,8 +1802,8 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op,
   target.addLegalDialect<XlaHloDialect>();
 
   if (!allow_partial_conversion) {
-    target.addLegalOp<mlir::ModuleOp, mlir::FuncOp, mlir::ModuleTerminatorOp,
-                      mlir::ReturnOp>();
+    target.addLegalOp<mlir::CallOp, mlir::ModuleOp, mlir::FuncOp,
+                      mlir::ModuleTerminatorOp, mlir::ReturnOp>();
     return applyFullConversion(op, target, patterns);
   }
 

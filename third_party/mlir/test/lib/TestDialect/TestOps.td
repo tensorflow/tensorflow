@@ -19,6 +19,7 @@
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 include "mlir/Analysis/InferTypeOpInterface.td"
 
@@ -407,6 +408,10 @@ def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
 def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
                      (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
                      [(IsNotScalar $attr)]>;
+
+def TestBranchOp : TEST_Op<"br", [Terminator]> {
+  let arguments = (ins Variadic<AnyType>:$operands);
+}
 
 //===----------------------------------------------------------------------===//
 // Test Patterns
@@ -993,6 +998,18 @@ def PolyForOp : TEST_Op<"polyfor">
 
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
+}
+
+//===----------------------------------------------------------------------===//
+// Test OpAsmInterface.
+
+def AsmInterfaceOp : TEST_Op<"asm_interface_op"> {
+  let results = (outs AnyType:$first, Variadic<AnyType>:$middle_results,
+                      AnyType);
+}
+
+def AsmDialectInterfaceOp : TEST_Op<"asm_dialect_interface_op"> {
+  let results = (outs AnyType);
 }
 
 #endif // TEST_OPS

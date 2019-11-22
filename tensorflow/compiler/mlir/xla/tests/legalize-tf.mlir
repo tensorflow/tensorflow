@@ -1135,6 +1135,27 @@ func @floor_unranked(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: @is_finite
+func @is_finite(%arg0: tensor<2xf32>) -> tensor<2xi1> {
+  // CHECK:  "xla_hlo.is_finite"(%arg0) : (tensor<2xf32>) -> tensor<2xi1>
+  %0 = "tf.IsFinite"(%arg0) : (tensor<2xf32>) -> tensor<2xi1>
+  return %0 : tensor<2xi1>
+}
+
+// CHECK-LABEL: func @is_finite_dynamic
+func @is_finite_dynamic(%arg0: tensor<?xf32>) -> tensor<?xi1> {
+  // CHECK:  "xla_hlo.is_finite"(%arg0) : (tensor<?xf32>) -> tensor<?xi1>
+  %0 = "tf.IsFinite"(%arg0) : (tensor<?xf32>) -> tensor<?xi1>
+  return %0 : tensor<?xi1>
+}
+
+// CHECK-LABEL: func @is_finite_unranked
+func @is_finite_unranked(%arg0: tensor<*xf32>) -> tensor<*xi1> {
+  // CHECK:  "xla_hlo.is_finite"(%arg0) : (tensor<*xf32>) -> tensor<*xi1>
+  %0 = "tf.IsFinite"(%arg0) : (tensor<*xf32>) -> tensor<*xi1>
+  return %0 : tensor<*xi1>
+}
+
 // CHECK-LABEL: @log
 func @log(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK:  "xla_hlo.log"(%arg0) : (tensor<2xf32>) -> tensor<2xf32>

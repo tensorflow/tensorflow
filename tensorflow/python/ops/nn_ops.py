@@ -24,7 +24,9 @@ import os
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
@@ -38,6 +40,7 @@ from tensorflow.python.ops import check_ops
 # TODO(b/138808492): Remove code inside copybara
 from tensorflow.python.ops import control_flow_ops
 # copybara:strip_end
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -4379,19 +4382,24 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
 
   >>> tf.random.set_seed(0)
   >>> x = tf.ones([3,5])
-  >>> tf.nn.dropout(x, rate = 0.5).numpy()
-  array([[0., 0., 2., 2., 0.],
-         [2., 0., 2., 2., 0.],
-         [2., 2., 2., 0., 0.]], dtype=float32)
-  >>> tf.nn.dropout(x, rate = 0.8).numpy()
-  array([[0., 0., 5., 0., 0.],
-         [0., 0., 5., 0., 0.],
-         [5., 0., 0., 5., 0.]], dtype=float32)
+  >>> tf.nn.dropout(x, rate = 0.5, seed = 1).numpy()
+  array([[2., 0., 0., 2., 2.],
+       [2., 2., 2., 2., 2.],
+       [2., 0., 2., 0., 2.]], dtype=float32)
 
-  If rate is set to `0` the input is returned, unchanged:
+  >>> tf.random.set_seed(0)
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.dropout(x, rate = 0.8, seed = 1).numpy()
+  array([[0., 0., 0., 5., 5.],
+       [0., 5., 0., 5., 0.],
+       [5., 0., 5., 0., 5.]], dtype=float32)
 
-  >>> tf.nn.dropout(x, rate = 0.0) is x
-  True
+  >>> tf.nn.dropout(x, rate = 0.0) == x
+  <tf.Tensor: shape=(3, 5), dtype=bool, numpy=
+    array([[ True,  True,  True,  True,  True],
+           [ True,  True,  True,  True,  True],
+           [ True,  True,  True,  True,  True]])>
+
 
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
@@ -4400,11 +4408,12 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   will make independent decisions. This is useful for dropping whole
   channels from an image or sequence. For example:
 
+  >>> tf.random.set_seed(0)
   >>> x = tf.ones([3,10])
-  >>> tf.nn.dropout(x, rate = 2/3, noise_shape=[1,10]).numpy()
-  array([[0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
-         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
-         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.]], dtype=float32)
+  >>> tf.nn.dropout(x, rate = 2/3, noise_shape=[1,10], seed=1).numpy()
+  array([[0., 0., 0., 3., 3., 0., 3., 3., 3., 0.],
+       [0., 0., 0., 3., 3., 0., 3., 3., 3., 0.],
+       [0., 0., 0., 3., 3., 0., 3., 3., 3., 0.]], dtype=float32)
 
   Args:
     x: A floating point tensor.
@@ -4426,53 +4435,100 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    if not x.dtype.is_floating:
-      raise ValueError("x has to be a floating point tensor since it's going to"
-                       " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(rate, numbers.Real):
-      if not (rate >= 0 and rate < 1):
+    # TODO(b/144930399): Remove this once the compatible window is passed.
+    if compat.forward_compatible(2019, 12, 16):
+      is_rate_number = isinstance(rate, numbers.Real)
+      if is_rate_number and (rate < 0 or rate >= 1):
         raise ValueError("rate must be a scalar tensor or a float in the "
                          "range [0, 1), got %g" % rate)
-      if rate > 0.5:
-        logging.log_first_n(
-            logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
-            "2.x, dropout() uses dropout rate instead of keep_prob. "
-            "Please ensure that this is intended.", 5, rate)
+      x = ops.convert_to_tensor(x, name="x")
+      x_dtype = x.dtype
+      if not x_dtype.is_floating:
+        raise ValueError("x has to be a floating point tensor since it's going "
+                         "to be scaled. Got a %s tensor instead." % x_dtype)
+      is_executing_eagerly = context.executing_eagerly()
+      if not tensor_util.is_tensor(rate):
+        if is_rate_number:
+          keep_prob = 1 - rate
+          scale = 1 / keep_prob
+          scale = ops.convert_to_tensor(scale, dtype=x_dtype)
+          ret = gen_math_ops.mul(x, scale)
+        else:
+          raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+      else:
+        rate.get_shape().assert_has_rank(0)
+        rate_dtype = rate.dtype
+        if rate_dtype != x_dtype:
+          if not rate_dtype.is_compatible_with(x_dtype):
+            raise ValueError(
+                "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
+                (x_dtype.name, rate_dtype.name, rate))
+          rate = gen_math_ops.cast(rate, x_dtype, name="rate")
+        one_tensor = constant_op.constant(1, dtype=x_dtype)
+        ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
 
-    # Early return if nothing needs to be dropped.
-    if isinstance(rate, numbers.Real) and rate == 0:
-      return x
-    if context.executing_eagerly():
-      if isinstance(rate, ops.EagerTensor):
-        if rate.numpy() == 0:
-          return x
+      noise_shape = _get_noise_shape(x, noise_shape)
+      # Sample a uniform distribution on [0.0, 1.0) and select values larger
+      # than rate.
+      #
+      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+      # and subtract 1.0.
+      random_tensor = random_ops.random_uniform(
+          noise_shape, seed=seed, dtype=x_dtype)
+      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
+      # hence a >= comparison is used.
+      keep_mask = random_tensor >= rate
+      ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+      if not is_executing_eagerly:
+        ret.set_shape(x.get_shape())
+      return ret
     else:
-      rate = ops.convert_to_tensor(
-          rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_has_rank(0)
+      x = ops.convert_to_tensor(x, name="x")
+      if not x.dtype.is_floating:
+        raise ValueError("x has to be a floating point tensor since it will "
+                         "be scaled. Got a %s tensor instead." % x.dtype)
+      if isinstance(rate, numbers.Real):
+        if not (rate >= 0 and rate < 1):
+          raise ValueError("rate must be a scalar tensor or a float in the "
+                           "range [0, 1), got %g" % rate)
+        if rate > 0.5:
+          logging.log_first_n(
+              logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
+              "2.x, dropout() uses dropout rate instead of keep_prob. "
+              "Please ensure that this is intended.", 5, rate)
 
-      # Do nothing if we know rate == 0
-      if tensor_util.constant_value(rate) == 0:
+      # Early return if nothing needs to be dropped.
+      if isinstance(rate, numbers.Real) and rate == 0:
         return x
+      if context.executing_eagerly():
+        if isinstance(rate, ops.EagerTensor):
+          if rate.numpy() == 0:
+            return x
+      else:
+        rate = ops.convert_to_tensor(rate, dtype=x.dtype, name="rate")
+        rate.get_shape().assert_has_rank(0)
 
-    noise_shape = _get_noise_shape(x, noise_shape)
-    # Sample a uniform distribution on [0.0, 1.0) and select values larger than
-    # rate.
-    #
-    # NOTE: Random uniform actually can only generate 2^23 floats on [1.0, 2.0)
-    # and subtract 1.0.
-    random_tensor = random_ops.random_uniform(
-        noise_shape, seed=seed, dtype=x.dtype)
-    keep_prob = 1 - rate
-    scale = 1 / keep_prob
-    # NOTE: if (1.0 + rate) - 1 is equal to rate, then we want to consider that
-    # float to be selected, hence we use a >= comparison.
-    keep_mask = random_tensor >= rate
-    ret = x * scale * math_ops.cast(keep_mask, x.dtype)
-    if not context.executing_eagerly():
-      ret.set_shape(x.get_shape())
-    return ret
+        # Do nothing if we know rate == 0
+        if tensor_util.constant_value(rate) == 0:
+          return x
+
+      noise_shape = _get_noise_shape(x, noise_shape)
+      # Sample a uniform distribution on [0.0, 1.0) and select values larger
+      # than rate.
+      #
+      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+      # and subtract 1.0.
+      random_tensor = random_ops.random_uniform(
+          noise_shape, seed=seed, dtype=x.dtype)
+      keep_prob = 1 - rate
+      scale = 1 / keep_prob
+      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that
+      # float is selected, hence we use a >= comparison.
+      keep_mask = random_tensor >= rate
+      ret = x * scale * math_ops.cast(keep_mask, x.dtype)
+      if not context.executing_eagerly():
+        ret.set_shape(x.get_shape())
+      return ret
 
 
 @tf_export("math.top_k", "nn.top_k")

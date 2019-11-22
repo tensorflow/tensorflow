@@ -1,6 +1,7 @@
-add_llvm_library(MLIRVectorToLLVM
+add_llvm_library(MLIRVectorConversions
   VectorToLLVM.cpp
   VectorToLoops.cpp
+  VectorToVector.cpp
 
   ADDITIONAL_HEADER_DIRS
   ${MLIR_MAIN_INCLUDE_DIR}/mlir/Conversion/VectorConversions
@@ -12,5 +13,6 @@ set(LIBS
   LLVMSupport
   )
 
-add_dependencies(MLIRVectorToLLVM ${LIBS})
-target_link_libraries(MLIRVectorToLLVM ${LIBS})
+add_dependencies(MLIRVectorConversions ${LIBS})
+add_dependencies(MLIRVectorConversions MLIRVectorTransformPatternsIncGen)
+target_link_libraries(MLIRVectorConversions ${LIBS})

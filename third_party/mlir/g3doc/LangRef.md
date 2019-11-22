@@ -796,7 +796,7 @@ Examples of memref static type
 #col_major = (d0, d1, d2) -> (d2, d1, d0)
 
 // A 2-d tiled layout with tiles of size 128 x 256.
-#tiled_2d_128x256 = (d0, d1) -> (d0 div 128, d1 div 256, d0 mod 128, d0 mod 256)
+#tiled_2d_128x256 = (d0, d1) -> (d0 div 128, d1 div 256, d0 mod 128, d1 mod 256)
 
 // A tiled data layout with non-constant tile sizes.
 #tiled_dynamic = (d0, d1)[s0, s1] -> (d0 floordiv s0, d1 floordiv s1,
