@@ -264,9 +264,23 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 
   Returns:
     A `Tensor`. Has the same type as `input`.
+    
+  Raises:
+    ValueError: If input is None.
+    
+  Usage Example:
+    >>> x = tf.zeros(shape=(3,3)) + 4
+    >>> y = tf.identity(x)
+    >>> print(y)
+    tf.Tensor(
+    [[4. 4. 4.]
+     [4. 4. 4.]
+     [4. 4. 4.]], shape=(3, 3), dtype=float32)
   """
   if isinstance(input, composite_tensor.CompositeTensor):
     return nest.map_structure(identity, input, expand_composites=True)
+  if input is None:
+    raise ValueError("The input Specified is None. Must specified an input to tf.identity()")
   if context.executing_eagerly() and not hasattr(input, "graph"):
     # Make sure we get an input with handle data attached from resource
     # variables. Variables have correct handle data when graph building.
