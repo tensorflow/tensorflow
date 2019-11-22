@@ -19,7 +19,6 @@ using TfLiteInterpreter = System.IntPtr;
 using TfLiteInterpreterOptions = System.IntPtr;
 using TfLiteModel = System.IntPtr;
 using TfLiteTensor = System.IntPtr;
-using TfLiteDelegate = System.IntPtr;
 
 namespace TensorFlowLite
 {
@@ -179,11 +178,6 @@ namespace TensorFlowLite
     );
 
     [DllImport (TensorFlowLibrary)]
-    private static extern unsafe TfLiteInterpreterOptions TfLiteInterpreterOptionsAddDelegate(
-        TfLiteInterpreterOptions options,
-        TfLiteDelegate _delegate);
-
-    [DllImport (TensorFlowLibrary)]
     private static extern unsafe TfLiteInterpreter TfLiteInterpreterCreate(
         TfLiteModel model,
         TfLiteInterpreterOptions optional_options);
@@ -234,9 +228,6 @@ namespace TensorFlowLite
 
     [DllImport (TensorFlowLibrary)]
     private static extern uint TfLiteTensorByteSize(TfLiteTensor tensor);
-
-    [DllImport (TensorFlowLibrary)]
-    private static extern unsafe IntPtr TfLiteTensorData(TfLiteTensor tensor);
 
     [DllImport (TensorFlowLibrary)]
     private static extern unsafe IntPtr TfLiteTensorName(TfLiteTensor tensor);
