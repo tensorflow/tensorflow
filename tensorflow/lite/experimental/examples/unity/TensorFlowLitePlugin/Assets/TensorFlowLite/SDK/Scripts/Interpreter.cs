@@ -27,6 +27,21 @@ namespace TensorFlowLite
   /// </summary>
   public class Interpreter : IDisposable
   {
+    public struct TensorInfo {
+      public string name { get; internal set; }
+      public TfLiteType type { get; internal set; }
+      public int[] dimensions { get; internal set; }
+      public TfLiteQuantizationParams quantizationParams { get; internal set; }
+
+      public override string ToString() {
+        return string.Format("name: {0}, type: {1}, dimensions: {2}, quantizationParams: {3}",
+          name,
+          type,
+          "[" + string.Join(",", dimensions) + "]",
+          "{" + quantizationParams + "}");
+      }
+    }
+
     private TfLiteModel model;
     private TfLiteInterpreter interpreter;
     private TfLiteInterpreterOptions options;
@@ -93,12 +108,12 @@ namespace TensorFlowLite
           tensor, tensorDataPtr, Buffer.ByteLength(outputTensorData)));
     }
 
-    public string GetInputTensorInfo(int index) {
+    public TensorInfo GetInputTensorInfo(int index) {
       TfLiteTensor tensor = TfLiteInterpreterGetInputTensor(interpreter, index);
       return GetTensorInfo(tensor);
     }
 
-    public string GetOutputTensorInfo(int index) {
+    public TensorInfo GetOutputTensorInfo(int index) {
       TfLiteTensor tensor = TfLiteInterpreterGetOutputTensor(interpreter, index);
       return GetTensorInfo(tensor);
     }
@@ -111,18 +126,17 @@ namespace TensorFlowLite
       return Marshal.PtrToStringAnsi(TfLiteTensorName(tensor));
     }
 
-    private static string GetTensorInfo(TfLiteTensor tensor) {
-      var sb = new System.Text.StringBuilder();
-      sb.AppendFormat("{0} type:{1}, dims:[",
-          GetTensorName(tensor),
-          TfLiteTensorType(tensor));
-      
-      int dims = TfLiteTensorNumDims(tensor);
-      for (int i = 0; i < dims; i++) {
-        sb.Append(TfLiteTensorDim(tensor, i));
-        sb.Append(i == dims - 1 ? "]" : ", ");
+    private static TensorInfo GetTensorInfo(TfLiteTensor tensor) {
+      int[] dimensions = new int[TfLiteTensorNumDims(tensor)];
+      for (int i = 0; i < dimensions.Length; i++) {
+        dimensions[i] = TfLiteTensorDim(tensor, i);
       }
-      return sb.ToString();
+      return new TensorInfo() {
+        name = GetTensorName(tensor),
+        type = TfLiteTensorType(tensor),
+        dimensions = dimensions,
+        quantizationParams = TfLiteTensorQuantizationParams(tensor),
+      };
     }
 
     private static void ThrowIfError(int resultCode) {
@@ -154,6 +168,10 @@ namespace TensorFlowLite
     public struct TfLiteQuantizationParams {
       public float scale;
       public int zero_point;
+
+      public override string ToString() {
+        return string.Format("scale: {0} zero_point: {1}", scale, zero_point);
+      }
     }
 
     [DllImport (TensorFlowLibrary)]
