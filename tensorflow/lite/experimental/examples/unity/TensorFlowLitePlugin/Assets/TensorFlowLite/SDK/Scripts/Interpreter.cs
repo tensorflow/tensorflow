@@ -19,7 +19,6 @@ using TfLiteInterpreter = System.IntPtr;
 using TfLiteInterpreterOptions = System.IntPtr;
 using TfLiteModel = System.IntPtr;
 using TfLiteTensor = System.IntPtr;
-using TfLiteInterpreterOptions = System.IntPtr;
 using TfLiteDelegate = System.IntPtr;
 
 
@@ -31,6 +30,7 @@ namespace TensorFlowLite
   public class Interpreter : IDisposable
   {
     private const string TensorFlowLibrary = "tensorflowlite_c";
+    private const string TensorFlowGPULibrary = "tensorflowlite_gpu_delegate";
 
     private TfLiteModel model;
     private TfLiteInterpreter interpreter;
@@ -46,9 +46,9 @@ namespace TensorFlowLite
       if (useGPU)
       {
         options = TfLiteInterpreterOptionsCreate();
-        if (options = IntPtr.Zero) throw new Exception("failed to create options");
+        if (options == IntPtr.Zero) throw new Exception("failed to create options");
         TfLiteGpuDelegateOptionsV2 delegateOptions = TfLiteGpuDelegateOptionsV2Default();
-        gpudelegate = TfLiteGpuDelegateV2Create(&delegateOptions);
+        gpudelegate = TfLiteGpuDelegateV2Create(ref delegateOptions);
         if (gpudelegate == IntPtr.Zero) throw new Exception("Failed to create GPU Delegate");
         TfLiteInterpreterOptionsAddDelegate(options, gpudelegate);
       }
@@ -206,14 +206,14 @@ namespace TensorFlowLite
     }
 
 
-    [DllImport(TensorFlowLibrary)]
+    [DllImport(TensorFlowGPULibrary)]
     private static extern TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default();
     
-    [DllImport(TensorFlowLibrary)]
+    [DllImport(TensorFlowGPULibrary)]
     private static extern unsafe TfLiteDelegate TfLiteGpuDelegateV2Create(
-        TfLiteGpuDelegateOptionsV2 * options);
+        ref TfLiteGpuDelegateOptionsV2 options);
 
-    [DllImport(TensorFlowLibrary)]
+    [DllImport(TensorFlowGPULibrary)]
     private static extern unsafe void TfLiteGpuDelegateV2Delete(
         TfLiteDelegate del);
 
