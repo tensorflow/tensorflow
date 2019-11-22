@@ -286,6 +286,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.version = 2;
       break;
+    case BuiltinOperator_PACK:
+      property.arbitrary_inputs = true;
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
+      property.version = 2;
+      break;
     case BuiltinOperator_PAD:
     case BuiltinOperator_PADV2:
       property.inputs = {{0, {}}};
