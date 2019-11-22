@@ -91,9 +91,12 @@ FP16ConvMode CudnnConvComputeMode() {
 }
 
 bool IsCudnnSupportedFilterSize(const int32 filter_rows,
-                                const int32 filter_cols) {
-  return filter_rows == filter_cols && (filter_rows == 1 || filter_rows == 3 ||
-                                        filter_rows == 5 || filter_rows == 7);
+                                const int32 filter_cols,
+                                const int32 in_depth,
+                                const int32 out_depth) {
+  return in_depth == out_depth && filter_rows == filter_cols &&
+         (filter_rows == 1 || filter_rows == 3 || filter_rows == 5 ||
+          filter_rows == 7);
 }
 
 }  // namespace tensorflow
