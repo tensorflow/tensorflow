@@ -27,6 +27,17 @@ namespace TensorFlowLite
   /// </summary>
   public class Interpreter : IDisposable
   {
+    public struct Options: IEquatable<Options> {
+      /// <summary>
+      /// The number of CPU threads to use for the interpreter.
+      /// </summary>
+      public int threads;
+
+      public bool Equals(Options other) {
+        return threads == other.threads;
+      }
+    }
+
     public struct TensorInfo {
       public string name { get; internal set; }
       public TfLiteType type { get; internal set; }
@@ -42,23 +53,24 @@ namespace TensorFlowLite
       }
     }
 
-    private TfLiteModel model;
-    private TfLiteInterpreter interpreter;
-    private TfLiteInterpreterOptions options;
+    private TfLiteModel model = IntPtr.Zero;
+    private TfLiteInterpreter interpreter = IntPtr.Zero;
+    private TfLiteInterpreterOptions options = IntPtr.Zero;
 
-    public Interpreter(byte[] modelData, int threads) {
+    public Interpreter(byte[] modelData): this(modelData, default(Options)) {}
+
+    public Interpreter(byte[] modelData, Options options) {
       GCHandle modelDataHandle = GCHandle.Alloc(modelData, GCHandleType.Pinned);
       IntPtr modelDataPtr = modelDataHandle.AddrOfPinnedObject();
       model = TfLiteModelCreate(modelDataPtr, modelData.Length);
       if (model == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Model");
       
-      options = TfLiteInterpreterOptionsCreate();
-      
-      if (threads > 1) {
-        TfLiteInterpreterOptionsSetNumThreads(options, threads);
+      if (!options.Equals(default(Options))) {
+        this.options = TfLiteInterpreterOptionsCreate();
+        TfLiteInterpreterOptionsSetNumThreads(this.options, options.threads);
       }
 
-      interpreter = TfLiteInterpreterCreate(model, options);
+      interpreter = TfLiteInterpreterCreate(model, this.options);
       if (interpreter == IntPtr.Zero) throw new Exception("Failed to create TensorFlowLite Interpreter");
     }
 

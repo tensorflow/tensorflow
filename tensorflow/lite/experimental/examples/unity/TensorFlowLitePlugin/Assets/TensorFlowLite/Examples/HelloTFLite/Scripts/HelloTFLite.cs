@@ -46,9 +46,10 @@ public class HelloTFLite : MonoBehaviour {
   void Start () {
     Debug.LogFormat("TensorFlow Lite Verion: {0}", Interpreter.GetVersion());
 
-    interpreter = new Interpreter(
-      modelData: model.bytes,
-      threads: 2);
+    var options = new Interpreter.Options() {
+      threads = 2,
+    };
+    interpreter = new Interpreter(model.bytes, options);
 
     int inputCount = interpreter.GetInputTensorCount();
     int outputCount = interpreter.GetOutputTensorCount();
