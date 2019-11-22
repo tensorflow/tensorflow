@@ -136,7 +136,7 @@ class KerasLossesTest(test.TestCase):
     self.assertArrayNear(result, [.002, 0, .17], 1e-3)
     
   @test_util.run_in_graph_and_eager_modes
-  def test_categorical_crossentropy_loss_with_ls(self):
+  def test_categorical_crossentropy_loss_with_label_smoothing(self):
     shape = (2,3,4)
     epsilon = 0.1
     target = keras.backend.variable(np.random.randint(0,2,shape))
