@@ -101,7 +101,6 @@ class CpuUtils {
     return __t;
 
 #elif defined(__powerpc__) || defined(__ppc__) 
-    uint64 result=0;
     uint64 upper, lower,tmp;
     __asm__ volatile(
                 "0:                     \n"
@@ -112,7 +111,6 @@ class CpuUtils {
                 "\tbne     0b           \n"
                 : "=r"(upper),"=r"(lower),"=r"(tmp)
                 );
-    result = upper;
     return ((static_cast<uint64>(upper) << 32) | lower);
 #else
     // TODO(satok): Support generic way to emulate clock count.
