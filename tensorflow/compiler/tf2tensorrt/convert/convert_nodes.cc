@@ -1421,7 +1421,7 @@ Status Converter::BuildCudaEngine(
   } else if (precision_mode_ == TrtPrecisionMode::INT8) {
     builder_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     builder_config->setFlag(nvinfer1::BuilderFlag::kINT8);
-    if (use_calibration) {
+    if (use_calibration_) {
       builder_config->setInt8Calibrator(calibrator);
     } else {
       builder_config->setInt8Calibrator(nullptr);
