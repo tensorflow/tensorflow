@@ -338,7 +338,7 @@ def _attach_metadata(e, f, converted):
 def _call_unconverted(f, args, kwargs, options, update_cache=True):
   """Calls the original function without converting with AutoGraph."""
   if update_cache:
-    conversion.cache_unconverted(f, options)
+    conversion.cache_whitelisted(f, options)
 
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
@@ -418,7 +418,8 @@ def converted_call(f,
       raise ValueError('either caller_fn_scope or options must have a value')
     options = caller_fn_scope.callopts
 
-  if conversion.check_cached_unconverted(f, options):
+  if conversion.is_in_whitelist_cache(f, options):
+    logging.log(2, 'Whitelisted %s: from cache')
     return _call_unconverted(f, args, kwargs, options, False)
 
   if ag_ctx.control_status_ctx().status == ag_ctx.Status.DISABLED:
@@ -475,7 +476,7 @@ def converted_call(f,
     logging.log(2, 'Permanently whitelisted: %s: TensorFlow plugin', f)
     return _call_unconverted(f, args, kwargs, options)
 
-  if not options.user_requested and conversion.is_whitelisted_for_graph(f):
+  if not options.user_requested and conversion.is_whitelisted(f):
     return _call_unconverted(f, args, kwargs, options)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
@@ -570,7 +571,7 @@ def converted_call(f,
     if isinstance(e, errors.UnsupportedLanguageElementError):
       # Repeating the check made upon function entry because the state might
       # have updated in the meantime.
-      if not conversion.check_cached_unconverted(f, options):
+      if not conversion.is_in_whitelist_cache(f, options):
         logging.warn(
             'AutoGraph could not transform %s and will run it as-is.\n'
             'Cause: %s', target_entity, e)
