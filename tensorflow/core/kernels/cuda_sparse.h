@@ -16,15 +16,38 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_CUDA_SPARSE_H_
 #define TENSORFLOW_CORE_KERNELS_CUDA_SPARSE_H_
 
-// This header declares the class CudaSparse, which contains wrappers of
+// This header declares the class GpuSparse, which contains wrappers of
 // cuSparse libraries for use in TensorFlow kernels.
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #include <functional>
 #include <vector>
 
+#if GOOGLE_CUDA
+
 #include "third_party/gpus/cuda/include/cusparse.h"
+
+using gpusparseStatus_t = cusparseStatus_t;
+using gpusparseOperation_t = cusparseOperation_t;
+using gpusparseMatDescr_t = cusparseMatDescr_t;
+using gpusparseAction_t = cusparseAction_t;
+using gpusparseHandle_t = cusparseHandle_t;
+using gpuStream_t = cudaStream_t;
+
+#elif TENSORFLOW_USE_ROCM
+
+#include "rocm/include/hipsparse/hipsparse.h"
+
+using gpusparseStatus_t = hipsparseStatus_t;
+using gpusparseOperation_t = hipsparseOperation_t;
+using gpusparseMatDescr_t = hipsparseMatDescr_t;
+using gpusparseAction_t = hipsparseAction_t;
+using gpusparseHandle_t = hipsparseHandle_t;
+using gpuStream_t = hipStream_t;
+
+#endif
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -40,12 +63,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-inline string ConvertCUSparseErrorToString(const cusparseStatus_t status) {
+inline string ConvertGPUSparseErrorToString(const gpusparseStatus_t status) {
   switch (status) {
 #define STRINGIZE(q) #q
 #define RETURN_IF_STATUS(err) \
   case err:                   \
     return STRINGIZE(err);
+
+#if GOOGLE_CUDA
 
     RETURN_IF_STATUS(CUSPARSE_STATUS_SUCCESS)
     RETURN_IF_STATUS(CUSPARSE_STATUS_NOT_INITIALIZED)
@@ -57,27 +82,62 @@ inline string ConvertCUSparseErrorToString(const cusparseStatus_t status) {
     RETURN_IF_STATUS(CUSPARSE_STATUS_INTERNAL_ERROR)
     RETURN_IF_STATUS(CUSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED)
 
-#undef RETURN_IF_STATUS
-#undef STRINGIZE
     default:
       return strings::StrCat("Unknown CUSPARSE error: ",
                              static_cast<int>(status));
+#elif TENSORFLOW_USE_ROCM
+
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_SUCCESS)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_NOT_INITIALIZED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_ALLOC_FAILED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_INVALID_VALUE)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_ARCH_MISMATCH)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_MAPPING_ERROR)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_EXECUTION_FAILED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_INTERNAL_ERROR)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_MATRIX_TYPE_NOT_SUPPORTED)
+    RETURN_IF_STATUS(HIPSPARSE_STATUS_ZERO_PIVOT)
+
+    default:
+      return strings::StrCat("Unknown hipSPARSE error: ",
+                             static_cast<int>(status));
+#endif
+
+#undef RETURN_IF_STATUS
+#undef STRINGIZE
   }
 }
 
-#define TF_RETURN_IF_CUSPARSE_ERROR(expr)                                  \
+#if GOOGLE_CUDA
+
+#define TF_RETURN_IF_GPUSPARSE_ERROR(expr)                                 \
   do {                                                                     \
     auto status = (expr);                                                  \
     if (TF_PREDICT_FALSE(status != CUSPARSE_STATUS_SUCCESS)) {             \
       return errors::Internal(__FILE__, ":", __LINE__, " (", TF_STR(expr), \
                               "): cuSparse call failed with status ",      \
-                              ConvertCUSparseErrorToString(status));       \
+                              ConvertGPUSparseErrorToString(status));      \
     }                                                                      \
   } while (0)
 
-inline cusparseOperation_t TransposeAndConjugateToCuSparseOp(bool transpose,
-                                                             bool conjugate,
-                                                             Status* status) {
+#elif TENSORFLOW_USE_ROCM
+
+#define TF_RETURN_IF_GPUSPARSE_ERROR(expr)                                 \
+  do {                                                                     \
+    auto status = (expr);                                                  \
+    if (TF_PREDICT_FALSE(status != HIPSPARSE_STATUS_SUCCESS)) {            \
+      return errors::Internal(__FILE__, ":", __LINE__, " (", TF_STR(expr), \
+                              "): hipSPARSE call failed with status ",     \
+                              ConvertGPUSparseErrorToString(status));      \
+    }                                                                      \
+  } while (0)
+
+#endif
+
+inline gpusparseOperation_t TransposeAndConjugateToGpuSparseOp(bool transpose,
+                                                               bool conjugate,
+                                                               Status* status) {
+#if GOOGLE_CUDA
   if (transpose) {
     return conjugate ? CUSPARSE_OPERATION_CONJUGATE_TRANSPOSE
                      : CUSPARSE_OPERATION_TRANSPOSE;
@@ -89,25 +149,38 @@ inline cusparseOperation_t TransposeAndConjugateToCuSparseOp(bool transpose,
     }
     return CUSPARSE_OPERATION_NON_TRANSPOSE;
   }
+#elif TENSORFLOW_USE_ROCM
+  if (transpose) {
+    return conjugate ? HIPSPARSE_OPERATION_CONJUGATE_TRANSPOSE
+                     : HIPSPARSE_OPERATION_TRANSPOSE;
+  } else {
+    if (conjugate) {
+      DCHECK(status != nullptr);
+      *status = errors::InvalidArgument(
+          "Conjugate == True and transpose == False is not supported.");
+    }
+    return HIPSPARSE_OPERATION_NON_TRANSPOSE;
+  }
+#endif
 }
 
-// The CudaSparse class provides a simplified templated API for cuSparse
+// The GpuSparse class provides a simplified templated API for cuSparse
 // (http://docs.nvidia.com/cuda/cusparse/index.html).
 // An object of this class wraps static cuSparse instances,
 // and will launch Cuda kernels on the stream wrapped by the GPU device
 // in the OpKernelContext provided to the constructor.
 //
 // Notice: All the computational member functions are asynchronous and simply
-// launch one or more Cuda kernels on the Cuda stream wrapped by the CudaSparse
+// launch one or more Cuda kernels on the Cuda stream wrapped by the GpuSparse
 // object.
 
-class CudaSparse {
+class GpuSparse {
  public:
   // This object stores a pointer to context, which must outlive it.
-  explicit CudaSparse(OpKernelContext* context);
-  virtual ~CudaSparse() {}
+  explicit GpuSparse(OpKernelContext* context);
+  virtual ~GpuSparse() {}
 
-  // This initializes the CudaSparse class if it hasn't
+  // This initializes the GpuSparse class if it hasn't
   // been initialized yet.  All following public methods require the
   // class has been initialized.  Can be run multiple times; all
   // subsequent calls after the first have no effect.
@@ -218,9 +291,9 @@ class CudaSparse {
   //
   // **NOTE** This is an in-place operation for data in C.
   template <typename Scalar>
-  Status Csrmm(cusparseOperation_t transA, cusparseOperation_t transB, int m,
+  Status Csrmm(gpusparseOperation_t transA, gpusparseOperation_t transB, int m,
                int n, int k, int nnz, const Scalar* alpha_host,
-               const cusparseMatDescr_t descrA, const Scalar* csrSortedValA,
+               const gpusparseMatDescr_t descrA, const Scalar* csrSortedValA,
                const int* csrSortedRowPtrA, const int* csrSortedColIndA,
                const Scalar* B, int ldb, const Scalar* beta_host, Scalar* C,
                int ldc) const;
@@ -231,8 +304,8 @@ class CudaSparse {
   //
   // **NOTE** This is an in-place operation for data in y.
   template <typename Scalar>
-  Status Csrmv(cusparseOperation_t transA, int m, int n, int nnz,
-               const Scalar* alpha_host, const cusparseMatDescr_t descrA,
+  Status Csrmv(gpusparseOperation_t transA, int m, int n, int nnz,
+               const Scalar* alpha_host, const gpusparseMatDescr_t descrA,
                const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
                const int* csrSortedColIndA, const Scalar* x,
                const Scalar* beta_host, Scalar* y) const;
@@ -242,11 +315,11 @@ class CudaSparse {
   // output.  csrSortedRowPtrC must be preallocated on device with
   // m + 1 entries.  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgeam.
-  Status CsrgeamNnz(int m, int n, const cusparseMatDescr_t descrA, int nnzA,
+  Status CsrgeamNnz(int m, int n, const gpusparseMatDescr_t descrA, int nnzA,
                     const int* csrSortedRowPtrA, const int* csrSortedColIndA,
-                    const cusparseMatDescr_t descrB, int nnzB,
+                    const gpusparseMatDescr_t descrB, int nnzB,
                     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
-                    const cusparseMatDescr_t descrC, int* csrSortedRowPtrC,
+                    const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
                     int* nnzTotalDevHostPtr);
 
   // Computes sparse - sparse matrix addition of matrices
@@ -256,12 +329,12 @@ class CudaSparse {
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgeam.
   template <typename Scalar>
   Status Csrgeam(int m, int n, const Scalar* alpha,
-                 const cusparseMatDescr_t descrA, int nnzA,
+                 const gpusparseMatDescr_t descrA, int nnzA,
                  const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
                  const int* csrSortedColIndA, const Scalar* beta,
-                 const cusparseMatDescr_t descrB, int nnzB,
+                 const gpusparseMatDescr_t descrB, int nnzB,
                  const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
-                 const int* csrSortedColIndB, const cusparseMatDescr_t descrC,
+                 const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
                  Scalar* csrSortedValC, int* csrSortedRowPtrC,
                  int* csrSortedColIndC);
 
@@ -270,13 +343,13 @@ class CudaSparse {
   // output.  csrSortedRowPtrC must be preallocated on device with
   // m + 1 entries.  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
-  Status CsrgemmNnz(cusparseOperation_t transA, cusparseOperation_t transB,
-                    int m, int k, int n, const cusparseMatDescr_t descrA,
+  Status CsrgemmNnz(gpusparseOperation_t transA, gpusparseOperation_t transB,
+                    int m, int k, int n, const gpusparseMatDescr_t descrA,
                     int nnzA, const int* csrSortedRowPtrA,
                     const int* csrSortedColIndA,
-                    const cusparseMatDescr_t descrB, int nnzB,
+                    const gpusparseMatDescr_t descrB, int nnzB,
                     const int* csrSortedRowPtrB, const int* csrSortedColIndB,
-                    const cusparseMatDescr_t descrC, int* csrSortedRowPtrC,
+                    const gpusparseMatDescr_t descrC, int* csrSortedRowPtrC,
                     int* nnzTotalDevHostPtr);
 
   // Computes sparse - sparse matrix matmul of matrices
@@ -285,19 +358,20 @@ class CudaSparse {
   // with nnzTotalDevHostPtr entries (as calculated by CsrgemmNnz).  See:
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csrgemm.
   template <typename Scalar>
-  Status Csrgemm(cusparseOperation_t transA, cusparseOperation_t transB, int m,
-                 int k, int n, const cusparseMatDescr_t descrA, int nnzA,
-                 const Scalar* csrSortedValA, const int* csrSortedRowPtrA,
-                 const int* csrSortedColIndA, const cusparseMatDescr_t descrB,
-                 int nnzB, const Scalar* csrSortedValB,
-                 const int* csrSortedRowPtrB, const int* csrSortedColIndB,
-                 const cusparseMatDescr_t descrC, Scalar* csrSortedValC,
-                 int* csrSortedRowPtrC, int* csrSortedColIndC);
+  Status Csrgemm(gpusparseOperation_t transA, gpusparseOperation_t transB,
+                 int m, int k, int n, const gpusparseMatDescr_t descrA,
+                 int nnzA, const Scalar* csrSortedValA,
+                 const int* csrSortedRowPtrA, const int* csrSortedColIndA,
+                 const gpusparseMatDescr_t descrB, int nnzB,
+                 const Scalar* csrSortedValB, const int* csrSortedRowPtrB,
+                 const int* csrSortedColIndB, const gpusparseMatDescr_t descrC,
+                 Scalar* csrSortedValC, int* csrSortedRowPtrC,
+                 int* csrSortedColIndC);
 
   // In-place reordering of unsorted CSR to sorted CSR.
   // http://docs.nvidia.com/cuda/cusparse/index.html#cusparse-lt-t-gt-csru2csr
   template <typename Scalar>
-  Status Csru2csr(int m, int n, int nnz, const cusparseMatDescr_t descrA,
+  Status Csru2csr(int m, int n, int nnz, const gpusparseMatDescr_t descrA,
                   Scalar* csrVal, const int* csrRowPtr, int* csrColInd);
 
   // Converts from CSR to CSC format (equivalently, transpose).
@@ -306,30 +380,30 @@ class CudaSparse {
   Status Csr2csc(int m, int n, int nnz, const Scalar* csrVal,
                  const int* csrRowPtr, const int* csrColInd, Scalar* cscVal,
                  int* cscRowInd, int* cscColPtr,
-                 const cusparseAction_t copyValues);
+                 const gpusparseAction_t copyValues);
 
  private:
   bool initialized_;
   OpKernelContext *context_;  // not owned.
-  cudaStream_t cuda_stream_;
-  cusparseHandle_t *cusparse_handle_;  // not owned.
+  gpuStream_t gpu_stream_;
+  gpusparseHandle_t* gpusparse_handle_;  // not owned.
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CudaSparse);
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuSparse);
 };
 
 // A wrapper class to ensure that a CUDA sparse matrix descriptor is initialized
-// only once. For more details on the descriptor (cusparseMatDescr_t), see:
+// only once. For more details on the descriptor (gpusparseMatDescr_t), see:
 // https://docs.nvidia.com/cuda/cusparse/index.html#cusparsematdescrt
-class CudaSparseMatrixDescriptor {
+class GpuSparseMatrixDescriptor {
  public:
-  explicit CudaSparseMatrixDescriptor() : initialized_(false) {}
+  explicit GpuSparseMatrixDescriptor() : initialized_(false) {}
 
-  CudaSparseMatrixDescriptor(CudaSparseMatrixDescriptor&& rhs)
+  GpuSparseMatrixDescriptor(GpuSparseMatrixDescriptor&& rhs)
       : initialized_(rhs.initialized_), descr_(std::move(rhs.descr_)) {
     rhs.initialized_ = false;
   }
 
-  CudaSparseMatrixDescriptor& operator=(CudaSparseMatrixDescriptor&& rhs) {
+  GpuSparseMatrixDescriptor& operator=(GpuSparseMatrixDescriptor&& rhs) {
     if (this == &rhs) return *this;
     Release();
     initialized_ = rhs.initialized_;
@@ -338,23 +412,27 @@ class CudaSparseMatrixDescriptor {
     return *this;
   }
 
-  ~CudaSparseMatrixDescriptor() { Release(); }
+  ~GpuSparseMatrixDescriptor() { Release(); }
 
   // Initializes the underlying descriptor.  Will fail on the second call if
   // called more than once.
   Status Initialize() {
     DCHECK(!initialized_);
-    TF_RETURN_IF_CUSPARSE_ERROR(cusparseCreateMatDescr(&descr_));
+#if GOOGLE_CUDA
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateMatDescr(&descr_));
+#elif TENSORFLOW_USE_ROCM
+    TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descr_));
+#endif
     initialized_ = true;
     return Status::OK();
   }
 
-  cusparseMatDescr_t& descr() {
+  gpusparseMatDescr_t& descr() {
     DCHECK(initialized_);
     return descr_;
   }
 
-  const cusparseMatDescr_t& descr() const {
+  const gpusparseMatDescr_t& descr() const {
     DCHECK(initialized_);
     return descr_;
   }
@@ -362,31 +440,37 @@ class CudaSparseMatrixDescriptor {
  private:
   void Release() {
     if (initialized_) {
+#if GOOGLE_CUDA
       cusparseDestroyMatDescr(descr_);
+#elif TENSORFLOW_USE_ROCM
+      hipsparseDestroyMatDescr(descr_);
+#endif
       initialized_ = false;
     }
   }
 
   bool initialized_;
-  cusparseMatDescr_t descr_;
+  gpusparseMatDescr_t descr_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CudaSparseMatrixDescriptor);
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuSparseMatrixDescriptor);
 };
+
+#if GOOGLE_CUDA
 
 // A wrapper class to ensure that an unsorted/sorted CSR conversion information
 // struct (csru2csrInfo_t) is initialized only once. See:
 // https://docs.nvidia.com/cuda/cusparse/index.html#csru2csr
-class CudaSparseCsrSortingConversionInfo {
+class GpuSparseCsrSortingConversionInfo {
  public:
-  explicit CudaSparseCsrSortingConversionInfo() : initialized_(false) {}
+  explicit GpuSparseCsrSortingConversionInfo() : initialized_(false) {}
 
-  CudaSparseCsrSortingConversionInfo(CudaSparseCsrSortingConversionInfo&& rhs)
+  GpuSparseCsrSortingConversionInfo(GpuSparseCsrSortingConversionInfo&& rhs)
       : initialized_(rhs.initialized_), info_(std::move(rhs.info_)) {
     rhs.initialized_ = false;
   }
 
-  CudaSparseCsrSortingConversionInfo& operator=(
-      CudaSparseCsrSortingConversionInfo&& rhs) {
+  GpuSparseCsrSortingConversionInfo& operator=(
+      GpuSparseCsrSortingConversionInfo&& rhs) {
     if (this == &rhs) return *this;
     Release();
     initialized_ = rhs.initialized_;
@@ -395,13 +479,13 @@ class CudaSparseCsrSortingConversionInfo {
     return *this;
   }
 
-  ~CudaSparseCsrSortingConversionInfo() { Release(); }
+  ~GpuSparseCsrSortingConversionInfo() { Release(); }
 
   // Initializes the underlying info. Will fail on the second call if called
   // more than once.
   Status Initialize() {
     DCHECK(!initialized_);
-    TF_RETURN_IF_CUSPARSE_ERROR(cusparseCreateCsru2csrInfo(&info_));
+    TF_RETURN_IF_GPUSPARSE_ERROR(cusparseCreateCsru2csrInfo(&info_));
     initialized_ = true;
     return Status::OK();
   }
@@ -427,11 +511,13 @@ class CudaSparseCsrSortingConversionInfo {
   bool initialized_;
   csru2csrInfo_t info_;
 
-  TF_DISALLOW_COPY_AND_ASSIGN(CudaSparseCsrSortingConversionInfo);
+  TF_DISALLOW_COPY_AND_ASSIGN(GpuSparseCsrSortingConversionInfo);
 };
+
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #endif  // TENSORFLOW_CORE_KERNELS_CUDA_SPARSE_H_
