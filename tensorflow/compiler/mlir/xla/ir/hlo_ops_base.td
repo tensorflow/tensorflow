@@ -618,6 +618,16 @@ class BASE_HLO_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+class BASE_HLO_BatchNormGradOp {
+  string summary = "Batch Normalization Gradient";
+
+  string description = [{
+    Calculates gradients of batch norm.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormgrad
+  }];
+}
+
 class BASE_HLO_BatchNormInferenceOp {
   string summary = "Batch Normalization for Inference";
 

@@ -524,6 +524,22 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]>,
+    BASE_HLO_BatchNormGradOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$scale,
+    HLO_Tensor:$mean,
+    HLO_Tensor:$variance,
+    HLO_Tensor:$grad_output,
+    F32Attr:$epsilon,
+    I64Attr:$feature_index
+  );
+
+  let results = (outs HLO_Tuple);
+}
+
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
     BASE_HLO_BatchNormInferenceOp {
 
