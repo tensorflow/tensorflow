@@ -49,10 +49,10 @@ namespace TensorFlowLite
     }
 
     public void Dispose() {
-      if (model != IntPtr.Zero) TfLiteModelDelete(model);
-      model = IntPtr.Zero;
       if (interpreter != IntPtr.Zero) TfLiteInterpreterDelete(interpreter);
       interpreter = IntPtr.Zero;
+      if (model != IntPtr.Zero) TfLiteModelDelete(model);
+      model = IntPtr.Zero;
       if (options != IntPtr.Zero) TfLiteInterpreterOptionsDelete(options);
       options = IntPtr.Zero;
     }
