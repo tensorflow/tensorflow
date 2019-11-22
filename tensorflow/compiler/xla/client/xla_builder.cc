@@ -70,6 +70,44 @@ void SetProtoIdAndName(T* entry, const string& base_name, char separator,
   entry->set_name(GetFullName(base_name, separator, id));
 }
 
+template <typename InstructionType>
+StatusOr<InstructionType> LookUpInstructionByHandleInternal(
+    const absl::flat_hash_map<int64, int64>& handle_to_index,
+    const std::vector<HloInstructionProto>& instructions, int64 handle) {
+  auto it = handle_to_index.find(handle);
+  if (it == handle_to_index.end()) {
+    return InvalidArgument("No XlaOp with handle %d", handle);
+  }
+  return const_cast<InstructionType>(&instructions.at(it->second));
+}
+
+Status CheckBuildersAffinity(const XlaBuilder* op_builder,
+                             const XlaBuilder* builder, int64 handle) {
+  if (op_builder != builder) {
+    return InvalidArgument(
+        "XlaOp with handle %d is built by builder '%s', but is trying to use "
+        "it in builder '%s'",
+        handle, op_builder->name(), builder->name());
+  }
+  return Status::OK();
+}
+
+template <typename InstructionType, typename OpBuilderType,
+          typename BuilderType, typename OpType>
+StatusOr<InstructionType> LookUpInstructionInternal(
+    const absl::flat_hash_map<int64, int64>& handle_to_index,
+    const std::vector<HloInstructionProto>& instructions,
+    OpBuilderType op_builder, BuilderType builder, OpType op_handle) {
+  if (op_builder == nullptr) {
+    return InvalidArgument(
+        "Invalid XlaOp with handle %d; the builder of this op is freed",
+        op_handle);
+  }
+  TF_RETURN_IF_ERROR(CheckBuildersAffinity(op_builder, builder, op_handle));
+  return LookUpInstructionByHandleInternal<InstructionType>(
+      handle_to_index, instructions, op_handle);
+}
+
 }  // namespace
 
 XlaOp operator-(XlaOp x) { return Neg(x); }
@@ -102,11 +140,19 @@ XlaOp operator>>(XlaOp x, XlaOp y) {
   });
 }
 
-StatusOr<Shape> XlaBuilder::GetShape(XlaOp op) const {
+StatusOr<const Shape*> XlaBuilder::GetShapePtr(XlaOp op) const {
   TF_RETURN_IF_ERROR(first_error_);
+  TF_RETURN_IF_ERROR(CheckBuildersAffinity(op.builder(), this, op.handle()));
+  auto it = handle_to_index_.find(op.handle());
+  if (it == handle_to_index_.end()) {
+    return InvalidArgument("No XlaOp with handle %d", op.handle());
+  }
+  return instruction_shapes_.at(it->second).get();
+}
 
-  TF_ASSIGN_OR_RETURN(auto instr, LookUpInstruction(op));
-  return Shape(instr->shape());
+StatusOr<Shape> XlaBuilder::GetShape(XlaOp op) const {
+  TF_ASSIGN_OR_RETURN(const Shape* shape, GetShapePtr(op));
+  return *shape;
 }
 
 StatusOr<std::vector<Shape>> XlaBuilder::GetOperandShapes(
@@ -254,7 +300,8 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
                                      ShapeIndex target_param_index,
                                      int64 target_dim_num) {
   bool param_exists = false;
-  for (HloInstructionProto& instr : instructions_) {
+  for (size_t index = 0; index < instructions_.size(); ++index) {
+    HloInstructionProto& instr = instructions_[index];
     if (instr.opcode() == HloOpcodeString(HloOpcode::kParameter) &&
         instr.parameter_number() == target_param_num) {
       param_exists = true;
@@ -266,9 +313,10 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
       param_shape_ptr->set_dynamic_dimension(target_dim_num,
                                              /*is_dynamic=*/true);
       *instr.mutable_shape() = param_shape.ToProto();
+      instruction_shapes_[index] =
+          absl::make_unique<Shape>(std::move(param_shape));
     }
   }
-
   if (!param_exists) {
     return InvalidArgument(
         "Asked to mark parameter %lld as dynamic sized parameter, but the "
@@ -334,20 +382,20 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
   // all dynamic dimensions before building xla program until we have support in
   // the backend.
   if (remove_dynamic_dimensions) {
-    std::function<void(ShapeProto*)> remove_dynamic_dimension =
-        [&](ShapeProto* shape) {
-          if (shape->tuple_shapes_size() != 0) {
-            for (int64 i = 0; i < shape->tuple_shapes_size(); ++i) {
-              remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
-            }
-          }
-          for (int64 i = 0; i < shape->dimensions_size(); ++i) {
-            shape->set_is_dynamic_dimension(i, false);
-          }
-        };
-
-    for (auto& instruction : instructions_) {
-      remove_dynamic_dimension(instruction.mutable_shape());
+    std::function<void(Shape*)> remove_dynamic_dimension = [&](Shape* shape) {
+      if (shape->tuple_shapes_size() != 0) {
+        for (int64 i = 0; i < shape->tuple_shapes_size(); ++i) {
+          remove_dynamic_dimension(shape->mutable_tuple_shapes(i));
+        }
+      }
+      for (int64 i = 0; i < shape->dimensions_size(); ++i) {
+        shape->set_dynamic_dimension(i, false);
+      }
+    };
+    for (size_t index = 0; index < instructions_.size(); ++index) {
+      remove_dynamic_dimension(instruction_shapes_[index].get());
+      *instructions_[index].mutable_shape() =
+          instruction_shapes_[index]->ToProto();
     }
   }
 
@@ -384,6 +432,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
 
   // Clear data held by this builder.
   this->instructions_.clear();
+  this->instruction_shapes_.clear();
   this->handle_to_index_.clear();
   this->embedded_.clear();
   this->parameter_numbers_.clear();
@@ -2703,6 +2752,8 @@ StatusOr<XlaOp> XlaBuilder::AddInstruction(HloInstructionProto&& instr,
 
   handle_to_index_[handle] = instructions_.size();
   instructions_.push_back(std::move(instr));
+  instruction_shapes_.push_back(
+      absl::make_unique<Shape>(instructions_.back().shape()));
 
   XlaOp op(handle, this);
   return op;
@@ -2756,43 +2807,6 @@ void XlaBuilder::AddCalledComputation(const XlaComputation& computation,
     embedded_.insert({computation_id, std::move(imported_computation)});
   }
 }
-
-namespace {
-
-template <typename InstructionType>
-StatusOr<InstructionType> LookUpInstructionByHandleInternal(
-    const absl::flat_hash_map<int64, int64>& handle_to_index,
-    const std::vector<HloInstructionProto>& instructions, int64 handle) {
-  auto it = handle_to_index.find(handle);
-  if (it == handle_to_index.end()) {
-    return InvalidArgument("No XlaOp with handle %d", handle);
-  }
-  return const_cast<InstructionType>(&instructions.at(it->second));
-}
-
-template <typename InstructionType, typename OpBuilderType,
-          typename BuilderType, typename OpType>
-StatusOr<InstructionType> LookUpInstructionInternal(
-    const absl::flat_hash_map<int64, int64>& handle_to_index,
-    const std::vector<HloInstructionProto>& instructions,
-    OpBuilderType op_builder, BuilderType builder, OpType op_handle) {
-  if (op_builder == nullptr) {
-    return InvalidArgument(
-        "invalid XlaOp with handle %d; the builder of this op is freed",
-        op_handle);
-  }
-  if (op_builder != builder) {
-    return InvalidArgument(
-        "XlaOp with handle %d is built by builder '%s', but is trying to use "
-        "it in builder '%s'",
-        op_handle, op_builder->name(), builder->name());
-  }
-
-  return LookUpInstructionByHandleInternal<InstructionType>(
-      handle_to_index, instructions, op_handle);
-}
-
-}  // namespace
 
 StatusOr<const HloInstructionProto*> XlaBuilder::LookUpInstruction(
     const XlaOp op) const {
