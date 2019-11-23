@@ -204,6 +204,9 @@ def AllocOp : Std_Op<"alloc"> {
     operand_range getSymbolicOperands() {
       return {operand_begin() + getType().getNumDynamicDims(), operand_end()};
     }
+
+    /// Returns the dynamic sizes for this alloc operation if specified.
+    operand_range getDynamicSizes() { return getOperands(); }
   }];
 
   let hasCanonicalizer = 1;
