@@ -117,6 +117,7 @@ load(
     "tf_protos_all_impl",
     "tf_protos_grappler",
     "tf_protos_grappler_impl",
+    "tf_protos_profiler_impl",
     "tf_pyclif_proto_library",
 )
 load(
@@ -2300,7 +2301,7 @@ cc_library(
         "@zlib_archive//:zlib",
         "@double_conversion//:double-conversion",
         "@com_google_protobuf//:protobuf",
-    ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
+    ] + tf_protos_all_impl() + tf_protos_grappler_impl() + tf_protos_profiler_impl(),
     # Alwayslink causes a cc_binary to "always link" in the
     # srcs for a given cc_library, even if they are unreferenced, see:
     # https://docs.bazel.build/versions/master/be/c-cpp.html#cc_library.alwayslink
