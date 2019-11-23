@@ -27,10 +27,12 @@ void get_top_n(T* prediction, int prediction_size, size_t num_results,
                bool input_floating);
 
 // explicit instantiation so that we can use them otherwhere
-template void get_top_n<uint8_t>(uint8_t*, int, size_t, float,
-                                 std::vector<std::pair<float, int>>*, bool);
 template void get_top_n<float>(float*, int, size_t, float,
-                               std::vector<std::pair<float, int>>*, bool);
+                               std::vector<std::pair<float, int>>*, int);
+template void get_top_n<int8_t>(int8_t*, int, size_t, float,
+                                std::vector<std::pair<float, int>>*, int);
+template void get_top_n<uint8_t>(uint8_t*, int, size_t, float,
+                                 std::vector<std::pair<float, int>>*, int);
 
 }  // namespace label_image
 }  // namespace tflite
