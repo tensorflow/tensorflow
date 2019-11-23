@@ -269,13 +269,12 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     ValueError: If input is None.
     
   Usage Example:
-    >>> x = tf.zeros(shape=(3,3)) + 4
-    >>> y = tf.identity(x)
-    >>> print(y)
-    tf.Tensor(
-    [[4. 4. 4.]
-     [4. 4. 4.]
-     [4. 4. 4.]], shape=(3, 3), dtype=float32)
+    >>> x = tf.constant(4, shape=(3,3))
+    >>> tf.identity(x)
+    <tf.Tensor: id=2, shape=(3, 3), dtype=int32, numpy=
+    array([[4, 4, 4],
+       [4, 4, 4],
+       [4, 4, 4]], dtype=int32)>
   """
   if isinstance(input, composite_tensor.CompositeTensor):
     return nest.map_structure(identity, input, expand_composites=True)
