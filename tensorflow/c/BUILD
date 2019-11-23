@@ -158,6 +158,7 @@ tf_cuda_library(
             "//tensorflow/core/kernels:logging_ops",
         ],
     }),
+    alwayslink = 1,
 )
 
 tf_cuda_library(
