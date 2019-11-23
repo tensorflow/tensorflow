@@ -22,9 +22,7 @@ limitations under the License.
 #ifndef TF_OP_BASE
 #define TF_OP_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // TensorFlow dialect definitions

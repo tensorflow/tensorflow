@@ -18,10 +18,7 @@ limitations under the License.
 #ifndef TFL_OPS
 #define TFL_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 
 def TFL_Dialect : Dialect {

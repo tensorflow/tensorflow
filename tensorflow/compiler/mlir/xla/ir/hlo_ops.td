@@ -18,13 +18,8 @@ limitations under the License.
 #ifndef HLO_OPS
 #define HLO_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef HLO_OPS_BASE
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
-#endif
 
 def HLO_Dialect : Dialect {
   let name = "xla_hlo";
