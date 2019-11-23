@@ -45,7 +45,6 @@ void get_top_n(T* prediction, int prediction_size, size_t num_results,
         value = prediction[i];
         break;
       case kTfLiteInt8:
-        // value = prediction[i] / 128.0;
         value = (prediction[i] + 128) / 256.0;
         break;
       case kTfLiteUInt8:
