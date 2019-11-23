@@ -84,6 +84,36 @@ const char* EagerExecutor::StateStringLocked() {
   }
 }
 
+Status EagerExecutor::SyncExecute(EagerNode* node) {
+  if (Async()) {
+    return errors::Internal("Executor does not support sync execution");
+  }
+  if (node->AsAsync() != nullptr) {
+    return errors::Internal("Executor does not support executing async nodes");
+  }
+  Status s = status();
+  if (!s.ok()) {
+    return s;
+  }
+
+  uint64 id = next_node_id_++;
+
+  s = node->Prepare();
+  if (!s.ok()) {
+    return s;
+  }
+
+  // Inline execution in sync mode.
+  s = node->Run();
+  tensorflow::mutex_lock l(node_queue_mutex_);
+  if (!s.ok()) {
+    status_ = s;
+    ok_ = false;
+  }
+  NotifyWaiters(id);
+  return s;
+}
+
 Status EagerExecutor::AddOrExecute(std::unique_ptr<EagerNode> node) {
   Status status;
   core::RefCountPtr<NodeItem> item(new NodeItem);
@@ -220,30 +250,8 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
       }
       unfinished_nodes_.clear();
     }
-    if (!node_done_notifications_.empty() && need_notification) {
-      uint64 upperbound_id = 0;
-      if (!unfinished_nodes_.empty()) {
-        upperbound_id = unfinished_nodes_.begin()->first - 1;
-      } else if (!node_queue_.empty()) {
-        upperbound_id = node_queue_.front()->id - 1;
-      } else {
-        upperbound_id = next_node_id_ - 1;
-      }
-      DVLOG(3) << "Notify node done: [id " << item->id << " to "
-               << upperbound_id << "] ";
-      // Note that we notify all waiting threads in case an error has
-      // occurred. These calling threads are responsible for checking status_
-      // before proceeding.
-      const auto range =
-          status_.ok()
-              ? make_pair(node_done_notifications_.lower_bound(item->id),
-                          node_done_notifications_.upper_bound(upperbound_id))
-              : make_pair(node_done_notifications_.begin(),
-                          node_done_notifications_.end());
-      for (auto it = range.first; it != range.second; ++it) {
-        it->second->notify_all();
-      }
-      node_done_notifications_.erase(range.first, range.second);
+    if (need_notification) {
+      NotifyWaiters(item->id);
     }
   }
   for (auto& item : items_to_destroy) {
@@ -253,6 +261,34 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
   // node_queue_mutex_. This is important because, unfortunately, some nodes'
   // destructors can enqueue more operations onto this executor and cause
   // a deadlock.
+}
+
+void EagerExecutor::NotifyWaiters(uint64 id) {
+  if (!node_done_notifications_.empty()) {
+    uint64 upperbound_id = 0;
+    if (!unfinished_nodes_.empty()) {
+      upperbound_id = unfinished_nodes_.begin()->first - 1;
+    } else if (!node_queue_.empty()) {
+      upperbound_id = node_queue_.front()->id - 1;
+    } else {
+      upperbound_id = next_node_id_ - 1;
+    }
+    DVLOG(3) << "Notify node done: [id " << id << " to " << upperbound_id
+             << "] ";
+    // Note that we notify all waiting threads in case an error has
+    // occurred. These calling threads are responsible for checking status_
+    // before proceeding.
+    const auto range =
+        status_.ok()
+            ? make_pair(node_done_notifications_.lower_bound(id),
+                        node_done_notifications_.upper_bound(upperbound_id))
+            : make_pair(node_done_notifications_.begin(),
+                        node_done_notifications_.end());
+    for (auto it = range.first; it != range.second; ++it) {
+      it->second->notify_all();
+    }
+    node_done_notifications_.erase(range.first, range.second);
+  }
 }
 
 void EagerExecutor::Run() {
