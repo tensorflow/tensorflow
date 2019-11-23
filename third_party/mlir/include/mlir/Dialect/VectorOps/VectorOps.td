@@ -22,13 +22,8 @@
 #ifndef VECTOR_OPS
 #define VECTOR_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef AFFINE_OPS_BASE
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
-#endif // AFFINE_OPS_BASE
 
 def Vector_Dialect : Dialect {
   let name = "vector";

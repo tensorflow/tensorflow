@@ -22,12 +22,8 @@
 #ifndef STANDARD_OPS
 #define STANDARD_OPS
 
-#ifndef OP_BASE
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 
 def Std_Dialect : Dialect {
   let name = "std";

@@ -23,9 +23,7 @@
 #ifndef TEST_LINALG_TRANSFORMS_PATTERNS
 #define TEST_LINALG_TRANSFORMS_PATTERNS
 
-#ifndef LINALG_TRANSFORMS
 include "mlir/Dialect/Linalg/Transforms/LinalgTransformPatterns.td"
-#endif // LINALG_TRANSFORMS
 
 //===----------------------------------------------------------------------===//
 // Test Linalg fusion patterns.

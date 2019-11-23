@@ -22,12 +22,8 @@
 #ifndef LINALG_TRANSFORMS
 #define LINALG_TRANSFORMS
 
-#ifndef LINALG_OPS
 include "mlir/Dialect/Linalg/IR/LinalgOps.td"
-#endif // LINALG_OPS
-#ifndef LINALG_LIBRARY_OPS
 include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.td"
-#endif // LINALG_LIBRARY_OPS
 
 def HasNoLinalgTransformMarker : CPred<[{
   !$0.getAttrOfType<StringAttr>(LinalgTransforms::kLinalgTransformMarker)
