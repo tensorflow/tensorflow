@@ -1988,5 +1988,28 @@ class ComputationRootTest(ComputationTest):
     np.testing.assert_allclose(ans, 4.14)
 
 
+class SetShardingTest(ComputationTest):
+  """Tests related to set OpSharding."""
+
+  def testSetSharding(self):
+    c = self._NewComputation()
+    sharding = xla_client.OpSharding()
+    sharding.type = sharding.type.REPLICATED
+    sharding.tile_assignment_dimensions.extend([1])
+    sharding.tile_assignment_devices.extend([0])
+    # Set Sharding.
+    c.SetSharding(sharding)
+    x = c.ParameterFromNumpy(NumpyArrayF32(2.0))
+    # Clear Sharding.
+    c.ClearSharding()
+
+    result = c.Add(x, c.ConstantF32Scalar(3.14))
+    extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
+    arg = NumpyArrayF32(1.0)
+    compiled_c = c.Build(result).Compile()
+    ans = xla_client.execute_with_python_values(compiled_c, [arg])
+    np.testing.assert_allclose(ans, 4.14)
+
+
 if __name__ == "__main__":
   absltest.main()

@@ -48,16 +48,16 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-enum class InferencePriority {
-  MIN_LATENCY,
-
-  MAX_PRECISION,
-};
-
 struct InferenceOptions {
-  bool allow_precision_loss = false;
+  InferenceUsage usage = InferenceUsage::SUSTAINED_SPEED;
 
-  InferencePriority priority = InferencePriority::MAX_PRECISION;
+  // Ordered priorities provide better understanding of desired semantics,
+  // where priority(n) is more important than priority(n+1).
+  InferencePriority priority1 = InferencePriority::MAX_PRECISION;
+
+  InferencePriority priority2 = InferencePriority::MIN_LATENCY;
+
+  InferencePriority priority3 = InferencePriority::MIN_MEMORY_USAGE;
 };
 
 // Indicates environment

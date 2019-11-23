@@ -3266,6 +3266,7 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndRelu")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
@@ -3288,6 +3289,7 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 }  // namespace tensorflow

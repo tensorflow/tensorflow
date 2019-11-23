@@ -112,27 +112,6 @@ config_setting(
 )
 
 config_setting(
-    name = "chromiumos_x86_64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_arm64",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "arm"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "chromiumos_armv7",
-    flag_values = {"//tools/cpp:cc_target_os": "chromiumos"},
-    values = {"cpu": "armeabi-v7a"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "emscripten",
     values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],
@@ -606,6 +585,18 @@ tf_cc_shared_object(
         "//tensorflow/stream_executor:stream_executor_impl",
         "//tensorflow:tf_framework_version_script.lds",
     ] + tf_additional_binary_deps(),
+)
+
+# This is intended to be the same as tf_binary_additional_srcs:
+# https://github.com/tensorflow/tensorflow/blob/cd67f4f3723f9165aabedd0171aaadc6290636e5/tensorflow/tensorflow.bzl#L396-L425
+# And is usable in the "deps" attribute instead of the "srcs" attribute
+# as a workaround for https://github.com/tensorflow/tensorflow/issues/34117
+cc_import(
+    name = "libtensorflow_framework_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
+    }),
 )
 
 # -------------------------------------------

@@ -390,7 +390,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
-    if kwargs.pop("tpu_embedding_variable_creator", False):
+    if kwargs.pop("skip_mirrored_creator", False):
       return next_creator(*args, **kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
@@ -675,9 +675,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
           if tensor_util.is_tensor(input_tensor):
-            maximum_shape = input_tensor.get_shape()
+            rank = input_tensor.get_shape().rank
           else:
-            maximum_shape = tensor_shape.TensorShape(np.shape(input_tensor))
+            rank = np.rank(input_tensor)
+          maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
                                                maximum_shapes)

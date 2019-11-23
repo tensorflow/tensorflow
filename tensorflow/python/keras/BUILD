@@ -20,28 +20,6 @@ py_library(
     name = "keras",
     srcs = [
         "__init__.py",
-        "applications/__init__.py",
-        "applications/densenet.py",
-        "applications/imagenet_utils.py",
-        "applications/inception_resnet_v2.py",
-        "applications/inception_v3.py",
-        "applications/mobilenet.py",
-        "applications/mobilenet_v2.py",
-        "applications/nasnet.py",
-        "applications/resnet.py",
-        "applications/resnet_v2.py",
-        "applications/vgg16.py",
-        "applications/vgg19.py",
-        "applications/xception.py",
-        "datasets/__init__.py",
-        "datasets/boston_housing.py",
-        "datasets/cifar.py",
-        "datasets/cifar10.py",
-        "datasets/cifar100.py",
-        "datasets/fashion_mnist.py",
-        "datasets/imdb.py",
-        "datasets/mnist.py",
-        "datasets/reuters.py",
         "estimator/__init__.py",
         "keras_parameterized.py",
         "ops.py",
@@ -68,11 +46,12 @@ py_library(
         ":saving",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:monitoring",
+        "//tensorflow/python/keras/applications",
+        "//tensorflow/python/keras/datasets",
         "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/saved_model",
-        "@keras_applications_archive//:keras_applications",
     ],
 )
 
@@ -176,11 +155,13 @@ py_library(
         "engine/training_eager.py",
         "engine/training_generator.py",
         "engine/training_utils.py",
+        "engine/training_v1.py",
         "engine/training_v2.py",
         "engine/training_v2_utils.py",
         "metrics.py",  # Need base_layer
         "models.py",
         "utils/metrics_utils.py",
+        "utils/version_utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -216,6 +197,7 @@ py_library(
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:ragged_util",
         "//tensorflow/python/profiler:traceme",
+        "//tensorflow/python/tpu:tpu_lib",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -616,7 +598,7 @@ tf_py_test(
 
 tf_py_test(
     name = "data_adapter_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/data_adapter_test.py"],
     additional_deps = [
         ":data_adapter",
@@ -739,18 +721,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 20,
-)
-
-tf_py_test(
-    name = "applications_test",
-    size = "medium",
-    srcs = ["applications/applications_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:client_testlib",
-    ],
-    shard_count = 11,
 )
 
 tf_py_test(
@@ -1251,6 +1221,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "version_utils_test",
+    size = "small",
+    srcs = ["utils/version_utils_test.py"],
+    additional_deps = [
+        ":keras",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "tf_utils_test",
     size = "small",
     srcs = ["utils/tf_utils_test.py"],
@@ -1422,8 +1403,10 @@ tf_py_test(
         ":keras",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     shard_count = 4,
     tags = [
         "no_oss",

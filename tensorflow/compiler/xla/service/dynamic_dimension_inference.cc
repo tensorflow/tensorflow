@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -181,7 +182,8 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
-        if (hlo->custom_call_target() != "Unpad") {
+        if (hlo->custom_call_target() != "Unpad" ||
+            absl::StartsWith(hlo->custom_call_target(), "Resize")) {
           return Unimplemented(
               "CustomCall is not supported to have a dynamic dimension");
         }

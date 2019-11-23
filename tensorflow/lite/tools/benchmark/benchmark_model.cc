@@ -51,7 +51,6 @@ void BenchmarkLoggingListener::OnBenchmarkEnd(const BenchmarkResults& results) {
                    << "Warmup: " << warmup_us.avg() << ", "
                    << "Init: " << init_us << ", "
                    << "no stats: " << inference_us.avg();
-  TFLITE_LOG(INFO) << "Overall " << results.overall_mem_usage();
 }
 
 std::vector<Flag> BenchmarkModel::GetFlags() {
@@ -169,7 +168,7 @@ TfLiteStatus BenchmarkModel::Run() {
   int64_t startup_latency_us = initialization_end_us - initialization_start_us;
   const auto init_mem_usage = init_end_mem_usage - start_mem_usage;
   TFLITE_LOG(INFO) << "Initialized session in " << startup_latency_us / 1e3
-                   << "ms, with " << init_mem_usage;
+                   << "ms.";
 
   TF_LITE_ENSURE_STATUS(PrepareInputData());
 
@@ -192,6 +191,9 @@ TfLiteStatus BenchmarkModel::Run() {
   listeners_.OnBenchmarkEnd({startup_latency_us, input_bytes, warmup_time_us,
                              inference_time_us, init_mem_usage,
                              overall_mem_usage});
+
+  TFLITE_LOG(INFO) << "Init " << init_mem_usage << std::endl
+                   << "Overall " << overall_mem_usage;
 
   return status;
 }

@@ -67,7 +67,7 @@ public:
     ArrayRef<Type> getConvertedTypes() const { return argTypes; }
 
     /// Get the input mapping for the given argument.
-    llvm::Optional<InputMapping> const &getInputMapping(unsigned input) const {
+    Optional<InputMapping> getInputMapping(unsigned input) const {
       return remappedInputs[input];
     }
 
@@ -322,9 +322,12 @@ public:
   ConversionPatternRewriter(MLIRContext *ctx, TypeConverter *converter);
   ~ConversionPatternRewriter() override;
 
-  /// Apply a signature conversion to the entry block of the given region.
-  void applySignatureConversion(Region *region,
-                                TypeConverter::SignatureConversion &conversion);
+  /// Apply a signature conversion to the entry block of the given region. This
+  /// replaces the entry block with a new block containing the updated
+  /// signature. The new entry block to the region is returned for convenience.
+  Block *
+  applySignatureConversion(Region *region,
+                           TypeConverter::SignatureConversion &conversion);
 
   /// Replace all the uses of the block argument `from` with value `to`.
   void replaceUsesOfBlockArgument(BlockArgument *from, Value *to);
@@ -334,6 +337,10 @@ public:
   template <typename OpT> OpT cloneWithoutRegions(OpT op) {
     return cast<OpT>(cloneWithoutRegions(op.getOperation()));
   }
+
+  /// Return the converted value that replaces 'key'. Return 'key' if there is
+  /// no such a converted value.
+  Value *getRemappedValue(Value *key);
 
   //===--------------------------------------------------------------------===//
   // PatternRewriter Hooks

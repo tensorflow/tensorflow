@@ -323,7 +323,13 @@ class ControlFlowTransformer(converter.Base):
       #   while cond:
       #     x = Foo()
       #     x.foo = 2 * x.foo  # x.foo is live into the loop, but x is not.
-      if not all(p in live_in for p in s.support_set):
+      #
+      # Note that some parents might not be symbols - for example, in x['foo'],
+      # 'foo' is a parent, but it's a literal, not a symbol. We don't check the
+      # liveness of literals.
+      support_set_symbols = tuple(
+          sss for sss in s.support_set if sss.is_symbol())
+      if not all(sss in live_in for sss in support_set_symbols):
         continue
       composite_loop_vars.append(s)
     return frozenset(composite_loop_vars)

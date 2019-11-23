@@ -46,6 +46,7 @@ tf_to_tflite(
 filegroup(
     name = "interpreter_test_data",
     srcs = [
+        "pc_conv.bin",
         ":gather_string",
         ":permute_float",
         ":permute_uint8",

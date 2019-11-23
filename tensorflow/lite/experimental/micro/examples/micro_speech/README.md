@@ -20,6 +20,7 @@ kilobytes of Flash.
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
+-   [Deploy to Adafruit devices](#deploy-to-adafruit)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Calculating the input to the neural network](#calculating-the-input-to-the-neural-network)
@@ -101,7 +102,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="CMSIS" micro_speech_bin
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="cmsis-nn" micro_speech_bin
 ```
 
 The binary will be created in the following location:
@@ -398,6 +399,16 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     in black color. If there is no output on the serial port, you can connect
     headphone to headphone port to check if audio loopback path is working.
 
+## Deploy to Adafruit devices <a name="deploy-to-adafruit"></a>
+
+This sample has been tested with the following Adafruit devices. To deploy to
+each device, read the accompanying guide on Adafruit's website.
+
+| Device                                                                                     | Guide                                                                                                                            |
+|--------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)                                | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
+| [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317) | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
+
 ## Run on macOS
 
 The example contains an audio provider compatible with macOS. If you have access
@@ -559,7 +570,7 @@ To begin training, run the following:
 ```
 python tensorflow/tensorflow/examples/speech_commands/train.py \
 --model_architecture=tiny_conv --window_stride=20 --preprocess=micro \
---wanted_words="on,off" --silence_percentage=25 --unknown_percentage=25 \
+--wanted_words="yes,no" --silence_percentage=25 --unknown_percentage=25 \
 --quantize=1 --verbosity=INFO --how_many_training_steps="15000,3000" \
 --learning_rate="0.001,0.0001" --summaries_dir=/tmp/retrain_logs \
 --data_dir=/tmp/speech_dataset --train_dir=/tmp/speech_commands_train

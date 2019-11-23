@@ -30,7 +30,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.lib.io import file_io
@@ -50,8 +52,13 @@ except ImportError:
 
 class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_saved_model_formats
   @test_util.run_in_graph_and_eager_modes
   def test_weight_loading(self):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    saved_model_dir = os.path.join(temp_dir, 'saved_model')
+    save_format = testing_utils.get_save_format()
     with self.cached_session():
       a = keras.layers.Input(shape=(2,))
       x = keras.layers.Dense(3)(a)
@@ -70,30 +77,8 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError):
         model.set_weights(weights[::-1])
 
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
-
-      no_extension_path = os.path.join(temp_dir, 'test')
-      model.save_weights(no_extension_path, save_format='tf')
-      model.load_weights(no_extension_path)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      if h5py is None:
-        return  # Skip rest of test if H5py isn't available.
-
-      h5_path = os.path.join(temp_dir, 'test.h5')
-      model.save_weights(h5_path)
-      model.load_weights(h5_path)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      model.load_weights(h5_path, by_name=True)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      model.save_weights(no_extension_path, save_format='hdf5')
-      model.load_weights(no_extension_path)
+      model.save_weights(saved_model_dir, save_format=save_format)
+      model.load_weights(saved_model_dir)
       y = model.predict(x)
       self.assertAllClose(ref_y, y)
 

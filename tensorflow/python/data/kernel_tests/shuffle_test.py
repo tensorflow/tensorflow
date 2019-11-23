@@ -32,6 +32,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -307,6 +308,28 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     consume()
     self.assertAllEqual(self.evaluate(counter_var), 10)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testEmptyDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors(1)
+
+    def map_fn(x):
+      with ops.control_dependencies([check_ops.assert_equal(x, 0)]):
+        return x
+
+    dataset = dataset.map(map_fn)
+    dataset = dataset.cache()
+    dataset = dataset.shuffle(buffer_size=10).repeat()
+
+    get_next = self.getNext(dataset)
+
+    # First time around, we get an error for the failed assertion.
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.evaluate(get_next())
+
+    # Second time around, we get an EOF because the cached dataset is empty.
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
 
 
 if __name__ == "__main__":

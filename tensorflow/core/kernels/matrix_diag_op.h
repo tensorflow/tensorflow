@@ -19,6 +19,7 @@ limitations under the License.
 // Generator definition for MatrixDiagOp, must be compilable by nvcc.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/platform/types.h"
@@ -26,26 +27,43 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+// Reads the diagonal packing alignment.
+void ReadAlignment(OpKernelConstruction* context,
+                   bool* left_align_superdiagonal,
+                   bool* left_align_subdiagonal);
+
+// Calculates diagonal length and content offset (from aligning) of a diagonal.
+// Returns a pair of integers {diag_len, content_offset}:
+//   - diag_len: The length of the diag_index-th diagonal.
+//   - content_offset: Each diagonal is stored as a row in the compact format.
+//     If the diagonal is shorter than max_diag_len, its content is aligned
+//     either to the left or right. content_offset is the index in the row
+//     where the first element of the diag-index-th diagonal is stored. It is
+//     always zero when the diagonal is left-aligned.
+std::pair<int, int> ComputeDiagLenAndContentOffset(
+    int diag_index, int max_diag_len, int num_rows, int num_cols,
+    bool left_align_superdiagonal, bool left_align_subdiagonal);
+
 template <typename Device, typename T>
 struct MatrixDiagPart {
   EIGEN_ALWAYS_INLINE static void Compute(
       OpKernelContext* context, const Device& device,
       typename TTypes<T, 3>::ConstTensor& input,
-      typename TTypes<T>::Tensor& output_original, const Eigen::Index d_lower,
-      const Eigen::Index d_upper, const Eigen::Index max_diag_len,
-      const T padding);
+      typename TTypes<T>::Tensor& output, const Eigen::Index lower_diag_index,
+      const Eigen::Index upper_diag_index, const Eigen::Index max_diag_len,
+      const T padding_value, const bool left_align_superdiagonal,
+      const bool left_align_subdiagonal);
 };
 
 template <typename Device, typename T>
 struct MatrixDiag {
-  EIGEN_ALWAYS_INLINE static void Compute(OpKernelContext* context,
-                                          const Device& device,
-                                          typename TTypes<T>::ConstTensor& diag,
-                                          typename TTypes<T, 3>::Tensor& output,
-                                          const Eigen::Index d_lower,
-                                          const Eigen::Index d_upper,
-                                          const Eigen::Index max_diag_len,
-                                          const T padding);
+  EIGEN_ALWAYS_INLINE static void Compute(
+      OpKernelContext* context, const Device& device,
+      typename TTypes<T>::ConstTensor& diag,
+      typename TTypes<T, 3>::Tensor& output,
+      const Eigen::Index lower_diag_index, const Eigen::Index upper_diag_index,
+      const Eigen::Index max_diag_len, const T padding_value,
+      const bool left_align_superdiagonal, const bool left_align_subdiagonal);
 };
 
 }  // namespace functor

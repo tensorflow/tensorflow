@@ -66,11 +66,7 @@ ASYNC = 1
 MIRRORING_NONE = pywrap_tensorflow.TFE_MIRRORING_NONE
 MIRRORING_ALL = pywrap_tensorflow.TFE_MIRRORING_ALL
 
-# TODO(b/143164764): Currently _KEEP_ALIVE_SECS is set to a very long time
-# (i.e. 30 days) because the server may deadlock when destroying the eager
-# context. This may cause memory leak in the headless TPU case, we should change
-# it back to 600 once the deadlock is fixed.
-_KEEP_ALIVE_SECS = 2592000
+_KEEP_ALIVE_SECS = 600
 
 _python_eager_context_create_counter = monitoring.Counter(
     "/tensorflow/api/python/eager_context_create_counter",
@@ -475,8 +471,12 @@ class Context(object):
         dev_name = pywrap_tensorflow.TF_DeviceListName(device_list, i)
         self._context_devices.append(pydev.canonical_name(dev_name))
         spec = pydev.DeviceSpec.from_string(dev_name)
+        # If the job is localhost, we assume that the cluster has not yet been
+        # configured and thus clear the job, replica & task.
+        if spec.job == "localhost":
+          spec = spec.replace(job=None, replica=None, task=None)
         self._logical_devices.append(
-            LogicalDevice(name=dev_name, device_type=spec.device_type))
+            LogicalDevice(name=spec.to_string(), device_type=spec.device_type))
         dev_type = pywrap_tensorflow.TF_DeviceListType(device_list, i)
         if dev_type == "GPU":
           self._num_gpus += 1
@@ -596,6 +596,26 @@ class Context(object):
       self._initialize_logical_devices()
 
     self._clear_caches()
+
+  def check_alive(self, worker_name):
+    """Checks whether a remote worker is alive or not.
+
+    Args:
+      worker_name: a string representing the remote worker. It must be a fully
+      specified name like "/job:worker/replica:0/task:0".
+
+    Returns:
+      a boolean indicating whether the remote worker is alive or not.
+
+    Raises:
+      ValueError: if context is not initialized.
+    """
+    # TODO(yuefengz): support checking multiple workers.
+    if self._context_handle:
+      return pywrap_tensorflow.TFE_ContextCheckAlive(self._context_handle,
+                                                     worker_name)
+    else:
+      raise ValueError("Context is not initialized.")
 
   def enable_collective_ops(self, server_def):
     """Enable distributed collective ops with an appropriate server_def.
@@ -2054,6 +2074,10 @@ def set_server_def(server_def):
 
 def update_server_def(server_def):
   context().update_server_def(server_def)
+
+
+def check_alive(worker_name):
+  return context().check_alive(worker_name)
 
 
 def add_function(fdef):

@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -64,8 +64,8 @@ class FilterFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.named_parameters(*_filter_fusion_test_cases())
   def testFilterFusion(self, map_function, predicates):
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(["Map", "Filter",
-                                  "MemoryCacheImpl"])).map(map_function)
+        testing.assert_next(["Map", "Filter",
+                             "MemoryCacheImpl"])).map(map_function)
     for predicate in predicates:
       dataset = dataset.filter(predicate)
 

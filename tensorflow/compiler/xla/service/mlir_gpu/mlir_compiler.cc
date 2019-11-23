@@ -189,35 +189,27 @@ GpuVersion GetGpuVersion(se::StreamExecutor* stream_exec) {
 // other dimensions are 1.  Return nullopt otherwise or when any of the bounds
 // is not constant.
 static absl::optional<int64> getLaunchBound(const mlir::gpu::KernelDim3& dim) {
-  bool bound_is_supported = true;
-
-  auto get_constant_or_report = [&bound_is_supported](
-                                    mlir::Operation* op,
-                                    mlir::StringRef name) -> int64 {
-    auto constant = llvm::dyn_cast_or_null<mlir::ConstantOp>(op);
-    if (!constant) {
-      op->emitError() << "bound " << name << " is not constant";
-      bound_is_supported = false;
-      return -1;
+  auto get_constant = [](mlir::Operation* op,
+                         mlir::StringRef name) -> absl::optional<int64> {
+    if (auto constant = llvm::dyn_cast_or_null<mlir::ConstantOp>(op)) {
+      return constant.value().cast<mlir::IntegerAttr>().getInt();
     }
-    return constant.value().cast<mlir::IntegerAttr>().getInt();
+    op->emitError() << "bound " << name << " is not constant";
+    return absl::nullopt;
   };
-  auto assert_constant_one = [&bound_is_supported, get_constant_or_report](
-                                 mlir::Operation* op, mlir::StringRef name) {
-    if (get_constant_or_report(op, name) != 1) {
-      op->emitError() << "bound " << name << " is not constant 1";
-      bound_is_supported = false;
-    }
-  };
-
-  auto dim_x = get_constant_or_report(dim.x->getDefiningOp(), "x");
-  assert_constant_one(dim.y->getDefiningOp(), "y");
-  assert_constant_one(dim.z->getDefiningOp(), "z");
-
-  if (!bound_is_supported) {
+  auto y_op = dim.y->getDefiningOp();
+  auto dim_y = get_constant(y_op, "y");
+  if (!dim_y.has_value() || dim_y.value() != 1) {
+    y_op->emitError() << "bound 'y' is not constant 1";
     return absl::nullopt;
   }
-  return dim_x;
+  auto z_op = dim.z->getDefiningOp();
+  auto dim_z = get_constant(z_op, "z");
+  if (!dim_z.has_value() || dim_z.value() != 1) {
+    z_op->emitError() << "bound 'z' is not constant 1";
+    return absl::nullopt;
+  }
+  return get_constant(dim.x->getDefiningOp(), "x");
 }
 
 using OperandToValueMap =
@@ -226,30 +218,32 @@ using OperandToValueMap =
 static StatusOr<std::vector<const HloInstruction*>> ComputeOperandToValueMap(
     OperandToValueMap* operand_to_value_map, const HloInstruction* instr,
     LaunchFuncOp launchOp, LLVMFuncOp kernel) {
-  auto arguments = launchOp.getParentOfType<FuncOp>().getArguments();
   auto operands = instr->operands();
   std::vector<const HloInstruction*> ordered_operands;
   bool has_failed = false;
-  for (int i = 0; i < launchOp.getNumKernelOperands(); ++i) {
-    auto kernel_operand = dyn_cast<BlockArgument>(launchOp.getKernelOperand(i));
-    if (!kernel_operand) {
+  for (int kernel_index = 0; kernel_index < launchOp.getNumKernelOperands();
+       ++kernel_index) {
+    auto launchop_operand =
+        dyn_cast<BlockArgument>(launchOp.getKernelOperand(kernel_index));
+    if (!launchop_operand) {
       launchOp.emitError("argument to kernel is not a function input");
       has_failed = true;
       continue;
     }
-    auto pos = std::find(arguments.begin(), arguments.end(), kernel_operand);
-    if (pos == arguments.end()) {
-      launchOp.emitError("argument to kernel is not a function input");
-      has_failed = true;
-      continue;
-    }
-    auto index = pos - arguments.begin();
-    // The last argument to the outer function is the result.
-    auto operand = (index < operands.size()) ? operands[index] : instr;
+    // host_index is the argument positon to the surrounding function that
+    // contains the launch. This index corresponds to HLO operand indices
+    // by construction.
+    auto host_index = launchop_operand->getArgNumber();
+    // The trailing argument to the outer function are the results.
+    auto operand =
+        (host_index < operands.size()) ? operands[host_index] : instr;
     if (!operand_to_value_map->count(operand)) {
       ordered_operands.push_back(operand);
     }
-    (*operand_to_value_map)[operand].push_back(kernel.getArgument(index));
+    // Associate the HLO operand with the argument value of the kernel
+    // function.
+    (*operand_to_value_map)[operand].push_back(
+        kernel.getArgument(kernel_index));
   }
   if (has_failed) {
     return InternalError("Mapping operands to kernel arguments has failed.");

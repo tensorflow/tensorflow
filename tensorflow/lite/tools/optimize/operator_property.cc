@@ -93,6 +93,16 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 3;
       break;
     }
+    case BuiltinOperator_TRANSPOSE_CONV: {
+      TensorProperty tensor_property;
+      tensor_property.per_axis = true;
+      tensor_property.per_axis_index = 0;
+      tensor_property.symmetric = true;
+      property.inputs = {{1, tensor_property}, {2, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
+    }
     case BuiltinOperator_DEPTHWISE_CONV_2D: {
       TensorProperty tensor_property;
       tensor_property.per_axis = true;
@@ -274,6 +284,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
     case BuiltinOperator_MUL:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
+    case BuiltinOperator_PACK:
+      property.arbitrary_inputs = true;
+      property.outputs = {{0, {}}};
+      property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
     case BuiltinOperator_PAD:

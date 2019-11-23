@@ -47,8 +47,8 @@ limitations under the License.
 // Fortunately, most people haven't heard of pthread_atfork().
 //
 //
-// 2) FYI from m3b@ about execv():
-// The execv() call implicitly uses the libc global variable environ, which was
+// 2) FYI from m3b@ about execvp():
+// The execvp() call implicitly uses the libc global variable environ, which was
 // copied by fork(), and that copy could have raced with a setenv() call in
 // another thread, since libc implementations are usually not very careful about
 // this. (glibc isn't careful, for example.)
@@ -61,7 +61,7 @@ limitations under the License.
 // Amusingly, the standard says of fork(): "...to avoid errors, the child
 // process may only execute async-signal-safe operations until such time as one
 // of the exec functions is called."  Notice that execve() is listed as
-// async-signal-safe, but execv() is not, and the difference is just the
+// async-signal-safe, but execvp() is not, and the difference is just the
 // handling of the environment.
 
 namespace tensorflow {
@@ -275,8 +275,8 @@ bool SubProcess::Start() {
   }
 
   // Execute the child program.
-  // See comment (2) in the header about issues with the use of execv().
-  execv(exec_path_, exec_argv_);
+  // See comment (2) in the header about issues with the use of execvp().
+  execvp(exec_path_, exec_argv_);
   _exit(1);
 }
 

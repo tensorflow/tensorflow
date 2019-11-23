@@ -128,7 +128,7 @@ _CACHE_LOCK = threading.RLock()
 
 
 _CACHE = _ConversionCache()
-_UNCONVERTED_CACHE = _ConversionCache()
+_WHITELIST_CACHE = _ConversionCache()
 
 
 # Note: strictly speaking, a simple factory might have been sufficient for
@@ -329,7 +329,7 @@ def convert(entity, program_ctx):
 
 
 # TODO(mdan): allow_namedtuple_subclass should be hardcoded to True.
-def is_whitelisted_for_graph(
+def is_whitelisted(
     o, check_call_override=True, allow_namedtuple_subclass=False):
   """Checks whether an entity is whitelisted for use in graph mode.
 
@@ -378,7 +378,7 @@ def is_whitelisted_for_graph(
     # Callable objects: whitelisted if their __call__ method is.
     # The type check avoids infinite recursion around the __call__ method
     # of function objects.
-    if (type(o) != type(o.__call__)) and is_whitelisted_for_graph(o.__call__):  # pylint: disable=unidiomatic-typecheck
+    if (type(o) != type(o.__call__)) and is_whitelisted(o.__call__):  # pylint: disable=unidiomatic-typecheck
       logging.log(2, 'Whitelisted: %s: object __call__ whitelisted', o)
       return True
 
@@ -406,7 +406,7 @@ def is_whitelisted_for_graph(
         return True
 
       owner_class = inspect_utils.getdefiningclass(o, owner_class)
-      if is_whitelisted_for_graph(
+      if is_whitelisted(
           owner_class,
           check_call_override=False,
           allow_namedtuple_subclass=True):
@@ -430,19 +430,19 @@ def is_whitelisted_for_graph(
   return False
 
 
-def check_cached_unconverted(entity, options):
+def is_in_whitelist_cache(entity, options):
   try:
-    # Catch-all for entities that are unhashable or don't allow weakrefs.
-    return _UNCONVERTED_CACHE.has(entity, options)
+    return _WHITELIST_CACHE.has(entity, options)
   except TypeError:
+    # Catch-all for entities that are unhashable or don't allow weakrefs.
     return False
 
 
-def cache_unconverted(entity, options):
+def cache_whitelisted(entity, options):
   try:
-    # Catch-all for entities that are unhashable or don't allow weakrefs.
-    _UNCONVERTED_CACHE[entity][options] = True
+    _WHITELIST_CACHE[entity][options] = True
   except TypeError:
+    # Catch-all for entities that are unhashable or don't allow weakrefs.
     pass
 
 
@@ -551,7 +551,7 @@ def convert_class_to_ast(c, program_ctx):
     if isinstance(object, base):
       base_names.append('object')
       continue
-    if is_whitelisted_for_graph(base):
+    if is_whitelisted(base):
       alias = namer.new_symbol(base.__name__, ())
       output_nodes.append(
           gast.ImportFrom(

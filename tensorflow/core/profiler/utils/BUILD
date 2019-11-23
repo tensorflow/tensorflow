@@ -18,9 +18,7 @@ cc_library(
     hdrs = ["event_span.h"],
     deps = [
         ":timespan",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
-        "@com_google_absl//absl/base:core_headers",
+        "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -32,12 +30,46 @@ cc_library(
 )
 
 cc_library(
+    name = "op_metrics_db_utils",
+    srcs = ["op_metrics_db_utils.cc"],
+    hdrs = ["op_metrics_db_utils.h"],
+    deps = [
+        ":math_utils",
+        ":tf_op_utils",
+        "//tensorflow/core:tflite_portable_logging",
+        "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tf_op_utils",
+    srcs = ["tf_op_utils.cc"],
+    hdrs = ["tf_op_utils.h"],
+    deps = [
+        "//tensorflow/core:regexp_internal",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_op_utils_test",
+    size = "small",
+    srcs = ["tf_op_utils_test.cc"],
+    deps = [
+        ":tf_op_utils",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "timespan",
     hdrs = ["timespan.h"],
     deps = [
         ":time_utils",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -55,7 +87,7 @@ cc_library(
     name = "time_utils",
     hdrs = ["time_utils.h"],
     deps = [
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core:lib",
     ],
 )
 
@@ -65,10 +97,23 @@ cc_library(
     hdrs = ["xplane_builder.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:types",
+        ":time_utils",
+        "//tensorflow/core:lib",
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
-        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "xplane_visitor",
+    hdrs = ["xplane_visitor.h"],
+    visibility = [":friends"],
+    deps = [
+        ":time_utils",
+        ":timespan",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "@com_google_absl//absl/strings",
     ],
 )

@@ -974,6 +974,8 @@ def categorical_crossentropy(y_true,
 @keras_export('keras.metrics.sparse_categorical_crossentropy',
               'keras.losses.sparse_categorical_crossentropy')
 def sparse_categorical_crossentropy(y_true, y_pred, from_logits=False, axis=-1):
+  y_pred = ops.convert_to_tensor(y_pred)
+  y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.sparse_categorical_crossentropy(
       y_true, y_pred, from_logits=from_logits, axis=axis)
 

@@ -2,7 +2,6 @@
 #   XLA service implementation.
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "xla_test")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
     "tf_proto_library_cc",
@@ -33,11 +32,12 @@ package_group(
     ],
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "hlo_proto",
     srcs = ["hlo.proto"],
+    cc_api_version = 2,
+    protodeps = ["//tensorflow/compiler/xla:xla_data_proto"],
     visibility = ["//visibility:public"],
-    deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
 tf_proto_library_py(
@@ -2268,6 +2268,7 @@ cc_library(
         "//tensorflow/compiler/xla:window_util",
         "//tensorflow/core/platform:macros",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )

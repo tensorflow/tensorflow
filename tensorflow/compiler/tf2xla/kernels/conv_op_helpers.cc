@@ -272,6 +272,10 @@ Status ConvBackpropComputeDimensionsV2XlaShapes(
 
 }  // anonymous namespace
 
+absl::Span<const DataType> GetXlaConvTypes() {
+  return {DT_FLOAT, DT_BFLOAT16, DT_HALF, DT_DOUBLE};
+}
+
 xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
                                                bool depthwise,
                                                OpKernelConstruction* ctx) {

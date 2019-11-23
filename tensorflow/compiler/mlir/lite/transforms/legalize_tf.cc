@@ -72,6 +72,7 @@ DECL_CONVERT_OP(Concat);
 DECL_CONVERT_OP(ConcatV2);
 DECL_CONVERT_OP(MatMul);
 DECL_CONVERT_OP(MatrixDiagV2);
+DECL_CONVERT_OP(MatrixDiagV3);
 DECL_CONVERT_OP(Pack);
 DECL_CONVERT_OP(Reshape);
 DECL_CONVERT_OP(Split);
@@ -149,7 +150,7 @@ PatternMatchResult ConvertTFPackOp::matchAndRewrite(
 
   SmallVector<Value*, 4> values(tf_pack_op.values());
   auto output_type = tf_pack_op.output()->getType();
-  auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N().getZExtValue());
+  auto values_count = rewriter.getI32IntegerAttr(tf_pack_op.N());
   // Axis can be negative.
   auto axis = rewriter.getI32IntegerAttr(tf_pack_op.axis().getSExtValue());
 
@@ -189,8 +190,7 @@ PatternMatchResult ConvertTFSplitOp::matchAndRewrite(
   auto output_types = functional::map([](Value* v) { return v->getType(); },
                                       tf_split_op.output());
   // Number of splits cannot be negative.
-  auto num_split =
-      rewriter.getI32IntegerAttr(tf_split_op.num_split().getZExtValue());
+  auto num_split = rewriter.getI32IntegerAttr(tf_split_op.num_split());
 
   rewriter.replaceOpWithNewOp<TFL::SplitOp>(op, output_types,
                                             tf_split_op.split_dim(),
@@ -205,8 +205,7 @@ PatternMatchResult ConvertTFSplitVOp::matchAndRewrite(
   auto output_types = functional::map([](Value* v) { return v->getType(); },
                                       tf_splitv_op.output());
   // Number of splits cannot be negative.
-  auto num_split =
-      rewriter.getI32IntegerAttr(tf_splitv_op.num_split().getZExtValue());
+  auto num_split = rewriter.getI32IntegerAttr(tf_splitv_op.num_split());
 
   rewriter.replaceOpWithNewOp<TFL::SplitVOp>(
       op, output_types, tf_splitv_op.value(), tf_splitv_op.size_splits(),
@@ -304,7 +303,7 @@ PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
   auto* input = tf_unpack_op.value();
   auto output_types = functional::map([](Value* v) { return v->getType(); },
                                       tf_unpack_op.output());
-  auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num().getZExtValue());
+  auto num = rewriter.getI32IntegerAttr(tf_unpack_op.num());
   // Axis can be negative.
   auto axis = rewriter.getI32IntegerAttr(tf_unpack_op.axis().getSExtValue());
 
@@ -312,46 +311,67 @@ PatternMatchResult ConvertTFUnpackOp::matchAndRewrite(
   return matchSuccess();
 }
 
-PatternMatchResult ConvertTFMatrixDiagV2Op::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_matrix_diag_v2_op = cast<TF::MatrixDiagV2Op>(op);
+// MatrixDiagV3 is MatrixDiagV2 with an alignment attribute. This attribute
+// only has effects when processing multiple diagonals. Since TFLite converts
+// MatrixDiagV{2,3} to MatrixDiag, which only takes single-diagonal inputs, we
+// can safely ignore this V3 attribute.
+// We can't pass `rewriter` by reference because clang-tidy will want it to be
+// constant (`const PatternRewriter& rewriter`). If we do that, we won't be able
+// to call `rewriter::replaceOpWihNewOp`, which is not a const member function.
+template <typename MatrixDiagV2OrV3Op>
+bool ConvertTFMatrixDiagV2orV3(Operation* op, PatternRewriter* rewriter) {
+  auto tf_matrix_diag_v2_or_v3_op = cast<MatrixDiagV2OrV3Op>(op);
 
-  if (tf_matrix_diag_v2_op.getNumOperands() != 5) return matchFailure();
+  if (tf_matrix_diag_v2_or_v3_op.getNumOperands() != 5) return false;
 
-  auto input = tf_matrix_diag_v2_op.diagonal();
-  auto output_type = tf_matrix_diag_v2_op.output()->getType();
+  auto input = tf_matrix_diag_v2_or_v3_op.diagonal();
+  auto output_type = tf_matrix_diag_v2_or_v3_op.output()->getType();
 
   // Extract k constant tensor and check value = 0.
   ElementsAttr k;
-  if (!matchPattern(tf_matrix_diag_v2_op.k(), m_Constant(&k)))
-    return matchFailure();
-  if (ExtractSingleElementAsInteger(k).getInt() != 0) return matchFailure();
+  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.k(), m_Constant(&k)))
+    return false;
+  if (ExtractSingleElementAsInteger(k).getInt() != 0) return false;
 
   // Extract num_rows constant tensor and check value = -1.
   ElementsAttr num_rows;
-  if (!matchPattern(tf_matrix_diag_v2_op.num_rows(), m_Constant(&num_rows)))
-    return matchFailure();
-  if (ExtractSingleElementAsInteger(num_rows).getInt() != -1)
-    return matchFailure();
+  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.num_rows(),
+                    m_Constant(&num_rows)))
+    return false;
+  if (ExtractSingleElementAsInteger(num_rows).getInt() != -1) return false;
 
   // Extract num_cols constant tensor and check value = -1.
   ElementsAttr num_cols;
-  if (!matchPattern(tf_matrix_diag_v2_op.num_cols(), m_Constant(&num_cols)))
-    return matchFailure();
-  if (ExtractSingleElementAsInteger(num_cols).getInt() != -1)
-    return matchFailure();
+  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.num_cols(),
+                    m_Constant(&num_cols)))
+    return false;
+  if (ExtractSingleElementAsInteger(num_cols).getInt() != -1) return false;
 
   // Verify padding_value is an integer tensor with all 0s.
   ElementsAttr padding_value;
-  if (!matchPattern(tf_matrix_diag_v2_op.padding_value(),
+  if (!matchPattern(tf_matrix_diag_v2_or_v3_op.padding_value(),
                     m_Constant(&padding_value)))
-    return matchFailure();
+    return false;
   for (auto value : padding_value.getValues<APInt>()) {
-    if (value != 0) return matchFailure();
+    if (value != 0) return false;
   }
 
-  rewriter.replaceOpWithNewOp<MatrixDiagOp>(op, output_type, input);
-  return matchSuccess();
+  rewriter->replaceOpWithNewOp<MatrixDiagOp>(op, output_type, input);
+  return true;
+}
+
+PatternMatchResult ConvertTFMatrixDiagV2Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  if (ConvertTFMatrixDiagV2orV3<TF::MatrixDiagV2Op>(op, &rewriter))
+    return matchSuccess();
+  return matchFailure();
+}
+
+PatternMatchResult ConvertTFMatrixDiagV3Op::matchAndRewrite(
+    Operation* op, PatternRewriter& rewriter) const {
+  if (ConvertTFMatrixDiagV2orV3<TF::MatrixDiagV3Op>(op, &rewriter))
+    return matchSuccess();
+  return matchFailure();
 }
 
 void LegalizeTF::runOnFunction() {
@@ -361,10 +381,11 @@ void LegalizeTF::runOnFunction() {
 
   // Add the generated patterns to the list.
   populateWithGenerated(ctx, &patterns);
-  patterns.insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
-                  ConvertTFMatrixDiagV2Op, ConvertTFPackOp, ConvertTFReshapeOp,
-                  ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
-                  ConvertTFUnpackOp>(ctx);
+  patterns
+      .insert<ConvertTFConcatOp, ConvertTFConcatV2Op, ConvertTFMatMulOp,
+              ConvertTFMatrixDiagV2Op, ConvertTFMatrixDiagV3Op, ConvertTFPackOp,
+              ConvertTFReshapeOp, ConvertTFSplitOp, ConvertTFSplitVOp,
+              ConvertTFStridedSliceOp, ConvertTFUnpackOp>(ctx);
   applyPatternsGreedily(func, patterns);
 }
 

@@ -205,8 +205,6 @@ void Sub1Vector(const int16_t* vector, int v_size, int16_t* result) {
   NEON_OR_PORTABLE(Sub1Vector, vector, v_size, result);
 }
 
-float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
-
 // Check if all entries of a vector are zero for float.
 bool IsZeroVector(const float* vector, int v_size) {
   return NEON_OR_PORTABLE(IsZeroVector, vector, v_size);

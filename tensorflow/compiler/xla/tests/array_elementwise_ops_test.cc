@@ -1871,7 +1871,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MinF64s) {
   Min(lhs, rhs);
 
   ComputeAndCompareR1<double>(&builder, {1.0, -5.0, 1.0, NAN, NAN}, {},
-                              error_spec_);
+                              strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxF32s) {
@@ -1901,7 +1901,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, MaxF64s) {
   Max(lhs, rhs);
 
   ComputeAndCompareR1<double>(&builder, {2.0, 1.0, 2.25, NAN, NAN}, {},
-                              error_spec_);
+                              strict_error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, MaxS32s) {

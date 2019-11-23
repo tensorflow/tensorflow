@@ -599,6 +599,8 @@ def SPV_LogicalNotOp : SPV_LogicalUnaryOp<"LogicalNot", SPV_Bool, []> {
     %2 = spv.LogicalNot %0 : vector<4xi1>
     ```
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----

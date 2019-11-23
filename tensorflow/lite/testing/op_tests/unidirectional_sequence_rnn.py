@@ -61,6 +61,7 @@ def make_unidirectional_sequence_rnn_tests(options):
       outs, _ = tf.nn.static_rnn(rnn_cell, input_values, dtype=tf.float32)
 
     real_output = tf.zeros([1], dtype=tf.float32) + outs[-1]
+    real_output = tf.identity(real_output)
     return input_values, [real_output]
 
   def build_inputs(parameters, sess, inputs, outputs):

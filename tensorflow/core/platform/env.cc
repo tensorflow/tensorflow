@@ -462,8 +462,16 @@ Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
   std::unique_ptr<RandomAccessFile> src_file;
   TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
 
+  // When `target` points to a directory, we need to create a file within.
+  string target_name;
+  if (target_fs->IsDirectory(target).ok()) {
+    target_name = io::JoinPath(target, io::Basename(src));
+  } else {
+    target_name = target;
+  }
+
   std::unique_ptr<WritableFile> target_file;
-  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target, &target_file));
+  TF_RETURN_IF_ERROR(target_fs->NewWritableFile(target_name, &target_file));
 
   uint64 offset = 0;
   std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);

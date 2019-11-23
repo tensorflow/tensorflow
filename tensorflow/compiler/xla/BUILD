@@ -1,7 +1,7 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "cc_header_only_library")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
 load(
     "//tensorflow/core/platform:default/build_config.bzl",
+    "tf_proto_library_cc",
     "tf_proto_library_py",
 )
 
@@ -36,9 +36,10 @@ filegroup(
     ]),
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xla_data_proto",
     srcs = ["xla_data.proto"],
+    cc_api_version = 2,
     visibility = ["//visibility:public"],
 )
 
@@ -48,14 +49,15 @@ tf_proto_library_py(
     visibility = ["//visibility:public"],
 )
 
-xla_proto_library(
+tf_proto_library_cc(
     name = "xla_proto",
     srcs = ["xla.proto"],
-    visibility = ["//visibility:public"],
-    deps = [
+    cc_api_version = 2,
+    protodeps = [
         ":xla_data_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library_py(
@@ -422,6 +424,7 @@ cc_library(
         ":xla_data_proto_cc",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/flags:flag",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -963,8 +966,8 @@ cc_header_only_library(
     name = "xla_headers_lib",
     visibility = ["//visibility:public"],
     deps = [
-        ":xla_data_proto",
-        ":xla_proto",
+        ":xla_data_proto_cc",
+        ":xla_proto_cc",
         "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:framework_headers_lib",

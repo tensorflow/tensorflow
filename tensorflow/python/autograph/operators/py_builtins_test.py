@@ -52,6 +52,40 @@ class PyBuiltinsTest(test.TestCase):
       t = py_builtins.abs_(constant_op.constant([-1, 2, -3]))
       self.assertAllEqual(self.evaluate(t), [1, 2, 3])
 
+  def test_abs_dataset(self):
+    dataset = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 1)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 2)
+      self.assertAllEqual(self.evaluate(iterator.get_next()), 3)
+
+  def test_abs_dataset_zipped(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([1, -2, 3])
+    dataset = dataset_ops.DatasetV2.zip((dataset_1, dataset_2))
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (1, 1))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (2, 2))
+      self.assertAllEqual(self.evaluate(iterator.get_next()), (3, 3))
+
+  def test_abs_dataset_mixed(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([-1, 2, 3])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([1, -2, 3])
+    dataset_3 = dataset_ops.DatasetV2.from_tensor_slices([-1, -2, -3])
+    dataset_4 = dataset_ops.DatasetV2.zip((dataset_1, dataset_2))
+    dataset = dataset_ops.DatasetV2.zip((dataset_3, dataset_4))
+    dataset = py_builtins.abs_(dataset)
+    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    with self.cached_session() as sess:
+      for i in range(1, 4):
+        actual = self.evaluate(iterator.get_next())
+        self.assertAllEqual(actual[0], i)
+        self.assertAllEqual(actual[1], (i, i))
+
   def test_float(self):
     self.assertEqual(py_builtins.float_(10), 10.0)
     self.assertEqual(py_builtins.float_('10.0'), 10.0)
@@ -292,6 +326,52 @@ class PyBuiltinsTest(test.TestCase):
     with self.cached_session() as sess:
       self.assertAllEqual(self.evaluate(iterator.get_next()), 2)
       self.assertAllEqual(self.evaluate(iterator.get_next()), 1)
+
+  def test_any(self):
+    self.assertEqual(py_builtins.any_([False, True, False]), True)
+    self.assertEqual(py_builtins.any_([False, False, False]), False)
+
+  def test_any_dataset(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([False, True, False])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([False, False, False])
+    self.assertEqual(self.evaluate(py_builtins.any_(dataset_1)), True)
+    self.assertEqual(self.evaluate(py_builtins.any_(dataset_2)), False)
+
+    dataset_3 = dataset_ops.DatasetV2.from_tensor_slices([0, 1, 2])
+    with self.assertRaises(ValueError):
+      py_builtins.any_(dataset_3)
+
+    dataset_4 = dataset_ops.DatasetV2.from_tensor_slices([False, True, False])
+    dataset_zipped = dataset_ops.DatasetV2.zip((dataset_4, dataset_4))
+    with self.assertRaises(ValueError):
+      py_builtins.any_(dataset_zipped)
+
+    dataset_mixed = dataset_ops.DatasetV2.zip((dataset_3, dataset_4))
+    with self.assertRaises(ValueError):
+      py_builtins.any_(dataset_mixed)
+
+  def test_all(self):
+    self.assertEqual(py_builtins.all_([False, True, False]), False)
+    self.assertEqual(py_builtins.all_([True, True, True]), True)
+
+  def test_all_dataset(self):
+    dataset_1 = dataset_ops.DatasetV2.from_tensor_slices([False, True, False])
+    dataset_2 = dataset_ops.DatasetV2.from_tensor_slices([True, True, True])
+    self.assertEqual(self.evaluate(py_builtins.all_(dataset_1)), False)
+    self.assertEqual(self.evaluate(py_builtins.all_(dataset_2)), True)
+
+    dataset_3 = dataset_ops.DatasetV2.from_tensor_slices([0, 1, 2])
+    with self.assertRaises(ValueError):
+      py_builtins.all_(dataset_3)
+
+    dataset_4 = dataset_ops.DatasetV2.from_tensor_slices([False, True, False])
+    dataset_zipped = dataset_ops.DatasetV2.zip((dataset_4, dataset_4))
+    with self.assertRaises(ValueError):
+      py_builtins.all_(dataset_zipped)
+
+    dataset_mixed = dataset_ops.DatasetV2.zip((dataset_3, dataset_4))
+    with self.assertRaises(ValueError):
+      py_builtins.all_(dataset_mixed)
 
 
 if __name__ == '__main__':

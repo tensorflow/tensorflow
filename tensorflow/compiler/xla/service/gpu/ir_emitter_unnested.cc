@@ -2913,7 +2913,6 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
   int64 tile_size_y = 1;
   int64 block_size_z = 1;
   int64 num_threads_x = 1;
-  int64 num_threads_y = 1;
   bool dilated_x = true;
   if (reduction_dimensions.is_row_reduction) {
     num_threads_x = kWarpSize;
@@ -2958,9 +2957,9 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
     tile_size_y = 128;
   }
 
-  KernelMappingScheme mapping_scheme(reduction_dimensions.dimensions,
-                                     tile_size_y, tile_size_x, block_size_z,
-                                     num_threads_y, num_threads_x, dilated_x);
+  KernelMappingScheme mapping_scheme(
+      reduction_dimensions.dimensions, tile_size_y, tile_size_x, block_size_z,
+      /*num_threads_y=*/1, num_threads_x, dilated_x);
   return ReductionCodegenInfo(mapping_scheme,
                               reduction_dimensions.is_row_reduction);
 }

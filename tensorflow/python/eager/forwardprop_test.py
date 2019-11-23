@@ -197,9 +197,7 @@ def _test_gradients(testcase,
   sym_jac_back, num_jac = gradient_checker_v2.compute_gradient(
       f, primals, delta=delta)
   testcase.assertAllClose(num_jac, sym_jac_back, rtol=rtol, atol=atol)
-  # TODO(b/134972215): compute_gradient should use the definition of a Jacobian
-  # matrix on Wikipedia, then this transpose can go away.
-  sym_jac_fwd = nest.map_structure(array_ops.transpose, _jacfwd(f, primals))
+  sym_jac_fwd = _jacfwd(f, primals)
   testcase.assertAllClose(num_jac, sym_jac_fwd, rtol=rtol, atol=atol)
   # And the symbolic computations should be much closer.
   testcase.assertAllClose(sym_jac_back, sym_jac_fwd)

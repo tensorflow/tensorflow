@@ -159,12 +159,10 @@ mlir::impl::parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
   auto &builder = parser.getBuilder();
 
   // Parse the name as a symbol reference attribute.
-  FlatSymbolRefAttr nameAttr;
-  if (parser.parseAttribute(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
-                            result.attributes))
+  StringAttr nameAttr;
+  if (parser.parseSymbolName(nameAttr, ::mlir::SymbolTable::getSymbolAttrName(),
+                             result.attributes))
     return failure();
-  // Convert the parsed function attr into a string attr.
-  result.attributes.back().second = builder.getStringAttr(nameAttr.getValue());
 
   // Parse the function signature.
   auto signatureLocation = parser.getCurrentLocation();
@@ -301,11 +299,7 @@ void mlir::impl::printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
       resultAttrStorage.emplace_back(attrNameBuf);
   ignoredAttrs.append(resultAttrStorage.begin(), resultAttrStorage.end());
 
-  auto attrs = op->getAttrs();
-  if (attrs.size() > ignoredAttrs.size()) {
-    p << "\n  attributes ";
-    p.printOptionalAttrDict(attrs, ignoredAttrs);
-  }
+  p.printOptionalAttrDictWithKeyword(op->getAttrs(), ignoredAttrs);
 
   // Print the body if this is not an external function.
   Region &body = op->getRegion(0);

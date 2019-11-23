@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/abi.h"
-#include "tensorflow/core/platform/annotation.h"
 #include "tensorflow/core/platform/byte_order.h"
 #include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/cpu_feature_guard.h"

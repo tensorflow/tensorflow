@@ -39,8 +39,15 @@ from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import lazy_loader
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+autograph = lazy_loader.LazyLoader(
+    "autograph", globals(),
+    "tensorflow.python.autograph.impl.api")
+
 
 # Map from EagerPyFunc token to tuple (tape, eager args, eager outputs);
 # used for differentiation.
@@ -275,6 +282,9 @@ def _internal_py_func(func,
     raise ValueError("Expected func to be callable, got func of type {}".format(
         type(func)))
 
+  original_func = func
+  func = autograph.do_not_convert(func)
+
   is_list_or_tuple = False
   if isinstance(Tout, (list, tuple)):
     is_list_or_tuple = True
@@ -283,6 +293,20 @@ def _internal_py_func(func,
 
   if eager:
     func = EagerFunc(func, Tout, is_grad_func)
+
+  # Tying the registered function's lifetime with the current default graph is
+  # not reliable. For example, Estimator-based binaries may switch graphs in
+  # between model training end evaluation, via saved_model. Those binaries work
+  # because the original function is global, and break once the registered
+  # function is an anonymous lambda, like the one produced by do_not_convert.
+  # To avoid breaking those cases, we attach the wrapper to the original
+  # function so that their lifetime is connected.
+  # TODO(b/144286616): Remove this.
+  if tf_inspect.isfunction(original_func):
+    # Note: this check is needed because original_func may be a descriptor
+    # (https://docs.python.org/3/howto/descriptor.html)
+    # and we can't attach attributes to those.
+    original_func.ag_dnc_wrapper__ = func
 
   token = _py_funcs.insert(func)
   # We tie the registered function's lifetime with the current default graph,

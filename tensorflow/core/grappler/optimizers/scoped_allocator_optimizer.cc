@@ -457,6 +457,33 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     return Status::OK();
   }
 
+  // Returns the set of all nodes that are transitively reachable via data or
+  // control edges starting at `source_nodes`.  Stop at the boundary of a frame.
+  Status TransitiveFanoutWithinFrame(
+      GraphDef* graph, NodeMap* node_map,
+      const std::vector<const NodeDef*>& source_nodes,
+      absl::flat_hash_set<const NodeDef*>* fanout) {
+    std::deque<const NodeDef*> queue(source_nodes.begin(), source_nodes.end());
+    absl::flat_hash_set<const NodeDef*> visited;
+    while (!queue.empty()) {
+      const NodeDef* node = queue.front();
+      queue.pop_front();
+      if (!visited.insert(node).second) {
+        continue;
+      }
+      fanout->insert(node);
+      for (const NodeDef* output : node_map->GetOutputs(node->name())) {
+        if (!ModifiesFrameInfo(*output)) {
+          queue.push_back(output);
+        }
+        VLOG(2) << "TransitiveFanout parent: " << node->name()
+                << " child: " << output->name() << " of type " << output->op();
+      }
+    }
+
+    return Status::OK();
+  }
+
   // Build the ScopedAllocator node that will be assigned to allocate
   // the output tensors of the input node set.
   Status ConstructScopedAllocatorNode(
@@ -478,6 +505,15 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     LOG_WARNING_AND_RETURN_IF_ERROR(sa_builder.Finalize(sa_node));
     node_map->AddNode(sa_name, sa_node);
 
+    std::vector<const NodeDef*> fanout_sources;
+    fanout_sources.reserve(inputs.size());
+    for (const auto& input : inputs) {
+      fanout_sources.push_back(input.from_node_def);
+    }
+    absl::flat_hash_set<const NodeDef*> fanout;
+    TF_RETURN_IF_ERROR(
+        TransitiveFanoutWithinFrame(graph, node_map, fanout_sources, &fanout));
+
     // Add control edges from the ScopedAllocatorOp to all of the
     // input nodes and mark them for allocation from backing tensor.
     for (int i = 0; i < inputs.size(); ++i) {
@@ -496,18 +532,36 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     // We add control edges in order to delay execution of the ScopedAllocatorOp
     // until just before first use in order to conserve memory.
-    {
-      auto& nd = inputs[0];
+    bool added_delay_edge = false;
+    for (auto& nd : inputs) {
       std::vector<InputDesc> inputs_to_first;
       LOG_WARNING_AND_RETURN_IF_ERROR(GetDataInputs(
           graph, sa_opti->node_map(), nd.from_node_def, &inputs_to_first));
       for (int i = 0; i < inputs_to_first.size(); ++i) {
+        if (fanout.find(inputs_to_first[i].from_node_def) != fanout.end()) {
+          VLOG(2) << "Found node " << inputs_to_first[i].from_node_def->name()
+                  << " in the fanout of " << sa_name;
+          continue;
+        }
         sa_node->add_input(
             strings::StrCat("^", inputs_to_first[i].from_node_def->name()));
+        node_map->AddOutput(inputs_to_first[i].from_node_def->name(), sa_name);
+        added_delay_edge = true;
         VLOG(2) << "Adding control dependency from "
                 << inputs_to_first[i].from_node_def->name() << " to "
                 << sa_node->name();
+        break;
       }
+      if (added_delay_edge) {
+        break;
+      }
+    }
+
+    if (!added_delay_edge) {
+      LOG(WARNING) << "Found no node from which a control edge can be added to "
+                      "scoped allocator node.  If you run into issues with "
+                      "graphs that contain control flow, turn off the "
+                      "ScopedAllocatorOptimizer and file a bug.";
     }
 
     return Status::OK();
@@ -521,7 +575,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                            const TensorShape& sa_shape,
                            std::vector<NodeDefBuilder::NodeOut>* sac_inputs) {
     VLOG(2) << "BuildSAConcatNode " << sac_name;
-    std::set<string> sac_ctl_inputs;
+    // control input: edge name -> source node name
+    absl::flat_hash_map<string, string> sac_ctl_inputs;
     for (int i = 0; i < ops.size(); ++i) {
       NodeDef* old_op = ops[i];
       for (const string& old_op_input : old_op->input()) {
@@ -530,7 +585,7 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
         if (position == -1) {
           // A control input: drop if from another member of the op set.
           if (op_instance_names.find(old_op_input) == op_instance_names.end()) {
-            sac_ctl_inputs.insert(old_op_input);
+            sac_ctl_inputs.emplace(old_op_input, input_name);
           }
         } else {
           // TODO(tucker): remove redundant check.
@@ -566,8 +621,11 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
     node_map->AddOutput(sa_name, sac_name);
 
     // Attach the old control inputs to the new sac node.
-    for (const string& ctl_input : sac_ctl_inputs) {
-      sac_node->add_input(ctl_input);
+    for (const auto& ctl_input : sac_ctl_inputs) {
+      const auto& ctl_edge = ctl_input.first;
+      const auto& input_name = ctl_input.second;
+      sac_node->add_input(ctl_edge);
+      node_map->AddOutput(input_name, sac_node->name());
     }
     return Status::OK();
   }

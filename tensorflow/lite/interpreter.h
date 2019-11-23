@@ -311,6 +311,12 @@ class Interpreter {
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
 
+  // This releases memory held by non-persistent tensors. It does NOT re-perform
+  // memory planning.
+  // AllocateTensors needs to be called before next invocation.
+  /// WARNING: Experimental interface, subject to change
+  TfLiteStatus ReleaseNonPersistentMemory();
+
   /// Update allocations for all tensors. This will redim dependent tensors
   /// using the input tensor dimensionality as given. This is relatively
   /// expensive. If you know that your sizes are not changing, you need not call

@@ -340,14 +340,10 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
             "//tensorflow/core/platform:tracing.cc",
         ],
         "deps": [
-            "@com_google_absl//absl/memory",
-            "//tensorflow/core/lib/core:errors",
             "//tensorflow/core/lib/hash",
             "//tensorflow/core/platform",
-            "//tensorflow/core/platform:annotation",
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
-            "//tensorflow/core/platform:mutex",
             "//tensorflow/core/platform:strcat",
             "//tensorflow/core/platform:str_util",
             "//tensorflow/core/platform:stringpiece",
@@ -355,6 +351,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "tags": ["no_oss", "manual"],
         "visibility": ["//visibility:private"],
+        "alwayslink": 1,
     },
     "types": {
         "name": "types_impl",

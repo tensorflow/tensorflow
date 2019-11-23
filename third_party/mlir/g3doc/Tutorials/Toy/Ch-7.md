@@ -9,7 +9,7 @@ language to support a new composite `struct` type.
 ## Defining a `struct` in Toy
 
 The first thing we need to define is the interface of this type in our `toy`
-source language. The general syntax of a `struct` type in toy is as follows:
+source language. The general syntax of a `struct` type in Toy is as follows:
 
 ```toy
 # A struct is defined by using the `struct` keyword followed by a name.
@@ -63,10 +63,10 @@ representation.
 #### Reserving a Range of Type Kinds
 
 Types in MLIR rely on having a unique `kind` value to ensure that casting checks
-remain extremely
-efficient([rationale](Rationale.md#reserving-dialect-type-kinds). For `toy`,
-this means we need to explicitly reserve a static range of type `kind` values in
-the symbol registry file
+remain extremely efficient
+([rationale](../../Rationale.md#reserving-dialect-type-kinds)). For `toy`, this
+means we need to explicitly reserve a static range of type `kind` values in the
+symbol registry file
 [DialectSymbolRegistry](https://github.com/tensorflow/mlir/blob/master/include/mlir/IR/DialectSymbolRegistry.def).
 
 ```c++
@@ -99,11 +99,11 @@ simple wrapper around an internal `TypeStorage` object that is uniqued within an
 instance of an `MLIRContext`. When constructing a `Type`, we are internally just
 constructing and uniquing an instance of a storage class.
 
-When defining a new `Type` that requires additional information than just the
-`kind`, like our struct type for the element types, we will need to provide a
-derived storage class. The `primitive` types that don't have any additional
-data, like the [`index` type](../../LangRef.md#index-type), don't require a
-storage class.
+When defining a new `Type` that requires additional information beyond just the
+`kind` (e.g. the `struct` type, which requires additional information to hold
+the element types), we will need to provide a derived storage class. The
+`primitive` types that don't have any additional data (e.g. the
+[`index` type](../../LangRef.md#index-type)) don't require a storage class.
 
 ##### Defining the Storage Class
 
@@ -169,7 +169,7 @@ struct StructTypeStorage : public mlir::TypeStorage {
 
 ##### Defining the Type Class
 
-With the storage class defined, we can add the definition for the user visible
+With the storage class defined, we can add the definition for the user-visible
 `StructType` class. This is the class that we will actually interface with.
 
 ```c++
@@ -212,8 +212,8 @@ public:
 };
 ```
 
-and we register this type in the `ToyDialect` constructor in a similar way to
-how we did with operations:
+We register this type in the `ToyDialect` constructor in a similar way to how we
+did with operations:
 
 ```c++
 ToyDialect::ToyDialect(mlir::MLIRContext *ctx)
@@ -223,15 +223,14 @@ ToyDialect::ToyDialect(mlir::MLIRContext *ctx)
 ```
 
 With this we can now use our `StructType` when generating MLIR from Toy. See
-MLIRGen.cpp for more details.
+examples/toy/Ch7/mlir/MLIRGen.cpp for more details.
 
 ### Parsing and Printing
 
 At this point we can use our `StructType` during MLIR generation and
-transformation, but we can't output or parse `.mlir`. To support this we need to
-add support for parsing and printing instances of the `StructType`. This support
-can be added by overriding the `parseType` and `printType` methods on the
-`ToyDialect`.
+transformation, but we can't output or parse `.mlir`. For this we need to add
+support for parsing and printing instances of the `StructType`. This can be done
+by overriding the `parseType` and `printType` methods on the `ToyDialect`.
 
 ```c++
 class ToyDialect : public mlir::Dialect {
@@ -245,12 +244,12 @@ public:
 };
 ```
 
-These methods take an instance of a high level parser or printer that allows for
+These methods take an instance of a high-level parser or printer that allows for
 easily implementing the necessary functionality. Before going into the
 implementation, let's think about the syntax that we want for the `struct` type
 in the printed IR. As described in the
 [MLIR language reference](../../LangRef.md#dialect-types), dialect types are
-generally represented as: `!` dialect-namespace `<` type-data `>`; With a pretty
+generally represented as: `! dialect-namespace < type-data >`, with a pretty
 form available under certain circumstances. The responsibility of our `Toy`
 parser and printer is to provide the `type-data` bits. We will define our
 `StructType` as having the following form:
@@ -309,7 +308,7 @@ mlir::Type ToyDialect::parseType(mlir::DialectAsmParser &parser) const {
 
 #### Printing
 
-As implementation of the printer is shown below:
+An implementation of the printer is shown below:
 
 ```c++
 /// Print an instance of a type registered to the toy dialect.
@@ -350,14 +349,14 @@ module {
 
 ### Operating on `StructType`
 
-Now that the `struct` type has been defined, and we can roundtrip it through the
-IR. The next step is to add support for using it within our operations.
+Now that the `struct` type has been defined, and we can round-trip it through
+the IR. The next step is to add support for using it within our operations.
 
 #### Updating Existing Operations
 
 A few of our existing operations will need to be updated to handle `StructType`.
-The first step is to make the ODS framework aware of our Type, so that we can
-use it in the operation definitions. A simple example is shown below:
+The first step is to make the ODS framework aware of our Type so that we can use
+it in the operation definitions. A simple example is shown below:
 
 ```td
 // Provide a definition for the Toy StructType for use in ODS. This allows for
@@ -369,8 +368,8 @@ def Toy_StructType :
 def Toy_Type : AnyTypeOf<[F64Tensor, Toy_StructType]>;
 ```
 
-We can then update our operations, like `ReturnOp` for example, to also accept
-the `Toy_StructType`:
+We can then update our operations, e.g. `ReturnOp`, to also accept the
+`Toy_StructType`:
 
 ```td
 def ReturnOp : Toy_Op<"return", [Terminator, HasParent<"FuncOp">]> {
@@ -388,8 +387,8 @@ that will provide more specific handling of `structs`.
 ##### `toy.struct_constant`
 
 This new operation materializes a constant value for a struct. In our current
-modeling we just use an [array attribute](../../LangRef.md#array-attribute) that
-contains a set of constant values for each of the `struct` elements.
+modeling, we just use an [array attribute](../../LangRef.md#array-attribute)
+that contains a set of constant values for each of the `struct` elements.
 
 ```mlir
   %0 = "toy.struct_constant"() {
@@ -456,8 +455,9 @@ module {
 #### Optimizing Operations on `StructType`
 
 Now that we have a few operations operating on `StructType`, we also have many
-new constant folding opportunities. After inlining the MLIR module in the
-previous section looks something like:
+new constant folding opportunities.
+
+After inlining, the MLIR module in the previous section looks something like:
 
 ```mlir
 module {
@@ -518,7 +518,7 @@ mlir::Operation *ToyDialect::materializeConstant(mlir::OpBuilder &builder,
 }
 ```
 
-With this we can now generate code that can be generated to LLVM without any
+With this, we can now generate code that can be generated to LLVM without any
 changes to our pipeline.
 
 ```mlir
@@ -533,6 +533,7 @@ module {
 }
 ```
 
-You can build `toyc-ch7` and try yourself: `toyc-ch7 test/struct-codegen.toy
--emit=mlir`. More details can on defining custom types can be found in
+You can build `toyc-ch7` and try yourself: `toyc-ch7
+test/Examples/Toy/Ch7/struct-codegen.toy -emit=mlir`. More details on defining
+custom types can be found in
 [DefiningAttributesAndTypes](../../DefiningAttributesAndTypes.md).

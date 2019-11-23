@@ -20,7 +20,6 @@ filegroup(
 android_binary(
     name = "SmartReplyDemo",
     srcs = glob(["java/**/*.java"]),
-    aapt_version = "aapt2",
     assets = [":assets"],
     assets_dir = "",
     custom_package = "com.example.android.smartreply",

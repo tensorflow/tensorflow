@@ -1902,43 +1902,55 @@ def _convert_matrix_set_diag(pfor_input):
   return wrap(array_ops.matrix_set_diag(t, diag), True)
 
 
-# Registrations for MatrixDiagV2, MatrixDiagPartv2, and MatrixSetDiagV2.
+# Registrations for Matrix{Diag,DiagPart,SetDiag}V2-3.
 # The input orders defined in the OpKernel and the actual python API are
 # different (for compatibility with V1), so we cannot use _convert_identity.
+# v2 is not compatible with v3 and is never exposed on the public API.
 @RegisterPFor("MatrixDiagV2")
+@RegisterPFor("MatrixDiagV3")
 def _convert_matrix_diag_v2(pfor_input):
-  diagonal = pfor_input.stacked_input(0)
-  k = pfor_input.unstacked_input(1)
-  num_rows = pfor_input.unstacked_input(2)
-  num_cols = pfor_input.unstacked_input(3)
-  padding_value = pfor_input.unstacked_input(4)
-  return wrap(
-      array_ops.matrix_diag(
-          diagonal,
-          k=k,
-          num_rows=num_rows,
-          num_cols=num_cols,
-          padding_value=padding_value), True)
+  params = {
+      "diagonal": pfor_input.stacked_input(0),
+      "k": pfor_input.unstacked_input(1),
+      "num_rows": pfor_input.unstacked_input(2),
+      "num_cols": pfor_input.unstacked_input(3),
+      "padding_value": pfor_input.unstacked_input(4)
+  }
+  if pfor_input.op_type == "MatrixDiagV2":
+    return wrap(array_ops.matrix_diag_v2(**params), True)
+  params["align"] = pfor_input.get_attr("align")
+  return wrap(array_ops.matrix_diag(**params), True)
 
 
 # See notes for MatrixDiagV2
 @RegisterPFor("MatrixDiagPartV2")
+@RegisterPFor("MatrixDiagPartV3")
 def _convert_matrix_diag_part_v2(pfor_input):
-  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
-  k = pfor_input.unstacked_input(1)
-  padding_value = pfor_input.unstacked_input(2)
-  return wrap(
-      array_ops.matrix_diag_part(input, k=k, padding_value=padding_value), True)
+  params = {
+      "input": pfor_input.stacked_input(0),
+      "k": pfor_input.unstacked_input(1),
+      "padding_value": pfor_input.unstacked_input(2)
+  }
+  if pfor_input.op_type == "MatrixDiagPartV2":
+    return wrap(array_ops.matrix_diag_part_v2(**params), True)
+  params["align"] = pfor_input.get_attr("align")
+  return wrap(array_ops.matrix_diag_part(**params), True)
 
 
 # See notes for MatrixDiagV2
 @RegisterPFor("MatrixSetDiagV2")
+@RegisterPFor("MatrixSetDiagV3")
 def _convert_matrix_set_diag_v2(pfor_input):
   pfor_input.stack_inputs([0, 1])
-  input = pfor_input.stacked_input(0)  # pylint:disable=redefined-builtin
-  diagonal = pfor_input.stacked_input(1)
-  k = pfor_input.unstacked_input(2)
-  return wrap(array_ops.matrix_set_diag(input, diagonal, k=k), True)
+  params = {
+      "input": pfor_input.stacked_input(0),
+      "diagonal": pfor_input.stacked_input(1),
+      "k": pfor_input.unstacked_input(2)
+  }
+  if pfor_input.op_type == "MatrixSetDiagV2":
+    return wrap(array_ops.matrix_set_diag_v2(**params), True)
+  params["align"] = pfor_input.get_attr("align")
+  return wrap(array_ops.matrix_set_diag(**params), True)
 
 
 @RegisterPFor("OneHot")

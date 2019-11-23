@@ -78,7 +78,7 @@ Value *Aliases::find(Value *v) {
       return it.first->second;
     }
     if (auto view = dyn_cast_or_null<SubViewOp>(v->getDefiningOp())) {
-      v = view.getView();
+      v = view.source();
       continue;
     }
     llvm::errs() << "View alias analysis reduces to: " << *v << "\n";
@@ -112,6 +112,7 @@ void LinalgDependenceGraph::addDependenceElem(DependenceType dt,
                                               LinalgOpView dependentOpView) {
   LLVM_DEBUG(dbgs() << "\nAdd dep type " << toStringRef(dt) << ":\t"
                     << *indexingOpView.op << " -> " << *dependentOpView.op);
+  (void)toStringRef;
   dependencesFromGraphs[dt][indexingOpView.op].push_back(
       LinalgDependenceGraphElem{dependentOpView, indexingOpView.view});
   dependencesIntoGraphs[dt][dependentOpView.op].push_back(
