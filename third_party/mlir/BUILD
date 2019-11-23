@@ -988,6 +988,23 @@ gentbl(
 )
 
 gentbl(
+    name = "SPIRVCanonicalizationIncGen",
+    strip_include_prefix = "lib/Dialect/SPIRV",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Dialect/SPIRV/SPIRVCanonicalization.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+        "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+    ],
+)
+
+gentbl(
     name = "StandardToSPIRVGen",
     strip_include_prefix = "lib/Conversion/StandardToSPIRV",
     tbl_outs = [
@@ -1055,6 +1072,7 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVCanonicalizationIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
