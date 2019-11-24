@@ -24,6 +24,7 @@ package_group(
         "//learning/brain/research/sair/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt_delegate/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//third_party/tf_runtime_google/...",
