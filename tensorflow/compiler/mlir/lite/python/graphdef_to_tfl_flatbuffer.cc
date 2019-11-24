@@ -275,8 +275,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
 
   auto status = ConvertTFExecutorToTFLOrFlatbuffer(
       module.get(), /*export_to_mlir=*/false, emit_builtin_tflite_ops,
-      emit_select_tf_ops, emit_custom_ops, /*emit_quant_adaptor_ops=*/false,
-      /*lower_tensor_list_ops=*/true, quant_specs, result, &pm);
+      emit_select_tf_ops, emit_custom_ops, quant_specs, result, &pm);
 
   if (toco_flags.has_dump_graphviz_dir()) {
     TF_RETURN_IF_ERROR(DumpOpGraphToFile(
