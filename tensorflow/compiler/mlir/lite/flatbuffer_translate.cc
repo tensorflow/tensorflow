@@ -961,7 +961,7 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(FuncOp fn) {
     operands.reserve(inst.getNumOperands());
     for (auto* operand : inst.getOperands()) {
       if (operand->getType().isa<NoneType>())
-        operands.push_back(kOptionalTensor);
+        operands.push_back(kTfLiteOptionalTensor);
       else
         operands.push_back(tensor_index_map.lookup(operand));
     }
