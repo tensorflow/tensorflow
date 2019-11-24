@@ -23,7 +23,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.Interpreter;
 import org.tensorflow.lite.gpu.GpuDelegate;
 import org.tensorflow.lite.support.common.FileUtil;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 
 /** Class to load tflite models from App asset folder or remote sources. */
 public class Model {
@@ -129,8 +129,9 @@ public class Model {
       @NonNull MappedByteBuffer byteModel,
       Device device,
       int numThreads) {
-    SupportPrecondtions.checkNotNull(byteModel, "Model file cannot be null.");
-    SupportPrecondtions.checkNotEmpty(modelPath, "Model path in the asset folder cannot be empty.");
+    SupportPreconditions.checkNotNull(byteModel, "Model file cannot be null.");
+    SupportPreconditions.checkNotEmpty(
+        modelPath, "Model path in the asset folder cannot be empty.");
 
     this.modelPath = modelPath;
     this.byteModel = byteModel;

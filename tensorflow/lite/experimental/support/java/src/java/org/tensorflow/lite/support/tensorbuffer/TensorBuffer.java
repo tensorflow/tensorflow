@@ -20,7 +20,7 @@ import java.nio.ByteOrder;
 import java.util.Arrays;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.DataType;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 
 /** Represents the data buffer for either a model's input or its output. */
 public abstract class TensorBuffer {
@@ -113,7 +113,7 @@ public abstract class TensorBuffer {
    */
   @NonNull
   public static TensorBuffer createFrom(@NonNull TensorBuffer buffer, DataType dataType) {
-    SupportPrecondtions.checkNotNull(buffer, "Cannot create a buffer from null");
+    SupportPreconditions.checkNotNull(buffer, "Cannot create a buffer from null");
     TensorBuffer result;
     if (buffer.isDynamic()) {
       result = createDynamic(dataType);
@@ -257,14 +257,14 @@ public abstract class TensorBuffer {
    *     match or the size of {@code buffer} and {@code flatSize} do not match.
    */
   public void loadBuffer(@NonNull ByteBuffer buffer, @NonNull int[] shape) {
-    SupportPrecondtions.checkNotNull(buffer, "Byte buffer cannot be null.");
+    SupportPreconditions.checkNotNull(buffer, "Byte buffer cannot be null.");
     int flatSize = computeFlatSize(shape);
-    SupportPrecondtions.checkArgument(
+    SupportPreconditions.checkArgument(
         (buffer.limit() == getTypeSize() * flatSize),
         "The size of byte buffer and the shape do not match.");
 
     if (!isDynamic) {
-      SupportPrecondtions.checkArgument(
+      SupportPreconditions.checkArgument(
           flatSize == this.flatSize,
           "The size of byte buffer and the size of the tensor buffer do not match.");
     } else {
@@ -309,7 +309,7 @@ public abstract class TensorBuffer {
 
   /** Calculates number of elements in the buffer. */
   protected static int computeFlatSize(@NonNull int[] shape) {
-    SupportPrecondtions.checkNotNull(shape, "Shape cannot be null.");
+    SupportPreconditions.checkNotNull(shape, "Shape cannot be null.");
     int prod = 1;
     for (int s : shape) {
       prod = prod * s;
@@ -326,7 +326,7 @@ public abstract class TensorBuffer {
       allocateMemory(shape);
     } else {
       // Make sure the new shape fits the buffer size when TensorBuffer has fixed size.
-      SupportPrecondtions.checkArgument(flatSize == computeFlatSize(shape));
+      SupportPreconditions.checkArgument(flatSize == computeFlatSize(shape));
       this.shape = shape.clone();
     }
   }
@@ -339,8 +339,8 @@ public abstract class TensorBuffer {
    * @throws IllegalArgumentException if {@code shape} has negative elements.
    */
   private void allocateMemory(@NonNull int[] shape) {
-    SupportPrecondtions.checkNotNull(shape, "TensorBuffer shape cannot be null.");
-    SupportPrecondtions.checkArgument(
+    SupportPreconditions.checkNotNull(shape, "TensorBuffer shape cannot be null.");
+    SupportPreconditions.checkArgument(
         isShapeValid(shape), "Values in TensorBuffer shape should be non-negative.");
 
     // Check if the new shape is the same as current shape.
