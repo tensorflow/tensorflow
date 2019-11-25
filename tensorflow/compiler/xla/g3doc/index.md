@@ -106,7 +106,7 @@ examples.
 
 Note: Gradient computation of graph in `xla.compile()` is prohibited because it
 can cause performance degradation. To avoid this issue, move gradient
-computation inside `xla.compile()`.
+computation outside `xla.compile()`.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
