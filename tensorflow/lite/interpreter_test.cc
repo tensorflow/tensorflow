@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
+#include "third_party/eigen3/Eigen/Core"
 
 namespace tflite {
 
@@ -686,10 +686,22 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   ASSERT_EQ(interpreter.SetOutputs({4}), kTfLiteOk);
 
   TfLiteQuantizationParams quantized;
-  char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'A', 'B', 'C'};
+
+  // String tensor with one string of length 3
+  union {
+    char raw_bytes[15];
+    struct {
+      int32_t num_strs;
+      int32_t offsets[2];
+      char str_data[3];
+    } tensor_data;
+  } my_data;
+  my_data.tensor_data = {1, {12, 15}, {'A', 'B', 'C'}};
+
   // Read only string tensor.
-  ASSERT_EQ(interpreter.SetTensorParametersReadOnly(0, kTfLiteString, "", {1},
-                                                    quantized, data, 15),
+  ASSERT_EQ(interpreter.SetTensorParametersReadOnly(
+                0, kTfLiteString, "", {1}, quantized, my_data.raw_bytes,
+                sizeof(my_data.raw_bytes)),
             kTfLiteOk);
   // Read-write string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(1, kTfLiteString, "", {1},
