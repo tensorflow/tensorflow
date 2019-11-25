@@ -90,12 +90,6 @@ flatbuffer_cc_library(
     out_prefix = "reflection/",
 )
 
-# Generic schema for model metadata.
-flatbuffer_cc_library(
-    name = "metadata_schema_fbs",
-    srcs = ["metadata_schema.fbs"],
-)
-
 # Schema test to make sure we don't introduce backward incompatible changes
 # to schemas.
 cc_test(
