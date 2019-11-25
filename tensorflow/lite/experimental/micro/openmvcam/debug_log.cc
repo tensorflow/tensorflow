@@ -24,7 +24,6 @@ static char *py_tf_putchar_buffer = NULL;
 static size_t py_tf_putchar_buffer_len = 0;
 
 extern "C" void DebugLog(const char* s) {
-<<<<<<< HEAD
   for (size_t i = 0, j = strlen(s); i < j; i++) {
     if (py_tf_putchar_buffer_len) {
       *py_tf_putchar_buffer++ = s[i];
@@ -33,7 +32,4 @@ extern "C" void DebugLog(const char* s) {
       putchar(s[i]);
     }
   }
-=======
-  puts(s);
->>>>>>> Change printf to puts
 }
