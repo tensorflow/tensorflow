@@ -626,6 +626,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:session_options",
         "@llvm//:support",
     ],
     alwayslink = 1,
