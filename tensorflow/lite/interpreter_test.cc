@@ -695,13 +695,13 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
       int32_t offsets[2];
       char str_data[3];
     } tensor_data;
-  } my_data;
-  my_data.tensor_data = {1, {12, 15}, {'A', 'B', 'C'}};
+  } data;
+  data.tensor_data = {1, {12, 15}, {'A', 'B', 'C'}};
 
   // Read only string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadOnly(
-                0, kTfLiteString, "", {1}, quantized, my_data.raw_bytes,
-                sizeof(my_data.raw_bytes)),
+                0, kTfLiteString, "", {1}, quantized, data.raw_bytes,
+                sizeof(data.raw_bytes)),
             kTfLiteOk);
   // Read-write string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(1, kTfLiteString, "", {1},
