@@ -57,6 +57,7 @@ enum class Layout {
   IHWO = 8,
   IOHW = 9,
   BHWC = 10,
+  BHW = 11,
 };
 
 std::string ToString(Layout l);
@@ -176,6 +177,7 @@ struct StrongShape;
 using Scalar = StrongShape<Layout::SCALAR>;
 using Linear = StrongShape<Layout::LINEAR>;
 using HW = StrongShape<Layout::HW>;
+using BHW = StrongShape<Layout::BHW>;
 
 // Common tensor shape for CNN models working with images.
 using CHW = StrongShape<Layout::CHW>;
@@ -326,6 +328,7 @@ struct LayoutTraits;
   }
 
 TFLITE_GPU_LAYOUT_TRAITS(HW, Axis::HEIGHT, Axis::WIDTH);
+TFLITE_GPU_LAYOUT_TRAITS(BHW, Axis::BATCH, Axis::HEIGHT, Axis::WIDTH);
 TFLITE_GPU_LAYOUT_TRAITS(OHWI, Axis::OUTPUT_CHANNELS, Axis::HEIGHT, Axis::WIDTH,
                          Axis::INPUT_CHANNELS);
 TFLITE_GPU_LAYOUT_TRAITS(OIHW, Axis::OUTPUT_CHANNELS, Axis::INPUT_CHANNELS,
@@ -559,6 +562,8 @@ auto DispatchByLayout(Layout type, F f)
   switch (type) {
     case Layout::HW:
       return f.template operator()<Layout::HW>();
+    case Layout::BHW:
+      return f.template operator()<Layout::BHW>();
     case Layout::HWC:
       return f.template operator()<Layout::HWC>();
     case Layout::CHW:

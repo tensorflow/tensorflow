@@ -45,9 +45,9 @@ class Pooling : public GPUOperation {
   Status BindArguments();
   int3 GetGridSize() const;
 
-  int2 stride_;
-  int2 padding_;
-  int2 kernel_size_;
+  int4 stride_;
+  int4 padding_;
+  int4 kernel_size_;
 
   PoolingType type_;
   bool output_indices_;

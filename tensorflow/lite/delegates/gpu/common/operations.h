@@ -88,8 +88,8 @@ struct Padding2D {
   // Padding values for every axis (if needed), where 'prepended' defines
   // padding for the beginning of each axis and 'appended' represents end part
   // of the corresponding axis.
-  HW prepended = HW(-1, -1);
-  HW appended = HW(-1, -1);
+  BHW prepended = BHW(-1, -1, -1);
+  BHW appended = BHW(-1, -1, -1);
 };
 
 struct Crop2D : public Padding2D {};
@@ -117,8 +117,8 @@ enum class PoolingType {
 struct Pooling2DAttributes {
   PoolingType type = PoolingType::UNDEFINED;
   // Strides for every axis.
-  HW strides = HW(-1, -1);
-  HW kernel = HW(-1, -1);
+  BHW strides = BHW(-1, -1, -1);
+  BHW kernel = BHW(-1, -1, -1);
   Padding2D padding;
   // NOTE(akulik): technically the number of outputs from Pooling node indicates
   // whether indices are needed or not, but I decided to keep it inside

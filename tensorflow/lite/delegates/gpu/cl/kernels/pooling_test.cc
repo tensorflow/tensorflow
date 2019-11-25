@@ -37,10 +37,10 @@ TEST_F(OpenCLOperationTest, AveragePooling) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
 
   Pooling2DAttributes attr;
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(0, 0);
-  attr.strides = HW(2, 2);
-  attr.kernel = HW(2, 2);
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 0, 0);
+  attr.strides = BHW(1, 2, 2);
+  attr.kernel = BHW(1, 2, 2);
   attr.type = PoolingType::AVERAGE;
 
   for (auto storage : env_.GetSupportedStorages()) {
@@ -66,10 +66,10 @@ TEST_F(OpenCLOperationTest, AveragePoolingNonEmptyPadding) {
   src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f};
 
   Pooling2DAttributes attr;
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(1, 1);
-  attr.strides = HW(1, 1);
-  attr.kernel = HW(2, 2);
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 1, 1);
+  attr.strides = BHW(1, 1, 1);
+  attr.kernel = BHW(1, 2, 2);
   attr.type = PoolingType::AVERAGE;
 
   for (auto storage : env_.GetSupportedStorages()) {
@@ -90,16 +90,78 @@ TEST_F(OpenCLOperationTest, AveragePoolingNonEmptyPadding) {
   }
 }
 
+TEST_F(OpenCLOperationTest, AveragePoolingBatch) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(2, 2, 2, 2);
+  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
+                     8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f};
+
+  Pooling2DAttributes attr;
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 0, 0);
+  attr.strides = BHW(1, 2, 2);
+  attr.kernel = BHW(1, 2, 2);
+  attr.type = PoolingType::AVERAGE;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.batch_support = src_tensor.shape.b != 1;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage});
+      op_def.dst_tensors.push_back({data_type, storage});
+      TensorFloat32 dst_tensor;
+      Pooling operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(2, 1, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {3.0f, 4.0f, 11.0f, 12.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, AveragePooling3D) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(2, 2, 2, 2);
+  src_tensor.data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f,
+                     8.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 15.0f};
+
+  Pooling2DAttributes attr;
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 0, 0);
+  attr.strides = BHW(2, 2, 2);
+  attr.kernel = BHW(2, 2, 2);
+  attr.type = PoolingType::AVERAGE;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.batch_support = src_tensor.shape.b != 1;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage});
+      op_def.dst_tensors.push_back({data_type, storage});
+      TensorFloat32 dst_tensor;
+      Pooling operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(1, 1, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {7.0f, 8.0f}));
+    }
+  }
+}
+
 TEST_F(OpenCLOperationTest, MaxPooling) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(1, 2, 2, 2);
   src_tensor.data = {8.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
 
   Pooling2DAttributes attr;
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(0, 0);
-  attr.strides = HW(2, 2);
-  attr.kernel = HW(2, 2);
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 0, 0);
+  attr.strides = BHW(1, 2, 2);
+  attr.kernel = BHW(1, 2, 2);
   attr.type = PoolingType::MAX;
 
   for (auto storage : env_.GetSupportedStorages()) {
@@ -125,10 +187,10 @@ TEST_F(OpenCLOperationTest, MaxPoolingIndices) {
   src_tensor.data = {8.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
 
   Pooling2DAttributes attr;
-  attr.padding.prepended = HW(0, 0);
-  attr.padding.appended = HW(0, 0);
-  attr.strides = HW(2, 2);
-  attr.kernel = HW(2, 2);
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 0, 0);
+  attr.strides = BHW(1, 2, 2);
+  attr.kernel = BHW(1, 2, 2);
   attr.type = PoolingType::MAX;
   attr.output_indices = true;
 
@@ -152,6 +214,68 @@ TEST_F(OpenCLOperationTest, MaxPoolingIndices) {
         v = static_cast<int>(v);
       }
       EXPECT_THAT(dst_tensor_ind.data, Pointwise(FloatNear(eps), {0.0f, 3.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MaxPooling3D) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(2, 2, 2, 2);
+  src_tensor.data = {8.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 15.0f,
+                     16.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 7.0f};
+
+  Pooling2DAttributes attr;
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 0, 0);
+  attr.strides = BHW(2, 2, 2);
+  attr.kernel = BHW(2, 2, 2);
+  attr.type = PoolingType::MAX;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.batch_support = src_tensor.shape.b != 1;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage});
+      op_def.dst_tensors.push_back({data_type, storage});
+      TensorFloat32 dst_tensor;
+      Pooling operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(1, 1, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {16.0f, 15.0f}));
+    }
+  }
+}
+
+TEST_F(OpenCLOperationTest, MaxPoolingBatch) {
+  TensorFloat32 src_tensor;
+  src_tensor.shape = BHWC(2, 2, 2, 2);
+  src_tensor.data = {8.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 15.0f,
+                     16.0f, 9.0f, 10.0f, 11.0f, 12.0f, 13.0f, 14.0f, 7.0f};
+
+  Pooling2DAttributes attr;
+  attr.padding.prepended = BHW(0, 0, 0);
+  attr.padding.appended = BHW(0, 0, 0);
+  attr.strides = BHW(1, 2, 2);
+  attr.kernel = BHW(1, 2, 2);
+  attr.type = PoolingType::MAX;
+
+  for (auto storage : env_.GetSupportedStorages()) {
+    for (auto precision : env_.GetSupportedPrecisions()) {
+      const float eps = precision == CalculationsPrecision::F32 ? 1e-6f : 1e-3f;
+      OperationDef op_def;
+      op_def.batch_support = src_tensor.shape.b != 1;
+      op_def.precision = precision;
+      auto data_type = DeduceDataTypeFromPrecision(precision);
+      op_def.src_tensors.push_back({data_type, storage});
+      op_def.dst_tensors.push_back({data_type, storage});
+      TensorFloat32 dst_tensor;
+      Pooling operation = CreatePooling(op_def, attr);
+      ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
+                                    BHWC(2, 1, 1, 2), &dst_tensor));
+      EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {8.0f, 15.0f, 16.0f, 13.0f}));
     }
   }
 }

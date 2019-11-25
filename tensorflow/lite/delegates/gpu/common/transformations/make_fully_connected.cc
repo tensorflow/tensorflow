@@ -30,8 +30,8 @@ bool IsConvEquivalentToFullyConnected(const Convolution2DAttributes& attr) {
          attr.weights.shape.h == 1 &&           //
          attr.strides == HW(1, 1) &&            //
          attr.dilations == HW(1, 1) &&          //
-         attr.padding.prepended == HW(0, 0) &&  //
-         attr.padding.appended == HW(0, 0);
+         attr.padding.prepended == BHW(0, 0, 0) &&  //
+         attr.padding.appended == BHW(0, 0, 0);
 }
 
 class MakeFullyConnectedFromConvolution : public NodeTransformation {

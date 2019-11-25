@@ -235,8 +235,10 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->padding = parse_padding(pool_params->padding());
         params->stride_width = pool_params->stride_w();
         params->stride_height = pool_params->stride_h();
+        params->stride_depth = pool_params->stride_d();
         params->filter_width = pool_params->filter_width();
         params->filter_height = pool_params->filter_height();
+        params->filter_depth = pool_params->filter_depth();
         params->activation =
             parse_activation(pool_params->fused_activation_function());
       }

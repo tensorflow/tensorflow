@@ -363,8 +363,10 @@ table Pool2DOptions {
   padding:Padding;
   stride_w:int;
   stride_h:int;
+  stride_d:int;
   filter_width:int;
   filter_height:int;
+  filter_depth:int;
   fused_activation_function:ActivationFunctionType;
 }
 

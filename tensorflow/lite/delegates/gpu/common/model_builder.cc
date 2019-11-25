@@ -477,14 +477,16 @@ Status MaybeFuseActivationToTheSingleOutput(
 
 HW ToHW(int32_t h, int32_t w) { return HW(h > 0 ? h : 1, w > 0 ? w : 1); }
 
+BHW ToBHW(int32_t b, int32_t h, int32_t w) { return BHW(b > 0 ? b : 1, h > 0 ? h : 1, w > 0 ? w : 1); }
+
 template <typename AttrT>
 void UpdatePadding(const TfLitePadding& padding, const BHWC& input_shape,
                    AttrT* attr) {
   if (padding == kTfLitePaddingSame) {
     attr->padding = CalculateSamePadding(input_shape, *attr);
   } else {
-    attr->padding.prepended = HW(0, 0);
-    attr->padding.appended = HW(0, 0);
+    attr->padding.prepended = BHW(0, 0, 0);
+    attr->padding.appended = BHW(0, 0, 0);
   }
 }
 
@@ -550,45 +552,49 @@ Status CheckExactSupportedOpVersion(const TfLiteRegistration* registration,
   return OkStatus();
 }
 
-Status CheckKernels(int kernel_h, int kernel_w) {
-  if (kernel_h <= 0 || kernel_w <= 0) {
+Status CheckKernels(int kernel_d, int kernel_h, int kernel_w) {
+  if (kernel_d <= 0 || kernel_h <= 0 || kernel_w <= 0) {
     return InvalidArgumentError(absl::StrFormat(
-        "Incorrect kernel values: kernel_height = %d, kernel_width = %d.",
-        kernel_h, kernel_w));
+        "Incorrect kernel values: "
+        "kernel_depth = %d, kernel_height = %d, kernel_width = %d.",
+        kernel_d, kernel_h, kernel_w));
   }
   return OkStatus();
 }
 
-Status CheckStrides(int strides_h, int strides_w) {
-  if (strides_h <= 0 || strides_w <= 0) {
+Status CheckStrides(int strides_d, int strides_h, int strides_w) {
+  if (strides_d <= 0 || strides_h <= 0 || strides_w <= 0) {
     return InvalidArgumentError(absl::StrFormat(
-        "Incorrect stride values: stride_height = %d, stride_width = %d.",
-        strides_h, strides_w));
+        "Incorrect stride values: "
+        "stride_depth = %d, stride_height = %d, stride_width = %d.",
+        strides_d, strides_h, strides_w));
   }
   return OkStatus();
 }
 
-Status CheckDilation(int dilation_h, int dilation_w) {
+Status CheckDilation(int dilation_d, int dilation_h, int dilation_w) {
   if (dilation_h <= 0 || dilation_w <= 0) {
-    return InvalidArgumentError(
-        absl::StrFormat("Incorrect dilation values: dilation_factor = %d, "
-                        "dilation_factor = %d.",
-                        dilation_h, dilation_w));
+    return InvalidArgumentError(absl::StrFormat(
+      "Incorrect dilation values: "
+      "dilation_factor = %d, "
+      "dilation_factor = %d, "
+      "dilation_factor = %d.",
+      dilation_d, dilation_h, dilation_w));
   }
   return OkStatus();
 }
 
-Status CheckStridesAndDilation(int strides_h, int strides_w, int dilation_h,
-                               int dilation_w) {
-  RETURN_IF_ERROR(CheckStrides(strides_h, strides_w));
-  RETURN_IF_ERROR(CheckDilation(dilation_h, dilation_w));
+Status CheckStridesAndDilation(int strides_d, int strides_h, int strides_w,
+                               int dilation_d, int dilation_h, int dilation_w) {
+  RETURN_IF_ERROR(CheckStrides(strides_d, strides_h, strides_w));
+  RETURN_IF_ERROR(CheckDilation(dilation_d, dilation_h, dilation_w));
   return OkStatus();
 }
 
-Status CheckKernelsAndStrides(int kernel_h, int kernel_w, int strides_h,
-                              int strides_w) {
-  RETURN_IF_ERROR(CheckKernels(kernel_h, kernel_w));
-  RETURN_IF_ERROR(CheckStrides(strides_h, strides_w));
+Status CheckKernelsAndStrides(int kernel_d, int kernel_h, int kernel_w,
+                              int strides_d, int strides_h, int strides_w) {
+  RETURN_IF_ERROR(CheckKernels(kernel_d, kernel_h, kernel_w));
+  RETURN_IF_ERROR(CheckStrides(strides_d, strides_h, strides_w));
   return OkStatus();
 }
 
@@ -612,8 +618,14 @@ Status NewConstNode(TensorFloat32 t, GraphFloat32* graph,
 Status ParsePoolingAttributes(const TfLitePoolParams* tf_options,
                               const BHWC& input_shape,
                               Pooling2DAttributes* attr) {
-  attr->kernel = ToHW(tf_options->filter_height, tf_options->filter_width);
-  attr->strides = ToHW(tf_options->stride_height, tf_options->stride_width);
+  attr->kernel = ToBHW(
+    tf_options->filter_depth,
+    tf_options->filter_height,
+    tf_options->filter_width);
+  attr->strides = ToBHW(
+    tf_options->stride_depth,
+    tf_options->stride_height,
+    tf_options->stride_width);
   UpdatePadding(tf_options->padding, input_shape, attr);
   return OkStatus();
 }
@@ -858,8 +870,8 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     TfLiteConvParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckStridesAndDilation(
-        tf_options->stride_height, tf_options->stride_width,
-        tf_options->dilation_height_factor, tf_options->dilation_width_factor));
+        1, tf_options->stride_height, tf_options->stride_width,
+        1, tf_options->dilation_height_factor, tf_options->dilation_width_factor));
     return IsActivationSupported(tf_options->activation);
   }
 
@@ -901,7 +913,7 @@ class Convolution2DTransposeBiasParser : public TFLiteOperationParser {
     TfLiteTransposeConvParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
     RETURN_IF_ERROR(
-        CheckStrides(tf_options->stride_height, tf_options->stride_width));
+        CheckStrides(1, tf_options->stride_height, tf_options->stride_width));
     return OkStatus();
   }
 
@@ -942,8 +954,8 @@ class DepthwiseConvolutionOperationParser : public TFLiteOperationParser {
     TfLiteDepthwiseConvParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckStridesAndDilation(
-        tf_options->stride_height, tf_options->stride_width,
-        tf_options->dilation_height_factor, tf_options->dilation_width_factor));
+        1, tf_options->stride_height, tf_options->stride_width,
+        1, tf_options->dilation_height_factor, tf_options->dilation_width_factor));
     RETURN_IF_ERROR(IsActivationSupported(tf_options->activation));
 
     const int depth_multiplier = tf_options->depth_multiplier;
@@ -1575,8 +1587,8 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
                                          /*outputs=*/1));
     }
     RETURN_IF_ERROR(CheckKernelsAndStrides(
-        tf_options->filter_height, tf_options->filter_width,
-        tf_options->stride_height, tf_options->stride_width));
+        tf_options->filter_depth, tf_options->filter_height, tf_options->filter_width,
+        tf_options->stride_depth, tf_options->stride_height, tf_options->stride_width));
     return IsActivationSupported(tf_options->activation);
   }
 
@@ -2049,7 +2061,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
     TfLiteTransposeConvParams* tf_options = nullptr;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     RETURN_IF_ERROR(
-        CheckStrides(tf_options->stride_height, tf_options->stride_width));
+        CheckStrides(1, tf_options->stride_height, tf_options->stride_width));
     return OkStatus();
   }
 
@@ -2133,8 +2145,8 @@ class Unpooling2DOperationParser : public TFLiteOperationParser {
         CheckInputsOutputs(context, tflite_node, /*inputs=*/2, /*outputs=*/1));
     RETURN_IF_ERROR(RetrieveCustomInitialData(tflite_node, &tf_options));
     RETURN_IF_ERROR(CheckKernelsAndStrides(
-        tf_options->filter_height, tf_options->filter_width,
-        tf_options->stride_height, tf_options->stride_width));
+        tf_options->filter_depth, tf_options->filter_height, tf_options->filter_width,
+        tf_options->stride_depth, tf_options->stride_height, tf_options->stride_width));
     return OkStatus();
   }
 

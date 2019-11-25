@@ -54,8 +54,10 @@ typedef enum {
 typedef struct {
   int width;
   int height;
+  int depth;
   int width_offset;
   int height_offset;
+  int depth_offset;
 } TfLitePaddingValues;
 
 typedef struct {
@@ -87,8 +89,10 @@ typedef struct {
   TfLitePadding padding;
   int stride_width;
   int stride_height;
+  int stride_depth;
   int filter_width;
   int filter_height;
+  int filter_depth;
   TfLiteFusedActivation activation;
   struct {
     TfLitePaddingValues padding;

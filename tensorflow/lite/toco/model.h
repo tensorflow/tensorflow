@@ -430,6 +430,7 @@ enum class PaddingType { kNone, kSame, kValid };
 struct FixedPadding {
   int width = 0;
   int height = 0;
+  int depth = 0;
 };
 
 // "Universal" padding struct containing both a generic PaddingType (as
@@ -886,8 +887,10 @@ struct ReorderAxesOperator : Operator {
 struct AveragePoolOperator : Operator {
   AveragePoolOperator() : Operator(OperatorType::kAveragePool) {}
   Padding padding;
+  int stride_depth = 0;
   int stride_height = 0;
   int stride_width = 0;
+  int kdepth = 0;
   int kheight = 0;
   int kwidth = 0;
 };
@@ -917,8 +920,10 @@ struct LocalResponseNormalizationOperator : Operator {
 struct MaxPoolOperator : Operator {
   MaxPoolOperator() : Operator(OperatorType::kMaxPool) {}
   Padding padding;
+  int stride_depth = 0;
   int stride_height = 0;
   int stride_width = 0;
+  int kdepth = 0;
   int kheight = 0;
   int kwidth = 0;
 };
@@ -932,8 +937,10 @@ struct MaxPoolOperator : Operator {
 struct L2PoolOperator : Operator {
   L2PoolOperator() : Operator(OperatorType::kL2Pool) {}
   Padding padding;
+  int stride_depth = 0;
   int stride_height = 0;
   int stride_width = 0;
+  int kdepth = 0;
   int kheight = 0;
   int kwidth = 0;
 };

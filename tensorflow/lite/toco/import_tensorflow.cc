@@ -1219,13 +1219,14 @@ tensorflow::Status ConvertLRNOperator(
 tensorflow::Status ConvertMaxPoolOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
-  CHECK_EQ(node.op(), "MaxPool");
+  CHECK((node.op() == "MaxPool") || (node.op() == "MaxPool3D"));
+  const bool is_2d = (node.op() == "MaxPool");
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto& input_name = node.input(0);
-  // We only support NHWC, which is the default data_format.
-  // So if data_format is not defined, we're all good.
-  if (node.attr().count("data_format")) {
+  if (is_2d) {
     CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
+  } else {
+    CHECK_EQ(GetStringAttr(node, "data_format"), "NDHWC");
   }
   if (HasAttr(node, "T")) {
     CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
@@ -1236,17 +1237,34 @@ tensorflow::Status ConvertMaxPoolOperator(
   maxpool->inputs.push_back(input_name);
   maxpool->outputs.push_back(node.name());
   const auto& strides = GetListAttr(node, "strides");
-  CHECK_EQ(strides.i_size(), 4);
-  CHECK_EQ(strides.i(0), 1);
-  CHECK_EQ(strides.i(3), 1);
-  maxpool->stride_height = strides.i(1);
-  maxpool->stride_width = strides.i(2);
   const auto& ksize = GetListAttr(node, "ksize");
-  CHECK_EQ(ksize.i_size(), 4);
-  CHECK_EQ(ksize.i(0), 1);
-  CHECK_EQ(ksize.i(3), 1);
-  maxpool->kheight = ksize.i(1);
-  maxpool->kwidth = ksize.i(2);
+  if (is_2d) {
+    CHECK_EQ(strides.i_size(), 4);
+    CHECK_EQ(strides.i(0), 1);
+    CHECK_EQ(strides.i(3), 1);
+    maxpool->stride_depth = 1;
+    maxpool->stride_height = strides.i(1);
+    maxpool->stride_width = strides.i(2);
+    CHECK_EQ(ksize.i_size(), 4);
+    CHECK_EQ(ksize.i(0), 1);
+    CHECK_EQ(ksize.i(3), 1);
+    maxpool->kdepth = 1;
+    maxpool->kheight = ksize.i(1);
+    maxpool->kwidth = ksize.i(2);
+  } else {
+    CHECK_EQ(strides.i_size(), 5);
+    CHECK_EQ(strides.i(0), 1);
+    CHECK_EQ(strides.i(4), 1);
+    maxpool->stride_depth = strides.i(1);
+    maxpool->stride_height = strides.i(2);
+    maxpool->stride_width = strides.i(3);
+    CHECK_EQ(ksize.i_size(), 5);
+    CHECK_EQ(ksize.i(0), 1);
+    CHECK_EQ(ksize.i(4), 1);
+    maxpool->kdepth = ksize.i(1);
+    maxpool->kheight = ksize.i(2);
+    maxpool->kwidth = ksize.i(3);
+  }
   const auto& padding = GetStringAttr(node, "padding");
   if (padding == "SAME") {
     maxpool->padding.type = PaddingType::kSame;
@@ -1262,30 +1280,52 @@ tensorflow::Status ConvertMaxPoolOperator(
 tensorflow::Status ConvertAvgPoolOperator(
     const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
     const ModelFlags& model_flags, Model* model) {
-  CHECK_EQ(node.op(), "AvgPool");
+  CHECK((node.op() == "AvgPool") || (node.op() == "AvgPool3D"));
+  const bool is_2d = (node.op() == "AvgPool");
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 1));
   const auto& input_name = node.input(0);
-  // We only support NHWC, which is the default data_format.
-  // So if data_format is not defined, we're all good.
-  if (node.attr().count("data_format")) {
+  if (is_2d) {
     CHECK_EQ(GetStringAttr(node, "data_format"), "NHWC");
+  } else {
+    CHECK_EQ(GetStringAttr(node, "data_format"), "NDHWC");
   }
-  CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  if (HasAttr(node, "T")) {
+    CHECK_EQ(GetDataTypeAttr(node, "T"), DT_FLOAT);
+  } else {
+    LOG(WARNING) << "Found AvgPool operator missing 'T' attribute";
+  }
   auto* avgpool = new AveragePoolOperator;
   avgpool->inputs.push_back(input_name);
   avgpool->outputs.push_back(node.name());
   const auto& strides = GetListAttr(node, "strides");
-  CHECK_EQ(strides.i_size(), 4);
-  CHECK_EQ(strides.i(0), 1);
-  CHECK_EQ(strides.i(3), 1);
-  avgpool->stride_height = strides.i(1);
-  avgpool->stride_width = strides.i(2);
   const auto& ksize = GetListAttr(node, "ksize");
-  CHECK_EQ(ksize.i_size(), 4);
-  CHECK_EQ(ksize.i(0), 1);
-  CHECK_EQ(ksize.i(3), 1);
-  avgpool->kheight = ksize.i(1);
-  avgpool->kwidth = ksize.i(2);
+  if (is_2d) {
+    CHECK_EQ(strides.i_size(), 4);
+    CHECK_EQ(strides.i(0), 1);
+    CHECK_EQ(strides.i(3), 1);
+    avgpool->stride_depth = 1;
+    avgpool->stride_height = strides.i(1);
+    avgpool->stride_width = strides.i(2);
+    CHECK_EQ(ksize.i_size(), 4);
+    CHECK_EQ(ksize.i(0), 1);
+    CHECK_EQ(ksize.i(3), 1);
+    avgpool->kdepth = 1;
+    avgpool->kheight = ksize.i(1);
+    avgpool->kwidth = ksize.i(2);
+  } else {
+    CHECK_EQ(strides.i_size(), 5);
+    CHECK_EQ(strides.i(0), 1);
+    CHECK_EQ(strides.i(4), 1);
+    avgpool->stride_depth = strides.i(1);
+    avgpool->stride_height = strides.i(2);
+    avgpool->stride_width = strides.i(3);
+    CHECK_EQ(ksize.i_size(), 5);
+    CHECK_EQ(ksize.i(0), 1);
+    CHECK_EQ(ksize.i(4), 1);
+    avgpool->kdepth = ksize.i(1);
+    avgpool->kheight = ksize.i(2);
+    avgpool->kwidth = ksize.i(3);
+  }
   const auto& padding = GetStringAttr(node, "padding");
   if (padding == "SAME") {
     avgpool->padding.type = PaddingType::kSame;

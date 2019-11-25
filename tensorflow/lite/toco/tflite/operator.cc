@@ -95,8 +95,9 @@ class AveragePool
     auto activation_function =
         ActivationFunction::Serialize(op.fused_activation_function);
     return ::tflite::CreatePool2DOptions(*builder, padding, op.stride_width,
-                                         op.stride_height, op.kwidth,
-                                         op.kheight, activation_function);
+                                         op.stride_height, op.stride_depth,
+                                         op.kwidth, op.kheight, op.kdepth,
+                                         activation_function);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -104,8 +105,10 @@ class AveragePool
     op->padding.type = Padding::Deserialize(options.padding());
     op->stride_width = options.stride_w();
     op->stride_height = options.stride_h();
+    op->stride_depth = options.stride_d();
     op->kwidth = options.filter_width();
     op->kheight = options.filter_height();
+    op->kdepth = options.filter_depth();
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
@@ -520,8 +523,9 @@ class L2Pool : public BuiltinOperator<L2PoolOperator, ::tflite::Pool2DOptions,
     auto activation_function =
         ActivationFunction::Serialize(op.fused_activation_function);
     return ::tflite::CreatePool2DOptions(*builder, padding, op.stride_width,
-                                         op.stride_height, op.kwidth,
-                                         op.kheight, activation_function);
+                                         op.stride_height, op.stride_depth,
+                                         op.kwidth, op.kheight, op.kdepth,
+                                         activation_function);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -529,8 +533,10 @@ class L2Pool : public BuiltinOperator<L2PoolOperator, ::tflite::Pool2DOptions,
     op->padding.type = Padding::Deserialize(options.padding());
     op->stride_width = options.stride_w();
     op->stride_height = options.stride_h();
+    op->stride_depth = options.stride_d();
     op->kwidth = options.filter_width();
     op->kheight = options.filter_height();
+    op->kdepth = options.filter_depth();
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }
@@ -570,8 +576,9 @@ class MaxPool : public BuiltinOperator<MaxPoolOperator, ::tflite::Pool2DOptions,
     auto activation_function =
         ActivationFunction::Serialize(op.fused_activation_function);
     return ::tflite::CreatePool2DOptions(*builder, padding, op.stride_width,
-                                         op.stride_height, op.kwidth,
-                                         op.kheight, activation_function);
+                                         op.stride_height, op.stride_depth,
+                                         op.kwidth, op.kheight, op.kdepth,
+                                         activation_function);
   }
 
   void ReadOptions(const TfLiteOptions& options,
@@ -579,8 +586,10 @@ class MaxPool : public BuiltinOperator<MaxPoolOperator, ::tflite::Pool2DOptions,
     op->padding.type = Padding::Deserialize(options.padding());
     op->stride_width = options.stride_w();
     op->stride_height = options.stride_h();
+    op->stride_depth = options.stride_d();
     op->kwidth = options.filter_width();
     op->kheight = options.filter_height();
+    op->kdepth = options.filter_depth();
     op->fused_activation_function =
         ActivationFunction::Deserialize(options.fused_activation_function());
   }

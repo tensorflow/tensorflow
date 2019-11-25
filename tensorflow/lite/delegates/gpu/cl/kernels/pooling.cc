@@ -26,13 +26,13 @@ namespace cl {
 namespace {
 
 std::string GetAveragePoolingKernelCode(
-    const OperationDef& op_def, bool stride_correction, const CLDevice& device,
+    const OperationDef& op_def, bool is_3d, const CLDevice& device,
     const std::vector<ElementwiseOperation*>& linked_operations) {
   TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 {"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
                                  op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 {"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
                                  op_def.dst_tensors[0]);
 
   const auto address_mode = GetFastestZeroMode(device);
@@ -49,67 +49,89 @@ std::string GetAveragePoolingKernelCode(
   c += dst_tensor.GetDeclaration(AccessType::WRITE) + ",\n";
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size,             \n";
-  c += "    int2 kernel_size,          \n";
-  c += "    int2 padding,              \n";
-  c += "    int2 stride                \n";
+  c += "    int4 kernel_size,          \n";
+  c += "    int4 padding,              \n";
+  c += "    int4 stride                \n";
   c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
+
+  if (op_def.batch_support) {
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
+  } else {
+    c += "  int X = get_global_id(0);\n";
+  }
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return;\n";
+
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z";
+  if (op_def.batch_support) {
+    c += " || B >= dst_size.w";
+  }
+  c += ") return; \n";
+
   c += "  float4 r = (float4)(0.0f);\n";
   c += "  float window_size = 0.0;\n";
-  if (stride_correction) {
-    c += "  int xs = " +
-         GetXStrideCorrected("X", "src_size.w", "stride.x", "padding.x") +
-         ";\n";
-  } else {
-    c += "  int xs = X * stride.x + padding.x;\n";
-  }
+  c += "  int xs = X * stride.x + padding.x;\n";
   c += "  int ys = Y * stride.y + padding.y;\n";
+  std::string src_batch = "";
+  if (op_def.batch_support) {
+    c += "  int bs = B * stride.z + padding.z;\n";
+    src_batch = "bs";
+  }
+
   c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
   c += "    int y_c = ys + ky;\n";
   c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
   c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  if (op_def.batch_support) {
-    c += "      int x_c = xs + kx * src_size.w;\n";
+  c += "      int x_c = xs + kx;\n";
+  const std::string dst_batch = op_def.batch_support ? "B" : "";
+  if (is_3d) {
+    c += "      for (int kz = 0; kz < kernel_size.z; ++kz) {\n";
+    c += "        int b_c = bs + kz;\n";
+    src_batch = "b_c";
   } else {
-    c += "      int x_c = xs + kx;\n";
+    c += "      {\n";
   }
-  c += "      bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
+  c += "        bool outside = outside_y || x_c < 0 || x_c >= src_size.x;\n";
+  if (op_def.batch_support) {
+    c += "        outside = outside || " + src_batch + " < 0 || " + src_batch + " >= src_size.w;\n";
+  }
   if (manual_clamp) {
-    c += "     r += !outside ? " + src_tensor.ReadAsFloat3D("x_c", "y_c", "Z") +
+    c += "        r += !outside ? " + src_tensor.ReadAsFloat4D("x_c", "y_c", "Z", src_batch) +
          " : (float4)(0.0f);\n";
   } else {
-    c += "      r += " +
-         src_tensor.ReadAsFloat3D("x_c", "y_c", "Z", address_mode) + ";\n";
+    c += "        r += " +
+         src_tensor.ReadAsFloat4D("x_c", "y_c", "Z", src_batch, address_mode) + ";\n";
   }
   c += "        window_size += !outside ? 1.0 : 0.0;\n";
+  c += "      }\n";
   c += "    }\n";
   c += "  }\n";
   // If window_size==0, window covered nothing. This situation is a sign of
   // incorrectly constructed operation. NaNs are expected as output.
   c += "  FLT4 result = TO_FLT4(r / window_size);\n";
-  const LinkingContext context{"result", "X", "Y", "Z"};
+  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  const LinkingContext context{"result", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("result", "X", "Y", "Z");
+  c += "  " + dst_tensor.Write4D("result", "X", "Y", "Z", dst_batch);
   c += "}\n";
 
   return c;
 }
 
 std::string GetMaxPoolingKernelCode(
-    const OperationDef& op_def, bool stride_correction,
+    const OperationDef& op_def, bool is_3d,
     const std::vector<ElementwiseOperation*>& linked_operations,
     bool output_indices) {
   TensorCodeGenerator src_tensor("src_data",
-                                 {"src_size.x", "src_size.y", "src_size.z"},
+                                 {"src_size.x", "src_size.y", "src_size.z", "src_size.w"},
                                  op_def.src_tensors[0]);
   TensorCodeGenerator dst_tensor("dst_data",
-                                 {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                 {"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
                                  op_def.dst_tensors[0]);
   TensorCodeGenerator indices_tensor("dst_indices",
-                                     {"dst_size.x", "dst_size.y", "dst_size.z"},
+                                     {"dst_size.x", "dst_size.y", "dst_size.z", "dst_size.w"},
                                      op_def.dst_tensors[1]);
 
   std::string c = GetCommonDefines(op_def.precision);
@@ -123,68 +145,89 @@ std::string GetMaxPoolingKernelCode(
   }
   c += "    int4 src_size,             \n";
   c += "    int4 dst_size,             \n";
-  c += "    int2 kernel_size,          \n";
-  c += "    int2 padding,              \n";
-  c += "    int2 stride                \n";
+  c += "    int4 kernel_size,          \n";
+  c += "    int4 padding,              \n";
+  c += "    int4 stride                \n";
   c += ") {\n";
-  c += "  int X = get_global_id(0);\n";
+
+  if (op_def.batch_support) {
+    c += "  int linear_id = get_global_id(0);\n";
+    c += "  int X = linear_id / dst_size.w;\n";
+    c += "  int B = linear_id % dst_size.w;\n";
+  } else {
+    c += "  int X = get_global_id(0);\n";
+  }
   c += "  int Y = get_global_id(1);\n";
   c += "  int Z = get_global_id(2);\n";
-  c +=
-      "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z) return; \n";
+
+  c += "  if (X >= dst_size.x || Y >= dst_size.y || Z >= dst_size.z";
+  if (op_def.batch_support) {
+    c += " || B >= dst_size.w";
+  }
+  c += ") return; \n";
+
   c += "  FLT4 maximum = (FLT4)(-10000.0f);\n";
   if (output_indices) {
     c += "  FLT4 indexes = (FLT4)(0.0f);\n";
     c += "  FLT index_counter = (FLT)(0.1f);\n";
   }
-  if (stride_correction) {
-    c += "  int xs = " +
-         GetXStrideCorrected("X", "src_size.w", "stride.x", "padding.x") +
-         ";\n";
-  } else {
-    c += "  int xs = X * stride.x + padding.x;\n";
-  }
+  c += "  int xs = X * stride.x + padding.x;\n";
   c += "  int ys = Y * stride.y + padding.y;\n";
+  std::string src_batch = "";
+  if (op_def.batch_support) {
+    c += "  int bs = B * stride.z + padding.z;\n";
+    src_batch = "bs";
+  }
+
   c += "  for (int ky = 0; ky < kernel_size.y; ++ky) {\n";
   c += "    int y_c = ys + ky;\n";
   c += "    bool outside_y = y_c < 0 || y_c >= src_size.y;\n";
   c += "    for (int kx = 0; kx < kernel_size.x; ++kx) {\n";
-  if (op_def.batch_support) {
-    c += "      int x_c = xs + kx * src_size.w;\n";
+  c += "      int x_c = xs + kx;\n";
+  const std::string dst_batch = op_def.batch_support ? "B" : "";
+  if (is_3d) {
+    c += "      for (int kz = 0; kz < kernel_size.z; ++kz) {\n";
+    c += "        int b_c = bs + kz;\n";
+    src_batch = "b_c";
   } else {
-    c += "      int x_c = xs + kx;\n";
+    c += "      {\n";
   }
-  c += "      bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
-  c += "      if (!outside_x && !outside_y) {\n";
-  c += "        FLT4 src = " + src_tensor.Read3D("x_c", "y_c", "Z") + ";\n";
+  c += "        bool outside_x = x_c < 0 || x_c >= src_size.x;\n";
+  if (op_def.batch_support) {
+    c += "        outside_x &= " + src_batch + " < 0 || " + src_batch + " >= src_size.w;\n";
+  }
+  c += "        if (!outside_x && !outside_y) {\n";
+  c += "          FLT4 src = " + src_tensor.Read4D("x_c", "y_c", "Z", src_batch) + ";\n";
   if (output_indices) {
-    c += "        if (src.x > maximum.x) {\n";
-    c += "          indexes.x = index_counter;\n";
-    c += "          maximum.x = src.x;\n";
-    c += "        }\n";
-    c += "        if (src.y > maximum.y) {\n";
-    c += "          indexes.y = index_counter;\n";
-    c += "          maximum.y = src.y;\n";
-    c += "        }\n";
-    c += "        if (src.z > maximum.z) {\n";
-    c += "          indexes.z = index_counter;\n";
-    c += "          maximum.z = src.z;\n";
-    c += "        }\n";
-    c += "        if (src.w > maximum.w) {\n";
-    c += "          indexes.w = index_counter;\n";
-    c += "          maximum.w = src.w;\n";
-    c += "        }\n";
-    c += "        index_counter += (FLT)(1.0f);\n";
+    c += "          if (src.x > maximum.x) {\n";
+    c += "            indexes.x = index_counter;\n";
+    c += "            maximum.x = src.x;\n";
+    c += "          }\n";
+    c += "          if (src.y > maximum.y) {\n";
+    c += "            indexes.y = index_counter;\n";
+    c += "            maximum.y = src.y;\n";
+    c += "          }\n";
+    c += "          if (src.z > maximum.z) {\n";
+    c += "            indexes.z = index_counter;\n";
+    c += "            maximum.z = src.z;\n";
+    c += "          }\n";
+    c += "          if (src.w > maximum.w) {\n";
+    c += "            indexes.w = index_counter;\n";
+    c += "            maximum.w = src.w;\n";
+    c += "          }\n";
+    c += "          index_counter += (FLT)(1.0f);\n";
   }
-  c += "        maximum = max(src, maximum);\n";
-  c += "      };\n";
+  c += "          maximum = max(src, maximum);\n";
+  c += "        }\n";
+  c += "      }\n";
   c += "    }\n";
   c += "  }\n";
-  const LinkingContext context{"maximum", "X", "Y", "Z"};
+  std::string x_3dcoord = op_def.batch_support ? "X * dst_size.w + B" : "X";
+  const LinkingContext context{"maximum", x_3dcoord, "Y", "Z"};
   c += PostProcess(linked_operations, context);
-  c += "  " + dst_tensor.Write3D("maximum", "X", "Y", "Z");
+  c += "  " + dst_tensor.Write4D("maximum", "X", "Y", "Z", dst_batch);
   if (output_indices) {
-    c += "  " + indices_tensor.Write3D("indexes", "X", "Y", "Z");
+    c += "  " + indices_tensor.Write4D("indexes", "X", "Y", "Z", dst_batch);
   }
   c += "}\n";
 
@@ -196,9 +239,12 @@ std::string GetMaxPoolingKernelCode(
 Pooling::Pooling(const OperationDef& definition,
                  const Pooling2DAttributes& attr)
     : GPUOperation(definition),
-      stride_(attr.strides.w, attr.strides.h),
-      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
-      kernel_size_(attr.kernel.w, attr.kernel.h),
+      stride_(attr.strides.w, attr.strides.h, attr.strides.b, 0),
+      padding_(-attr.padding.prepended.w,
+               -attr.padding.prepended.h,
+               -attr.padding.prepended.b,
+               0),
+      kernel_size_(attr.kernel.w, attr.kernel.h, attr.kernel.b, 0),
       type_(attr.type),
       output_indices_(attr.output_indices) {}
 
@@ -228,15 +274,15 @@ Pooling& Pooling::operator=(Pooling&& kernel) {
 
 Status Pooling::Compile(const CreationContext& creation_context) {
   std::string code;
-  const bool stride_correction = definition_.batch_support && stride_.x != 1;
+  const bool is_3d = stride_.z != 1 || padding_.z != 0 || kernel_size_.z != 1;
   switch (type_) {
     case PoolingType::AVERAGE:
-      code = GetAveragePoolingKernelCode(definition_, stride_correction,
+      code = GetAveragePoolingKernelCode(definition_, is_3d,
                                          *creation_context.device,
                                          linked_operations_);
       break;
     case PoolingType::MAX:
-      code = GetMaxPoolingKernelCode(definition_, stride_correction,
+      code = GetMaxPoolingKernelCode(definition_, is_3d,
                                      linked_operations_, output_indices_);
       break;
     default:
@@ -257,11 +303,10 @@ Status Pooling::BindArguments() {
   if (output_indices_) {
     RETURN_IF_ERROR(kernel_.SetMemoryAuto(dst_[1]->GetMemoryPtrForWriting()));
   }
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWBatchedHDB()));
-  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWBatchedHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(src_[0]->GetWHDB()));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(dst_[0]->GetWHDB()));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(kernel_size_));
-  RETURN_IF_ERROR(
-      kernel_.SetBytesAuto(int2(padding_.x * src_[0]->Batch(), padding_.y)));
+  RETURN_IF_ERROR(kernel_.SetBytesAuto(padding_));
   RETURN_IF_ERROR(kernel_.SetBytesAuto(stride_));
 
   return OkStatus();

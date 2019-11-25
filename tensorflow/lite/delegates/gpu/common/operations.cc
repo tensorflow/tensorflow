@@ -37,8 +37,10 @@ bool Padding2D::operator==(const Padding2D& value) {
 bool Padding2D::operator!=(const Padding2D& value) { return !(*this == value); }
 
 Padding2D& Padding2D::operator-(const Padding2D& value) {
+  prepended.b -= value.prepended.b;
   prepended.h -= value.prepended.h;
   prepended.w -= value.prepended.w;
+  appended.b -= value.appended.b;
   appended.h -= value.appended.h;
   appended.w -= value.appended.w;
   return *this;
@@ -264,24 +266,36 @@ int32_t CalculateSamePadding(const BHWC& input,
 
 Padding2D MakeSamePadding(const BHWC& input,
                           const ConvolutionTransposedAttributes& attr) {
-  int32_t padding_height = CalculateSamePadding<Axis::HEIGHT>(input, attr);
-  int32_t padding_width = CalculateSamePadding<Axis::WIDTH>(input, attr);
+  const int32_t padding_batch = CalculateSamePadding<Axis::BATCH>(input, attr);
+  const int32_t padding_height = CalculateSamePadding<Axis::HEIGHT>(input, attr);
+  const int32_t padding_width = CalculateSamePadding<Axis::WIDTH>(input, attr);
   Padding2D padding;
-  padding.prepended = HW(padding_height / 2, padding_width / 2);
-  padding.appended = HW(padding_height - padding_height / 2,
-                        padding_width - padding_width / 2);
+  padding.prepended = BHW(
+    padding_batch / 2,
+    padding_height / 2,
+    padding_width / 2);
+  padding.appended = BHW(
+    padding_batch - padding_batch / 2,
+    padding_height - padding_height / 2,
+    padding_width - padding_width / 2);
   return padding;
 }
 
 // If padding depends on input, convert it into fixed padding.
 template <class AttrT>
 Padding2D MakeSamePadding(const BHWC& input, const AttrT& attr) {
-  int32_t padding_height = CalculateSamePadding<Axis::HEIGHT>(input, attr);
-  int32_t padding_width = CalculateSamePadding<Axis::WIDTH>(input, attr);
+  const int32_t padding_batch = CalculateSamePadding<Axis::BATCH>(input, attr);
+  const int32_t padding_height = CalculateSamePadding<Axis::HEIGHT>(input, attr);
+  const int32_t padding_width = CalculateSamePadding<Axis::WIDTH>(input, attr);
   Padding2D padding;
-  padding.prepended = HW(padding_height / 2, padding_width / 2);
-  padding.appended = HW(padding_height - padding_height / 2,
-                        padding_width - padding_width / 2);
+  padding.prepended = BHW(
+    padding_batch / 2,
+    padding_height / 2,
+    padding_width / 2);
+  padding.appended = BHW(
+    padding_batch - padding_batch / 2,
+    padding_height - padding_height / 2,
+    padding_width - padding_width / 2);
   return padding;
 }
 
@@ -298,7 +312,8 @@ BHWC CalculateOutputShape(const BHWC& input,
 }
 
 BHWC CalculateOutputShape(const BHWC& input, const Pooling2DAttributes& attr) {
-  return BHWC(input.b, CalculateOutput<Axis::HEIGHT>(input, attr),
+  return BHWC(CalculateOutput<Axis::BATCH>(input, attr),
+              CalculateOutput<Axis::HEIGHT>(input, attr),
               CalculateOutput<Axis::WIDTH>(input, attr), input.c);
 }
 
