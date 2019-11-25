@@ -7,10 +7,12 @@
 [![Documentation](https://img.shields.io/badge/api-reference-blue.svg)](https://www.tensorflow.org/api_docs/) |
 
 [TensorFlow](https://www.tensorflow.org/) is an end-to-end open source platform
-for machine learning. It has a comprehensive, flexible ecosystem of
+for machine learning. It is the most common framework for training and deploying deep neural networks. Tensorflow has variety of builtin modules for tasks in [Computer Vision] (https://en.wikipedia.org/wiki/Computer_vision), [Natural Language Processing] (https://en.wikipedia.org/wiki/Natural_language_processing), [Reinforcement Learning] (https://en.wikipedia.org/wiki/Reinforcement_learning), and other domains.
+
+Tensorflow is easy to learn and use, it has a comprehensive and flexible ecosystem of
 [tools](https://www.tensorflow.org/resources/tools),
 [libraries](https://www.tensorflow.org/resources/libraries-extensions), and
-[community](https://www.tensorflow.org/community) resources that lets
+[community](https://www.tensorflow.org/community) resources to help
 researchers push the state-of-the-art in ML and developers easily build and
 deploy ML-powered applications.
 
