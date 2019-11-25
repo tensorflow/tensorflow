@@ -289,6 +289,19 @@ class TextVectorizationPreprocessingTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
 
+def test_init_layer(self):
+    input_data = keras.Input(shape=(None,), dtype=dtypes.string)
+    layer = get_layer_class()(
+        max_tokens=None,
+        standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+        split=None,
+        ngrams=None,
+        output_mode=None)
+    int_data = layer(input_data)
+    model = keras.Model(inputs=input_data, outputs=int_data)
+    assert int_data.count_params() == 0
+    model.summary()
+
   def test_normalization(self):
     input_array = np.array([["Earth", "wInD", "aNd", "firE"],
                             ["fire|", "an<>d", "{earth}", "michigan@%$"]])

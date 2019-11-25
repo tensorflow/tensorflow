@@ -296,21 +296,24 @@ class TextVectorization(CombinerPreprocessingLayer):
       raise NotImplementedError(
           "Saving is not yet supported for TextVectorization layers.")
     self._table._list_extra_dependencies_for_serialization = fail  # pylint: disable=protected-access
+    self._table.shape = tensor_shape.TensorShape((0,))  # pylint: disable=protected-access
 
     self._add_trackable(self._table, trainable=False)
 
     # We are adding this here instead of in build() since it does not depend
     # on the input shape at all.
     if self._output_mode == TFIDF:
-      # Create the TFIDF weight, but use a (None,) tensorshape. This creates
+      # Create the TFIDF weight, but use a (0,) tensorshape. This creates
       # a 1D variable with arbitrary shape, which we can assign any weight to
       # so long as it has 1 dimension. In order to properly initialize this
       # weight in Keras, we need to provide a custom callable initializer which
       # does not depend on the shape of the weight (as all other initializers
       # do) since the weight is not known. Hence the lambda shape, dtype: [0].
+      # Furthermore, using (0,) instead of (None,) so we can sucessfully
+      # compute the number of trainable parameters via count_params(self).
       self._tf_idf_weights = self.add_weight(
           name="tfidf_data",
-          shape=tensor_shape.TensorShape((None,)),
+          shape=tensor_shape.TensorShape((0,)),
           dtype=K.floatx(),
           trainable=False,
           initializer=lambda shape, dtype: [0])
