@@ -164,11 +164,12 @@ Status BufferedInputStream::Seek(int64 position) {
     return SkipNBytes(position);
   }
   else if (position < Tell()) {
-    // Seek within buffer
+    // Seek within buffer before 'pos_'
     pos_ -= Tell() - position;
     return Status::OK();
   }
   else {
+    // Seek after 'pos_'
     return SkipNBytes(position - buf_lower_limit);
   }
 }
