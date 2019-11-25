@@ -1141,20 +1141,24 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
     return kTfLiteError;
   }
 
-  if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
-    int last_execution_plan_index_prepared;
-    TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
-                                     0, &last_execution_plan_index_prepared));
-    if (has_dynamic_tensors_) {
-      // Make sure that we are in a defined ready state before returning.
-      // Plan and allocate tensors before returning.
-      TF_LITE_ENSURE_OK(&context_, EnsureMemoryAllocations());
-      ReportError(
-          "Attempting to use a delegate that only supports static-sized "
-          "tensors with a graph that has dynamic-sized tensors.");
-      return kTfLiteError;
-    }
-  }
+  // TODO(guydavid): The following is commented because it makes use of the 
+  //                 CPU back-end to check for dynamic-sized tensors.
+  //                 This is a limitation because it couples it to other
+  //                 back-ends.
+  // if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
+  //   int last_execution_plan_index_prepared;
+  //   TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
+  //                                    0, &last_execution_plan_index_prepared));
+  //   if (has_dynamic_tensors_) {
+  //     // Make sure that we are in a defined ready state before returning.
+  //     // Plan and allocate tensors before returning.
+  //     TF_LITE_ENSURE_OK(&context_, EnsureMemoryAllocations());
+  //     ReportError(
+  //         "Attempting to use a delegate that only supports static-sized "
+  //         "tensors with a graph that has dynamic-sized tensors.");
+  //     return kTfLiteError;
+  //   }
+  // }
 
   const bool was_invokable_before_delegate = state_ == kStateInvokable;
   if (delegates_applied_.empty()) {
