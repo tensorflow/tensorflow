@@ -88,8 +88,7 @@ cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     deps = [
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:raw_coding",
     ],
 )
 

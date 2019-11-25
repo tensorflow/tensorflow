@@ -374,6 +374,15 @@ cc_library(
 )
 
 cc_library(
+    name = "raw_coding",
+    hdrs = ["raw_coding.h"],
+    deps = [
+        ":byte_order",
+        ":types",
+    ],
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
