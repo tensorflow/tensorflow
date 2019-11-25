@@ -694,7 +694,7 @@ def MultiResultOpKind5: I64EnumAttrCase<"kind5", 5>;
 def MultiResultOpKind6: I64EnumAttrCase<"kind6", 6>;
 
 def MultiResultOpEnum: I64EnumAttr<
-  "Multi-result op kinds", "", [
+  "MultiResultOpEnum", "Multi-result op kinds", [
     MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
     MultiResultOpKind4, MultiResultOpKind5, MultiResultOpKind6
   ]>;
