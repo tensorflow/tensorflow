@@ -17,6 +17,7 @@ add_llvm_library(MLIRSPIRV
 add_dependencies(MLIRSPIRV
   MLIRSPIRVCanonicalizationIncGen
   MLIRSPIRVEnumsIncGen
+  MLIRSPIRVLoweringStructGen
   MLIRSPIRVOpsIncGen
   MLIRSPIRVOpUtilsGen)
 
