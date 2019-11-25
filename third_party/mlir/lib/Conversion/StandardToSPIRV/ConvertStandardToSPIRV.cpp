@@ -63,7 +63,7 @@ public:
       return matchFailure();
     }
     auto spirvConstType =
-        typeConverter.convertBasicType(constIndexOp.getResult()->getType());
+        typeConverter.convertType(constIndexOp.getResult()->getType());
     auto spirvConstVal =
         rewriter.getIntegerAttr(spirvConstType, constAttr.getInt());
     rewriter.replaceOpWithNewOp<spirv::ConstantOp>(constIndexOp, spirvConstType,
@@ -120,7 +120,7 @@ public:
   matchAndRewrite(StdOp operation, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto resultType =
-        this->typeConverter.convertBasicType(operation.getResult()->getType());
+        this->typeConverter.convertType(operation.getResult()->getType());
     rewriter.template replaceOpWithNewOp<SPIRVOp>(
         operation, resultType, operands, ArrayRef<NamedAttribute>());
     return this->matchSuccess();

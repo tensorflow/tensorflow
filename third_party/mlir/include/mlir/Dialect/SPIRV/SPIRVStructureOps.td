@@ -243,7 +243,10 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
       "TypeAttr type, ArrayRef<NamedAttribute> namedAttrs", [{
       state.addAttribute("type", type);
       state.addAttributes(namedAttrs);
-    }]>
+    }]>,
+    OpBuilder<[{Builder *builder, OperationState &state,
+                Type type, StringRef name, unsigned descriptorSet,
+                unsigned binding}]>
   ];
 
   let results = (outs);

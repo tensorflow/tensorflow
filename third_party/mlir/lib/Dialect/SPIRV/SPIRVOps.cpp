@@ -1421,6 +1421,19 @@ Operation::operand_range spirv::FunctionCallOp::getArgOperands() {
 // spv.globalVariable
 //===----------------------------------------------------------------------===//
 
+void spirv::GlobalVariableOp::build(Builder *builder, OperationState &state,
+                                    Type type, StringRef name,
+                                    unsigned descriptorSet, unsigned binding) {
+  build(builder, state, TypeAttr::get(type), builder->getStringAttr(name),
+        nullptr);
+  state.addAttribute(
+      spirv::SPIRVDialect::getAttributeName(spirv::Decoration::DescriptorSet),
+      builder->getI32IntegerAttr(descriptorSet));
+  state.addAttribute(
+      spirv::SPIRVDialect::getAttributeName(spirv::Decoration::Binding),
+      builder->getI32IntegerAttr(binding));
+}
+
 static ParseResult parseGlobalVariableOp(OpAsmParser &parser,
                                          OperationState &state) {
   // Parse variable name.

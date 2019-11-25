@@ -1230,6 +1230,10 @@ class ArrayMinCount<int n> : AttrConstraint<
     CPred<"$_self.cast<ArrayAttr>().size() >= " # n>,
     "with at least " # n # " elements">;
 
+class ArrayCount<int n> : AttrConstraint<
+    CPred<"$_self.cast<ArrayAttr>().size() == " #n>,
+    "with exactly " # n # " elements">;
+
 class IntArrayNthElemEq<int index, int value> : AttrConstraint<
     And<[
       CPred<"$_self.cast<ArrayAttr>().size() > " # index>,

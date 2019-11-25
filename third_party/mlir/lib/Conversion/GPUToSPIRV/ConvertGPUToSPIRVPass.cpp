@@ -54,7 +54,7 @@ void GPUToSPIRVPass::runOnModule() {
     if (!gpu::GPUDialect::isKernel(funcOp)) {
       return;
     }
-    OpBuilder builder(module.getBodyRegion());
+    OpBuilder builder(funcOp.getOperation());
     // Create a new spirv::ModuleOp for this function, and clone the
     // function into it.
     // TODO : Generalize this to account for different extensions,
@@ -77,44 +77,19 @@ void GPUToSPIRVPass::runOnModule() {
   });
 
   /// Dialect conversion to lower the functions with the spirv::ModuleOps.
-  SPIRVBasicTypeConverter basicTypeConverter;
-  SPIRVTypeConverter typeConverter(&basicTypeConverter);
+  SPIRVTypeConverter typeConverter;
   OwningRewritePatternList patterns;
   populateGPUToSPIRVPatterns(context, typeConverter, patterns);
   populateStandardToSPIRVPatterns(context, typeConverter, patterns);
 
   ConversionTarget target(*context);
   target.addLegalDialect<spirv::SPIRVDialect>();
-  target.addDynamicallyLegalOp<FuncOp>([&](FuncOp op) {
-    // TODO(ravishankarm) : Currently lowering does not support handling
-    // function conversion of non-kernel functions. This is to be added.
-
-    // For kernel functions, verify that the signature is void(void).
-    return gpu::GPUDialect::isKernel(op) && op.getNumResults() == 0 &&
-           op.getNumArguments() == 0;
-  });
+  target.addDynamicallyLegalOp<FuncOp>(
+      [&](FuncOp op) { return typeConverter.isSignatureLegal(op.getType()); });
 
   if (failed(applyFullConversion(spirvModules, target, patterns,
                                  &typeConverter))) {
     return signalPassFailure();
-  }
-
-  // After the SPIR-V modules have been generated, some finalization is needed
-  // for the entry functions. For example, adding spv.EntryPoint op,
-  // spv.ExecutionMode op, etc.
-  for (auto *spvModule : spirvModules) {
-    for (auto op :
-         cast<spirv::ModuleOp>(spvModule).getBlock().getOps<FuncOp>()) {
-      if (gpu::GPUDialect::isKernel(op)) {
-        OpBuilder builder(op.getContext());
-        builder.setInsertionPointAfter(op);
-        if (failed(spirv::finalizeEntryFunction(op, builder))) {
-          return signalPassFailure();
-        }
-        op.getOperation()->removeAttr(Identifier::get(
-            gpu::GPUDialect::getKernelFuncAttrName(), op.getContext()));
-      }
-    }
   }
 }
 

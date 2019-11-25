@@ -40,8 +40,7 @@ void ConvertStandardToSPIRVPass::runOnModule() {
   OwningRewritePatternList patterns;
   auto module = getModule();
 
-  SPIRVBasicTypeConverter basicTypeConverter;
-  SPIRVTypeConverter typeConverter(&basicTypeConverter);
+  SPIRVTypeConverter typeConverter;
   populateStandardToSPIRVPatterns(module.getContext(), typeConverter, patterns);
   ConversionTarget target(*(module.getContext()));
   target.addLegalDialect<spirv::SPIRVDialect>();
