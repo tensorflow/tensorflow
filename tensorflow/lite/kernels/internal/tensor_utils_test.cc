@@ -1554,6 +1554,19 @@ TEST(uKernels, BatchVectorBatchVectorDotProductTest) {
   EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({0.5, 1.75})));
 }
 
+TEST(uKernels, BatchVectorBatchVectorDotProductIntegerTest) {
+  constexpr int kVectorSize = 5;
+  constexpr int kBatch = 2;
+  static int16_t input1[kVectorSize * kBatch] = {0,   5,  10,  -15, 20,
+                                                 -25, 30, -35, 40,  -45};
+  static int16_t input2[kVectorSize * kBatch] = {1,  -1, 1,  -1, 1,
+                                                 -1, 1,  -1, 1,  1};
+  std::vector<int32_t> output(kBatch);
+  BatchVectorBatchVectorDotProduct(input1, input2, kVectorSize, kBatch,
+                                   output.data(), /*result_stride=*/1);
+  EXPECT_THAT(output, ElementsAreArray(ArrayFloatNear({40, 85})));
+}
+
 TEST(uKernels, VectorShiftLeftTest) {
   constexpr int kVectorSize = 5;
   static float input[kVectorSize] = {0.0, -0.5, 1.0, -1.5, 2.0};
@@ -1582,6 +1595,17 @@ TEST(uKernels, ReductionSumVectorTest) {
   ReductionSumVector(input, result2.data(), kOutputVectorSize2,
                      kReductionSize2);
   EXPECT_THAT(result2, ElementsAreArray(ArrayFloatNear({1.0, 3.5})));
+}
+
+TEST(uKernels, ReductionSumVectorIntegerTest) {
+  constexpr int kInputVectorSize = 10;
+  constexpr int kOutputVectorSize1 = 5;
+  constexpr int kReductionSize1 = 2;
+  static int32_t input[kInputVectorSize] = {1, 2, 1, 5, -3, 2, 1, 2, 5, 10};
+  std::vector<int32_t> result1(kOutputVectorSize1);
+  ReductionSumVector(input, result1.data(), kOutputVectorSize1,
+                     kReductionSize1);
+  EXPECT_THAT(result1, testing::ElementsAreArray({3, 6, -1, 3, 15}));
 }
 
 namespace {
