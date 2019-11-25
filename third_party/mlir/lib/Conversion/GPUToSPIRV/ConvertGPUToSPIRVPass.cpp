@@ -19,6 +19,7 @@
 // into a spv.module operation
 //
 //===----------------------------------------------------------------------===//
+#include "mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRVPass.h"
 #include "mlir/Conversion/GPUToSPIRV/ConvertGPUToSPIRV.h"
 #include "mlir/Conversion/StandardToSPIRV/ConvertStandardToSPIRV.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
@@ -93,8 +94,8 @@ void GPUToSPIRVPass::runOnModule() {
   }
 }
 
-OpPassBase<ModuleOp> *createConvertGPUToSPIRVPass() {
-  return new GPUToSPIRVPass();
+std::unique_ptr<OpPassBase<ModuleOp>> mlir::createConvertGPUToSPIRVPass() {
+  return std::make_unique<GPUToSPIRVPass>();
 }
 
 static PassRegistration<GPUToSPIRVPass>
