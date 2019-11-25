@@ -27,6 +27,7 @@
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/StringSet.h"
 
 using namespace mlir;
 using namespace mlir::vector;
@@ -56,7 +57,10 @@ static ParseResult parseContractionOp(OpAsmParser &parser,
   SmallVector<Type, 2> types;
   Type resultVectorType;
   auto loc = parser.getCurrentLocation();
-  if (parser.parseOperand(lhsInfo) || parser.parseComma() ||
+  DictionaryAttr dictAttr;
+  // TODO(andydavis, ntv) Unify linalg op attribute parsing.
+  if (parser.parseAttribute(dictAttr, "_", result.attributes) ||
+      parser.parseOperand(lhsInfo) || parser.parseComma() ||
       parser.parseOperand(rhsInfo) || parser.parseComma() ||
       parser.parseOperand(accInfo) ||
       parser.parseTrailingOperandList(masksInfo) ||
@@ -68,7 +72,8 @@ static ParseResult parseContractionOp(OpAsmParser &parser,
       parser.resolveOperand(accInfo, resultVectorType, result.operands) ||
       parser.addTypeToList(resultVectorType, result.types))
     return failure();
-
+  result.attributes.assign(dictAttr.getValue().begin(),
+                           dictAttr.getValue().end());
   if (masksInfo.empty())
     return success();
   if (masksInfo.size() != 2)
@@ -90,13 +95,23 @@ static ParseResult parseContractionOp(OpAsmParser &parser,
 }
 
 static void print(OpAsmPrinter &p, ContractionOp op) {
-  p << op.getOperationName() << " " << *op.lhs() << ", " << *op.rhs();
-  p << ", " << *op.acc();
+  // TODO(andydavis, ntv) Unify printing code with linalg ops.
+  auto attrNames = op.getTraitAttrNames();
+  llvm::StringSet<> traitAttrsSet;
+  traitAttrsSet.insert(attrNames.begin(), attrNames.end());
+  SmallVector<NamedAttribute, 8> attrs;
+  for (auto attr : op.getAttrs()) {
+    if (traitAttrsSet.count(attr.first.strref()) > 0)
+      attrs.push_back(attr);
+  }
+  auto dictAttr = DictionaryAttr::get(attrs, op.getContext());
+  p << op.getOperationName() << " " << dictAttr << " " << *op.lhs() << ", ";
+  p << *op.rhs() << ", " << *op.acc();
   if (llvm::size(op.masks()) == 2) {
     p << ", " << **op.masks().begin();
     p << ", " << **(op.masks().begin() + 1);
   }
-  p.printOptionalAttrDict(op.getAttrs());
+  p.printOptionalAttrDict(op.getAttrs(), attrNames);
   p << " : " << op.lhs()->getType() << ", " << op.rhs()->getType() << " into "
     << op.getResultType();
 }
@@ -159,6 +174,34 @@ static LogicalResult verify(ContractionOp op) {
   auto rhsType = op.getRhsType();
   auto accType = op.getAccType();
   auto resType = op.getResultType();
+
+  // Verify that an indexing map was specified for each vector operand.
+  if (op.indexing_maps().size() != 3)
+    return op.emitOpError("expected an indexing map for each vector operand");
+
+  // Verify that each index map has 'numIterators' inputs, no symbols, and
+  // that the number of map outputs equals the rank of its associated
+  // vector operand.
+  unsigned numIterators = op.iterator_types().getValue().size();
+  for (auto it : llvm::enumerate(op.indexing_maps())) {
+    auto index = it.index();
+    auto map = it.value().cast<AffineMapAttr>().getValue();
+    if (map.getNumSymbols() != 0)
+      return op.emitOpError("expected indexing map ")
+             << index << " to have no symbols";
+    if (map.getNumDims() != numIterators)
+      return op.emitOpError("expected indexing map ")
+             << index << " to have " << numIterators << " number of inputs";
+    auto operandType = op.getOperand(index)->getType().cast<VectorType>();
+    unsigned rank = operandType.getShape().size();
+    if (map.getNumResults() != rank)
+      return op.emitOpError("expected indexing map ")
+             << index << " to have " << rank << " number of outputs";
+    if (!map.isProjectedPermutation())
+      return op.emitOpError("expected indexing map ")
+             << index << " to be a projected permutation of its inputs";
+  }
+
   auto contractingDimMap = op.getContractingDimMap();
   auto batchDimMap = op.getBatchDimMap();
 
@@ -198,27 +241,54 @@ static LogicalResult verify(ContractionOp op) {
   return success();
 }
 
-static std::vector<std::pair<int64_t, int64_t>> getDimMap(Attribute attr) {
+SmallVector<StringRef, 2> ContractionOp::getTraitAttrNames() {
+  return SmallVector<StringRef, 2>{"indexing_maps", "iterator_types"};
+}
+
+static int64_t getResultIndex(AffineMap map, AffineExpr targetExpr) {
+  for (int64_t i = 0, e = map.getNumResults(); i < e; ++i)
+    if (targetExpr == map.getResult(i))
+      return i;
+  return -1;
+}
+
+static std::vector<std::pair<int64_t, int64_t>>
+getDimMap(ArrayRef<AffineMap> indexingMaps, ArrayAttr iteratorTypes,
+          StringRef targetIteratorTypeName, MLIRContext *context) {
   std::vector<std::pair<int64_t, int64_t>> dimMap;
-  auto dimPairs = attr.dyn_cast_or_null<ArrayAttr>();
-  if (!dimPairs)
-    return dimMap;
-  for (auto dimPairAttr : dimPairs) {
-    auto dimPair = dimPairAttr.cast<ArrayAttr>();
-    assert(dimPair.size() == 2);
-    auto lhsDim = dimPair.begin()->cast<IntegerAttr>().getInt();
-    auto rhsDim = std::prev(dimPair.end())->cast<IntegerAttr>().getInt();
-    dimMap.push_back({lhsDim, rhsDim});
+  for (auto it : llvm::enumerate(iteratorTypes)) {
+    auto iteratorTypeName = it.value().cast<StringAttr>().getValue();
+    if (iteratorTypeName != targetIteratorTypeName)
+      continue;
+    // Search lhs/rhs map results for 'targetExpr'.
+    auto targetExpr = getAffineDimExpr(it.index(), context);
+    int64_t lhsDim = getResultIndex(indexingMaps[0], targetExpr);
+    int64_t rhsDim = getResultIndex(indexingMaps[1], targetExpr);
+    if (lhsDim >= 0 && rhsDim >= 0)
+      dimMap.push_back({lhsDim, rhsDim});
   }
   return dimMap;
 }
 
 std::vector<std::pair<int64_t, int64_t>> ContractionOp::getContractingDimMap() {
-  return getDimMap(getAttr(getContractingDimMapAttrName()));
+  SmallVector<AffineMap, 4> indexingMaps(getIndexingMaps());
+  return getDimMap(indexingMaps, iterator_types(),
+                   getReductionIteratorTypeName(), getContext());
 }
 
 std::vector<std::pair<int64_t, int64_t>> ContractionOp::getBatchDimMap() {
-  return getDimMap(getAttr(getBatchDimMapAttrName()));
+  SmallVector<AffineMap, 4> indexingMaps(getIndexingMaps());
+  return getDimMap(indexingMaps, iterator_types(),
+                   getParallelIteratorTypeName(), getContext());
+}
+
+SmallVector<AffineMap, 4> ContractionOp::getIndexingMaps() {
+  SmallVector<AffineMap, 4> res;
+  auto mapAttrs = indexing_maps().getValue();
+  res.reserve(mapAttrs.size());
+  for (auto mapAttr : mapAttrs)
+    res.push_back(mapAttr.cast<AffineMapAttr>().getValue());
+  return res;
 }
 
 //===----------------------------------------------------------------------===//

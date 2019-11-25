@@ -46,12 +46,11 @@ class Vector_Op<string mnemonic, list<OpTrait> traits = []> :
 
 // TODO(andydavis, ntv) Add an attribute to specify a different algebra
 // with operators other than the current set: {*, +}.
-// TODO(andydavis) Consider using AffineMaps to express contracting, batch
-// and free dimension pairs.
 def Vector_ContractionOp :
   Vector_Op<"contract", [NoSideEffect]>,
     Arguments<(ins AnyVector:$lhs, AnyVector:$rhs, AnyVector:$acc,
-               Variadic<TupleOf<[Index]>>:$masks)>,
+               Variadic<TupleOf<[Index]>>:$masks,
+               AffineMapArrayAttr:$indexing_maps, ArrayAttr:$iterator_types)>,
     Results<(outs AnyVector)> {
   let summary = "vector contraction operation";
   let description = [{
@@ -64,39 +63,59 @@ def Vector_ContractionOp :
     Optional vector mask arguments specify the dynamic dimension sizes of
     valid data within the lhs/rhs vector arguments.
 
-    Dimensions for the arguments and result type fall into three categories:
-    *) Contracting: contracting dimensions are present in the lhs and rhs
+    An iterator type attribute list must be specified, where each element of
+    the list represents an iterator with one of the following types:
+
+    *) "reduction": reduction dimensions are present in the lhs and rhs
                     arguments but not in the output (or optional accumulator
                     argument). These are the dimensions along which the vector
-                    contraction op computes the sum of products, and contracting
-                    dimension pair dimension sizes must match between lhs/rhs.
-    *) Batch: batch dimensions are non-contracting dimensions and so are
-              present in the output and in the accumulator argument. The lhs
-              and rhs co-iterate along the batch dimension and so dimension
-              sizes must match across all arguments and result.
-    *) Free: free dimensions are non-contraction, non-batch dimensions and
-             are present in the output and accumulator argument. The lhs and
-             rhs free dimensions are unrelated to each other and do not
-             co-iterate.
+                    contraction op computes the sum of products, and
+                    contracting dimension pair dimension sizes must match
+                    between lhs/rhs.
+    *) "parallel": Batch dimensions are iterator type "parallel", and
+                   are non-contracting dimensions present in the lhs, rhs and
+                   output. The lhs/rhs co-iterate along the batch dimensions,
+                   which should be expressed in their indexing maps.
 
-    Contracting and batch dimensions are specified as dimension pairs
-    of logical dimension numbers: the first in the pair represents the lhs
-    logical dimension number and the second in the pair represents the
-    associated rhs logical dimension number. A dimension pair binds together
-    logical dimension numbers from the lhs/rhs which co-iterate together, either
-    as contracting or batch dimensions.
+                   Free dimensions are iterator type "parallel", and are
+                   non-contraction, non-batch dimensions accessed by either the
+                   lhs or rhs (but not both). The lhs and rhs free dimensions
+                   are unrelated to each other and do not co-iterate, which
+                   should be expressed in their indexing maps.
+
+    An indexing map attribute list must be specified with an entry for lhs, rhs
+    and acc arguments. An indexing map attribute specifies a mapping from each
+    iterator in the iterator type list, to each dimension of an N-D vector.
 
     Examples:
 
       // 2D vector contraction with one contracting dimension (matmul).
-      %3 = vector.contract %0, %1, %2
-        { contracting_dim_map = [[1, 0]] }
-          : vector<4x3xf32>, vector<3x7xf32> into vector<4x7xf32>
+      #contraction_accesses = [
+        (i, j, k) -> (i, k),
+        (i, j, k) -> (k, j),
+        (i, j, k) -> (i, j)
+      ]
+      #contraction_trait = {
+        indexing_maps = #contraction_accesses,
+        iterator_types = [parallel, parallel, reduction]
+      }
+
+      %3 = vector.contract #contraction_trait %0, %1, %2
+        : vector<4x3xf32>, vector<3x7xf32> into vector<4x7xf32>
 
       // 4D to 3D vector contraction with two contracting dimensions and
       // one batch dimension.
-      %4 = vector.contract %0, %1, %2
-        { batch_dim_map = [[1, 0]], contracting_dim_map = [[0, 2], [2, 1]] }
+      #contraction_accesses = [
+        (b0, f0, f1, c0, c1) -> (c0, b0, c1, f0),
+        (b0, f0, f1, c0, c1) -> (b0, c1, c0, f1),
+        (b0, f0, f1, c0, c1) -> (b0, f0, f1)
+      ]
+      #contraction_trait = {
+        indexing_maps = #contraction_accesses,
+        iterator_types = [parallel, parallel, parallel reduction, reduction]
+      }
+
+      %4 = vector.contract #contraction_trait %0, %1, %2
           : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x5xf32>
 
       // 4D vector contraction with two contracting dimensions and optional
@@ -106,8 +125,7 @@ def Vector_ContractionOp :
       %rhs_mask = vector.make_tuple %size4, %size5, %size6, %size7
         : tuple<index, index, index, index>
 
-      %5 = vector.contract %0, %1, %2, %lhs_mask, %rhs_mask
-        { contracting_dim_map = [[0, 2], [2, 1]] }
+      %5 = vector.contract #contraction_trait %0, %1, %2, %lhs_mask, %rhs_mask
          : vector<7x8x16x15xf32>, vector<8x16x7x5xf32> into vector<8x15x8x5xf32>
   }];
   let extraClassDeclaration = [{
@@ -131,11 +149,13 @@ def Vector_ContractionOp :
     VectorType getResultType() {
       return getResult()->getType().cast<VectorType>();
     }
-    static StringRef getContractingDimMapAttrName() {
-      return "contracting_dim_map";
+    SmallVector<StringRef, 2> getTraitAttrNames();
+    SmallVector<AffineMap, 4> getIndexingMaps();
+    static StringRef getReductionIteratorTypeName() {
+      return "reduction";
     }
-    static StringRef getBatchDimMapAttrName() {
-      return "batch_dim_map";
+    static StringRef getParallelIteratorTypeName() {
+      return "parallel";
     }
     std::vector<std::pair<int64_t, int64_t>> getContractingDimMap();
     std::vector<std::pair<int64_t, int64_t>> getBatchDimMap();

@@ -483,6 +483,7 @@ cc_library(
         ":IR",
         ":Support",
         ":VectorOpsIncGen",
+        "@llvm//:support",
     ],
 )
 
