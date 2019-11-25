@@ -1,5 +1,5 @@
 load(
-    "//tensorflow/core/platform:google/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "if_static",
 )
 
