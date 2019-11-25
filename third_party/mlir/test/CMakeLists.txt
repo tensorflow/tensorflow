@@ -9,11 +9,11 @@ llvm_canonicalize_cmake_booleans(
 
 # Passed to lit.site.cfg.py.in to set up the path where to find the libraries
 # for linalg integration tests.
-set(MLIR_DIALECT_LINALG_INTEGRATION_TEST_LIB_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+set(MLIR_TEST_LIB_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
 # Passed to lit.site.cfg.py.in to set up the path where to find the libraries
 # for the mlir cuda runner tests.
-set(MLIR_CUDA_WRAPPER_LIBRARY_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
+set(MLIR_TOOLS_LIB_DIR ${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
 
 configure_lit_site_cfg(
   ${CMAKE_CURRENT_SOURCE_DIR}/lit.site.cfg.py.in

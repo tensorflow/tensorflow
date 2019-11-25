@@ -1817,7 +1817,7 @@ cc_binary(
 )
 
 cc_binary(
-    name = "tools/libcuda-runtime-wrappers.so",
+    name = "tools/mlir-cuda-runner/libcuda-runtime-wrappers.so",
     srcs = ["tools/mlir-cuda-runner/cuda-runtime-wrappers.cpp"],
     linkshared = True,
     deps = [
@@ -1832,7 +1832,7 @@ cc_binary(
     name = "mlir-cuda-runner",
     srcs = ["tools/mlir-cuda-runner/mlir-cuda-runner.cpp"],
     data = [
-        ":tools/libcuda-runtime-wrappers.so",
+        ":tools/mlir-cuda-runner/libcuda-runtime-wrappers.so",
         "@local_config_mlir//test/mlir-cpu-runner:libmlir_runner_utils.so",
     ],
     deps = [
