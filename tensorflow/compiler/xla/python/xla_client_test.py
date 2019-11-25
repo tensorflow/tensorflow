@@ -29,6 +29,9 @@ from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
 
 
+bfloat16 = xla_client.bfloat16
+
+
 class ComputationTest(absltest.TestCase):
   """Base class for running an XLA Computation through the local client."""
 
@@ -116,6 +119,11 @@ class ComputationsWithConstantsTest(ComputationTest):
     c = self._NewComputation()
     c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
     self._ExecuteAndCompareExact(c, expected=np.int8(3))
+
+  def testConstantScalarSumBF16(self):
+    c = self._NewComputation()
+    c.Add(c.Constant(bfloat16(1.11)), c.Constant(bfloat16(3.14)))
+    self._ExecuteAndCompareClose(c, expected=bfloat16(4.25))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
@@ -542,6 +550,22 @@ class BufferTest(ComputationTest):
     # copy_to_host_async does nothing after to_py is called.
     arg0_buffer.copy_to_host_async()
     np.testing.assert_equal(arg0, arg0_buffer.to_py())
+
+  def testDevice(self):
+    x = np.arange(8)
+    for device in xla_client.get_local_backend().local_devices():
+      buf = xla_client.Buffer.from_pyval(x, device=device)
+      self.assertEqual(buf.device(), device)
+      np.testing.assert_equal(x, buf.to_py())
+
+  def testInvalidDevice(self):
+    t = np.array(1.)
+    with self.assertRaisesRegexp(
+        RuntimeError,
+        r"PyLocalBuffer::FromLiterals got bad device_ordinal: 100 "
+        r"\(num_local_devices=\d+\)"):
+      # TODO(skyewm): figure out how to test this with a Device
+      xla_client.Buffer.from_pyval(t, device=100)
 
 
 class SingleOpTest(ComputationTest):
@@ -1272,11 +1296,31 @@ class SingleOpTest(ComputationTest):
     keys = np.array([[2, 4, 1, 3], [3, 1, 4, 2]], dtype=np.float32)
     values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
     c = self._NewComputation()
-    c.SortKeyVal(c.Constant(keys), c.Constant(values), dimension=0)
+    c.Sort((c.Constant(keys), c.Constant(values)), dimension=0)
     result = xla_client.execute_with_python_values(c.Build().Compile())
     self.assertIsInstance(result, tuple)
     np.testing.assert_allclose(result[0], [[2, 1, 1, 2], [3, 4, 4, 3]])
     np.testing.assert_equal(result[1], [[0, 5, 2, 7], [4, 1, 6, 3]])
+
+  def testSortCustomComparator(self):
+    b = self._NewComputation("comparator")
+    p0 = b.ParameterFromNumpy(NumpyArrayF32(0))
+    q0 = b.ParameterFromNumpy(NumpyArrayF32(0))
+    p1 = b.ParameterFromNumpy(NumpyArrayS32(0))
+    q1 = b.ParameterFromNumpy(NumpyArrayS32(0))
+    b.Or(b.Lt(p0, q0), b.And(b.Eq(p0, q0), b.Gt(p1, q1)))
+    comparator = b.Build()
+
+    keys = np.array([[2, 3, 1, 3], [3, 1, 2, 2]], dtype=np.float32)
+    values = np.array([[0, 1, 2, 3], [4, 5, 6, 7]], dtype=np.int32)
+    c = self._NewComputation()
+    c.Sort((c.Constant(keys), c.Constant(values)),
+           dimension=1,
+           comparator=comparator)
+    result = xla_client.execute_with_python_values(c.Build().Compile())
+    self.assertIsInstance(result, tuple)
+    np.testing.assert_allclose(result[0], [[1, 2, 3, 3], [1, 2, 2, 3]])
+    np.testing.assert_equal(result[1], [[2, 0, 3, 1], [5, 7, 6, 4]])
 
   def testQR(self):
     a = np.array(
@@ -1384,6 +1428,15 @@ class SingleOpTest(ComputationTest):
     c.Fft(c.Constant(a), xla_client.FftType.IRFFT, [3, 4, 8])
     self._ExecuteAndCompareClose(c, expected=np.fft.irfftn(a, axes=(1, 2, 3)),
                                  rtol=1e-4)
+
+  def testNextAfter(self):
+    c = self._NewComputation()
+    c.NextAfter(
+        c.Constant(np.array([1, 2], dtype=np.float32)),
+        c.Constant(np.array([2, 1], dtype=np.float32)))
+    out = self._Execute(c, ())
+    eps = np.finfo(np.float32).eps
+    np.testing.assert_equal(np.array([eps + 1, 2 - eps], dtype=np.float32), out)
 
 
 class EmbeddedComputationsTest(ComputationTest):
@@ -1823,7 +1876,7 @@ class EmbeddedComputationsTest(ComputationTest):
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    c.Infeed(xla_client.shape_from_pyval(to_infeed[0]))
+    c.GetTupleElement(c.Infeed(xla_client.shape_from_pyval(to_infeed[0])), 0)
     compiled_c = c.Build().Compile()
     for item in to_infeed:
       xla_client.transfer_to_infeed(item)
@@ -1832,11 +1885,24 @@ class EmbeddedComputationsTest(ComputationTest):
       result = xla_client.execute_with_python_values(compiled_c)
       self.assertEqual(result, item)
 
+  def testInfeedTuple(self):
+    to_infeed = (NumpyArrayS32([1, 2, 3, 4]), NumpyArrayS32([[7], [8]]))
+    c = self._NewComputation()
+    c.GetTupleElement(c.Infeed(xla_client.shape_from_pyval(to_infeed)), 0)
+    compiled_c = c.Build().Compile()
+    xla_client.transfer_to_infeed(to_infeed)
+
+    result = xla_client.execute_with_python_values(compiled_c)
+    np.testing.assert_equal(result[0], to_infeed[0])
+    np.testing.assert_equal(result[1], to_infeed[1])
+
   def testInfeedThenOutfeedS32(self):
     to_round_trip = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()
-    x = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
-    c.Outfeed(x)
+    x_and_token = c.Infeed(xla_client.shape_from_pyval(to_round_trip[0]))
+    x = c.GetTupleElement(x_and_token, 0)
+    token = c.GetTupleElement(x_and_token, 1)
+    c.Outfeed(x, token)
 
     compiled_c = c.Build().Compile()
 
@@ -1916,6 +1982,29 @@ class ComputationRootTest(ComputationTest):
     result = c.Add(x, c.ConstantF32Scalar(3.14))
     extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
 
+    arg = NumpyArrayF32(1.0)
+    compiled_c = c.Build(result).Compile()
+    ans = xla_client.execute_with_python_values(compiled_c, [arg])
+    np.testing.assert_allclose(ans, 4.14)
+
+
+class SetShardingTest(ComputationTest):
+  """Tests related to set OpSharding."""
+
+  def testSetSharding(self):
+    c = self._NewComputation()
+    sharding = xla_client.OpSharding()
+    sharding.type = sharding.type.REPLICATED
+    sharding.tile_assignment_dimensions.extend([1])
+    sharding.tile_assignment_devices.extend([0])
+    # Set Sharding.
+    c.SetSharding(sharding)
+    x = c.ParameterFromNumpy(NumpyArrayF32(2.0))
+    # Clear Sharding.
+    c.ClearSharding()
+
+    result = c.Add(x, c.ConstantF32Scalar(3.14))
+    extra = c.Add(result, c.ConstantF32Scalar(1.618))  # pylint: disable=unused-variable
     arg = NumpyArrayF32(1.0)
     compiled_c = c.Build(result).Compile()
     ans = xla_client.execute_with_python_values(compiled_c, [arg])

@@ -28,7 +28,8 @@ namespace ruy {
 
 namespace detail {
 
-inline void* VoidPtrAdd(void* p, std::size_t offset) {
+inline void* VoidPtrAdd(void* p, std::ptrdiff_t offset) {
+  RUY_DCHECK(p);
   std::uintptr_t addr = reinterpret_cast<std::uintptr_t>(p) + offset;
   return reinterpret_cast<void*>(addr);
 }
@@ -63,7 +64,7 @@ class AlignedAllocator {
   //    ARM reference manual mentions that this granule size may be as large
   //    as 2048 bytes, in practice we observe it to be 64 bytes. It can
   //    be queried cheaply, at runtime, from userspace, if needed.
-  static constexpr std::size_t kAlignment = 64;
+  static constexpr std::ptrdiff_t kAlignment = 64;
 
   void operator=(const AlignedAllocator&) = delete;
   ~AlignedAllocator() {
@@ -71,8 +72,8 @@ class AlignedAllocator {
     SystemAlignedFree(ptr_);
   }
 
-  void* AllocateAlignedBytes(std::size_t num_bytes) {
-    RUY_DCHECK(num_bytes > 0);
+  void* AllocateAlignedBytes(std::ptrdiff_t num_bytes) {
+    RUY_DCHECK_GT(num_bytes, 0);
     RUY_DCHECK((num_bytes & (kAlignment - 1)) == 0);
     if (void* p = AllocateFast(num_bytes)) {
       return p;
@@ -86,7 +87,13 @@ class AlignedAllocator {
       return;
     }
 
-    std::size_t new_size = round_up_pot(size_ + fallback_blocks_total_size_);
+    // No rounding-up of the size means linear instead of logarithmic
+    // bound on the number of allocation in some worst-case calling patterns.
+    // This is considered worth it because minimizing memory usage is important
+    // and actual calling patterns in applications that we care about still
+    // reach the no-further-allocations steady state in a small finite number
+    // of iterations.
+    std::ptrdiff_t new_size = size_ + fallback_blocks_total_size_;
     SystemAlignedFree(ptr_);
     ptr_ = SystemAlignedAlloc(new_size);
     size_ = new_size;
@@ -98,26 +105,37 @@ class AlignedAllocator {
     fallback_blocks_total_size_ = 0;
   }
 
- private:
-  void* AllocateFast(std::size_t num_bytes) {
-    if (current_ + num_bytes <= size_) {
-      void* ret = VoidPtrAdd(ptr_, current_);
-      current_ += num_bytes;
-      return ret;
+  void FreeOne(void* ptr) {
+    for (auto p = fallback_blocks_.begin(); p != fallback_blocks_.end(); ++p) {
+      if (*p == ptr) {
+        SystemAlignedFree(ptr);
+        fallback_blocks_.erase(p);
+        return;
+      }
     }
-    return nullptr;
+    RUY_DCHECK(false);  // Trying to free pointer we did not allocate.
   }
 
-  void* AllocateSlow(std::size_t num_bytes) {
+  void* AllocateFast(std::ptrdiff_t num_bytes) {
+    if (current_ + num_bytes > size_) {
+      return nullptr;
+    }
+    void* ret = VoidPtrAdd(ptr_, current_);
+    current_ += num_bytes;
+    return ret;
+  }
+
+  void* AllocateSlow(std::ptrdiff_t num_bytes) {
     void* p = SystemAlignedAlloc(num_bytes);
     fallback_blocks_total_size_ += num_bytes;
     fallback_blocks_.push_back(p);
     return p;
   }
 
+ private:
   // Primitive allocation functions obtaining aligned memory from the
   // operating system.
-  void* SystemAlignedAlloc(std::size_t num_bytes);
+  void* SystemAlignedAlloc(std::ptrdiff_t num_bytes);
   void SystemAlignedFree(void* ptr);
 
   // Theory of operation:
@@ -136,10 +154,10 @@ class AlignedAllocator {
   // bump-ptr allocator's buffer so that the next sequence of allocations
   // will hopefully not need any fallback blocks.
   void* ptr_ = nullptr;
-  std::size_t current_ = 0;
-  std::size_t size_ = 0;
+  std::ptrdiff_t current_ = 0;
+  std::ptrdiff_t size_ = 0;
   std::vector<void*> fallback_blocks_;
-  std::size_t fallback_blocks_total_size_ = 0;
+  std::ptrdiff_t fallback_blocks_total_size_ = 0;
 };
 
 }  // namespace detail
@@ -148,7 +166,7 @@ class AlignedAllocator {
 // typed buffer.
 class Allocator {
  public:
-  void* AllocateBytes(std::size_t num_bytes) {
+  void* AllocateBytes(std::ptrdiff_t num_bytes) {
     if (num_bytes == 0) {
       return nullptr;
     }
@@ -156,7 +174,7 @@ class Allocator {
         round_up_pot(num_bytes, detail::AlignedAllocator::kAlignment));
   }
   template <typename Pointer>
-  void Allocate(std::size_t count, Pointer* out) {
+  void Allocate(std::ptrdiff_t count, Pointer* out) {
     using T = typename std::pointer_traits<Pointer>::element_type;
     *out = static_cast<T*>(AllocateBytes(count * sizeof(T)));
   }

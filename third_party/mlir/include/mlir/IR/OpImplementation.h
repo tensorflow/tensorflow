@@ -22,6 +22,7 @@
 #ifndef MLIR_IR_OPIMPLEMENTATION_H
 #define MLIR_IR_OPIMPLEMENTATION_H
 
+#include "mlir/IR/DialectInterface.h"
 #include "mlir/IR/OpDefinition.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/SMLoc.h"
@@ -77,12 +78,25 @@ public:
   virtual void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
                                      ArrayRef<StringRef> elidedAttrs = {}) = 0;
 
+  /// If the specified operation has attributes, print out an attribute
+  /// dictionary prefixed with 'attributes'.
+  virtual void
+  printOptionalAttrDictWithKeyword(ArrayRef<NamedAttribute> attrs,
+                                   ArrayRef<StringRef> elidedAttrs = {}) = 0;
+
   /// Print the entire operation with the default generic assembly form.
   virtual void printGenericOp(Operation *op) = 0;
 
   /// Prints a region.
   virtual void printRegion(Region &blocks, bool printEntryBlockArgs = true,
                            bool printBlockTerminators = true) = 0;
+
+  /// Renumber the arguments for the specified region to the same names as the
+  /// SSA values in namesToUse.  This may only be used for IsolatedFromAbove
+  /// operations.  If any entry in namesToUse is null, the corresponding
+  /// argument name is left alone.
+  virtual void shadowRegionArgs(Region &region,
+                                ArrayRef<Value *> namesToUse) = 0;
 
   /// Prints an affine map of SSA ids, where SSA id names are used in place
   /// of dims/symbols.
@@ -108,8 +122,12 @@ public:
   void printFunctionalType(Operation *op) {
     auto &os = getStream();
     os << "(";
-    interleaveComma(op->getNonSuccessorOperands(), os,
-                    [&](Value *operand) { printType(operand->getType()); });
+    interleaveComma(op->getNonSuccessorOperands(), os, [&](Value *operand) {
+      if (operand)
+        printType(operand->getType());
+      else
+        os << "<<NULL>";
+    });
     os << ") -> ";
     if (op->getNumResults() == 1 &&
         !op->getResult(0)->getType().isa<FunctionType>()) {
@@ -120,6 +138,12 @@ public:
       os << ')';
     }
   }
+
+  /// Print the given string as a symbol reference, i.e. a form representable by
+  /// a SymbolRefAttr. A symbol reference is represented as a string prefixed
+  /// with '@'. The reference is surrounded with ""'s and escaped if it has any
+  /// special or non-printable characters in it.
+  virtual void printSymbolName(StringRef symbolRef) = 0;
 
 private:
   OpAsmPrinter(const OpAsmPrinter &) = delete;
@@ -201,6 +225,14 @@ public:
   // these to be chained together into a linear sequence of || expressions in
   // many cases.
 
+  /// Parse an operation in its generic form.
+  /// The parsed operation is parsed in the current context and inserted in the
+  /// provided block and insertion point. The results produced by this operation
+  /// aren't mapped to any named value in the parser. Returns nullptr on
+  /// failure.
+  virtual Operation *parseGenericOperation(Block *insertBlock,
+                                           Block::iterator insertPt) = 0;
+
   //===--------------------------------------------------------------------===//
   // Token Parsing
   //===--------------------------------------------------------------------===//
@@ -226,15 +258,27 @@ public:
   /// Parse a `=` token.
   virtual ParseResult parseEqual() = 0;
 
-  /// Parse a keyword.
-  ParseResult parseKeyword(const char *keyword, const Twine &msg = "") {
+  /// Parse a given keyword.
+  ParseResult parseKeyword(StringRef keyword, const Twine &msg = "") {
+    auto loc = getCurrentLocation();
     if (parseOptionalKeyword(keyword))
-      return emitError(getNameLoc(), "expected '") << keyword << "'" << msg;
+      return emitError(loc, "expected '") << keyword << "'" << msg;
     return success();
   }
 
-  /// Parse a keyword if present.
-  virtual ParseResult parseOptionalKeyword(const char *keyword) = 0;
+  /// Parse a keyword into 'keyword'.
+  ParseResult parseKeyword(StringRef *keyword) {
+    auto loc = getCurrentLocation();
+    if (parseOptionalKeyword(keyword))
+      return emitError(loc, "expected valid keyword");
+    return success();
+  }
+
+  /// Parse the given keyword if present.
+  virtual ParseResult parseOptionalKeyword(StringRef keyword) = 0;
+
+  /// Parse a keyword, if present, into 'keyword'.
+  virtual ParseResult parseOptionalKeyword(StringRef *keyword) = 0;
 
   /// Parse a `(` token.
   virtual ParseResult parseLParen() = 0;
@@ -274,6 +318,13 @@ public:
     return parseAttribute(result, Type(), attrName, attrs);
   }
 
+  /// Parse an attribute of a specific kind and type.
+  template <typename AttrType>
+  ParseResult parseAttribute(AttrType &result, StringRef attrName,
+                             SmallVectorImpl<NamedAttribute> &attrs) {
+    return parseAttribute(result, Type(), attrName, attrs);
+  }
+
   /// Parse an arbitrary attribute of a given type and return it in result. This
   /// also adds the attribute to the specified attribute list with the specified
   /// name.
@@ -295,22 +346,39 @@ public:
     // Check for the right kind of attribute.
     result = attr.dyn_cast<AttrType>();
     if (!result)
-      return emitError(loc, "invalid kind of constant specified");
+      return emitError(loc, "invalid kind of attribute specified");
 
     return success();
   }
 
   /// Parse a named dictionary into 'result' if it is present.
   virtual ParseResult
-  parseOptionalAttributeDict(SmallVectorImpl<NamedAttribute> &result) = 0;
+  parseOptionalAttrDict(SmallVectorImpl<NamedAttribute> &result) = 0;
+
+  /// Parse a named dictionary into 'result' if the `attributes` keyword is
+  /// present.
+  virtual ParseResult
+  parseOptionalAttrDictWithKeyword(SmallVectorImpl<NamedAttribute> &result) = 0;
 
   //===--------------------------------------------------------------------===//
   // Identifier Parsing
   //===--------------------------------------------------------------------===//
 
+  /// Parse an @-identifier and store it (without the '@' symbol) in a string
+  /// attribute named 'attrName'.
+  ParseResult parseSymbolName(StringAttr &result, StringRef attrName,
+                              SmallVectorImpl<NamedAttribute> &attrs) {
+    if (failed(parseOptionalSymbolName(result, attrName, attrs)))
+      return emitError(getCurrentLocation())
+             << "expected valid '@'-identifier for symbol name";
+    return success();
+  }
+
+  /// Parse an optional @-identifier and store it (without the '@' symbol) in a
+  /// string attribute named 'attrName'.
   virtual ParseResult
-  parseSymbolName(StringAttr &result, StringRef attrName,
-                  SmallVectorImpl<NamedAttribute> &attrs) = 0;
+  parseOptionalSymbolName(StringAttr &result, StringRef attrName,
+                          SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   //===--------------------------------------------------------------------===//
   // Operand Parsing
@@ -411,18 +479,24 @@ public:
 
   /// Parses a region. Any parsed blocks are appended to "region" and must be
   /// moved to the op regions after the op is created. The first block of the
-  /// region takes "arguments" of types "argTypes".
+  /// region takes "arguments" of types "argTypes". If "enableNameShadowing" is
+  /// set to true, the argument names are allowed to shadow the names of other
+  /// existing SSA values defined above the region scope. "enableNameShadowing"
+  /// can only be set to true for regions attached to operations that are
+  /// "IsolatedFromAbove".
   virtual ParseResult parseRegion(Region &region,
                                   ArrayRef<OperandType> arguments,
-                                  ArrayRef<Type> argTypes) = 0;
+                                  ArrayRef<Type> argTypes,
+                                  bool enableNameShadowing = false) = 0;
 
   /// Parses a region if present.
   virtual ParseResult parseOptionalRegion(Region &region,
                                           ArrayRef<OperandType> arguments,
-                                          ArrayRef<Type> argTypes) = 0;
+                                          ArrayRef<Type> argTypes,
+                                          bool enableNameShadowing = false) = 0;
 
-  /// Parse a region argument.  Region arguments define new values; so this also
-  /// checks if values with the same name have not been defined yet.
+  /// Parse a region argument, this argument is resolved when calling
+  /// 'parseRegion'.
   virtual ParseResult parseRegionArgument(OperandType &argument) = 0;
 
   /// Parse zero or more region arguments with a specified surrounding
@@ -521,6 +595,48 @@ private:
                                           int requiredOperandCount,
                                           Delimiter delimiter);
 };
+
+//===--------------------------------------------------------------------===//
+// Dialect OpAsm interface.
+//===--------------------------------------------------------------------===//
+
+/// A functor used to set the name of the start of a result group of an
+/// operation. See 'getAsmResultNames' below for more details.
+using OpAsmSetValueNameFn = function_ref<void(Value *, StringRef)>;
+
+class OpAsmDialectInterface
+    : public DialectInterface::Base<OpAsmDialectInterface> {
+public:
+  OpAsmDialectInterface(Dialect *dialect) : Base(dialect) {}
+
+  /// Hooks for getting identifier aliases for symbols. The identifier is used
+  /// in place of the symbol when printing textual IR.
+  ///
+  /// Hook for defining Attribute kind aliases. This will generate an alias for
+  /// all attributes of the given kind in the form : <alias>[0-9]+. These
+  /// aliases must not contain `.`.
+  virtual void getAttributeKindAliases(
+      SmallVectorImpl<std::pair<unsigned, StringRef>> &aliases) const {}
+  /// Hook for defining Attribute aliases. These aliases must not contain `.` or
+  /// end with a numeric digit([0-9]+).
+  virtual void getAttributeAliases(
+      SmallVectorImpl<std::pair<Attribute, StringRef>> &aliases) const {}
+  /// Hook for defining Type aliases.
+  virtual void
+  getTypeAliases(SmallVectorImpl<std::pair<Type, StringRef>> &aliases) const {}
+
+  /// Get a special name to use when printing the given operation. See
+  /// OpAsmInterface.td#getAsmResultNames for usage details and documentation.
+  virtual void getAsmResultNames(Operation *op,
+                                 OpAsmSetValueNameFn setNameFn) const {}
+};
+
+//===--------------------------------------------------------------------===//
+// Operation OpAsm interface.
+//===--------------------------------------------------------------------===//
+
+/// The OpAsmOpInterface, see OpAsmInterface.td for more details.
+#include "mlir/IR/OpAsmInterface.h.inc"
 
 } // end namespace mlir
 

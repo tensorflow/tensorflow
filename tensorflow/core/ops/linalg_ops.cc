@@ -383,6 +383,15 @@ REGISTER_OP("SelfAdjointEig")
       return Status::OK();
     });
 
+REGISTER_OP("Eig")
+    .Input("input: T")
+    .Output("e: Tout")
+    .Output("v: Tout")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("Tout: {complex64, complex128}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn);
+
 REGISTER_OP("SelfAdjointEigV2")
     .Input("input: T")
     .Output("e: T")

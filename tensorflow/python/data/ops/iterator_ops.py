@@ -541,8 +541,14 @@ class IteratorResourceDeleter(object):
               handle=self._handle, deleter=self._deleter)
 
 
-class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
-  """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
+class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
+  """An iterator producing tf.Tensor objects from a tf.data.Dataset.
+
+  The iterator resource  created through `OwnedIterator` is owned by the Python
+  object and the life time of the underlying resource is tied to the life time
+  of the `OwnedIterator` object. This makes `OwnedIterator` appropriate for use
+  in eager mode and inside of tf.functions.
+  """
 
   def __init__(self, dataset=None, components=None, element_spec=None):
     """Creates a new iterator from the given dataset.
@@ -579,11 +585,6 @@ class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
       self._iterator_resource, self._deleter = components
-      # Delete the resource when this object is deleted
-      self._resource_deleter = IteratorResourceDeleter(
-          handle=self._iterator_resource,
-          device=self._device,
-          deleter=self._deleter)
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)
@@ -597,6 +598,13 @@ class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
   def _create_iterator(self, dataset):
     # pylint: disable=protected-access
     dataset = dataset._apply_options()
+
+    # Store dataset reference to ensure that dataset is alive when this iterator
+    # is being used. For example, `tf.data.Dataset.from_generator` registers
+    # a few py_funcs that are needed in `self._next_internal`.  If the dataset
+    # is deleted, this iterator crashes on `self.__next__(...)` call.
+    self._dataset = dataset
+
     ds_variant = dataset._variant_tensor
     self._element_spec = dataset.element_spec
     self._flat_output_types = structure.get_flat_tensor_types(
@@ -746,7 +754,7 @@ class IteratorV2(trackable.Trackable, composite_tensor.CompositeTensor):
 
 # TODO(jsimsa): Export this as "tf.data.IteratorSpec".
 class IteratorSpec(type_spec.TypeSpec):
-  """Type specification for `tf.data.Iterator`."""
+  """Type specification for `OwnedIterator`."""
 
   __slots__ = ["_element_spec"]
 
@@ -755,7 +763,7 @@ class IteratorSpec(type_spec.TypeSpec):
 
   @property
   def value_type(self):
-    return IteratorV2
+    return OwnedIterator
 
   def _serialize(self):
     return (self._element_spec,)
@@ -764,14 +772,14 @@ class IteratorSpec(type_spec.TypeSpec):
   def _component_specs(self):
     return (
         tensor_spec.TensorSpec([], dtypes.resource),
-        tensor_spec.TensorSpec([], dtypes.scalar),
+        tensor_spec.TensorSpec([], dtypes.variant),
     )
 
   def _to_components(self, value):
     return (value._iterator_resource, value._deleter)  # pylint: disable=protected-access
 
   def _from_components(self, components):
-    return IteratorV2(
+    return OwnedIterator(
         dataset=None,
         components=components,
         element_spec=self._element_spec)

@@ -156,6 +156,12 @@ class LinearModelTest(keras_parameterized.TestCase):
                           combined.layers[1].dense_layers[0].kernel.numpy(),
                           atol=0.01)
 
+  def test_config(self):
+    linear_model = linear.LinearModel(units=3, use_bias=True)
+    config = linear_model.get_config()
+    cloned_linear_model = linear.LinearModel.from_config(config)
+    self.assertEqual(linear_model.units, cloned_linear_model.units)
+
 
 if __name__ == '__main__':
   test.main()

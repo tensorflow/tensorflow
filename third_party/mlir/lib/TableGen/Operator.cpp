@@ -27,6 +27,8 @@
 #include "llvm/TableGen/Error.h"
 #include "llvm/TableGen/Record.h"
 
+#define DEBUG_TYPE "mlir-tblgen-operator"
+
 using namespace mlir;
 
 using llvm::DagInit;
@@ -126,6 +128,18 @@ unsigned tblgen::Operator::getNumVariadicOperands() const {
       [](const NamedTypeConstraint &c) { return c.constraint.isVariadic(); });
 }
 
+tblgen::Operator::arg_iterator tblgen::Operator::arg_begin() const {
+  return arguments.begin();
+}
+
+tblgen::Operator::arg_iterator tblgen::Operator::arg_end() const {
+  return arguments.end();
+}
+
+tblgen::Operator::arg_range tblgen::Operator::getArgs() const {
+  return {arg_begin(), arg_end()};
+}
+
 StringRef tblgen::Operator::getArgName(int index) const {
   DagInit *argumentValues = def.getValueAsDag("arguments");
   return argumentValues->getArgName(index)->getValue();
@@ -137,6 +151,9 @@ bool tblgen::Operator::hasTrait(StringRef trait) const {
       if (opTrait->getTrait() == trait)
         return true;
     } else if (auto opTrait = dyn_cast<tblgen::InternalOpTrait>(&t)) {
+      if (opTrait->getTrait() == trait)
+        return true;
+    } else if (auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&t)) {
       if (opTrait->getTrait() == trait)
         return true;
     }
@@ -193,12 +210,11 @@ void tblgen::Operator::populateOpStructure() {
   auto derivedAttrClass = recordKeeper.getClass("DerivedAttr");
   numNativeAttributes = 0;
 
-  // The argument ordering is operands, native attributes, derived
-  // attributes.
   DagInit *argumentValues = def.getValueAsDag("arguments");
-  unsigned i = 0;
+  unsigned numArgs = argumentValues->getNumArgs();
+
   // Handle operands and native attributes.
-  for (unsigned e = argumentValues->getNumArgs(); i != e; ++i) {
+  for (unsigned i = 0; i != numArgs; ++i) {
     auto arg = argumentValues->getArg(i);
     auto givenName = argumentValues->getArgNameStr(i);
     auto argDefInit = dyn_cast<DefInit>(arg);
@@ -210,7 +226,6 @@ void tblgen::Operator::populateOpStructure() {
     if (argDef->isSubClassOf(typeConstraintClass)) {
       operands.push_back(
           NamedTypeConstraint{givenName, TypeConstraint(argDefInit)});
-      arguments.emplace_back(&operands.back());
     } else if (argDef->isSubClassOf(attrClass)) {
       if (givenName.empty())
         PrintFatalError(argDef->getLoc(), "attributes must be named");
@@ -218,7 +233,6 @@ void tblgen::Operator::populateOpStructure() {
         PrintFatalError(argDef->getLoc(),
                         "derived attributes not allowed in argument list");
       attributes.push_back({givenName, Attribute(argDef)});
-      arguments.emplace_back(&attributes.back());
       ++numNativeAttributes;
     } else {
       PrintFatalError(def.getLoc(), "unexpected def type; only defs deriving "
@@ -243,6 +257,22 @@ void tblgen::Operator::populateOpStructure() {
       attributes.push_back(
           {cast<llvm::StringInit>(val.getNameInit())->getValue(),
            Attribute(cast<DefInit>(val.getValue()))});
+    }
+  }
+
+  // Populate `arguments`. This must happen after we've finalized `operands` and
+  // `attributes` because we will put their elements' pointers in `arguments`.
+  // SmallVector may perform re-allocation under the hood when adding new
+  // elements.
+  int operandIndex = 0, attrIndex = 0;
+  for (unsigned i = 0; i != numArgs; ++i) {
+    Record *argDef = dyn_cast<DefInit>(argumentValues->getArg(i))->getDef();
+
+    if (argDef->isSubClassOf(typeConstraintClass)) {
+      arguments.emplace_back(&operands[operandIndex++]);
+    } else {
+      assert(argDef->isSubClassOf(attrClass));
+      arguments.emplace_back(&attributes[attrIndex++]);
     }
   }
 
@@ -286,6 +316,8 @@ void tblgen::Operator::populateOpStructure() {
     }
     regions.push_back({name, Region(regionInit->getDef())});
   }
+
+  LLVM_DEBUG(print(llvm::dbgs()));
 }
 
 ArrayRef<llvm::SMLoc> tblgen::Operator::getLoc() const { return def.getLoc(); }
@@ -304,4 +336,14 @@ bool tblgen::Operator::hasSummary() const {
 
 StringRef tblgen::Operator::getSummary() const {
   return def.getValueAsString("summary");
+}
+
+void tblgen::Operator::print(llvm::raw_ostream &os) const {
+  os << "op '" << getOperationName() << "'\n";
+  for (Argument arg : arguments) {
+    if (auto *attr = arg.dyn_cast<NamedAttribute *>())
+      os << "[attribute] " << attr->name << '\n';
+    else
+      os << "[operand] " << arg.get<NamedTypeConstraint *>()->name << '\n';
+  }
 }

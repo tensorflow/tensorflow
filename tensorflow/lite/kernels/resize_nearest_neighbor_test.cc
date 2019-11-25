@@ -24,11 +24,18 @@ namespace {
 using ::testing::ElementsAreArray;
 using uint8 = std::uint8_t;
 
+enum class TestType {
+  CONST = 0,
+  DYNAMIC = 1,
+};
+
 class ResizeNearestNeighborOpModel : public SingleOpModel {
  public:
-  explicit ResizeNearestNeighborOpModel(
-      const TensorData& input, std::initializer_list<int> size_data = {}) {
-    bool const_size = size_data.size() != 0;
+  explicit ResizeNearestNeighborOpModel(const TensorData& input,
+                                        std::initializer_list<int> size_data,
+                                        TestType test_type) {
+    bool const_size = (test_type == TestType::CONST);
+
     input_ = AddInput(input);
     if (const_size) {
       size_ = AddConstInput(TensorType_INT32, size_data, {2});
@@ -43,6 +50,7 @@ class ResizeNearestNeighborOpModel : public SingleOpModel {
       BuildInterpreter({GetShape(input_)});
     } else {
       BuildInterpreter({GetShape(input_), GetShape(size_)});
+      PopulateTensor(size_, size_data);
     }
   }
 
@@ -50,7 +58,6 @@ class ResizeNearestNeighborOpModel : public SingleOpModel {
   void SetInput(std::initializer_list<T> data) {
     PopulateTensor(input_, data);
   }
-  void SetSize(std::initializer_list<int> data) { PopulateTensor(size_, data); }
 
   template <typename T>
   std::vector<T> GetOutput() {
@@ -63,192 +70,108 @@ class ResizeNearestNeighborOpModel : public SingleOpModel {
   int output_;
 };
 
-TEST(ResizeNearestNeighborOpTest, HorizontalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}}, {});
+class ResizeNearestNeighborOpTest : public ::testing::TestWithParam<TestType> {
+};
+
+TEST_P(ResizeNearestNeighborOpTest, HorizontalResize) {
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 1, 2, 1}}, {1, 3},
+                                 GetParam());
   m.SetInput<float>({3, 6});
-  m.SetSize({1, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({3, 3, 6})));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_FLOAT32, {1, 1, 2, 1}},
-                                       {1, 3});
-  const_m.SetInput<float>({3, 6});
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<float>(),
-              ElementsAreArray(ArrayFloatNear({3, 3, 6})));
 }
-
-TEST(ResizeNearestNeighborOpTest, HorizontalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 1, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, HorizontalResizeUInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 1, 2, 1}}, {1, 3},
+                                 GetParam());
   m.SetInput<uint8>({3, 6});
-  m.SetSize({1, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8>(),
               ElementsAreArray(ArrayFloatNear({3, 3, 6})));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_UINT8, {1, 1, 2, 1}},
-                                       {1, 3});
-  const_m.SetInput<uint8>({3, 6});
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<uint8>(),
-              ElementsAreArray(ArrayFloatNear({3, 3, 6})));
 }
-
-TEST(ResizeNearestNeighborOpTest, HorizontalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 1, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, HorizontalResizeInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 1, 2, 1}}, {1, 3},
+                                 GetParam());
   m.SetInput<int8_t>({-3, 6});
-  m.SetSize({1, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({-3, -3, 6})));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_INT8, {1, 1, 2, 1}}, {1, 3});
-  const_m.SetInput<int8_t>({-3, 6});
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear({-3, -3, 6})));
 }
-
-TEST(ResizeNearestNeighborOpTest, VerticalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, VerticalResize) {
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 1, 1}}, {3, 1},
+                                 GetParam());
   m.SetInput<float>({3, 9});
-  m.SetSize({3, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(),
               ElementsAreArray(ArrayFloatNear({3, 3, 9})));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_FLOAT32, {1, 2, 1, 1}},
-                                       {3, 1});
-  const_m.SetInput<float>({3, 9});
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<float>(),
-              ElementsAreArray(ArrayFloatNear({3, 3, 9})));
 }
-
-TEST(ResizeNearestNeighborOpTest, VerticalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 1, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, VerticalResizeUInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 1, 1}}, {3, 1},
+                                 GetParam());
   m.SetInput<uint8>({3, 9});
-  m.SetSize({3, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8>(),
               ElementsAreArray(ArrayFloatNear({3, 3, 9})));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_UINT8, {1, 2, 1, 1}},
-                                       {3, 1});
-  const_m.SetInput<uint8>({3, 9});
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<uint8>(),
-              ElementsAreArray(ArrayFloatNear({3, 3, 9})));
 }
-
-TEST(ResizeNearestNeighborOpTest, VerticalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 1, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, VerticalResizeInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 1, 1}}, {3, 1},
+                                 GetParam());
   m.SetInput<int8_t>({3, -9});
-  m.SetSize({3, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(),
               ElementsAreArray(ArrayFloatNear({3, 3, -9})));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_INT8, {1, 2, 1, 1}}, {3, 1});
-  const_m.SetInput<int8_t>({3, -9});
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<int8_t>(),
-              ElementsAreArray(ArrayFloatNear({3, 3, -9})));
 }
-
-TEST(ResizeNearestNeighborOpTest, TwoDimensionalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResize) {
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}}, {3, 3},
+                                 GetParam());
   m.SetInput<float>({
       3, 6,  //
       9, 12  //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
                                         3, 3, 6,   //
                                         3, 3, 6,   //
                                         9, 9, 12,  //
                                     })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                                       {3, 3});
-  const_m.SetInput<float>({
-      3, 6,  //
-      9, 12  //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 3, 6,   //
-                                              3, 3, 6,   //
-                                              9, 9, 12,  //
-                                          })));
 }
-
-TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeUInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 1}}, {3, 3},
+                                 GetParam());
   m.SetInput<uint8>({
       3, 6,  //
       9, 12  //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
                                         3, 3, 6,   //
                                         3, 3, 6,   //
                                         9, 9, 12,  //
                                     })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_UINT8, {1, 2, 2, 1}},
-                                       {3, 3});
-  const_m.SetInput<uint8>({
-      3, 6,  //
-      9, 12  //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 3, 6,   //
-                                              3, 3, 6,   //
-                                              9, 9, 12,  //
-                                          })));
 }
-
-TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 1}}, {3, 3},
+                                 GetParam());
   m.SetInput<int8_t>({
       3, -6,  //
       9, 12   //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray(ArrayFloatNear({
                                          3, 3, -6,  //
                                          3, 3, -6,  //
                                          9, 9, 12,  //
                                      })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_INT8, {1, 2, 2, 1}}, {3, 3});
-  const_m.SetInput<int8_t>({
-      3, -6,  //
-      9, 12   //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<int8_t>(), ElementsAreArray(ArrayFloatNear({
-                                               3, 3, -6,  //
-                                               3, 3, -6,  //
-                                               9, 9, 12,  //
-                                           })));
 }
-
-TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatches) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatches) {
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {2, 2, 2, 1}}, {3, 3},
+                                 GetParam());
   m.SetInput<float>({
       3, 6,   //
       9, 12,  //
       4, 10,  //
       10, 16  //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
                                         3, 3, 6,     //
@@ -258,63 +181,30 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatches) {
                                         4, 4, 10,    //
                                         10, 10, 16,  //
                                     })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_FLOAT32, {2, 2, 2, 1}},
-                                       {3, 3});
-  const_m.SetInput<float>({
-      3, 6,   //
-      9, 12,  //
-      4, 10,  //
-      10, 16  //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 3, 6,     //
-                                              3, 3, 6,     //
-                                              9, 9, 12,    //
-                                              4, 4, 10,    //
-                                              4, 4, 10,    //
-                                              10, 10, 16,  //
-                                          })));
 }
-
-TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResize) {
-  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, {});
+TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResize) {
+  ResizeNearestNeighborOpModel m({TensorType_FLOAT32, {1, 2, 2, 2}}, {3, 3},
+                                 GetParam());
   m.SetInput<float>({
       3, 4, 6, 10,    //
       9, 10, 12, 16,  //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
                                         3, 4, 3, 4, 6, 10,     //
                                         3, 4, 3, 4, 6, 10,     //
                                         9, 10, 9, 10, 12, 16,  //
                                     })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_FLOAT32, {1, 2, 2, 2}},
-                                       {3, 3});
-  const_m.SetInput<float>({
-      3, 4, 6, 10,    //
-      9, 10, 12, 16,  //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<float>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 4, 3, 4, 6, 10,     //
-                                              3, 4, 3, 4, 6, 10,     //
-                                              9, 10, 9, 10, 12, 16,  //
-                                          })));
 }
-
-TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {2, 2, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {2, 2, 2, 1}}, {3, 3},
+                                 GetParam());
   m.SetInput<uint8>({
       3, 6,   //
       9, 12,  //
       4, 10,  //
       12, 16  //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
                                         3, 3, 6,     //
@@ -324,35 +214,16 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesUInt8) {
                                         4, 4, 10,    //
                                         12, 12, 16,  //
                                     })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_UINT8, {2, 2, 2, 1}},
-                                       {3, 3});
-  const_m.SetInput<uint8>({
-      3, 6,   //
-      9, 12,  //
-      4, 10,  //
-      12, 16  //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 3, 6,     //
-                                              3, 3, 6,     //
-                                              9, 9, 12,    //
-                                              4, 4, 10,    //
-                                              4, 4, 10,    //
-                                              12, 12, 16,  //
-                                          })));
 }
-
-TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {2, 2, 2, 1}}, {});
+TEST_P(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {2, 2, 2, 1}}, {3, 3},
+                                 GetParam());
   m.SetInput<int8_t>({
       3, 6,    //
       9, -12,  //
       -4, 10,  //
       12, 16   //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray(ArrayFloatNear({
                                          3, 3, 6,     //
@@ -362,79 +233,38 @@ TEST(ResizeNearestNeighborOpTest, TwoDimensionalResizeWithTwoBatchesInt8) {
                                          -4, -4, 10,  //
                                          12, 12, 16,  //
                                      })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_INT8, {2, 2, 2, 1}}, {3, 3});
-  const_m.SetInput<int8_t>({
-      3, 6,    //
-      9, -12,  //
-      -4, 10,  //
-      12, 16   //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<int8_t>(), ElementsAreArray(ArrayFloatNear({
-                                               3, 3, 6,     //
-                                               3, 3, 6,     //
-                                               9, 9, -12,   //
-                                               -4, -4, 10,  //
-                                               -4, -4, 10,  //
-                                               12, 12, 16,  //
-                                           })));
 }
-
-TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResizeUInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 2}}, {});
+TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeUInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_UINT8, {1, 2, 2, 2}}, {3, 3},
+                                 GetParam());
   m.SetInput<uint8>({
       3, 4, 6, 10,     //
       10, 12, 14, 16,  //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
                                         3, 4, 3, 4, 6, 10,       //
                                         3, 4, 3, 4, 6, 10,       //
                                         10, 12, 10, 12, 14, 16,  //
                                     })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_UINT8, {1, 2, 2, 2}},
-                                       {3, 3});
-  const_m.SetInput<uint8>({
-      3, 4, 6, 10,     //
-      10, 12, 14, 16,  //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<uint8>(), ElementsAreArray(ArrayFloatNear({
-                                              3, 4, 3, 4, 6, 10,       //
-                                              3, 4, 3, 4, 6, 10,       //
-                                              10, 12, 10, 12, 14, 16,  //
-                                          })));
 }
-
-TEST(ResizeNearestNeighborOpTest, ThreeDimensionalResizeInt8) {
-  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 2}}, {});
+TEST_P(ResizeNearestNeighborOpTest, ThreeDimensionalResizeInt8) {
+  ResizeNearestNeighborOpModel m({TensorType_INT8, {1, 2, 2, 2}}, {3, 3},
+                                 GetParam());
   m.SetInput<int8_t>({
       3, 4, -6, 10,     //
       10, 12, -14, 16,  //
   });
-  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray(ArrayFloatNear({
                                          3, 4, 3, 4, -6, 10,       //
                                          3, 4, 3, 4, -6, 10,       //
                                          10, 12, 10, 12, -14, 16,  //
                                      })));
-
-  ResizeNearestNeighborOpModel const_m({TensorType_INT8, {1, 2, 2, 2}}, {3, 3});
-  const_m.SetInput<int8_t>({
-      3, 4, -6, 10,     //
-      10, 12, -14, 16,  //
-  });
-  const_m.Invoke();
-  EXPECT_THAT(const_m.GetOutput<int8_t>(), ElementsAreArray(ArrayFloatNear({
-                                               3, 4, 3, 4, -6, 10,       //
-                                               3, 4, 3, 4, -6, 10,       //
-                                               10, 12, 10, 12, -14, 16,  //
-                                           })));
 }
+INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpTest,
+                         ResizeNearestNeighborOpTest,
+                         testing::Values(TestType::CONST, TestType::DYNAMIC));
 
 }  // namespace
 }  // namespace tflite

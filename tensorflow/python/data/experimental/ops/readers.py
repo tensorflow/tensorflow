@@ -24,11 +24,9 @@ import gzip
 
 import numpy as np
 
-from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import error_ops
-from tensorflow.python.data.experimental.ops import interleave_ops
 from tensorflow.python.data.experimental.ops import parsing_ops
-from tensorflow.python.data.experimental.ops import shuffle_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers as core_readers
 from tensorflow.python.data.util import convert
@@ -208,15 +206,10 @@ def _get_sorted_col_indices(select_columns, column_names):
 def _maybe_shuffle_and_repeat(
     dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed):
   """Optionally shuffle and repeat dataset, as requested."""
-  if num_epochs != 1 and shuffle:
-    # Use shuffle_and_repeat for perf
-    return dataset.apply(
-        shuffle_ops.shuffle_and_repeat(shuffle_buffer_size, num_epochs,
-                                       shuffle_seed))
-  elif shuffle:
-    return dataset.shuffle(shuffle_buffer_size, shuffle_seed)
-  elif num_epochs != 1:
-    return dataset.repeat(num_epochs)
+  if shuffle:
+    dataset = dataset.shuffle(shuffle_buffer_size, shuffle_seed)
+  if num_epochs != 1:
+    dataset = dataset.repeat(num_epochs)
   return dataset
 
 
@@ -227,7 +220,7 @@ def make_tf_record_dataset(file_pattern,
                            shuffle=True,
                            shuffle_buffer_size=None,
                            shuffle_seed=None,
-                           prefetch_buffer_size=dataset_ops.AUTOTUNE,
+                           prefetch_buffer_size=None,
                            num_parallel_reads=None,
                            num_parallel_parser_calls=None,
                            drop_final_batch=False):
@@ -259,9 +252,9 @@ def make_tf_record_dataset(file_pattern,
       Defaults to auto-tune. Set to 0 to disable prefetching.
     num_parallel_reads: (Optional.) Number of threads used to read
       records from files. By default or if set to a value >1, the
-      results will be interleaved.
+      results will be interleaved. Defaults to `24`.
     num_parallel_parser_calls: (Optional.) Number of parallel
-      records to parse in parallel. Defaults to an automatic selection.
+      records to parse in parallel. Defaults to `batch_size`.
     drop_final_batch: (Optional.) Whether the last batch should be
       dropped in case its size is smaller than `batch_size`; the
       default behavior is not to drop the smaller batch.
@@ -272,15 +265,24 @@ def make_tf_record_dataset(file_pattern,
     or a `batch_size`-length 1-D tensor of strings if `parser_fn` is
     unspecified.
   """
-  files = dataset_ops.Dataset.list_files(
-      file_pattern, shuffle=shuffle, seed=shuffle_seed)
-
   if num_parallel_reads is None:
-    # Note: We considered auto-tuning this value, but there is a concern
+    # NOTE: We considered auto-tuning this value, but there is a concern
     # that this affects the mixing of records from different files, which
     # could affect training convergence/accuracy, so we are defaulting to
     # a constant for now.
     num_parallel_reads = 24
+
+  if num_parallel_parser_calls is None:
+    # TODO(josh11b): if num_parallel_parser_calls is None, use some function
+    # of num cores instead of `batch_size`.
+    num_parallel_parser_calls = batch_size
+
+  if prefetch_buffer_size is None:
+    prefetch_buffer_size = dataset_ops.AUTOTUNE
+
+  files = dataset_ops.Dataset.list_files(
+      file_pattern, shuffle=shuffle, seed=shuffle_seed)
+
   dataset = core_readers.TFRecordDataset(
       files, num_parallel_reads=num_parallel_reads)
 
@@ -299,11 +301,9 @@ def make_tf_record_dataset(file_pattern,
   if parser_fn is None:
     dataset = dataset.batch(batch_size, drop_remainder=drop_final_batch)
   else:
-    # TODO(josh11b): if num_parallel_parser_calls is None, use some function
-    # of num cores instead of map_and_batch's default behavior of one batch.
-    dataset = dataset.apply(batching.map_and_batch(
-        parser_fn, batch_size, num_parallel_calls=num_parallel_parser_calls,
-        drop_remainder=drop_final_batch))
+    dataset = dataset.map(
+        parser_fn, num_parallel_calls=num_parallel_parser_calls)
+    dataset = dataset.batch(batch_size, drop_remainder=drop_final_batch)
 
   if prefetch_buffer_size == 0:
     return dataset
@@ -327,8 +327,8 @@ def make_csv_dataset_v2(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=dataset_ops.AUTOTUNE,
-    num_parallel_reads=1,
+    prefetch_buffer_size=None,
+    num_parallel_reads=None,
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
@@ -394,9 +394,8 @@ def make_csv_dataset_v2(
     prefetch_buffer_size: An int specifying the number of feature
       batches to prefetch for performance improvement. Recommended value is the
       number of batches consumed per training step. Defaults to auto-tune.
-
     num_parallel_reads: Number of threads used to read CSV records from files.
-      If >1, the results will be interleaved.
+      If >1, the results will be interleaved. Defaults to `1`.
     sloppy: If `True`, reading performance will be improved at
       the cost of non-deterministic ordering. If `False`, the order of elements
       produced is deterministic prior to shuffling (elements are still
@@ -422,6 +421,12 @@ def make_csv_dataset_v2(
   Raises:
     ValueError: If any of the arguments is malformed.
   """
+  if num_parallel_reads is None:
+    num_parallel_reads = 1
+
+  if prefetch_buffer_size is None:
+    prefetch_buffer_size = dataset_ops.AUTOTUNE
+
   # Create dataset of all matching filenames
   filenames = _get_file_names(file_pattern, False)
   dataset = dataset_ops.Dataset.from_tensor_slices(filenames)
@@ -515,10 +520,25 @@ def make_csv_dataset_v2(
       return features, label
     return features
 
-  # Read files sequentially (if num_parallel_reads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
-          filename_to_dataset, cycle_length=num_parallel_reads, sloppy=sloppy))
+  if num_parallel_reads == dataset_ops.AUTOTUNE:
+    dataset = dataset.interleave(
+        filename_to_dataset, num_parallel_calls=num_parallel_reads)
+    options = dataset_ops.Options()
+    options.experimental_deterministic = not sloppy
+    dataset = dataset.with_options(options)
+  else:
+    # Read files sequentially (if num_parallel_reads=1) or in parallel
+    def apply_fn(dataset):
+      return core_readers.ParallelInterleaveDataset(
+          dataset,
+          filename_to_dataset,
+          cycle_length=num_parallel_reads,
+          block_length=1,
+          sloppy=sloppy,
+          buffer_output_elements=None,
+          prefetch_input_elements=None)
+
+    dataset = dataset.apply(apply_fn)
 
   dataset = _maybe_shuffle_and_repeat(
       dataset, num_epochs, shuffle, shuffle_buffer_size, shuffle_seed)
@@ -554,8 +574,8 @@ def make_csv_dataset_v1(
     shuffle=True,
     shuffle_buffer_size=10000,
     shuffle_seed=None,
-    prefetch_buffer_size=dataset_ops.AUTOTUNE,
-    num_parallel_reads=1,
+    prefetch_buffer_size=None,
+    num_parallel_reads=None,
     sloppy=False,
     num_rows_for_inference=100,
     compression_type=None,
@@ -731,16 +751,16 @@ class CsvDatasetV1(dataset_ops.DatasetV1Adapter):
 def make_batched_features_dataset_v2(file_pattern,
                                      batch_size,
                                      features,
-                                     reader=core_readers.TFRecordDataset,
+                                     reader=None,
                                      label_key=None,
                                      reader_args=None,
                                      num_epochs=None,
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
-                                     reader_num_threads=1,
-                                     parser_num_threads=2,
+                                     prefetch_buffer_size=None,
+                                     reader_num_threads=None,
+                                     parser_num_threads=None,
                                      sloppy_ordering=False,
                                      drop_final_batch=False):
   """Returns a `Dataset` of feature dictionaries from `Example` protos.
@@ -813,9 +833,9 @@ def make_batched_features_dataset_v2(file_pattern,
       improve performance. Recommended value is the number of batches consumed
       per training step. Defaults to auto-tune.
     reader_num_threads: Number of threads used to read `Example` records. If >1,
-      the results will be interleaved.
+      the results will be interleaved. Defaults to `1`.
     parser_num_threads: Number of threads to use for parsing `Example` tensors
-      into a dictionary of `Feature` tensors.
+      into a dictionary of `Feature` tensors. Defaults to `2`.
     sloppy_ordering: If `True`, reading performance will be improved at
       the cost of non-deterministic ordering. If `False`, the order of elements
       produced is deterministic prior to shuffling (elements are still
@@ -833,6 +853,16 @@ def make_batched_features_dataset_v2(file_pattern,
     TypeError: If `reader` is a `tf.compat.v1.ReaderBase` subclass.
     ValueError: If `label_key` is not one of the `features` keys.
   """
+  if reader is None:
+    reader = core_readers.TFRecordDataset
+
+  if reader_num_threads is None:
+    reader_num_threads = 1
+  if parser_num_threads is None:
+    parser_num_threads = 2
+  if prefetch_buffer_size is None:
+    prefetch_buffer_size = dataset_ops.AUTOTUNE
+
   # Create dataset of all matching filenames
   dataset = dataset_ops.Dataset.list_files(
       file_pattern, shuffle=shuffle, seed=shuffle_seed)
@@ -847,12 +877,26 @@ def make_batched_features_dataset_v2(file_pattern,
   if reader_args is None:
     reader_args = []
 
-  # Read files sequentially (if reader_num_threads=1) or in parallel
-  dataset = dataset.apply(
-      interleave_ops.parallel_interleave(
+  if reader_num_threads == dataset_ops.AUTOTUNE:
+    dataset = dataset.interleave(
+        lambda filename: reader(filename, *reader_args),
+        num_parallel_calls=reader_num_threads)
+    options = dataset_ops.Options()
+    options.experimental_deterministic = not sloppy_ordering
+    dataset = dataset.with_options(options)
+  else:
+    # Read files sequentially (if reader_num_threads=1) or in parallel
+    def apply_fn(dataset):
+      return core_readers.ParallelInterleaveDataset(
+          dataset,
           lambda filename: reader(filename, *reader_args),
           cycle_length=reader_num_threads,
-          sloppy=sloppy_ordering))
+          block_length=1,
+          sloppy=sloppy_ordering,
+          buffer_output_elements=None,
+          prefetch_input_elements=None)
+
+    dataset = dataset.apply(apply_fn)
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
   if dataset_ops.get_legacy_output_types(dataset) == (
@@ -891,16 +935,16 @@ def make_batched_features_dataset_v2(file_pattern,
 def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-docstring
                                      batch_size,
                                      features,
-                                     reader=core_readers.TFRecordDataset,
+                                     reader=None,
                                      label_key=None,
                                      reader_args=None,
                                      num_epochs=None,
                                      shuffle=True,
                                      shuffle_buffer_size=10000,
                                      shuffle_seed=None,
-                                     prefetch_buffer_size=dataset_ops.AUTOTUNE,
-                                     reader_num_threads=1,
-                                     parser_num_threads=2,
+                                     prefetch_buffer_size=None,
+                                     reader_num_threads=None,
+                                     parser_num_threads=None,
                                      sloppy_ordering=False,
                                      drop_final_batch=False):
   return dataset_ops.DatasetV1Adapter(make_batched_features_dataset_v2(
@@ -908,8 +952,8 @@ def make_batched_features_dataset_v1(file_pattern,  # pylint: disable=missing-do
       num_epochs, shuffle, shuffle_buffer_size, shuffle_seed,
       prefetch_buffer_size, reader_num_threads, parser_num_threads,
       sloppy_ordering, drop_final_batch))
-make_batched_features_dataset_v2.__doc__ = (
-    make_batched_features_dataset_v1.__doc__)
+make_batched_features_dataset_v1.__doc__ = (
+    make_batched_features_dataset_v2.__doc__)
 
 
 def _get_file_names(file_pattern, shuffle):
@@ -1001,9 +1045,13 @@ class SqlDatasetV1(dataset_ops.DatasetV1Adapter):
     super(SqlDatasetV1, self).__init__(wrapped)
 
 
-# TODO(b/119044825): Until all `tf.data` unit tests are converted to V2, keep
-# these aliases in place.
-CsvDataset = CsvDatasetV1
-SqlDataset = SqlDatasetV1
-make_batched_features_dataset = make_batched_features_dataset_v1
-make_csv_dataset = make_csv_dataset_v1
+if tf2.enabled():
+  CsvDataset = CsvDatasetV2
+  SqlDataset = SqlDatasetV2
+  make_batched_features_dataset = make_batched_features_dataset_v2
+  make_csv_dataset = make_csv_dataset_v2
+else:
+  CsvDataset = CsvDatasetV1
+  SqlDataset = SqlDatasetV1
+  make_batched_features_dataset = make_batched_features_dataset_v1
+  make_csv_dataset = make_csv_dataset_v1

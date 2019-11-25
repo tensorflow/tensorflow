@@ -34,7 +34,6 @@ from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import saver_pb2
-from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
@@ -69,6 +68,7 @@ from tensorflow.python.summary import summary
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
@@ -2468,7 +2468,7 @@ class CheckpointReaderTest(test.TestCase):
       save.save(sess, save_path)
 
       # Creates a reader.
-      reader = pywrap_tensorflow.NewCheckpointReader(save_path)
+      reader = py_checkpoint_reader.NewCheckpointReader(save_path)
       # Verifies that the tensors exist.
       self.assertTrue(reader.has_tensor("v0"))
       self.assertTrue(reader.has_tensor("v1"))
@@ -2493,7 +2493,7 @@ class CheckpointReaderTest(test.TestCase):
   def testNonexistentPath(self):
     with self.assertRaisesRegexp(errors.NotFoundError,
                                  "Unsuccessful TensorSliceReader"):
-      pywrap_tensorflow.NewCheckpointReader("non-existent")
+      py_checkpoint_reader.NewCheckpointReader("non-existent")
 
 
 class CheckpointReaderForV2Test(CheckpointReaderTest):

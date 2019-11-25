@@ -60,8 +60,8 @@ class GenerateVocabRemappingOp : public OpKernel {
         new_vocab_file_tensor->scalar<tstring>()();
     OP_REQUIRES(context, !new_vocab_filename.empty(),
                 errors::InvalidArgument("new vocab filename cannot be empty."));
-    lookup::HashTable<int64, string>* new_vocab_table =
-        new lookup::HashTable<int64, string>(context, this);
+    lookup::HashTable<int64, tstring>* new_vocab_table =
+        new lookup::HashTable<int64, tstring>(context, this);
     core::ScopedUnref unref_new(new_vocab_table);
     // Note: we pass -1 (unknown) for vocab_size, which is supposed to be the
     // total elements in file.  This is different from num_new_vocab_, which
@@ -91,8 +91,8 @@ class GenerateVocabRemappingOp : public OpKernel {
         old_vocab_file_tensor->scalar<tstring>()();
     OP_REQUIRES(context, !old_vocab_filename.empty(),
                 errors::InvalidArgument("new vocab filename cannot be empty."));
-    lookup::HashTable<string, int64>* old_vocab_table =
-        new lookup::HashTable<string, int64>(context, this);
+    lookup::HashTable<tstring, int64>* old_vocab_table =
+        new lookup::HashTable<tstring, int64>(context, this);
     core::ScopedUnref unref_old(old_vocab_table);
     // Note: If old_vocab_size_ is -1 (unknown), we retrieve all elements in
     // file (see TextFileLineIterator).

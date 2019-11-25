@@ -23,6 +23,7 @@
 #include "mlir/Support/STLExtras.h"
 #include "mlir/TableGen/Format.h"
 #include "mlir/TableGen/GenInfo.h"
+#include "mlir/TableGen/OpInterfaces.h"
 #include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/StringExtras.h"
@@ -402,10 +403,8 @@ void Class::writeDefTo(raw_ostream &os) const {
 OpClass::OpClass(StringRef name, StringRef extraClassDeclaration)
     : Class(name), extraClassDeclaration(extraClassDeclaration) {}
 
-// Adds the given trait to this op. Prefixes "OpTrait::" to `trait` implicitly.
-void OpClass::addTrait(Twine trait) {
-  traits.push_back(("OpTrait::" + trait).str());
-}
+// Adds the given trait to this op.
+void OpClass::addTrait(Twine trait) { traits.push_back(trait.str()); }
 
 void OpClass::writeDeclTo(raw_ostream &os) const {
   os << "class " << className << " : public Op<" << className;
@@ -460,6 +459,9 @@ private:
   void emitDecl(raw_ostream &os);
   void emitDef(raw_ostream &os);
 
+  // Generates the OpAsmOpInterface for this operation if possible.
+  void genOpAsmInterface();
+
   // Generates the `getOperationName` method for this op.
   void genOpNameGetter();
 
@@ -483,10 +485,19 @@ private:
   // result types for all results.
   void genSeparateParamBuilder();
 
+  // Generates the build() method that takes a single parameter for all the
+  // result types and a separate parameter for each operand/attribute.
+  void genCollectiveTypeParamBuilder();
+
   // Generates the build() method that takes each operand/attribute as a
   // stand-alone parameter. This build() method uses first operand's type
-  // as all result's types.
-  void genUseOperandAsResultTypeBuilder();
+  // as all results' types.
+  void genUseOperandAsResultTypeSeparateParamBuilder();
+
+  // Generates the build() method that takes all operands/attributes
+  // collectively as one parameter. This build() method uses first operand's
+  // type as all results' types.
+  void genUseOperandAsResultTypeCollectiveParamBuilder();
 
   // Generates the build() method that takes each operand/attribute as a
   // stand-alone parameter. This build() method uses first attribute's type
@@ -497,6 +508,8 @@ private:
   // one parameter. Similarly for operands and attributes.
   void genCollectiveParamBuilder();
 
+  enum class TypeParamKind { None, Separate, Collective };
+
   // Builds the parameter list for build() method of this op. This method writes
   // to `paramList` the comma-separated parameter list. If `includeResultTypes`
   // is true then `paramList` will also contain the parameters for all results
@@ -504,7 +517,7 @@ private:
   // result type.
   void buildParamList(std::string &paramList,
                       SmallVectorImpl<std::string> &resultTypeNames,
-                      bool includeResultTypes);
+                      TypeParamKind kind);
 
   // Adds op arguments and regions into operation state for build() methods.
   void genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body);
@@ -537,6 +550,9 @@ private:
   // Generates the traits used by the object.
   void genTraits();
 
+  // Generate the OpInterface methods.
+  void genOpInterfaceMethods();
+
 private:
   // The TableGen record for this op.
   // TODO(antiagainst,zinenko): OpEmitter should not have a Record directly,
@@ -562,6 +578,7 @@ OpEmitter::OpEmitter(const Operator &op)
   genTraits();
   // Generate C++ code for various op methods. The order here determines the
   // methods in the generated file.
+  genOpAsmInterface();
   genOpNameGetter();
   genNamedOperandGetters();
   genNamedResultGetters();
@@ -573,6 +590,7 @@ OpEmitter::OpEmitter(const Operator &op)
   genVerifier();
   genCanonicalizerDecls();
   genFolderDecls();
+  genOpInterfaceMethods();
 }
 
 void OpEmitter::emitDecl(const Operator &op, raw_ostream &os) {
@@ -649,7 +667,8 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
   const int numVariadicOperands = op.getNumVariadicOperands();
   const int numNormalOperands = numOperands - numVariadicOperands;
 
-  if (numVariadicOperands > 1 && !op.hasTrait("SameVariadicOperandSize")) {
+  if (numVariadicOperands > 1 &&
+      !op.hasTrait("OpTrait::SameVariadicOperandSize")) {
     PrintFatalError(op.getLoc(), "op has multiple variadic operands but no "
                                  "specification over their sizes");
   }
@@ -660,8 +679,8 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 
   if (numVariadicOperands == 0) {
     // We still need to match the return type, which is a range.
-    m.body() << "return {std::next(" << rangeBeginCall << ", index), std::next("
-             << rangeBeginCall << ", index + 1)};";
+    m.body() << "  return {std::next(" << rangeBeginCall
+             << ", index), std::next(" << rangeBeginCall << ", index + 1)};";
   } else {
     // Because the op can have arbitrarily interleaved variadic and non-variadic
     // operands, we need to embed a list in the "sink" getter method for
@@ -688,10 +707,10 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 
     if (operand.isVariadic()) {
       auto &m = opClass.newMethod(rangeType, operand.name);
-      m.body() << "return getODSOperands(" << i << ");";
+      m.body() << "  return getODSOperands(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", operand.name);
-      m.body() << "return *getODSOperands(" << i << ").begin();";
+      m.body() << "  return *getODSOperands(" << i << ").begin();";
     }
   }
 }
@@ -712,7 +731,8 @@ void OpEmitter::genNamedResultGetters() {
   // If we have more than one variadic results, we need more complicated logic
   // to calculate the value range for each result.
 
-  if (numVariadicResults > 1 && !op.hasTrait("SameVariadicResultSize")) {
+  if (numVariadicResults > 1 &&
+      !op.hasTrait("OpTrait::SameVariadicResultSize")) {
     PrintFatalError(op.getLoc(), "op has multiple variadic results but no "
                                  "specification over their sizes");
   }
@@ -721,7 +741,7 @@ void OpEmitter::genNamedResultGetters() {
                               "unsigned index");
 
   if (numVariadicResults == 0) {
-    m.body() << "return {std::next(getOperation()->result_begin(), index), "
+    m.body() << "  return {std::next(getOperation()->result_begin(), index), "
                 "std::next(getOperation()->result_begin(), index + 1)};";
   } else {
     llvm::SmallVector<StringRef, 4> isVariadic;
@@ -743,10 +763,10 @@ void OpEmitter::genNamedResultGetters() {
 
     if (result.isVariadic()) {
       auto &m = opClass.newMethod("Operation::result_range", result.name);
-      m.body() << "return getODSResults(" << i << ");";
+      m.body() << "  return getODSResults(" << i << ");";
     } else {
       auto &m = opClass.newMethod("Value *", result.name);
-      m.body() << "return *getODSResults(" << i << ").begin();";
+      m.body() << "  return *getODSResults(" << i << ").begin();";
     }
   }
 }
@@ -757,7 +777,7 @@ void OpEmitter::genNamedRegionGetters() {
     const auto &region = op.getRegion(i);
     if (!region.name.empty()) {
       auto &m = opClass.newMethod("Region &", region.name);
-      m.body() << formatv("return this->getOperation()->getRegion({0});", i);
+      m.body() << formatv("  return this->getOperation()->getRegion({0});", i);
     }
   }
 }
@@ -765,22 +785,80 @@ void OpEmitter::genNamedRegionGetters() {
 void OpEmitter::genSeparateParamBuilder() {
   std::string paramList;
   llvm::SmallVector<std::string, 4> resultNames;
-  buildParamList(paramList, resultNames, /*includeResultTypes=*/true);
+  buildParamList(paramList, resultNames, TypeParamKind::Separate);
 
   auto &m = opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
   genCodeForAddingArgAndRegionForBuilder(m.body());
 
   // Push all result types to the operation state
   for (int i = 0, e = op.getNumResults(); i < e; ++i) {
-    m.body() << "  " << builderOpState << "->addTypes(" << resultNames[i]
+    m.body() << "  " << builderOpState << ".addTypes(" << resultNames[i]
              << ");\n";
   }
 }
 
-void OpEmitter::genUseOperandAsResultTypeBuilder() {
+void OpEmitter::genCollectiveTypeParamBuilder() {
+  auto numResults = op.getNumResults();
+
+  // If this op has no results, then just skip generating this builder.
+  // Otherwise we are generating the same signature as the separate-parameter
+  // builder.
+  if (numResults == 0)
+    return;
+
+  // Similarly for ops with one single variadic result, which will also have one
+  // `ArrayRef<Type>` parameter for the result type.
+  if (numResults == 1 && op.getResult(0).isVariadic())
+    return;
+
   std::string paramList;
   llvm::SmallVector<std::string, 4> resultNames;
-  buildParamList(paramList, resultNames, /*includeResultTypes=*/false);
+  buildParamList(paramList, resultNames, TypeParamKind::Collective);
+
+  auto &m = opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
+  genCodeForAddingArgAndRegionForBuilder(m.body());
+
+  // Push all result types to the operation state
+  m.body() << formatv("  {0}.addTypes(resultTypes);\n", builderOpState);
+}
+
+void OpEmitter::genUseOperandAsResultTypeCollectiveParamBuilder() {
+  // If this op has a variadic result, we cannot generate this builder because
+  // we don't know how many results to create.
+  if (op.getNumVariadicResults() != 0)
+    return;
+
+  int numResults = op.getNumResults();
+
+  // Signature
+  std::string params =
+      std::string("Builder *, OperationState &") + builderOpState +
+      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+  auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
+  auto &body = m.body();
+
+  // Result types
+  SmallVector<std::string, 2> resultTypes(numResults, "operands[0]->getType()");
+  body << "  " << builderOpState << ".addTypes({"
+       << llvm::join(resultTypes, ", ") << "});\n\n";
+
+  // Operands
+  body << "  " << builderOpState << ".addOperands(operands);\n\n";
+
+  // Attributes
+  body << "  " << builderOpState << ".addAttributes(attributes);\n";
+
+  // Create the correct number of regions
+  if (int numRegions = op.getNumRegions()) {
+    for (int i = 0; i < numRegions; ++i)
+      m.body() << "  (void)" << builderOpState << ".addRegion();\n";
+  }
+}
+
+void OpEmitter::genUseOperandAsResultTypeSeparateParamBuilder() {
+  std::string paramList;
+  llvm::SmallVector<std::string, 4> resultNames;
+  buildParamList(paramList, resultNames, TypeParamKind::None);
 
   auto &m = opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
   genCodeForAddingArgAndRegionForBuilder(m.body());
@@ -793,36 +871,39 @@ void OpEmitter::genUseOperandAsResultTypeBuilder() {
   const char *index = op.getOperand(0).isVariadic() ? ".front()" : "";
   std::string resultType =
       formatv("{0}{1}->getType()", getArgumentName(op, 0), index).str();
-  m.body() << "  " << builderOpState << "->addTypes({" << resultType;
+  m.body() << "  " << builderOpState << ".addTypes({" << resultType;
   for (int i = 1; i != numResults; ++i)
     m.body() << ", " << resultType;
   m.body() << "});\n\n";
 }
 
 void OpEmitter::genUseAttrAsResultTypeBuilder() {
-  std::string paramList;
-  llvm::SmallVector<std::string, 4> resultNames;
-  buildParamList(paramList, resultNames, /*includeResultTypes=*/false);
-
-  auto &m = opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
-  genCodeForAddingArgAndRegionForBuilder(m.body());
-
-  auto numResults = op.getNumResults();
-  if (numResults == 0)
-    return;
+  std::string params =
+      std::string("Builder *, OperationState &") + builderOpState +
+      ", ArrayRef<Value *> operands, ArrayRef<NamedAttribute> attributes";
+  auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
+  auto &body = m.body();
 
   // Push all result types to the operation state
   std::string resultType;
   const auto &namedAttr = op.getAttribute(0);
+
+  body << "  for (auto attr : attributes) {\n";
+  body << "    if (attr.first != \"" << namedAttr.name << "\") continue;\n";
   if (namedAttr.attr.isTypeAttr()) {
-    resultType = formatv("{0}.getValue()", namedAttr.name);
+    resultType = "attr.second.cast<TypeAttr>().getValue()";
   } else {
-    resultType = formatv("{0}.getType()", namedAttr.name);
+    resultType = "attr.second.getType()";
   }
-  m.body() << "  " << builderOpState << "->addTypes({" << resultType;
-  for (int i = 1; i != numResults; ++i)
-    m.body() << ", " << resultType;
-  m.body() << "});\n\n";
+  SmallVector<std::string, 2> resultTypes(op.getNumResults(), resultType);
+  body << "    " << builderOpState << ".addTypes({"
+       << llvm::join(resultTypes, ", ") << "});\n";
+  body << "  }\n";
+
+  // Operands
+  body << "  " << builderOpState << ".addOperands(operands);\n\n";
+  // Attributes
+  body << "  " << builderOpState << ".addAttributes(attributes);\n";
 }
 
 void OpEmitter::genBuilder() {
@@ -861,16 +942,21 @@ void OpEmitter::genBuilder() {
   // 1. one having a stand-alone parameter for each result type / operand /
   //    attribute, and
   genSeparateParamBuilder();
-  // 2. one having an aggregated parameter for all result types / operands /
+  // 2. one having a stand-alone parameter for each operand / attribute and
+  //    an aggregated parameter for all result types, and
+  genCollectiveTypeParamBuilder();
+  // 3. one having an aggregated parameter for all result types / operands /
   //    attributes, and
   genCollectiveParamBuilder();
-  // 3. one having a stand-alone prameter for each operand and attribute,
+  // 4. one having a stand-alone parameter for each operand and attribute,
   //    use the first operand or attribute's type as all result types
   // to facilitate different call patterns.
   if (op.getNumVariadicResults() == 0) {
-    if (op.hasTrait("SameOperandsAndResultType"))
-      genUseOperandAsResultTypeBuilder();
-    if (op.hasTrait("FirstAttrDerivedResultType"))
+    if (op.hasTrait("OpTrait::SameOperandsAndResultType")) {
+      genUseOperandAsResultTypeSeparateParamBuilder();
+      genUseOperandAsResultTypeCollectiveParamBuilder();
+    }
+    if (op.hasTrait("OpTrait::FirstAttrDerivedResultType"))
       genUseAttrAsResultTypeBuilder();
   }
 }
@@ -885,7 +971,7 @@ void OpEmitter::genCollectiveParamBuilder() {
   int numNonVariadicOperands = numOperands - numVariadicOperands;
   // Signature
   std::string params =
-      std::string("Builder *, OperationState *") + builderOpState +
+      std::string("Builder *, OperationState &") + builderOpState +
       ", ArrayRef<Type> resultTypes, ArrayRef<Value *> operands, "
       "ArrayRef<NamedAttribute> attributes";
   auto &m = opClass.newMethod("void", "build", params, OpMethod::MP_Static);
@@ -896,7 +982,7 @@ void OpEmitter::genCollectiveParamBuilder() {
     body << "  assert(resultTypes.size()"
          << (numVariadicResults != 0 ? " >= " : " == ") << numNonVariadicResults
          << "u && \"mismatched number of return types\");\n";
-  body << "  " << builderOpState << "->addTypes(resultTypes);\n";
+  body << "  " << builderOpState << ".addTypes(resultTypes);\n";
 
   // Operands
   if (numVariadicOperands == 0 || numNonVariadicOperands != 0)
@@ -904,32 +990,32 @@ void OpEmitter::genCollectiveParamBuilder() {
          << (numVariadicOperands != 0 ? " >= " : " == ")
          << numNonVariadicOperands
          << "u && \"mismatched number of parameters\");\n";
-  body << "  " << builderOpState << "->addOperands(operands);\n\n";
+  body << "  " << builderOpState << ".addOperands(operands);\n\n";
 
   // Attributes
-  body << "  for (const auto& pair : attributes)\n"
-       << "    " << builderOpState
-       << "->addAttribute(pair.first, pair.second);\n";
+  body << "  " << builderOpState << ".addAttributes(attributes);\n";
 
   // Create the correct number of regions
   if (int numRegions = op.getNumRegions()) {
     for (int i = 0; i < numRegions; ++i)
-      m.body() << "  (void)" << builderOpState << "->addRegion();\n";
+      m.body() << "  (void)" << builderOpState << ".addRegion();\n";
   }
 }
 
 void OpEmitter::buildParamList(std::string &paramList,
                                SmallVectorImpl<std::string> &resultTypeNames,
-                               bool includeResultTypes) {
+                               TypeParamKind kind) {
+  resultTypeNames.clear();
+  auto numResults = op.getNumResults();
+  resultTypeNames.reserve(numResults);
 
-  paramList = "Builder *, OperationState *";
+  paramList = "Builder *, OperationState &";
   paramList.append(builderOpState);
 
-  if (includeResultTypes) {
-    resultTypeNames.clear();
-    auto numResults = op.getNumResults();
-    resultTypeNames.reserve(numResults);
-
+  switch (kind) {
+  case TypeParamKind::None:
+    break;
+  case TypeParamKind::Separate: {
     // Add parameters for all return types
     for (int i = 0; i < numResults; ++i) {
       const auto &result = op.getResult(i);
@@ -942,6 +1028,11 @@ void OpEmitter::buildParamList(std::string &paramList,
 
       resultTypeNames.emplace_back(std::move(resultName));
     }
+  } break;
+  case TypeParamKind::Collective: {
+    paramList.append(", ArrayRef<Type> resultTypes");
+    resultTypeNames.push_back("resultTypes");
+  } break;
   }
 
   int numOperands = 0;
@@ -977,7 +1068,7 @@ void OpEmitter::buildParamList(std::string &paramList,
 void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
   // Push all operands to the result
   for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
-    body << "  " << builderOpState << "->addOperands(" << getArgumentName(op, i)
+    body << "  " << builderOpState << ".addOperands(" << getArgumentName(op, i)
          << ");\n";
   }
 
@@ -988,7 +1079,7 @@ void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
       if (emitNotNullCheck) {
         body << formatv("  if ({0}) ", namedAttr.name) << "{\n";
       }
-      body << formatv("  {0}->addAttribute(\"{1}\", {1});\n", builderOpState,
+      body << formatv("  {0}.addAttribute(\"{1}\", {1});\n", builderOpState,
                       namedAttr.name);
       if (emitNotNullCheck) {
         body << "  }\n";
@@ -999,7 +1090,7 @@ void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
   // Create the correct number of regions
   if (int numRegions = op.getNumRegions()) {
     for (int i = 0; i < numRegions; ++i)
-      body << "  (void)" << builderOpState << "->addRegion();\n";
+      body << "  (void)" << builderOpState << ".addRegion();\n";
   }
 }
 
@@ -1014,7 +1105,8 @@ void OpEmitter::genCanonicalizerDecls() {
 }
 
 void OpEmitter::genFolderDecls() {
-  bool hasSingleResult = op.getNumResults() == 1;
+  bool hasSingleResult =
+      op.getNumResults() == 1 && op.getNumVariadicResults() == 0;
 
   if (def.getValueAsBit("hasFolder")) {
     if (hasSingleResult) {
@@ -1030,12 +1122,36 @@ void OpEmitter::genFolderDecls() {
   }
 }
 
+void OpEmitter::genOpInterfaceMethods() {
+  for (const auto &trait : op.getTraits()) {
+    auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&trait);
+    if (!opTrait || !opTrait->shouldDeclareMethods())
+      continue;
+    auto interface = opTrait->getOpInterface();
+    for (auto method : interface.getMethods()) {
+      // Don't declare if the method has a body.
+      if (method.getBody())
+        continue;
+      std::string args;
+      llvm::raw_string_ostream os(args);
+      mlir::interleaveComma(method.getArguments(), os,
+                            [&](const OpInterfaceMethod::Argument &arg) {
+                              os << arg.type << " " << arg.name;
+                            });
+      opClass.newMethod(method.getReturnType(), method.getName(), os.str(),
+                        method.isStatic() ? OpMethod::MP_Static
+                                          : OpMethod::MP_None,
+                        /*declOnly=*/true);
+    }
+  }
+}
+
 void OpEmitter::genParser() {
   if (!hasStringAttribute(def, "parser"))
     return;
 
   auto &method = opClass.newMethod(
-      "ParseResult", "parse", "OpAsmParser *parser, OperationState *result",
+      "ParseResult", "parse", "OpAsmParser &parser, OperationState &result",
       OpMethod::MP_Static);
   FmtContext fctx;
   fctx.addSubst("cppClass", opClass.getClassName());
@@ -1049,7 +1165,7 @@ void OpEmitter::genPrinter() {
   if (!codeInit)
     return;
 
-  auto &method = opClass.newMethod("void", "print", "OpAsmPrinter *p");
+  auto &method = opClass.newMethod("void", "print", "OpAsmPrinter &p");
   FmtContext fctx;
   fctx.addSubst("cppClass", opClass.getClassName());
   auto printer = codeInit->getValue().ltrim().rtrim(" \t\v\f\r");
@@ -1141,10 +1257,14 @@ void OpEmitter::genVerifier() {
 
   genRegionVerifier(body);
 
-  if (hasCustomVerify)
-    body << codeInit->getValue() << "\n";
-  else
+  if (hasCustomVerify) {
+    FmtContext fctx;
+    fctx.addSubst("cppClass", opClass.getClassName());
+    auto printer = codeInit->getValue().ltrim().rtrim(" \t\v\f\r");
+    body << "  " << tgfmt(printer, &fctx);
+  } else {
     body << "  return mlir::success();\n";
+  }
 }
 
 void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
@@ -1173,7 +1293,7 @@ void OpEmitter::genOperandResultVerifier(OpMethodBody &body,
                   &fctx.withSelf("v->getType()"))
          << ")) {\n"
          << formatv("        return emitOpError(\"{0} #\") << index "
-                    "<< \" must be {1}\";\n",
+                    "<< \" must be {1}, but got \" << v->getType();\n",
                     valueKind, constraint.getDescription())
          << "      }\n" // if
          << "      ++index;\n"
@@ -1220,25 +1340,28 @@ void OpEmitter::genTraits() {
   // Add return size trait.
   if (numVariadicResults != 0) {
     if (numResults == numVariadicResults)
-      opClass.addTrait("VariadicResults");
+      opClass.addTrait("OpTrait::VariadicResults");
     else
-      opClass.addTrait("AtLeastNResults<" + Twine(numResults - 1) + ">::Impl");
+      opClass.addTrait("OpTrait::AtLeastNResults<" +
+                       Twine(numResults - numVariadicResults) + ">::Impl");
   } else {
     switch (numResults) {
     case 0:
-      opClass.addTrait("ZeroResult");
+      opClass.addTrait("OpTrait::ZeroResult");
       break;
     case 1:
-      opClass.addTrait("OneResult");
+      opClass.addTrait("OpTrait::OneResult");
       break;
     default:
-      opClass.addTrait("NResults<" + Twine(numResults) + ">::Impl");
+      opClass.addTrait("OpTrait::NResults<" + Twine(numResults) + ">::Impl");
       break;
     }
   }
 
   for (const auto &trait : op.getTraits()) {
     if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&trait))
+      opClass.addTrait(opTrait->getTrait());
+    else if (auto opTrait = dyn_cast<tblgen::InterfaceOpTrait>(&trait))
       opClass.addTrait(opTrait->getTrait());
   }
 
@@ -1249,20 +1372,20 @@ void OpEmitter::genTraits() {
   // Add operand size trait.
   if (numVariadicOperands != 0) {
     if (numOperands == numVariadicOperands)
-      opClass.addTrait("VariadicOperands");
+      opClass.addTrait("OpTrait::VariadicOperands");
     else
-      opClass.addTrait("AtLeastNOperands<" + Twine(numOperands - 1) +
-                       ">::Impl");
+      opClass.addTrait("OpTrait::AtLeastNOperands<" +
+                       Twine(numOperands - numVariadicOperands) + ">::Impl");
   } else {
     switch (numOperands) {
     case 0:
-      opClass.addTrait("ZeroOperands");
+      opClass.addTrait("OpTrait::ZeroOperands");
       break;
     case 1:
-      opClass.addTrait("OneOperand");
+      opClass.addTrait("OpTrait::OneOperand");
       break;
     default:
-      opClass.addTrait("NOperands<" + Twine(numOperands) + ">::Impl");
+      opClass.addTrait("OpTrait::NOperands<" + Twine(numOperands) + ">::Impl");
       break;
     }
   }
@@ -1272,6 +1395,38 @@ void OpEmitter::genOpNameGetter() {
   auto &method = opClass.newMethod("StringRef", "getOperationName",
                                    /*params=*/"", OpMethod::MP_Static);
   method.body() << "  return \"" << op.getOperationName() << "\";\n";
+}
+
+void OpEmitter::genOpAsmInterface() {
+  // If the user only has one results or specifically added the Asm trait,
+  // then don't generate it for them. We specifically only handle multi result
+  // operations, because the name of a single result in the common case is not
+  // interesting(generally 'result'/'output'/etc.).
+  // TODO: We could also add a flag to allow operations to opt in to this
+  // generation, even if they only have a single operation.
+  int numResults = op.getNumResults();
+  if (numResults <= 1 || op.hasTrait("OpAsmOpInterface::Trait"))
+    return;
+
+  SmallVector<StringRef, 4> resultNames(numResults);
+  for (int i = 0; i != numResults; ++i)
+    resultNames[i] = op.getResultName(i);
+
+  // Don't add the trait if none of the results have a valid name.
+  if (llvm::all_of(resultNames, [](StringRef name) { return name.empty(); }))
+    return;
+  opClass.addTrait("OpAsmOpInterface::Trait");
+
+  // Generate the right accessor for the number of results.
+  auto &method = opClass.newMethod("void", "getAsmResultNames",
+                                   "OpAsmSetValueNameFn setNameFn");
+  auto &body = method.body();
+  for (int i = 0; i != numResults; ++i) {
+    body << "  auto resultGroup" << i << " = getODSResults(" << i << ");\n"
+         << "  if (!llvm::empty(resultGroup" << i << "))\n"
+         << "    setNameFn(*resultGroup" << i << ".begin(), \""
+         << resultNames[i] << "\");\n";
+  }
 }
 
 //===----------------------------------------------------------------------===//

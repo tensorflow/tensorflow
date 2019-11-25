@@ -468,7 +468,8 @@ void LSTMBlockCellBpropWithCUDA(
   template struct TensorCopyToUnaligned<GPUDevice, T>; \
   template struct TensorAdd<GPUDevice, T>;             \
                                                        \
-  DECLARE_GPU_FBPROP(T, ICFO);
+  DECLARE_GPU_FBPROP(T, ICFO);                         \
+  DECLARE_GPU_FBPROP(T, IFCO);
 
 DECLARE_GPU_SPECS(Eigen::half);
 DECLARE_GPU_SPECS(float);

@@ -29,6 +29,20 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/util.h"
 
+// TODO(b/139446230): Move to portable platform header.
+#if defined(__ANDROID__)
+#define TFLITE_IS_MOBILE_PLATFORM
+#endif  // defined(__ANDROID__)
+
+#if defined(__APPLE__)
+#include "TargetConditionals.h"
+#if TARGET_IPHONE_SIMULATOR
+#define TFLITE_IS_MOBILE_PLATFORM
+#elif TARGET_OS_IPHONE
+#define TFLITE_IS_MOBILE_PLATFORM
+#endif
+#endif  // defined(__APPLE__)
+
 // TODO(b/132087118): move static_assert to c_api_internal when compiled with
 // C++.
 static_assert(sizeof(TfLiteFloat16) == sizeof(uint16_t),
@@ -38,7 +52,7 @@ namespace tflite {
 
 namespace {
 
-// Gets the current TfLiteQuantization from the legacy fLiteQuantizationParams.
+// Gets the current TfLiteQuantization from the legacy TfLiteQuantizationParams.
 TfLiteQuantization GetQuantizationFromLegacy(
     const TfLiteQuantizationParams& legacy_quantization) {
   TfLiteQuantization quantization;
@@ -60,7 +74,13 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
   // TODO(b/128420794): Include the TFLite runtime version in the log.
+  // Prod logging is useful for mobile platforms where scraping console logs is
+  // critical for debugging.
+#if defined(TFLITE_IS_MOBILE_PLATFORM)
   TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
+#else
+  TFLITE_LOG_ONCE(TFLITE_LOG_INFO, "Initialized TensorFlow Lite runtime.");
+#endif
 
   // There's always at least 1 subgraph which is the primary subgraph.
   AddSubgraphs(1);
@@ -152,6 +172,13 @@ TfLiteStatus Interpreter::AddNodeWithParameters(
 TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
                                             const std::vector<int>& dims) {
   return primary_subgraph().ResizeInputTensor(tensor_index, dims);
+}
+
+TfLiteStatus Interpreter::ReleaseNonPersistentMemory() {
+  // TODO(b/138790287): We could do this for all subgraphs whose tensors have
+  // been allocated. However, AllocateTensors() relies on Control Flow ops to
+  // allocate tensors on 'children' subgraphs. Revisit this if required.
+  return primary_subgraph().ReleaseNonPersistentMemory();
 }
 
 TfLiteStatus Interpreter::Invoke() {
@@ -294,7 +321,10 @@ TfLiteStatus Interpreter::GetBufferHandle(int tensor_index,
 }
 
 void Interpreter::SetProfiler(Profiler* profiler) {
-  for (auto& subgraph : subgraphs_) subgraph->SetProfiler(profiler);
+  for (int subgraph_index = 0; subgraph_index < subgraphs_.size();
+       ++subgraph_index) {
+    subgraphs_[subgraph_index]->SetProfiler(profiler, subgraph_index);
+  }
 }
 
 Profiler* Interpreter::GetProfiler() {

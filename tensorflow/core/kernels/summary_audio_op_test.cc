@@ -81,7 +81,7 @@ TEST_F(SummaryAudioOpTest, Basic3D) {
   MakeOp(kMaxOutputs);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({4, 2, 2}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.0});
@@ -115,7 +115,7 @@ TEST_F(SummaryAudioOpTest, Basic2D) {
   MakeOp(kMaxOutputs);
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag"});
   AddInputFromArray<float>(TensorShape({4, 4}),
                            {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
                             0.0, 0.0, 0.0, 0.0, 0.0, 0.0});

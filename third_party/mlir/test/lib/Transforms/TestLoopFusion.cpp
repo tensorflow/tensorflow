@@ -19,14 +19,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Passes.h"
 #include "mlir/Analysis/Utils.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/LoopFusionUtils.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -58,8 +58,8 @@ struct TestLoopFusion : public FunctionPass<TestLoopFusion> {
 
 } // end anonymous namespace
 
-std::unique_ptr<FunctionPassBase> mlir::createTestLoopFusionPass() {
-  return llvm::make_unique<TestLoopFusion>();
+std::unique_ptr<OpPassBase<FuncOp>> mlir::createTestLoopFusionPass() {
+  return std::make_unique<TestLoopFusion>();
 }
 
 // Gathers all AffineForOps in 'block' at 'currLoopDepth' in 'depthToLoops'.
@@ -129,7 +129,7 @@ static std::string getSliceStr(const mlir::ComputationSliceState &sliceUnion) {
 
 // Computes fusion slice union on 'loops[i]' and 'loops[j]' at loop depths
 // in range ['loopDepth' + 1, 'maxLoopDepth'].
-// Emits a string represention of the slice union as a remark on 'loops[j]'.
+// Emits a string representation of the slice union as a remark on 'loops[j]'.
 static void testSliceComputation(SmallVector<AffineForOp, 2> &loops, unsigned i,
                                  unsigned j, unsigned loopDepth,
                                  unsigned maxLoopDepth) {

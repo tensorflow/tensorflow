@@ -165,15 +165,6 @@ static void AllocateFlags() {
         return true;
       };
 
-  // Custom "sub-parser" lambda for xla_reduce_precision.
-  auto setter_for_xla_reduce_precision =
-      [](string reduce_precision_option_value) {
-        HloReducePrecisionOptions* option_proto =
-            flag_values->add_hlo_reduce_precision_options();
-        return parse_xla_reduce_precision_option(option_proto,
-                                                 reduce_precision_option_value);
-      };
-
   // Custom "sub-parser" for xla_fuel.  Note that ConsumeFuel does not do any
   // locking on the fuel global variables.  This means that it's
   // illegal/undefined behavior to modify this flag value while the compiler is
@@ -250,6 +241,13 @@ static void AllocateFlags() {
           "When xla_cpu_enable_fast_math is true then this controls whether "
           "we forbid to use multiplication by the reciprocal instead of "
           "division. Ignored when xla_cpu_enable_fast_math is false."),
+      tensorflow::Flag(
+          "xla_cpu_fast_math_honor_functions",
+          bool_setter_for(&DebugOptions::set_xla_cpu_fast_math_honor_functions),
+          flag_values->xla_cpu_fast_math_honor_functions(),
+          "When xla_cpu_enable_fast_math is true then this controls whether "
+          "we forbid to approximate calculations for functions. Ignored when "
+          "xla_cpu_enable_fast_math is false."),
       tensorflow::Flag(
           "xla_gpu_enable_fast_min_max",
           bool_setter_for(&DebugOptions::set_xla_gpu_enable_fast_min_max),
@@ -382,19 +380,6 @@ static void AllocateFlags() {
                        "Extra options to pass to a backend; "
                        "comma-separated list of 'key=val' strings (=val "
                        "may be omitted); no whitespace around commas."),
-      tensorflow::Flag("xla_reduce_precision", setter_for_xla_reduce_precision,
-                       "",
-                       "Directions for adding reduce-precision operations. "
-                       "Format is 'LOCATION=E,M:OPS;NAMES' where LOCATION is "
-                       "the class of locations in which to insert the "
-                       "operations (e.g., 'OP_OUTPUTS'), E and M are the "
-                       "exponent and matissa bit counts respectively, and "
-                       "OPS and NAMES are comma-separated (no spaces) lists "
-                       "of the operation types and names to which to attach "
-                       "the reduce-precision operations.  The NAMES string "
-                       "and its preceding ';' may be omitted.  This option "
-                       "may be repeated to define multiple sets of added "
-                       "reduce-precision operations."),
       tensorflow::Flag(
           "xla_gpu_use_cudnn_batchnorm",
           bool_setter_for(&DebugOptions::set_xla_gpu_use_cudnn_batchnorm),
@@ -429,10 +414,10 @@ static void AllocateFlags() {
           "behavior to help run tests on the host that run models in parallel "
           "across multiple devices."),
       tensorflow::Flag(
-          "xla_gpu_disable_ptxas_optimizations",
+          "xla_gpu_disable_gpuasm_optimizations",
           bool_setter_for(
-              &DebugOptions::set_xla_gpu_disable_ptxas_optimizations),
-          flag_values->xla_gpu_disable_ptxas_optimizations(),
+              &DebugOptions::set_xla_gpu_disable_gpuasm_optimizations),
+          flag_values->xla_gpu_disable_gpuasm_optimizations(),
           "In XLA:GPU run ptxas in -O0 (default is -O3)."),
       tensorflow::Flag(
           "xla_fuel", setter_for_xla_fuel, /*default_value_for_display=*/"",
@@ -521,13 +506,12 @@ static void AllocateFlags() {
           bool_setter_for(&DebugOptions::set_xla_gpu_force_conv_nchw),
           flag_values->xla_gpu_force_conv_nchw(),
           "For cuDNN convolutions, always NCHW layouts."),
-      tensorflow::Flag(
-          "xla_gpu_cudnn_conv_blacklist_path",
-          string_setter_for(
-              &DebugOptions::set_xla_gpu_cudnn_conv_blacklist_path),
-          flag_values->xla_gpu_cudnn_conv_blacklist_path(),
-          "A CudnnConvolutionList text proto file as a blacklist of "
-          "convolutions to avoid to use."),
+      tensorflow::Flag("xla_gpu_algorithm_blacklist_path",
+                       string_setter_for(
+                           &DebugOptions::set_xla_gpu_algorithm_blacklist_path),
+                       flag_values->xla_gpu_algorithm_blacklist_path(),
+                       "An AlgorithmBlacklist text proto file as a blacklist "
+                       "of convolutions to avoid to use."),
   });
   ParseFlagsFromEnvAndDieIfUnknown("XLA_FLAGS", *flag_objects);
 }

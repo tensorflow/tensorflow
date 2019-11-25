@@ -501,6 +501,7 @@ bool IsWhiteListedOpTypeForEvaluateNode(const string& op_type) {
           "Sign",
           // Binary arithmetic ops
           "Add",
+          "AddV2",
           "Div",
           "FloorDiv",
           "FloorMod",
@@ -895,6 +896,18 @@ class SymbolicShapeRefiner {
       // true, as the updates to the call node will have changed, even if it's
       // the same function being called twice with the same input shapes.
       // Example: simple_function.pbtxt
+      if (aggressive_shape_inference_) {
+        // If output shapes are annotated, use it and skip UpdateFunction();
+        // it can be very expensive when a function node has nested function
+        // nodes internally. One downside with this approach is that we do not
+        // get output values or output shapes as tensor from function node.
+        auto s = UpdateOutputShapesUsingAnnotatedInformation(*node, ctx);
+        if (s.ok() && AllOutputShapesKnown(ctx)) {
+          return Status::OK();
+        }
+        // If shape annotation was not available, incomplete, or incompatible,
+        // fall through to call UpdateFunction().
+      }
       auto s = UpdateFunction(node);
       if (s.ok()) {
         return Status::OK();
@@ -1155,7 +1168,7 @@ class SymbolicShapeRefiner {
     std::vector<ShapeHandle> input_tensors_as_shapes;
 
     node_ctx.inference_context.reset(new InferenceContext(
-        graph_def_version_, node, node_ctx.op_data->op_def, input_shapes,
+        graph_def_version_, *node, node_ctx.op_data->op_def, input_shapes,
         input_tensors, input_tensors_as_shapes,
         std::move(input_handle_shapes_and_types)));
     const Status s = node_ctx.inference_context->construction_status();
@@ -1214,6 +1227,19 @@ class SymbolicShapeRefiner {
         }
 
         // Unknown for output[i].
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Returns true if all the output shapes are known.
+  bool AllOutputShapesKnown(NodeContext* c) {
+    InferenceContext* ic = c->inference_context.get();
+    // LOG(INFO) << ic->DebugString();
+    // Checks if all the output shapes are fully defined.
+    for (int i = 0; i < ic->num_outputs(); i++) {
+      if (!ic->FullyDefined(ic->output(i))) {
         return false;
       }
     }
@@ -2176,7 +2202,7 @@ Status GraphProperties::InferStatically(bool assume_valid_feeds,
         }
       }
     }
-    if (NumNonControlInputs(node) == 0) {
+    if (!HasRegularInputs(node)) {
       primary_inputs.insert(&node);
     } else if (IsMerge(node)) {
       merge_nodes.insert(&node);

@@ -16,6 +16,7 @@
 // =============================================================================
 
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 using namespace mlir;
@@ -100,6 +101,43 @@ void PatternRewriter::replaceOp(Operation *op, ArrayRef<Value *> newValues,
   // the notifyOperationRemoved hook in the process.
 }
 
+/// This method erases an operation that is known to have no uses. The uses of
+/// the given operation *must* be known to be dead.
+void PatternRewriter::eraseOp(Operation *op) {
+  assert(op->use_empty() && "expected 'op' to have no uses");
+  notifyOperationRemoved(op);
+  op->erase();
+}
+
+/// Merge the operations of block 'source' into the end of block 'dest'.
+/// 'source's predecessors must be empty or only contain 'dest`.
+/// 'argValues' is used to replace the block arguments of 'source' after
+/// merging.
+void PatternRewriter::mergeBlocks(Block *source, Block *dest,
+                                  ArrayRef<Value *> argValues) {
+  assert(llvm::all_of(source->getPredecessors(),
+                      [dest](Block *succ) { return succ == dest; }) &&
+         "expected 'source' to have no predecessors or only 'dest'");
+  assert(argValues.size() == source->getNumArguments() &&
+         "incorrect # of argument replacement values");
+
+  // Replace all of the successor arguments with the provided values.
+  for (auto it : llvm::zip(source->getArguments(), argValues))
+    std::get<0>(it)->replaceAllUsesWith(std::get<1>(it));
+
+  // Splice the operations of the 'source' block into the 'dest' block and erase
+  // it.
+  dest->getOperations().splice(dest->end(), source->getOperations());
+  source->dropAllUses();
+  source->erase();
+}
+
+/// Split the operations starting at "before" (inclusive) out of the given
+/// block into a new block, and return it.
+Block *PatternRewriter::splitBlock(Block *block, Block::iterator before) {
+  return block->splitBlock(before);
+}
+
 /// op and newOp are known to have the same number of results, replace the
 /// uses of op with uses of newOp
 void PatternRewriter::replaceOpWithResultsOfAnotherOp(
@@ -124,6 +162,24 @@ void PatternRewriter::inlineRegionBefore(Region &region, Region &parent,
 }
 void PatternRewriter::inlineRegionBefore(Region &region, Block *before) {
   inlineRegionBefore(region, *before->getParent(), before->getIterator());
+}
+
+/// Clone the blocks that belong to "region" before the given position in
+/// another region "parent". The two regions must be different. The caller is
+/// responsible for creating or updating the operation transferring flow of
+/// control to the region and passing it the correct block arguments.
+void PatternRewriter::cloneRegionBefore(Region &region, Region &parent,
+                                        Region::iterator before,
+                                        BlockAndValueMapping &mapping) {
+  region.cloneInto(&parent, before, mapping);
+}
+void PatternRewriter::cloneRegionBefore(Region &region, Region &parent,
+                                        Region::iterator before) {
+  BlockAndValueMapping mapping;
+  cloneRegionBefore(region, parent, before, mapping);
+}
+void PatternRewriter::cloneRegionBefore(Region &region, Block *before) {
+  cloneRegionBefore(region, *before->getParent(), before->getIterator());
 }
 
 /// This method is used as the final notification hook for patterns that end

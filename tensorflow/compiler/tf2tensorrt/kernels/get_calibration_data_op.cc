@@ -48,12 +48,10 @@ class GetCalibrationDataOp : public OpKernel {
                                 &resource));
     core::ScopedUnref sc(resource);
 
-    auto* calib_ctx = resource->calib_ctx_.get();
-
     // Serialize the resource as output.
-    string serialized_resource;
-    OP_REQUIRES_OK(context, calib_ctx->SerializeToString(&serialized_resource));
-    resource->calib_ctx_.reset();
+    string serialized_resource = resource->calib_ctx_->TerminateCalibration();
+    OP_REQUIRES(context, !serialized_resource.empty(),
+                errors::Unknown("Calibration table is empty."));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,

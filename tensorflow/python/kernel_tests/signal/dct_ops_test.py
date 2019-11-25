@@ -19,12 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import importlib
+import itertools
 
 from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.ops.signal import dct_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
@@ -43,11 +43,7 @@ fftpack = try_import("scipy.fftpack")
 
 
 def _modify_input_for_dct(signals, n=None):
-  """ This is a supporting function for the numpy implementation
-
-  of DCT operations. If n < signal size, it returns the first n elements,
-  else it pads the signal with zeros.
-  """
+  """Pad or trim the provided NumPy array's innermost axis to length n."""
   signal = np.array(signals)
   if n is None or n == signal.shape[-1]:
     signal_mod = signal
@@ -128,15 +124,18 @@ NP_DCT = {1: _np_dct1, 2: _np_dct2, 3: _np_dct3}
 NP_IDCT = {1: _np_dct1, 2: _np_dct3, 3: _np_dct2}
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DCTOpsTest(parameterized.TestCase, test.TestCase):
 
-  def _compare(self, signals, n, norm, dct_type, atol=5e-4, rtol=5e-4):
+  def _compare(self, signals, n, norm, dct_type, atol, rtol):
     """Compares (I)DCT to SciPy (if available) and a NumPy implementation."""
     np_dct = NP_DCT[dct_type](signals, n=n, norm=norm)
-    tf_dct = dct_ops.dct(signals, n=n, type=dct_type, norm=norm).eval()
+    tf_dct = dct_ops.dct(signals, n=n, type=dct_type, norm=norm)
+    self.assertEqual(tf_dct.dtype.as_numpy_dtype, signals.dtype)
     self.assertAllClose(np_dct, tf_dct, atol=atol, rtol=rtol)
     np_idct = NP_IDCT[dct_type](signals, n=None, norm=norm)
-    tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm).eval()
+    tf_idct = dct_ops.idct(signals, type=dct_type, norm=norm)
+    self.assertEqual(tf_idct.dtype.as_numpy_dtype, signals.dtype)
     self.assertAllClose(np_idct, tf_idct, atol=atol, rtol=rtol)
     if fftpack:
       scipy_dct = fftpack.dct(signals, n=n, type=dct_type, norm=norm)
@@ -144,12 +143,11 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
       scipy_idct = fftpack.idct(signals, type=dct_type, norm=norm)
       self.assertAllClose(scipy_idct, tf_idct, atol=atol, rtol=rtol)
     # Verify inverse(forward(s)) == s, up to a normalization factor.
-    # Since `n` is not implemented for IDCT operation, re-calculating tf_dct without n.
-    tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm).eval()
-    tf_idct_dct = dct_ops.idct(
-        tf_dct, type=dct_type, norm=norm).eval()
-    tf_dct_idct = dct_ops.dct(
-        tf_idct, type=dct_type, norm=norm).eval()
+    # Since `n` is not implemented for IDCT operation, re-calculating tf_dct
+    # without n.
+    tf_dct = dct_ops.dct(signals, type=dct_type, norm=norm)
+    tf_idct_dct = dct_ops.idct(tf_dct, type=dct_type, norm=norm)
+    tf_dct_idct = dct_ops.dct(tf_idct, type=dct_type, norm=norm)
     if norm is None:
       if dct_type == 1:
         tf_idct_dct *= 0.5 / (signals.shape[-1] - 1)
@@ -160,21 +158,23 @@ class DCTOpsTest(parameterized.TestCase, test.TestCase):
     self.assertAllClose(signals, tf_idct_dct, atol=atol, rtol=rtol)
     self.assertAllClose(signals, tf_dct_idct, atol=atol, rtol=rtol)
 
-  @parameterized.parameters([
-      [[2]], [[3]], [[10]], [[2, 20]], [[2, 3, 25]]])
-  @test_util.run_deprecated_v1
-  def test_random(self, shape):
+  @parameterized.parameters(itertools.product(
+      [1, 2, 3],
+      [None, "ortho"],
+      [[2], [3], [10], [2, 20], [2, 3, 25]],
+      [np.float32, np.float64]))
+  def test_random(self, dct_type, norm, shape, dtype):
     """Test randomly generated batches of data."""
-    with spectral_ops_test_util.fft_kernel_label_map():
-      with self.session(use_gpu=True):
-        signals = np.random.rand(*shape).astype(np.float32)
-        n = np.random.randint(1, 2 * signals.shape[-1])
-        n = np.random.choice([None, n])
-        # Normalization not implemented for orthonormal.
-        self._compare(signals, n, norm=None, dct_type=1)
-        for norm in (None, "ortho"):
-          self._compare(signals, n=n, norm=norm, dct_type=2)
-          self._compare(signals, n=n, norm=norm, dct_type=3)
+    # "ortho" normalization is not implemented for type I.
+    if dct_type == 1 and norm == "ortho":
+      return
+    with self.session(use_gpu=True):
+      tol = 5e-4 if dtype == np.float32 else 1e-7
+      signals = np.random.rand(*shape).astype(dtype)
+      n = np.random.randint(1, 2 * signals.shape[-1])
+      n = np.random.choice([None, n])
+      self._compare(signals, n, norm=norm, dct_type=dct_type,
+                    rtol=tol, atol=tol)
 
   def test_error(self):
     signals = np.random.rand(10)

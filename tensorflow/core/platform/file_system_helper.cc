@@ -20,12 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
 #include "tensorflow/core/platform/platform.h"
+#include "tensorflow/core/platform/str_util.h"
+#include "tensorflow/core/platform/threadpool.h"
 
 namespace tensorflow {
 namespace internal {

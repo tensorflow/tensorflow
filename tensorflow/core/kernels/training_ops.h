@@ -144,6 +144,17 @@ struct ApplyKerasMomentum {
                   typename TTypes<T>::ConstScalar momentum, bool use_nesterov);
 };
 
+template <typename Device, typename T, typename Tindex>
+struct SparseApplyKerasMomentum {
+  Tindex operator()(const Device& d, typename TTypes<T>::Matrix var,
+                    typename TTypes<T>::Matrix accum,
+                    typename TTypes<T>::ConstScalar lr,
+                    typename TTypes<T>::ConstMatrix grad,
+                    typename TTypes<Tindex>::ConstFlat indices,
+                    typename TTypes<T>::ConstScalar momentum,
+                    bool use_nesterov);
+};
+
 template <typename Device, typename T>
 struct ApplyAdam {
   void operator()(const Device& d, typename TTypes<T>::Flat var,

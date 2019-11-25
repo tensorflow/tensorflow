@@ -37,10 +37,8 @@ def row_splits_to_segment_ids(splits, name=None, out_type=None):
   Returns an integer vector `segment_ids`, where `segment_ids[i] == j` if
   `splits[j] <= i < splits[j+1]`.  Example:
 
-  ```python
-  >>> ragged.row_splits_to_segment_ids([0, 3, 3, 5, 6, 9]).eval()
-  [ 0 0 0 2 2 3 4 4 4 ]
-  ```
+  >>> print(tf.ragged.row_splits_to_segment_ids([0, 3, 3, 5, 6, 9]))
+   tf.Tensor([0 0 0 2 2 3 4 4 4], shape=(9,), dtype=int64)
 
   Args:
     splits: A sorted 1-D integer Tensor.  `splits[0]` must be zero.
@@ -83,10 +81,8 @@ def segment_ids_to_row_splits(segment_ids, num_segments=None,
   Returns an integer vector `splits`, where `splits[0] = 0` and
   `splits[i] = splits[i-1] + count(segment_ids==i)`.  Example:
 
-  ```python
-  >>> ragged.segment_ids_to_row_splits([0, 0, 0, 2, 2, 3, 4, 4, 4]).eval()
-  [ 0 3 3 5 6 9 ]
-  ```
+  >>> print(tf.ragged.segment_ids_to_row_splits([0, 0, 0, 2, 2, 3, 4, 4, 4]))
+  tf.Tensor([0 3 3 5 6 9], shape=(6,), dtype=int64)
 
   Args:
     segment_ids: A 1-D integer Tensor.

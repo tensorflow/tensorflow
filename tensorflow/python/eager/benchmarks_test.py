@@ -20,13 +20,18 @@ To run CPU benchmarks:
 To run GPU benchmarks:
   bazel run --config=cuda -c opt --copt="-mavx" benchmarks_test -- \
     --benchmarks=.
+
+To run a subset of benchmarks using --benchmarks flag.
+--benchmarks: the list of benchmarks to run. The specified value is interpreted
+as a regular expression and any benchmark whose name contains a partial match
+to the regular expression is executed.
+e.g. --benchmarks=".*matmul*." will run all matmul related benmarks.
+
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gc
-import os
 import time
 
 import numpy as np
@@ -43,21 +48,20 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import forwardprop
 from tensorflow.python.eager import function
 from tensorflow.python.eager import profiler
-from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.training import gradient_descent
-from tensorflow.python.training import server_lib
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
@@ -74,7 +78,7 @@ def c_tfe_py_fastpath_execute(a,
   try:
     return pywrap_tensorflow.TFE_Py_FastPathExecute(
         ctx._handle, ctx.device_name, "MatMul", name,
-        ctx._post_execution_callbacks, a, b, "transpose_a", transpose_a,
+        ctx.op_callbacks, a, b, "transpose_a", transpose_a,
         "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
     if name is not None:
@@ -141,7 +145,7 @@ def make_sequential_keras_model(initializer="ones"):
 def run_benchmark(func, num_iters, execution_mode=None):
   ctx = context.context()
   with context.execution_mode(execution_mode):
-    # call func to maybe warm up the GPU
+    # call func to warm up
     func()
     if execution_mode == context.ASYNC:
       ctx.executor.wait()
@@ -173,7 +177,12 @@ class MicroBenchmarks(test.Benchmark):
     self.report_benchmark(
         iters=num_iters,
         wall_time=mean_us,
-        extras={"examples_per_sec": num_iters / total_time})
+        extras={
+            "examples_per_sec":
+                float("{0:.3f}".format(num_iters / total_time)),
+            "us_per_example":
+                float("{0:.3f}".format(total_time * 1e6 / num_iters))
+        })
 
   def benchmark_create_np_array(self):
     func = lambda: np.array([3.0])
@@ -684,8 +693,7 @@ class MicroBenchmarks(test.Benchmark):
       tangent = random_ops.random_uniform(shape).cpu()
 
       def func():
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(m, tangent)
+        with forwardprop.ForwardAccumulator(m, tangent) as acc:
           result = math_ops.matmul(m, m, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -698,8 +706,7 @@ class MicroBenchmarks(test.Benchmark):
     with ops.device(CPU):
       @def_function.function
       def compiled_function(x, tangent):
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(x, tangent)
+        with forwardprop.ForwardAccumulator(x, tangent) as acc:
           result = math_ops.matmul(x, x, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -718,8 +725,7 @@ class MicroBenchmarks(test.Benchmark):
 
       @def_function.function()
       def compiled_function(x, tangent):
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(x, tangent)
+        with forwardprop.ForwardAccumulator(x, tangent) as acc:
           result = matmul(x, x, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -739,8 +745,7 @@ class MicroBenchmarks(test.Benchmark):
       matmul = def_function.function(math_ops.matmul)
 
       def func():
-        with forwardprop.ForwardGradientAccumulator() as acc:
-          acc.watch(m, tangent)
+        with forwardprop.ForwardAccumulator(m, tangent) as acc:
           result = matmul(m, m, transpose_b=True)
         return result, acc.jvp(result)
 
@@ -772,6 +777,204 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmark_forwardprop_of_defun_matmul_100_by_784_CPU(self):
     self._benchmark_forwardprop_of_defun_matmul_CPU(shape=(100, 784))
+
+  def _benchmark_tf_reduce_logsumexp(self, device=CPU, execution_mode=None):
+    with context.device(device):
+      x = constant_op.constant([[1, 0.], [0., 0.]])
+      func = lambda: math_ops.reduce_logsumexp(x)
+      self._run(func, 3000, execution_mode=execution_mode)
+
+  def benchmark_tf_reduce_logsumexp_CPU(self):
+    self._benchmark_tf_reduce_logsumexp()
+
+  def benchmark_tf_reduce_logsumexp_CPU_async(self):
+    self._benchmark_tf_reduce_logsumexp(execution_mode=context.ASYNC)
+
+  def benchmark_tf_reduce_logsumexp_GPU(self):
+    self._benchmark_tf_reduce_logsumexp(device=GPU)
+
+  def benchmark_tf_reduce_logsumexp_GPU_async(self):
+    self._benchmark_tf_reduce_logsumexp(device=GPU,
+                                        execution_mode=context.ASYNC)
+
+  def _benchmark_tf_tensordot(self, device=CPU, execution_mode=None):
+    with context.device(device):
+      a = array_ops.ones((2, 2))
+      b = array_ops.ones((2, 2))
+      func = lambda: math_ops.tensordot(a, b, [[1], [0]])
+      self._run(func, 30000, execution_mode=execution_mode)
+
+  def benchmark_tf_tensordot_CPU(self):
+    self._benchmark_tf_tensordot()
+
+  def benchmark_tf_tensordot_CPU_async(self):
+    self._benchmark_tf_tensordot(execution_mode=context.ASYNC)
+
+  def benchmark_tf_tensordot_GPU(self):
+    self._benchmark_tf_tensordot(device=GPU)
+
+  def benchmark_tf_tensordot_GPU_async(self):
+    self._benchmark_tf_tensordot(device=GPU, execution_mode=context.ASYNC)
+
+  def _benchmark_tf_zeros(self, shape, dtype, device=CPU):
+    with context.device(device):
+      func = lambda: array_ops.zeros(shape, dtype)
+      self._run(func, 3000)
+
+  def benchmark_tf_zeros_2_by_2_float32_CPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.float32)
+
+  def benchmark_tf_zeros_2_by_2_bool_CPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.bool)
+
+  def benchmark_tf_zeros_2_by_2_string_CPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.string)
+
+  def benchmark_tf_zeros_2_by_2_float32_GPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.float32, device=GPU)
+
+  def benchmark_tf_zeros_2_by_2_bool_GPU(self):
+    self._benchmark_tf_zeros((2, 2), dtypes.bool, device=GPU)
+
+  def benchmark_tf_zeros_30_by_30_float32_CPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.float32)
+
+  def benchmark_tf_zeros_30_by_30_bool_CPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.bool)
+
+  def benchmark_tf_zeros_30_by_30_string_CPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.string)
+
+  def benchmark_tf_zeros_30_by_30_float32_GPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.float32, device=GPU)
+
+  def benchmark_tf_zeros_30_by_30_bool_GPU(self):
+    self._benchmark_tf_zeros((30, 30), dtypes.bool, device=GPU)
+
+  def benchmark_tf_zeros_100_by_100_float32_CPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.float32)
+
+  def benchmark_tf_zeros_100_by_100_bool_CPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.bool)
+
+  def benchmark_tf_zeros_100_by_100_string_CPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.string)
+
+  def benchmark_tf_zeros_100_by_100_float32_GPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.float32, device=GPU)
+
+  def benchmark_tf_zeros_100_by_100_bool_GPU(self):
+    self._benchmark_tf_zeros((100, 100), dtypes.bool, device=GPU)
+
+  def _benchmark_tf_zeros_like(self, m, device=CPU):
+    with context.device(device):
+      func = lambda: array_ops.zeros_like(m)
+      self._run(func, 3000)
+
+  def benchmark_tf_zeros_like_CPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2)
+
+  def benchmark_tf_zeros_like_GPU(self):
+    self._benchmark_tf_zeros_like(self._m_2_by_2, device=GPU)
+
+  def benchmark_tf_zeros_like_variable_CPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m)
+
+  def benchmark_tf_zeros_like_variable_GPU(self):
+    m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+    self._benchmark_tf_zeros_like(m, device=GPU)
+
+  def _benchmark_tf_random_uniform_2_by_2(self,
+                                          shape=(2, 2),
+                                          dtype=dtypes.int32,
+                                          device=CPU):
+    with context.device(device):
+
+      def func():
+        return random_ops.random_uniform(shape, maxval=3, dtype=dtype)
+
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_random_uniform_2_by_2_integer_CPU(self):
+    self._benchmark_tf_random_uniform_2_by_2()
+
+  def benchmark_tf_random_uniform_2_by_2_integer_GPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(device=GPU)
+
+  def benchmark_tf_random_uniform_2_by_2_float_CPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(dtype=dtypes.float32)
+
+  def benchmark_tf_random_uniform_2_by_2_float_GPU(self):
+    self._benchmark_tf_random_uniform_2_by_2(
+        dtype=dtypes.float32, device=GPU)
+
+  def benchmark_tf_random_uniform_2_by_2_default_setting_CPU(self):
+    with context.device(CPU):
+      func = lambda: random_ops.random_uniform((2, 2))
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_random_uniform_2_by_2_default_setting_GPU(self):
+    with context.device(GPU):
+      func = lambda: random_ops.random_uniform((2, 2))
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def _benchmark_tf_dropout_2_by_2(self,
+                                   is_rate_tensor=True,
+                                   noise_shape=None,
+                                   device=CPU):
+    if is_rate_tensor:
+      rate = constant_op.constant(0.5, dtype=dtypes.float32)
+    else:
+      rate = 0.5
+    with context.device(device):
+
+      def func():
+        return nn_ops.dropout(
+            self._m_2_by_2, rate=rate, noise_shape=noise_shape)
+
+      self._run(func, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_CPU(self):
+    self._benchmark_tf_dropout_2_by_2(is_rate_tensor=False)
+
+  def benchmark_tf_dropout_scalar_rate_2_by_2_GPU(self):
+    self._benchmark_tf_dropout_2_by_2(is_rate_tensor=False, device=GPU)
+
+  def benchmark_tf_dropout_2_by_2_CPU(self):
+    self._benchmark_tf_dropout_2_by_2()
+
+  def benchmark_tf_dropout_2_by_2_GPU(self):
+    self._benchmark_tf_dropout_2_by_2(device=GPU)
+
+  def _benchmark_transpose(self,
+                           m,
+                           num_iters,
+                           perm=None,
+                           conjugate=False,
+                           execution_mode=None):
+    func = lambda: array_ops.transpose(m, perm, conjugate)
+    self._run(func, num_iters, execution_mode=execution_mode)
+
+  def benchmark_tf_transpose_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tf_transpose_variable_2_by_2_GPU(self):
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_transpose(m, num_iters=self._num_iters_2_by_2)
 
   def benchmark_defun_without_signature(self):
 
@@ -919,7 +1122,7 @@ class MicroBenchmarks(test.Benchmark):
 
   def _benchmark_keras_model_predict(self, model, run_eagerly=False):
     data = random_ops.random_uniform((10, 10), minval=-1, maxval=1)
-    dataset = dataset_ops.Dataset.from_tensors(tuple([data])).repeat()
+    dataset = dataset_ops.Dataset.from_tensors(data).repeat()
     model.compile(
         gradient_descent.GradientDescentOptimizer(learning_rate=0.001),
         loss="mse", run_eagerly=run_eagerly)
@@ -1079,6 +1282,14 @@ class MicroBenchmarks(test.Benchmark):
     xs = [np.array([0] * 2, dtype=np.int32)] * 40
     self._run(lambda: constant_op.constant(xs), 1000)
 
+  def benchmark_constant_20x20x20_double_list_to_float32_tensor(self):
+    xs = [[[np.linspace(0, 1, 21).tolist()] * 20] * 20]
+    self._run(lambda: constant_op.constant(xs, dtype=dtypes.float32), 10000)
+
+  def benchmark_constant_20x20x20_double_list_to_float64_tensor(self):
+    xs = [[[np.linspace(0, 1, 21).tolist()] * 20] * 20]
+    self._run(lambda: constant_op.constant(xs, dtype=dtypes.float64), 10000)
+
   def _benchmarkFunctionWithResourceInputs(self, num_resources, num_iters):
     @def_function.function
     def add_all(*args):
@@ -1095,109 +1306,6 @@ class MicroBenchmarks(test.Benchmark):
 
   def benchmarkFunctionWithFiveHundredResourceInputs(self):
     self._benchmarkFunctionWithResourceInputs(500, 100)
-
-
-class RemoteWorkerMicroBenchmarks(test.Benchmark):
-
-  def __init__(self):
-    # used for remote benchmarks
-    os.environ["TF_EAGER_REMOTE_USE_SEND_TENSOR_RPC"] = "1"
-    self._cached_server1 = server_lib.Server.create_local_server()
-    self._cached_server_target1 = self._cached_server1.target[len("grpc://"):]
-    self._cached_server2 = server_lib.Server.create_local_server()
-    self._cached_server_target2 = self._cached_server2.target[len("grpc://"):]
-
-  def _run(self, func, num_iters=10000, execution_mode=None):
-    total_time = run_benchmark(func, num_iters, execution_mode)
-    mean_us = total_time * 1e6 / num_iters
-    self.report_benchmark(
-        iters=num_iters,
-        wall_time=mean_us,
-        extras={"examples_per_sec": num_iters / total_time})
-
-  def benchmark_send_mirroring_off(self):
-    remote.connect_to_remote_host(self._cached_server_target1)
-
-    x = random_ops.random_uniform((2, 2)).cpu()
-
-    @def_function.function
-    def remote_func(m):
-      return math_ops.matmul(m, m)
-
-    def func(m):
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func(m)
-
-    context.context().mirroring_policy = context.MIRRORING_NONE
-    self._run(lambda: func(x))
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
-
-  def benchmark_send_mirroring_on(self):
-    remote.connect_to_remote_host(self._cached_server_target1)
-
-    x = random_ops.random_uniform((2, 2)).cpu()
-
-    @def_function.function
-    def remote_func(m):
-      return math_ops.matmul(m, m)
-
-    def func(m):
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func(m)
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
-    self._run(lambda: func(x))
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
-
-  def benchmark_worker_mirroring_off(self):
-    remote.connect_to_remote_host(
-        [self._cached_server_target1, self._cached_server_target2])
-
-    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
-      v = variables.Variable(1.0)
-
-    @def_function.function
-    def remote_func():
-      return 1.0 + v
-
-    def func():
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func()
-
-    context.context().mirroring_policy = context.MIRRORING_NONE
-    self._run(func)
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
-
-  def benchmark_worker_mirroring_on(self):
-    remote.connect_to_remote_host(
-        [self._cached_server_target1, self._cached_server_target2])
-
-    with ops.device("job:worker/replica:0/task:1/device:CPU:0"):
-      v = variables.Variable(1.0)
-
-    @def_function.function
-    def remote_func():
-      return 1.0 + v
-
-    def func():
-      with ops.device("job:worker/replica:0/task:0/device:CPU:0"):
-        return remote_func()
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
-    self._run(func)
-    # NOTE(b/136184459): Force garbage collecting hanging resources before
-    # subsequent calls to set_server_def, to ensure the destroy resource ops are
-    # executed when their corresponding device and manager are still available.
-    gc.collect()
 
 
 if __name__ == "__main__":

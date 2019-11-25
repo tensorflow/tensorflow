@@ -358,7 +358,7 @@ class TestStrategyTest(test.TestCase):
     dataset = dataset_ops.Dataset.from_tensors(1.).repeat()
     dist.extended.experimental_run_steps_on_iterator(
         lambda _, inputs: all_inputs.append(self.evaluate(inputs)),
-        dataset.make_one_shot_iterator())
+        dataset_ops.make_one_shot_iterator(dataset))
     self.assertEqual(all_inputs, [1.])
 
   @_run_in_and_out_of_scope

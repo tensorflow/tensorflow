@@ -25,11 +25,11 @@ limitations under the License.
 #define TFL_CAPI_EXPORT
 #else
 #if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
+#ifdef TFL_COMPILE_LIBRARY
 #define TFL_CAPI_EXPORT __declspec(dllexport)
 #else
 #define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
+#endif  // TFL_COMPILE_LIBRARY
 #else
 #define TFL_CAPI_EXPORT __attribute__((visibility("default")))
 #endif  // _WIN32
@@ -51,7 +51,7 @@ enum TfLiteGlObjectType {
 // of TfLiteGlCompileOptions, otherwise every new added option may break
 // inference.
 // TODO(impjdi): Unify with opengl::CompilationOptions.
-struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
+typedef struct {
   // When set to zero, computations are carried out in 32-bit floating point.
   // Otherwise, the GPU may quantify tensors, downcast values, process in FP16
   // (recommended).
@@ -76,7 +76,7 @@ struct TFL_CAPI_EXPORT TfLiteGlCompileOptions {
   // Parameters will be inlined into a shader. This in turn will generated more
   // unique shaders where each will need to be compiled.
   int32_t inline_parameters;
-};
+} TfLiteGlCompileOptions;
 
 // Populates TfLiteGlCompileOptions as follows:
 //   precision_loss_allowed = 0;
@@ -88,10 +88,10 @@ TFL_CAPI_EXPORT TfLiteGlCompileOptions TfLiteGlCompileOptionsDefault();
 // Always use TfLiteGpuDelegateOptionsDefault() method to create new instance
 // of TfLiteGpuDelegateOptions, otherwise every new added option may break
 // inference.
-struct TFL_CAPI_EXPORT TfLiteGpuDelegateOptions {
+typedef struct {
   const uint8_t* metadata;  // Internal.
   TfLiteGlCompileOptions compile_options;
-};
+} TfLiteGpuDelegateOptions;
 
 // Populates TfLiteGlCompileOptions as follows:
 //   metadata = nullptr;

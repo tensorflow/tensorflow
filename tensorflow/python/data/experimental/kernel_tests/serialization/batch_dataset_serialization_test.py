@@ -17,18 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
 class BatchDatasetSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def build_dataset(self, multiplier=15.0, tensor_slice_len=2, batch_size=2):
     components = (
@@ -38,6 +42,7 @@ class BatchDatasetSerializationTest(
 
     return dataset_ops.Dataset.from_tensor_slices(components).batch(batch_size)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCore(self):
     tensor_slice_len = 8
     batch_size = 2
@@ -51,6 +56,7 @@ class BatchDatasetSerializationTest(
         lambda x: array_ops.fill([x], x)).apply(
             batching.dense_to_sparse_batch(4, [12]))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDenseToSparseBatchDatasetCore(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
 
@@ -65,12 +71,14 @@ class BatchDatasetSerializationTest(
   def _build_dataset_sparse(self, batch_size=5):
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testSparseCore(self):
     self.run_core_tests(self._build_dataset_sparse, 2)
 
   def _build_dataset_nested_sparse(self):
     return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNestedSparseCore(self):
     self.run_core_tests(self._build_dataset_nested_sparse, 1)
 

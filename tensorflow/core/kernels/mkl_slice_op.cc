@@ -313,6 +313,7 @@ class MklSliceOp : public OpKernel {
     bool done = false;
 
     CheckCommonCasesForMklInputs<T>(context, &begin, &size, &done);
+
     if (!context->status().ok() || done == true) return;
 
     // Though MKL-DNN supports more than 8 dimension and
@@ -387,20 +388,30 @@ class MklSliceOp : public OpKernel {
       // Step 1 (as per above description) - Create memory for user data.
       // We use blocked format here to describe input tensor.
       const Tensor& input_tensor = MklGetInput(context, 0);
+      memory::dims input_dims, input_strides;
       MklDnnShape input_mkl_shape;
       GetMklShape(context, 0, &input_mkl_shape);
 
       if (input_mkl_shape.IsMklTensor()) {
         auto input_mkl_format = input_mkl_shape.GetTfDataFormat();
         auto input_tf_format = MklDnnDataFormatToTFDataFormat(input_mkl_format);
-        begin_dims = MklDnnDimsInNCHW(begin_dims, input_tf_format);
-        size_dims = MklDnnDimsInNCHW(size_dims, input_tf_format);
+
+        bool is_slice2d = (input_mkl_shape.GetDimension() == 4);
+        begin_dims = is_slice2d
+                         ? MklDnnDimsInNCHW(begin_dims, input_tf_format)
+                         : MklDnnDimsInNCDHW(begin_dims, input_tf_format);
+        size_dims = is_slice2d ? MklDnnDimsInNCHW(size_dims, input_tf_format)
+                               : MklDnnDimsInNCDHW(size_dims, input_tf_format);
         auto input_md = input_mkl_shape.GetMklLayout();
         src.SetUsrMem(input_md, &input_tensor);
+
+        // Handle data format safely, change them to block format.
+        // Compute parameters of reorder primitive first.
+        input_dims = input_mkl_shape.GetSizesAsMklDnnDims();
+        input_strides = CalculateTFStrides(input_dims);
       } else {
         // Initialize input dimensions and strides to be used when input is not
         // in MklDnn layout.
-        memory::dims input_dims, input_strides;
         input_dims = TFShapeToMklDnnDims(input_tensor.shape());
         input_strides = CalculateTFStrides(input_dims);
         // Create input memory descriptor.
@@ -408,6 +419,13 @@ class MklSliceOp : public OpKernel {
             MklDnnData<T>::CreateBlockedMemDesc(input_dims, input_strides);
         src.SetUsrMem(input_md, &input_tensor);
       }
+
+      // If format not equal to block format, execute reorder.
+      // Or else do nothing for it.
+      auto op_md =
+          MklDnnData<T>::CreateBlockedMemDesc(input_dims, input_strides);
+      auto op_pd = memory::primitive_desc(op_md, cpu_engine);
+      src.CheckReorderToOpMem(op_pd);
 
       // Step 2 - Create memory for output.
       auto output_strides = CalculateTFStrides(size_dims);
@@ -421,7 +439,7 @@ class MklSliceOp : public OpKernel {
       output.SetUsrMem(output_md, output_tensor);
 
       // Step 3 - create reorder primitive.
-      MklSliceParams sliceParams(src.GetUsrMem(), output.GetUsrMem(),
+      MklSliceParams sliceParams(&src.GetOpMem(), output.GetUsrMem(),
                                  begin_dims, size_dims);
       MklSlicePrimitive<T>* reorder_prim =
           MklSlicePrimitiveFactory<T>::Get(sliceParams);

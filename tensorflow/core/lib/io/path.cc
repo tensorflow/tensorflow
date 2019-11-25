@@ -26,10 +26,10 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/core/lib/strings/scanner.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/scanner.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace io {

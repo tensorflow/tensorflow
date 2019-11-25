@@ -70,10 +70,6 @@ typedef unsigned __int64 uint64_t;
 #include <time.h>
 #endif
 
-// #if defined(EIGEN_USE_LIBXSMM)
-// #include "libxsmm.h"
-// #endif
-
 #ifdef EIGEN_USE_THREADS
 #include "third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool"
 #endif
@@ -107,6 +103,7 @@ typedef unsigned __int64 uint64_t;
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorGlobalFunctions.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorBase.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorBlock.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorBlockV2.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorEvaluator.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorExpr.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/src/Tensor/TensorReduction.h"

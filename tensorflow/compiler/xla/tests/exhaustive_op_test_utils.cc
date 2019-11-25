@@ -37,7 +37,7 @@ struct ComponentStringifyFormat<double> {
 
 template <>
 struct ComponentStringifyFormat<float> {
-  static constexpr absl::string_view value = "%0.8g (0x%08x)";
+  static constexpr absl::string_view value = "%0.9g (0x%08x)";
 };
 
 template <>

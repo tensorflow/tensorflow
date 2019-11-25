@@ -19,10 +19,10 @@
 
 #include "mlir/Dialect/FxpMathOps/FxpMathOps.h"
 #include "mlir/Dialect/FxpMathOps/Passes.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/Ops.h"
 
 using namespace mlir;
 using namespace mlir::fxpmath;
@@ -121,7 +121,7 @@ struct UniformDequantizePattern : public OpRewritePattern<DequantizeCastOp> {
   using OpRewritePattern<DequantizeCastOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(DequantizeCastOp op,
-                                     PatternRewriter &rewriter) const {
+                                     PatternRewriter &rewriter) const override {
     Type inputType = op.arg()->getType();
     Type outputType = op.getResult()->getType();
 
@@ -232,7 +232,8 @@ tryRewriteAffineMulEwSigned(const UniformBinaryOpInfo &info,
                                 info.rhsType.getScale() /
                                 info.resultType.getScale();
   if (outputMultiplierReal > 1.0) {
-    info.op->emitWarning("unimplemented: cannot multiply with multipler > 1.0");
+    info.op->emitWarning(
+        "unimplemented: cannot multiply with multiplier > 1.0");
     return failure();
   }
 
@@ -322,7 +323,7 @@ struct UniformRealAddEwPattern : public OpRewritePattern<RealAddEwOp> {
   using OpRewritePattern<RealAddEwOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(RealAddEwOp op,
-                                     PatternRewriter &rewriter) const {
+                                     PatternRewriter &rewriter) const override {
     const UniformBinaryOpInfo info(op, op.lhs(), op.rhs(), op.clamp_min(),
                                    op.clamp_max());
     if (!info.isValid()) {
@@ -342,7 +343,7 @@ struct UniformRealMulEwPattern : public OpRewritePattern<RealMulEwOp> {
   using OpRewritePattern<RealMulEwOp>::OpRewritePattern;
 
   PatternMatchResult matchAndRewrite(RealMulEwOp op,
-                                     PatternRewriter &rewriter) const {
+                                     PatternRewriter &rewriter) const override {
     const UniformBinaryOpInfo info(op, op.lhs(), op.rhs(), op.clamp_min(),
                                    op.clamp_max());
     if (!info.isValid()) {
@@ -372,7 +373,7 @@ void LowerUniformRealMathPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformRealMathPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformRealMathPass() {
   return new LowerUniformRealMathPass();
 }
 
@@ -392,7 +393,7 @@ void LowerUniformCastsPass::runOnFunction() {
   applyPatternsGreedily(fn, patterns);
 }
 
-FunctionPassBase *mlir::fxpmath::createLowerUniformCastsPass() {
+OpPassBase<FuncOp> *mlir::fxpmath::createLowerUniformCastsPass() {
   return new LowerUniformCastsPass();
 }
 

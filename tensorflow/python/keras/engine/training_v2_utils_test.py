@@ -12,95 +12,149 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for training utility functions."""
+"""Tests for tensorflow.python.keras.engine.training_v2_utils."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
+from absl.testing import parameterized
+import mock
 import numpy as np
 
+
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import constant_op
-from tensorflow.python.keras import callbacks as cbks
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import combinations
+from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.keras.distribute import distributed_training_utils as dist_utils
 from tensorflow.python.keras.engine import training_v2_utils
-from tensorflow.python.keras.utils import data_utils
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 
 
-class TestSequence(data_utils.Sequence):
-
-  def __init__(self, batch_size, feature_shape):
-    self.batch_size = batch_size
-    self.feature_shape = feature_shape
-
-  def __getitem__(self, item):
-    return (np.zeros((self.batch_size, self.feature_shape)),
-            np.ones((self.batch_size,)))
-
-  def __len__(self):
-    return 10
-
-
-class CallbackFallbackTest(test.TestCase):
+class AggregatePredictResultsTest(test.TestCase, parameterized.TestCase):
 
   def setUp(self):
-    super(CallbackFallbackTest, self).setUp()
-    self.batch_size = 5
-    self.numpy_input = np.zeros((50, 10))
-    self.numpy_target = np.ones(50)
-    self.tensor_input = constant_op.constant(2.0, shape=(50, 10))
-    self.tensor_target = array_ops.ones((50,))
-    self.dataset_input = dataset_ops.DatasetV2.from_tensor_slices(
-        (self.numpy_input, self.numpy_target)).shuffle(50).batch(
-            self.batch_size)
+    super(AggregatePredictResultsTest, self).setUp()
+    strategy_combinations.set_virtual_cpus_to_at_least(3)
+    self.num_replica = 3
+    self.batch_size = 16
+    self.dense_shape = (2, 3)
+    self.total_sample = 2 * self.batch_size
 
-    def generator():
-      yield (np.zeros((self.batch_size, 10)), np.ones(self.batch_size))
-    self.generator_input = generator()
-    self.sequence_input = TestSequence(batch_size=self.batch_size,
-                                       feature_shape=10)
+    mock_model = collections.namedtuple('Model', ['outputs'])
+    self.mock_model = mock_model([1])
 
-    self.fallback_ckeckpoint_cb = cbks.ModelCheckpoint(
-        self.get_temp_dir(), save_freq=10)
-    self.normal_checkpoint_cb = cbks.ModelCheckpoint(
-        self.get_temp_dir(), save_freq='epoch')
-    self.fallback_tensorboard_cb = cbks.TensorBoard(update_freq=10)
-    self.normal_tensorboard_cb = cbks.TensorBoard(update_freq='batch')
-    self.unaffected_cb = cbks.CSVLogger(self.get_temp_dir())
+    strategy = mirrored_strategy.MirroredStrategy(
+        ['/cpu:0', '/cpu:1', '/cpu:2'])
 
-  def test_not_fallback_based_on_input(self):
-    callback_list = [self.fallback_ckeckpoint_cb]
+    execution_function = lambda *inp: inp
+    @def_function.function
+    def predict_loop(batch):
+      batch_result = strategy.experimental_run_v2(execution_function, batch)
+      batch_result = dist_utils.unwrap_output_dict(
+          strategy, batch_result, ModeKeys.PREDICT)
+      # swap the order of replica 1 and 2, to mimic random order.
+      batch_result[2], batch_result[1] = batch_result[1], batch_result[2]
+      batch_result[5], batch_result[4] = batch_result[4], batch_result[5]
+      return batch_result
 
-    test_cases = [
-        [(self.numpy_input, self.numpy_target), False],
-        [[self.tensor_input, self.tensor_target], False],
-        [self.sequence_input, False],
-        [self.dataset_input, True],
-        [self.generator_input, True],
-    ]
+    self.strategy = strategy
+    self.predict_loop = predict_loop
 
-    for case in test_cases:
-      inputs, expected_result = case
-      self.assertEqual(training_v2_utils.should_fallback_to_v1_for_callback(
-          inputs, callback_list), expected_result)
+  @combinations.generate(combinations.combine(tf_api_version=[1, 2],
+                                              mode='eager'))
+  def test_aggregate_predict_results_dense(self):
+    dataset = dataset_ops.Dataset.range(self.total_sample)
+    def dense_map_fn(i):
+      # Mimic what we do for adding batch index
+      return i, array_ops.fill(self.dense_shape, i)
+    dense_dataset = dataset.map(dense_map_fn).batch(self.batch_size)
+    distributed_data = self.strategy.experimental_distribute_dataset(
+        dense_dataset)
 
-  def test_fallback_based_on_callbacks(self):
-    inputs = self.dataset_input
-    test_cases = [
-        [[self.fallback_ckeckpoint_cb], True],
-        [[self.normal_checkpoint_cb], False],
-        [[self.fallback_ckeckpoint_cb, self.normal_checkpoint_cb], True],
-        [[self.fallback_tensorboard_cb], True],
-        [[self.normal_tensorboard_cb], False],
-        [[self.unaffected_cb], False],
-    ]
+    start = 0
+    for batch in distributed_data:
+      with mock.patch.object(training_v2_utils,
+                             '_should_add_batch_index_to_element',
+                             fake_should_add_batch_index_to_element):
+        batch_result = self.predict_loop(batch)
+        final_result = training_v2_utils._aggregate_predict_results(
+            self.strategy, batch_result, self.mock_model)
 
-    for case in test_cases:
-      callbacks, expected_result = case
-      self.assertEqual(training_v2_utils.should_fallback_to_v1_for_callback(
-          inputs, callbacks), expected_result)
+        # Make sure the dense result is in a sorted order.
+        expected_result = np.arange(
+            start=start, stop=start+self.batch_size).reshape((-1, 1))
+        expected_result = np.tile(expected_result, 6).reshape(
+            (-1,) + self.dense_shape)
+        self.assertAllClose(final_result[0], expected_result)
+        start += self.batch_size
+
+  @combinations.generate(combinations.combine(tf_api_version=[1, 2],
+                                              mode='eager'))
+  def test_aggregate_predict_results_sparse(self):
+    dataset = dataset_ops.Dataset.range(self.total_sample)
+    def sparse_map_fn(i):
+      return i, sparse_tensor.SparseTensor(
+          indices=[(0, 0)],
+          values=[i],
+          dense_shape=self.dense_shape)
+    sparse_dataset = dataset.map(sparse_map_fn).batch(self.batch_size)
+    distributed_data = self.strategy.experimental_distribute_dataset(
+        sparse_dataset)
+
+    start = 0
+    for batch in distributed_data:
+      with mock.patch.object(training_v2_utils,
+                             '_should_add_batch_index_to_element',
+                             fake_should_add_batch_index_to_element):
+        batch_result = self.predict_loop(batch)
+        final_result = training_v2_utils._aggregate_predict_results(
+            self.strategy, batch_result, self.mock_model)
+
+        # Make sure the dense result is in a sorted order.
+        expected_values = np.arange(start=start, stop=start+self.batch_size)
+        self.assertAllClose(final_result[0].values, expected_values)
+        start += self.batch_size
+
+  @combinations.generate(combinations.combine(tf_api_version=[1, 2],
+                                              mode='eager'))
+  def test_aggregate_predict_results_ragged(self):
+    dataset = dataset_ops.Dataset.range(self.total_sample)
+    def ragged_map_fn(i):
+      return i, ragged_factory_ops.constant([[0], [], []], dtype=np.int64) + i
+    ragged_dataset = dataset.map(ragged_map_fn).batch(self.batch_size)
+    distributed_data = self.strategy.experimental_distribute_dataset(
+        ragged_dataset)
+
+    start = 0
+    for batch in distributed_data:
+      with mock.patch.object(training_v2_utils,
+                             '_should_add_batch_index_to_element',
+                             fake_should_add_batch_index_to_element):
+        batch_result = self.predict_loop(batch)
+        final_result = training_v2_utils._aggregate_predict_results(
+            self.strategy, batch_result, self.mock_model)
+
+        # Make sure the dense result is in a sorted order.
+        expected_values = np.arange(start=start, stop=start+self.batch_size)
+        self.assertAllClose(final_result[0].flat_values, expected_values)
+        start += self.batch_size
+
+
+def fake_should_add_batch_index_to_element(strategy, mode):
+  # Ignore the strategy instance check since we were using the MirroredStrategy
+  # for testing.
+  del strategy
+  return mode == ModeKeys.PREDICT
+
 
 if __name__ == '__main__':
   test.main()

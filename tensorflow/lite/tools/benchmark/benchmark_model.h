@@ -24,6 +24,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/profiling/memory_info.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/command_line_flags.h"
 
@@ -39,11 +41,15 @@ class BenchmarkResults {
  public:
   BenchmarkResults(int64_t startup_latency_us, uint64_t input_bytes,
                    tensorflow::Stat<int64_t> warmup_time_us,
-                   tensorflow::Stat<int64_t> inference_time_us)
+                   tensorflow::Stat<int64_t> inference_time_us,
+                   const profiling::memory::MemoryUsage& init_mem_usage,
+                   const profiling::memory::MemoryUsage& overall_mem_usage)
       : startup_latency_us_(startup_latency_us),
         input_bytes_(input_bytes),
         warmup_time_us_(warmup_time_us),
-        inference_time_us_(inference_time_us) {}
+        inference_time_us_(inference_time_us),
+        init_mem_usage_(init_mem_usage),
+        overall_mem_usage_(overall_mem_usage) {}
 
   tensorflow::Stat<int64_t> inference_time_us() const {
     return inference_time_us_;
@@ -57,11 +63,20 @@ class BenchmarkResults {
     return bytes_per_sec / (1024.0 * 1024.0);
   }
 
+  const profiling::memory::MemoryUsage& init_mem_usage() const {
+    return init_mem_usage_;
+  }
+  const profiling::memory::MemoryUsage& overall_mem_usage() const {
+    return overall_mem_usage_;
+  }
+
  private:
   int64_t startup_latency_us_;
   uint64_t input_bytes_;
   tensorflow::Stat<int64_t> warmup_time_us_;
   tensorflow::Stat<int64_t> inference_time_us_;
+  profiling::memory::MemoryUsage init_mem_usage_;
+  profiling::memory::MemoryUsage overall_mem_usage_;
 };
 
 class BenchmarkListener {
@@ -144,9 +159,9 @@ class BenchmarkModel {
   BenchmarkModel();
   BenchmarkModel(BenchmarkParams params) : params_(std::move(params)) {}
   virtual ~BenchmarkModel() {}
-  virtual void Init() = 0;
-  void Run(int argc, char** argv);
-  virtual void Run();
+  virtual TfLiteStatus Init() = 0;
+  TfLiteStatus Run(int argc, char** argv);
+  virtual TfLiteStatus Run();
   void AddListener(BenchmarkListener* listener) {
     listeners_.AddListener(listener);
   }
@@ -155,24 +170,27 @@ class BenchmarkModel {
 
   // Unparsable flags will remain in 'argv' in the original order and 'argc'
   // will be updated accordingly.
-  bool ParseFlags(int* argc, char** argv);
+  TfLiteStatus ParseFlags(int* argc, char** argv);
 
  protected:
   virtual void LogParams();
-  virtual bool ValidateParams();
+  virtual TfLiteStatus ValidateParams();
 
-  bool ParseFlags(int argc, char** argv) { return ParseFlags(&argc, argv); }
+  TfLiteStatus ParseFlags(int argc, char** argv) {
+    return ParseFlags(&argc, argv);
+  }
   virtual std::vector<Flag> GetFlags();
 
   virtual uint64_t ComputeInputBytes() = 0;
   virtual tensorflow::Stat<int64_t> Run(int min_num_times, float min_secs,
-                                        float max_secs, RunType run_type);
+                                        float max_secs, RunType run_type,
+                                        TfLiteStatus* invoke_status);
   // Prepares input data for benchmark. This can be used to initialize input
   // data that has non-trivial cost.
-  virtual void PrepareInputData();
+  virtual TfLiteStatus PrepareInputData();
 
-  virtual void ResetInputsAndOutputs();
-  virtual void RunImpl() = 0;
+  virtual TfLiteStatus ResetInputsAndOutputs();
+  virtual TfLiteStatus RunImpl() = 0;
   BenchmarkParams params_;
   BenchmarkListeners listeners_;
 };

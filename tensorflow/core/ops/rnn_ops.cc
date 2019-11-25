@@ -199,7 +199,98 @@ REGISTER_OP("BlockLSTM")
       return Status::OK();
     });
 
+REGISTER_OP("BlockLSTMV2")
+    .Input("seq_len_max: int64")
+    .Input("x: T")
+    .Input("cs_prev: T")
+    .Input("h_prev: T")
+    .Input("w: T")
+    .Input("wci: T")
+    .Input("wcf: T")
+    .Input("wco: T")
+    .Input("b: T")
+    .Output("i: T")
+    .Output("cs: T")
+    .Output("f: T")
+    .Output("o: T")
+    .Output("ci: T")
+    .Output("co: T")
+    .Output("h: T")
+    .Attr("cell_clip: float = 0.0")
+    .Attr("use_peephole: bool = false")
+    .Attr("T: {half, float}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle x, b;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &x));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(c->num_inputs() - 1), 1, &b));
+
+      DimensionHandle timelen = c->Dim(x, 0);
+      DimensionHandle batch_size = c->Dim(x, 1);
+      DimensionHandle cell_size;
+      TF_RETURN_IF_ERROR(
+          c->Divide(c->Dim(b, 0), 4, true /* evenly_divisible */, &cell_size));
+
+      DCHECK_EQ(7, c->num_outputs());
+      ShapeHandle output = c->MakeShape({timelen, batch_size, cell_size});
+      for (int i = 0; i < 7; ++i) {
+        c->set_output(i, output);
+      }
+      return Status::OK();
+    });
+
 REGISTER_OP("BlockLSTMGrad")
+    .Input("seq_len_max: int64")
+    .Input("x: T")
+    .Input("cs_prev: T")
+    .Input("h_prev: T")
+    .Input("w: T")
+    .Input("wci: T")
+    .Input("wcf: T")
+    .Input("wco: T")
+    .Input("b: T")
+    .Input("i: T")
+    .Input("cs: T")
+    .Input("f: T")
+    .Input("o: T")
+    .Input("ci: T")
+    .Input("co: T")
+    .Input("h: T")
+    .Input("cs_grad: T")
+    .Input("h_grad: T")
+    .Output("x_grad: T")
+    .Output("cs_prev_grad: T")
+    .Output("h_prev_grad: T")
+    .Output("w_grad: T")
+    .Output("wci_grad: T")
+    .Output("wcf_grad: T")
+    .Output("wco_grad: T")
+    .Output("b_grad: T")
+    .Attr("use_peephole: bool")
+    .Attr("T: {half, float}")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle x, cs_prev, h_prev, w, wci, wco, wcf, b;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 3, &x));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 2, &cs_prev));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 2, &h_prev));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 2, &w));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 1, &wci));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 1, &wco));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 1, &wcf));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 1, &b));
+
+      c->set_output(0, x);
+      c->set_output(1, cs_prev);
+      c->set_output(2, h_prev);
+      c->set_output(3, w);
+      c->set_output(4, wci);
+      c->set_output(5, wco);
+      c->set_output(6, wcf);
+      c->set_output(7, b);
+
+      return Status::OK();
+    });
+
+REGISTER_OP("BlockLSTMGradV2")
     .Input("seq_len_max: int64")
     .Input("x: T")
     .Input("cs_prev: T")

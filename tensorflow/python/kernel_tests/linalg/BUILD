@@ -21,7 +21,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -38,7 +37,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -61,7 +59,6 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -78,7 +75,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -101,7 +97,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -124,7 +119,6 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -134,7 +128,6 @@ cuda_py_test(
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -146,10 +139,10 @@ cuda_py_test(
     ],
     shard_count = 10,
     tags = [
+        "no_rocm",  # calls BLAS ops for complex types
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -172,7 +165,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -195,7 +187,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -217,7 +208,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -240,7 +230,6 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -261,7 +250,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -284,7 +272,7 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
+    xla_enable_strict_auto_jit = False,  # Fails in XLA b/143610154
 )
 
 cuda_py_test(
@@ -304,7 +292,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -323,6 +310,28 @@ cuda_py_test(
     shard_count = 10,
     tags = [
         "noasan",  # times out
+        "optonly",
+    ],
+)
+
+cuda_py_test(
+    name = "linear_operator_permutation_test",
+    size = "medium",
+    srcs = ["linear_operator_permutation_test.py"],
+    additional_deps = [
+        "//tensorflow/python/ops/linalg",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:random_ops",
+    ],
+    shard_count = 5,
+    tags = [
+        "noasan",
         "optonly",
     ],
     xla_enable_strict_auto_jit = True,
@@ -346,7 +355,6 @@ cuda_py_test(
         "noasan",
         "optonly",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -356,7 +364,6 @@ cuda_py_test(
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -373,7 +380,6 @@ cuda_py_test(
         "noasan",  # times out, b/63678675
         "optonly",  # times out, b/79171797
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -392,5 +398,4 @@ cuda_py_test(
     ],
     shard_count = 5,
     tags = ["optonly"],  # Test is flaky without optimization.
-    xla_enable_strict_auto_jit = True,
 )

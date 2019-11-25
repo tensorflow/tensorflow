@@ -361,12 +361,14 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   common workflow. That said, this utility function is still useful for
   generating TF Serving request protos:
 
+  ```python
     request = tensorflow_serving.apis.predict_pb2.PredictRequest()
     request.model_spec.name = "my_model"
     request.model_spec.signature_name = "serving_default"
     request.inputs["images"].CopyFrom(tf.make_tensor_proto(X_new))
+  ```
 
-  make_tensor_proto accepts "values" of a python scalar, a python list, a
+  `make_tensor_proto` accepts "values" of a python scalar, a python list, a
   numpy ndarray, or a numpy scalar.
 
   If "values" is a python scalar or a python list, make_tensor_proto
@@ -376,9 +378,9 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False,
   type with the given dtype.
 
   In either case above, the numpy ndarray (either the caller provided
-  or the auto converted) must have the compatible type with dtype.
+  or the auto-converted) must have the compatible type with dtype.
 
-  make_tensor_proto then converts the numpy array to a tensor proto.
+  `make_tensor_proto` then converts the numpy array to a tensor proto.
 
   If "shape" is None, the resulting tensor proto represents the numpy
   array precisely.
@@ -564,6 +566,17 @@ def MakeNdarray(tensor):
   """Create a numpy ndarray from a tensor.
 
   Create a numpy ndarray with the same shape and data as the tensor.
+  
+  For example:
+  
+  ```python
+  # Tensor a has shape (2,3)
+  a = tf.constant([[1,2,3],[4,5,6]])
+  proto_tensor = tf.make_tensor_proto(a)  # convert `tensor a` to a proto tensor
+  tf.make_ndarray(proto_tensor) # output: array([[1, 2, 3],
+  #                                              [4, 5, 6]], dtype=int32)
+  # output has shape (2,3)
+  ```
 
   Args:
     tensor: A TensorProto.
@@ -737,6 +750,21 @@ def _ConstantValue(tensor, partial):
         return None
       values.append(value)
     return np.array(values)
+  elif tensor.op.type == "Unpack":
+    # We can't handle axis != 0 Unpacks at the moment.
+    if tensor.op.get_attr("axis") != 0:
+      return None
+    value = constant_value(tensor.op.inputs[0], partial)
+    if value is None:
+      return None
+    return value[tensor.value_index]
+  elif tensor.op.type == "Split":
+    dim = constant_value(tensor.op.inputs[0])
+    value = constant_value(tensor.op.inputs[1], partial)
+    if value is None or dim is None:
+      return None
+    split = np.split(value, tensor.op.get_attr("num_split"), dim)
+    return split[tensor.value_index]
   elif tensor.op.type == "Fill":
     fill_shape = tensor.shape
     fill_value = constant_value(tensor.op.inputs[1])
@@ -760,6 +788,8 @@ def _ConstantValue(tensor, partial):
     if value2 is None:
       return None
     return np.not_equal(value1, value2)
+  elif tensor.op.type == "StopGradient":
+    return constant_value(tensor.op.inputs[0], partial)
   else:
     return None
 
@@ -840,6 +870,20 @@ def constant_value_as_shape(tensor):  # pylint: disable=invalid-name
   shape = tensor.get_shape().with_rank(1)
   if shape == [0]:
     return tensor_shape.TensorShape([])
+  elif tensor.op.type == "Cast":
+    pre_cast = constant_value_as_shape(tensor.op.inputs[0])
+    if pre_cast.dims is None:
+      # the input to cast has a totally undefined shape; just return that.
+      return pre_cast
+    cast_dtype = dtypes.as_dtype(tensor.op.get_attr("DstT"))
+    if cast_dtype not in (dtypes.int32, dtypes.int64):
+      return tensor_shape.unknown_shape(shape.dims[0].value)
+    dest_dtype_shape_array = np.array(
+        [x if x is not None else -1 for x in pre_cast.as_list()]).astype(
+            cast_dtype.as_numpy_dtype)
+    return tensor_shape.TensorShape([
+        x if x >= 0 else None
+        for x in dest_dtype_shape_array])
   elif tensor.op.type == "Shape":
     return tensor.op.inputs[0].get_shape()
   elif tensor.op.type == "Pack":
@@ -964,10 +1008,40 @@ def shape_tensor(shape):  # pylint: disable=invalid-name
   return ops.convert_to_tensor(shape, dtype=dtype, name="shape")
 
 
+# DO NOT USE: For testing only.
+_ENABLE_MAYBE_SET_STATIC_SHAPE = True
+
+
 def maybe_set_static_shape(tensor, shape):  # pylint: disable=invalid-name
-  if (not context.executing_eagerly() and
+  """Sets the shape of `tensor` to the `shape`'s constant value, if inferrable.
+
+  This is a temporary workaround to fix shape inference across functional op
+  boundaries. E.g.
+
+  ```python
+  shape = tf.constant([3])
+  @tf.function
+  def f():
+    u = tf.random_uniform(shape)
+    return u
+  ```
+
+  If we were to rely solely on C++ shape inference, the shape of `u` inside
+  `f` would be unknown because C++ shape inference is not aware of the outer
+  graph and all it sees is a Placeholder node when backtracing the captured
+  tensor for `shape`. `maybe_set_static_shape` computes the static shape value
+  of `shape` by traversing the `FuncGraph` boundaries and sets the correct
+  shape.
+
+  A longer term solution would be to fix C++ shape inference.
+
+  Args:
+    tensor: A tensor.
+    shape: A shape tensor.
+  """
+  if (_ENABLE_MAYBE_SET_STATIC_SHAPE and not context.executing_eagerly() and
       ops.get_default_graph().building_function and
-      not tensor.shape.is_fully_defined()):
+      not tensor.shape.is_fully_defined() and is_tensor(shape)):
     shape = shape_tensor(shape)
     const_shape = constant_value_as_shape(shape)
     tensor.set_shape(const_shape)

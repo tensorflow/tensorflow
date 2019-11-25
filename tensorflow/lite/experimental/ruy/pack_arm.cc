@@ -185,6 +185,423 @@ void Pack8bitNeonOutOfOrder(const void* src_ptr0, const void* src_ptr1,
         "v17", "v18", "v19", "v20", "v21", "v22", "v23", "v24", "v25", "v26",
         "v27", "v28", "v29", "v30", "v31");
 }
+#endif
+
+#if RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+
+#define RUY_OFFSET_SRC_PTR0 0
+#define RUY_OFFSET_SRC_PTR1 4
+#define RUY_OFFSET_SRC_PTR2 8
+#define RUY_OFFSET_SRC_PTR3 12
+#define RUY_OFFSET_SUMS_PTR 16
+#define RUY_OFFSET_PACKED_PTR 20
+#define RUY_OFFSET_SRC_INC0 24
+#define RUY_OFFSET_SRC_INC1 28
+#define RUY_OFFSET_SRC_INC2 32
+#define RUY_OFFSET_SRC_INC3 36
+#define RUY_OFFSET_SRC_ROWS 40
+#define RUY_OFFSET_SRC_ZERO_POINT 44
+#define RUY_OFFSET_INPUT_XOR 48
+
+template <typename Params>
+void CheckOffsetsInPackParams8bit(const Params&) {
+  static_assert(offsetof(Params, src_ptr0) == RUY_OFFSET_SRC_PTR0, "");
+  static_assert(offsetof(Params, src_ptr1) == RUY_OFFSET_SRC_PTR1, "");
+  static_assert(offsetof(Params, src_ptr2) == RUY_OFFSET_SRC_PTR2, "");
+  static_assert(offsetof(Params, src_ptr3) == RUY_OFFSET_SRC_PTR3, "");
+  static_assert(offsetof(Params, sums_ptr) == RUY_OFFSET_SUMS_PTR, "");
+  static_assert(offsetof(Params, packed_ptr) == RUY_OFFSET_PACKED_PTR, "");
+  static_assert(offsetof(Params, src_inc0) == RUY_OFFSET_SRC_INC0, "");
+  static_assert(offsetof(Params, src_inc1) == RUY_OFFSET_SRC_INC1, "");
+  static_assert(offsetof(Params, src_inc2) == RUY_OFFSET_SRC_INC2, "");
+  static_assert(offsetof(Params, src_inc3) == RUY_OFFSET_SRC_INC3, "");
+  static_assert(offsetof(Params, src_rows) == RUY_OFFSET_SRC_ROWS, "");
+  static_assert(offsetof(Params, src_zero_point) == RUY_OFFSET_SRC_ZERO_POINT,
+                "");
+  static_assert(offsetof(Params, input_xor) == RUY_OFFSET_INPUT_XOR, "");
+}
+
+// Packing code for out-of-order ARMv7 CPUs like the Krait 400 or A9.
+// No attempt made at making this code efficient on in-order cores yet.
+void Pack8bitNeonOutOfOrder4Cols(const PackParams8bit& params) {
+  CheckOffsetsInPackParams8bit(params);
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for out-of-order cores)");
+  const void* src_ptr0 = params.src_ptr0;
+  const void* src_ptr1 = params.src_ptr1;
+  const void* src_ptr2 = params.src_ptr2;
+  const void* src_ptr3 = params.src_ptr3;
+  const int src_inc0 = params.src_inc0;
+  const int src_inc1 = params.src_inc1;
+  const int src_inc2 = params.src_inc2;
+  const int src_inc3 = params.src_inc3;
+  const std::int8_t* packed_ptr = params.packed_ptr;
+
+  asm volatile(
+      // clang-format off
+
+          "ldr r2, [%[params], #" RUY_STR(RUY_OFFSET_INPUT_XOR) "]\n"
+          "vdup.8 q11, r2\n"
+          "mov r1, #0\n"
+          // Zero-out the accumulators
+          "vmov.i32 q12, #0\n"
+          "vmov.i32 q13, #0\n"
+          "vmov.i32 q14, #0\n"
+          "vmov.i32 q15, #0\n"
+
+          // Round down src_rows to nearest multiple of 16.
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SRC_ROWS) "]\n"
+          "and r2, r3, #-16\n"
+          "cmp r1, r2\n"
+          "beq 3f\n"
+
+          "1:\n"
+          "add r1, r1, #16\n"
+          /* Load q0 */
+          "vld1.8 {d0, d1}, [%[src_ptr0]]\n"
+          "add %[src_ptr0], %[src_ptr0], %[src_inc0]\n"
+          RUY_PREFETCH("pld [%[src_ptr0]]\n")
+
+          /* Load q1 */
+          "vld1.8 {d2, d3}, [%[src_ptr1]]\n"
+          "add %[src_ptr1], %[src_ptr1], %[src_inc1]\n"
+          RUY_PREFETCH("pld [%[src_ptr1]]\n")
+
+          "veor.8 q4, q0, q11\n"
+          "veor.8 q5, q1, q11\n"
+
+          // Pairwise add in to 16b accumulators.
+          "vpaddl.s8 q8, q4\n"
+          "vpaddl.s8 q9, q5\n"
+
+          "vst1.32 {q4}, [%[packed_ptr]]!\n"
+          "vst1.32 {q5}, [%[packed_ptr]]!\n"
+
+          // Pairwise add accumulate into 32b accumulators.
+          // q12 and q13 contain 4x32b accumulators
+          "vpadal.s16 q12, q8\n"
+          "vpadal.s16 q13, q9\n"
+
+          // Now do the same for src_ptr2 and src_ptr3.
+          "vld1.8 {d0, d1}, [%[src_ptr2]]\n"
+          "add %[src_ptr2], %[src_ptr2], %[src_inc2]\n"
+          RUY_PREFETCH("pld [%[src_ptr2]]\n")
+
+          "vld1.8 {d2, d3}, [%[src_ptr3]]\n"
+          "add %[src_ptr3], %[src_ptr3], %[src_inc3]\n"
+          RUY_PREFETCH("pld [%[src_ptr3]]\n")
+
+          "veor.8 q4, q0, q11\n"
+          "veor.8 q5, q1, q11\n"
+
+          "vpaddl.s8 q8, q4\n"
+          "vpaddl.s8 q9, q5\n"
+
+          "vst1.32 {q4}, [%[packed_ptr]]!\n"
+          "vst1.32 {q5}, [%[packed_ptr]]!\n"
+
+          // Pairwise add accumulate into 32b accumulators.
+          // q14 and q15 contain 4x32b accumulators
+          "vpadal.s16 q14, q8\n"
+          "vpadal.s16 q15, q9\n"
+
+          "cmp r1, r2\n"
+          "bne 1b\n"
+
+          "3:\n"
+
+          // Now pack the last (num_rows % 16) rows.
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SRC_ROWS) "]\n"
+          "ands r2, r3, #15\n"
+          "beq 4f\n"
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SRC_ZERO_POINT) "]\n"
+          "vdup.8 q0, r3\n"
+          "vdup.8 q1, r3\n"
+
+// First, read/accumulate/write for src_ptr0 and src_ptr1.
+#define RUY_LOAD_ONE_ROW1(I, R)            \
+  "cmp r2, #" #I "\n"                      \
+  "beq 5f\n"                               \
+  "vld1.8 { d0[" #R "]}, [%[src_ptr0]]!\n" \
+  "vld1.8 { d2[" #R "]}, [%[src_ptr1]]!\n" \
+
+          RUY_LOAD_ONE_ROW1(0, 0)
+          RUY_LOAD_ONE_ROW1(1, 1)
+          RUY_LOAD_ONE_ROW1(2, 2)
+          RUY_LOAD_ONE_ROW1(3, 3)
+          RUY_LOAD_ONE_ROW1(4, 4)
+          RUY_LOAD_ONE_ROW1(5, 5)
+          RUY_LOAD_ONE_ROW1(6, 6)
+          RUY_LOAD_ONE_ROW1(7, 7)
+#undef RUY_LOAD_ONE_ROW1
+
+#define RUY_LOAD_ONE_ROW2(I, R)            \
+  "cmp r2, #" #I "\n"                      \
+  "beq 5f\n"                               \
+  "vld1.8 { d1[" #R "]}, [%[src_ptr0]]!\n" \
+  "vld1.8 { d3[" #R "]}, [%[src_ptr1]]!\n" \
+
+          RUY_LOAD_ONE_ROW2(8, 0)
+          RUY_LOAD_ONE_ROW2(9, 1)
+          RUY_LOAD_ONE_ROW2(10, 2)
+          RUY_LOAD_ONE_ROW2(11, 3)
+          RUY_LOAD_ONE_ROW2(12, 4)
+          RUY_LOAD_ONE_ROW2(13, 5)
+          RUY_LOAD_ONE_ROW2(14, 6)
+          RUY_LOAD_ONE_ROW2(15, 7)
+#undef RUY_LOAD_ONE_ROW2
+
+          "5:\n"
+
+          "veor.16 q4, q0, q11\n"
+          "veor.16 q5, q1, q11\n"
+
+          "vpaddl.s8 q8, q4\n"
+          "vpaddl.s8 q9, q5\n"
+
+          // Pairwise add accumulate to 4x32b accumulators.
+          "vpadal.s16 q12, q8\n"
+          "vpadal.s16 q13, q9\n"
+
+          "vst1.32 {q4}, [%[packed_ptr]]!\n"
+          "vst1.32 {q5}, [%[packed_ptr]]!\n"
+
+          // Reset to src_zero for src_ptr2 and src_ptr3.
+          "vdup.8 q0, r3\n"
+          "vdup.8 q1, r3\n"
+
+// Next, read/accumulate/write for src_ptr2 and src_ptr3.
+#define RUY_LOAD_ONE_ROW1(I, R)            \
+  "cmp r2, #" #I "\n"                      \
+  "beq 5f\n"                               \
+  "vld1.8 { d0[" #R "]}, [%[src_ptr2]]!\n" \
+  "vld1.8 { d2[" #R "]}, [%[src_ptr3]]!\n" \
+
+          RUY_LOAD_ONE_ROW1(0, 0)
+          RUY_LOAD_ONE_ROW1(1, 1)
+          RUY_LOAD_ONE_ROW1(2, 2)
+          RUY_LOAD_ONE_ROW1(3, 3)
+          RUY_LOAD_ONE_ROW1(4, 4)
+          RUY_LOAD_ONE_ROW1(5, 5)
+          RUY_LOAD_ONE_ROW1(6, 6)
+          RUY_LOAD_ONE_ROW1(7, 7)
+#undef RUY_LOAD_ONE_ROW1
+
+#define RUY_LOAD_ONE_ROW2(I, R)            \
+  "cmp r2, #" #I "\n"                      \
+  "beq 5f\n"                               \
+  "vld1.8 { d1[" #R "]}, [%[src_ptr2]]!\n" \
+  "vld1.8 { d3[" #R "]}, [%[src_ptr3]]!\n" \
+
+          RUY_LOAD_ONE_ROW2(8, 0)
+          RUY_LOAD_ONE_ROW2(9, 1)
+          RUY_LOAD_ONE_ROW2(10, 2)
+          RUY_LOAD_ONE_ROW2(11, 3)
+          RUY_LOAD_ONE_ROW2(12, 4)
+          RUY_LOAD_ONE_ROW2(13, 5)
+          RUY_LOAD_ONE_ROW2(14, 6)
+          RUY_LOAD_ONE_ROW2(15, 7)
+#undef RUY_LOAD_ONE_ROW2
+
+          "5:\n"
+
+          "veor.16 q4, q0, q11\n"
+          "veor.16 q5, q1, q11\n"
+
+          "vpaddl.s8 q8, q4\n"
+          "vpaddl.s8 q9, q5\n"
+
+          // Pairwise add accumulate to 4x32b accumulators.
+          "vpadal.s16 q14, q8\n"
+          "vpadal.s16 q15, q9\n"
+
+          "vst1.32 {q4}, [%[packed_ptr]]!\n"
+          "vst1.32 {q5}, [%[packed_ptr]]!\n"
+
+          "4:\n"
+          // Pairwise add 32-bit accumulators
+          "vpadd.i32 d24, d24, d25\n"
+          "vpadd.i32 d26, d26, d27\n"
+          "vpadd.i32 d28, d28, d29\n"
+          "vpadd.i32 d30, d30, d31\n"
+          // Final 32-bit values per row
+          "vpadd.i32 d25, d24, d26\n"
+          "vpadd.i32 d27, d28, d30\n"
+
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SUMS_PTR) "]\n"
+          "cmp r3, #0\n"
+          "beq 6f\n"
+          "vst1.32 {d25}, [r3]!\n"
+          "vst1.32 {d27}, [r3]!\n"
+          "6:\n"
+      // clang-format on
+
+      : [ src_ptr0 ] "+r"(src_ptr0), [ src_ptr1 ] "+r"(src_ptr1),
+        [ src_ptr2 ] "+r"(src_ptr2), [ src_ptr3 ] "+r"(src_ptr3)
+      : [ src_inc0 ] "r"(src_inc0), [ src_inc1 ] "r"(src_inc1),
+        [ src_inc2 ] "r"(src_inc2), [ src_inc3 ] "r"(src_inc3),
+        [ packed_ptr ] "r"(packed_ptr), [ params ] "r"(&params)
+      : "cc", "memory", "r1", "r2", "r3", "q0", "q1", "q2", "q3",
+        "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13");
+}
+
+// Packing code for out-of-order ARMv7 CPUs like the Krait 400 or A9.
+// No attempt made at making this code efficient on in-order cores yet.
+// This version differs from the above in that we only handle two columns
+// at a time.
+void Pack8bitNeonOutOfOrder2Cols(const PackParams8bit& params) {
+  CheckOffsetsInPackParams8bit(params);
+  gemmlowp::ScopedProfilingLabel label(
+      "Pack (kNeon, optimized for out-of-order cores)");
+  const void* src_ptr0 = params.src_ptr0;
+  const void* src_ptr1 = params.src_ptr1;
+  const int src_inc0 = params.src_inc0;
+  const int src_inc1 = params.src_inc1;
+  const std::int8_t* packed_ptr = params.packed_ptr;
+
+  asm volatile(
+      // clang-format off
+
+          "ldr r2, [%[params], #" RUY_STR(RUY_OFFSET_INPUT_XOR) "]\n"
+          "vdup.8 q11, r2\n"
+          "mov r1, #0\n"
+          // Zero-out the accumulators
+          "vmov.i32 q12, #0\n"
+          "vmov.i32 q13, #0\n"
+
+          // Round down src_rows to nearest multiple of 16.
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SRC_ROWS) "]\n"
+          "and r2, r3, #-16\n"
+          "cmp r1, r2\n"
+          "beq 3f\n"
+
+          "1:\n"
+          "add r1, r1, #16\n"
+          /* Load q0 */
+          "vld1.8 {d0, d1}, [%[src_ptr0]]\n"
+          "add %[src_ptr0], %[src_ptr0], %[src_inc0]\n"
+
+          /* Load q1 */
+          "vld1.8 {d2, d3}, [%[src_ptr1]]\n"
+          "add %[src_ptr1], %[src_ptr1], %[src_inc1]\n"
+
+          "veor.8 q4, q0, q11\n"
+          "veor.8 q5, q1, q11\n"
+
+          // Pairwise add in to 16b accumulators.
+          "vpaddl.s8 q8, q4\n"
+          "vpaddl.s8 q9, q5\n"
+
+          "vst1.32 {q4}, [%[packed_ptr]]!\n"
+          "vst1.32 {q5}, [%[packed_ptr]]!\n"
+
+          // Pairwise add accumulate into 32b accumulators.
+          // q12 and q13 contain 4x32b accumulators
+          "vpadal.s16 q12, q8\n"
+          "vpadal.s16 q13, q9\n"
+
+          "cmp r1, r2\n"
+
+          "bne 1b\n"
+
+          "3:\n"
+
+          // Now pack the last (num_rows % 16) rows.
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SRC_ROWS) "]\n"
+          "ands r2, r3, #15\n"
+          "beq 4f\n"
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SRC_ZERO_POINT) "]\n"
+          "vdup.8 q0, r3\n"
+          "vdup.8 q1, r3\n"
+
+// Read/accumulate/write for src_ptr0 and src_ptr1.
+#define RUY_LOAD_ONE_ROW1(I, R)            \
+  "cmp r2, #" #I "\n"                      \
+  "beq 5f\n"                               \
+  "vld1.8 { d0[" #R "]}, [%[src_ptr0]]!\n" \
+  "vld1.8 { d2[" #R "]}, [%[src_ptr1]]!\n" \
+
+          RUY_LOAD_ONE_ROW1(0, 0)
+          RUY_LOAD_ONE_ROW1(1, 1)
+          RUY_LOAD_ONE_ROW1(2, 2)
+          RUY_LOAD_ONE_ROW1(3, 3)
+          RUY_LOAD_ONE_ROW1(4, 4)
+          RUY_LOAD_ONE_ROW1(5, 5)
+          RUY_LOAD_ONE_ROW1(6, 6)
+          RUY_LOAD_ONE_ROW1(7, 7)
+#undef RUY_LOAD_ONE_ROW1
+
+#define RUY_LOAD_ONE_ROW2(I, R)            \
+  "cmp r2, #" #I "\n"                      \
+  "beq 5f\n"                               \
+  "vld1.8 { d1[" #R "]}, [%[src_ptr0]]!\n" \
+  "vld1.8 { d3[" #R "]}, [%[src_ptr1]]!\n" \
+
+          RUY_LOAD_ONE_ROW2(8, 0)
+          RUY_LOAD_ONE_ROW2(9, 1)
+          RUY_LOAD_ONE_ROW2(10, 2)
+          RUY_LOAD_ONE_ROW2(11, 3)
+          RUY_LOAD_ONE_ROW2(12, 4)
+          RUY_LOAD_ONE_ROW2(13, 5)
+          RUY_LOAD_ONE_ROW2(14, 6)
+          RUY_LOAD_ONE_ROW2(15, 7)
+#undef RUY_LOAD_ONE_ROW2
+
+          "5:\n"
+
+          "veor.16 q4, q0, q11\n"
+          "veor.16 q5, q1, q11\n"
+
+          "vpaddl.s8 q8, q4\n"
+          "vpaddl.s8 q9, q5\n"
+
+
+          // Pairwise add accumulate to 4x32b accumulators.
+          "vpadal.s16 q12, q8\n"
+          "vpadal.s16 q13, q9\n"
+
+          "vst1.32 {q4}, [%[packed_ptr]]!\n"
+          "vst1.32 {q5}, [%[packed_ptr]]!\n"
+
+          "4:\n"
+
+          // Pairwise add 32-bit accumulators
+          "vpadd.i32 d24, d24, d25\n"
+          "vpadd.i32 d26, d26, d27\n"
+          // Final 32-bit values per row
+          "vpadd.i32 d25, d24, d26\n"
+
+          "ldr r3, [%[params], #" RUY_STR(RUY_OFFSET_SUMS_PTR) "]\n"
+          "cmp r3, #0\n"
+          "beq 6f\n"
+          "vst1.32 {d25}, [r3]!\n"
+          "6:\n"
+      // clang-format on
+
+      : [ src_ptr0 ] "+r"(src_ptr0), [ src_ptr1 ] "+r"(src_ptr1)
+      : [ src_inc0 ] "r"(src_inc0), [ src_inc1 ] "r"(src_inc1),
+        [ packed_ptr ] "r"(packed_ptr), [ params ] "r"(&params)
+      : "cc", "memory", "r1", "r2", "r3", "q0", "q1", "q2", "q3",
+        "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11", "q12", "q13");
+}
+
+#undef RUY_OFFSET_SRC_PTR0
+#undef RUY_OFFSET_SRC_PTR1
+#undef RUY_OFFSET_SRC_PTR2
+#undef RUY_OFFSET_SRC_PTR32
+#undef RUY_OFFSET_SUMS_PTR
+#undef RUY_OFFSET_PACKED_PTR0
+#undef RUY_OFFSET_SRC_INC0
+#undef RUY_OFFSET_SRC_INC1
+#undef RUY_OFFSET_SRC_INC2
+#undef RUY_OFFSET_SRC_INC3
+#undef RUY_OFFSET_SRC_ROWS
+#undef RUY_OFFSET_SRC_ZERO_POINT
+#undef RUY_OFFSET_INPUT_XOR
+
+#endif  //  RUY_PLATFORM(NEON_32) && RUY_OPT_ENABLED(RUY_OPT_ASM)
+
+#if RUY_PLATFORM(NEON_64) && RUY_OPT_ENABLED(RUY_OPT_ASM)
 
 void Pack8bitNeonInOrder(const void* src_ptr0, const void* src_ptr1,
                          const void* src_ptr2, const void* src_ptr3,
@@ -1362,9 +1779,8 @@ void PackFloatNeonOutOfOrder(const float* src_ptr0, const float* src_ptr1,
         [ packed_ptr ] "+r"(packed_ptr)
       : [ src_inc ] "r"(static_cast<std::int64_t>(src_inc)),
         [ rows ] "r"(src_rows), [ stride ] "r"(output_stride)
-      : "cc", "memory", "r0", "r1", "r2", "r3", "d0", "d1", "d2", "d3",
-        "d4", "d5", "d6", "d7", "d8", "d9", "d10", "d11", "d12", "d13",
-        "d14", "d15", "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23");
+      : "cc", "memory", "r0", "r1", "r2", "r3", "q0", "q1", "q2", "q3",
+        "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11");
 }
 
 #endif  // (RUY_PLATFORM(NEON_32)

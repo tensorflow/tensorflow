@@ -76,6 +76,9 @@ public:
   /// dimensional identifiers.
   bool isIdentity() const;
 
+  /// Returns true if this affine map is an empty map, i.e., () -> ().
+  bool isEmpty() const;
+
   /// Returns true if this affine map is a single result constant function.
   bool isSingleConstant() const;
 
@@ -125,7 +128,7 @@ public:
   ///
   /// Example:
   ///   map1: `(d0, d1)[s0, s1] -> (d0 + 1 + s1, d1 - 1 - s0)`
-  ///   map2: `(d0)[s0] -> (d0 + s0, d0 - s0))`
+  ///   map2: `(d0)[s0] -> (d0 + s0, d0 - s0)`
   ///   map1.compose(map2):
   ///     `(d0)[s0, s1, s2] -> (d0 + s1 + s2 + 1, d0 - s0 - s2 - 1)`
   AffineMap compose(AffineMap map);

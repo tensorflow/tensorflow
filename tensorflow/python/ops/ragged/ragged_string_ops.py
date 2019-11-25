@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_array_ops
@@ -37,12 +38,10 @@ def string_bytes_split(input, name=None):  # pylint: disable=redefined-builtin
 
   Examples:
 
-  ```python
-  >>> tf.strings.bytes_split('hello')
-  ['h', 'e', 'l', 'l', 'o']
+  >>> tf.strings.bytes_split('hello').numpy()
+  array([b'h', b'e', b'l', b'l', b'o'], dtype=object)
   >>> tf.strings.bytes_split(['hello', '123'])
-  <RaggedTensor [['h', 'e', 'l', 'l', 'o'], ['1', '2', '3']]>
-  ```
+  <tf.RaggedTensor [[b'h', b'e', b'l', b'l', b'o'], [b'1', b'2', b'3']]>
 
   Note that this op splits strings into bytes, not unicode characters.  To
   split strings into unicode characters, use `tf.strings.unicode_split`.
@@ -112,11 +111,12 @@ def unicode_encode(input,
     A `N` dimensional `string` tensor with shape `[D1...DN]`.
 
   #### Example:
-    ```python
-      >>> input = [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
-      >>> unicode_encode(input, 'UTF-8')
-      ['G\xc3\xb6\xc3\xb6dnight', '\xf0\x9f\x98\x8a']
-    ```
+
+  >>> input = tf.ragged.constant(
+  ...     [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]])
+  >>> print(unicode_encode(input, 'UTF-8'))
+  tf.Tensor([b'G\xc3\xb6\xc3\xb6dnight' b'\xf0\x9f\x98\x8a'],
+            shape=(2,), dtype=string)
   """
   with ops.name_scope(name, "UnicodeEncode", [input]):
     input_tensor = ragged_tensor.convert_to_tensor_or_ragged_tensor(input)
@@ -211,11 +211,10 @@ def unicode_decode(input,
     `tf.RaggedTensor` otherwise.
 
   #### Example:
-    ```python
-    >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
-    >>> tf.strings.unicode_decode(input, 'UTF-8').tolist()
-    [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
-    ```
+
+  >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
+  >>> tf.strings.unicode_decode(input, 'UTF-8').to_list()
+  [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
   """
   with ops.name_scope(name, "UnicodeDecode", [input]):
     return _unicode_decode(input, input_encoding, errors, replacement_char,
@@ -269,14 +268,14 @@ def unicode_decode_with_offsets(input,
     `tf.RaggedTensor`s otherwise.
 
   #### Example:
-    ```python
-    >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
-    >>> result = tf.strings.unicode_decode_with_offsets(input, 'UTF-8')
-    >>> result[0].tolist()  # codepoints
-    [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
-    >>> result[1].tolist()  # offsets
-   [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
-    ```
+
+  >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
+  >>> result = tf.strings.unicode_decode_with_offsets(input, 'UTF-8')
+  >>> result[0].to_list()  # codepoints
+  [[71, 246, 246, 100, 110, 105, 103, 104, 116], [128522]]
+  >>> result[1].to_list()  # offsets
+  [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
+
   """
   with ops.name_scope(name, "UnicodeDecodeWithOffsets", [input]):
     return _unicode_decode(input, input_encoding, errors, replacement_char,
@@ -314,12 +313,11 @@ def unicode_split(input,
     `tf.RaggedTensor` otherwise.
 
   #### Example:
-    ```python
-    >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
-    >>> tf.strings.unicode_split(input, 'UTF-8').tolist()
-    [['G', '\xc3\xb6', '\xc3\xb6', 'd', 'n', 'i', 'g', 'h', 't'],
-     ['\xf0\x9f\x98\x8a']]
-    ```
+
+  >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
+  >>> tf.strings.unicode_split(input, 'UTF-8').to_list()
+  [[b'G', b'\xc3\xb6', b'\xc3\xb6', b'd', b'n', b'i', b'g', b'h', b't'],
+   [b'\xf0\x9f\x98\x8a']]
   """
   with ops.name_scope(name, "UnicodeSplit", [input]):
     codepoints = _unicode_decode(input, input_encoding, errors,
@@ -374,15 +372,15 @@ def unicode_split_with_offsets(input,
     `tf.RaggedTensor`s otherwise.
 
   #### Example:
-    ```python
-    >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
-    >>> result = tf.strings.unicode_split_with_offsets(input, 'UTF-8')
-    >>> result[0].tolist()  # character substrings
-    [['G', '\xc3\xb6', '\xc3\xb6', 'd', 'n', 'i', 'g', 'h', 't'],
-     ['\xf0\x9f\x98\x8a']]
-    >>> result[1].tolist()  # offsets
-   [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
-    ```
+
+  >>> input = [s.encode('utf8') for s in (u'G\xf6\xf6dnight', u'\U0001f60a')]
+  >>> result = tf.strings.unicode_split_with_offsets(input, 'UTF-8')
+  >>> result[0].to_list()  # character substrings
+  [[b'G', b'\xc3\xb6', b'\xc3\xb6', b'd', b'n', b'i', b'g', b'h', b't'],
+   [b'\xf0\x9f\x98\x8a']]
+  >>> result[1].to_list()  # offsets
+  [[0, 1, 3, 5, 6, 7, 8, 9, 10], [0]]
+
   """
   with ops.name_scope(name, "UnicodeSplitWithOffsets", [input]):
     codepoints, offsets = _unicode_decode(input, input_encoding, errors,
@@ -464,12 +462,10 @@ def string_split_v2(input, sep=None, maxsplit=-1, name=None):  # pylint: disable
 
   Example:
 
-  ```python
-  >>> tf.strings.split('hello world')
-  <Tensor ['hello', 'world']>
+  >>> tf.strings.split('hello world').numpy()
+   array([b'hello', b'world'], dtype=object)
   >>> tf.strings.split(['hello world', 'a b c'])
-  <tf.RaggedTensor [['hello', 'world'], ['a', 'b', 'c']]>
-  ```
+  <tf.RaggedTensor [[b'hello', b'world'], [b'a', b'b', b'c']]>
 
   If `sep` is given, consecutive delimiters are not grouped together and are
   deemed to delimit empty strings. For example, `input` of `"1<>2<><>3"` and
@@ -536,15 +532,14 @@ def string_split(source, sep=None, skip_empty=True, delimiter=None,
 
   Examples:
 
-  ```python
-  >>> tf.strings.split(['hello world', 'a b c'])
-  tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]],
-                  values=['hello', 'world', 'a', 'b', 'c']
-                  dense_shape=[2, 3])
+  >>> print(tf.compat.v1.string_split(['hello world', 'a b c']))
+  SparseTensor(indices=tf.Tensor( [[0 0] [0 1] [1 0] [1 1] [1 2]], ...),
+               values=tf.Tensor([b'hello' b'world' b'a' b'b' b'c'], ...),
+               dense_shape=tf.Tensor([2 3], shape=(2,), dtype=int64))
 
-  >>> tf.strings.split(['hello world', 'a b c'], result_type="RaggedTensor")
-  <tf.RaggedTensor [['hello', 'world'], ['a', 'b', 'c']]>
-  ```
+  >>> print(tf.compat.v1.string_split(['hello world', 'a b c'],
+  ...     result_type="RaggedTensor"))
+  <tf.RaggedTensor [[b'hello', b'world'], [b'a', b'b', b'c']]>
 
   Args:
     source: `1-D` string `Tensor`, the strings to split.
@@ -593,15 +588,14 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
 
   Examples:
 
-  ```python
-  >>> tf.strings.split(['hello world', 'a b c'])
-  tf.SparseTensor(indices=[[0, 0], [0, 1], [1, 0], [1, 1], [1, 2]],
-                  values=['hello', 'world', 'a', 'b', 'c']
-                  dense_shape=[2, 3])
+  >>> print(tf.compat.v1.strings.split(['hello world', 'a b c']))
+  SparseTensor(indices=tf.Tensor( [[0 0] [0 1] [1 0] [1 1] [1 2]], ...),
+               values=tf.Tensor([b'hello' b'world' b'a' b'b' b'c'], ...),
+               dense_shape=tf.Tensor([2 3], shape=(2,), dtype=int64))
 
-  >>> tf.strings.split(['hello world', 'a b c'], result_type="RaggedTensor")
-  <tf.RaggedTensor [['hello', 'world'], ['a', 'b', 'c']]>
-  ```
+  >>> print(tf.compat.v1.strings.split(['hello world', 'a b c'],
+  ...     result_type="RaggedTensor"))
+  <tf.RaggedTensor [[b'hello', b'world'], [b'a', b'b', b'c']]>
 
   If `sep` is given, consecutive delimiters are not grouped together and are
   deemed to delimit empty strings. For example, `input` of `"1<>2<><>3"` and
@@ -634,14 +628,17 @@ def strings_split_v1(input=None, sep=None, maxsplit=-1,  # pylint: disable=redef
   with ops.name_scope(name, "StringSplit", [input]):
     input = ragged_tensor.convert_to_tensor_or_ragged_tensor(
         input, dtype=dtypes.string, name="input")
-    if result_type == "SparseTensor" and input.shape.rank == 1:
-      return string_ops.string_split_v2(input, sep=sep, maxsplit=maxsplit)
 
-    ragged_result = string_split_v2(input, sep=sep, maxsplit=maxsplit)
+    if input.shape.rank == 0:
+      input = gen_array_ops.expand_dims(input, 0)
+
     if result_type == "SparseTensor":
-      return ragged_result.to_sparse()
+      if input.shape.rank == 1:
+        return string_ops.string_split_v2(input, sep=sep, maxsplit=maxsplit)
+      else:
+        return string_split_v2(input, sep=sep, maxsplit=maxsplit).to_sparse()
     elif result_type == "RaggedTensor":
-      return ragged_result
+      return string_split_v2(input, sep=sep, maxsplit=maxsplit)
     else:
       raise ValueError("result_type must be 'RaggedTensor' or 'SparseTensor'.")
 

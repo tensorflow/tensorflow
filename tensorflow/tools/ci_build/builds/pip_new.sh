@@ -55,6 +55,18 @@
 #                          e.g. TF_PROJECT_NAME="tf_nightly_gpu"
 #   TF_PIP_TEST_ROOT:    Root directory for building and testing pip pkgs.
 #                          e.g. TF_PIP_TEST_ROOT="pip_test"
+#   TF_BUILD_BOTH_GPU_PACKAGES:    (1 | 0)
+#                                  1 will build both tensorflow (w/ gpu support)
+#                                  and tensorflow-gpu pip package. Will
+#                                  automatically handle adding/removing of _gpu
+#                                  suffix depending on what project name was
+#                                  passed. Only work for Ubuntu.
+#   TF_BUILD_BOTH_CPU_PACKAGES:    (1 | 0)
+#                                  1 will build both tensorflow (no gpu support)
+#                                  and tensorflow-cpu pip package. Will
+#                                  automatically handle adding/removing of _cpu
+#                                  suffix depending on what project name was
+#                                  passed. Only work for MacOS
 #
 # To-be-deprecated variable(s).
 #   GIT_TAG_OVERRIDE:    Values for `--git_tag_override`. This flag gets passed
@@ -234,10 +246,14 @@ fi
 DEFAULT_PIP_TESTS="" # Do not run any tests by default
 DEFAULT_PROJECT_NAME="tensorflow"
 DEFAULT_PIP_TEST_ROOT="pip_test"
+DEFAULT_BUILD_BOTH_GPU_PACKAGES=0
+DEFAULT_BUILD_BOTH_CPU_PACKAGES=0
 # Take in optional global variables
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
 PROJECT_NAME=${TF_PROJECT_NAME:-$DEFAULT_PROJECT_NAME}
 PIP_TEST_ROOT=${TF_PIP_TEST_ROOT:-$DEFAULT_PIP_TEST_ROOT}
+BUILD_BOTH_GPU_PACKAGES=${TF_BUILD_BOTH_GPU_PACKAGES:-$DEFAULT_BUILD_BOTH_GPU_PACKAGES}
+BUILD_BOTH_CPU_PACKAGES=${TF_BUILD_BOTH_CPU_PACKAGES:-$DEFAULT_BUILD_BOTH_CPU_PACKAGES}
 
 # Local variables
 PIP_WHL_DIR="${KOKORO_ARTIFACTS_DIR}/tensorflow/${PIP_TEST_ROOT}/whl"
@@ -458,6 +474,12 @@ install_tensorflow_pip() {
   #   ImportError: No module named builtins
   ${PIP_BIN_PATH} install --upgrade "future>=0.17.1" || \
     die "Error: future install, upgrade FAILED"
+
+  # Install the gast package in the virtualenv. Installing it in user system
+  # packages does not appear to port it over when creating a virtualenv.
+  ${PIP_BIN_PATH} install --upgrade "gast==0.2.2" || \
+    die "Error: gast install, upgrade FAILED"
+
 }
 
 run_test_with_bazel() {
@@ -597,9 +619,12 @@ fi
 if [[ ${CONTAINER_TYPE} == "gpu" ]]; then
   GPU_FLAG="--gpu"
   if ! [[ $PROJECT_NAME == *"gpu"* ]]; then
-    echo "WARNING: GPU is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
-    does not include 'gpu'. Appending '_gpu' to the project name."
-    PROJECT_NAME="${PROJECT_NAME}_gpu"
+    # Only update PROJECT_NAME if TF_PROJECT_NAME is not set
+    if [[ -z "${TF_PROJECT_NAME}" ]]; then
+      echo "WARNING: GPU is specified but requested project name (PROJECT_NAME=${PROJECT_NAME}) \
+      does not include 'gpu'. Appending '_gpu' to the project name."
+      PROJECT_NAME="${PROJECT_NAME}_gpu"
+    fi
   fi
 fi
 
@@ -618,44 +643,75 @@ if [[ $(echo "${WHL_PATH}" | wc -w) -ne 1 ]]; then
 fi
 
 WHL_DIR=$(dirname "${WHL_PATH}")
-WHL_BASE_NAME=$(basename "${WHL_PATH}")
-AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
 
 # Print the size of the wheel file.
 echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
 
+# Build the other GPU package.
+if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then
+
+  if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] && [[ "$BUILD_BOTH_CPU_PACKAGES" -eq "1" ]]; then
+    die "ERROR: TF_BUILD_BOTH_GPU_PACKAGES and TF_BUILD_BOTH_GPU_PACKAGES cannot both be set. No additional package will be built."
+  fi
+
+  echo "====================================="
+  if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]]; then
+    if ! [[ ${OS_TYPE} == "ubuntu" ]]; then
+      die "ERROR: pip_new.sh only support building both GPU wheels on ubuntu."
+    fi
+    echo "Building the other GPU pip package."
+    PROJECT_SUFFIX="gpu"
+  else
+    if ! [[ ${OS_TYPE} == "macos" ]]; then
+      die "ERROR: pip_new.sh only support building both CPU wheels on macos."
+    fi
+    echo "Building the other CPU pip package."
+    PROJECT_SUFFIX="cpu"
+  fi
+
+  # Check container type
+  if ! [[ ${CONTAINER_TYPE} == ${PROJECT_SUFFIX} ]]; then
+    die "Error: CONTAINER_TYPE needs to be \"${PROJECT_SUFFIX}\" to build ${PROJECT_SUFFIX} packages. Got"\
+        "\"${CONTAINER_TYPE}\" instead."
+  fi
+  if [[ "$PROJECT_NAME" == *_${PROJECT_SUFFIX} ]]; then
+    NEW_PROJECT_NAME=${PROJECT_NAME%"_${PROJECT_SUFFIX}"}
+  else
+    NEW_PROJECT_NAME="${PROJECT_NAME}_${PROJECT_SUFFIX}"
+  fi
+  echo "The given ${PROJECT_SUFFIX} \$PROJECT_NAME is ${PROJECT_NAME}. The additional ${PROJECT_SUFFIX}"\
+  "pip package will have project name ${NEW_PROJECT_NAME}."
+
+  ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${NEW_PROJECT_NAME} || die "build_pip_package FAILED"
+fi
+
 # Run tests (if any is specified).
 run_all_tests
 
-for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
-  if [[ "${TF_NEED_CUDA}" -eq "1" ]]; then
-    # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
-    WHL_PATH=${AUDITED_WHL_NAME}
-    cp "${WHL_DIR}"/"${WHL_BASE_NAME}" "${WHL_PATH}"
-    echo "Copied manylinux2010 wheel file at ${WHL_PATH}"
-  else
-    if [[ ${OS_TYPE} == "ubuntu" ]]; then
-      # Avoid Python3.6 abnormality by installing auditwheel here.
-      set +e
-      pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
-      pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-      sudo pip3 install auditwheel==2.0.0 || \
-        sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
-      set -e
-      auditwheel --version
 
-      # Repair the wheels for cpu manylinux2010
-      echo "auditwheel repairing ${WHL_PATH}"
-      auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
+if [[ ${OS_TYPE} == "ubuntu" ]]; then
+  # Avoid Python3.6 abnormality by installing auditwheel here.
+  set +e
+  pip3 show auditwheel || "pip${PY_MAJOR_MINOR_VER}" show auditwheel
+  pip3 install auditwheel==2.0.0 || "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+  sudo pip3 install auditwheel==2.0.0 || \
+    sudo "pip${PY_MAJOR_MINOR_VER}" install auditwheel==2.0.0
+  set -e
+  auditwheel --version
 
-      if [[ -f ${AUDITED_WHL_NAME} ]]; then
-        WHL_PATH=${AUDITED_WHL_NAME}
-        echo "Repaired manylinux2010 wheel file at: ${WHL_PATH}"
-      else
-        die "WARNING: Cannot find repaired wheel."
-      fi
+  for WHL_PATH in $(ls ${PIP_WHL_DIR}/*.whl); do
+    # Repair the wheels for cpu manylinux2010
+    echo "auditwheel repairing ${WHL_PATH}"
+    auditwheel repair --plat manylinux2010_x86_64 -w "${WHL_DIR}" "${WHL_PATH}"
+
+    WHL_BASE_NAME=$(basename "${WHL_PATH}")
+    AUDITED_WHL_NAME="${WHL_DIR}"/$(echo "${WHL_BASE_NAME//linux/manylinux2010}")
+    if [[ -f ${AUDITED_WHL_NAME} ]]; then
+      WHL_PATH=${AUDITED_WHL_NAME}
+      echo "Repaired manylinux2010 wheel file at: ${WHL_PATH}"
+    else
+      die "WARNING: Cannot find repaired wheel."
     fi
-  fi
-done
-
+  done
+fi
 echo "EOF: Successfully ran pip_new.sh"

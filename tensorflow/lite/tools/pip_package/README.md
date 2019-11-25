@@ -16,8 +16,8 @@ pip install --upgrade <wheel>
 ```
 
 You can also build a wheel inside docker container using make tool. For example
-the following command will cross-compile tflite_runtime for python2.7 and
-python3.7 (from Debian Buster) on Raspberry Pi:
+the following command will cross-compile tflite-runtime package for python2.7
+and python3.7 (from Debian Buster) on Raspberry Pi:
 ```
 make BASE_IMAGE=debian:buster PYTHON=python TENSORFLOW_TARGET=rpi docker-build
 make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi docker-build
@@ -35,11 +35,17 @@ image) run:
 make BASE_IMAGE=ubuntu:18.04 PYTHON=python3 TENSORFLOW_TARGET=native docker-build
 ```
 
+In addition to the wheel there is a way to build Debian package by adding
+BUILD_DEB=y to the make command (only for python3):
+```
+make BASE_IMAGE=debian:buster PYTHON=python3 TENSORFLOW_TARGET=rpi BUILD_DEB=y docker-build
+```
+
 Note, unlike tensorflow this will be installed to a tflite_runtime namespace.
 You can then use the Tensorflow Lite interpreter as.
 ```
-from tflite_runtime import interpreter as tflr
-interpreter = tflr.Interpreter(model_path="foo.tflite")
+from tflite_runtime.interpreter import Interpreter
+interpreter = Interpreter(model_path="foo.tflite")
 ```
 
 This currently works to build on Linux machines including Raspberry Pi. In

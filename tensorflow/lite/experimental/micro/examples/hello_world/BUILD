@@ -1,8 +1,5 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers "hello world" example.
-
-package(default_visibility = ["//visibility:public"])
-
 licenses(["notice"])  # Apache 2.0
 
 load(
@@ -64,6 +61,8 @@ cc_binary(
     name = "hello_world",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     copts = [
         "-Werror",

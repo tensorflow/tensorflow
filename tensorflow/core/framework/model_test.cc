@@ -56,6 +56,12 @@ TEST_P(AsyncInterleaveManyTest, Model) {
     async_interleave_many->remove_input(source2);
   });
   std::vector<double> input_times(1, input_time);
+  EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 0);
+  EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(), 0);
+  async_interleave_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_interleave_many->TotalBufferedBytes(), 110);
+  EXPECT_EQ(async_interleave_many->TotalMaximumBufferedBytes(),
+            110 * parallelism / 10);
   async_interleave_many->add_processing_time(100);
   EXPECT_EQ(async_interleave_many->processing_time(), 100);
   EXPECT_EQ(
@@ -118,6 +124,12 @@ TEST_P(AsyncKnownRatioTest, Model) {
       model::MakeSourceNode({2, "source2", async_known_many});
   async_known_many->add_input(source2);
   std::vector<double> input_times(1, input_time);
+  EXPECT_EQ(async_known_many->TotalBufferedBytes(), 0);
+  EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(), 0);
+  async_known_many->record_buffer_event(110, 10);
+  EXPECT_EQ(async_known_many->TotalBufferedBytes(), 110);
+  EXPECT_EQ(async_known_many->TotalMaximumBufferedBytes(),
+            110 * parallelism / 10);
   source1->add_processing_time(100);
   EXPECT_EQ(async_known_many->TotalProcessingTime(/*processing_times=*/nullptr),
             0);
@@ -398,8 +410,19 @@ TEST(SetterGetterTest, Node) {
   EXPECT_EQ(node->output(), nullptr);
 
   EXPECT_EQ(node->buffered_bytes(), 0);
-  node->add_buffered_bytes(42);
+  EXPECT_EQ(node->buffered_elements(), 0);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
+  node->record_buffer_event(42, 0);
   EXPECT_EQ(node->buffered_bytes(), 42);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
+  EXPECT_EQ(node->buffered_elements(), 0);
+  node->record_buffer_event(0, 11);
+  EXPECT_EQ(node->buffered_bytes(), 42);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
+  EXPECT_EQ(node->buffered_elements(), 11);
 
   EXPECT_EQ(node->processing_time(), 0);
   node->record_start(1);
@@ -416,6 +439,9 @@ TEST(SetterGetterTest, Node) {
   node->add_input(input);
   EXPECT_EQ(node->inputs().size(), 1);
   EXPECT_EQ(node->inputs().front(), input);
+  input->record_buffer_event(13, 0);
+  EXPECT_EQ(node->TotalBufferedBytes(), 0);
+  EXPECT_EQ(node->TotalMaximumBufferedBytes(), 0);
   node->remove_input(input);
   EXPECT_EQ(node->inputs().size(), 0);
 
@@ -523,22 +549,25 @@ TEST(AsyncInterleaveManyGradientTest, Model) {
               kComparisonPrecision);
 }
 
-TEST(AsyncKnownRatioGradientTest, Model) {
-  const int64 parallelism = model::kAutotune;
+class AsyncKnownRatioGradientTest : public ::testing::TestWithParam<string> {};
+
+TEST_P(AsyncKnownRatioGradientTest, Model) {
+  const string parameter_name = GetParam();
+  const int64 parameter_value = model::kAutotune;
   const double input_time = 100;
   const int64 num_inputs_per_output = 2;
   std::shared_ptr<Node> async_known_many = model::MakeAsyncKnownRatioNode(
       {0, "async_known_many", nullptr}, num_inputs_per_output,
       {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+          parameter_name,
+          std::make_shared<SharedState>(parameter_value, nullptr, nullptr), 1,
+          parameter_value)});
   std::shared_ptr<Node> source1 = model::MakeAsyncKnownRatioNode(
       {0, "source1", nullptr}, num_inputs_per_output,
       {model::MakeParameter(
-          "parallelism",
-          std::make_shared<SharedState>(parallelism, nullptr, nullptr), 1,
-          parallelism)});
+          parameter_name,
+          std::make_shared<SharedState>(parameter_value, nullptr, nullptr), 1,
+          parameter_value)});
   async_known_many->add_input(source1);
   std::shared_ptr<Node> source2 =
       model::MakeSourceNode({2, "source2", async_known_many});
@@ -572,6 +601,9 @@ TEST(AsyncKnownRatioGradientTest, Model) {
               (new_output_time - output_time) / kParameterStep,
               kComparisonPrecision);
 }
+
+INSTANTIATE_TEST_SUITE_P(Test, AsyncKnownRatioGradientTest,
+                         ::testing::Values("parallelism", "buffer_size"));
 
 TEST(InterleaveManyGradientTest, Model) {
   const int64 parallelism = model::kAutotune;

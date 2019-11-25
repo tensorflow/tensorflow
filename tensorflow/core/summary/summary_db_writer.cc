@@ -32,7 +32,7 @@ limitations under the License.
 
 // clang-format off
 #define CALL_SUPPORTED_TYPES(m) \
-  TF_CALL_string(m)             \
+  TF_CALL_tstring(m)             \
   TF_CALL_half(m)               \
   TF_CALL_float(m)              \
   TF_CALL_double(m)             \

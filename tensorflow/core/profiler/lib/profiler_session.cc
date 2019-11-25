@@ -22,29 +22,41 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/common_runtime/step_stats_collector.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/profiler_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/trace_events.pb.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace {
-
-// Track whether there's an active ProfilerSession.
-// Prevents another ProfilerSession from creating ProfilerInterface(s), as they
-// use singletons that do not allow concurrent profiling request (e.g.,
-// DeviceTracer).
-std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
 
 // Given a node_name in the format "op_name:op_type", returns the "op_type".
 // If the "op_type" is missing, returns the node_name.
 // This is done so all ops with the same type appear in the same color in trace
 // viewer.
 inline std::string EventName(absl::string_view node_name) {
-  std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
-  return std::string(parts.back());
+  // NOTE: open source device tracer now append cupti kernel name after
+  // annotation as node_name, @@ is used as separator. kernel name is
+  // demangled and possibly contains "::" patterns.
+  std::vector<absl::string_view> segments = absl::StrSplit(node_name, "@@");
+  if (segments.size() > 1) {  // unparsed
+    // find the last annotation.
+    std::vector<absl::string_view> annotation_stack =
+        absl::StrSplit(segments.front(), "::");
+    // strip trace argument.
+    std::vector<absl::string_view> annotation_parts =
+        absl::StrSplit(annotation_stack.back(), '#');
+    std::vector<absl::string_view> parts =
+        absl::StrSplit(annotation_parts.front(), ':');
+    return std::string(parts.back());
+  } else {
+    std::vector<absl::string_view> parts = absl::StrSplit(node_name, ':');
+    return std::string(parts.back());
+  }
 }
 
 void AssignLanes(RunMetadata* run_metadata) {
@@ -89,6 +101,12 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Create device
     auto* device_stats =
         run_metadata->mutable_step_stats()->mutable_dev_stats(device_id);
+    // Don't generate trace events for "derived or aggregated" devices, the
+    // events in these devices are duplicated from other streams.
+    if (absl::EndsWith(device_stats->device(), "stream:all") ||
+        absl::EndsWith(device_stats->device(), "sync") ||
+        absl::EndsWith(device_stats->device(), "memcpy"))
+      continue;
     profiler::Device device;
     device.set_name(device_stats->device());
     device.set_device_id(device_id);
@@ -105,8 +123,7 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     (*trace_devices)[device_id] = device;
 
     // Emit events.
-    for (auto node :
-         run_metadata->step_stats().dev_stats(device_id).node_stats()) {
+    for (auto node : device_stats->node_stats()) {
       if (node.all_start_micros() < profile_start_time_micros ||
           node.all_start_micros() + node.all_end_rel_micros() >
               profile_end_time_micros) {
@@ -122,7 +139,18 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
           EnvTime::kMicrosToPicos);
       event->set_duration_ps(node.all_end_rel_micros() *
                              EnvTime::kMicrosToPicos);
-      (*args)["label"] = node.timeline_label();
+      if (!node.timeline_label().empty()) {
+        std::vector<absl::string_view> label_parts =
+            absl::StrSplit(node.timeline_label(), "@@");
+        (*args)["label"] = string(label_parts.front());
+        if (label_parts.size() == 2) {
+          // NOTE: we can further parse annotation here.
+          (*args)["annotation"] = string(label_parts.back());
+        }
+      }
+      if (event->name() != node.node_name()) {
+        (*args)["long name"] = node.node_name();
+      }
     }
   }
 
@@ -130,8 +158,21 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }
 }  // namespace
 
+/*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
+    const profiler::ProfilerOptions& options) {
+  return absl::WrapUnique(new ProfilerSession(options));
+}
+
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create() {
-  return absl::WrapUnique(new ProfilerSession());
+  int64 host_tracer_level = 2;
+  tensorflow::Status s = ReadInt64FromEnvVar("TF_PROFILER_HOST_TRACER_LEVEL", 2,
+                                             &host_tracer_level);
+  if (!s.ok()) {
+    LOG(WARNING) << "ProfilerSession: " << s.error_message();
+  }
+  profiler::ProfilerOptions options;
+  options.host_tracer_level = host_tracer_level;
+  return Create(options);
 }
 
 Status ProfilerSession::Status() {
@@ -152,7 +193,7 @@ Status ProfilerSession::CollectData(RunMetadata* run_metadata) {
 
   if (active_) {
     // Allow another session to start.
-    session_active.store(false);
+    profiler::ReleaseProfilerLock();
     active_ = false;
   }
 
@@ -172,8 +213,8 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession()
-    : active_(!session_active.exchange(true)),
+ProfilerSession::ProfilerSession(const profiler::ProfilerOptions& options)
+    : active_(profiler::AcquireProfilerLock()),
       start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
   if (!active_) {
     status_ = tensorflow::Status(error::UNAVAILABLE,
@@ -183,7 +224,7 @@ ProfilerSession::ProfilerSession()
 
   LOG(INFO) << "Profiler session started.";
 
-  CreateProfilers(&profilers_);
+  CreateProfilers(options, &profilers_);
   status_ = Status::OK();
 
   for (auto& profiler : profilers_) {
@@ -202,7 +243,7 @@ ProfilerSession::~ProfilerSession() {
 
   if (active_) {
     // Allow another session to start.
-    session_active.store(false);
+    profiler::ReleaseProfilerLock();
   }
 }
 }  // namespace tensorflow

@@ -23,12 +23,12 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
+#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/Support/Functional.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/lite/ir/quantization_traits.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_traits.h"
+#include "tensorflow/compiler/mlir/lite/quantization/quantization_traits.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace mlir {

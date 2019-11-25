@@ -18,11 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 import os
 
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -34,6 +36,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import data_structures
 
@@ -101,6 +104,32 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
     model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=2)
     self.assertLen(model.layers, 2)
     self.assertLen(model.trainable_variables, 4)
+
+  def test_dataset_dict_with_fit(self):
+
+    class MyModel(keras.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.dense1 = keras.layers.Dense(1)
+        self.dense2 = keras.layers.Dense(1)
+        self.add = keras.layers.Add()
+
+      def call(self, x):
+        return self.add([self.dense1(x['a']), self.dense2(x['b'])])
+
+    model = MyModel()
+    model.compile(
+        'sgd',
+        'mse',
+        run_eagerly=testing_utils.should_run_eagerly(),
+        experimental_run_tf_function=testing_utils.should_run_tf_function())
+
+    data = dataset_ops.DatasetV2.from_tensor_slices(({
+        'a': np.ones((32, 10)),
+        'b': np.ones((32, 20))
+    }, np.ones((32, 1)))).batch(2)
+    model.fit(data, epochs=2)
 
   def test_invalid_input_shape_build(self):
     num_classes = 2
@@ -683,6 +712,34 @@ class CustomCallSignatureTests(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  r'Models passed to `predict_on_batch`'):
       m.predict_on_batch(x)
+
+  def test_deepcopy(self):
+    with context.eager_mode():
+
+      class MyModel(keras.Model):
+
+        def __init__(self):
+          super(MyModel, self).__init__()
+          self.my_variable = variables_lib.Variable(0.0, trainable=False)
+          self.layer = keras.layers.Dense(4)
+
+        def call(self, obs):
+          return self.layer(obs)
+
+      model = MyModel()
+      model.my_variable.assign_add(1.0)
+
+      new_model = copy.deepcopy(model)
+      self.assertEqual(model.my_variable.numpy(), 1.0)
+      self.assertEqual(new_model.my_variable.numpy(), 1.0)
+
+      model.my_variable.assign_add(1.0)
+      self.assertEqual(model.my_variable.numpy(), 2.0)
+      self.assertEqual(new_model.my_variable.numpy(), 1.0)
+
+      # Check that Trackable logic still works.
+      self.assertLen(new_model.variables, 1)
+      self.assertLen(new_model.layers, 1)
 
 
 if __name__ == '__main__':

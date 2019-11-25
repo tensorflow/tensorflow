@@ -30,7 +30,9 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.lib.io import file_io
@@ -50,8 +52,13 @@ except ImportError:
 
 class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
+  @keras_parameterized.run_with_all_saved_model_formats
   @test_util.run_in_graph_and_eager_modes
   def test_weight_loading(self):
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir)
+    saved_model_dir = os.path.join(temp_dir, 'saved_model')
+    save_format = testing_utils.get_save_format()
     with self.cached_session():
       a = keras.layers.Input(shape=(2,))
       x = keras.layers.Dense(3)(a)
@@ -70,30 +77,8 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       with self.assertRaises(ValueError):
         model.set_weights(weights[::-1])
 
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir)
-
-      no_extension_path = os.path.join(temp_dir, 'test')
-      model.save_weights(no_extension_path, save_format='tf')
-      model.load_weights(no_extension_path)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      if h5py is None:
-        return  # Skip rest of test if H5py isn't available.
-
-      h5_path = os.path.join(temp_dir, 'test.h5')
-      model.save_weights(h5_path)
-      model.load_weights(h5_path)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      model.load_weights(h5_path, by_name=True)
-      y = model.predict(x)
-      self.assertAllClose(ref_y, y)
-
-      model.save_weights(no_extension_path, save_format='hdf5')
-      model.load_weights(no_extension_path)
+      model.save_weights(saved_model_dir, save_format=save_format)
+      model.load_weights(saved_model_dir)
       y = model.predict(x)
       self.assertAllClose(ref_y, y)
 
@@ -315,7 +300,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                        name='d1'))
       ref_model.add(keras.layers.Dense(num_classes, name='d2'))
       ref_model.compile(loss=keras.losses.MSE,
-                        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                        optimizer='rmsprop',
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
@@ -327,13 +312,18 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    input_dim=input_dim, name='d1'))
       model.add(keras.layers.Dense(num_classes, name='d2'))
       model.compile(loss=keras.losses.MSE,
-                    optimizer=keras.optimizers.RMSprop(lr=0.0001),
+                    optimizer='rmsprop',
                     metrics=[keras.metrics.categorical_accuracy])
     with self.assertRaisesRegexp(ValueError,
                                  r'Layer #0 \(named \"d1\"\) expects 1 '
                                  r'weight\(s\), but the saved weights have 2 '
                                  r'element\(s\)\.'):
       hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+
+    hdf5_format.load_weights_from_hdf5_group_by_name(
+        f_model, model.layers, skip_mismatch=True)
+    self.assertAllClose(keras.backend.get_value(ref_model.layers[1].kernel),
+                        keras.backend.get_value(model.layers[1].kernel))
 
   @test_util.run_deprecated_v1
   def test_sequential_weight_loading_group_name_with_incorrect_shape(self):
@@ -357,6 +347,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                         metrics=[keras.metrics.categorical_accuracy])
 
       f_ref_model = h5py.File(h5_path, 'w')
+      keras.backend.set_value(ref_model.layers[1].bias, [3.5] * num_classes)
       hdf5_format.save_weights_to_hdf5_group(f_ref_model, ref_model.layers)
 
       f_model = h5py.File(h5_path, 'r')
@@ -374,6 +365,11 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
                                    r'shape \(3, 10\), but the saved weight has '
                                    r'shape \(3, 5\)\.'):
         hdf5_format.load_weights_from_hdf5_group_by_name(f_model, model.layers)
+
+      hdf5_format.load_weights_from_hdf5_group_by_name(
+          f_model, model.layers, skip_mismatch=True)
+      self.assertAllClose([3.5] * num_classes,
+                          keras.backend.get_value(model.layers[1].bias))
 
 
 class TestWholeModelSaving(test.TestCase):

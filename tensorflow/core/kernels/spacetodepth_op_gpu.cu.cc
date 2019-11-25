@@ -29,12 +29,13 @@ typedef Eigen::GpuDevice GPUDevice;
 // Space2Depth kernel for FORMAT_NHWC.
 // See 'spacetodepth_op.h' for a more detailed description.
 template <typename dtype>
-__global__ void S2D_NHWC(const int32 nthreads, const dtype* input_ptr,
+__global__ void S2D_NHWC(const int32 nthreads,
+                         const dtype* __restrict__ input_ptr,
                          const int block_size, const int batch_size,
                          const int input_height, const int input_width,
                          const int input_depth, const int output_height,
                          const int output_width, const int output_depth,
-                         dtype* output_ptr) {
+                         dtype* __restrict__ output_ptr) {
   GPU_1D_KERNEL_LOOP(inp_idx, nthreads) {
     // inp_idx = d + input_depth * (w + input_width * (h + input_height * b))
     const int d = inp_idx % input_depth;

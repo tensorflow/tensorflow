@@ -68,7 +68,7 @@ CAGOperandAnchor *CAGSlice::getOperandAnchor(Operation *op,
   }
 
   // Create.
-  auto anchor = llvm::make_unique<CAGOperandAnchor>(op, operandIdx);
+  auto anchor = std::make_unique<CAGOperandAnchor>(op, operandIdx);
   auto *unowned = anchor.release();
   unowned->nodeId = allNodes.size();
   allNodes.push_back(unowned);
@@ -87,7 +87,7 @@ CAGResultAnchor *CAGSlice::getResultAnchor(Operation *op, unsigned resultIdx) {
   }
 
   // Create.
-  auto anchor = llvm::make_unique<CAGResultAnchor>(op, resultIdx);
+  auto anchor = std::make_unique<CAGResultAnchor>(op, resultIdx);
   auto *unowned = anchor.release();
   unowned->nodeId = allNodes.size();
   allNodes.push_back(unowned);

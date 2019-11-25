@@ -76,17 +76,21 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util import nest
+
 
 LIMIT_PYTHON_ITERATIONS = True
 PYTHON_MAX_ITERATIONS = 100000000  # Fails in about one minute for empty loops.
 WARN_INEFFICIENT_UNROLL = True
 INEFFICIENT_UNROLL_MIN_ITERATIONS = 3000
 INEFFICIENT_UNROLL_MIN_OPS = 1
+
 
 def _disallow_undefs_into_loop(*values):
   """Ensures that all values in the state are defined when entering a loop."""
@@ -323,10 +327,15 @@ def for_stmt(iter_,
                                 init_vars, basic_symbol_names,
                                 composite_symbol_names)
 
-  if isinstance(iter_, iterator_ops.IteratorV2):
+  if isinstance(iter_, iterator_ops.OwnedIterator):
     return _tf_iterator_for_stmt(iter_, extra_test, body, get_state, set_state,
                                  init_vars, basic_symbol_names,
                                  composite_symbol_names)
+
+  if isinstance(iter_, ragged_tensor.RaggedTensor):
+    return _tf_ragged_for_stmt(iter_, extra_test, body, get_state, set_state,
+                               init_vars, basic_symbol_names,
+                               composite_symbol_names)
 
   # Note: This experimental interface is subject to change.
   custom_handler = getattr(iter_, '_autograph_for_loop', None)
@@ -403,6 +412,60 @@ def _known_len_tf_for_stmt(iter_, extra_test, body, get_state, set_state,
   # Note: the iteration index is not returned by the while loop, however
   # if a symbol with the same name exists outside the loop, it will be captured
   # by the loop variables and ultimately updated correctly.
+  if isinstance(results, (tuple, list)):
+    assert len(results) >= 1  # Has at least the iterate.
+    if len(results) > 1:
+      results = results[1:]
+  else:
+    results = ()
+
+  return results
+
+
+def _tf_ragged_for_stmt(iter_, extra_test, body, get_state, set_state,
+                        init_vars, basic_symbol_names,
+                        composite_symbol_names):
+  """Overload of for_stmt that iterates over TF ragged tensors."""
+  _disallow_undefs_into_loop(*init_vars)
+
+  # TODO(mdan): Move this into len()? Requires eager support.
+  if iter_.shape and iter_.shape[0] is not None:
+    n = iter_.shape[0]
+  else:
+    n = iter_.row_lengths()[0]
+
+  def while_body(iterate_index, *loop_vars):
+    """Main loop body."""
+    iterate = iter_[iterate_index]
+    new_vars = body(iterate, *loop_vars)
+    _verify_tf_loop_vars(loop_vars, new_vars, basic_symbol_names,
+                         composite_symbol_names)
+
+    loop_vars = (iterate_index + 1,)
+    if new_vars:
+      loop_vars += new_vars
+
+    return loop_vars
+
+  def while_cond(iterate_index, *loop_vars):
+    if extra_test is not None:
+      return control_flow_ops.cond(
+          iterate_index < n, lambda: extra_test(*loop_vars), lambda: False)
+    return iterate_index < n
+
+  opts = {'maximum_iterations': n}
+
+  results = _tf_while_stmt(
+      while_cond,
+      while_body,
+      get_state,
+      set_state,
+      (array_ops.zeros_like(n),) + init_vars,
+      None,
+      None,
+      opts=opts,
+  )
+
   if isinstance(results, (tuple, list)):
     assert len(results) >= 1  # Has at least the iterate.
     if len(results) > 1:
@@ -567,6 +630,20 @@ def _tf_dataset_for_stmt(ds, extra_test, body, get_state, set_state, init_vars,
                                          composite_symbol_names)
 
 
+def _general_purpose_scan(ds, init_state, body):
+  """Variant of Dataset.scan with semantics of general-purpose computation."""
+  # Datasets are typically intended for data preprocessing. However, in
+  # autograph loops they usually appear as general-purpose computations (for
+  # example, a custom training loop). These two use cases require significantly
+  # different optimization policies, the most important of which is the device
+  # placement. The flag override for use_default_device below instructs the
+  # runtime to treat the computation as general-purpose, rather than data
+  # preprocessing.
+  # TODO(mdan): s/use_default_device/specialize_for_input_pipeline.
+  # TODO(mdan): Don't use private symbols.
+  return scan_ops._ScanDataset(ds, init_state, body, use_default_device=False)  # pylint:disable=protected-access
+
+
 def _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
                                       set_state, init_vars, basic_symbol_names,
                                       composite_symbol_names):
@@ -610,7 +687,7 @@ def _dataset_for_stmt_with_extra_test(ds, extra_test, body, get_state,
 
   init_state = get_state()
   aug_vars = init_vars, init_state
-  ds = ds.apply(scan_ops.scan(aug_vars, scan_body))
+  ds = _general_purpose_scan(ds, aug_vars, scan_body)
   ds = ds.apply(take_while_ops.take_while(take_while_predicate))
   final_aug_vars = ds.reduce(aug_vars, reduce_body)
   final_vars, final_state = final_aug_vars
@@ -638,7 +715,7 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars,
   if no_state:
     init_state = (constant_op.constant(0),)
 
-  def reduce_body(aug_vars, iterate):
+  def scan_body(aug_vars, iterate):
     """The main loop body wrapper."""
     loop_vars, state = aug_vars
     if not no_state:
@@ -661,9 +738,20 @@ def _dataset_for_stmt_no_extra_test(ds, body, get_state, set_state, init_vars,
         basic_symbol_names,
         composite_symbol_names,
         include_shapes=False)
-    return new_vars, new_state
+
+    scan_outputs = new_vars, new_state
+    # Note: new_aug_vars is the actual state of scan; scan_outputs is its output
+    # (hence the redundancy).
+    # get_state will pull any mutations that body may have made.
+    new_aug_vars = new_vars, new_state
+    return new_aug_vars, scan_outputs
+
+  def reduce_body(unused_aug_vars, scan_outputs):
+    output_aug_vars, output_state = scan_outputs
+    return output_aug_vars, output_state
 
   aug_vars = init_vars, get_state()
+  ds = _general_purpose_scan(ds, aug_vars, scan_body)
   final_vars, final_state = ds.reduce(aug_vars, reduce_body)
   set_state(final_state)
 

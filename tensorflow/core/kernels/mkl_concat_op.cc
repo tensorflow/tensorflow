@@ -11,6 +11,7 @@ limitations under the License.
 ==============================================================================*/
 
 #ifdef INTEL_MKL
+#define EIGEN_USE_THREADS
 
 #include <limits>
 #include <unordered_map>
@@ -235,6 +236,210 @@ class EigenConcatBaseOp : public OpKernel {
 // --------------------------------------------------------------------------
 //                      Mkl Concat Op
 // --------------------------------------------------------------------------
+// This structure aggregates multiple inputs to MklConcat* methods.
+struct MklConcatFwdParams {
+  std::vector<memory::dims> src_dims;
+  memory::dims dst_dims;
+  int num_inputs;
+  int concat_dims;
+  memory::format mkl_common_format;
+
+  MklConcatFwdParams(std::vector<memory::dims>& src_dims_pt,
+                     memory::dims dst_dims, int num_inputs, int concat_dims,
+                     memory::format mkl_common_format)
+      : dst_dims(dst_dims),
+        num_inputs(num_inputs),
+        concat_dims(concat_dims),
+        mkl_common_format(mkl_common_format) {
+    for (int k = 0; k < num_inputs; ++k) {
+      src_dims.push_back(src_dims_pt[k]);
+    }
+  }
+};
+
+// TODO(intel-tf): The template type "T" is currently used to match the
+// templatized class MklPrimitiveFactory (tensorflow/core/util/mkl_util.h).
+// In the future, with the removal of "T" from MklPrimitiveFactory, this class
+// needs to drop "T".
+template <typename T>
+class MklConcatFwdPrimitive : public MklPrimitive {
+ public:
+  explicit MklConcatFwdPrimitive(const MklConcatFwdParams& concat_fwd_dims,
+                                 const std::vector<memory::desc>& srcs_md)
+      : cpu_engine_(engine::cpu, 0) {
+    context_.fwd_stream.reset(new stream(stream::kind::eager));
+    // Create concat primitive
+    Setup(concat_fwd_dims, srcs_md);
+  }
+
+  ~MklConcatFwdPrimitive() {}
+
+  // Concat forward execute
+  //   src_data:    input data buffer of src
+  //   dst_data:    output data buffer of dst
+  void Execute(const std::vector<mkldnn::memory>& in_data,
+               const mkldnn::memory& dst_data,
+               const MklConcatFwdParams& concat_fwd_dims) {
+    DCHECK_EQ(in_data.size(), context_.data_mem.size());
+    for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
+      context_.data_mem_shdptr[i]->set_data_handle(
+          static_cast<void*>(in_data[i].get_data_handle()));
+    }
+    context_.dst_mem->set_data_handle(
+        static_cast<void*>(dst_data.get_data_handle()));
+
+    for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
+      context_.data_mem[i] = *context_.data_mem_shdptr[i];
+    }
+
+    context_.fwd_stream->submit(context_.fwd_primitives);
+
+    // After exec, set data handle back
+    context_.dst_mem->set_data_handle(DummyData);
+    for (int k = 0; k < concat_fwd_dims.num_inputs; k++) {
+      context_.data_mem_shdptr[k]->set_data_handle(DummyData);
+    }
+
+    for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
+      context_.data_mem[i] = *context_.data_mem_shdptr[i];
+    }
+  }
+
+ private:
+  // Primitive reuse context for concat Fwd op
+  struct ConcatFwdContext {
+    std::vector<mkldnn::memory::primitive_desc> src_pd;
+    std::vector<std::shared_ptr<mkldnn::memory::primitive_desc>> src_pd_shdptr;
+    std::shared_ptr<mkldnn::memory::primitive_desc> dst_pd;
+
+    // MKL-DNN memory
+    std::vector<mkldnn::primitive::at> data_mem;
+    std::vector<std::shared_ptr<mkldnn::memory>> data_mem_shdptr;
+    std::shared_ptr<mkldnn::memory> dst_mem;
+
+    // Memory descriptor
+    std::vector<std::shared_ptr<mkldnn::memory::desc>> src_md;
+    std::shared_ptr<mkldnn::memory::desc> dst_md;
+
+    // Concat primitive descriptor
+    std::shared_ptr<mkldnn::concat::primitive_desc> fwd_pd;
+    std::shared_ptr<mkldnn::primitive> concat_fwd;
+
+    std::shared_ptr<mkldnn::stream> fwd_stream;
+    std::vector<mkldnn::primitive> fwd_primitives;
+
+    ConcatFwdContext()
+        : dst_mem(nullptr),
+          fwd_pd(nullptr),
+          concat_fwd(nullptr),
+          fwd_stream(nullptr) {}
+  };
+
+  // Creates the src and dst memory descriptor for mkl concat
+  // and also creates the concat primitive and primitive descriptor
+  void Setup(const MklConcatFwdParams& concat_fwd_dims,
+             const std::vector<memory::desc>& srcs_md) {
+    // Create memory descriptors for concat with specified srcs format
+    for (size_t i = 0; i < concat_fwd_dims.num_inputs; i++) {
+      std::shared_ptr<mkldnn::memory::desc> source_md(
+          new memory::desc(srcs_md[i].data));
+      context_.src_md.push_back(source_md);
+
+      std::shared_ptr<mkldnn::memory::primitive_desc> src_mpd(
+          new memory::primitive_desc(*source_md, cpu_engine_));
+      context_.src_pd_shdptr.push_back(src_mpd);
+
+      std::shared_ptr<mkldnn::memory> src_mem(
+          new mkldnn::memory(*src_mpd, DummyData));
+      context_.data_mem_shdptr.push_back(src_mem);
+
+      context_.data_mem.push_back(*context_.data_mem_shdptr[i]);
+      context_.src_pd.push_back(*context_.src_pd_shdptr[i]);
+    }
+    // Create a concat primitive descriptor
+    context_.fwd_pd.reset(new concat::primitive_desc(
+        concat_fwd_dims.concat_dims, context_.src_pd));
+
+    // Store the expected memory format
+    context_.dst_md.reset(new memory::desc({concat_fwd_dims.dst_dims},
+                                           MklDnnType<T>(),
+                                           concat_fwd_dims.mkl_common_format));
+    context_.dst_pd.reset(
+        new memory::primitive_desc(*context_.dst_md, cpu_engine_));
+
+    // Create memory primitive based on dummy data
+    context_.dst_mem.reset(new memory(*context_.dst_pd, DummyData));
+
+    // Create concat primitive
+    context_.concat_fwd.reset(
+        new concat(*context_.fwd_pd, context_.data_mem, *context_.dst_mem));
+
+    context_.fwd_primitives.push_back(*context_.concat_fwd);
+  }
+
+  struct ConcatFwdContext context_;
+  engine cpu_engine_;
+};
+
+// Class to create/cache the mkl concat primitives based on the
+// input and output parameters
+template <typename T>
+class MklConcatFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
+ public:
+  static MklConcatFwdPrimitive<T>* Get(
+      const MklConcatFwdParams& concat_fwd_dims,
+      const std::vector<memory::desc>& srcs_md, bool do_not_cache) {
+    MklConcatFwdPrimitive<T>* concat_fwd = nullptr;
+
+    if (do_not_cache) {
+      // Always create new primitive
+      concat_fwd = new MklConcatFwdPrimitive<T>(concat_fwd_dims, srcs_md);
+    } else {
+      // Try to find a suitable one in pool
+      concat_fwd = dynamic_cast<MklConcatFwdPrimitive<T>*>(
+          MklConcatFwdPrimitiveFactory<T>::GetInstance().GetConcatFwd(
+              concat_fwd_dims));
+      if (concat_fwd == nullptr) {
+        concat_fwd = new MklConcatFwdPrimitive<T>(concat_fwd_dims, srcs_md);
+        MklConcatFwdPrimitiveFactory<T>::GetInstance().SetConcatFwd(
+            concat_fwd_dims, concat_fwd);
+      }
+    }
+
+    return concat_fwd;
+  }
+
+ private:
+  MklConcatFwdPrimitiveFactory() {}
+  ~MklConcatFwdPrimitiveFactory() {}
+
+  static MklConcatFwdPrimitiveFactory& GetInstance() {
+    static MklConcatFwdPrimitiveFactory instance_;
+    return instance_;
+  }
+
+  static string CreateKey(const MklConcatFwdParams& concat_fwd_dims) {
+    string prefix = "concat_fwd_";
+    FactoryKeyCreator key_creator;
+    key_creator.AddAsKey(prefix);
+    for (int k = 0; k < concat_fwd_dims.num_inputs; k++) {
+      key_creator.AddAsKey(concat_fwd_dims.src_dims[k]);
+    }
+    key_creator.AddAsKey(concat_fwd_dims.concat_dims);
+    return key_creator.GetKey();
+  }
+
+  MklPrimitive* GetConcatFwd(const MklConcatFwdParams& concat_fwd_dims) {
+    string key = CreateKey(concat_fwd_dims);
+    return this->GetOp(key);
+  }
+
+  void SetConcatFwd(const MklConcatFwdParams& concat_fwd_dims,
+                    MklPrimitive* op) {
+    string key = CreateKey(concat_fwd_dims);
+    this->SetOp(key, op);
+  }
+};
 
 template <typename Device, typename T, AxisArgumentName AxisArgName>
 class MklConcatOp : public OpKernel {
@@ -390,6 +595,10 @@ class MklConcatOp : public OpKernel {
       bool isMklReorderNeeded = false;
       memory::format mkl_common_format = memory::format::any;
       std::vector<primitive::at> inputs;
+      std::vector<memory::dims> src_dims_pt;
+      std::vector<mkldnn::memory> srcs_mem;
+      std::vector<memory::desc> srcs_md;
+
       if (are_all_mkl_inputs) {
         mkl_common_format =
             FindMklCommonFormat(mkl_input_shapes, concat_dim,
@@ -445,6 +654,9 @@ class MklConcatOp : public OpKernel {
           auto src_mpd = srcs[k].GetUsrMemPrimDesc();
           srcs_pd.push_back(src_mpd);
           inputs.push_back(srcs[k].GetOpMem());
+          src_dims_pt.push_back(src_dims);
+          srcs_md.push_back(src_md);
+          srcs_mem.push_back(srcs[k].GetOpMem());
         }
       }
       dst_dims[concat_dim] = dst_concat_dim_size;
@@ -461,8 +673,14 @@ class MklConcatOp : public OpKernel {
               dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
           // Set the output format same as the most common format of inputs
           // to avoid layout conversions.
-          dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
-                                mkl_common_format);
+          if (mkl_common_format == memory::format::blocked) {
+            VLOG(1) << "mkl_common_format == memory::format::blocked";
+            dst_md = MklDnnData<T>::CreateBlockedMemDesc(
+                dst_dims_in_nchw, CalculateTFStrides(dst_dims_in_nchw));
+          } else {
+            dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
+                                  mkl_common_format);
+          }
         } else if (dst_dims.size() == 2 &&
                    mkl_common_format == memory::format::nc) {
           // When memory::format::nc, dst_dims are already in MKL-DNN order
@@ -498,35 +716,58 @@ class MklConcatOp : public OpKernel {
         concat_dim = mkl_input_shapes[0].TfDimIdx(concat_dim);
 
       if (!inputs.empty()) {
-        auto concat_pd = concat::primitive_desc(concat_dim, srcs_pd);
-        auto dst_pd = concat_pd.dst_primitive_desc();
-
-        MklDnnShape dnn_shape_dst;
-        TensorShape tf_shape_dst;
-        Tensor* dst_tensor = nullptr;
         if (are_all_mkl_inputs) {
-          dnn_shape_dst.SetMklTensor(true);
+          auto concat_pd = concat::primitive_desc(concat_dim, srcs_pd);
           auto dst_pd = concat_pd.dst_primitive_desc();
+
+          MklDnnShape dnn_shape_dst;
+          TensorShape tf_shape_dst;
+          Tensor* dst_tensor = nullptr;
+          dnn_shape_dst.SetMklTensor(true);
           dnn_shape_dst.SetMklLayout(&dst_pd);
           dnn_shape_dst.SetElemType(MklDnnType<T>());
           dnn_shape_dst.SetTfLayout(dst_dims.size(), dst_dims_in_nchw,
                                     mkl_input_shapes[0].GetTfDataFormat());
           tf_shape_dst.AddDim((dst_pd.get_size() / sizeof(T)));
+          AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
+                                    dnn_shape_dst);
+          DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
+
+          if (dnn_shape_dst.IsMklTensor())
+            dst_md = dnn_shape_dst.GetMklLayout();
+          dst.SetUsrMem(dst_md, dst_tensor);
+
+          auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
+          std::vector<primitive> net;
+          net.push_back(concat_op);
+          stream(stream::kind::eager).submit(net).wait();
         } else {
+          MklConcatFwdPrimitive<T>* concat_fwd = nullptr;
+
+          MklConcatFwdParams concat_fwd_dims(src_dims_pt, dst_dims,
+                                             (N - num_of_empty_inputs),
+                                             concat_dim, mkl_common_format);
+          // Get a concat fwd from primitive pool
+          concat_fwd =
+              MklConcatFwdPrimitiveFactory<T>::Get(concat_fwd_dims, srcs_md, 0);
+
+          // Allocate output tensor.
+          MklDnnShape dnn_shape_dst;
+          TensorShape tf_shape_dst;
+          Tensor* dst_tensor = nullptr;
           dnn_shape_dst.SetMklTensor(false);
           tf_shape_dst = MklDnnDimsToTFShape(dst_dims);
+          AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
+                                    dnn_shape_dst);
+          DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
+
+          dst_md = dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout()
+                                               : dst_md;
+          dst.SetUsrMem(dst_md, dst_tensor);
+
+          // Execute concat
+          concat_fwd->Execute(srcs_mem, dst.GetOpMem(), concat_fwd_dims);
         }
-        AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
-                                  dnn_shape_dst);
-        DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
-
-        if (dnn_shape_dst.IsMklTensor()) dst_md = dnn_shape_dst.GetMklLayout();
-        dst.SetUsrMem(dst_md, dst_tensor);
-
-        auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
-        std::vector<primitive> net;
-        net.push_back(concat_op);
-        stream(stream::kind::eager).submit(net).wait();
 
         // For quantized concat, min and max outputs are also computed.
         if (quantized_input) {
@@ -555,7 +796,6 @@ class MklConcatOp : public OpKernel {
                                   dnn_shape_dst);
         DCHECK(dst_tensor != nullptr) << "Output tensor pointer is NULL";
       }
-
     } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
                          ", message: " + string(e.message) + ", in file " +
@@ -578,9 +818,9 @@ class MklConcatOp : public OpKernel {
     for (size_t i = 0; i < num_mkl_input_shapes; ++i) {
       if (mkl_input_shapes[i].IsMklTensor()) {
         // do conversion from MKL to TF
-        Tensor tmp_tensor =
-            ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i]);
-        converted_values[i] = tmp_tensor;
+        OP_REQUIRES_OK(
+            context, ConvertMklToTF<T>(context, values[i], mkl_input_shapes[i],
+                                       &converted_values[i]));
         tf_input_shapes.push_back(mkl_input_shapes[i].GetTfShape());
       } else {
         // no conversion since it is TF tensor already

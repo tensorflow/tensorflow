@@ -40,9 +40,12 @@ static const char kNotInvertibleScalarMsg[] =
     "The matrix is not invertible: it is a scalar with value zero.";
 
 template <typename Scalar>
-__global__ void SolveForSizeOneOrTwoKernel(const int m, const Scalar* diags,
-                                           const Scalar* rhs, const int num_rhs,
-                                           Scalar* x, bool* not_invertible) {
+__global__ void SolveForSizeOneOrTwoKernel(const int m,
+                                           const Scalar* __restrict__ diags,
+                                           const Scalar* __restrict__ rhs,
+                                           const int num_rhs,
+                                           Scalar* __restrict__ x,
+                                           bool* __restrict__ not_invertible) {
   if (m == 1) {
     if (diags[1] == Scalar(0)) {
       *not_invertible = true;

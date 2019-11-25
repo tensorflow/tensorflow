@@ -64,8 +64,8 @@ limitations under the License.
 #include "tensorflow/core/util/proto/proto_utils.h"
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #if GOOGLE_CUDA
-#include "tensorflow/stream_executor/cuda/ptxas_utils.h"
-#include "tensorflow/stream_executor/cuda/redzone_allocator.h"
+#include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 #endif  // GOOGLE_CUDA
 
@@ -176,6 +176,45 @@ struct LaunchConv2DOp<CPUDevice, T> {
   }
 };
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+template <>
+struct LaunchConv2DOp<GPUDevice, int32> {
+  void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
+                  const Tensor& input, const Tensor& filter, int row_dilation,
+                  int col_dilation, int row_stride, int col_stride,
+                  const Padding& padding,
+                  const std::vector<int64>& explicit_paddings, Tensor* output,
+                  TensorFormat data_format) {
+    if (data_format != FORMAT_NHWC) {
+      ctx->SetStatus(
+          errors::Unimplemented("The Conv2D op currently only supports the "
+                                "NHWC tensor format for integer types. "
+                                "The op was given the format: ",
+                                ToString(data_format)));
+      return;
+    }
+    const int64 in_depth = GetTensorDim(input, data_format, 'C');
+    OP_REQUIRES(ctx, in_depth == filter.dim_size(2),
+                errors::Unimplemented(
+                    "The Conv2D op currently does not support grouped "
+                    "convolutions for integer types. A grouped convolution was "
+                    "attempted to be run because the input depth of ",
+                    in_depth, " does not match the filter input depth of ",
+                    filter.dim_size(2)));
+
+    for (int64 explicit_padding : explicit_paddings) {
+      if (!FastBoundsCheck(explicit_padding, std::numeric_limits<int>::max())) {
+        ctx->SetStatus(errors::InvalidArgument("filter too large"));
+        return;
+      }
+    }
+    LaunchGeneric<GPUDevice, int32>()(
+        ctx, input, filter, row_stride, col_stride, row_dilation, col_dilation,
+        padding, explicit_paddings, output, data_format);
+  }
+};
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 template <typename Device, typename T>
 class LaunchDeepConvOp {
  public:
@@ -281,9 +320,9 @@ class LaunchXsmmConvOp<CPUDevice, float> {
     desc.buffer_format = LIBXSMM_DNN_TENSOR_FORMAT_NHWC;
     desc.filter_format = LIBXSMM_DNN_TENSOR_FORMAT_LIBXSMM;
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
-    desc.options = LIBXSMM_DNN_CONV_OPTION_WU_EXT_FILTER_REDUCE_OVERWRITE;
-    desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
-
+    desc.options = LIBXSMM_DNN_CONV_OPTION_OVERWRITE;
+    desc.datatype_out = LIBXSMM_DNN_DATATYPE_F32;
+    desc.datatype_in = LIBXSMM_DNN_DATATYPE_F32;
     if (dilation_rows != 1 || dilation_cols != 1 ||
         !CanUseXsmmConv2D(desc, data_format)) {
       return false;
@@ -569,6 +608,7 @@ class Conv2DOp : public BinaryOp<T> {
 TF_CALL_half(REGISTER_CPU);
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
+TF_CALL_int32(REGISTER_CPU);
 #endif  // USE_GEMM_FOR_CONV
 
 // To be used inside depthwise_conv_op.cc.
@@ -953,10 +993,10 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));
 
-    se::TfAllocatorAdapter tf_allocator_adapter(
-        stream->parent()->platform(), ctx->device()->GetAllocator({}));
-    se::cuda::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
-                                            se::cuda::PtxCompilationOptions());
+    se::TfAllocatorAdapter tf_allocator_adapter(ctx->device()->GetAllocator({}),
+                                                stream);
+    se::RedzoneAllocator rz_allocator(stream, &tf_allocator_adapter,
+                                      se::GpuAsmOpts());
     se::DeviceMemory<T> output_tensor(
         WrapRedzoneBestEffort(&rz_allocator, output_ptr));
 
@@ -964,8 +1004,8 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      se::cuda::RedzoneAllocator rz_scratch_allocator(
-          stream, &tf_allocator_adapter, se::cuda::PtxCompilationOptions(),
+      se::RedzoneAllocator rz_scratch_allocator(
+          stream, &tf_allocator_adapter, se::GpuAsmOpts(),
           /*memory_limit=*/ConvolveScratchSize);
       DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       se::ScratchAllocator* allocator_used =
@@ -1064,6 +1104,14 @@ namespace functor {
       int col_stride, int row_dilation, int col_dilation,                   \
       const Eigen::PaddingType& padding,                                    \
       const Eigen::NoOpOutputKernel& output_kernel);                        \
+  template <>                                                               \
+  void SpatialConvolution<GPUDevice, T>::operator()(                        \
+      const GPUDevice& d, typename TTypes<T, 4>::Tensor output,             \
+      typename TTypes<T, 4>::ConstTensor input,                             \
+      typename TTypes<T, 4>::ConstTensor filter, int row_stride,            \
+      int col_stride, int row_dilation, int col_dilation, int padding_top,  \
+      int padding_bottom, int padding_left, int padding_right,              \
+      const Eigen::NoOpOutputKernel& output_kernel);                        \
   extern template struct SpatialConvolution<GPUDevice, T>;                  \
   template <>                                                               \
   void MatMulConvFunctor<GPUDevice, T>::operator()(                         \
@@ -1090,7 +1138,9 @@ namespace functor {
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(double);
+DECLARE_GPU_SPEC(int32);
 #undef DECLARE_GPU_SPEC
+
 }  // namespace functor
 
 // Registration of the GPU implementations.
@@ -1103,6 +1153,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
     Conv2DOp<GPUDevice, double>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv2D").Device(DEVICE_GPU).TypeConstraint<int32>("T"),
+    Conv2DOp<GPUDevice, int32>);
 
 // To be used inside depthwise_conv_op.cc.
 template struct LaunchConv2DOp<GPUDevice, float>;

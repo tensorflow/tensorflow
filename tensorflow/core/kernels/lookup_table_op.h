@@ -134,7 +134,7 @@ T SubtleMustCopyIfIntegral(const T& value) {
   return internal::SubtleMustCopy(value);
 }
 
-inline const string& SubtleMustCopyIfIntegral(const string& value) {
+inline const tstring& SubtleMustCopyIfIntegral(const tstring& value) {
   return value;
 }
 
@@ -145,6 +145,11 @@ inline const double SubtleMustCopyIfIntegral(const double value) {
 }
 
 inline const Variant& SubtleMustCopyIfIntegral(const Variant& value) {
+  return value;
+}
+
+inline const ResourceHandle& SubtleMustCopyIfIntegral(
+    const ResourceHandle& value) {
   return value;
 }
 

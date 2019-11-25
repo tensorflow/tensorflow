@@ -209,6 +209,19 @@ class ConfigTest(test.TestCase, parameterized.TestCase):
     # exception.
     context.set_log_device_placement(False)
 
+  @reset_eager
+  def testEnableMlirBridge(self):
+    # Default value of enable_mlir_bridge is false.
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests enabling mlir bridge.
+    config.enable_mlir_bridge()
+    self.assertTrue(context.context().config.experimental.enable_mlir_bridge)
+
+    # Tests disabling mlir bridge.
+    config.disable_mlir_bridge()
+    self.assertFalse(context.context().config.experimental.enable_mlir_bridge)
+
   @test_util.run_gpu_only
   @reset_eager
   def testJit(self):
@@ -351,9 +364,9 @@ class DeviceTest(test.TestCase):
     cpus = config.list_physical_devices('CPU')
     self.assertEqual(len(cpus), 1)
 
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
 
     context.ensure_initialized()
@@ -380,16 +393,16 @@ class DeviceTest(test.TestCase):
 
     # Modifying the CPU configuration is not supported
     with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
-      config.set_virtual_device_configuration(cpus[0], [
-          context.VirtualDeviceConfiguration(),
-          context.VirtualDeviceConfiguration(),
-          context.VirtualDeviceConfiguration()
+      config.set_logical_device_configuration(cpus[0], [
+          context.LogicalDeviceConfiguration(),
+          context.LogicalDeviceConfiguration(),
+          context.LogicalDeviceConfiguration()
       ])
 
     # Setting the same CPU configuration is fine
-    config.set_virtual_device_configuration(cpus[0], [
-        context.VirtualDeviceConfiguration(),
-        context.VirtualDeviceConfiguration()
+    config.set_logical_device_configuration(cpus[0], [
+        context.LogicalDeviceConfiguration(),
+        context.LogicalDeviceConfiguration()
     ])
 
   @test_util.run_gpu_only
@@ -443,12 +456,12 @@ class DeviceTest(test.TestCase):
     gpus = config.list_physical_devices('GPU')
     self.assertNotEqual(len(gpus), 0)
 
-    self.assertIsNone(config.get_virtual_device_configuration(gpus[-1]))
-    config.set_virtual_device_configuration(gpus[-1], [
-        context.VirtualDeviceConfiguration(memory_limit=10),
-        context.VirtualDeviceConfiguration(memory_limit=10)
+    self.assertIsNone(config.get_logical_device_configuration(gpus[-1]))
+    config.set_logical_device_configuration(gpus[-1], [
+        context.LogicalDeviceConfiguration(memory_limit=10),
+        context.LogicalDeviceConfiguration(memory_limit=10)
     ])
-    self.assertEqual(len(config.get_virtual_device_configuration(gpus[-1])), 2)
+    self.assertEqual(len(config.get_logical_device_configuration(gpus[-1])), 2)
 
     logical_gpus = config.list_logical_devices('GPU')
     self.assertTrue(len(logical_gpus), len(gpus) + 1)
@@ -464,22 +477,22 @@ class DeviceTest(test.TestCase):
 
     # Modifying the GPU configuration is not supported
     with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
-      config.set_virtual_device_configuration(gpus[-1], [
-          context.VirtualDeviceConfiguration(memory_limit=20),
-          context.VirtualDeviceConfiguration(memory_limit=20)
+      config.set_logical_device_configuration(gpus[-1], [
+          context.LogicalDeviceConfiguration(memory_limit=20),
+          context.LogicalDeviceConfiguration(memory_limit=20)
       ])
 
     with self.assertRaisesRegexp(RuntimeError, 'cannot be modified'):
-      config.set_virtual_device_configuration(gpus[-1], [
-          context.VirtualDeviceConfiguration(memory_limit=10),
-          context.VirtualDeviceConfiguration(memory_limit=10),
-          context.VirtualDeviceConfiguration(memory_limit=10)
+      config.set_logical_device_configuration(gpus[-1], [
+          context.LogicalDeviceConfiguration(memory_limit=10),
+          context.LogicalDeviceConfiguration(memory_limit=10),
+          context.LogicalDeviceConfiguration(memory_limit=10)
       ])
 
     # Setting the same GPU configuration is fine
-    config.set_virtual_device_configuration(gpus[-1], [
-        context.VirtualDeviceConfiguration(memory_limit=10),
-        context.VirtualDeviceConfiguration(memory_limit=10)
+    config.set_logical_device_configuration(gpus[-1], [
+        context.LogicalDeviceConfiguration(memory_limit=10),
+        context.LogicalDeviceConfiguration(memory_limit=10)
     ])
 
   @test_util.run_gpu_only
@@ -541,15 +554,15 @@ class DeviceTest(test.TestCase):
     self.assertTrue(c.gpu_options.allow_growth)
 
     with self.assertRaisesRegexp(ValueError, 'memory limit'):
-      config.set_virtual_device_configuration(gpus[-1], [
-          context.VirtualDeviceConfiguration(),
-          context.VirtualDeviceConfiguration()
+      config.set_logical_device_configuration(gpus[-1], [
+          context.LogicalDeviceConfiguration(),
+          context.LogicalDeviceConfiguration()
       ])
 
-    self.assertIsNone(config.get_virtual_device_configuration(gpus[-1]))
-    config.set_virtual_device_configuration(gpus[-1], [
-        context.VirtualDeviceConfiguration(memory_limit=10),
-        context.VirtualDeviceConfiguration(memory_limit=10)
+    self.assertIsNone(config.get_logical_device_configuration(gpus[-1]))
+    config.set_logical_device_configuration(gpus[-1], [
+        context.LogicalDeviceConfiguration(memory_limit=10),
+        context.LogicalDeviceConfiguration(memory_limit=10)
     ])
 
     c = context.context().config

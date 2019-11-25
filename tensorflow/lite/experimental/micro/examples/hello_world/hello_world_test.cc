@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+// #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/experimental/micro/examples/hello_world/sine_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
@@ -43,7 +44,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Create an area of memory to use for input, output, and intermediate arrays.
   // Finding the minimum value for your model may require some trial and error.
-  const int tensor_arena_size = 2 * 1024;
+  const int tensor_arena_size = 3 * 1024;
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with
@@ -51,7 +52,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
                                        tensor_arena_size, error_reporter);
 
   // Allocate memory from the tensor_arena for the model's tensors
-  interpreter.AllocateTensors();
+  TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
   // Obtain a pointer to the model's input tensor
   TfLiteTensor* input = interpreter.input(0);
@@ -75,9 +76,6 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Run the model on this input and check that it succeeds
   TfLiteStatus invoke_status = interpreter.Invoke();
-  if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed\n");
-  }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   // Obtain a pointer to the output tensor and make sure it has the
@@ -90,24 +88,30 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
 
   // Obtain the output value from the tensor
   float value = output->data.f[0];
-  // Check that the output value is within 0.05 of the expected value
-  TF_LITE_MICRO_EXPECT_NEAR(0., value, 0.05);
+  // Check that the output value is within 0.07 of the expected value
+  TF_LITE_MICRO_EXPECT_NEAR(0., value, 0.07);
 
   // Run inference on several more values and confirm the expected outputs
   input->data.f[0] = 1.;
-  interpreter.Invoke();
+  invoke_status = interpreter.Invoke();
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
+
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.841, value, 0.05);
+  TF_LITE_MICRO_EXPECT_NEAR(0.841, value, 0.07);
 
   input->data.f[0] = 3.;
-  interpreter.Invoke();
+  invoke_status = interpreter.Invoke();
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
+
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.141, value, 0.05);
+  TF_LITE_MICRO_EXPECT_NEAR(0.141, value, 0.07);
 
   input->data.f[0] = 5.;
-  interpreter.Invoke();
+  invoke_status = interpreter.Invoke();
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
+
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
+  TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.07);
 }
 
 TF_LITE_MICRO_TESTS_END

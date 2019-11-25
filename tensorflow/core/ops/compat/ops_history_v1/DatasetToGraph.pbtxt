@@ -29,3 +29,64 @@ op {
     has_minimum: true
   }
 }
+op {
+  name: "DatasetToGraph"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "graph"
+    type: DT_STRING
+  }
+  attr {
+    name: "stateful_whitelist"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "allow_stateful"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "DatasetToGraph"
+  input_arg {
+    name: "input_dataset"
+    type: DT_VARIANT
+  }
+  output_arg {
+    name: "graph"
+    type: DT_STRING
+  }
+  attr {
+    name: "stateful_whitelist"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+    has_minimum: true
+  }
+  attr {
+    name: "allow_stateful"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "strip_device_assignment"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}

@@ -1,0 +1,12 @@
+op {
+  graph_op_name: "SparseMatrixNNZ"
+  in_arg {
+    name: "sparse_matrix"
+    description: "A CSRSparseMatrix."
+  }
+  out_arg {
+    name: "nnz"
+    description: "The number of nonzeroes of `sparse_matrix`."
+  }
+  summary: "Returns the number of nonzeroes of `sparse_matrix`."
+}

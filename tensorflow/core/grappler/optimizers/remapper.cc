@@ -64,15 +64,6 @@ constexpr char kIsTraining[] = "is_training";
 
 constexpr int kMissingIndex = -1;
 
-// TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
-// contractions with non-default contraction output kernels.
-bool EigenSupportsContractionOutputKernel() {
-#if defined(EIGEN_USE_LIBXSMM)
-  return false;
-#endif
-  return true;
-}
-
 struct RemapperContext {
   explicit RemapperContext(GrapplerItem* item, Status* status)
       : nodes_to_preserve(item->NodesToPreserve()),
@@ -272,13 +263,7 @@ bool IsGpuCompatibleConv2D(const NodeDef* conv2d) {
 
 bool IsCpuCompatibleMatMul(const NodeDef* matmul) {
   DCHECK(IsMatMul(*matmul)) << "Expected MatMul op";
-#ifndef INTEL_MKL
-  // Temporarily disable Matmul fusions if MKL is enabled.
-  // TODO(Intel) renable Matmul fusions when enabled by MKL DNN.
   return NodeIsOnCpu(matmul) && IsCpuCompatibleDataType(matmul);
-#else
-  return false;
-#endif  // !INTEL_MKL
 }
 
 // Checks if we can rewrite a pattern to the `_Fused{Conv2D,MatMul}` on CPU.
@@ -346,15 +331,25 @@ inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
          node_view.NumControlledFanouts() > 0;
 }
 
+// Returns true if at most one fanout reads output at port 0 (output used once).
 inline bool HasAtMostOneFanoutAtPort0(const utils::MutableNodeView& node_view) {
   return node_view.GetRegularFanout(0).size() <= 1;
+}
+
+// Returns true if at most one fanout reads actual tensor data at output port 0
+// (output used once for any data computation).
+inline bool HasAtMostOneDataFanoutAtPort0(
+    const utils::MutableNodeView& node_view) {
+  const auto predicate = [](const auto& fanout) -> bool {
+    const NodeDef* node = fanout.node_view()->node();
+    return !IsShape(*node) && !IsRank(*node);
+  };
+  return absl::c_count_if(node_view.GetRegularFanout(0), predicate) <= 1;
 }
 
 bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
                              ContractionWithBiasAdd* matched,
                              bool check_device_compatible = true) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be a BiasAdd.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
@@ -394,8 +389,6 @@ bool FindContractionWithBias(const RemapperContext& ctx, int node_index,
 bool FindContractionWithBiasAndActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBiasAddAndActivation* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // Root of the pattern must be an activation node.
   // TODO(lyandy): Forward controls for patterns with control dependencies.
@@ -431,8 +424,6 @@ bool FindContractionWithBiasAndActivation(
 
 bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
                                   ContractionWithSqueezeAndBiasAdd* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -488,8 +479,6 @@ bool FindConv2DWithSqueezeAndBias(const RemapperContext& ctx, int node_index,
 
 bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
                              ContractionWithBatchNorm* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   const auto* node_def = node_view->node();
   // Root of the pattern must be a FusedBatchNorm.
@@ -539,8 +528,6 @@ bool FindConv2DWithBatchNorm(const RemapperContext& ctx, int node_index,
 bool FindConv2DWithBatchNormAndActivation(
     const RemapperContext& ctx, int node_index,
     ContractionWithBatchNormAndActivation* matched) {
-  if (!EigenSupportsContractionOutputKernel()) return false;
-
   const auto* node_view = ctx.graph_view.GetNode(node_index);
   // TODO(lyandy): Forward controls for patterns with control dependencies.
   if (HasControlFaninOrFanout(*node_view)) return false;
@@ -586,6 +573,7 @@ bool FindContractionWithBiasInPort(const RemapperContext& ctx,
   if (add_node_view.NumRegularFanins() < port_id + 1) return false;
   const auto& bias_add_node_view =
       add_node_view.GetRegularFanin(port_id).node_view();
+  if (bias_add_node_view == nullptr) return false;
   const auto* bias_add_node_def = bias_add_node_view->node();
 
   if (!FindContractionWithBias(ctx, bias_add_node_view->node_index(), base,
@@ -650,6 +638,7 @@ bool FindContractionWithBiasAndAddActivation(
 
   // Root of the pattern must be an activation node.
   const auto* node_def = node_view->node();
+  if (node_def == nullptr) return false;
   if (!IsSupportedActivation(*node_def)) return false;
 
   // MKL activation op only supports float data type.
@@ -796,7 +785,7 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 
     // Check that only one node consumes the 0-th output of a FusedBatchNorm.
     if (HasControlFaninOrFanout(fused_batch_norm) ||
-        !HasAtMostOneFanoutAtPort0(fused_batch_norm) ||
+        !HasAtMostOneDataFanoutAtPort0(fused_batch_norm) ||
         IsInPreserveSet(ctx, fused_batch_norm_node_def))
       return false;
 

@@ -109,12 +109,12 @@ class RestoreV2OpTest : public OpsTestBase {
       inputs.push_back({nullptr, &input_0});
 
       // Input #1 is the tensor names
-      Tensor input_1 = MakeInput<string>(
+      Tensor input_1 = MakeInput<tstring>(
           TensorShape({static_cast<int>(tensor_names.size())}),
           [&tensor_names](int x) -> string { return tensor_names[x]; });
       inputs.push_back({nullptr, &input_1});
 
-      Tensor shape_and_slices = MakeInput<string>(
+      Tensor shape_and_slices = MakeInput<tstring>(
           TensorShape({static_cast<int>(tensor_names.size())}),
           [](int x) -> string { return "" /* saves in full */; });
       if (save_op_to_use != "Save") {
@@ -195,11 +195,11 @@ class RestoreV2OpTest : public OpsTestBase {
     // The 1-d bool tensor
     {
       MakeRestoreOp(DT_BOOL);
-      AddInput<string>(TensorShape({}),
-                       [&filename](int x) -> string { return filename; });
-      AddInput<string>(TensorShape({1}),
-                       [&](int x) -> string { return tensor_names[0]; });
-      AddInput<string>(TensorShape({1}), [&](int x) -> string {
+      AddInput<tstring>(TensorShape({}),
+                        [&filename](int x) -> tstring { return filename; });
+      AddInput<tstring>(TensorShape({1}),
+                        [&](int x) -> tstring { return tensor_names[0]; });
+      AddInput<tstring>(TensorShape({1}), [&](int x) -> tstring {
         return "";
       });  // Restores in full.
       TF_ASSERT_OK(RunOpKernel());

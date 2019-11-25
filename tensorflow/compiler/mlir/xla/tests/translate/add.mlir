@@ -1,6 +1,12 @@
 // RUN: tf-mlir-translate -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text -emit-use-tuple-args-for-entry-function %s | FileCheck %s --check-prefix=TUPLE-ARG
+// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text -emit-always-return-tuple %s | FileCheck %s --check-prefix=TUPLE-RET
+// RUN: tf-mlir-translate -mlir-hlo-to-hlo-text -emit-use-tuple-args-for-entry-function -emit-always-return-tuple %s | FileCheck %s --check-prefix=TUPLES
 
-// CHECK-LABEL: ENTRY %main.5 (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4] {
+// CHECK-LABEL: ENTRY %main.{{.*}} (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> f32[4]
+// TUPLE-ARG-LABEL: ENTRY %main.{{.*}} (arg_tuple.1: (f32[4], f32[4])) -> f32[4]
+// TUPLE-RET-LABEL: ENTRY %main.{{.*}} (Arg_0.1: f32[4], Arg_1.2: f32[4]) -> (f32[4])
+// TUPLES-LABEL: ENTRY %main.{{.*}} (arg_tuple.1: (f32[4], f32[4])) -> (f32[4])
 func @main(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
   // CHECK-NEXT: %Arg_0.1 = f32[4] parameter(0)
   // CHECK-NEXT: %Arg_1.2 = f32[4] parameter(1)

@@ -16,7 +16,7 @@
 
 set -e
 
-sudo pip3 install auditwheel==1.5.0
+sudo pip3 install auditwheel==2.0.0
 
 # Pin wheel==0.31.1 to work around issue
 # https://github.com/pypa/auditwheel/issues/102

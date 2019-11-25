@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import sys
 
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
 from tensorflow.python.feature_column import feature_column_lib
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving import model_config
@@ -33,6 +35,8 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import loader_impl
 
+if sys.version >= '3.4':
+  import pathlib  # pylint:disable=g-import-not-at-top
 try:
   import h5py  # pylint:disable=g-import-not-at-top
 except ImportError:
@@ -42,6 +46,7 @@ except ImportError:
 class TestSaveModel(test.TestCase):
 
   def setUp(self):
+    super(TestSaveModel, self).setUp()
     self.model = testing_utils.get_small_sequential_mlp(1, 2, 3)
     self.subclassed_model = testing_utils.get_small_subclass_mlp(1, 2)
 
@@ -81,6 +86,19 @@ class TestSaveModel(test.TestCase):
     save.save_model(self.subclassed_model, path, save_format='tf')
     self.assert_saved_model(path)
 
+  @test_util.run_v2_only
+  def test_save_load_tf_string(self):
+    path = os.path.join(self.get_temp_dir(), 'model')
+    save.save_model(self.model, path, save_format='tf')
+    save.load_model(path)
+
+  @test_util.run_v2_only
+  def test_save_load_tf_pathlib(self):
+    if sys.version >= '3.4':
+      path = pathlib.Path(self.get_temp_dir()) / 'model'
+      save.save_model(self.model, path, save_format='tf')
+      save.load_model(path)
+
   @test_util.run_in_graph_and_eager_modes
   def test_saving_with_dense_features(self):
     cols = [
@@ -101,7 +119,7 @@ class TestSaveModel(test.TestCase):
 
     model.compile(
         loss=keras.losses.MSE,
-        optimizer=keras.optimizers.RMSprop(lr=0.0001),
+        optimizer='rmsprop',
         metrics=[keras.metrics.categorical_accuracy])
 
     config = model.to_json()
@@ -115,6 +133,64 @@ class TestSaveModel(test.TestCase):
       self.evaluate(lookup_ops.tables_initializer())
 
     self.assertLen(loaded_model.predict({'a': inputs_a, 'b': inputs_b}), 10)
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_saving_with_sequence_features(self):
+    cols = [
+        feature_column_lib.sequence_numeric_column('a'),
+        feature_column_lib.indicator_column(
+            feature_column_lib.sequence_categorical_column_with_vocabulary_list(
+                'b', ['one', 'two']))
+    ]
+    input_layers = {
+        'a':
+            keras.layers.Input(shape=(None, 1), sparse=True, name='a'),
+        'b':
+            keras.layers.Input(
+                shape=(None, 1), sparse=True, name='b', dtype='string')
+    }
+
+    fc_layer, _ = feature_column_lib.SequenceFeatures(cols)(input_layers)
+    # TODO(tibell): Figure out the right dtype and apply masking.
+    # sequence_length_mask = array_ops.sequence_mask(sequence_length)
+    # x = keras.layers.GRU(32)(fc_layer, mask=sequence_length_mask)
+    x = keras.layers.GRU(32)(fc_layer)
+    output = keras.layers.Dense(10)(x)
+
+    model = keras.models.Model(input_layers, output)
+
+    model.compile(
+        loss=keras.losses.MSE,
+        optimizer='rmsprop',
+        metrics=[keras.metrics.categorical_accuracy])
+
+    config = model.to_json()
+    loaded_model = model_config.model_from_json(config)
+
+    batch_size = 10
+    timesteps = 1
+
+    values_a = np.arange(10, dtype=np.float32)
+    indices_a = np.zeros((10, 3), dtype=np.int64)
+    indices_a[:, 0] = np.arange(10)
+    inputs_a = sparse_tensor.SparseTensor(indices_a, values_a,
+                                          (batch_size, timesteps, 1))
+
+    values_b = np.zeros(10, dtype=np.str)
+    indices_b = np.zeros((10, 3), dtype=np.int64)
+    indices_b[:, 0] = np.arange(10)
+    inputs_b = sparse_tensor.SparseTensor(indices_b, values_b,
+                                          (batch_size, timesteps, 1))
+
+    # Initialize tables for V1 lookup.
+    if not context.executing_eagerly():
+      self.evaluate(lookup_ops.tables_initializer())
+
+    self.assertLen(
+        loaded_model.predict({
+            'a': inputs_a,
+            'b': inputs_b
+        }, steps=1), batch_size)
 
 
 if __name__ == '__main__':

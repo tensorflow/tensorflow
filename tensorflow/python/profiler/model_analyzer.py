@@ -27,7 +27,7 @@ import six
 from google.protobuf import message
 from tensorflow.core.profiler import tfprof_options_pb2
 from tensorflow.core.profiler import tfprof_output_pb2
-from tensorflow.python import pywrap_tensorflow as print_mdl
+from tensorflow.python import _pywrap_tfprof as print_mdl
 from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops

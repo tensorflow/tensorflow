@@ -626,30 +626,6 @@ REGISTER_KERNEL_BUILDER(Name("VarIsInitializedOp")
 
 template <typename Device, typename T, typename Index>
 class ResourceGatherOp : public OpKernel {
- private:
-  int32 batch_dims_ = 0;
-
-  // Add the batch offset derrived from params to each batch of indices.
-  // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
-  // If indexing into a params dimension of size 4, then the indices will become
-  // [0, 1, 2, 4, 5, 6]
-  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
-    int64 batch_size = 1;  // The size of all batch dimensions.
-    for (int idx = 0; idx < batch_dims_; ++idx) {
-      batch_size *= params.dim_size(idx);
-    }
-
-    auto indices_flat = indices->flat<Index>();
-    int64 const index_inner_size = indices->NumElements() / batch_size;
-    int64 const batch_offset = params.dim_size(batch_dims_);
-    for (int64 batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
-         ++batch_idx) {
-      for (int64 idx = 0; idx < index_inner_size; ++idx) {
-        indices_flat(dest_idx++) += batch_offset * batch_idx;
-      }
-    }
-  }
-
  public:
   explicit ResourceGatherOp(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("batch_dims", &batch_dims_));
@@ -741,6 +717,30 @@ class ResourceGatherOp : public OpKernel {
               indices_flat(bad_i), " is not in [0, ", params.dim_size(0), ")"));
     }
   }
+
+ private:
+  // Add the batch offset derrived from params to each batch of indices.
+  // Example: batch_dims = 1, indices = [[0, 1, 2], [0, 1, 2]]
+  // If indexing into a params dimension of size 4, then the indices will become
+  // [0, 1, 2, 4, 5, 6]
+  void AddBatchOffsets(Tensor* indices, const Tensor& params) {
+    int64 batch_size = 1;  // The size of all batch dimensions.
+    for (int idx = 0; idx < batch_dims_; ++idx) {
+      batch_size *= params.dim_size(idx);
+    }
+
+    auto indices_flat = indices->flat<Index>();
+    int64 const index_inner_size = indices->NumElements() / batch_size;
+    int64 const batch_offset = params.dim_size(batch_dims_);
+    for (int64 batch_idx = 0, dest_idx = 0; batch_idx < batch_size;
+         ++batch_idx) {
+      for (int64 idx = 0; idx < index_inner_size; ++idx) {
+        indices_flat(dest_idx++) += batch_offset * batch_idx;
+      }
+    }
+  }
+
+  int32 batch_dims_ = 0;
 };
 
 #define REGISTER_GATHER_FULL(dev, type, index_type)                    \
@@ -765,7 +765,8 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_GPU);
+TF_CALL_int64(REGISTER_GATHER_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
 
 // Variant objects themselves sit on CPU, even if they contain data
 // pointing to a device.
@@ -849,13 +850,38 @@ TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_ND_GPU);
 template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
 class ResourceScatterUpdateOp : public OpKernel {
  public:
-  explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {}
+  explicit ResourceScatterUpdateOp(OpKernelConstruction* c) : OpKernel(c) {
+    // We use the same kernel for many operations.
+    // Each operation has a different set of attributes defined in its nodes.
+    Status s = c->GetAttr("use_locking", &use_exclusive_lock_);
+    if (!s.ok()) {
+      use_exclusive_lock_ = false;
+    }
+  }
 
   void Compute(OpKernelContext* c) override {
     core::RefCountPtr<Var> v;
     OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     OP_REQUIRES_OK(c, EnsureSparseVariableAccess<Device, T>(c, v.get()));
-    tf_shared_lock ml(*v->mu());
+    const bool is_non_pod_dtype = c->input_dtype(0) == DT_RESOURCE ||
+                                  c->input_dtype(0) == DT_STRING ||
+                                  c->input_dtype(0) == DT_VARIANT;
+    if (is_non_pod_dtype || use_exclusive_lock_) {
+      mutex_lock ml(*v->mu());
+      DoCompute(c);
+    } else {
+      // For POD dtypes, we can safely run the update without the mutex.
+      tf_shared_lock ml(*v->mu());
+      DoCompute(c);
+    }
+  }
+
+ private:
+  bool use_exclusive_lock_;
+
+  void DoCompute(OpKernelContext* c) {
+    core::RefCountPtr<Var> v;
+    OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
     Tensor* params = v->tensor();
     const Tensor& indices = c->input(1);
     const Tensor& updates = c->input(2);

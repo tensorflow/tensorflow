@@ -61,7 +61,6 @@ cc_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:master_proto_cc",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
     ],

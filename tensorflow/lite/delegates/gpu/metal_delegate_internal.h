@@ -20,7 +20,16 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+struct TfLiteDelegate;
+
+// Binds Metal buffer to an input or an output tensor in the initialized
+// delegate. Bound buffer should have sufficient storage to accommodate all
+// elements of a tensor. Returns non-zero on success, or zero otherwise.
+//
+// *** Must be called *before* `Interpreter::ModifyGraphWithDelegate`. ***
+bool TFLGpuDelegateBindMetalBufferToTensor(TfLiteDelegate* delegate,
+                                           int tensor_index,
+                                           id<MTLBuffer> metal_buffer);
 
 // Binds user-defined MTLComputeCommandEncoder. The delegate puts all GPU tasks
 // into this encoder instead of the internal encoder.

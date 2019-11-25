@@ -29,7 +29,6 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -1789,5 +1788,11 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
 
 }  // namespace tensorflow
 
+// The TPU_GCS_FS option sets a TPU-on-GCS optimized file system that allows
+// TPU pods to function more optimally. When TPU_GCS_FS is enabled then
+// gcs_file_system will not be registered as a file system since the
+// tpu_gcs_file_system is going to take over its responsibilities. The tpu file
+// system is a child of gcs file system with TPU-pod on GCS optimizations.
+// This option is set ON/OFF in the GCP TPU tensorflow config.
 // Initialize gcs_file_system
 REGISTER_FILE_SYSTEM("gs", ::tensorflow::RetryingGcsFileSystem);

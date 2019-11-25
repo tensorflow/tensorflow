@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 import tempfile
 import numpy as np
+from six.moves import range
 import tensorflow as tf
 
 from tensorflow import flags
@@ -90,8 +92,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     """
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
-        tf.random_normal([self.num_units * 2, self.n_classes]))
-    out_bias = tf.Variable(tf.random_normal([self.n_classes]))
+        tf.random.normal([self.num_units * 2, self.n_classes]))
+    out_bias = tf.Variable(tf.random.normal([self.n_classes]))
 
     batch_size = self.batch_size
     if is_inference:
@@ -232,7 +234,12 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     expected_output = sess.run(output_class, feed_dict={x: sample_input})
     return sample_input, expected_output
 
-  def tfliteInvoke(self, sess, test_inputs, input_tensor, output_tensor):
+  def tfliteInvoke(self,
+                   sess,
+                   test_inputs,
+                   input_tensor,
+                   output_tensor,
+                   use_mlir_converter=False):
     """Get tflite inference result.
 
     This method will convert tensorflow from session to tflite model then based
@@ -243,6 +250,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
       test_inputs: The test inputs for tflite.
       input_tensor: The input tensor of tensorflow graph.
       output_tensor: The output tensor of tensorflow graph.
+      use_mlir_converter: Whether or not to use MLIRConverter to convert the
+        model.
 
     Returns:
       The tflite inference result.
@@ -250,6 +259,7 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
                                                      [output_tensor])
     tflite = converter.convert()
+    converter.experimental_new_converter = use_mlir_converter
 
     interpreter = tf.lite.Interpreter(model_content=tflite)
 
@@ -278,7 +288,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    # Test Toco-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   def testStaticRnnMultiRnnCellWithSequenceLength(self):
@@ -304,7 +315,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    # Test Toco-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   @test_util.enable_control_flow_v2
@@ -326,7 +338,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    # Test Toco-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
   @test_util.enable_control_flow_v2
@@ -353,7 +366,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     test_inputs, expected_output = self.getInferenceResult(
         x, output_class, new_sess)
 
-    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class)
+    # Test Toco-converted model.
+    result = self.tfliteInvoke(new_sess, test_inputs, x, output_class, False)
     self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
 
 

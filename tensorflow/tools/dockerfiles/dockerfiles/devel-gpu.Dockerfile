@@ -28,7 +28,7 @@ FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
 # (but their default value is retained if set previously)
 ARG ARCH
 ARG CUDA
-ARG CUDNN=7.4.1.5-1
+ARG CUDNN=7.6.2.24-1
 ARG CUDNN_MAJOR_VERSION=7
 ARG LIB_DIR_PREFIX=x86_64
 
@@ -62,11 +62,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm /usr/lib/${LIB_DIR_PREFIX}-linux-gnu/libcudnn_static_v7.a
 
 RUN [[ "${ARCH}" = "ppc64le" ]] || { apt-get update && \
-        apt-get install nvinfer-runtime-trt-repo-ubuntu1804-5.0.2-ga-cuda${CUDA} \
-        && apt-get update \
-        && apt-get install -y --no-install-recommends \
-            libnvinfer5=5.0.2-1+cuda${CUDA} \
-            libnvinfer-dev=5.0.2-1+cuda${CUDA} \
+        apt-get install -y --no-install-recommends libnvinfer5=5.1.5-1+cuda${CUDA} \
+        libnvinfer-dev=5.1.5-1+cuda${CUDA} \
         && apt-get clean \
         && rm -rf /var/lib/apt/lists/*; }
 
@@ -136,7 +133,7 @@ RUN ${PIP} --no-cache-dir install \
     enum34
 
 # Install bazel
-ARG BAZEL_VERSION=0.26.1
+ARG BAZEL_VERSION=1.1.0
 RUN mkdir /bazel && \
     wget -O /bazel/installer.sh "https://github.com/bazelbuild/bazel/releases/download/${BAZEL_VERSION}/bazel-${BAZEL_VERSION}-installer-linux-x86_64.sh" && \
     wget -O /bazel/LICENSE.txt "https://raw.githubusercontent.com/bazelbuild/bazel/master/LICENSE" && \

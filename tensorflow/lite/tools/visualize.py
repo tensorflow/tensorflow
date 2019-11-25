@@ -26,6 +26,8 @@ from __future__ import print_function
 
 import json
 import os
+import shlex
+import subprocess
 import sys
 
 from tensorflow.python.platform import resource_loader
@@ -114,27 +116,26 @@ text {
 
 _D3_HTML_TEMPLATE = """
   <script>
-    // Build graph data
-    var graph = %s;
-
-    var svg = d3.select("#subgraph%d")
-    var width = svg.attr("width");
-    var height = svg.attr("height");
-    // Make the graph scrollable.
-    svg = svg.call(d3.zoom().on("zoom", function() {
-      svg.attr("transform", d3.event.transform);
-    })).append("g");
-
-
-    var color = d3.scaleOrdinal(d3.schemeDark2);
-
-    var simulation = d3.forceSimulation()
-        .force("link", d3.forceLink().id(function(d) {return d.id;}))
-        .force("charge", d3.forceManyBody())
-        .force("center", d3.forceCenter(0.5 * width, 0.5 * height));
-
-
     function buildGraph() {
+      // Build graph data
+      var graph = %s;
+
+      var svg = d3.select("#subgraph%d")
+      var width = svg.attr("width");
+      var height = svg.attr("height");
+      // Make the graph scrollable.
+      svg = svg.call(d3.zoom().on("zoom", function() {
+        svg.attr("transform", d3.event.transform);
+      })).append("g");
+
+
+      var color = d3.scaleOrdinal(d3.schemeDark2);
+
+      var simulation = d3.forceSimulation()
+          .force("link", d3.forceLink().id(function(d) {return d.id;}))
+          .force("charge", d3.forceManyBody())
+          .force("center", d3.forceCenter(0.5 * width, 0.5 * height));
+
       var edge = svg.append("g").attr("class", "edges").selectAll("line")
         .data(graph.edges).enter().append("path").attr("stroke","black").attr("fill","none")
 
@@ -376,7 +377,7 @@ def CreateHtmlFile(tflite_input, html_output):
         "--strict-json --defaults-json -o /tmp {schema} -- {input}".format(
             input=tflite_input, schema=_SCHEMA))
     print(cmd)
-    os.system(cmd)
+    subprocess.check_call(shlex.split(cmd))
     real_output = ("/tmp/" + os.path.splitext(
         os.path.split(tflite_input)[-1])[0] + ".json")
 

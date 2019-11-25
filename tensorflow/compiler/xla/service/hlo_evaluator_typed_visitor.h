@@ -1389,9 +1389,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
               *(accumulate_index_locations[i].second) = accumulate_index[i];
             }
 
+            ElementwiseT lhs_val(lhs_literal.Get<ReturnT>(lhs_index));
+            ElementwiseT rhs_val(rhs_literal.Get<ReturnT>(rhs_index));
             result_val +=
-                static_cast<ElementwiseT>(lhs_literal.Get<ReturnT>(lhs_index)) *
-                static_cast<ElementwiseT>(rhs_literal.Get<ReturnT>(rhs_index));
+                ToArithmeticSafeType(lhs_val) * ToArithmeticSafeType(rhs_val);
 
             // If there are no contracting dimension accumulate_index_sizes is
             // empty, do not try to count down from -1 to 0 since it is and

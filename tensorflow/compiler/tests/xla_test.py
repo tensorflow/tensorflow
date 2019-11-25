@@ -25,12 +25,12 @@ import re
 
 import numpy as np
 
-from tensorflow.python.eager import context
-from tensorflow.contrib.compiler import jit
-from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compiler.xla import jit
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed

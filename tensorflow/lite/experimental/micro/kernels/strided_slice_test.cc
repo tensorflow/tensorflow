@@ -25,7 +25,7 @@ namespace {
 template <typename input_type = int32_t,
           TfLiteType tensor_input_type = kTfLiteInt32>
 inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
-                                 const char* name) {
+                                 const char* name, bool is_variable = false) {
   TfLiteTensor result;
   result.type = tensor_input_type;
   result.data.raw = reinterpret_cast<char*>(const_cast<input_type*>(data));
@@ -34,15 +34,17 @@ inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
   result.bytes = ElementCount(*dims) * sizeof(input_type);
   result.allocation = nullptr;
   result.name = name;
-  result.is_variable = true;
+  result.is_variable = is_variable;
   return result;
 }
 
 template <typename input_type = int32_t,
           TfLiteType tensor_input_type = kTfLiteInt32>
 inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
-                                 TfLiteIntArray* dims, const char* name) {
-  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims, name);
+                                 TfLiteIntArray* dims, const char* name,
+                                 bool is_variable = false) {
+  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims, name,
+                                                     is_variable);
 }
 
 template <typename input_type = float,

@@ -12,8 +12,8 @@ package(
 package_group(
     name = "experimental",
     packages = [
-        "//dart/tensorflow/...",  # whitelisted
         "//tensorflow/lite/experimental/...",
+        "//third_party/dart/tflite_native/...",  # whitelisted
     ],
 )
 
@@ -63,7 +63,6 @@ cc_library(
         "c_api_types.h",
     ],
     copts = tflite_copts(),
-    tags = ["swift_module=TensorFlowLiteC"],
     visibility = [
         ":experimental",
     ],
@@ -74,6 +73,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -86,6 +86,7 @@ cc_library(
         ":c_api_internal",
         "//tensorflow/lite:kernel_api",
     ],
+    alwayslink = 1,
 )
 
 cc_test(

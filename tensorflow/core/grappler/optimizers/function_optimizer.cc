@@ -815,35 +815,33 @@ bool MarkedForXlaCompilation(const Node* n) {
 }
 
 const bool IsExemptFromSideEffectsExecutionValidation(const string& op) {
-  static const auto* exemption = new absl::flat_hash_set<string>({
-      // LINT.IfChange
-      // Op types that should not run in program order, e.g. because they need
-      // to run asynchronously to avoid deadlock.
-      "CollectiveGather",
-      "CollectiveReduce",
-      "CollectiveBcastSend",
-      "CollectiveBcastRecv",
-      "NcclAllReduce",
+  static const auto* exemption = new absl::flat_hash_set<string>(
+      {// LINT.IfChange
+       // Op types that should not run in program order, e.g. because they need
+       // to run asynchronously to avoid deadlock.
+       "CollectiveGather", "CollectiveReduce", "CollectiveBcastSend",
+       "CollectiveBcastRecv", "NcclAllReduce",
 
-      // Legacy random ops.
-      // See details in tensorflow/python/framework/auto_control_deps.py.
-      "RandomUniform",
-      "RandomUniformInt",
-      "RandomStandardNormal",
-      "ParameterizedTruncatedNormal",
-      "TruncatedNormal",
-      "RandomShuffle",
-      "Multinomial",
-      "RandomGamma",
-      "RandomGammaGrad",
-      "RandomPoisson",
-      "RandomPoissonV2",
-      // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
+       // Legacy random ops.
+       // See details in tensorflow/python/framework/auto_control_deps.py.
+       "RandomUniform", "RandomUniformInt", "RandomStandardNormal",
+       "ParameterizedTruncatedNormal", "TruncatedNormal", "RandomShuffle",
+       "Multinomial", "RandomGamma", "RandomGammaGrad", "RandomPoisson",
+       "RandomPoissonV2",
+       // LINT.ThenChange(//tensorflow/python/framework/auto_control_deps.py)
 
-      // ReadVariableOp marked as stateful because it consumes DT_RESOURCE,
-      // but it can't generate any observable side-effect.
-      "ReadVariableOp",
-  });
+       // ReadVariableOp marked as stateful because it consumes DT_RESOURCE,
+       // but it can't generate any observable side-effect.
+       "ReadVariableOp",
+
+       // CudnnRNN ops are stateful but they can't generate any observable
+       // side-effect.
+       "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+
+       // TPUEmbedding EnqueueOps are stateful but this is only between ops with
+       // the same device_ordinal on the same host.
+       "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
+       "EnqueueTPUEmbeddingSparseTensorBatch"});
   return exemption->contains(op);
 }
 
@@ -1081,9 +1079,14 @@ Status MakeFunctionBodyForInlining(const Node& node,
 // V2, however we have to guarantee that graphs constructed with Tensorflow V1
 // will produce correct results.
 void AddStrictInputSemantics(Node* caller, Graph* g) {
-  const bool has_incoming_control_edges =
-      absl::c_any_of(caller->in_edges(),
-                     [](const Edge* edge) { return edge->IsControlEdge(); });
+  absl::flat_hash_set<const Node*> existing_control_sources;
+  for (const Edge* edge : caller->in_edges()) {
+    if (edge->IsControlEdge()) {
+      existing_control_sources.insert(edge->src());
+    }
+  }
+
+  const bool has_incoming_control_edges = !existing_control_sources.empty();
 
   const bool has_resource_input =
       absl::c_any_of(caller->input_types(),
@@ -1100,18 +1103,19 @@ void AddStrictInputSemantics(Node* caller, Graph* g) {
       (has_constant_enter_input);                             // Case #2
   if (!requires_strict_semantics) return;
 
-  std::vector<const Node*> data_inputs;
-  data_inputs.reserve(caller->in_edges().size());
-
+  std::set<const Node*> data_inputs;
   for (const Edge* edge : caller->in_edges()) {
-    if (edge->IsControlEdge()) continue;
-    data_inputs.push_back(edge->src());
+    if (!edge->IsControlEdge() &&
+        !existing_control_sources.contains(edge->src())) {
+      data_inputs.insert(edge->src());
+    }
   }
 
   VLOG(3) << "Add control edges from all data inputs to enforce strict "
              "semantics with regard to function inputs";
   for (const Node* node : data_inputs) {
-    g->AddControlEdge(g->FindNodeId(node->id()), caller);
+    g->AddControlEdge(g->FindNodeId(node->id()), caller,
+                      /*allow_duplicates=*/true);
   }
 }
 
@@ -1168,6 +1172,7 @@ void AddFrameForwardingControlEdge(const std::vector<ControlFlowInfo>& info,
 // Runs a placer after inlining, to keep all nodes in a graph placed.
 Status InlineFunctionCalls(const GrapplerItem& item,
                            const RewriterConfig::Toggle opt_level,
+                           const bool lower_control_flow,
                            GraphDef* output_graph) {
   bool is_aggressive = opt_level == RewriterConfig::AGGRESSIVE;
   VLOG(2) << "Inline function calls: grappler_item_id=" << item.id
@@ -1208,7 +1213,7 @@ Status InlineFunctionCalls(const GrapplerItem& item,
     // Special case for lowering functional control flow ops. We do not rely on
     // LowerFunctionOpsPass because in Grappler we have to be more restrictive
     // about what type of function calls we are allowed to inline.
-    if (LowerUsingSwitchMergeIsOn(n)) {
+    if (lower_control_flow && LowerUsingSwitchMergeIsOn(n)) {
       VLOG(2) << "Lower functional control flow op: " << SummarizeNode(*n);
       AddStrictInputSemantics(n, graph.get());
       AddFrameForwardingControlEdge(control_flow_info, n, graph.get());
@@ -1395,8 +1400,8 @@ Status FunctionOptimizer::RunFunctionOptimizerPass(
   // Inline all function calls into a graph using common_runtime/function
   // implementation (see `InlineFunctionBody` function documentation).
   GraphDef graph_after_inlining;
-  TF_RETURN_IF_ERROR(
-      InlineFunctionCalls(item, opt_level_, &graph_after_inlining));
+  TF_RETURN_IF_ERROR(InlineFunctionCalls(item, opt_level_, lower_control_flow_,
+                                         &graph_after_inlining));
 
   // Specialize function calls that we could not inline.
   FunctionOptimizerContext ctx(item, opt_level_, graph_after_inlining);

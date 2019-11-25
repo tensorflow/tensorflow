@@ -25,7 +25,7 @@ FloatAttr ExtractSingleElementAsFloat(ElementsAttr attr) {
     return {};
   }
   SmallVector<uint64_t, 8> index(attr.getType().getRank(), 0);
-  return attr.getValue(index).cast<FloatAttr>();
+  return attr.getValue<FloatAttr>(index);
 }
 
 FloatAttr GetSingleElementAsFloatOrSelf(Attribute attr) {
@@ -42,7 +42,7 @@ IntegerAttr ExtractSingleElementAsInteger(ElementsAttr attr) {
     return {};
   }
   SmallVector<uint64_t, 8> index(attr.getType().getRank(), 0);
-  return attr.getValue(index).cast<IntegerAttr>();
+  return attr.getValue<IntegerAttr>(index);
 }
 
 }  // namespace TFL

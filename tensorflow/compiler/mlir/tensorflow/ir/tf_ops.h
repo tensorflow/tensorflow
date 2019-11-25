@@ -19,13 +19,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_OPS_H_
 
+#include "mlir/Analysis/CallInterfaces.h"  // TF:local_config_mlir
 #include "mlir/Dialect/Traits.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
 #include "mlir/IR/Dialect.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/Module.h"  // TF:local_config_mlir
-#include "mlir/IR/OpDefinition.h"  // TF:local_config_mlir
+#include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
@@ -38,6 +39,8 @@ class TensorFlowDialect : public Dialect {
  public:
   TensorFlowDialect(MLIRContext *context);
 
+  static StringRef getDialectNamespace() { return "tf"; }
+
   // Gradient attribute ("tf.gradient") in the list of NamedAttibutes in a
   // function references to its gradient function. This attribute in TensorFlow
   // Dialect is used to model TF GradientDef. GetGradientAttrName() returns the
@@ -49,15 +52,21 @@ class TensorFlowDialect : public Dialect {
   static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
 
   // Parse a type registered to this dialect.
-  Type parseType(StringRef data, Location loc) const override;
+  Type parseType(DialectAsmParser &parser) const override;
 
   // Prints a type registered to this dialect.
-  void printType(Type ty, raw_ostream &os) const override;
+  void printType(Type ty, DialectAsmPrinter &os) const override;
+
+  // Parses resource type with potential subtypes.
+  Type ParseResourceType(DialectAsmParser &parser, Location loc) const;
+
+  // Prints resource type with potential subtypes.
+  void PrintResourceType(ResourceType ty, DialectAsmPrinter &os) const;
 
   // Parse and print variant type. It may have subtypes inferred using shape
   // inference.
-  Type ParseVariantType(StringRef spec, Location loc) const;
-  void PrintVariantType(VariantType ty, raw_ostream &os) const;
+  Type ParseVariantType(DialectAsmParser &parser, Location loc) const;
+  void PrintVariantType(VariantType ty, DialectAsmPrinter &os) const;
 
   // Registered hook to materialize a constant operation from a given attribute
   // value with the desired resultant type.

@@ -36,7 +36,6 @@ TEST(Port, AlignedMalloc) {
 }
 
 TEST(Port, GetCurrentCPU) {
-  GTEST_SKIP() << "Currently not stable.";  // b/132640908
   const int cpu = GetCurrentCPU();
 #if !defined(__APPLE__)
   // GetCurrentCPU does not currently work on MacOS.
@@ -84,9 +83,9 @@ TEST(ConditionalCriticalSections, AwaitWithDeadline_Timeout) {
   mutex m;
   m.lock();
   time_t start = time(nullptr);
-  bool result = m.AwaitWithDeadline(
-      Condition(&always_false),
-      EnvTime::Default()->NowNanos() + 3 * EnvTime::kSecondsToNanos);
+  bool result =
+      m.AwaitWithDeadline(Condition(&always_false),
+                          EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
   time_t finish = time(nullptr);
   m.unlock();
   EXPECT_EQ(result, false);
@@ -108,9 +107,8 @@ TEST(ConditionalCriticalSections, AwaitWithDeadline_Woken) {
     woken = true;
     m.unlock();
   });
-  bool result =
-      m.AwaitWithDeadline(Condition(&woken), EnvTime::Default()->NowNanos() +
-                                                 3 * EnvTime::kSecondsToNanos);
+  bool result = m.AwaitWithDeadline(
+      Condition(&woken), EnvTime::NowNanos() + 3 * EnvTime::kSecondsToNanos);
   time_t finish = time(nullptr);
   m.unlock();
   EXPECT_EQ(result, true);

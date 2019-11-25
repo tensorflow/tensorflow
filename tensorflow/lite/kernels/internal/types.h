@@ -457,6 +457,25 @@ inline int RequiredBufferSizeForDims(const Dims<4>& dims) {
   return FlatSize(dims);
 }
 
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  return size_1;
+}
+
+inline int MatchingElementsSize(const RuntimeShape& shape,
+                                const RuntimeShape& check_shape_0,
+                                const RuntimeShape& check_shape_1) {
+  const int size_1 = shape.FlatSize();
+  const int size_2 = check_shape_0.FlatSize();
+  const int size_3 = check_shape_1.FlatSize();
+  TFLITE_CHECK_EQ(size_1, size_2);
+  TFLITE_CHECK_EQ(size_2, size_3);
+  return size_1;
+}
+
 // Flat size calculation, checking that dimensions match with one or more other
 // arrays.
 inline int MatchingFlatSize(const RuntimeShape& shape,
@@ -713,6 +732,13 @@ struct ActivationParams {
   // uint8, etc, activation params.
   int32 quantized_activation_min;
   int32 quantized_activation_max;
+};
+
+struct ReluParams : public ActivationParams {
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int32 output_shift;
 };
 
 // Styles of resizing op usages. For example, kImageStyle can be used with a Pad

@@ -105,6 +105,45 @@ void SseMatrixBatchVectorMultiplyAccumulate(
   }  // for batch
 }
 
+void SseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float* scaling_factors,
+    int n_batch, float* __restrict__ result, int result_stride,
+    const float* per_channel_scale, const int32_t* input_offset) {
+  static constexpr int kBlockSize = 8;
+  for (int batch = 0; batch < n_batch; ++batch) {
+    const float batch_scaling_factor = scaling_factors[batch];
+    for (int row = 0; row < m_rows; ++row, result += result_stride) {
+      const int8_t* row_ptr = matrix + row * m_cols;
+      __m128i dotprod_32x4 = _mm_setzero_si128();  // SSE2
+      __m128i row_sum_16x8 = _mm_setzero_si128();
+      int col = 0;
+      for (; col < (m_cols & ~(kBlockSize - 1)); col += kBlockSize) {
+        const __m128i vec_8x8 =
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(vectors + col));
+        const __m128i row_8x8 =
+            _mm_loadl_epi64(reinterpret_cast<const __m128i*>(row_ptr + col));
+        dotprod_32x4 = MatrixBatchVectorMultiplyAccumulateLoopBodySse(
+            dotprod_32x4, vec_8x8, row_8x8);
+        __m128i row_16x8 = _mm_cvtepi8_epi16(row_8x8);
+        row_sum_16x8 = _mm_add_epi16(row_sum_16x8, row_16x8);
+      }  // for col
+      row_sum_16x8 = _mm_hadd_epi16(row_sum_16x8, row_sum_16x8);
+      __m128i row_sum_32x4 = _mm_cvtepi16_epi32(row_sum_16x8);
+      int32_t sum = ReduceInt32x4(dotprod_32x4);
+      int32_t row_sum = ReduceInt32x4(row_sum_32x4);
+      // Postamble loop.
+      for (; col < m_cols; ++col) {
+        sum += row_ptr[col] * vectors[col];
+        row_sum += row_ptr[col];
+      }  // for col
+      sum -= row_sum * input_offset[batch];
+      *result += sum * batch_scaling_factor * per_channel_scale[row];
+    }  // for row
+    vectors += m_cols;
+  }  // for batch
+}
+
 void SseSparseMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
     const int m_cols, const int8_t* __restrict__ vectors,

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/protobuf/saver.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
@@ -58,7 +59,7 @@ constexpr char kLoadAttemptFail[] = "fail";
 constexpr char kLoadAttemptSuccess[] = "success";
 
 uint64 GetLatencyMicroseconds(const uint64 start_microseconds) {
-  const uint64 end_microseconds = Env::Default()->NowMicros();
+  const uint64 end_microseconds = EnvTime::NowMicros();
   // Avoid clock skew.
   if (end_microseconds < start_microseconds) return 0;
   return end_microseconds - start_microseconds;
@@ -257,6 +258,24 @@ Status GetAssetFileDefs(const MetaGraphDef& meta_graph_def,
   return Status::OK();
 }
 
+Status ReadSavedModelDebugInfoIfPresent(
+    const string& export_dir,
+    std::unique_ptr<GraphDebugInfo>* debug_info_proto) {
+  LOG(INFO) << "Reading SavedModel debug info (if present) from: "
+            << export_dir;
+
+  const string debug_info_pb_path =
+      io::JoinPath(export_dir, "debug", "saved_model_debug_info.pb");
+  if (Env::Default()->FileExists(debug_info_pb_path).ok()) {
+    GraphDebugInfo debug_info;
+    TF_RETURN_IF_ERROR(
+        ReadBinaryProto(Env::Default(), debug_info_pb_path, &debug_info));
+    *debug_info_proto =
+        absl::make_unique<GraphDebugInfo>(std::move(debug_info));
+  }
+  return Status::OK();
+}
+
 Status LoadSavedModelInternal(const SessionOptions& session_options,
                               const RunOptions& run_options,
                               const string& export_dir,
@@ -265,7 +284,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
   const uint64 read_start_microseconds = Env::Default()->NowMicros();
   TF_RETURN_IF_ERROR(ReadMetaGraphDefFromSavedModel(export_dir, tags,
                                                     &bundle->meta_graph_def));
-
+  TF_RETURN_IF_ERROR(
+      ReadSavedModelDebugInfoIfPresent(export_dir, &bundle->debug_info));
   TF_RETURN_IF_ERROR(LoadMetaGraphIntoSession(
       bundle->meta_graph_def, session_options, &bundle->session));
 
@@ -299,6 +319,8 @@ Status LoadSavedModelInternal(const SessionOptions& session_options,
 
 }  // namespace
 
+SavedModelBundleInterface::~SavedModelBundleInterface() {}
+
 Status LoadSavedModel(const SessionOptions& session_options,
                       const RunOptions& run_options, const string& export_dir,
                       const std::unordered_set<string>& tags,
@@ -309,7 +331,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
                                                export_dir, tags, bundle);
   auto log_and_count = [&](const string& status_str) {
     LOG(INFO) << "SavedModel load for tags { " << absl::StrJoin(tags, " ")
-              << " }; Status: " << status_str << ". Took "
+              << " }; Status: " << status_str << ": " << status << ". Took "
               << GetLatencyMicroseconds(start_microseconds) << " microseconds.";
     load_attempt_count->GetCell(export_dir, status_str)->IncrementBy(1);
   };
@@ -321,6 +343,140 @@ Status LoadSavedModel(const SessionOptions& session_options,
   load_latency->GetCell(export_dir)
       ->IncrementBy(GetLatencyMicroseconds(start_microseconds));
   return status;
+}
+
+namespace {
+// Session wrapper that prevents calls to Session::Create(), Session::Extend(),
+// and the deprecated partial-run methods.
+//
+// Limiting the available methods on a returned Session gives us the option
+// to replace the Session with a cut-down implementation, without breaking any
+// users.
+class LiteSessionWrapper : public Session {
+ public:
+  explicit LiteSessionWrapper(std::unique_ptr<Session> wrapped)
+      : wrapped_(std::move(wrapped)) {}
+
+  Status Create(const GraphDef& graph) override {
+    return errors::Unimplemented("Session::Create()");
+  }
+  Status Create(GraphDef&& graph) override {
+    return errors::Unimplemented("Session::Create()");
+  }
+
+  Status Extend(const GraphDef& graph) override {
+    return errors::Unimplemented("Session::Extend()");
+  }
+  Status Extend(GraphDef&& graph) override {
+    return errors::Unimplemented("Session::Extend()");
+  }
+
+  Status Run(const std::vector<std::pair<string, Tensor>>& inputs,
+             const std::vector<string>& output_tensor_names,
+             const std::vector<string>& target_node_names,
+             std::vector<Tensor>* outputs) override {
+    return wrapped_->Run(inputs, output_tensor_names, target_node_names,
+                         outputs);
+  }
+
+  Status Create(const RunOptions& run_options, const GraphDef& graph) override {
+    return errors::Unimplemented("Session::Create()");
+  }
+  Status Extend(const RunOptions& run_options, const GraphDef& graph) override {
+    return errors::Unimplemented("Session::Extend()");
+  }
+  Status Create(const RunOptions& run_options, GraphDef&& graph) override {
+    return errors::Unimplemented("Session::Create()");
+  }
+  Status Extend(const RunOptions& run_options, GraphDef&& graph) override {
+    return errors::Unimplemented("Session::Extend()");
+  }
+  Status Close(const RunOptions& run_options) override {
+    return wrapped_->Close(run_options);
+  }
+
+  Status Run(const RunOptions& run_options,
+             const std::vector<std::pair<string, Tensor>>& inputs,
+             const std::vector<string>& output_tensor_names,
+             const std::vector<string>& target_node_names,
+             std::vector<Tensor>* outputs, RunMetadata* run_metadata) override {
+    return wrapped_->Run(run_options, inputs, output_tensor_names,
+                         target_node_names, outputs, run_metadata);
+  }
+
+  Status PRunSetup(const std::vector<string>& input_names,
+                   const std::vector<string>& output_names,
+                   const std::vector<string>& target_nodes,
+                   string* handle) override {
+    return errors::Unimplemented("Session::PRunSetup()");
+  }
+
+  Status PRun(const string& handle,
+              const std::vector<std::pair<string, Tensor>>& inputs,
+              const std::vector<string>& output_names,
+              std::vector<Tensor>* outputs) override {
+    return errors::Unimplemented("Session::PRun()");
+  }
+
+  Status ListDevices(std::vector<DeviceAttributes>* response) override {
+    return wrapped_->ListDevices(response);
+  }
+
+  Status Close() override { return wrapped_->Close(); }
+
+  Status MakeCallable(const CallableOptions& callable_options,
+                      CallableHandle* out_handle) override {
+    return wrapped_->MakeCallable(callable_options, out_handle);
+  }
+
+  Status RunCallable(CallableHandle handle,
+                     const std::vector<Tensor>& feed_tensors,
+                     std::vector<Tensor>* fetch_tensors,
+                     RunMetadata* run_metadata) override {
+    return wrapped_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                 run_metadata);
+  }
+
+  Status RunCallable(
+      CallableHandle handle, const std::vector<Tensor>& feed_tensors,
+      std::vector<Tensor>* fetch_tensors, RunMetadata* run_metadata,
+      const thread::ThreadPoolOptions& threadpool_options) override {
+    return wrapped_->RunCallable(handle, feed_tensors, fetch_tensors,
+                                 run_metadata, threadpool_options);
+  }
+
+  Status ReleaseCallable(CallableHandle handle) override {
+    return wrapped_->ReleaseCallable(handle);
+  }
+
+ private:
+  const std::unique_ptr<Session> wrapped_;
+};
+}  // namespace
+
+Status LoadSavedModel(const SessionOptions& session_options,
+                      const RunOptions& run_options, const string& export_dir,
+                      const std::unordered_set<string>& tags,
+                      SavedModelBundleLite* const bundle) {
+  SavedModelBundle legacy_bundle;
+  SessionOptions rewritten_options(session_options);
+  // We disallow calls to Session::Extend() on the returned session, so we can
+  // reduce memory consumption by not storing the original GraphDef.
+  rewritten_options.config.mutable_experimental()
+      ->set_optimize_for_static_graph(true);
+  // Disallowing the `RunOptions.output_partition_graphs` option (typically used
+  // in debugging and tests) allows us to reduce memory consumption further by
+  // not storing the rewritten subgraph for each signature.
+  rewritten_options.config.mutable_experimental()
+      ->set_disable_output_partition_graphs(true);
+  // TODO(mrry): Consider specializing the session creation to reduce peak
+  // RAM consumption by using `Session::Create(GraphDef&&)`.
+  TF_RETURN_IF_ERROR(LoadSavedModel(rewritten_options, run_options, export_dir,
+                                    tags, &legacy_bundle));
+  *bundle = SavedModelBundleLite(
+      absl::make_unique<LiteSessionWrapper>(std::move(legacy_bundle.session)),
+      std::move(*legacy_bundle.meta_graph_def.mutable_signature_def()));
+  return Status::OK();
 }
 
 bool MaybeSavedModelDirectory(const string& export_dir) {

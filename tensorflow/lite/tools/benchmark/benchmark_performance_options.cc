@@ -22,6 +22,11 @@ limitations under the License.
 #include <utility>
 
 #include "tensorflow/core/util/stats_calculator.h"
+#include "tensorflow/lite/c/c_api_internal.h"
+#if defined(__ANDROID__)
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#include "tensorflow/lite/nnapi/nnapi_util.h"
+#endif
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_params.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
@@ -34,13 +39,26 @@ namespace benchmark {
 void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
   current_run_name_.clear();
 
+#if defined(__ANDROID__)
   if (params.Get<bool>("use_nnapi")) {
-    current_run_name_ = "nnapi";
+    const std::string accelerator =
+        params.Get<std::string>("nnapi_accelerator_name");
+    current_run_name_ = accelerator.empty() ? "nnapi(w/o accel name)"
+                                            : "nnapi(" + accelerator + ")";
     return;
   }
+#endif
 
   if (params.Get<bool>("use_gpu")) {
-    current_run_name_ = "gpu";
+#if defined(__ANDROID__)
+    if (params.Get<bool>("gpu_precision_loss_allowed")) {
+      current_run_name_ = "gpu-fp16";
+    } else {
+      current_run_name_ = "gpu-default";
+    }
+#else
+    current_run_name_ = "gpu-default";
+#endif
     return;
   }
 
@@ -68,6 +86,10 @@ void MultiRunStatsRecorder::OutputStats() {
     // Output the name of this run first.
     stream << std::setw(26) << run_stats.first << ": ";
     run_stats.second.inference_time_us().OutputToStream(&stream);
+    // NOTE: As of 2019/11/07, the memory usage is collected in an
+    // OS-process-wide way and this program performs multiple runs in a single
+    // OS process, therefore, the memory usage information of each run becomes
+    // incorrect, hence no output here.
     TFLITE_LOG(INFO) << stream.str();
   }
 }
@@ -182,7 +204,11 @@ bool BenchmarkPerformanceOptions::HasOption(const std::string& option) const {
 void BenchmarkPerformanceOptions::ResetPerformanceOptions() {
   single_option_run_params_->Set<int32_t>("num_threads", 1);
   single_option_run_params_->Set<bool>("use_gpu", false);
+#if defined(__ANDROID__)
+  single_option_run_params_->Set<bool>("gpu_precision_loss_allowed", true);
   single_option_run_params_->Set<bool>("use_nnapi", false);
+  single_option_run_params_->Set<std::string>("nnapi_accelerator_name", "");
+#endif
 }
 
 void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
@@ -201,22 +227,50 @@ void BenchmarkPerformanceOptions::CreatePerformanceOptions() {
   }
 
   if (benchmark_all || HasOption("gpu")) {
+#if defined(__ANDROID__)
+    const std::vector<bool> allow_precision_loss = {true, false};
+    for (const auto precision_loss : allow_precision_loss) {
+      BenchmarkParams params;
+      params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
+      params.AddParam("gpu_precision_loss_allowed",
+                      BenchmarkParam::Create<bool>(precision_loss));
+      all_run_params_.emplace_back(std::move(params));
+    }
+#else
     BenchmarkParams params;
     params.AddParam("use_gpu", BenchmarkParam::Create<bool>(true));
     all_run_params_.emplace_back(std::move(params));
+#endif
   }
 
+#if defined(__ANDROID__)
   if (benchmark_all || HasOption("nnapi")) {
+    std::string nnapi_accelerators = nnapi::GetStringDeviceNamesList();
+    if (!nnapi_accelerators.empty()) {
+      std::vector<std::string> device_names;
+      util::SplitAndParse(nnapi_accelerators, ',', &device_names);
+      for (const auto name : device_names) {
+        BenchmarkParams params;
+        params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
+        params.AddParam("nnapi_accelerator_name",
+                        BenchmarkParam::Create<std::string>(name));
+        all_run_params_.emplace_back(std::move(params));
+      }
+    }
+    // Explicitly test the case when there's no "nnapi_accelerator_name"
+    // parameter as the nnpai execution is different from the case when
+    // an accelerator name is explicitly specified.
     BenchmarkParams params;
     params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(true));
     all_run_params_.emplace_back(std::move(params));
   }
+#endif
 }
 
 void BenchmarkPerformanceOptions::Run(int argc, char** argv) {
   // We first parse flags for single-option runs to get information like
   // parameters of the input model etc.
-  if (!single_option_run_->ParseFlags(&argc, argv)) return;
+  if (single_option_run_->ParseFlags(&argc, argv) != kTfLiteOk) return;
 
   // Now, we parse flags that are specified for this particular binary.
   if (!ParseFlags(&argc, argv)) return;

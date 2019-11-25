@@ -194,6 +194,10 @@ class DropoutWrapperBase(object):
   def output_size(self):
     return self.cell.output_size
 
+  def build(self, inputs_shape):
+    self.cell.build(inputs_shape)
+    self.built = True
+
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       return self.cell.zero_state(batch_size, dtype)

@@ -14,3 +14,18 @@ op {
   }
   is_stateful: true
 }
+op {
+  name: "TensorListResize"
+  input_arg {
+    name: "input_handle"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "output_handle"
+    type: DT_VARIANT
+  }
+}

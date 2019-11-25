@@ -42,7 +42,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:cpu_plugin",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_instruction_fusion",
@@ -85,7 +85,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/service:buffer_assignment",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
@@ -103,13 +103,16 @@ tf_cc_test(
     name = "cpu_intrinsic_test",
     srcs = ["cpu_intrinsic_test.cc"],
     deps = [
+        ":cpu_codegen_test",
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
-        "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )
 
@@ -129,6 +132,47 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "cpu_profiling_test",
+    srcs = ["cpu_profiling_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
+    ],
+)
+
+tf_cc_test(
+    name = "tree_reduction_rewriter_test",
+    srcs = ["tree_reduction_rewriter_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/tests:codegen_test_base",
+        "//tensorflow/compiler/xla/tests:filecheck",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:llvm_irgen_test_base",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
     name = "cpu_infeed_test",
     srcs = ["cpu_infeed_test.cc"],
     deps = [
@@ -136,7 +180,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:test_helpers",
-        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:global_data",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -170,7 +214,6 @@ tf_cc_test(
     srcs = ["cpu_outfeed_test.cc"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/core:lib",
@@ -184,11 +227,27 @@ tf_cc_test(
     srcs = ["cpu_key_value_sort_test.cc"],
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
-        "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_vectorization_test",
+    srcs = ["cpu_vectorization_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
+        "@llvm//:arm_code_gen",  # fixdeps: keep
+        "@llvm//:target",
+        "@llvm//:x86_code_gen",  # fixdeps: keep
     ],
 )

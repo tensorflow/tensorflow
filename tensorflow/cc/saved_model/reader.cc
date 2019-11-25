@@ -48,12 +48,12 @@ Status ReadSavedModel(const string& export_dir, SavedModel* saved_model_proto) {
                     export_dir);
 }
 
-Status FindMetaGraphDef(const SavedModel& saved_model_proto,
-                        const std::unordered_set<string>& tags,
+Status FindMetaGraphDef(const std::unordered_set<string>& tags,
+                        SavedModel* saved_model_proto,
                         MetaGraphDef* meta_graph_def) {
   LOG(INFO) << "Reading meta graph with tags { " << absl::StrJoin(tags, " ")
             << " }";
-  for (const MetaGraphDef& graph_def : saved_model_proto.meta_graphs()) {
+  for (MetaGraphDef& graph_def : *saved_model_proto->mutable_meta_graphs()) {
     // Get tags from the graph_def.
     std::unordered_set<string> graph_tags;
     for (const string& tag : graph_def.meta_info_def().tags()) {
@@ -61,7 +61,7 @@ Status FindMetaGraphDef(const SavedModel& saved_model_proto,
     }
     // Match with the set of tags provided.
     if (graph_tags == tags) {
-      *meta_graph_def = graph_def;
+      *meta_graph_def = std::move(graph_def);
       return Status::OK();
     }
   }
@@ -81,7 +81,8 @@ Status ReadMetaGraphDefFromSavedModel(const string& export_dir,
                                       MetaGraphDef* const meta_graph_def) {
   SavedModel saved_model_proto;
   TF_RETURN_IF_ERROR(ReadSavedModel(export_dir, &saved_model_proto));
-  TF_RETURN_IF_ERROR(FindMetaGraphDef(saved_model_proto, tags, meta_graph_def));
+  TF_RETURN_IF_ERROR(
+      FindMetaGraphDef(tags, &saved_model_proto, meta_graph_def));
   return Status::OK();
 }
 

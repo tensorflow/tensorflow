@@ -26,35 +26,28 @@
 #include "mlir/Transforms/Passes.h"
 using namespace mlir;
 
-//===----------------------------------------------------------------------===//
-// The actual Canonicalizer Pass.
-//===----------------------------------------------------------------------===//
-
 namespace {
+/// Canonicalize operations in nested regions.
+struct Canonicalizer : public OperationPass<Canonicalizer> {
+  void runOnOperation() override {
+    OwningRewritePatternList patterns;
 
-/// Canonicalize operations in functions.
-struct Canonicalizer : public FunctionPass<Canonicalizer> {
-  void runOnFunction() override;
+    // TODO: Instead of adding all known patterns from the whole system lazily
+    // add and cache the canonicalization patterns for ops we see in practice
+    // when building the worklist.  For now, we just grab everything.
+    auto *context = &getContext();
+    for (auto *op : context->getRegisteredOperations())
+      op->getCanonicalizationPatterns(patterns, context);
+
+    Operation *op = getOperation();
+    applyPatternsGreedily(op->getRegions(), patterns);
+  }
 };
 } // end anonymous namespace
 
-void Canonicalizer::runOnFunction() {
-  OwningRewritePatternList patterns;
-  auto func = getFunction();
-
-  // TODO: Instead of adding all known patterns from the whole system lazily add
-  // and cache the canonicalization patterns for ops we see in practice when
-  // building the worklist.  For now, we just grab everything.
-  auto *context = &getContext();
-  for (auto *op : context->getRegisteredOperations())
-    op->getCanonicalizationPatterns(patterns, context);
-
-  applyPatternsGreedily(func, patterns);
-}
-
 /// Create a Canonicalizer pass.
-std::unique_ptr<FunctionPassBase> mlir::createCanonicalizerPass() {
-  return llvm::make_unique<Canonicalizer>();
+std::unique_ptr<Pass> mlir::createCanonicalizerPass() {
+  return std::make_unique<Canonicalizer>();
 }
 
 static PassRegistration<Canonicalizer> pass("canonicalize",

@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
@@ -30,7 +30,7 @@ class FilterWithRandomUniformFusionTest(test_base.DatasetTestBase):
 
   def testFilterWithRandomUniformFusion(self):
     dataset = dataset_ops.Dataset.range(10000000).apply(
-        optimization.assert_next(["Sampling"]))
+        testing.assert_next(["Sampling"]))
     dataset = dataset.filter(lambda _: random_ops.random_uniform([]) < 0.05)
 
     options = dataset_ops.Options()

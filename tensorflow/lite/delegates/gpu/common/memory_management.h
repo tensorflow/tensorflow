@@ -21,61 +21,21 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/equality_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_in_order_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/min_cost_flow_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/naive_assignment.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/types.h"
 
 namespace tflite {
 namespace gpu {
 
 using TaskId = size_t;
-
-// Record, containing tensor size/shape and IDs of the first and the last task,
-// that use this tensor as input or output. For example: tensor #3 with size
-// tensor_size=65536 is first introduced in program #2 (first_task=2) and used
-// for the last time in program #7 (last_task=7).
-template <typename TensorSizeT>
-struct TensorUsageRecord {
-  TensorSizeT tensor_size;
-  TaskId first_task;
-  TaskId last_task;
-
-  TensorUsageRecord(TensorSizeT size, TaskId first, TaskId last)
-      : tensor_size(size), first_task(first), last_task(last) {}
-
-  // Default order of tensor usage records is increasing order of first_task.
-  bool operator<(const TensorUsageRecord<TensorSizeT>& other) const {
-    return first_task < other.first_task;
-  }
-};
-
-template <typename TensorSizeT>
-struct TensorUsageWithIndex {
-  const TensorUsageRecord<TensorSizeT>* usage_record;
-  size_t idx;
-
-  TensorUsageWithIndex(const TensorUsageRecord<TensorSizeT>* usage_record,
-                       size_t idx)
-      : usage_record(usage_record), idx(idx) {}
-};
-
-bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
-                   const TensorUsageWithIndex<size_t>& second);
-
-// Information about assignment of tensors to shared objects
-template <typename TensorSizeT>
-struct ObjectsAssignment {
-  // shared_object_ids_[i] is ID of shared object, that tensor i will be using.
-  std::vector<size_t> object_ids;
-  // shared_object_sizes_[i] is a size of shared object with ID equal to i.
-  std::vector<TensorSizeT> object_sizes;
-};
-
-// Information about assignment of tensors to offsets for the case, when all of
-// them are going to be allocated in one continuous memory block.
-struct OffsetsAssignment {
-  std::vector<size_t> offsets;
-  size_t total_size;
-};
 
 // Converts given assignment of tensors to shared objects to the assignment of
 // the same tensors to offsets in continuous memory block.
@@ -94,13 +54,22 @@ enum class MemoryStrategy {
   // Greedy strategy uses greedy algorithm, iterating through all the tensors in
   // order of their first_task, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
-  GREEDY,
+  GREEDY_IN_ORDER,
 
   // Greedy by size strategy uses greedy algorithm, iterating through all the
-  // tensors in
-  // non-increasing of their size, to reuse memory from tensors, that
+  // tasks in non-increasing of their breadth, and calculating allocations for
+  // tensors used in these tasks. By breadth of the task we understand sum of
+  // sizes of all tensors in its TaskProfile.
+  GREEDY_BY_BREADTH,
+
+  // Greedy by size strategy uses greedy algorithm, iterating through all the
+  // tensors in non-increasing of their size, to reuse memory from tensors, that
   // won't be used anymore, for new ones.
   GREEDY_BY_SIZE,
+
+  // Choose greedy strategy from several fast algorithms, that provides best
+  // memory allocation for the given usage records.
+  GREEDY_BEST,
 
   // Mincostflow strategy consists of building auxiliary flow graph and solving
   // the minimum-cost flow problem in it. In the end edges with zero residual
@@ -108,25 +77,65 @@ enum class MemoryStrategy {
   MINCOSTFLOW,
 };
 
-// Calculates the assignement of shared objects to given tensors, including
-// objects' sizes. Initial tensor sizes are given as size_t. This function is
-// intended to use with GPU buffers.
-Status AssignObjectsToTensors(
-    const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    const MemoryStrategy& strategy, ObjectsAssignment<size_t>* assignment);
+// Chooses greedy algorithm with the lowest memory consumption for given usage
+// records and returns corresponding shared objects assignment.
+Status BestGreedy(const std::vector<TensorUsageRecord<size_t>>& usage_records,
+                  ObjectsAssignment<size_t>* assignment);
 
 // Calculates the assignement of shared objects to given tensors, including
-// objects' sizes. Initial tensor sizes are given as BHWC. This function is
-// intended to use with GPU textures.
+// objects' sizes. Below there are specializations for different types, that
+// support more memory strategies.
+// If reallocation_graph is provided, assignment of shared objects support
+// parallel order of operation execution, but memory consumption in this case
+// can be larger. Currently only GREEDY_IN_ORDER strategy can use this
+// reallocation_graph.
+template <typename TensorSizeT>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<TensorSizeT>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<TensorSizeT>* assignment,
+    const UsageGraph* reallocation_graph = nullptr) {
+  switch (strategy) {
+    case MemoryStrategy::NAIVE:
+      return NaiveAssignment(usage_records, assignment);
+    case MemoryStrategy::EQUALITY:
+      return EqualityAssignment(usage_records, assignment);
+    default:
+      return InternalError(
+          "MemoryStrategy is not supported with current tensor size type.");
+  }
+  return OkStatus();
+}
+
+template <>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<size_t>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<size_t>* assignment,
+    const UsageGraph* reallocation_graph);
+
+template <>
 Status AssignObjectsToTensors(
     const std::vector<TensorUsageRecord<BHWC>>& usage_records,
-    const MemoryStrategy& strategy, ObjectsAssignment<BHWC>* assignment);
+    MemoryStrategy strategy, ObjectsAssignment<BHWC>* assignment,
+    const UsageGraph* reallocation_graph);
+
+template <>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<uint2>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<uint2>* assignment,
+    const UsageGraph* reallocation_graph);
+
+template <>
+Status AssignObjectsToTensors(
+    const std::vector<TensorUsageRecord<uint3>>& usage_records,
+    MemoryStrategy strategy, ObjectsAssignment<uint3>* assignment,
+    const UsageGraph* reallocation_graph);
 
 // Calculates the assignement of tensors to offsets, considering those tensors
 // are going to be allocated in one continuous memory block.
 Status AssignOffsetsToTensors(
     const std::vector<TensorUsageRecord<size_t>>& usage_records,
-    const MemoryStrategy& strategy, OffsetsAssignment* assignment);
+    const MemoryStrategy& strategy, OffsetsAssignment* assignment,
+    const UsageGraph* reallocation_graph = nullptr);
 
 }  // namespace gpu
 }  // namespace tflite

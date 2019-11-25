@@ -123,8 +123,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      context->ReportError(context, "Type '%s' not currently supported.",
+                           TfLiteTypeGetName(input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_SPACE_TO_DEPTH

@@ -23,6 +23,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_kronecker as kronecker
 from tensorflow.python.ops.linalg import linear_operator_lower_triangular as lower_triangular
@@ -53,9 +54,9 @@ def _kronecker_dense(factors):
 
 
 class KroneckerDenseTest(test.TestCase):
+  """Test of `_kronecker_dense` function."""
 
-  @test_util.run_deprecated_v1
-  def testKroneckerDenseMatrix(self):
+  def test_kronecker_dense_matrix(self):
     x = ops.convert_to_tensor([[2., 3.], [1., 2.]], dtype=dtypes.float32)
     y = ops.convert_to_tensor([[1., 2.], [5., -1.]], dtype=dtypes.float32)
     # From explicitly writing out the kronecker product of x and y.
@@ -71,11 +72,13 @@ class KroneckerDenseTest(test.TestCase):
         [10., 15., -2., -3.],
         [5., 10., -1., -2.]], dtype=dtypes.float32)
 
-    with self.cached_session():
-      self.assertAllClose(_kronecker_dense([x, y]).eval(), self.evaluate(z))
-      self.assertAllClose(_kronecker_dense([y, x]).eval(), self.evaluate(w))
+    self.assertAllClose(
+        self.evaluate(_kronecker_dense([x, y])), self.evaluate(z))
+    self.assertAllClose(
+        self.evaluate(_kronecker_dense([y, x])), self.evaluate(w))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SquareLinearOperatorKroneckerTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
@@ -251,6 +254,20 @@ class SquareLinearOperatorKroneckerTest(
         inverse,
         kronecker.LinearOperatorKronecker)
     self.assertEqual(2, len(inverse.operators))
+
+  def test_tape_safe(self):
+    matrix_1 = variables_module.Variable([[1., 0.], [0., 1.]])
+    matrix_2 = variables_module.Variable([[2., 0.], [0., 2.]])
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix_1, is_non_singular=True),
+            linalg.LinearOperatorFullMatrix(
+                matrix_2, is_non_singular=True),
+        ],
+        is_non_singular=True,
+    )
+    self.check_tape_safe(operator)
 
 
 if __name__ == "__main__":

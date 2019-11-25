@@ -47,25 +47,32 @@ DOCLINES = __doc__.split('\n')
 # result for pip.
 # Also update tensorflow/tensorflow.bzl and
 # tensorflow/core/public/version.h
-_VERSION = '1.14.0'
+_VERSION = '2.0.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
     'astor >= 0.6.0',
     'backports.weakref >= 1.0rc1;python_version<"3.4"',
     'enum34 >= 1.1.6;python_version<"3.4"',
-    'gast >= 0.2.0',
-    'google_pasta >= 0.1.6',
+    'gast == 0.2.2',
+    'google_pasta >= 0.1.8',
     'keras_applications >= 1.0.8',
-    'keras_preprocessing >= 1.0.5',
+    'keras_preprocessing >= 1.1.0',
     'numpy >= 1.16.0, < 2.0',
     'opt_einsum >= 2.3.2',
-    'six >= 1.10.0',
-    'protobuf >= 3.6.1',
-    'tensorboard >= 1.14.0, < 1.15.0',
-    'tensorflow_estimator >= 1.14.0rc0, < 1.15.0rc0',
+    'protobuf >= 3.8.0',
+    'tensorboard >= 2.0.0, < 2.1.0',
+    'tensorflow_estimator >= 2.0.0, < 2.1.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
+    # python3 requires wheel 0.26
+    'wheel >= 0.26;python_version>="3"',
+    'wheel;python_version<"3"',
+    # mock comes with unittest.mock for python3, need to install for python2
+    'mock >= 2.0.0;python_version<"3"',
+    # functools comes with python3, need to install the backport for python2
+    'functools32 >= 3.2.3;python_version<"3"',
+    'six >= 1.12.0',
 ]
 
 if sys.byteorder == 'little':
@@ -81,21 +88,11 @@ if '--project_name' in sys.argv:
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
 
-# python3 requires wheel 0.26
-if sys.version_info.major == 3:
-  REQUIRED_PACKAGES.append('wheel >= 0.26')
-else:
-  REQUIRED_PACKAGES.append('wheel')
-  # mock comes with unittest.mock for python3, need to install for python2
-  REQUIRED_PACKAGES.append('mock >= 2.0.0')
-  # functools comes with python3, need to install the backport for python2
-  REQUIRED_PACKAGES.append('functools32 >= 3.2.3')
-
 # tf-nightly should depend on tb-nightly
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.15.0a0, < 1.16.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.1.0a0, < 2.2.0a0'
     elif 'tensorflow_estimator' in pkg and '2.0' in project_name:
       REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
     elif 'tensorflow_estimator' in pkg:

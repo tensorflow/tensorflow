@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <stdint.h>
+
 #include <cstddef>
 #include <functional>
 #include <memory>
@@ -30,6 +31,7 @@ limitations under the License.
 #include "unicode/uniset.h"  // TF:icu
 #include "unicode/unistr.h"  // TF:icu
 #include "unicode/uset.h"  // TF:icu
+#include "unicode/utf.h"  // TF:icu
 #include "unicode/utypes.h"  // TF:icu
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -52,7 +54,7 @@ namespace tensorflow {
 namespace {
 
 void Encode(const UnicodeEncoding encoding, const icu::UnicodeString& in,
-            string* out) {
+            tstring* out) {
   if (encoding == UnicodeEncoding::UTF8) {
     out->clear();
     in.toUTF8String(*out);
@@ -330,7 +332,7 @@ class UnicodeTranscodeOp : public OpKernel {
   // Transcode the string from input encoding to the output_encoding_. If
   // non-valid characters are encountered, use the subst_/elide_replacement_
   // config to handle them.
-  void Transcode(string* s, UConverter* input_encoder,
+  void Transcode(tstring* s, UConverter* input_encoder,
                  bool* found_any_format_error) {
     icu::UnicodeString source;
     IterateUnicodeString(
@@ -549,10 +551,10 @@ class UnicodeEncodeOp : public OpKernel {
       for (; idx < input_splits_flat(i); ++idx) {
         int32 code_point = input_tensor_flat(idx);
         // Check for invalid code point
-        if (code_point > UCHAR_MAX_VALUE || code_point < UCHAR_MIN_VALUE) {
+        if (!U_IS_UNICODE_CHAR(code_point)) {
           if (error_options_.error_on_malformatting) {
             context->CtxFailure(errors::InvalidArgument(
-                "Code point value out of valid Unicode range."));
+                "Code point is out of range for Unicode, or a noncharacter."));
             return;
           } else if (!error_options_.elide_replacement) {
             code_point = error_options_.subst;
@@ -561,9 +563,9 @@ class UnicodeEncodeOp : public OpKernel {
         appendable_unicode_string.appendCodePoint(code_point);
       }
       // Encode our string and save in the output.
-      string result;
+      tstring result;
       Encode(encoding_, unicode_string, &result);
-      output_tensor_flat(i - 1) = result;
+      output_tensor_flat(i - 1) = std::move(result);
     }
   }
 

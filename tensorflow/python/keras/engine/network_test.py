@@ -28,13 +28,16 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import input_layer as input_layer_lib
 from tensorflow.python.keras.engine import network as network_lib
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking.util import Checkpoint
 
 try:
   import yaml  # pylint:disable=g-import-not-at-top
@@ -182,8 +185,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     # test input, output, input_shape, output_shape
     test_layer = keras.layers.Dense(16, name='test_layer')
     a_test = test_layer(a)
-    self.assertEqual(test_layer.input, a)
-    self.assertEqual(test_layer.output, a_test)
+    self.assertIs(test_layer.input, a)
+    self.assertIs(test_layer.output, a_test)
     self.assertEqual(test_layer.input_shape, (None, 32))
     self.assertEqual(test_layer.output_shape, (None, 16))
 
@@ -192,10 +195,10 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     a_2 = dense(a)
     b_2 = dense(b)
 
-    self.assertEqual(dense.get_input_at(0), a)
-    self.assertEqual(dense.get_input_at(1), b)
-    self.assertEqual(dense.get_output_at(0), a_2)
-    self.assertEqual(dense.get_output_at(1), b_2)
+    self.assertIs(dense.get_input_at(0), a)
+    self.assertIs(dense.get_input_at(1), b)
+    self.assertIs(dense.get_output_at(0), a_2)
+    self.assertIs(dense.get_output_at(1), b_2)
     self.assertEqual(dense.get_input_shape_at(0), (None, 32))
     self.assertEqual(dense.get_input_shape_at(1), (None, 32))
     self.assertEqual(dense.get_output_shape_at(0), (None, 16))
@@ -231,6 +234,9 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       b_2 = dense(b)
       _ = new_dense.output_shape
 
+  def _assertAllIs(self, a, b):
+    self.assertTrue(all(x is y for x, y in zip(a, b)))
+
   @test_util.run_in_graph_and_eager_modes()
   def testTopologicalAttributesMultiOutputLayer(self):
 
@@ -243,8 +249,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     test_layer = PowersLayer()
     p1, p2 = test_layer(x)  # pylint: disable=not-callable
 
-    self.assertEqual(test_layer.input, x)
-    self.assertEqual(test_layer.output, [p1, p2])
+    self.assertIs(test_layer.input, x)
+    self._assertAllIs(test_layer.output, [p1, p2])
     self.assertEqual(test_layer.input_shape, (None, 32))
     self.assertEqual(test_layer.output_shape, [(None, 32), (None, 32)])
 
@@ -262,8 +268,8 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     test_layer = AddLayer()
     y = test_layer([a, b])  # pylint: disable=not-callable
 
-    self.assertEqual(test_layer.input, [a, b])
-    self.assertEqual(test_layer.output, y)
+    self._assertAllIs(test_layer.input, [a, b])
+    self.assertIs(test_layer.output, y)
     self.assertEqual(test_layer.input_shape, [(None, 32), (None, 32)])
     self.assertEqual(test_layer.output_shape, (None, 32))
 
@@ -279,9 +285,10 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(network.name, 'dense_network')
     self.assertEqual(len(network.layers), 2)  # InputLayer + Dense
     self.assertEqual(network.layers[1], dense)
-    self.assertEqual(network.weights, dense.weights)
-    self.assertEqual(network.trainable_weights, dense.trainable_weights)
-    self.assertEqual(network.non_trainable_weights, dense.non_trainable_weights)
+    self._assertAllIs(network.weights, dense.weights)
+    self._assertAllIs(network.trainable_weights, dense.trainable_weights)
+    self._assertAllIs(network.non_trainable_weights,
+                      dense.non_trainable_weights)
 
     # test callability on Input
     x_2 = input_layer_lib.Input(shape=(32,))
@@ -295,10 +302,10 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
 
     # test network `trainable` attribute
     network.trainable = False
-    self.assertEqual(network.weights, dense.weights)
+    self._assertAllIs(network.weights, dense.weights)
     self.assertEqual(network.trainable_weights, [])
-    self.assertEqual(network.non_trainable_weights,
-                     dense.trainable_weights + dense.non_trainable_weights)
+    self._assertAllIs(network.non_trainable_weights,
+                      dense.trainable_weights + dense.non_trainable_weights)
 
   @test_util.run_in_graph_and_eager_modes
   def test_trainable_weights(self):
@@ -307,40 +314,40 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     model = keras.models.Model(a, b)
 
     weights = model.weights
-    self.assertListEqual(model.trainable_weights, weights)
+    self._assertAllIs(model.trainable_weights, weights)
     self.assertListEqual(model.non_trainable_weights, [])
 
     model.trainable = False
     self.assertListEqual(model.trainable_weights, [])
-    self.assertListEqual(model.non_trainable_weights, weights)
+    self._assertAllIs(model.non_trainable_weights, weights)
 
     model.trainable = True
-    self.assertListEqual(model.trainable_weights, weights)
+    self._assertAllIs(model.trainable_weights, weights)
     self.assertListEqual(model.non_trainable_weights, [])
 
     model.layers[1].trainable = False
     self.assertListEqual(model.trainable_weights, [])
-    self.assertListEqual(model.non_trainable_weights, weights)
+    self._assertAllIs(model.non_trainable_weights, weights)
 
     # sequential model
     model = keras.models.Sequential()
     model.add(keras.layers.Dense(1, input_dim=2))
     weights = model.weights
 
-    self.assertListEqual(model.trainable_weights, weights)
+    self._assertAllIs(model.trainable_weights, weights)
     self.assertListEqual(model.non_trainable_weights, [])
 
     model.trainable = False
     self.assertListEqual(model.trainable_weights, [])
-    self.assertListEqual(model.non_trainable_weights, weights)
+    self._assertAllIs(model.non_trainable_weights, weights)
 
     model.trainable = True
-    self.assertListEqual(model.trainable_weights, weights)
+    self._assertAllIs(model.trainable_weights, weights)
     self.assertListEqual(model.non_trainable_weights, [])
 
     model.layers[0].trainable = False
     self.assertListEqual(model.trainable_weights, [])
-    self.assertListEqual(model.non_trainable_weights, weights)
+    self._assertAllIs(model.non_trainable_weights, weights)
 
   @test_util.run_deprecated_v1
   def test_layer_call_arguments(self):
@@ -350,17 +357,17 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     x = keras.layers.Dropout(0.5)(x, training=True)
     model = keras.models.Model(inp, x)
     # Would be `dropout/cond/Merge` by default
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
     # Test that argument is kept when applying the model
     inp2 = keras.layers.Input(shape=(2,))
     out2 = model(inp2)
-    self.assertTrue(out2.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', out2.op.name)
 
     # Test that argument is kept after loading a model
     config = model.get_config()
     model = keras.models.Model.from_config(config)
-    self.assertTrue(model.output.op.name.endswith('dropout/mul_1'))
+    self.assertIn('dropout', model.output.op.name)
 
   def test_node_construction(self):
     # test basics
@@ -396,22 +403,22 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual(dense._inbound_nodes[0].outbound_layer, dense)
     self.assertEqual(dense._inbound_nodes[1].inbound_layers, b_layer)
     self.assertEqual(dense._inbound_nodes[1].outbound_layer, dense)
-    self.assertEqual(dense._inbound_nodes[0].input_tensors, a)
-    self.assertEqual(dense._inbound_nodes[1].input_tensors, b)
+    self.assertIs(dense._inbound_nodes[0].input_tensors, a)
+    self.assertIs(dense._inbound_nodes[1].input_tensors, b)
 
     # test layer properties
     test_layer = keras.layers.Dense(16, name='test_layer')
     a_test = test_layer(a)
     self.assertListEqual(test_layer.kernel.shape.as_list(), [32, 16])
-    self.assertEqual(test_layer.input, a)
-    self.assertEqual(test_layer.output, a_test)
+    self.assertIs(test_layer.input, a)
+    self.assertIs(test_layer.output, a_test)
     self.assertEqual(test_layer.input_shape, (None, 32))
     self.assertEqual(test_layer.output_shape, (None, 16))
 
-    self.assertEqual(dense.get_input_at(0), a)
-    self.assertEqual(dense.get_input_at(1), b)
-    self.assertEqual(dense.get_output_at(0), a_2)
-    self.assertEqual(dense.get_output_at(1), b_2)
+    self.assertIs(dense.get_input_at(0), a)
+    self.assertIs(dense.get_input_at(1), b)
+    self.assertIs(dense.get_output_at(0), a_2)
+    self.assertIs(dense.get_output_at(1), b_2)
     self.assertEqual(dense.get_input_shape_at(0), (None, 32))
     self.assertEqual(dense.get_input_shape_at(1), (None, 32))
     self.assertEqual(dense.get_output_shape_at(0), (None, 16))
@@ -473,7 +480,7 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
       self.assertListEqual([x.shape for x in fn_outputs], [(10, 64), (10, 5)])
 
       # test get_source_inputs
-      self.assertListEqual(keras.engine.get_source_inputs(c), [a, b])
+      self._assertAllIs(layer_utils.get_source_inputs(c), [a, b])
 
       # serialization / deserialization
       json_config = model.to_json()
@@ -1159,6 +1166,13 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     self.assertEqual('a', net2.layers[0].name)
     self.assertEqual('b', net2.layers[1].name)
 
+  @keras_parameterized.run_with_all_model_types
+  def test_dependency_tracking(self):
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.trackable = Checkpoint()
+    self.assertIn('trackable', model._unconditional_dependency_names)
+    self.assertEqual(model.trackable, model._lookup_dependency('trackable'))
+
 
 class DeferredModeTest(test.TestCase):
 
@@ -1560,6 +1574,31 @@ class NestedNetworkTest(test.TestCase):
     self.assertLen(model.get_updates_for(ph), 2)
     self.assertLen(model.get_updates_for(None), 0)
 
+  def test_dict_mapping_input(self):
+
+    class ReturnFirst(keras.layers.Layer):
+
+      def call(self, inputs):
+        b, _ = inputs
+        return b
+
+    # Checks that inputs are put in same order as the
+    # Model was constructed with.
+    b = keras.Input(shape=(10,), name='b')
+    a = keras.Input(shape=(10,), name='a')
+    outputs = ReturnFirst()([b, a])
+
+    b_val = array_ops.ones((10, 10))
+    a_val = array_ops.zeros((10, 10))
+
+    model = keras.Model([b, a], outputs)
+    res = model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
+
+    reversed_model = keras.Model([a, b], outputs)
+    res = reversed_model({'a': a_val, 'b': b_val})
+    self.assertAllClose(self.evaluate(res), self.evaluate(b_val))
+
 
 @keras_parameterized.run_all_keras_modes
 class AddLossTest(keras_parameterized.TestCase):
@@ -1716,6 +1755,129 @@ class DTypeTest(keras_parameterized.TestCase):
     network = IdentityNetwork(autocast=False)
     self.assertEqual(network.dtype, 'float32')
     self.assertEqual(network(array_ops.constant(1, 'float64')).dtype, 'float64')
+
+
+class AttrTrackingLayer(base_layer.Layer):
+  """Count how many times `dynamic` and `stateful` are called.
+
+  These counts are used to test that the attribute cache behaves as expected.
+  """
+  def __init__(self, *args, **kwargs):
+    self.stateful_count = 0
+    self.dynamic_count = 0
+    super(AttrTrackingLayer, self).__init__(*args, **kwargs)
+
+  @base_layer.Layer.stateful.getter
+  def stateful(self):
+    self.stateful_count += 1
+    return super(AttrTrackingLayer, self).stateful
+
+  @property
+  def dynamic(self):
+    self.dynamic_count += 1
+    return super(AttrTrackingLayer, self).dynamic
+
+
+class CacheCorrectnessTest(keras_parameterized.TestCase):
+  def layer_and_network_test(self):
+    # Top level layer
+    network = network_lib.Network()
+
+    layer_0 = AttrTrackingLayer()
+
+    sub_network = network_lib.Network()
+    layer_1 = AttrTrackingLayer(dynamic=True)
+    layer_2 = AttrTrackingLayer()
+    sub_network.sub_layers = [layer_1, layer_2]
+
+    network.sub_layer = layer_0
+
+    for _ in range(2):
+      self.assertEqual(network.dynamic, False)
+      self.assertEqual(network.stateful, False)
+
+      # The second pass should be a cache hit.
+      self.assertEqual(layer_0.dynamic_count, 1)
+      self.assertEqual(layer_0.stateful_count, 1)
+
+    # Mutations of the sub-layer should force recalculation of the network's
+    # stateful attribute. (mutations bubble up.)
+    layer_0.stateful = True
+    self.assertEqual(network.stateful, True)
+    self.assertEqual(layer_0.stateful_count, 2)
+
+    layer_0.stateful = False
+    self.assertEqual(network.stateful, False)
+    self.assertEqual(layer_0.stateful_count, 3)
+
+    # But changing stateful should not affect dynamic.
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(layer_0.dynamic_count, 1)
+
+    network.sub_network = sub_network
+
+    # Adding to the topology should invalidate the cache and reflect in the top
+    # level network.
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 2)
+    self.assertEqual(layer_1.dynamic_count, 1)
+
+    # Still dynamic, but we need to recompute.
+    sub_network.sub_layers.pop()
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 3)
+    self.assertEqual(layer_1.dynamic_count, 2)
+
+    # Now that we've removed the dynamic layer deep in the layer hierarchy, we
+    # need to make sure that that bubbles up through all the levels.
+    sub_network.sub_layers.pop()
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(layer_0.dynamic_count, 4)
+    self.assertEqual(layer_1.dynamic_count, 2)
+
+    # Now check with a tracked dict.
+    sub_network.sub_layers = {
+        "layer_1": layer_1,
+        "layer_2": layer_2,
+    }
+
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 5)
+    self.assertEqual(layer_1.dynamic_count, 3)
+
+    # In-place assignment should still invalidate the cache.
+    sub_network.sub_layers["layer_1"] = layer_1
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(layer_0.dynamic_count, 6)
+    self.assertEqual(layer_1.dynamic_count, 4)
+
+    sub_network.sub_layers["layer_1"] = None
+    for _ in range(2):
+      self.assertEqual(network.dynamic, False)
+      self.assertEqual(layer_0.dynamic_count, 7)
+      self.assertEqual(layer_1.dynamic_count, 4)
+
+    layer_3 = AttrTrackingLayer()
+    layer_3.stateful = True
+
+    sub_network.sub_layers = None
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(network.stateful, False)
+
+    # Test duplicate layers.
+    sub_network.sub_layers = [layer_1, layer_1, layer_1, layer_3]
+    self.assertEqual(network.dynamic, True)
+    self.assertEqual(network.stateful, True)
+
+    for _ in range(3):
+      sub_network.sub_layers.pop()
+      self.assertEqual(network.dynamic, True)
+      self.assertEqual(network.stateful, False)
+
+    sub_network.sub_layers.pop()
+    self.assertEqual(network.dynamic, False)
+    self.assertEqual(network.stateful, False)
+
 
 
 if __name__ == '__main__':

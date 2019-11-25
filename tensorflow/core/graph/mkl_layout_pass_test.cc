@@ -1341,6 +1341,286 @@ TEST_F(MklLayoutPassTest, NodeMerge_TransposeConv3DTranspose_Negative) {
             "Transpose1:control->DMT/_2:control");
 }
 
+TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Positive) {
+  InitGraph(
+      "node { name: 'Input0' op: 'Input'}                                     \
+       node { name: 'Const0' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\001\\000\\000\\000'                                  \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }                                                                      \
+       node { name: 'Const1' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\002'    \
+       '\\000\\000\\000\\003\\000\\000\\000'                                  \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }"
+      "node {              \
+        name: 'Transpose0' \
+        op: 'Transpose'    \
+        input: 'Input0'    \
+        input: 'Const0'    \
+        attr {             \
+          key: 'T'         \
+          value {          \
+            type: DT_FLOAT \
+          }                \
+        }                  \
+        attr {             \
+          key: 'Tperm'     \
+          value {          \
+            type: DT_INT32 \
+          }                \
+        }                  \
+      }"
+      "node {                 \
+        name: 'MaxPool3D'     \
+        op: 'MaxPool3D'       \
+        input: 'Transpose0'   \
+        attr {                \
+          key: 'T'            \
+          value {             \
+            type: DT_FLOAT    \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'data_format'  \
+          value {             \
+            s: 'NDHWC'        \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'padding'      \
+          value {             \
+            s: 'SAME'         \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'strides'      \
+          value {             \
+            list {            \
+              i: 1            \
+              i: 2            \
+              i: 2            \
+              i: 2            \
+              i: 1            \
+            }                 \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'ksize'        \
+          value {             \
+            list {            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+            }                 \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'use_cudnn_on_gpu' \
+          value {                 \
+            b: true               \
+          }                       \
+        }                         \
+      }"
+      "node {              \
+        name: 'Transpose1' \
+        op: 'Transpose'    \
+        input: 'MaxPool3D' \
+        input: 'Const1'    \
+        attr {             \
+          key: 'T'         \
+          value {          \
+            type: DT_FLOAT \
+          }                \
+        }                  \
+        attr {             \
+          key: 'Tperm'     \
+          value {          \
+            type: DT_INT32 \
+          }                \
+        }                  \
+      }"
+      "node { name: 'Relu' op: 'Relu'"
+      " attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['Transpose1'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "Const0(Const);Const1(Const);DMT/_0(Const);Input0(Input);"
+            "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu)"
+            "|DMT/_0->MaxPool3D:1;Input0->MaxPool3D;"
+            "Input0:control->DMT/_0:control;MaxPool3D->Relu;"
+            "MaxPool3D:2->Relu:1");
+}
+
+TEST_F(MklLayoutPassTest, NodeMerge_TransposeMaxPool3DTranspose_Negative) {
+  InitGraph(
+      "node { name: 'Input0' op: 'Input'}                                     \
+       node { name: 'Const0' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\002\\000\\000\\000\\003\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\001\\000\\000\\000'                                  \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }                                                                      \
+       node { name: 'Const1' op: 'Const'                                      \
+         attr { key: 'dtype' value { type: DT_INT32 } }                       \
+         attr {                                                               \
+           key: 'value'                                                       \
+           value {                                                            \
+             tensor {                                                         \
+               dtype: DT_INT32                                                \
+               tensor_shape {                                                 \
+                 dim {                                                        \
+                   size: 5                                                    \
+                 }                                                            \
+               }                                                              \
+               tensor_content:                                                \
+       '\\000\\000\\000\\000\\004\\000\\000\\000\\001\\000\\000\\000\\004'    \
+       '\\000\\000\\000\\003\\000\\000\\000'                                  \
+             }                                                                \
+           }                                                                  \
+         }                                                                    \
+       }"
+      "node {              \
+        name: 'Transpose0' \
+        op: 'Transpose'    \
+        input: 'Input0'    \
+        input: 'Const0'    \
+        attr {             \
+          key: 'T'         \
+          value {          \
+            type: DT_FLOAT \
+          }                \
+        }                  \
+        attr {             \
+          key: 'Tperm'     \
+          value {          \
+            type: DT_INT32 \
+          }                \
+        }                  \
+      }"
+      "node {                 \
+        name: 'MaxPool3D'     \
+        op: 'MaxPool3D'       \
+        input: 'Transpose0'   \
+        attr {                \
+          key: 'T'            \
+          value {             \
+            type: DT_FLOAT    \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'data_format'  \
+          value {             \
+            s: 'NDHWC'        \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'padding'      \
+          value {             \
+            s: 'SAME'         \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'strides'      \
+          value {             \
+            list {            \
+              i: 1            \
+              i: 2            \
+              i: 2            \
+              i: 2            \
+              i: 1            \
+            }                 \
+          }                   \
+        }                     \
+        attr {                \
+          key: 'ksize'        \
+          value {             \
+            list {            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+              i: 1            \
+            }                 \
+          }                   \
+        }                     \
+      }"
+      "node {              \
+        name: 'Transpose1' \
+        op: 'Transpose'    \
+        input: 'MaxPool3D' \
+        input: 'Const1'    \
+        attr {             \
+          key: 'T'         \
+          value {          \
+            type: DT_FLOAT \
+          }                \
+        }                  \
+        attr {             \
+          key: 'Tperm'     \
+          value {          \
+            type: DT_INT32 \
+          }                \
+        }                  \
+      }"
+      "node { name: 'Relu' op: 'Relu'"
+      " attr { key: 'T' value { type: DT_FLOAT } }"
+      " input: ['Transpose1'] }");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "Const0(Const);Const1(Const);DMT/_0(Const);DMT/_1(Const);Input0(Input);"
+      "MaxPool3D(_MklMaxPool3D);Relu(_MklRelu);"
+      "Transpose0(_MklTranspose);Transpose1(_MklTranspose)|Const0->Transpose0:"
+      "1;"
+      "Const1->Transpose1:1;DMT/_0->MaxPool3D:1;"
+      "DMT/_1->Relu:1;Input0->Transpose0;MaxPool3D->Transpose1;"
+      "Transpose0->MaxPool3D;Transpose0:control->DMT/_0:control;"
+      "Transpose1->Relu;Transpose1:control->DMT/_1:control");
+}
+
 /////////////////////////////////////////////////////////////////////
 //  Unit tests related to rewriting node to Mkl node
 /////////////////////////////////////////////////////////////////////
@@ -1470,7 +1750,7 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_ConstInp) {
             "A->D;B->D:1;C->D:2;D->E");
 }
 
-TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_MinFirst) {
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_MinFirst) {
   InitGraph(
       "node { name: 'A' op: 'Input' } "
       "node { name: 'B' op: 'Const' "
@@ -1491,9 +1771,67 @@ TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_MinFirst) {
       "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
       " input: ['D'] }");
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(_MklQuantizeV2);DMT/_0(Const);DMT/"
+            "_1(Const);DMT/_2(Const);E(Zeta)|"
+            "A->D;A:control->DMT/_0:control;A:control->DMT/"
+            "_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;D->E;DMT/"
+            "_0->D:3;DMT/_1->D:4;DMT/_2->D:5");
+}
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_NarrowRange_True) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: true } }"
+      " attr { key: 'axis'              value { i: -1 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
             "A->D;B->D:1;C->D:2;D->E");
 }
+
+TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_PerSlice_Enabled) {
+  InitGraph(
+      "node { name: 'A' op: 'Input' } "
+      "node { name: 'B' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'C' op: 'Const' "
+      " attr { key: 'dtype' value { type: DT_FLOAT } }"
+      " attr { key: 'value' value { "
+      "    tensor { dtype: DT_INT32 tensor_shape { dim { size: 1 } } "
+      "    int_val: 0 } } } }"
+      "node { name: 'D' op: 'QuantizeV2'"
+      " attr { key: 'T'                 value { type: DT_QUINT8 } }"
+      " attr { key: 'mode'              value { s: 'SCALED' } }"
+      " attr { key: 'round_mode'        value { s: 'HALF_TO_EVEN' } }"
+      " attr { key: 'narrow_range'      value { b: false } }"
+      " attr { key: 'axis'              value { i: 2 } }"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'E' op: 'Zeta' attr { key: 'T' value { type: DT_QUINT8 } }"
+      " input: ['D'] }");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Const);C(Const);D(QuantizeV2);E(Zeta)|"
+            "A->D;B->D:1;C->D:2;D->E");
+}
+
 TEST_F(MklLayoutPassTest, NodeRewrite_QuantizeV2Op_Negative_HalfFromZero) {
   InitGraph(
       "node { name: 'A' op: 'Input' } "
@@ -1817,6 +2155,53 @@ TEST_F(MklLayoutPassTest, NodeRewrite_FusedConv2D_Negative2) {
   EXPECT_EQ(DoMklLayoutOptimizationPass(),
             "A(DoubleInput);B(DoubleInput);C(DoubleInput);"
             "D(_FusedConv2D);E(Zeta)|A->D;B->D:1;C->D:2;C->E:1;D->E");
+}
+
+// Test set: _FusedMatMul -> MklFusedMatMul rewrite tests
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedMatMul_Postive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: '_FusedMatMul'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'transpose_a'      value { b: false } }"
+      " attr { key: 'transpose_b'      value { b: false } }"
+      " attr { key: 'num_args'         value { i: 1 } }"
+      " attr { key: 'fused_ops'        value { list: {s: 'BiasAdd'} } }"
+      " attr { key: 'epsilon'          value { f: 0.001 }}"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['D', 'C']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(_MklFusedMatMul);DMT/_0(Const);"
+            "DMT/_1(Const);DMT/_2(Const);Z(Zeta)"
+            "|A->D;A:control->DMT/_0:control;A:control->DMT/_1:control;"
+            "A:control->DMT/_2:control;B->D:1;C->D:2;C->Z:1;D->Z;DMT/_0->D:3;"
+            "DMT/_1->D:4;DMT/_2->D:5");
+}
+
+// Test set: _FusedMatMul -> MklFusedMatMul rewrite tests
+TEST_F(MklLayoutPassTest, NodeRewrite_FusedMatMul_Negative) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'Input'}"
+      "node { name: 'D' op: '_FusedMatMul'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " attr { key: 'transpose_a'      value { b: true } }"
+      " attr { key: 'transpose_b'      value { b: false } }"
+      " attr { key: 'num_args'         value { i: 1 } }"
+      " attr { key: 'fused_ops'        value { list: {s: 'BiasAdd'} } }"
+      " attr { key: 'epsilon'          value { f: 0.001 }}"
+      " input: ['A', 'B', 'C']}"
+      "node { name: 'Z' op: 'Zeta'"
+      " attr {key: 'T'                 value { type: DT_FLOAT } }"
+      " input: ['D', 'C']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(Input);D(_FusedMatMul);Z(Zeta)"
+            "|A->D;B->D:1;C->D:2;C->Z:1;D->Z");
 }
 
 // Merge test for PadWithFusedConv2D Op with BiasAdd fusion
@@ -3776,6 +4161,65 @@ TEST_F(MklLayoutPassTest, NodeRewrite_Slice_DeviceTest) {
             "B->D:1;C->D:2;D->E:1");
 }
 
+// The following positive and negative tests test the rewrite of Add and AddV2
+// to MKL versions. The operators will be rewritten only if one of the inputs
+// comes from another MKL operator.
+TEST_F(MklLayoutPassTest, PositiveRewriteAdd) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A']}"
+      "node { name: 'N' op: 'Add'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['M', 'B']}");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAdd)"
+      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+      "M:1->N:2;M:control->DMT/_1:control");
+}
+
+TEST_F(MklLayoutPassTest, NegativeRewriteAdd) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'Add'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);N(Add)|A->N;B->N:1");
+}
+
+TEST_F(MklLayoutPassTest, PositiveRewriteAddV2) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'M' op: 'Relu'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A']}"
+      "node { name: 'N' op: 'AddV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['M', 'B']}");
+  EXPECT_EQ(
+      DoMklLayoutOptimizationPass(),
+      "A(Input);B(Input);DMT/_0(Const);DMT/_1(Const);M(_MklRelu);N(_MklAddV2)"
+      "|A->M;A:control->DMT/_0:control;B->N:1;DMT/_0->M:1;DMT/_1->N:3;M->N;"
+      "M:1->N:2;M:control->DMT/_1:control");
+}
+
+TEST_F(MklLayoutPassTest, NegativeRewriteAddV2) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'N' op: 'AddV2'"
+      " attr { key: 'T'                value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);N(AddV2)|A->N;B->N:1");
+}
+
 /////////////////////////////////////////////////////////////////////
 //         Post-rewrite fixup pass test
 /////////////////////////////////////////////////////////////////////
@@ -4305,6 +4749,39 @@ TEST_F(MklLayoutPassTest,
             "K(QuantizedMatMulWithBiasAndReluAndRequantize);L(Zeta)|A->K;"
             "B->K:1;C->K:2;D->K:3;E->K:4;F->K:5;G->K:6;"
             "H->K:7;I->K:8;J->L:1;K->L");
+}
+
+TEST_F(MklLayoutPassTest, MatMul_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'MatMul'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklMatMul)|A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, BatchMatMul_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'BatchMatMul'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklBatchMatMul)|A->C;B->C:1");
+}
+
+TEST_F(MklLayoutPassTest, BatchMatMulV2_Positive) {
+  InitGraph(
+      "node { name: 'A' op: 'Input'}"
+      "node { name: 'B' op: 'Input'}"
+      "node { name: 'C' op: 'BatchMatMulV2'"
+      " attr { key: 'T'      value { type: DT_FLOAT } }"
+      " input: ['A', 'B']}");
+  EXPECT_EQ(DoMklLayoutOptimizationPass(),
+            "A(Input);B(Input);C(_MklBatchMatMulV2)|A->C;B->C:1");
 }
 
 static void BM_MklLayoutRewritePass(int iters, int op_nodes) {

@@ -87,6 +87,12 @@ END
 Number of features that have best splits returned. INFERRED.
 END
   }
+  attr {
+    name: "logits_dimension"
+    description: <<END
+scalar, dimension of the logits
+END
+  }
   summary: "Updates the tree ensemble by adding a layer to the last tree being grown"
   description: <<END
 or by starting a new tree.

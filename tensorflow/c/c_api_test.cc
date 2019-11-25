@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/core/example/feature.pb.h"
 #include "tensorflow/core/framework/api_def.pb.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/kernel_def.pb.h"
-#include "tensorflow/core/framework/node_def.pb_text.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -41,12 +41,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/graph/tensor_id.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
@@ -557,7 +557,7 @@ TEST(CAPI, Graph) {
       EXPECT_FALSE(found_add);
       found_add = true;
     } else {
-      ADD_FAILURE() << "Unexpected NodeDef: " << ProtoDebugString(n);
+      ADD_FAILURE() << "Unexpected NodeDef: " << n.DebugString();
     }
   }
   EXPECT_TRUE(found_placeholder);
@@ -582,20 +582,20 @@ TEST(CAPI, Graph) {
   // Compare with first GraphDef + added NodeDef.
   NodeDef* added_node = graph_def.add_node();
   *added_node = node_def;
-  EXPECT_EQ(ProtoDebugString(graph_def), ProtoDebugString(graph_def2));
+  EXPECT_EQ(graph_def.DebugString(), graph_def2.DebugString());
 
   // Look up some nodes by name.
   TF_Operation* neg2 = TF_GraphOperationByName(graph, "neg");
   EXPECT_TRUE(neg == neg2);
   NodeDef node_def2;
   ASSERT_TRUE(GetNodeDef(neg2, &node_def2));
-  EXPECT_EQ(ProtoDebugString(node_def), ProtoDebugString(node_def2));
+  EXPECT_EQ(node_def.DebugString(), node_def2.DebugString());
 
   TF_Operation* feed2 = TF_GraphOperationByName(graph, "feed");
   EXPECT_TRUE(feed == feed2);
   ASSERT_TRUE(GetNodeDef(feed, &node_def));
   ASSERT_TRUE(GetNodeDef(feed2, &node_def2));
-  EXPECT_EQ(ProtoDebugString(node_def), ProtoDebugString(node_def2));
+  EXPECT_EQ(node_def.DebugString(), node_def2.DebugString());
 
   // Test iterating through the nodes of a graph.
   found_placeholder = false;
@@ -619,7 +619,7 @@ TEST(CAPI, Graph) {
       found_neg = true;
     } else {
       ASSERT_TRUE(GetNodeDef(oper, &node_def));
-      ADD_FAILURE() << "Unexpected Node: " << ProtoDebugString(node_def);
+      ADD_FAILURE() << "Unexpected Node: " << node_def.DebugString();
     }
   }
   EXPECT_TRUE(found_placeholder);

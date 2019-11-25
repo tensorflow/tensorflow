@@ -61,6 +61,8 @@ void AddCostNode(ReadyNodeManager* node_manager, const OpContext& op_context,
   node->set_compute_cost(node_costs.execution_time.asMicroSeconds().count());
   node->set_compute_time(node_costs.compute_time.asMicroSeconds().count());
   node->set_memory_time(node_costs.memory_time.asMicroSeconds().count());
+  node->set_temporary_memory_size(node_costs.temporary_memory);
+  node->set_persistent_memory_size(node_costs.persistent_memory);
   node->set_inaccurate(node_costs.inaccurate);
 
   for (const string& input : node_manager->GetCurrNode()->input()) {

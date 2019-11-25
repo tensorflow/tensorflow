@@ -53,7 +53,6 @@ limitations under the License.
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
 #include "tensorflow/core/util/strided_slice_op.h"
 
-using tensorflow::str_util::StringReplace;
 using tensorflow::strings::StrCat;
 
 namespace tensorflow {
@@ -369,9 +368,9 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
         }
       } else {
         // If input node can't be absorbed, add it to OptimizedNodesGroup input.
-        OpInfo::TensorProperties properties;
+        const OpInfo::TensorProperties* properties;
         TF_RETURN_IF_ERROR(GetTensorProperties(*input_tensor, &properties));
-        group->inputs.emplace_back(*input_tensor, properties.shape());
+        group->inputs.emplace_back(*input_tensor, properties->shape());
       }
     }
 
@@ -380,12 +379,12 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
 
   Status CreateOptimizedNodesGroup(NodeDef* root_node,
                                    OptimizedNodesGroup* group) const {
-    OpInfo::TensorProperties root_node_output_properties;
+    const OpInfo::TensorProperties* root_node_output_properties;
     TF_RETURN_IF_ERROR(
         GetTensorProperties(root_node->name(), &root_node_output_properties));
 
     group->root_node = root_node;
-    group->root_shape = root_node_output_properties.shape();
+    group->root_shape = root_node_output_properties->shape();
 
     group->optimized_nodes.reserve(root_node->input_size());
     for (int i = 0; i < root_node->input_size(); ++i) {
@@ -403,10 +402,10 @@ class ArithmeticNodesGroupOptimizerStage : public ArithmeticOptimizerStage {
   bool HasAllInputsBroadcastableToShape(
       const NodeDef& node, const OpInfo::TensorProperties& properties) const {
     auto is_broadcastable = [this, &properties](const string& input) {
-      OpInfo::TensorProperties input_props;
+      const OpInfo::TensorProperties* input_props;
       Status has_input_properties = GetTensorProperties(input, &input_props);
       return has_input_properties.ok() &&
-             ShapesBroadcastable(properties, input_props);
+             ShapesBroadcastable(properties, *input_props);
     };
     return std::all_of(node.input().begin(), node.input().end(),
                        is_broadcastable);
@@ -490,10 +489,10 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
     if (!CanOptimize(*node)) return false;
 
     // shape must be symbolically defined and all inputs compatible with it
-    OpInfo::TensorProperties properties;
+    const OpInfo::TensorProperties* properties;
     Status has_properties = GetTensorProperties(node->name(), &properties);
-    return has_properties.ok() && ShapeIsSymbolicallyDefined(properties) &&
-           HasAllInputsBroadcastableToShape(*node, properties);
+    return has_properties.ok() && ShapeIsSymbolicallyDefined(*properties) &&
+           HasAllInputsBroadcastableToShape(*node, *properties);
   }
 
  protected:
@@ -512,10 +511,10 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
       return false;
     }
     // All input shapes must be broadcastable to the node shape
-    OpInfo::TensorProperties properties;
+    const OpInfo::TensorProperties* properties;
     Status has_properties = GetTensorProperties(node.name(), &properties);
     return has_properties.ok() &&
-           HasAllInputsBroadcastableToShape(node, properties);
+           HasAllInputsBroadcastableToShape(node, *properties);
   }
 
   // Node requirements both for a root node and an absorbed node
@@ -817,13 +816,14 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
         // In case of possible common dividers, we avoid hoisting out if any
         // input is not float/double, since integer division is not distributive
         // over addition.
-        OpInfo::TensorProperties properties0, properties1;
+        const OpInfo::TensorProperties* properties0;
+        const OpInfo::TensorProperties* properties1;
         TF_RETURN_IF_ERROR(GetTensorProperties(input->input(0), &properties0));
         TF_RETURN_IF_ERROR(GetTensorProperties(input->input(1), &properties1));
-        if (properties0.dtype() != DT_FLOAT &&
-            properties0.dtype() != DT_DOUBLE &&
-            properties1.dtype() != DT_FLOAT &&
-            properties1.dtype() != DT_DOUBLE) {
+        if (properties0->dtype() != DT_FLOAT &&
+            properties0->dtype() != DT_DOUBLE &&
+            properties1->dtype() != DT_FLOAT &&
+            properties1->dtype() != DT_DOUBLE) {
           common_factors->clear();
           break;
         }
@@ -879,11 +879,11 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
               : (inner_node->input(0) == common_factor ? 1 : 0);
       unique_factors->push_back(inner_node->input(unique_factor_index));
       if (i > 0 && !IsAdd(*node)) {
-        OpInfo::TensorProperties lhs;
-        OpInfo::TensorProperties rhs;
+        const OpInfo::TensorProperties* lhs;
+        const OpInfo::TensorProperties* rhs;
         TF_RETURN_IF_ERROR(GetTensorProperties(unique_factors->front(), &lhs));
         TF_RETURN_IF_ERROR(GetTensorProperties(unique_factors->back(), &rhs));
-        *shapes_match = ShapesSymbolicallyEqual(lhs, rhs);
+        *shapes_match = ShapesSymbolicallyEqual(*lhs, *rhs);
       }
     }
     return Status::OK();
@@ -929,10 +929,10 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
       return false;
 
     // has a symbolically defined shape with broadcastable inputs
-    OpInfo::TensorProperties properties;
+    const OpInfo::TensorProperties* properties;
     Status has_properties = GetTensorProperties(node->name(), &properties);
-    return has_properties.ok() && ShapeIsSymbolicallyDefined(properties) &&
-           HasAllInputsBroadcastableToShape(*node, properties);
+    return has_properties.ok() && ShapeIsSymbolicallyDefined(*properties) &&
+           HasAllInputsBroadcastableToShape(*node, *properties);
   }
 
  protected:
@@ -969,10 +969,10 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
       return false;
     }
     // All input shapes must be broadcastable to the node shape
-    OpInfo::TensorProperties properties;
+    const OpInfo::TensorProperties* properties;
     Status has_properties = GetTensorProperties(node.name(), &properties);
     return has_properties.ok() &&
-           HasAllInputsBroadcastableToShape(node, properties);
+           HasAllInputsBroadcastableToShape(node, *properties);
   }
 
   std::size_t CountUniqueShapes(const std::vector<InputAndShape>& inputs) {
@@ -1464,6 +1464,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
         // in place for merging slices into splits.
         return false;
       }
+      if (NumControlOutputs(*node, *ctx().node_map) > 0) {
+        // TODO(ezhulenev): Unary ops after Split might have a control path to
+        // the Split node, and we currently do not propertly handle cycles.
+        return false;
+      }
       return num_split > 1 && !IsAlreadyOptimized(*node);
     }
     return false;
@@ -1519,6 +1524,11 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   // control inputs gathered from them to the concat or split node.
   Status HoistUnaryOpChain(const int prefix_length, const ChainLinkSet& tails,
                            std::set<string>* ctrl_inputs, NodeDef* root_node) {
+    VLOG(3) << "Hoist unary op chain:"
+            << " root=" << root_node->name()
+            << " prefix_length=" << prefix_length << " ctrl_inputs=["
+            << absl::StrJoin(*ctrl_inputs, ", ") << "]";
+
     if (tails.empty()) {
       return Status::OK();
     }
@@ -1913,15 +1923,16 @@ class RemoveRedundantReshape : public ArithmeticOptimizerStage {
  private:
   // Returns whether `reshape` is an identity op.
   bool ReshapeIsIdentity(const NodeDef& reshape) {
-    OpInfo::TensorProperties reshape_props;
-    OpInfo::TensorProperties input_props;
+    const OpInfo::TensorProperties* reshape_props;
+    const OpInfo::TensorProperties* input_props;
 
     if (!GetTensorProperties(reshape.name(), &reshape_props).ok() ||
         !GetTensorProperties(reshape.input(0), &input_props).ok()) {
       return false;
     }
 
-    return ShapesSymbolicallyEqual(input_props.shape(), reshape_props.shape());
+    return ShapesSymbolicallyEqual(input_props->shape(),
+                                   reshape_props->shape());
   }
 };
 
@@ -2229,10 +2240,10 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     const std::set<string> foldable_transpose_ops =
-        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
-                    : (node->op() == "BatchMatMul"
-                           ? std::set<string>{"ConjugateTranspose"}
-                           : std::set<string>{"Transpose"});
+        !is_complex
+            ? std::set<string>{"ConjugateTranspose", "Transpose"}
+            : (IsAnyBatchMatMul(*node) ? std::set<string>{"ConjugateTranspose"}
+                                       : std::set<string>{"Transpose"});
 
     const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
                                IsInnerMatrixTransposeNode(*a, ctx().node_map);
@@ -2243,8 +2254,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     NodeDef* new_op = AddCopyNode(optimized_node_name, node);
 
     if (a_is_foldable) {
-      const string attr_a =
-          node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
+      const string attr_a = IsAnyBatchMatMul(*node) ? "adj_x" : "transpose_a";
       FlipBooleanAttr(attr_a, new_op);
       new_op->set_input(0, a->input(0));
       ctx().node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
@@ -2253,8 +2263,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     if (b_is_foldable) {
-      const string attr_b =
-          node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
+      const string attr_b = IsAnyBatchMatMul(*node) ? "adj_y" : "transpose_b";
       FlipBooleanAttr(attr_b, new_op);
       new_op->set_input(1, b->input(0));
       ctx().node_map->UpdateInput(new_op->name(), b->name(), b->input(0));
@@ -2311,7 +2320,6 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
   }
 };
 
-// Fold Transpose into matrix multiplication.
 class FoldConjugateIntoTranspose : public ArithmeticOptimizerStage {
  public:
   explicit FoldConjugateIntoTranspose(const GraphOptimizerContext& ctx,
@@ -2410,7 +2418,7 @@ class SimplifyAggregation : public ArithmeticOptimizerStage {
   ~SimplifyAggregation() override = default;
 
   bool IsSupported(const NodeDef* node) const override {
-    return IsAggregate(*node) && NumNonControlInputs(*node) > 0 &&
+    return IsAggregate(*node) && HasRegularInputs(*node) &&
            GetDataTypeFromAttr(*node, "T") !=
                DT_VARIANT;  // TODO(b/119787146): Enable for variants.
   }
@@ -2810,19 +2818,30 @@ class OptimizeMaxOrMinOfMonotonicStage : public ArithmeticOptimizerStage {
     if (IsInPreserveSet(*reduction_node)) {
       return Status::OK();
     }
+
     NodeDef* inner_function;
     TF_RETURN_IF_ERROR(GetInputNode(reduction_node->input(0), &inner_function));
+
+    NodeDef* inner_function_input = nullptr;
+    if (inner_function->input_size() > 0) {
+      TF_RETURN_IF_ERROR(
+          GetInputNode(inner_function->input(0), &inner_function_input));
+    }
+
     // Optimize only if:
     // 0. inner_function is not in the preserve set,
     // 1. inner_function's Op is element-wise monotonic
     // 2. inner_function's output is not being consumed elsewhere.
     // 3. is monotonic increasing if reduction_node is a pooling operation
     //    since we don't have MinPool operations.
+    // 4. inner_functions is not a Relu node with an input from FusedBatchNorm.
+    //    This pattern will be fused later by remapper.
     bool is_non_decreasing = false;
     if (!IsInPreserveSet(*inner_function) &&
         IsElementWiseMonotonic(*inner_function, &is_non_decreasing) &&
         ctx().node_map->GetOutputs(inner_function->name()).size() == 1 &&
-        (is_non_decreasing || !IsAnyMaxPool(*reduction_node))) {
+        (is_non_decreasing || !IsAnyMaxPool(*reduction_node)) &&
+        !(IsRelu(*inner_function) && IsFusedBatchNorm(*inner_function_input))) {
       // Swap the first inputs of the inner function Op & the reduction Op.
       NodeDef* inner_input;
       TF_RETURN_IF_ERROR(GetInputNode(inner_function->input(0), &inner_input));
@@ -3090,21 +3109,6 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
   }
 
  protected:
-  bool GetConstantAsInt64(const NodeDef& node, DataType dtype,
-                          std::vector<int64>* values) {
-    if (dtype == DT_INT32) {
-      std::vector<int32> values_int32;
-      if (!ValuesFromConstNode(node, &values_int32)) {
-        return false;
-      }
-      std::copy(values_int32.begin(), values_int32.end(),
-                std::inserter(*values, values->begin()));
-      return true;
-    } else {
-      return ValuesFromConstNode(node, values);
-    }
-  }
-
   Status CheckInputs(const NodeDef* node, const NodeDef* pack,
                      PartialTensorShape* pack_output_shape, int* pack_axis,
                      bool* return_early) {
@@ -3119,12 +3123,11 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       return Status::OK();
     }
     *pack_output_shape = slice_properties[0].shape();
-    const int pack_input_rank = pack_output_shape->dims() - 1;
+    const int pack_output_rank = pack_output_shape->dims();
     if (*pack_axis < 0) {
-      // The ndims of any input into Pack op is its output ndims - 1.
-      *pack_axis += pack_input_rank;
+      *pack_axis += pack_output_rank;
     }
-    if (*pack_axis < 0 || *pack_axis >= pack_input_rank) {
+    if (*pack_axis < 0 || *pack_axis >= pack_output_rank) {
       return errors::InvalidArgument(
           "Pack node (", pack->name(),
           ") axis attribute is out of bounds: ", pack->attr().at("axis").i());
@@ -3259,27 +3262,31 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
                       string* simplified_node_name) {
     const string& input_slice = pack->input(slice_start_value);
 
-    OpInfo::TensorProperties input_slice_properties;
+    const OpInfo::TensorProperties* input_slice_properties;
     TF_RETURN_IF_ERROR(GetTensorProperties(pack->input(slice_start_value),
                                            &input_slice_properties));
-    PartialTensorShape input_slice_shape(input_slice_properties.shape());
+    PartialTensorShape input_slice_shape(input_slice_properties->shape());
 
-    OpInfo::TensorProperties output_properties;
+    const OpInfo::TensorProperties* output_properties;
     TF_RETURN_IF_ERROR(GetTensorProperties(
         strings::StrCat(node->name(), ":", 0), &output_properties));
-    PartialTensorShape output_shape(output_properties.shape());
+    PartialTensorShape output_shape(output_properties->shape());
     NodeDef* output =
         AddEmptyNode(OptimizedNodeName(ParseNodeScopeAndName(node->name())));
     if (input_slice_shape.IsCompatibleWith(output_shape)) {
       output->set_op("Identity");
       output->set_device(node->device());
-      SetDataTypeToAttr(output_properties.dtype(), "T", output);
+      SetDataTypeToAttr(output_properties->dtype(), "T", output);
       output->add_input(input_slice);
     } else {
       NodeDef* axis = AddEmptyNode(
           OptimizedNodeName(ParseNodeScopeAndName(node->name()), "Axis"));
       axis->set_op("Const");
       axis->set_device(node->device());
+      // We need to add a control edge from input slice to guarantee that axis
+      // constant will be executed in the same frame as `input_slice`, otherwise
+      // ExpandDims might have mismatched input frames.
+      axis->add_input(absl::StrCat("^", ParseTensorName(input_slice).node()));
       auto axis_attr = axis->mutable_attr();
       SetDataTypeToAttr(DT_INT32, "dtype", axis);
       auto* axis_t = (*axis_attr)["value"].mutable_tensor();
@@ -3288,7 +3295,8 @@ class RemoveStackStridedSliceSameAxis : public ArithmeticOptimizerStage {
       AddToOptimizationQueue(axis);
       output->set_op("ExpandDims");
       output->set_device(node->device());
-      SetDataTypeToAttr(output_properties.dtype(), "T", output);
+      SetDataTypeToAttr(output_properties->dtype(), "T", output);
+      SetDataTypeToAttr(DT_INT32, "Tdim", output);
       output->add_input(input_slice);
       output->add_input(axis->name());
     }

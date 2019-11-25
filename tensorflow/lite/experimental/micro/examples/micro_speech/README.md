@@ -1,4 +1,4 @@
-# Micro Speech example
+# Micro speech example
 
 This example shows how you can use TensorFlow Lite to run a 20 kilobyte neural
 network model to recognize keywords in speech. It's designed to run on systems
@@ -16,95 +16,15 @@ kilobytes of Flash.
 ## Table of contents
 
 -   [Getting started](#getting-started)
--   [Run on macOS](#run-on-macos)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
+-   [Deploy to Adafruit devices](#deploy-to-adafruit)
+-   [Run on macOS](#run-on-macos)
+-   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Calculating the input to the neural network](#calculating-the-input-to-the-neural-network)
 -   [Train your own model](#train-your-own-model)
-
-
-## Getting started
-
-This code has been tested on the following devices:
-
-* [SparkFun Edge](https://sparkfun.com/products/15170)
-* [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
-* [ST Microelectronics STM32F746G Discovery kit](https://os.mbed.com/platforms/ST-Discovery-F746NG/)
-* [NXP FRDM K66F](https://www.nxp.com/design/development-boards/freedom-development-boards/mcu-boards/freedom-development-platform-for-kinetis-k66-k65-and-k26-mcus:FRDM-K66F)
-
-This readme contains instructions for building the code on Linux and macOS, and
-deploying the code to the above microcontroller platforms and macOS.
-
-### Build the tests
-
-To compile and test this example on a desktop Linux or macOS machine, download
-[the TensorFlow source code](https://github.com/tensorflow/tensorflow), `cd`
-into the source directory from a terminal, and then run the following command:
-
-```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_micro_speech_test
-```
-
-This will take a few minutes, and downloads frameworks the code uses like
-[CMSIS](https://developer.arm.com/embedded/cmsis) and
-[flatbuffers](https://google.github.io/flatbuffers/). Once that process has
-finished, you should see a series of files get compiled, followed by some
-logging output from a test, which should conclude with `~~~ALL TESTS PASSED~~~`.
-
-If you see this, it means that a small program has been built and run that loads
-the trained TensorFlow model, runs some example inputs through it, and got the
-expected outputs.
-
-To understand how TensorFlow Lite does this, you can look at the source in
-[hello_world_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc).
-It's a fairly small amount of code that creates an interpreter, gets a handle to
-a model that's been compiled into the program, and then invokes the interpreter
-with the model and sample inputs.
-
-### Run on macOS
-
-The example contains an audio provider compatible with macOS. If you have access
-to a Mac, you can run the example on your development machine.
-
-First, use the following command to build it:
-
-```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile micro_speech
-```
-
-Once the build completes, you can run the example with the following command:
-
-```
-tensorflow/lite/experimental/micro/tools/make/gen/osx_x86_64/bin/micro_speech
-```
-
-You might see a pop-up asking for microphone access. If so, grant it, and the
-program will start.
-
-Try saying "yes" and "no". You should see output that looks like the following:
-
-```
-Heard yes (201) @4056ms
-Heard no (205) @6448ms
-Heard unknown (201) @13696ms
-Heard yes (205) @15000ms
-Heard yes (205) @16856ms
-Heard unknown (204) @18704ms
-Heard no (206) @21000ms
-```
-
-The number after each detected word is its score. By default, the recognize
-commands component only considers matches as valid if their score is over 200,
-so all of the scores you see will be at least 200.
-
-The number after the score is the number of milliseconds since the program was
-started.
-
-If you don't see any output, make sure your Mac's internal microphone is
-selected in the Mac's *Sound* menu, and that its input volume is turned up high
-enough.
 
 ## Deploy to Arduino
 
@@ -120,34 +40,11 @@ microphone. If you're using a different Arduino board and attaching your own
 microphone, you'll need to implement your own +audio_provider.cc+. It also has a
 built-in LED, which is used to indicate that a word has been recognized.
 
-### Obtain and import the library
+### Install the Arduino_TensorFlowLite library
 
-To use this sample application with Arduino, we've created an Arduino library
-that includes it as an example that you can open in the Arduino IDE.
-
-Download the current nightly build of the library: [micro_speech.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/micro_speech/micro_speech.zip)
-
-Next, import this zip file into the Arduino IDE by going to
-`Sketch -> Include Library -> Add .ZIP Library...`.
-
-#### Build the library
-
-If you need to build the library from source (for example, if you're making
-modifications to the code), run this command to generate a zip file containing
-the required source files:
-
-```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=arduino TAGS="portable_optimized" generate_micro_speech_arduino_library_zip
-```
-
-A zip file will be created at the following location:
-
-```
-tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/micro_speech/micro_speech.zip
-```
-
-You can then import this zip file into the Arduino IDE by going to
-`Sketch -> Include Library -> Add .ZIP Library...`.
+This example application is included as part of the official TensorFlow Lite
+Arduino library. To install it, open the Arduino library manager in
+`Tools -> Manage Libraries...` and search for `Arduino_TensorFlowLite`.
 
 ### Load and run the example
 
@@ -205,7 +102,7 @@ The following command will download the required dependencies and then compile a
 binary for the SparkFun Edge:
 
 ```
-make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="CMSIS" micro_speech_bin
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=sparkfun_edge TAGS="cmsis-nn" micro_speech_bin
 ```
 
 The binary will be created in the following location:
@@ -356,10 +253,10 @@ structure:
 make -f tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=mbed TAGS="CMSIS disco_f746ng" generate_micro_speech_mbed_project
 ```
 
-This will result in the creation of a new folder:
+Running the make command will result in the creation of a new folder:
 
 ```
-tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/hello_world/mbed
+tensorflow/lite/experimental/micro/tools/make/gen/mbed_cortex-m4/prj/micro_speech/mbed
 ```
 
 This folder contains all of the example's dependencies structured in the correct
@@ -502,6 +399,85 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
     in black color. If there is no output on the serial port, you can connect
     headphone to headphone port to check if audio loopback path is working.
 
+## Deploy to Adafruit devices <a name="deploy-to-adafruit"></a>
+
+This sample has been tested with the following Adafruit devices. To deploy to
+each device, read the accompanying guide on Adafruit's website.
+
+| Device                                                                                     | Guide                                                                                                                            |
+|--------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)                                | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
+| [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317) | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
+
+## Run on macOS
+
+The example contains an audio provider compatible with macOS. If you have access
+to a Mac, you can run the example on your development machine.
+
+First, use the following command to build it:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile micro_speech
+```
+
+Once the build completes, you can run the example with the following command:
+
+```
+tensorflow/lite/experimental/micro/tools/make/gen/osx_x86_64/bin/micro_speech
+```
+
+You might see a pop-up asking for microphone access. If so, grant it, and the
+program will start.
+
+Try saying "yes" and "no". You should see output that looks like the following:
+
+```
+Heard yes (201) @4056ms
+Heard no (205) @6448ms
+Heard unknown (201) @13696ms
+Heard yes (205) @15000ms
+Heard yes (205) @16856ms
+Heard unknown (204) @18704ms
+Heard no (206) @21000ms
+```
+
+The number after each detected word is its score. By default, the recognize
+commands component only considers matches as valid if their score is over 200,
+so all of the scores you see will be at least 200.
+
+The number after the score is the number of milliseconds since the program was
+started.
+
+If you don't see any output, make sure your Mac's internal microphone is
+selected in the Mac's *Sound* menu, and that its input volume is turned up high
+enough.
+
+## Run the tests on a development machine
+
+To compile and test this example on a desktop Linux or macOS machine, download
+[the TensorFlow source code](https://github.com/tensorflow/tensorflow), `cd`
+into the source directory from a terminal, and then run the following command:
+
+```
+make -f tensorflow/lite/experimental/micro/tools/make/Makefile test_micro_speech_test
+```
+
+This will take a few minutes, and downloads frameworks the code uses like
+[CMSIS](https://developer.arm.com/embedded/cmsis) and
+[flatbuffers](https://google.github.io/flatbuffers/). Once that process has
+finished, you should see a series of files get compiled, followed by some
+logging output from a test, which should conclude with `~~~ALL TESTS PASSED~~~`.
+
+If you see this, it means that a small program has been built and run that loads
+the trained TensorFlow model, runs some example inputs through it, and got the
+expected outputs.
+
+To understand how TensorFlow Lite does this, you can look at the source in
+[micro_speech_test.cc](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc).
+It's a fairly small amount of code that creates an interpreter, gets a handle to
+a model that's been compiled into the program, and then invokes the interpreter
+with the model and sample inputs.
+
 ## Calculating the input to the neural network
 
 The TensorFlow Lite model doesn't take in raw audio sample data. Instead it
@@ -578,11 +554,9 @@ We strongly recommend trying this approach first.
 
 ### Use your local machine
 
-You can use the following commands to train the model on your own machine.
-
-It may be easiest to run these commands in a
-[TensorFlow Docker container](https://www.tensorflow.org/install/docker). A full
-build may take a couple of hours.
+You can use the following commands to train the model on your own machine. It
+may be easiest to run these commands in a
+[TensorFlow Docker container](https://www.tensorflow.org/install/docker).
 
 You must currently use the TensorFlow Nightly `pip` package. This version is
 confirmed to work:
@@ -597,14 +571,12 @@ To begin training, run the following:
 python tensorflow/tensorflow/examples/speech_commands/train.py \
 --model_architecture=tiny_conv --window_stride=20 --preprocess=micro \
 --wanted_words="yes,no" --silence_percentage=25 --unknown_percentage=25 \
---quantize=1 --verbosity=WARN --how_many_training_steps="15000,3000" \
+--quantize=1 --verbosity=INFO --how_many_training_steps="15000,3000" \
 --learning_rate="0.001,0.0001" --summaries_dir=/tmp/retrain_logs \
 --data_dir=/tmp/speech_dataset --train_dir=/tmp/speech_commands_train
 ```
 
-If you see a compiling error on older machines, try leaving out the `--copt`
-arguments, they are just there to accelerate training on chips that support the
-extensions. The training process is likely to take a couple of hours. Once it
+The training process is likely to take a couple of hours. Once it
 has completed, the next step is to freeze the variables:
 
 ```
@@ -619,7 +591,7 @@ The next step is to create a TensorFlow Lite file from the frozen graph:
 ```
 toco \
 --graph_def_file=/tmp/tiny_conv.pb --output_file=/tmp/tiny_conv.tflite \
---input_shapes=1,1960 --input_arrays=Reshape_1 --output_arrays='labels_softmax' \
+--input_shapes=1,49,40,1 --input_arrays=Reshape_2 --output_arrays='labels_softmax' \
 --inference_type=QUANTIZED_UINT8 --mean_values=0 --std_dev_values=9.8077
 ```
 

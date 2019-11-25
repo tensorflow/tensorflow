@@ -18,6 +18,9 @@ limitations under the License.
 // Language-agnostic gradient tape. Does not perform backpropagation, just
 // maintains the data structures required to do so.
 
+#include <stack>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -87,12 +90,6 @@ class VSpace {
   // a tensor with the result.
   virtual Gradient* AggregateGradients(
       gtl::ArraySlice<Gradient*> gradient_tensors) const = 0;
-
-  // Returns a tensor of the right shape and dtype filled with zeros.
-  virtual Gradient* Zeros(const TapeTensor& tensor) const = 0;
-
-  // Returns a Tensor which is filled with ones and like the input.
-  virtual Gradient* Ones(const TapeTensor& tensor) const = 0;
 
   // Calls the passed-in backward function.
   virtual Status CallBackwardFunction(
@@ -209,7 +206,9 @@ class ForwardAccumulator {
   // ForwardAccumulator.
   explicit ForwardAccumulator(
       const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace)
-      : vspace_(vspace), backward_tape_(nullptr), accumulating_(false) {}
+      : vspace_(vspace) {
+    call_state_.emplace(nullptr, false);
+  }
 
   virtual ~ForwardAccumulator() {
     for (auto accumulated : accumulated_gradients_) {
@@ -262,11 +261,11 @@ class ForwardAccumulator {
       const std::function<BackwardFunction*()>& backward_function_getter,
       const std::function<void(BackwardFunction*)>& backward_function_deleter);
 
-  // Returns true if `Accumulate` is active somewhere above on the stack. This
-  // is useful for ordering ForwardAccumulators, where more deeply nested
-  // accumulators should not see computations from less deeply nested
-  // accumulators.
-  bool BusyAccumulating() const { return this->accumulating_; }
+  // Returns true if `Accumulate` is active somewhere above on the stack and
+  // there isn't an intervening PushState. This is useful for ordering
+  // ForwardAccumulators, where more deeply nested accumulators should not see
+  // computations from less deeply nested accumulators.
+  bool BusyAccumulating() const { return call_state_.top().accumulating; }
 
   // Fetches the current Jacobian-vector product associated with `tensor_id`, or
   // a nullptr if none is available.
@@ -282,6 +281,15 @@ class ForwardAccumulator {
   bool ShouldRecord(gtl::ArraySlice<int64> tensor_ids,
                     gtl::ArraySlice<tensorflow::DataType> dtypes);
 
+  // Temporarily push or pop transient state for this accumulator.
+  //
+  // Allows an accumulator which is currently processing an operation to
+  // temporarily reset its state. Without pushing and poping, accumulators
+  // ignore operations executed as a direct result of their own jvp
+  // computations.
+  void PushState() { call_state_.emplace(nullptr, false); }
+  void PopState() { call_state_.pop(); }
+
  private:
   // Helper for Accumulate: uses a GradientTape to compute forward gradients
   // from a backward gradient function. Fills `out_grads` corresponding to
@@ -289,7 +297,7 @@ class ForwardAccumulator {
   //
   // Executes the backward function in order to trace its gradient, which will
   // waste computation if executing eagerly (when graph building the unneeded
-  // computation is pruned). Temporarily sets `backward_tape_` so that
+  // computation is pruned). Temporarily sets `backward_tape` so that
   // Accumulate will forward op executions to the tape while the backward
   // function is running; this effectively adds the backward tape to the active
   // set (but does not require complicated callbacks to the language bindings).
@@ -305,16 +313,26 @@ class ForwardAccumulator {
   // Not owned; provides operations on Tensors which are currently only
   // available in language bindings (e.g. Python).
   const VSpace<Gradient, BackwardFunction, TapeTensor>& vspace_;
-  // Set temporarily while in the Accumulate method; if backward_tape_ is not
-  // nullptr then we forward op executions to it so Accumulate can compute a
-  // backward pass on its backward function.
-  //
-  // Not owned by the ForwardAccumulator. The method which sets `backward_tape_`
-  // keeps ownership.
-  GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape_;
-  // While the Accumulate method is running (accumulating_ is True), any op
-  // executions not forwarded to backward_tape_ should be ignored.
-  bool accumulating_;
+
+  struct AccumulatorCallState {
+    AccumulatorCallState(
+        GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape,
+        bool accumulating)
+        : backward_tape(backward_tape), accumulating(accumulating) {}
+    // Set temporarily while in the Accumulate method; if backward_tape is not
+    // nullptr then we forward op executions to it so Accumulate can compute a
+    // backward pass on its backward function.
+    //
+    // Not owned by the ForwardAccumulator. The method which sets
+    // `backward_tape` keeps ownership.
+    GradientTape<Gradient, BackwardFunction, TapeTensor>* backward_tape;
+    // While the Accumulate method is running (accumulating is True), any op
+    // executions not forwarded to backward_tape should be ignored.
+    bool accumulating;
+  };
+  // A deque-backed stack, whose element references are not invalidated by
+  // pushes and pops at the back.
+  std::stack<AccumulatorCallState> call_state_;
 };
 
 // Template instantiations here
@@ -571,7 +589,7 @@ Status InitialGradients(
           if (op_it->second.output_tensor_info[j].GetID() == id) {
             found = true;
             (*result)[id].push_back(
-                vspace.Ones(op_it->second.output_tensor_info[j]));
+                op_it->second.output_tensor_info[j].OnesLike());
             break;
           }
         }
@@ -586,7 +604,7 @@ Status InitialGradients(
         // target is also a source.
         auto source_tensor = sources_that_are_targets.find(id);
         if (source_tensor != sources_that_are_targets.end()) {
-          (*result)[id].push_back(vspace.Ones(source_tensor->second));
+          (*result)[id].push_back(source_tensor->second.OnesLike());
         }
       }
     } else {
@@ -645,16 +663,15 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
   Status s = InitialGradients(vspace, target_tensor_ids,
                               sources_that_are_targets, output_gradients,
                               tensor_tape_, state.op_tape, &gradients);
-  auto cleanup = [this, &state]() {
+  auto cleanup = gtl::MakeCleanup([this, &state]() {
     if (!persistent_) {
       // Release all backprop functions
       for (const auto& pair : state.op_tape) {
         pair.second.backward_function_deleter(pair.second.backward_function);
       }
     }
-  };
+  });
   if (!s.ok()) {
-    cleanup();
     return s;
   }
 
@@ -726,17 +743,23 @@ Status GradientTape<Gradient, BackwardFunction, TapeTensor>::ComputeGradient(
     std::vector<Gradient*> in_gradients;
     if (any_gradient_nonzero) {
       for (const auto i : zero_indices) {
-        out_gradients[i] = vspace.Zeros(trace.output_tensor_info[i]);
+        out_gradients[i] = trace.output_tensor_info[i].ZerosLike();
       }
       Status s;
       s = vspace.CallBackwardFunction(trace.backward_function,
                                       unneeded_gradients, out_gradients,
                                       &in_gradients);
+      if (in_gradients.size() != trace.input_tensor_id.size()) {
+        return tensorflow::errors::Internal(
+            "Recorded operation '", trace.op_type,
+            "' returned too few gradients. Expected ",
+            trace.input_tensor_id.size(), " but received ",
+            in_gradients.size());
+      }
       if (!persistent_) {
         trace.backward_function_deleter(trace.backward_function);
       }
       if (!s.ok()) {
-        cleanup();
         return s;
       }
     } else {
@@ -847,12 +870,12 @@ template <typename Gradient, typename BackwardFunction, typename TapeTensor>
 bool ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ShouldRecord(
     gtl::ArraySlice<int64> tensor_ids,
     gtl::ArraySlice<tensorflow::DataType> dtypes) {
-  if (backward_tape_ != nullptr) {
-    // If we're forwarding Accumulate calls to backward_tape_'s RecordOperation,
+  if (call_state_.top().backward_tape != nullptr) {
+    // If we're forwarding Accumulate calls to backward_tape's RecordOperation,
     // we should also delegate ShouldRecord.
-    return backward_tape_->ShouldRecord(tensor_ids, dtypes);
+    return call_state_.top().backward_tape->ShouldRecord(tensor_ids, dtypes);
   }
-  if (accumulating_) {
+  if (call_state_.top().accumulating) {
     return false;
   }
   for (int i = 0; i < tensor_ids.size(); ++i) {
@@ -884,16 +907,32 @@ ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::ForwardpropFromTape(
   */
   std::unique_ptr<GradientTape<Gradient, BackwardFunction, TapeTensor>> tape(
       new GradientTape<Gradient, BackwardFunction, TapeTensor>(false));
-  backward_tape_ = tape.get();
+  AccumulatorCallState& call_state = call_state_.top();
+  call_state.backward_tape = tape.get();
   auto pop_backward_tape =
-      gtl::MakeCleanup([this] { this->backward_tape_ = nullptr; });
+      gtl::MakeCleanup([&call_state] { call_state.backward_tape = nullptr; });
   std::vector<Gradient*> forwardprop_aids;
   std::vector<int64> sources;
   std::unordered_set<int64> sources_set;
   sources.reserve(output_tensors.size());
   for (const TapeTensor& output_tensor : output_tensors) {
     // Ownership of `aid` transferred to CallBackwardFunction below.
-    Gradient* aid = vspace_.Ones(output_tensor);
+    Gradient* aid;
+    if (output_tensor.GetDType() == tensorflow::DT_VARIANT) {
+      // Note: Needs to be zeros rather than ones since there's currently no
+      // ones_like for variants.
+      aid = output_tensor.ZerosLike();
+    } else {
+      // TODO(allenl): Figure out why using zeros_like everywhere causes issues
+      // for some gradient functions and if there's another way to work around
+      // it (e.g. conds instead of ifs). The value shouldn't really matter.
+      aid = output_tensor.OnesLike();
+    }
+    if (TF_PREDICT_FALSE(aid == nullptr)) {
+      return tensorflow::errors::Internal(
+          "Failed to create ones tensor for tensor ", output_tensor.GetID(),
+          " with dtype ", output_tensor.GetDType());
+    }
     forwardprop_aids.push_back(aid);
     int64 aid_id = vspace_.TensorId(aid);
     sources.push_back(aid_id);
@@ -961,10 +1000,10 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
     const ForwardFunction<Gradient>* forward_function,
     const std::function<BackwardFunction*()>& backward_function_getter,
     const std::function<void(BackwardFunction*)>& backward_function_deleter) {
-  if (backward_tape_ != nullptr) {
-    // If backward_tape_ is not null, then this call to Accumulate is the result
+  if (call_state_.top().backward_tape != nullptr) {
+    // If backward_tape is not null, then this call to Accumulate is the result
     // of a still-active call to Accumulate which is running operations. We
-    // forward these operations to backward_tape_ so the outer Accumulate call
+    // forward these operations to backward_tape so the outer Accumulate call
     // can do its work.
     //
     // Rather than re-entering and delegating Accumulate like this, we could
@@ -972,9 +1011,9 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
     // (so it can deactivate itself and activate its GradientTape). Currently
     // that is managed by the language binding and would require relatively
     // messy callbacks.
-    backward_tape_->RecordOperation(op_type, output_tensors, input_tensor_id,
-                                    input_dtypes, backward_function_getter,
-                                    backward_function_deleter);
+    call_state_.top().backward_tape->RecordOperation(
+        op_type, output_tensors, input_tensor_id, input_dtypes,
+        backward_function_getter, backward_function_deleter);
     return Status::OK();
   }
   if (!ShouldRecord(input_tensor_id, input_dtypes)) {
@@ -999,7 +1038,7 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
       if (IsDtypeTrainable(input_tensors[target_index].GetDType())) {
         // ForwardAccumulator defaults to zeros for unwatched Tensors, unlike
         // GradientTape which uses ones.
-        Gradient* zero = vspace_.Zeros(input_tensors[target_index]);
+        Gradient* zero = input_tensors[target_index].ZerosLike();
         new_zeros.push_back(zero);
         in_grads.push_back(zero);
       } else {
@@ -1012,9 +1051,8 @@ Status ForwardAccumulator<Gradient, BackwardFunction, TapeTensor>::Accumulate(
 
   // Avoid infinite recursion. Whichever forward function we run, it'll end up
   // executing ops, and we don't want to watch those with this accumulator.
-  accumulating_ = true;
-  auto reset_accumulating =
-      gtl::MakeCleanup([this] { this->accumulating_ = false; });
+  call_state_.emplace(nullptr, true);
+  auto pop_call_state = gtl::MakeCleanup([this] { this->call_state_.pop(); });
 
   std::vector<Gradient*> forward_grads;
   if (forward_function == nullptr) {

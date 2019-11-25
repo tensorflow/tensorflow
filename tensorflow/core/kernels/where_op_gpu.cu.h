@@ -27,7 +27,7 @@ limitations under the License.
 #include "third_party/cub/iterator/counting_input_iterator.cuh"
 #include "third_party/cub/iterator/transform_input_iterator.cuh"
 #elif TENSORFLOW_USE_ROCM
-#include "external/rocprim_archive/hipcub/include/hipcub/hipcub.hpp"
+#include "rocm/include/hipcub/hipcub.hpp"
 #endif
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -52,7 +52,7 @@ namespace functor {
 template <int NDIM, typename TIndex>
 __global__ void PropagateWhereIndicesKernel(
     const TIndex output_rows, const typename Eigen::array<TIndex, NDIM> strides,
-    int64* output) {
+    int64* __restrict__ output) {
   // TODO(ebrevdo): Use a multi-dimensional loop, increasing the
   // dimensions of individual indices manually, instead of relying on
   // a scalar loop variable and using integer division.

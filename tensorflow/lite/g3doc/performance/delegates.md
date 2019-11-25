@@ -81,7 +81,7 @@ class MyDelegate {
 };
 
 // Create the TfLiteRegistration for the Kernel node which will replace
-// the subrgaph in the main TfLite graph.
+// the subgraph in the main TfLite graph.
 TfLiteRegistration GetMyDelegateNodeRegistration() {
   // This is the registration for the Delegate Node that gets added to
   // the TFLite graph instead of the subGraph it replaces.

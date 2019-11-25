@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/util.h"
 
 namespace tflite {
 // This is to be provided at link-time by a library.
@@ -193,6 +194,29 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allocateTensors(
         " %s",
         error_reporter->CachedErrorMessage());
   }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_hasUnresolvedFlexOp(
+    JNIEnv* env, jclass clazz, jlong handle) {
+  tflite::Interpreter* interpreter = convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) return JNI_FALSE;
+
+  // TODO(b/132995737): Remove this logic by caching whether an unresolved
+  // Flex op is present during Interpreter creation.
+  for (size_t subgraph_i = 0; subgraph_i < interpreter->subgraphs_size();
+       ++subgraph_i) {
+    const auto* subgraph = interpreter->subgraph(static_cast<int>(subgraph_i));
+    for (int node_i : subgraph->execution_plan()) {
+      const auto& registration =
+          subgraph->node_and_registration(node_i)->second;
+      if (tflite::IsUnresolvedCustomOp(registration) &&
+          tflite::IsFlexOp(registration.custom_name)) {
+        return JNI_TRUE;
+      }
+    }
+  }
+  return JNI_FALSE;
 }
 
 JNIEXPORT jint JNICALL

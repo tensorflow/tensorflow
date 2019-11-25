@@ -50,13 +50,13 @@ class ToTFRecordOp : public AsyncOpKernel {
     // thread pool thread, so we issue the call using a background thread.
     background_worker_.Schedule(std::bind(
         [this, ctx](std::function<void()>& done) {
-          string filename;
+          tstring filename;
           OP_REQUIRES_OK_ASYNC(
-              ctx, ParseScalarArgument<string>(ctx, "filename", &filename),
+              ctx, ParseScalarArgument<tstring>(ctx, "filename", &filename),
               done);
-          string compression_type;
+          tstring compression_type;
           OP_REQUIRES_OK_ASYNC(ctx,
-                               ParseScalarArgument<string>(
+                               ParseScalarArgument<tstring>(
                                    ctx, "compression_type", &compression_type),
                                done);
           std::unique_ptr<WritableFile> file;
@@ -78,11 +78,13 @@ class ToTFRecordOp : public AsyncOpKernel {
           CancellationManager cancellation_manager;
           params.cancellation_manager = &cancellation_manager;
           std::function<void()> deregister_fn;
-          OP_REQUIRES_OK_ASYNC(ctx,
-                               ConnectCancellationManagers(
-                                   ctx->cancellation_manager(),
-                                   params.cancellation_manager, &deregister_fn),
-                               done);
+          OP_REQUIRES_OK_ASYNC(
+              ctx,
+              RegisterCancellationCallback(
+                  ctx->cancellation_manager(),
+                  [cm = params.cancellation_manager]() { cm->StartCancel(); },
+                  &deregister_fn),
+              done);
 
           // Update the `done` callback to deregister the cancellation callback.
           done = std::bind(

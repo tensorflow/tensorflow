@@ -1,7 +1,7 @@
 path: "tensorflow.io.FixedLenSequenceFeature"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.parsing_ops.FixedLenSequenceFeature\'>"
-  is_instance: "<class \'tensorflow.python.ops.parsing_ops.FixedLenSequenceFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.FixedLenSequenceFeature\'>"
+  is_instance: "<class \'tensorflow.python.ops.parsing_config.FixedLenSequenceFeature\'>"
   is_instance: "<type \'tuple\'>"
   member {
     name: "allow_missing"

@@ -119,12 +119,7 @@ class Delegate {
 
   Status BindBufferToTensor(GLuint ssbo, int tensor_index) {
     int64_t bytes_size;
-    {
-      gl_buffer_internal::BufferBinder binder(GL_SHADER_STORAGE_BUFFER, ssbo);
-      RETURN_IF_ERROR(TFLITE_GPU_CALL_GL(glGetBufferParameteri64v,
-                                         GL_SHADER_STORAGE_BUFFER,
-                                         GL_BUFFER_SIZE, &bytes_size));
-    }
+    RETURN_IF_ERROR(GetSSBOSize(ssbo, &bytes_size));
     return bhwc_objects_.RegisterBuffer(
         tensor_index, GlBuffer(GL_SHADER_STORAGE_BUFFER, ssbo, bytes_size,
                                /* offset = */ 0,
@@ -371,18 +366,6 @@ class Delegate {
   std::unique_ptr<CommandQueue> command_queue_;
   std::unique_ptr<InferenceContext> inference_context_;
 };
-
-// TODO(impjdi): Merge with MetalDelegate.
-bool IsAllFloatTensors(const TfLiteContext* context,
-                       const TfLiteIntArray* array) {
-  for (int i = 0; i < array->size; ++i) {
-    const TfLiteTensor* t = context->tensors + array->data[i];
-    if (t->allocation_type == kTfLiteArenaRw && t->type != kTfLiteFloat32) {
-      return false;
-    }
-  }
-  return true;
-}
 
 inline Delegate* GetGpuDelegate(TfLiteNode* node) {
   return reinterpret_cast<Delegate*>(node->user_data);

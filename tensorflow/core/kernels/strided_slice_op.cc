@@ -170,6 +170,7 @@ class StridedSliceOp : public OpKernel {
       HANDLE_DIM(5);
       HANDLE_DIM(6);
       HANDLE_DIM(7);
+      HANDLE_DIM(8);
 
 #undef HANDLE_DIM
 
@@ -268,6 +269,7 @@ class StridedSliceGradOp : public OpKernel {
     HANDLE_DIM(5);
     HANDLE_DIM(6);
     HANDLE_DIM(7);
+    HANDLE_DIM(8);
 
 #undef HANDLE_DIM
   }
@@ -384,6 +386,7 @@ class StridedSliceAssignOp : public OpKernel {
       HANDLE_DIM(5);
       HANDLE_DIM(6);
       HANDLE_DIM(7);
+      HANDLE_DIM(8);
 #undef HANDLE_DIM
 
       OP_REQUIRES(context, false,

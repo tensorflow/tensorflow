@@ -88,6 +88,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "session_creation_timeout_secs"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "task_id"
     mtype: "<type \'property\'>"
   }

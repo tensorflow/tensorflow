@@ -83,7 +83,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Operation *> {
 
 namespace {
 /// Simple common sub-expression elimination.
-struct CSE : public FunctionPass<CSE> {
+struct CSE : public OperationPass<CSE> {
   CSE() = default;
   CSE(const CSE &) {}
 
@@ -119,7 +119,7 @@ struct CSE : public FunctionPass<CSE> {
   void simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
                       Region &region);
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
 private:
   /// Operations marked as dead and to be erased.
@@ -213,7 +213,7 @@ void CSE::simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
   std::deque<std::unique_ptr<CFGStackNode>> stack;
 
   // Process the nodes of the dom tree for this region.
-  stack.emplace_back(llvm::make_unique<CFGStackNode>(
+  stack.emplace_back(std::make_unique<CFGStackNode>(
       knownValues, domInfo.getRootNode(&region)));
 
   while (!stack.empty()) {
@@ -229,7 +229,7 @@ void CSE::simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
     if (currentNode->childIterator != currentNode->node->end()) {
       auto *childNode = *(currentNode->childIterator++);
       stack.emplace_back(
-          llvm::make_unique<CFGStackNode>(knownValues, childNode));
+          std::make_unique<CFGStackNode>(knownValues, childNode));
     } else {
       // Finally, if the node and all of its children have been processed
       // then we delete the node.
@@ -238,11 +238,13 @@ void CSE::simplifyRegion(ScopedMapTy &knownValues, DominanceInfo &domInfo,
   }
 }
 
-void CSE::runOnFunction() {
-  /// A scoped hash table of defining operations within a function.
+void CSE::runOnOperation() {
+  /// A scoped hash table of defining operations within a region.
   ScopedMapTy knownValues;
-  simplifyRegion(knownValues, getAnalysis<DominanceInfo>(),
-                 getFunction().getBody());
+
+  DominanceInfo &domInfo = getAnalysis<DominanceInfo>();
+  for (Region &region : getOperation()->getRegions())
+    simplifyRegion(knownValues, domInfo, region);
 
   // If no operations were erased, then we mark all analyses as preserved.
   if (opsToErase.empty())
@@ -258,9 +260,6 @@ void CSE::runOnFunction() {
   markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 }
 
-std::unique_ptr<FunctionPassBase> mlir::createCSEPass() {
-  return llvm::make_unique<CSE>();
-}
+std::unique_ptr<Pass> mlir::createCSEPass() { return std::make_unique<CSE>(); }
 
-static PassRegistration<CSE>
-    pass("cse", "Eliminate common sub-expressions in functions");
+static PassRegistration<CSE> pass("cse", "Eliminate common sub-expressions");

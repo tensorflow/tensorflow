@@ -33,12 +33,13 @@ class Identifier;
 
 namespace detail {
 
-struct LocationStorage;
-struct UnknownLocationStorage;
-struct FileLineColLocationStorage;
-struct NameLocationStorage;
 struct CallSiteLocationStorage;
+struct FileLineColLocationStorage;
 struct FusedLocationStorage;
+struct LocationStorage;
+struct NameLocationStorage;
+struct OpaqueLocationStorage;
+struct UnknownLocationStorage;
 
 } // namespace detail
 
@@ -99,8 +100,8 @@ inline raw_ostream &operator<<(raw_ostream &os, const Location &loc) {
 }
 
 /// Represents a location as call site. "callee" is the concrete location
-/// (Unknown/NameLocation/FileLineColLoc) and "caller" points to the caller's
-/// location (another CallLocation or a concrete location). Multiple
+/// (Unknown/NameLocation/FileLineColLoc/OpaqueLoc) and "caller" points to the
+/// caller's location (another CallLocation or a concrete location). Multiple
 /// CallSiteLocs can be chained to form a call stack.
 class CallSiteLoc
     : public Attribute::AttrBase<CallSiteLoc, LocationAttr,
@@ -109,13 +110,12 @@ public:
   using Base::Base;
 
   /// Return a uniqued call location object.
-  static Location get(Location callee, Location caller, MLIRContext *context);
+  static Location get(Location callee, Location caller);
 
   /// Return a call site location which represents a name reference in one line
   /// or a stack of frames. The input frames are ordered from innermost to
   /// outermost.
-  static Location get(Location name, ArrayRef<Location> frames,
-                      MLIRContext *context);
+  static Location get(Location name, ArrayRef<Location> frames);
 
   /// The concrete location information this object presents.
   Location getCallee() const;
@@ -191,7 +191,7 @@ public:
 
   /// Return a uniqued name location object. The child location must not be
   /// another NameLoc.
-  static Location get(Identifier name, Location child, MLIRContext *context);
+  static Location get(Identifier name, Location child);
 
   /// Return a uniqued name location object with an unknown child.
   static Location get(Identifier name, MLIRContext *context);
@@ -221,6 +221,77 @@ public:
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::UnknownLocation;
   }
+};
+
+/// Represents a location that is external to MLIR. Contains a pointer to some
+/// data structure and an optional location that can be used if the first one is
+/// not suitable. Since it contains an external structure, only optional
+/// location is used during serialization.
+/// The class also provides a number of methods for making type-safe casts
+/// between a pointer to an object and opaque location.
+class OpaqueLoc : public Attribute::AttrBase<OpaqueLoc, LocationAttr,
+                                             detail::OpaqueLocationStorage> {
+public:
+  using Base::Base;
+
+  /// Returns an instance of opaque location which contains a given pointer to
+  /// an object. The corresponding MLIR location is set to UnknownLoc.
+  template <typename T>
+  static Location get(T underlyingLocation, MLIRContext *context) {
+    return get(reinterpret_cast<uintptr_t>(underlyingLocation),
+               ClassID::getID<T>(), UnknownLoc::get(context));
+  }
+
+  /// Returns an instance of opaque location which contains a given pointer to
+  /// an object and an additional MLIR location.
+  template <typename T>
+  static Location get(T underlyingLocation, Location fallbackLocation) {
+    return get(reinterpret_cast<uintptr_t>(underlyingLocation),
+               ClassID::getID<T>(), fallbackLocation);
+  }
+
+  /// Returns a pointer to some data structure that opaque location stores.
+  template <typename T> static T getUnderlyingLocation(Location location) {
+    assert(isa<T>(location));
+    return reinterpret_cast<T>(
+        location.cast<mlir::OpaqueLoc>().getUnderlyingLocation());
+  }
+
+  /// Returns a pointer to some data structure that opaque location stores.
+  /// Returns nullptr if provided location is not opaque location or if it
+  /// contains a pointer of different type.
+  template <typename T>
+  static T getUnderlyingLocationOrNull(Location location) {
+    return isa<T>(location)
+               ? reinterpret_cast<T>(
+                     location.cast<mlir::OpaqueLoc>().getUnderlyingLocation())
+               : T(nullptr);
+  }
+
+  /// Checks whether provided location is opaque location and contains a pointer
+  /// to an object of particular type.
+  template <typename T> static bool isa(Location location) {
+    auto opaque_loc = location.dyn_cast<OpaqueLoc>();
+    return opaque_loc && opaque_loc.getClassId() == ClassID::getID<T>();
+  }
+
+  /// Returns a pointer to the corresponding object.
+  uintptr_t getUnderlyingLocation() const;
+
+  /// Returns a ClassID* that represents the underlying objects c++ type.
+  ClassID *getClassId() const;
+
+  /// Returns a fallback location.
+  Location getFallbackLocation() const;
+
+  /// Methods for support type inquiry through isa, cast, and dyn_cast.
+  static bool kindof(unsigned kind) {
+    return kind == StandardAttributes::OpaqueLocation;
+  }
+
+private:
+  static Location get(uintptr_t underlyingLocation, ClassID *classID,
+                      Location fallbackLocation);
 };
 
 // Make Location hashable.

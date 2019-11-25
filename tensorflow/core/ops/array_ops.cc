@@ -279,29 +279,6 @@ Status SetOutputShapeForReshape(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ReadDiagIndex(InferenceContext* c, const Tensor* diag_index_tensor,
-                     int32* lower_diag_index, int32* upper_diag_index) {
-  // This function assumes that the shape of diag_index_tensor is fully defined.
-  if (diag_index_tensor->dims() == 0) {
-    *lower_diag_index = diag_index_tensor->scalar<int32>()();
-    *upper_diag_index = *lower_diag_index;
-  } else {
-    int32 num_elements = diag_index_tensor->dim_size(0);
-    if (num_elements == 1) {
-      *lower_diag_index = diag_index_tensor->vec<int32>()(0);
-      *upper_diag_index = *lower_diag_index;
-    } else if (num_elements == 2) {
-      *lower_diag_index = diag_index_tensor->vec<int32>()(0);
-      *upper_diag_index = diag_index_tensor->vec<int32>()(1);
-    } else {
-      return errors::InvalidArgument(
-          "diag_index must be a vector with one or two elements. It has ",
-          num_elements, " elements.");
-    }
-  }
-  return Status::OK();
-}
-
 }  // namespace
 
 REGISTER_OP("ParallelConcat")
@@ -861,107 +838,20 @@ REGISTER_OP("MatrixDiagV2")
     .Input("padding_value: T")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) {
-      // Checks input ranks.
-      ShapeHandle input_shape, diag_index_shape, unused_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 1, &input_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &diag_index_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused_shape));
+    .SetShapeFn(shape_inference::MatrixDiagV2Shape);
 
-      // Reads the diagonal indices.
-      const Tensor* diag_index_tensor = c->input_tensor(1);
-      if (!c->RankKnown(input_shape) || !c->FullyDefined(diag_index_shape) ||
-          diag_index_tensor == nullptr) {
-        c->set_output(0, c->UnknownShape());
-        return Status::OK();
-      }
-      int32 lower_diag_index = 0;
-      int32 upper_diag_index = 0;
-      TF_RETURN_IF_ERROR(ReadDiagIndex(c, diag_index_tensor, &lower_diag_index,
-                                       &upper_diag_index));
-      if (lower_diag_index > upper_diag_index) {
-        return errors::InvalidArgument(
-            "lower_diag_index is greater than upper_diag_index");
-      }
-
-      // Checks if the number of diagonals provided matches what we imply from
-      // lower_diag_index and upper_diag_index.
-      const int32 input_rank = c->Rank(input_shape);
-      if (lower_diag_index < upper_diag_index) {
-        const int32 num_diags = c->Value(c->Dim(input_shape, input_rank - 2));
-        const int32 other_dim = c->Value(c->Dim(input_shape, input_rank - 1));
-
-        if (num_diags != (upper_diag_index - lower_diag_index + 1)) {
-          return errors::InvalidArgument(
-              "The number of rows of `diagonal` doesn't match the number of "
-              "diagonals implied from `d_lower` and `d_upper`.\n",
-              "num_diags = ", num_diags, ", d_lower = ", lower_diag_index,
-              ", d_upper = ", upper_diag_index, " ", input_rank, " ",
-              other_dim);
-        }
-      }
-
-      // Reads num_rows and num_cols.
-      const Tensor* num_rows_tensor = c->input_tensor(2);
-      const Tensor* num_cols_tensor = c->input_tensor(3);
-      int64 num_rows = -1;
-      int64 num_cols = -1;
-      if (num_rows_tensor != nullptr) {
-        TF_RETURN_IF_ERROR(c->GetScalarFromTensor(num_rows_tensor, &num_rows));
-      }
-      if (num_cols_tensor != nullptr) {
-        TF_RETURN_IF_ERROR(c->GetScalarFromTensor(num_cols_tensor, &num_cols));
-      }
-
-      // Infers the missing num_rows or num_cols: If both are missing, assume
-      // output is square. Otherwise, use the smallest possible value. Also
-      // validates the provided values.
-      const int32 max_diag_len = c->Value(c->Dim(input_shape, input_rank - 1));
-      const int32 min_num_rows = max_diag_len - std::min(upper_diag_index, 0);
-      const int32 min_num_cols = max_diag_len + std::max(lower_diag_index, 0);
-      if (num_rows == -1 && num_cols == -1) {  // Special case.
-        num_rows = std::max(min_num_rows, min_num_cols);
-        num_cols = num_rows;
-      }
-      if (num_rows == -1) {
-        num_rows = min_num_rows;
-      } else if (num_rows < min_num_rows) {
-        return errors::InvalidArgument("num_rows is too small");
-      }
-      if (num_cols == -1) {
-        num_cols = min_num_cols;
-      } else if (num_cols < min_num_cols) {
-        return errors::InvalidArgument("num_cols is too small.");
-      }
-      // At least one of them must match the minimum length.
-      if (num_rows != min_num_rows && num_cols != min_num_cols) {
-        return errors::InvalidArgument(
-            "num_rows and num_cols are not consistent with lower_diag_index, "
-            "upper_diag_index, and the length of the given diagonals.\n",
-            "num_rows = ", num_rows, " != min_num_rows = ", min_num_rows,
-            ", num_cols = ", num_cols, " != min_num_cols = ", min_num_cols);
-      }
-
-      // Sets output shape.
-      ShapeHandle output_shape;
-      const DimensionHandle output_row_dim = c->MakeDim(num_rows);
-      const DimensionHandle output_col_dim = c->MakeDim(num_cols);
-      if (lower_diag_index == upper_diag_index) {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(input_shape, input_rank - 1,
-                                         output_row_dim, &output_shape));
-        TF_RETURN_IF_ERROR(c->Concatenate(
-            output_shape, c->Vector(output_col_dim), &output_shape));
-      } else {
-        TF_RETURN_IF_ERROR(c->ReplaceDim(input_shape, input_rank - 2,
-                                         output_row_dim, &output_shape));
-        TF_RETURN_IF_ERROR(c->ReplaceDim(output_shape, input_rank - 1,
-                                         output_col_dim, &output_shape));
-      }
-      c->set_output(0, output_shape);
-      return Status::OK();
-    });
+REGISTER_OP("MatrixDiagV3")
+    .Input("diagonal: T")
+    .Input("k: int32")
+    .Input("num_rows: int32")
+    .Input("num_cols: int32")
+    .Input("padding_value: T")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr(
+        "align: {'LEFT_RIGHT', 'RIGHT_LEFT', 'LEFT_LEFT', 'RIGHT_RIGHT'} = "
+        "'RIGHT_LEFT'")
+    .SetShapeFn(shape_inference::MatrixDiagV2Shape);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("MatrixSetDiag")
@@ -995,84 +885,25 @@ REGISTER_OP("MatrixSetDiag")
       c->set_output(0, output);
       return Status::OK();
     });
+
 REGISTER_OP("MatrixSetDiagV2")
     .Input("input: T")
     .Input("diagonal: T")
     .Input("k: int32")
     .Output("output: T")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input_shape, diag_shape, diag_index_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &diag_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(2), 1, &diag_index_shape));
+    .SetShapeFn(shape_inference::MatrixSetDiagV2Shape);
 
-      int32 lower_diag_index = 0;
-      int32 upper_diag_index = 0;
-      bool diag_index_known = false;
-      const Tensor* diag_index_tensor = c->input_tensor(2);
-      if (diag_index_tensor != nullptr && c->FullyDefined(diag_index_shape)) {
-        diag_index_known = true;
-        TF_RETURN_IF_ERROR(ReadDiagIndex(c, diag_index_tensor,
-                                         &lower_diag_index, &upper_diag_index));
-        if (lower_diag_index > upper_diag_index) {
-          return errors::InvalidArgument(
-              "lower_diag_index is greater than upper_diag_index");
-        }
-      }
-
-      // Do more checks when input rank is known.
-      if (c->RankKnown(input_shape)) {
-        int32 input_rank = c->Rank(input_shape);
-
-        // If diag_index is set, we know the exact rank of diagonal.
-        if (diag_index_known) {
-          TF_RETURN_IF_ERROR(c->WithRank(c->input(1),
-                                         (lower_diag_index == upper_diag_index)
-                                             ? input_rank - 1
-                                             : input_rank,
-                                         &diag_shape));
-        } else {
-          TF_RETURN_IF_ERROR(
-              c->WithRankAtLeast(c->input(1), input_rank - 1, &diag_shape));
-          TF_RETURN_IF_ERROR(
-              c->WithRankAtMost(c->input(1), input_rank, &diag_shape));
-        }
-
-        // Validates lower_diag_index and upper_diag_index.
-        const int32 num_rows = c->Value(c->Dim(input_shape, input_rank - 2));
-        const int32 num_cols = c->Value(c->Dim(input_shape, input_rank - 1));
-        if (num_rows != InferenceContext::kUnknownDim &&
-            num_cols != InferenceContext::kUnknownDim) {
-          if (lower_diag_index != 0 &&  // For when num_rows or num_cols == 0.
-              (-num_rows >= lower_diag_index || lower_diag_index >= num_cols)) {
-            return errors::InvalidArgument("lower_diag_index is out of bound.");
-          }
-          if (upper_diag_index != 0 &&  // For when num_rows or num_cols == 0.
-              (-num_rows >= upper_diag_index || upper_diag_index >= num_cols)) {
-            return errors::InvalidArgument("upper_diag_index is out of bound.");
-          }
-        }
-      }
-
-      ShapeHandle output_shape = input_shape;
-      if (c->RankKnown(diag_shape) && !c->FullyDefined(input_shape)) {
-        // Try to infer parts of shape from diag.
-        ShapeHandle diag_prefix;
-        TF_RETURN_IF_ERROR(c->Subshape(
-            diag_shape, 0, (lower_diag_index == upper_diag_index) ? -1 : -2,
-            &diag_prefix));
-
-        // The inner matrices can be rectangular, so we can't pinpoint their
-        // exact height and width by just lower_diag_index, upper_diag_index,
-        // and the longest length of given diagonals.
-        TF_RETURN_IF_ERROR(
-            c->Concatenate(diag_prefix, c->UnknownShapeOfRank(2), &diag_shape));
-        TF_RETURN_IF_ERROR(c->Merge(input_shape, diag_shape, &output_shape));
-      }
-      c->set_output(0, output_shape);
-      return Status::OK();
-    });
+REGISTER_OP("MatrixSetDiagV3")
+    .Input("input: T")
+    .Input("diagonal: T")
+    .Input("k: int32")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr(
+        "align: {'LEFT_RIGHT', 'RIGHT_LEFT', 'LEFT_LEFT', 'RIGHT_RIGHT'} = "
+        "'RIGHT_LEFT'")
+    .SetShapeFn(shape_inference::MatrixSetDiagV2Shape);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("MatrixDiagPart")
@@ -1105,58 +936,18 @@ REGISTER_OP("MatrixDiagPartV2")
     .Input("padding_value: T")
     .Output("diagonal: T")
     .Attr("T: type")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input_shape, diag_index_shape, unused_shape;
-      TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input_shape));
-      TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(1), 1, &diag_index_shape));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused_shape));
+    .SetShapeFn(shape_inference::MatrixDiagPartV2Shape);
 
-      const Tensor* diag_index_tensor = c->input_tensor(1);
-      if (!c->RankKnown(input_shape) || !c->FullyDefined(diag_index_shape) ||
-          diag_index_tensor == nullptr) {
-        c->set_output(0, c->UnknownShape());
-        return Status::OK();
-      }
-      int32 lower_diag_index = 0;
-      int32 upper_diag_index = 0;
-      TF_RETURN_IF_ERROR(ReadDiagIndex(c, diag_index_tensor, &lower_diag_index,
-                                       &upper_diag_index));
-      if (lower_diag_index > upper_diag_index) {
-        return errors::InvalidArgument(
-            "lower_diag_index is greater than upper_diag_index");
-      }
-
-      // Validates lower_diag_index and upper_diag_index.
-      const int32 input_rank = c->Rank(input_shape);
-      const int32 num_rows = c->Value(c->Dim(input_shape, input_rank - 2));
-      const int32 num_cols = c->Value(c->Dim(input_shape, input_rank - 1));
-      if (num_rows != InferenceContext::kUnknownDim &&
-          num_cols != InferenceContext::kUnknownDim) {
-        if (lower_diag_index != 0 &&  // For when num_rows or num_cols == 0.
-            (-num_rows >= lower_diag_index || lower_diag_index >= num_cols)) {
-          return errors::InvalidArgument("lower_diag_index is out of bound.");
-        }
-        if (upper_diag_index != 0 &&  // For when num_rows or num_cols == 0.
-            (-num_rows >= upper_diag_index || upper_diag_index >= num_cols)) {
-          return errors::InvalidArgument("upper_diag_index is out of bound.");
-        }
-      }
-
-      const int32 max_diag_len =
-          std::min(num_rows + std::min(upper_diag_index, 0),
-                   num_cols - std::max(lower_diag_index, 0));
-      std::vector<DimensionHandle> dims;
-      dims.reserve(input_rank - 2);
-      for (int i = 0; i < input_rank - 2; ++i) {
-        dims.push_back(c->Dim(input_shape, i));
-      }
-      if (lower_diag_index < upper_diag_index) {
-        dims.push_back(c->MakeDim(upper_diag_index - lower_diag_index + 1));
-      }
-      dims.push_back(c->MakeDim(max_diag_len));
-      c->set_output(0, c->MakeShape(dims));
-      return Status::OK();
-    });
+REGISTER_OP("MatrixDiagPartV3")
+    .Input("input: T")
+    .Input("k: int32")
+    .Input("padding_value: T")
+    .Output("diagonal: T")
+    .Attr("T: type")
+    .Attr(
+        "align: {'LEFT_RIGHT', 'RIGHT_LEFT', 'LEFT_LEFT', 'RIGHT_RIGHT'} = "
+        "'RIGHT_LEFT'")
+    .SetShapeFn(shape_inference::MatrixDiagPartV2Shape);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("MatrixBandPart")
@@ -1559,6 +1350,15 @@ REGISTER_OP("CheckNumerics")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // --------------------------------------------------------------------------
+REGISTER_OP("CheckNumericsV2")
+    .Input("tensor: T")
+    .Output("output: T")
+    .Attr("T: {bfloat16, half, float, double}")
+    .Attr("message: string")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnchangedShape);
+
+// --------------------------------------------------------------------------
 REGISTER_OP("Reshape")
     .Input("tensor: T")
     .Input("shape: Tshape")
@@ -1658,7 +1458,7 @@ REGISTER_OP("UniqueV2")
     .Attr("Taxis: {int32,int64} = DT_INT64")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
       c->set_output(1, c->input(0));
       return Status::OK();
     });
@@ -1689,10 +1489,9 @@ REGISTER_OP("UniqueWithCountsV2")
     .Attr("Taxis: {int32,int64} = DT_INT64")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      auto uniq = c->Vector(InferenceContext::kUnknownDim);
-      c->set_output(0, uniq);
+      c->set_output(0, c->UnknownShapeOfRank(c->Rank(c->input(0))));
       c->set_output(1, c->input(0));
-      c->set_output(2, uniq);
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     });
 
@@ -2980,10 +2779,21 @@ REGISTER_OP("QuantizeAndDequantizeV2")
         "round_mode: {'HALF_TO_EVEN', 'HALF_UP'} = "
         "'HALF_TO_EVEN'")
     .Attr("narrow_range: bool = false")
+    .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      int axis;
+      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      const int minmax_rank = (axis == -1) ? 0 : 1;
+      ShapeHandle minmax;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), minmax, &minmax));
+      if (axis != -1) {
+        ShapeHandle input;
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
+        DimensionHandle depth;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
+      }
       c->set_output(0, c->input(0));
       return Status::OK();
     });
@@ -2998,10 +2808,22 @@ REGISTER_OP("QuantizeAndDequantizeV3")
     .Output("output: T")
     .Attr("T: {bfloat16, half, float, double}")
     .Attr("narrow_range: bool = false")
+    .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
+      int axis;
+      TF_RETURN_IF_ERROR(c->GetAttr("axis", &axis));
+      const int minmax_rank = (axis == -1) ? 0 : 1;
+      ShapeHandle minmax;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
+      TF_RETURN_IF_ERROR(c->Merge(c->input(2), minmax, &minmax));
+      if (axis != -1) {
+        ShapeHandle input;
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
+        DimensionHandle depth;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
+      }
       ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
       c->set_output(0, c->input(0));
       return Status::OK();
@@ -3019,13 +2841,29 @@ REGISTER_OP("QuantizeV2")
     .Attr(
         "round_mode: {'HALF_AWAY_FROM_ZERO', 'HALF_TO_EVEN'} = "
         "'HALF_AWAY_FROM_ZERO'")
+    .Attr("narrow_range: bool = false")
+    .Attr("axis: int = -1")
+    .Attr("ensure_minimum_range: float = 0.01")
     .SetShapeFn([](InferenceContext* c) {
+      int axis = -1;
+      Status s = c->GetAttr("axis", &axis);
+      if (!s.ok() && s.code() != error::NOT_FOUND) {
+        return s;
+      }
+      const int minmax_rank = (axis == -1) ? 0 : 1;
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
-      c->set_output(1, c->Scalar());
-      c->set_output(2, c->Scalar());
+      ShapeHandle minmax;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
+      if (axis != -1) {
+        ShapeHandle input;
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
+        DimensionHandle depth;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
+      }
+      c->set_output(1, minmax);
+      c->set_output(2, minmax);
       return Status::OK();
     });
 
@@ -3036,11 +2874,26 @@ REGISTER_OP("Dequantize")
     .Output("output: float")
     .Attr("T: quantizedtype")
     .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'MIN_COMBINED'")
+    .Attr("narrow_range: bool = false")
+    .Attr("axis: int = -1")
     .SetShapeFn([](InferenceContext* c) {
+      int axis = -1;
+      Status s = c->GetAttr("axis", &axis);
+      if (!s.ok() && s.code() != error::NOT_FOUND) {
+        return s;
+      }
+      const int minmax_rank = (axis == -1) ? 0 : 1;
       TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
-      ShapeHandle unused;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      ShapeHandle minmax;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), minmax_rank, &minmax));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), minmax_rank, &minmax));
+      if (axis != -1) {
+        ShapeHandle input;
+        TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), axis + 1, &input));
+        DimensionHandle depth;
+        TF_RETURN_IF_ERROR(
+            c->Merge(c->Dim(minmax, 0), c->Dim(input, axis), &depth));
+      }
       return Status::OK();
     });
 

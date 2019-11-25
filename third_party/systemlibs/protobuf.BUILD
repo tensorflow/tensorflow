@@ -1,8 +1,8 @@
 load(
     "@com_google_protobuf//:protobuf.bzl",
+    "cc_proto_library",
     "proto_gen",
     "py_proto_library",
-    "cc_proto_library",
 )
 
 licenses(["notice"])

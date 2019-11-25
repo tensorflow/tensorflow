@@ -145,16 +145,16 @@ class LinearOperatorDiagTest(
       # Create a batch matrix with the broadcast shape of operator.
       diag_broadcast = array_ops.concat((diag, diag), 1)
       mat = array_ops.matrix_diag(diag_broadcast)
-      self.assertAllEqual((2, 2, 3, 3), mat.get_shape())  # being pedantic.
+      self.assertAllEqual((2, 2, 3, 3), mat.shape)  # being pedantic.
 
       operator_matmul = operator.matmul(x)
       mat_matmul = math_ops.matmul(mat, x)
-      self.assertAllEqual(operator_matmul.get_shape(), mat_matmul.get_shape())
+      self.assertAllEqual(operator_matmul.shape, mat_matmul.shape)
       self.assertAllClose(*self.evaluate([operator_matmul, mat_matmul]))
 
       operator_solve = operator.solve(x)
       mat_solve = linalg_ops.matrix_solve(mat, x)
-      self.assertAllEqual(operator_solve.get_shape(), mat_solve.get_shape())
+      self.assertAllEqual(operator_solve.shape, mat_solve.shape)
       self.assertAllClose(*self.evaluate([operator_solve, mat_solve]))
 
   def test_diag_matmul(self):

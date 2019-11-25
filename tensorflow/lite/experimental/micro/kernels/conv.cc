@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/conv.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/padding.h"
@@ -32,6 +33,7 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
+constexpr int kMaxChannels = 256;
 
 // This file has 2 implementation of Conv.
 
@@ -43,6 +45,11 @@ struct OpData {
   // be represented as a fixed point multiplier plus a left shift.
   int32_t output_multiplier;
   int output_shift;
+
+  // Per channel output multiplier and shift.
+  // TODO(b/141139247): Allocate these dynamically when possible.
+  int32_t per_channel_output_multiplier[kMaxChannels];
+  int32_t per_channel_output_shift[kMaxChannels];
 
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
@@ -67,12 +74,17 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
                              int filter_width, int filter_height, int out_width,
                              int out_height, const TfLiteType data_type,
                              OpData* data) {
-  data->padding.height =
-      ComputePadding(params->stride_height, params->dilation_height_factor,
-                     height, filter_height, out_height);
-  data->padding.width =
-      ComputePadding(params->stride_width, params->dilation_width_factor, width,
-                     filter_width, out_width);
+  bool has_bias = node->inputs->size == 3;
+  // Check number of inputs/outputs
+  TF_LITE_ENSURE(context, has_bias || node->inputs->size == 2);
+  TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
+
+  // Matching GetWindowedOutputSize in TensorFlow.
+  auto padding = params->padding;
+  data->padding = ComputePaddingHeightWidth(
+      params->stride_height, params->stride_width,
+      params->dilation_height_factor, params->dilation_width_factor, height,
+      width, filter_height, filter_width, padding, &out_height, &out_width);
 
   // Note that quantized inference requires that all tensors have their
   // parameters set. This is usually done during quantized training.
@@ -83,16 +95,12 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
         GetOptionalInputTensor(context, node, kBiasTensor);
     TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
-    double real_multiplier = 0.0;
-    TF_LITE_ENSURE_STATUS(GetQuantizedConvolutionMultipler(
-        context, input, filter, bias, output, &real_multiplier));
-    int exponent;
-    QuantizeMultiplier(real_multiplier, &data->output_multiplier, &exponent);
-    data->output_shift = -exponent;
-
-    CalculateActivationRangeQuantized(context, params->activation, output,
-                                      &data->output_activation_min,
-                                      &data->output_activation_max);
+    TF_LITE_ENSURE_STATUS(tflite::PopulateConvolutionQuantizationParams(
+        context, input, filter, bias, output, params->activation,
+        &data->output_multiplier, &data->output_shift,
+        &data->output_activation_min, &data->output_activation_max,
+        data->per_channel_output_multiplier,
+        reinterpret_cast<int*>(data->per_channel_output_shift)));
   }
   return kTfLiteOk;
 }
@@ -139,6 +147,31 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                       GetTensorData<uint8_t>(im2col), nullptr);
 }
 
+void EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
+                             TfLiteConvParams* params, OpData* data,
+                             const TfLiteTensor* input,
+                             const TfLiteTensor* filter,
+                             const TfLiteTensor* bias, TfLiteTensor* output,
+                             TfLiteTensor* im2col) {
+  ConvParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.stride_height = params->stride_height;
+  op_params.stride_width = params->stride_width;
+  op_params.dilation_height_factor = params->dilation_height_factor;
+  op_params.dilation_width_factor = params->dilation_width_factor;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width = data->padding.width;
+
+  reference_integer_ops::ConvPerChannel(
+      op_params, data->per_channel_output_multiplier,
+      data->per_channel_output_shift, GetTensorShape(input),
+      GetTensorData<int8>(input), GetTensorShape(filter),
+      GetTensorData<int8>(filter), GetTensorShape(bias),
+      GetTensorData<int32>(bias), GetTensorShape(output),
+      GetTensorData<int8>(output));
+}
+
 void EvalFloat(TfLiteContext* context, TfLiteNode* node,
                TfLiteConvParams* params, OpData* data,
                const TfLiteTensor* input, const TfLiteTensor* filter,
@@ -183,6 +216,26 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int output_height = output->dims->data[1];
 
   OpData data;
+
+  // All per-channel quantized tensors need valid zero point and scale arrays.
+  if (input->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_EQ(context, filter->quantization.type,
+                      kTfLiteAffineQuantization);
+
+    const auto* affine_quantization =
+        reinterpret_cast<TfLiteAffineQuantization*>(
+            filter->quantization.params);
+    TF_LITE_ENSURE(context, affine_quantization);
+    TF_LITE_ENSURE(context, affine_quantization->scale);
+    TF_LITE_ENSURE(context, affine_quantization->zero_point);
+    // Conv is quantized along dimension 0:
+    // https://www.tensorflow.org/lite/performance/quantization_spec
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->scale->size);
+    TF_LITE_ENSURE_EQ(context, filter->dims->data[0],
+                      affine_quantization->zero_point->size);
+  }
+
   TF_LITE_ENSURE_STATUS(CalculateOpData(
       context, node, params, input_width, input_height, filter_width,
       filter_height, output_width, output_height, input->type, &data));
@@ -192,13 +245,17 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalFloat(context, node, params, &data, input, filter, bias, nullptr,
                 nullptr, output);
       break;
+    case kTfLiteInt8:
+      EvalQuantizedPerChannel(context, node, params, &data, input, filter, bias,
+                              output, nullptr);
+      break;
     case kTfLiteUInt8:
       EvalQuantized(context, node, params, &data, input, filter, bias, nullptr,
                     nullptr, output);
       break;
     default:
-      context->ReportError(context, "Type %d not currently supported.",
-                           input->type);
+      context->ReportError(context, "Type %s (%d) not supported.",
+                           TfLiteTypeGetName(input->type), input->type);
       return kTfLiteError;
   }
   return kTfLiteOk;

@@ -23,7 +23,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace testing {

@@ -71,7 +71,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
     ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
     TypeError: If dtype of the input is `int32` and dtype of
-    the `clip_value_min' or `clip_value_max` is `float32`
+    the `clip_value_min` or `clip_value_max` is `float32`
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -260,9 +260,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Any of the entries of `t_list` that are of type `None` are ignored.
 
-  This is the correct way to perform gradient clipping (for example, see
-  [Pascanu et al., 2012](http://arxiv.org/abs/1211.5063)
-  ([pdf](http://arxiv.org/pdf/1211.5063.pdf))).
+  This is the correct way to perform gradient clipping (Pascanu et al., 2012).
 
   However, it is slower than `clip_by_norm()` because all the parameters must be
   ready before the clipping operation can be performed.
@@ -280,6 +278,11 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
 
   Raises:
     TypeError: If `t_list` is not a sequence.
+
+  References:
+    On the difficulty of training Recurrent Neural Networks:
+      [Pascanu et al., 2012](http://proceedings.mlr.press/v28/pascanu13.html)
+      ([pdf](http://proceedings.mlr.press/v28/pascanu13.pdf))
   """
   if (not isinstance(t_list, collections_abc.Sequence) or
       isinstance(t_list, six.string_types)):

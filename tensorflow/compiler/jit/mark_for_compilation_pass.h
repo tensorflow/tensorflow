@@ -52,10 +52,9 @@ class MarkForCompilationPass : public GraphOptimizationPass {
 // function is compilable iff every operator in the function body is
 // compilable. If 'ndef' is not compilable and 'uncompilable_node_info' is not
 // null, we will populate 'uncompilable_node_info' with uncompilable node info.
-bool IsCompilable(
-    FunctionLibraryRuntime* flr, const NodeDef& ndef,
-    std::vector<RecursiveCompilabilityChecker::UncompilableNodeInfo>*
-        uncompilable_node_info = nullptr);
+bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
+                  RecursiveCompilabilityChecker::UncompilableNodesMap*
+                      uncompilable_node_info = nullptr);
 
 namespace testing {
 // DO NOT USE IN PRODUCTION.

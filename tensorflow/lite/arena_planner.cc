@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/arena_planner.h"
+
+#include <cstdint>
 #include <utility>
 
 namespace tflite {
@@ -40,7 +42,7 @@ ArenaPlanner::ArenaPlanner(TfLiteContext* context,
 
 ArenaPlanner::~ArenaPlanner() {}
 
-int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
+std::intptr_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
   if (type == kTfLiteArenaRwPersistent) {
     return persistent_arena_.BasePointer();
   }
@@ -51,8 +53,8 @@ int64_t ArenaPlanner::BasePointer(TfLiteAllocationType type) {
 }
 
 TfLiteStatus ArenaPlanner::ResetAllocations() {
-  TF_LITE_ENSURE_STATUS(arena_.Clear());
-  TF_LITE_ENSURE_STATUS(persistent_arena_.Clear());
+  TF_LITE_ENSURE_STATUS(arena_.ClearPlan());
+  TF_LITE_ENSURE_STATUS(persistent_arena_.ClearPlan());
   allocs_.clear();
   allocs_.resize(graph_info_->num_tensors());
   // Note that we only clear the alloc_queue_ when re-planning allocations, as
@@ -117,7 +119,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
   // Queue all graph inputs for allocation. If preserve_inputs_ is true, make
   // sure they never be overwritten.
   for (int tensor_index : graph_info_->inputs()) {
-    if (tensor_index != kOptionalTensor) {
+    if (tensor_index != kTfLiteOptionalTensor) {
       if (preserve_inputs_) {
         refcounts[tensor_index]++;
       }
@@ -127,7 +129,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
   // Queue all graph variable tensors for allocation.
   for (int tensor_index : graph_info_->variables()) {
-    if (tensor_index != kOptionalTensor) {
+    if (tensor_index != kTfLiteOptionalTensor) {
       // Increase the reference count for input tensors by one, so it will
       // never be deallocated.
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
@@ -140,7 +142,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
     TfLiteIntArray* node_inputs = node.inputs;
     for (int j = 0; j < node_inputs->size; ++j) {
       int tensor_index = node_inputs->data[j];
-      if (tensor_index != kOptionalTensor) {
+      if (tensor_index != kTfLiteOptionalTensor) {
         refcounts[tensor_index]++;
       }
     }
@@ -148,7 +150,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
 
   // Queue all graph inputs for allocation.
   for (int tensor_index : graph_info_->inputs()) {
-    if (tensor_index != kOptionalTensor) {
+    if (tensor_index != kTfLiteOptionalTensor) {
       TF_LITE_ENSURE_STATUS(allocate(0, tensor_index));
     }
   }
@@ -169,7 +171,7 @@ TfLiteStatus ArenaPlanner::PlanAllocations() {
       TfLiteIntArray* node_inputs = node.inputs;
       for (int j = 0; j < node_inputs->size; ++j) {
         int tensor_index = node_inputs->data[j];
-        if (tensor_index != kOptionalTensor) {
+        if (tensor_index != kTfLiteOptionalTensor) {
           refcounts[tensor_index]--;
           if (refcounts[tensor_index] == 0) {
             TF_LITE_ENSURE_STATUS(deallocate(i, tensor_index));
@@ -202,6 +204,36 @@ TfLiteStatus ArenaPlanner::ExecuteAllocations(int first_node, int last_node) {
   }
 
   return kTfLiteOk;
+}
+
+TfLiteStatus ArenaPlanner::ReleaseNonPersistentMemory() {
+  // Clear non-persistent arena's buffer.
+  TF_LITE_ENSURE_STATUS(arena_.ReleaseBuffer());
+  // Set data pointers for all non-persistent tensors to nullptr.
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+    TfLiteTensor& tensor = *graph_info_->tensor(i);
+    if (tensor.allocation_type == kTfLiteArenaRw) {
+      tensor.data.raw = nullptr;
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus ArenaPlanner::AcquireNonPersistentMemory() {
+  // First commit arena_ to allocate underlying buffer.
+  TF_LITE_ENSURE_STATUS(arena_.Commit(context_));
+  // Resolve allocations for all tensors not on the persistent arena.
+  for (int i = 0; i < static_cast<int>(graph_info_->num_tensors()); ++i) {
+    TfLiteTensor& tensor = *graph_info_->tensor(i);
+    if (tensor.allocation_type == kTfLiteArenaRw) {
+      TF_LITE_ENSURE_STATUS(ResolveTensorAllocation(i));
+    }
+  }
+  return kTfLiteOk;
+}
+
+bool ArenaPlanner::HasNonPersistentMemory() {
+  return arena_.GetBufferSize() != 0;
 }
 
 TfLiteStatus ArenaPlanner::Commit() {

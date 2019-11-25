@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
 
+#include <memory>
+
 #include "tensorflow/core/distributed_runtime/eager/remote_tensor_handle.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -55,6 +57,22 @@ Status RemoteMgr::GetTensorHandle(
   return GetTensorHandleImpl(remote_handle, handle);
 }
 
+Status RemoteMgr::GetMirroredResourceShape(
+    const RemoteTensorHandleInternal& remote_handle,
+    std::vector<DtypeAndPartialTensorShape>* handle) {
+  tf_shared_lock l(mirrored_resource_shape_mu_);
+  auto iter = mirrored_resource_shape_map_.find(remote_handle);
+  if (iter == mirrored_resource_shape_map_.end()) {
+    return errors::InvalidArgument(
+        "Unable to find the relevant mirrored resource shape: Op ID: ",
+        remote_handle.op_id, ", Output num: ", remote_handle.output_num);
+  }
+
+  *handle = iter->second;
+
+  return Status::OK();
+}
+
 Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
                                         int64* op_id, int32* output_num) {
   TF_RETURN_IF_ERROR(
@@ -72,36 +90,36 @@ Status RemoteMgr::GetRemoteTensorHandle(const tensorflow::TensorHandle* handle,
 
 Status RemoteMgr::DeleteTensorHandle(
     const RemoteTensorHandleInternal& remote_handle) {
-  mutex_lock l(remote_tensor_handle_mu_);
-  auto iter = remote_tensor_handle_map_.find(remote_handle);
-  if (iter == remote_tensor_handle_map_.end()) {
-    return errors::InvalidArgument(
-        "Unable to find the relevant tensor remote_handle: Op ID: ",
-        remote_handle.op_id, ", Output num: ", remote_handle.output_num);
+  {
+    mutex_lock l(remote_tensor_handle_mu_);
+    auto iter = remote_tensor_handle_map_.find(remote_handle);
+    if (iter != remote_tensor_handle_map_.end()) {
+      iter->second->Unref();
+      remote_tensor_handle_map_.erase(iter);
+      return Status::OK();
+    }
   }
-
-  iter->second->Unref();
-  remote_tensor_handle_map_.erase(iter);
-
-  return Status::OK();
+  {
+    mutex_lock l(mirrored_resource_shape_mu_);
+    auto iter = mirrored_resource_shape_map_.find(remote_handle);
+    if (iter != mirrored_resource_shape_map_.end()) {
+      mirrored_resource_shape_map_.erase(iter);
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument(
+      "Unable to find the relevant tensor remote_handle: Op ID: ",
+      remote_handle.op_id, ", Output num: ", remote_handle.output_num);
 }
 
-Status RemoteMgr::SerializeRemoteTensorHandle(TensorHandle* in,
-                                              RemoteTensorHandle* out,
-                                              Device* device,
-                                              const string& device_name) {
+Status RemoteMgr::SerializeRemoteTensorHandle(
+    TensorHandle* in, RemoteTensorHandle* out, Device* device,
+    const string& device_name, const bool serialize_resource_dtype_and_shape) {
   int64 op_id;
   int32 output_num;
   if (!in->RemoteAddress(device, &op_id, &output_num).ok()) {
-    mutex_lock l(remote_tensor_handle_mu_);
-    if (!GetRemoteTensorHandle(in, &op_id, &output_num).ok()) {
-      op_id = NextOpId();
-      output_num = 0;
-      in->SetRemoteOpIdAndOutputNumToLocalTensorHandle(op_id, output_num);
-      in->Ref();
-      remote_tensor_handle_map_.emplace(
-          RemoteTensorHandleInternal(op_id, output_num), in);
-    }
+    tf_shared_lock l(remote_tensor_handle_mu_);
+    TF_RETURN_IF_ERROR(GetRemoteTensorHandle(in, &op_id, &output_num));
   }
   out->Clear();
   out->set_op_id(op_id);
@@ -109,6 +127,17 @@ Status RemoteMgr::SerializeRemoteTensorHandle(TensorHandle* in,
   out->set_op_device(in->op_device() ? in->op_device()->name() : "");
   out->set_device(device_name);
   out->set_dtype(in->dtype);
+  if (serialize_resource_dtype_and_shape) {
+    std::vector<DtypeAndPartialTensorShape> resource_dtypes_and_shapes;
+    TF_RETURN_IF_ERROR(
+        in->GetResourceHandleDtypesAndShapes(&resource_dtypes_and_shapes));
+    for (const auto& dtype_and_shape : resource_dtypes_and_shapes) {
+      ResourceDtypeAndShape* dtype_and_shape_proto =
+          out->add_resource_dtypes_and_shapes();
+      dtype_and_shape_proto->set_dtype(dtype_and_shape.dtype);
+      dtype_and_shape.shape.AsProto(dtype_and_shape_proto->mutable_shape());
+    }
+  }
   return Status::OK();
 }
 
@@ -126,17 +155,62 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
-    EagerClient* eager_client;
-    TF_RETURN_IF_ERROR(parent_->GetClient(device, &eager_client));
+    string remote_task;
+    if (!DeviceNameUtils::GetTaskName(device->parsed_name(), &remote_task)) {
+      return errors::InvalidArgument(
+          "Unable to find remote task corresponding to device ", device_name);
+    }
     auto remote_handle_data = absl::make_unique<UnshapedRemoteTensorHandleData>(
-        in.op_id(), in.output_num(), eager_client, parent_->GetContextId(),
+        in.op_id(), in.output_num(), remote_task, parent_->GetContextId(),
         parent_);
     remote_handle_data->ReleaseRemoteTensorHandle();
     TF_RETURN_IF_ERROR(TensorHandle::CreateUnshapedRemoteHandle(
         std::move(remote_handle_data), in.dtype(), device, parent_, out));
+    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
+    if (!GetMirroredResourceShape(RemoteTensorHandleInternal(in),
+                                  &dtypes_and_shapes)
+             .ok()) {
+      for (const auto& dtype_and_shape_proto :
+           in.resource_dtypes_and_shapes()) {
+        dtypes_and_shapes.push_back(DtypeAndPartialTensorShape{
+            dtype_and_shape_proto.dtype(),
+            TensorShape(dtype_and_shape_proto.shape())});
+      }
+      mutex_lock l(mirrored_resource_shape_mu_);
+      mirrored_resource_shape_map_.emplace(
+          RemoteTensorHandleInternal(in.op_id(), in.output_num()),
+          dtypes_and_shapes);
+    }
+    (*out)->SetResourceHandleDtypeAndShape(std::move(dtypes_and_shapes));
   }
 
   return Status::OK();
+}
+
+EagerExecutor& RemoteMgr::GetOrCreateExecutorForStream(uint64 stream_id) {
+  mutex_lock l(executor_map_mu_);
+  auto it = executor_map_.find(stream_id);
+  if (it == executor_map_.end()) {
+    auto it_and_bool = executor_map_.emplace(
+        std::piecewise_construct, std::forward_as_tuple(stream_id),
+        std::forward_as_tuple(/*async=*/true));
+    DCHECK(it_and_bool.second);
+    it = it_and_bool.first;
+  }
+  return it->second;
+}
+
+void RemoteMgr::DeleteExecutorForStream(uint64 stream_id) {
+  mutex_lock l(executor_map_mu_);
+  auto it = executor_map_.find(stream_id);
+  if (it == executor_map_.end()) {
+    return;
+  }
+  Status s = it->second.ShutDown();
+  if (!s.ok()) {
+    LOG(ERROR) << "EagerExecutor shutdown with error " << s.error_message();
+  }
+  executor_map_.erase(it);
 }
 
 }  // namespace eager

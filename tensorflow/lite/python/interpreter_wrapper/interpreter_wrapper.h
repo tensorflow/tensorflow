@@ -46,12 +46,14 @@ class PythonErrorReporter;
 class InterpreterWrapper {
  public:
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromFile(const char* model_path,
-                                                      std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromFile(
+      const char* model_path, const std::vector<std::string>& registerers,
+      std::string* error_msg);
 
   // SWIG caller takes ownership of pointer.
-  static InterpreterWrapper* CreateWrapperCPPFromBuffer(PyObject* data,
-                                                        std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(
+      PyObject* data, const std::vector<std::string>& registerers,
+      std::string* error_msg);
 
   ~InterpreterWrapper();
   PyObject* AllocateTensors();
@@ -65,10 +67,17 @@ class InterpreterWrapper {
   std::string TensorName(int i) const;
   PyObject* TensorType(int i) const;
   PyObject* TensorSize(int i) const;
+  // Deprecated in favor of TensorQuantizationScales, below.
   PyObject* TensorQuantization(int i) const;
+  PyObject* TensorQuantizationParameters(int i) const;
   PyObject* SetTensor(int i, PyObject* value);
   PyObject* GetTensor(int i) const;
   PyObject* ResetVariableTensors();
+
+  int NumNodes() const;
+  std::string NodeName(int i) const;
+  PyObject* NodeInputs(int i) const;
+  PyObject* NodeOutputs(int i) const;
 
   // Returns a reference to tensor index i as a numpy array. The base_object
   // should be the interpreter object providing the memory.
@@ -84,7 +93,7 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateInterpreterWrapper(
       std::unique_ptr<tflite::FlatBufferModel> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
-      std::string* error_msg);
+      const std::vector<std::string>& registerers, std::string* error_msg);
 
   InterpreterWrapper(
       std::unique_ptr<tflite::FlatBufferModel> model,

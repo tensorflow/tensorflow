@@ -62,8 +62,8 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
   MakeOp();
 
   // Feed and run
-  AddInputFromArray<string>(TensorShape({}), {"tag_foo"});
-  AddInputFromArray<string>(TensorShape({}), {"some string tensor content"});
+  AddInputFromArray<tstring>(TensorShape({}), {"tag_foo"});
+  AddInputFromArray<tstring>(TensorShape({}), {"some string tensor content"});
 
   // Create a SummaryMetadata that stores data for 2 plugins.
   SummaryMetadata summary_metadata;
@@ -71,8 +71,8 @@ TEST_F(SummaryTensorOpV2Test, BasicPluginData) {
       summary_metadata.mutable_plugin_data();
   plugin_data->set_plugin_name("foo");
   plugin_data->set_content("content_for_plugin_foo");
-  AddInputFromArray<string>(TensorShape({}),
-                            {summary_metadata.SerializeAsString()});
+  AddInputFromArray<tstring>(TensorShape({}),
+                             {summary_metadata.SerializeAsString()});
 
   TF_ASSERT_OK(RunOpKernel());
 

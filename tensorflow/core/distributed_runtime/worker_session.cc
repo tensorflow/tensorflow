@@ -104,17 +104,16 @@ class WorkerFreeListCache : public WorkerCacheInterface {
 
 }  // namespace
 
-WorkerSession::WorkerSession(const string& session_name,
-                             const string& worker_name,
-                             std::unique_ptr<WorkerCacheInterface> worker_cache,
-                             std::unique_ptr<DeviceMgr> device_mgr,
-                             std::unique_ptr<GraphMgr> graph_mgr,
-                             std::unique_ptr<DeviceMgr> remote_device_mgr)
-    : session_name(session_name),
-      worker_name(worker_name),
-      worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
-      graph_mgr(std::move(graph_mgr)),
-      cluster_flr(new ClusterFunctionLibraryRuntime(
+WorkerSession::WorkerSession(
+    const string& session_name, const string& worker_name,
+    std::unique_ptr<WorkerCacheInterface> worker_cache,
+    std::unique_ptr<DeviceMgr> device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
+    : session_name_(session_name),
+      worker_name_(worker_name),
+      worker_cache_(new WorkerFreeListCache(std::move(worker_cache))),
+      graph_mgr_(std::move(graph_mgr)),
+      cluster_flr_(new ClusterFunctionLibraryRuntime(
           this, !session_name.empty(),
           remote_device_mgr ? remote_device_mgr.get() : nullptr)),
       device_mgr_(std::move(device_mgr)),
@@ -127,29 +126,43 @@ WorkerSession::WorkerSession(const string& session_name,
   monitoring::StartExporter();
 }
 
+Status WorkerSession::UpdateWorkerCacheAndDevices(
+    std::unique_ptr<WorkerCacheInterface> new_worker_cache,
+    std::vector<std::unique_ptr<Device>> added_remote_devices,
+    const std::vector<Device*>& removed_remote_devices) {
+  worker_cache_ = std::unique_ptr<WorkerCacheInterface>(
+      new WorkerFreeListCache(std::move(new_worker_cache)));
+  TF_RETURN_IF_ERROR(remote_device_mgr_->RemoveDevices(removed_remote_devices));
+  TF_RETURN_IF_ERROR(
+      remote_device_mgr_->AddDevices(std::move(added_remote_devices)));
+  cluster_flr_ = std::unique_ptr<ClusterFunctionLibraryRuntime>(
+      new ClusterFunctionLibraryRuntime(this, !session_name_.empty(),
+                                        remote_device_mgr()));
+  return Status::OK();
+}
+
 /* static */
 std::shared_ptr<WorkerSession> WorkerSession::CreateWithBorrowedDeviceMgr(
     const string& session_name, const string& worker_name,
     std::unique_ptr<WorkerCacheInterface> worker_cache,
     DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
-    std::unique_ptr<DeviceMgr> remote_device_mgr) {
+    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr) {
   return std::shared_ptr<WorkerSession>(new WorkerSession(
       session_name, worker_name, std::move(worker_cache), borrowed_device_mgr,
       std::move(graph_mgr), std::move(remote_device_mgr)));
 }
 
-WorkerSession::WorkerSession(const string& session_name,
-                             const string& worker_name,
-                             std::unique_ptr<WorkerCacheInterface> worker_cache,
-                             DeviceMgr* borrowed_device_mgr,
-                             std::unique_ptr<GraphMgr> graph_mgr,
-                             std::unique_ptr<DeviceMgr> remote_device_mgr)
-    : session_name(session_name),
-      worker_name(worker_name),
-      worker_cache(new WorkerFreeListCache(std::move(worker_cache))),
-      graph_mgr(std::move(graph_mgr)),
-      cluster_flr(new ClusterFunctionLibraryRuntime(this, !session_name.empty(),
-                                                    remote_device_mgr.get())),
+WorkerSession::WorkerSession(
+    const string& session_name, const string& worker_name,
+    std::unique_ptr<WorkerCacheInterface> worker_cache,
+    DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+    std::unique_ptr<DynamicDeviceMgr> remote_device_mgr)
+    : session_name_(session_name),
+      worker_name_(worker_name),
+      worker_cache_(new WorkerFreeListCache(std::move(worker_cache))),
+      graph_mgr_(std::move(graph_mgr)),
+      cluster_flr_(new ClusterFunctionLibraryRuntime(
+          this, !session_name.empty(), remote_device_mgr.get())),
       device_mgr_(nullptr),
       borrowed_device_mgr_(borrowed_device_mgr),
       remote_device_mgr_(std::move(remote_device_mgr)) {
@@ -161,8 +174,8 @@ WorkerSession::WorkerSession(const string& session_name,
 }
 
 WorkerSession::~WorkerSession() {
-  if (graph_mgr) {
-    Status s = graph_mgr->DeregisterAll();
+  if (graph_mgr_) {
+    Status s = graph_mgr_->DeregisterAll();
     if (!s.ok()) {
       LOG(WARNING) << "Error during worker session deletion: " << s;
     }

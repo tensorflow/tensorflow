@@ -307,7 +307,9 @@ class FakeITensor : public nvinfer1::ITensor {
 
   nvinfer1::TensorFormats getAllowedFormats() const override { return 1; }
 
-  bool isShape() const override { return false; }
+  bool isShapeTensor() const override { return false; }
+  bool isExecutionTensor() const override { return true; }
+
 #endif
 
  private:
@@ -653,9 +655,10 @@ class ConverterTest : public ::testing::Test {
 
   void Reset() {
     builder_.reset(nvinfer1::createInferBuilder(logger_));
-    network_.reset(builder_->createNetwork());
-    converter_.reset(new Converter(network_.get(), TrtPrecisionMode::FP32,
-                                   /*use_calibration=*/false));
+    converter_ =
+        std::move(Converter::Create(builder_.get(), TrtPrecisionMode::FP32,
+                                    /*use_calibration=*/false, &logger_)
+                      .ValueOrDie());
     weight_store_ = &converter_->weight_store_;
   }
 
@@ -700,9 +703,8 @@ class ConverterTest : public ::testing::Test {
  private:
   Logger logger_;
   // These members are ordered in a way such that the destruction order is:
-  // converter_ -> network_ -> builder_
+  // converter_ -> builder_
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
-  TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
 
  protected:
   std::unique_ptr<Converter> converter_;
@@ -993,16 +995,20 @@ TEST_F(ConverterTest, MaybeApplyQuantizationRanges) {
   // input -> infer1 -> infer2 -> infer3
   FakeITensor input, infer_1, infer_2, infer_3;
   FakeITensor not_infer;
-  Converter int8_converter(/*trt_network=*/nullptr, TrtPrecisionMode::INT8,
-                           /*use_calibration=*/true);
-  int8_converter.ProvideQuantizationRange(&input, -5.0f, 5.0f);
-  int8_converter.ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
-  int8_converter.MarkQuantizationRangesAsInferrable(&input, &infer_1);
-  int8_converter.MarkQuantizationRangesAsInferrable(&infer_1, &infer_2);
-  int8_converter.MarkQuantizationRangesAsInferrable(&infer_2, &infer_3);
+  Logger logger;
+  TrtUniquePtrType<nvinfer1::IBuilder> builder(
+      nvinfer1::createInferBuilder(logger));
+  auto int8_converter = Converter::Create(builder.get(), TrtPrecisionMode::INT8,
+                                          /*use_calibration=*/true, &logger)
+                            .ValueOrDie();
+  int8_converter->ProvideQuantizationRange(&input, -5.0f, 5.0f);
+  int8_converter->ProvideQuantizationRange(&not_infer, -100.0f, 100.0f);
+  int8_converter->MarkQuantizationRangesAsInferrable(&input, &infer_1);
+  int8_converter->MarkQuantizationRangesAsInferrable(&infer_1, &infer_2);
+  int8_converter->MarkQuantizationRangesAsInferrable(&infer_2, &infer_3);
 
   // Input range should be inferred along the chain and applied to tensors.
-  int8_converter.MaybeApplyQuantizationRanges();
+  int8_converter->MaybeApplyQuantizationRanges();
 #if IS_TRT_VERSION_GE(5, 0, 0, 0)
   EXPECT_EQ(input.getDynamicRange(), 5.0f);
   EXPECT_EQ(infer_1.getDynamicRange(), 5.0f);
@@ -1244,18 +1250,19 @@ class OpConverterTest : public ::testing::Test {
   }
 
   void Reset() {
+    // Destroy existing TRT objects in a proper order.
     converter_.reset(nullptr);
-
-    // Reset the INetworkDefinition.
     engine_.reset(nullptr);
-    network_.reset(nullptr);
+
+    // Re-create them in proper order.
     builder_.reset(nvinfer1::createInferBuilder(logger_));
-    network_.reset(builder_->createNetwork());
     builder_->setMaxWorkspaceSize(1 << 26);
 
     // Reset the converter.
-    converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
-                                   /*use_calibration=*/false));
+    converter_ =
+        std::move(Converter::Create(builder_.get(), precision_mode_to_test_,
+                                    /*use_calibration=*/false, &logger_)
+                      .ValueOrDie());
 
     // Reset other related artifacts.
     scope_ = Scope::NewRootScope();
@@ -1298,7 +1305,7 @@ class OpConverterTest : public ::testing::Test {
     }
     ASSERT_EQ(nullptr, engine_.get());
     builder_->setMaxBatchSize(batch_size);
-    engine_.reset(builder_->buildCudaEngine(*converter_->network()));
+    TF_ASSERT_OK(converter_->BuildCudaEngine(&engine_));
     CHECK_NOTNULL(engine_.get());
     CheckDataTypeMatches(input_data);
     CheckDataTypeMatches(*output_data);
@@ -1467,7 +1474,6 @@ class OpConverterTest : public ::testing::Test {
  private:
   Logger logger_;
   TrtUniquePtrType<nvinfer1::IBuilder> builder_;
-  TrtUniquePtrType<nvinfer1::INetworkDefinition> network_;
   TrtUniquePtrType<nvinfer1::ICudaEngine> engine_;
   cudaStream_t stream_;
   // Used to create placeholders with shape and data type information. The
@@ -2609,8 +2615,7 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     EXPECT_THAT(GetSpanForData<int32>(output_data[3]), ElementsAre(2));
   }
 }
-
-#endif  // CombinedNonMaxSuppression
+#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
 
 TEST_F(OpConverterTest, ConvertActivation) {
   {
@@ -3975,6 +3980,529 @@ TEST_F(OpConverterTest, ConvertConv2D) {
                 ElementsAreArray(ok_params[i].expected_output));
   }
 }
+
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+TEST_F(OpConverterTest, ConvertConv3D) {
+  // Get nodedef for Conv3D layer.
+  auto get_conv3d_nodedef =
+      [](std::vector<int> strides = {1, 1, 1, 1, 1}, string padding = "SAME",
+         string data_format = "NCDHW",
+         std::vector<int> dilations = {1, 1, 1, 1, 1},
+         bool is_conv3d_backprop_input = false) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto filter = ops::Placeholder(s.WithOpName("weights"), DT_FLOAT);
+
+    if (is_conv3d_backprop_input) {
+      auto input_sizes =
+          ops::Placeholder(s.WithOpName("input_sizes"), DT_INT32);
+      ops::Conv3DBackpropInputV2::Attrs attrs =
+          ops::Conv3DBackpropInputV2::Attrs()
+              .DataFormat(data_format)
+              .Dilations(dilations);
+      auto conv3d =
+          ops::Conv3DBackpropInputV2(s.WithOpName("my_conv3d"), input_sizes,
+                                     filter, input, strides, padding, attrs);
+      return conv3d.operation.node()->def();
+    } else {
+      ops::Conv3D::Attrs attrs =
+          ops::Conv3D::Attrs().DataFormat(data_format).Dilations(dilations);
+      auto conv3d = ops::Conv3D(s.WithOpName("my_conv3d"), input, filter,
+                                strides, padding, attrs);
+      return conv3d.operation.node()->def();
+    }
+  };
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_conv3d_nodedef();
+
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for Conv3D must be a tensor, at my_conv3d");
+  }
+  {
+    // Filter is tensor, should fail.
+    Reset();
+    NodeDef node_def = get_conv3d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestTensor("weights", {3, 3, 1, 1, 3, 3, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"filter\" for Conv3D must be a constant, at my_conv3d");
+  }
+  {
+    // Filter is not 5D, should fail.
+    Reset();
+    NodeDef node_def = get_conv3d_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Conv3D expects kernel of dimension 5, at my_conv3d");
+  }
+  {
+    // Dilations is not 5D, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>(
+        "weights", {3, 3, 1, 1, 1},
+        {1, 2, 3, 4, 5, 6, 7, 8, 9});  // Dimensions, then values
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution dilations field must specify 5 dimensions, at my_conv3d");
+  }
+  {
+    // Dilation value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NCDHW", {1, 2, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
+                          {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation rate must be 1 for batch and channel "
+                               "dimensions, at my_conv3d");
+  }
+  {
+    // Dilation value is not 1 for channel (NDHWC), should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NDHWC", {1, 1, 1, 1, 2});
+    AddTestTensor("input", {2, 3, 1});
+    AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
+                          {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation rate must be 1 for batch and channel "
+                               "dimensions, at my_conv3d");
+  }
+  {
+    // Dilation + Conv3DBackpropInputV2, should fail.
+    Reset();
+    NodeDef node_def = get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
+                                          {1, 1, 2, 1, 1}, true);
+    AddTestTensor("input", {2, 3, 1});
+    AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
+                          {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    AddTestWeights<int>("input_sizes", {4}, {1, 2, 3, 1});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Dilation with Conv3DBackpropInputV2 "
+                               "(conv3d_transpose) is not supported, "
+                               "at my_conv3d");
+  }
+  {
+    // Asymmetric+ Conv3DBackpropInputV2, should fail.
+    Reset();
+    NodeDef node_def = get_conv3d_nodedef({1, 1, 1, 1, 1}, "SAME", "NDHWC",
+                                          {1, 1, 1, 1, 1}, true);
+    AddTestTensor("input", {1, 2, 2, 2});
+    AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
+    AddTestWeights<int>("input_sizes", {8}, {1, 2, 3, 4, 5, 6, 7, 8});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Asymmetric padding with Conv3DBackpropInputV2 "
+                               "(conv3d_transpose) is not supported, at "
+                               "my_conv3d");
+  }
+  {
+    // Strides is not 5D, should fail.
+    Reset();
+    NodeDef node_def = get_conv3d_nodedef({1, 1, 1, 1, 1, 1}, "SAME", "NCDHW",
+                                          {1, 1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 2, 2});
+    AddTestWeights<float>("weights", {1, 1, 2, 1, 1}, {1, 1});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "Convolution strides field must specify 5 dimensions, at my_conv3d");
+  }
+  {
+    // Stride value is not 1 for channel, should fail.
+    Reset();
+    NodeDef node_def =
+        get_conv3d_nodedef({1, 2, 1, 1, 1}, "SAME", "NCDHW", {1, 1, 1, 1, 1});
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<float>("weights", {3, 3, 1, 1, 1},
+                          {1, 2, 3, 4, 5, 6, 7, 8, 9});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "Stride must be 1 for batch and channel dimensions, at my_conv3d");
+  }
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<float> input;
+    std::vector<int> filter_dims;
+    std::vector<float> filter;
+    std::vector<int> strides;
+    string padding;
+    string data_format;
+    std::vector<int> dilations;
+    bool is_conv3d_backprop_input;
+    std::vector<int> expected_output_dims;
+    std::vector<float> expected_output;
+  };
+
+  // Start here
+  const int kConv3DOKCases = 8;
+  TestParams ok_params[kConv3DOKCases] = {
+      // Basic - just 1x1 conv - input = output
+      TestParams{
+          /*input_dims=*/{1, 3, 3, 3},  // CDHW
+          /*input=*/{1, 2,  15,  3, 6,  -3, 22, 1, 88, 56, 36, 1,  1, 105,
+                     1, 16, -28, 1, 42, 9,  3,  1, 7,  1,  11, 61, 5},
+          /*filter_dims=*/{1, 1, 1, 1, 1},  // DRSCK
+          /*filter=*/{1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop_input=*/false,
+          /*expected_output_dims=*/{1, 3, 3, 3},
+          /*expected_output=*/{1,  2,  15, 3, 6,   -3, 22, 1,   88,
+                               56, 36, 1,  1, 105, 1,  16, -28, 1,
+                               42, 9,  3,  1, 7,   1,  11, 61,  5}},
+      // Basic - 2x1 filter
+      TestParams{/*input_dims=*/{1, 3, 3, 3},  // CDHW
+                 /*input=*/{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+                            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 6},
+                 /*filter_dims=*/{2, 1, 1, 1, 1},  // DRSCK
+                 /*filter=*/{1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*dilations=*/{1, 1, 1, 1, 1},
+                 /*is_conv3d_backprop_input=*/false,
+                 /*expected_output_dims=*/{1, 2, 3, 3},
+                 /*expected_output=*/
+                 {2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 7}},
+      // SAME padding (Asymmetric)
+      TestParams{
+          /*input_dims=*/{1, 2, 3, 2},  // CDHW
+          /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+          /*filter_dims=*/{2, 1, 1, 1, 1},  // DRSCK
+          /*filter=*/{-1, 1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"SAME",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop_input=*/false,
+          /*expected_output_dims=*/{1, 2, 3, 2},
+          /*expected_output=*/
+          {6, 6, 6, 6, 6, 6, -6, -7, -8, -9, -10,
+           -11}  // Diff in first 2 depths is const 6
+      },
+      // SAME padding (Symmetric)
+      TestParams{
+          /*input_dims=*/{1, 2, 3, 2},  // CDHW
+          /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+          /*filter_dims=*/{3, 1, 1, 1, 1},  // DRSCK
+          /*filter=*/{-1, 0, 1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"SAME",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop_input=*/false,
+          /*expected_output_dims=*/{1, 2, 3, 2},
+          /*expected_output=*/
+          {6, 7, 8, 9, 10, 11, 0, -1, -2, -3, -4,
+           -5}  // Swaps front two depths, negates
+      },
+
+      // NDHWC (multi-channel)
+      TestParams{
+          /*input_dims=*/{2, 3, 2, 2},  // DHWC
+          /*input=*/{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
+                     0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11},
+          /*filter_dims=*/{2, 1, 1, 2, 1},  // DRSCK
+          /*filter=*/{-1, 1, 1, -1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NDHWC",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop_input=*/false,
+          /*expected_output_dims=*/{1, 3, 2, 1},
+          /*expected_output=*/{0, 0, 0, 0, 0, 0}  // Each filter opposes the
+                                                  // other
+      },
+
+      // Dilated
+      TestParams{
+          /*input_dims=*/{1, 3, 3, 3},  // CDHW
+          /*input=*/{1,   1,   1,   1,   1, 1, 1, 1, 1, -10, -10, -10, -10, -10,
+                     -10, -10, -10, -10, 7, 7, 7, 7, 7, 7,   7,   7,   7},
+          /*filter_dims=*/{2, 1, 1, 1, 1},  // DRSCK
+          /*filter=*/{1, 1},
+          /*strides=*/{1, 1, 1, 1, 1},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 2, 1, 1},
+          /*is_conv3d_backprop_input=*/false,
+          /*expected_output_dims=*/{1, 1, 3, 3},
+          /*expected_output=*/{8, 8, 8, 8, 8, 8, 8, 8, 8}  // Only front depth
+                                                           // is valid, skips
+                                                           // neg values
+      },
+      // Strided
+      TestParams{
+          /*input_dims=*/{1, 3, 3, 3},
+          /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8},
+          /*filter_dims=*/{1, 1, 1, 1, 1},
+          /*filter=*/{1},
+          /*strides=*/{1, 1, 2, 2, 2},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*dilations=*/{1, 1, 1, 1, 1},
+          /*is_conv3d_backprop_input=*/false,
+          /*expected_output_dims=*/{1, 2, 2, 2},
+          /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8}  // Should only pick up
+                                                        // the corners
+      },
+      // Transpose Strided
+      TestParams{/*input_dims=*/{1, 2, 2, 2},  // CDHW
+                 /*input=*/{1, 2, 3, 4, 5, 6, 7, 8},
+                 /*filter_dims=*/{1, 1, 1, 1, 1},
+                 /*filter=*/{1},
+                 /*strides=*/{1, 1, 2, 2, 2},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*dilations=*/{1, 1, 1, 1, 1},
+                 /*is_conv3d_backprop_input=*/true,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/
+                 {1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
+                  0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8}},  // Cube
+                                                            // expands and
+                                                            // fills
+                                                            // center with
+                                                            // zeroes
+
+  };
+
+  for (int i = 0; i < kConv3DOKCases; i++) {
+    Reset();
+    NodeDef node_def = get_conv3d_nodedef(
+        ok_params[i].strides, ok_params[i].padding, ok_params[i].data_format,
+        ok_params[i].dilations, ok_params[i].is_conv3d_backprop_input);
+    AddTestTensor("input", ok_params[i].input_dims);
+    AddTestWeights<float>("weights", ok_params[i].filter_dims,
+                          ok_params[i].filter);
+    if (ok_params[i].is_conv3d_backprop_input) {
+      AddTestWeights<float>(
+          "input_sizes",
+          {static_cast<int>(ok_params[i].expected_output.size())},
+          ok_params[i].expected_output);
+    }
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_conv3d", &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    const DataVec input_data{
+        {"input", test::AsTensor<float>(ok_params[i].input)}};
+    DataVec output_data{
+        {"my_conv3d",
+         ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertPool3D) {
+  // Get nodedef for MaxPool3D and AvgPool3D layers.
+  auto get_pool3d_nodedef = [](std::vector<int> ksize = {1, 1, 1, 1, 1},
+                               std::vector<int> strides = {1, 1, 1, 1, 1},
+                               string padding = "SAME",
+                               string data_format = "NCDHW",
+                               const bool is_max_pooling = true) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+
+    if (is_max_pooling) {
+      ops::MaxPool3D::Attrs attrs =
+          ops::MaxPool3D::Attrs().DataFormat(data_format);
+      auto pool3d = ops::MaxPool3D(s.WithOpName("my_maxpool3d"), input, ksize,
+                                   strides, padding, attrs);
+      return pool3d.operation.node()->def();
+    } else {
+      ops::AvgPool3D::Attrs attrs =
+          ops::AvgPool3D::Attrs().DataFormat(data_format);
+      auto pool3d = ops::AvgPool3D(s.WithOpName("my_avgpool3d"), input, ksize,
+                                   strides, padding, attrs);
+      return pool3d.operation.node()->def();
+    }
+  };
+
+  {
+    // Input is weights, should fail.
+    Reset();
+    NodeDef node_def = get_pool3d_nodedef();
+
+    AddTestWeights<float>("input", {1, 2, 3}, {1, 2, 3, 4, 5, 6});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"input\" for MaxPool3D must be a tensor, at my_maxpool3d");
+  }
+
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<float> input;
+    std::vector<int> ksize;
+    std::vector<int> strides;
+    string padding;
+    string data_format;
+    bool is_max_pooling;
+    std::vector<int> expected_output_dims;
+    std::vector<float> expected_output;
+  };
+
+  // Start here
+  const std::vector<float> common_array{-4, 2,  15, 3, 6,   -3, 22, 1,   88,
+                                        56, 36, 1,  1, 105, 1,  16, -28, 1,
+                                        42, 9,  3,  1, 7,   1,  11, 61,  5};
+  const int kPool3DOKCases = 10;
+  TestParams ok_params[kPool3DOKCases] = {
+      // Basic - just 1x1 max pooling - input = output
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // Basic - just 1x1 avg pooling - input = output
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // Basic - just 1x1 max pooling - input = output, SAME padding
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"SAME",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // Basic - just 1x1 avg pooling - input = output, SAME padding
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 1, 1, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 3, 3, 3},
+                 /*expected_output=*/common_array},
+      // 3x3 max pooling
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 3, 3, 3},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{105}},
+      // 3x3 avg pooling
+      TestParams{/*input_dims=*/{1, 3, 3, 3},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 1, 3, 3, 3},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NCDHW",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{17}},
+      // 3x3 max pooling, NDHWC
+      TestParams{/*input_dims=*/{3, 3, 3, 1},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 3, 3, 3, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NDHWC",
+                 /*is_max_pooling=*/true,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{105}},
+      // 3x3 avg pooling, NDHWC
+      TestParams{/*input_dims=*/{3, 3, 3, 1},
+                 /*input=*/common_array,
+                 /*ksize=*/{1, 3, 3, 3, 1},
+                 /*strides=*/{1, 1, 1, 1, 1},
+                 /*padding=*/"VALID",
+                 /*data_format=*/"NDHWC",
+                 /*is_max_pooling=*/false,
+                 /*expected_output_dims=*/{1, 1, 1, 1},
+                 /*expected_output=*/{17}},
+      // Strided max
+      TestParams{
+          /*input_dims=*/{1, 3, 3, 3},
+          /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8},
+          /*ksize=*/{1, 1, 1, 1, 1},
+          /*strides=*/{1, 1, 2, 2, 2},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*is_max_pooling=*/true,
+          /*expected_output_dims=*/{1, 2, 2, 2},
+          /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8}  // Should only pick up
+                                                        // the corners
+      },
+      // Strided avg
+      TestParams{
+          /*input_dims=*/{1, 3, 3, 3},
+          /*input=*/{1, 0, 2, 0, 0, 0, 3, 0, 4, 0, 0, 0, 0, 0,
+                     0, 0, 0, 0, 5, 0, 6, 0, 0, 0, 7, 0, 8},
+          /*ksize=*/{1, 1, 1, 1, 1},
+          /*strides=*/{1, 1, 2, 2, 2},
+          /*padding=*/"VALID",
+          /*data_format=*/"NCDHW",
+          /*is_max_pooling=*/false,
+          /*expected_output_dims=*/{1, 2, 2, 2},
+          /*expected_output=*/{1, 2, 3, 4, 5, 6, 7, 8}  // Should only pick up
+                                                        // the corners
+      }};
+
+  for (int i = 0; i < kPool3DOKCases; i++) {
+    Reset();
+    NodeDef node_def = get_pool3d_nodedef(
+        ok_params[i].ksize, ok_params[i].strides, ok_params[i].padding,
+        ok_params[i].data_format, ok_params[i].is_max_pooling);
+    AddTestTensor("input", ok_params[i].input_dims);
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    string expected_node_name =
+        ok_params[i].is_max_pooling ? "my_maxpool3d" : "my_avgpool3d";
+    TF_EXPECT_OK(GetTensorOrWeights(expected_node_name, &output));
+    ASSERT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    const DataVec input_data{
+        {"input", test::AsTensor<float>(ok_params[i].input)}};
+    DataVec output_data{
+        {expected_node_name,
+         ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+#endif  // IS_TRT_VERSION_GE(6, 0, 0, 0)
 
 TEST_F(OpConverterTest, ConvertTopK) {
   // TODO(tmorris): This test isn't setting the input dtype properly. TopK with

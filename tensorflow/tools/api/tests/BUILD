@@ -25,7 +25,7 @@ py_test(
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",
     ],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -46,7 +46,7 @@ py_test(
 py_test(
     name = "deprecation_test",
     srcs = ["deprecation_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["v1only"],
     deps = [

@@ -90,6 +90,9 @@ class Topology(object):
 
     self._topology_tasks, self._topology_devices = self._invert_topology()
 
+    # Coordinates of devices that are missing
+    self._missing_devices = np.argwhere(self._topology_tasks < 0)
+
   def _parse_topology(self, serialized):
     """Parses a serialized `TopologyProto` into `self`."""
     proto = topology_pb2.TopologyProto()
@@ -159,6 +162,11 @@ class Topology(object):
       dimensions `(x, y, core number)`.
     """
     return self._device_coordinates
+
+  @property
+  def missing_devices(self):
+    """Array of indices of missing devices."""
+    return self._missing_devices
 
   def task_ordinal_at_coordinates(self, device_coordinates):
     """Returns the TensorFlow task number attached to `device_coordinates`.

@@ -117,7 +117,7 @@ struct FunctionTypeStorage : public TypeStorage {
   Type const *inputsAndResults;
 };
 
-/// VectorOrTensor Type Storage.
+/// Shaped Type Storage.
 struct ShapedTypeStorage : public TypeStorage {
   ShapedTypeStorage(Type elementType, unsigned subclassData = 0)
       : TypeStorage(subclassData), elementType(elementType) {}

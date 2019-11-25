@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -canonicalize | FileCheck %s
+// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // CHECK-LABEL: func @tfAssertTrue
 func @tfAssertTrue(%arg0: tensor<1x1x6x2xf32>) {
@@ -14,6 +14,24 @@ func @tfAssertFalse(%arg0: tensor<1x1x6x2xf32>) {
   // CHECK: tf.Assert
   "tf.Assert"(%f, %arg0) {summarize = 3} : (tensor<i1>, tensor<1x1x6x2xf32>) -> ()
   return
+}
+
+// CHECK-LABEL: testBatchMatMulToMatMul
+func @testBatchMatMulToMatMul(%arg0: tensor<2x3xf32>, %arg1: tensor<3x2xf32>) -> tensor<2x2xf32> {
+  %0 = "tf.BatchMatMul"(%arg0, %arg1) {adj_x = false, adj_y = false} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
+  return %0: tensor<2x2xf32>
+
+// CHECK: %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = false, transpose_b = false} : (tensor<2x3xf32>, tensor<3x2xf32>) -> tensor<2x2xf32>
+// CHECK: return %0
+}
+
+// CHECK-LABEL: testBatchMatMulV2ToMatMul
+func @testBatchMatMulV2ToMatMul(%arg0: tensor<4x3xf32>, %arg1: tensor<4x5xf32>) -> tensor<3x5xf32> {
+  %0 = "tf.BatchMatMulV2"(%arg0, %arg1) {adj_x = true, adj_y = false} : (tensor<4x3xf32>, tensor<4x5xf32>) -> tensor<3x5xf32>
+  return %0: tensor<3x5xf32>
+
+// CHECK: %0 = "tf.MatMul"(%arg0, %arg1) {transpose_a = true, transpose_b = false} : (tensor<4x3xf32>, tensor<4x5xf32>) -> tensor<3x5xf32>
+// CHECK: return %0
 }
 
 // CHECK-LABEL: func @testLeakyRelu
@@ -186,10 +204,10 @@ func @testAddV2OfNegRight(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> t
 }
 
 // CHECK-LABEL: testDoubleConj
-func @testDoubleConj(%arg0: tensor<8x16x32x64x!tf.complex64>) -> tensor<8x16x32x64x!tf.complex64> {
-  %0 = "tf.Conj"(%arg0) : (tensor<8x16x32x64x!tf.complex64>) -> tensor<8x16x32x64x!tf.complex64>
-  %1 = "tf.Conj"(%0) : (tensor<8x16x32x64x!tf.complex64>) -> tensor<8x16x32x64x!tf.complex64>
-  return %1: tensor<8x16x32x64x!tf.complex64>
+func @testDoubleConj(%arg0: tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>> {
+  %0 = "tf.Conj"(%arg0) : (tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>>
+  %1 = "tf.Conj"(%0) : (tensor<8x16x32x64xcomplex<f32>>) -> tensor<8x16x32x64xcomplex<f32>>
+  return %1: tensor<8x16x32x64xcomplex<f32>>
 
 // CHECK: return %arg0
 }
@@ -236,8 +254,8 @@ func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) ->
   %1 = "tf.LogicalNot"(%0) : (tensor<8x16xi1>) -> tensor<8x16xi1>
   return %1: tensor<8x16xi1>
 
-// CHECK: %0 = "tf.NotEqual"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
-// CHECK: return %0
+// CHECK: %[[NE:.*]] = "tf.NotEqual"(%arg0, %arg1) {incompatible_shape_error = true}
+// CHECK: return %[[NE]]
 }
 
 // CHECK-LABEL: testLogicalNotOfNotEqual
@@ -246,8 +264,8 @@ func @testLogicalNotOfNotEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>)
   %1 = "tf.LogicalNot"(%0) : (tensor<8x16xi1>) -> tensor<8x16xi1>
   return %1: tensor<8x16xi1>
 
-// CHECK: %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
-// CHECK: return %0
+// CHECK: %[[NE:.*]] = "tf.Equal"(%arg0, %arg1) {incompatible_shape_error = true}
+// CHECK: return %[[NE]]
 }
 
 // CHECK-LABEL: testLogicalNotOfGreater
@@ -332,4 +350,24 @@ func @testXdivyWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>)
 // CHECK: %0 = "tf.Rsqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: %1 = "tf.MulNoNan"(%0, %arg0) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xf32>
 // CHECK: return %1
+}
+
+// CHECK-LABEL: @identityTranspose
+func @identityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x5x6xf32> {
+  %0 = "tf.Const"() {value = dense<[0, 1, 2, 3, 4]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x5x6xf32>
+
+  return %1 : tensor<2x3x4x5x6xf32>
+  // CHECK: return %arg0
+}
+
+// CHECK-LABEL: @nonIdentityTranspose
+func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32> {
+  %0 = "tf.Const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x6x5xf32>
+
+  return %1 : tensor<2x3x4x6x5xf32>
+  // CHECK: %0 = "tf.Const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
+  // CHECK: %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x6x5xf32>
+  // CHECK: return %1
 }

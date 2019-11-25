@@ -205,6 +205,10 @@ class GatherTest(test.TestCase, parameterized.TestCase):
     gather_t = array_ops.gather(params, indices, axis=axis)
     self.assertEqual(None, gather_t.shape)
 
+  @test_util.disable_xla(
+      "Assertion inside an op is not supported in XLA. Instead XLA clamps the "
+      "index to be in bounds and returns the indexed value there (Don't rely "
+      "on this behavior).")
   def testBadIndicesCPU(self):
     with test_util.force_cpu():
       params = [[0, 1, 2], [3, 4, 5]]
@@ -305,6 +309,19 @@ class GatherTest(test.TestCase, parameterized.TestCase):
           params=[[[100, 101], [110, 111]], [[200, 201], [210, 211]]],
           indices=[[[0, 1], [1, 0]], [[0, 0], [1, 1]]],
           expected=[[[100, 101], [111, 110]], [[200, 200], [211, 211]]]),
+
+      # batch_dims=indices.shape.ndims
+      dict(  # 1D indices (1 batch dim)
+          batch_dims=1,
+          params=[[10, 11, 12, 13], [20, 21, 22, 23]],
+          indices=[2, 1],
+          expected=[12, 21]),
+      dict(  # 2D indices (2 batch dim)
+          batch_dims=2,
+          params=[[[100, 101, 102, 103], [110, 111, 112, 113]],
+                  [[200, 201, 202, 203], [210, 211, 212, 213]]],
+          indices=[[2, 1], [0, 3]],
+          expected=[[102, 111], [200, 213]]),
 
       # 0 < batch_dims < indices.shape.ndims - 1
       dict(  # 3D indices (1 batch dim)

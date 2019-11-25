@@ -29,7 +29,8 @@ typedef Eigen::GpuDevice Device;
 template <typename T>
 __global__ void DoParallelConcatOpKernel(int nthreads, const int64 rows,
                                          const int64 cols, int32 loc,
-                                         const T* src, T* dst) {
+                                         const T* __restrict__ src,
+                                         T* __restrict__ dst) {
   GPU_1D_KERNEL_LOOP(idx, nthreads) {
     int64 c = idx % cols;
     int64 r = (loc % rows + rows) % rows;  // Guard index range.
@@ -80,8 +81,10 @@ Status DoParallelConcat(const Device& d, const Tensor& value, int32 loc,
 
 template <typename T, InplaceOpType op>
 __global__ void DoInplaceOpKernel(int nthreads, const int64 rows,
-                                  const int64 cols, const int64 n, const T* src,
-                                  const int32* rowids, T* dst) {
+                                  const int64 cols, const int64 n,
+                                  const T* __restrict__ src,
+                                  const int32* __restrict__ rowids,
+                                  T* __restrict__ dst) {
   GPU_1D_KERNEL_LOOP(idx, nthreads) {
     int64 r = idx / cols;
     int64 c = idx % cols;

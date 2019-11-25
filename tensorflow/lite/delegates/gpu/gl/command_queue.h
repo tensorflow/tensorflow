@@ -38,6 +38,9 @@ class CommandQueue {
   virtual Status Dispatch(const GlProgram& program,
                           const uint3& workgroups) = 0;
 
+  // Called at the end of dispatching of all programs.
+  virtual Status Flush() = 0;
+
   // Waits until all programs dispatched prior this call are completed.
   virtual Status WaitForCompletion() = 0;
 };
