@@ -36,6 +36,7 @@ from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import ag_ctx
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
+from tensorflow.python.autograph.impl import conversion
 from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
@@ -771,6 +772,35 @@ class ApiTest(test.TestCase):
     # If api.convert placed test_fn in the unconverted cache, this second
     # invocation would fail.
     self.assertEqual(self.evaluate(call_in_default_context()), 1)
+
+  def test_converted_call_caching_of_whitelisted_bound_methods(self):
+
+    class TestClass(object):
+
+      def __init__(self):
+        self.__private = constant_op.constant(-1)
+
+      def test_method(self):
+        return self.__private
+
+    # TODO(mdan): Refactor to avoid this use of global state.
+    cache_size_before = len(conversion._WHITELIST_CACHE)
+
+    # First invocation with fallback on, to allow recording it into cache.
+    os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '0'
+    tc = TestClass()
+    api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
+    os.environ['AUTOGRAPH_STRICT_CONVERSION'] = '1'
+
+    # Entry should be added to the whitelist cache.
+    self.assertEqual(len(conversion._WHITELIST_CACHE), cache_size_before + 1)
+
+    # A second invocation should go through even with fallback off.
+    tc = TestClass()
+    api.converted_call(tc.test_method, (), None, options=DEFAULT_RECURSIVE)
+
+    # No new entries should appear in the whitelist cache.
+    self.assertEqual(len(conversion._WHITELIST_CACHE), cache_size_before + 1)
 
   def test_context_tracking_direct_calls(self):
 

@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import functools
 import imp
+import inspect
 import sys
 import threading
 import types
@@ -96,7 +97,7 @@ class _ConvertedEntityFactoryInfo(
 
 
 # TODO(mdan): Add a garbage collection hook for cleaning up modules.
-class _ConversionCache(object):
+class _FunctionCache(object):
   """A hierarchical cache that uses the converted entity as weak key.
 
   The keys soft references (i.e. they are discarded when the key is
@@ -106,20 +107,62 @@ class _ConversionCache(object):
   defined.
   """
 
+  __slots__ = ('_cache',)
+
   def __init__(self):
     self._cache = weakref.WeakKeyDictionary()
 
-  def has(self, key, subkey):
+  def _get_key(self, entity):
+    raise NotImplementedError('subclasses will override')
+
+  def has(self, entity, subkey):
+    key = self._get_key(entity)
     if key not in self._cache:
       return False
     return subkey in self._cache[key]
 
-  def __getitem__(self, key):
+  def __getitem__(self, entity):
+    key = self._get_key(entity)
     if key not in self._cache:
       # The bucket needs to be initialized to support this usage:
       #   cache[key][subkey] = value
       self._cache[key] = {}
     return self._cache[key]
+
+  def __len__(self):
+    return len(self._cache)
+
+
+class _CodeObjectCache(_FunctionCache):
+  """A function cache based on code objects (i.e., the source code).
+
+  Multiple functions may share the same code object, but they may share the
+  cache because we know they have the exact source code. This properly handles
+  functions defined in a loop, bound methods, etc.
+
+  Falls back to the function object, if it doesn't have a code object.
+  """
+
+  def _get_key(self, entity):
+    if hasattr(entity, '__code__'):
+      return entity.__code__
+    else:
+      return entity
+
+
+class _UnboundInstanceCache(_FunctionCache):
+  """A function cache based on unbound function objects.
+
+  Unlike the _CodeObjectCache, this discriminates between different functions
+  even if they have the same code. This properly handles decorators that may
+  masquerade as various functions. Bound functions are not discriminated by
+  the object they're bound to.
+  """
+
+  def _get_key(self, entity):
+    if inspect.ismethod(entity):
+      return entity.__func__
+    return entity
 
 
 # Using a re-entrant lock to guard against the unlikely possibility that the
@@ -127,8 +170,8 @@ class _ConversionCache(object):
 _CACHE_LOCK = threading.RLock()
 
 
-_CACHE = _ConversionCache()
-_WHITELIST_CACHE = _ConversionCache()
+_CACHE = _CodeObjectCache()
+_WHITELIST_CACHE = _UnboundInstanceCache()
 
 
 # Note: strictly speaking, a simple factory might have been sufficient for
@@ -209,14 +252,6 @@ def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
 
 def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
   """Returns a (possibly cached) factory for the converted result of entity."""
-  # The cache key is the entity's code object if it defined one, otherwise it's
-  # the entity itself. Keying by the code object allows caching of functions
-  # that are dynamically created e.g. in a loop.
-  if hasattr(entity, '__code__'):
-    key = entity.__code__
-  else:
-    key = entity
-
   # The cache subkey encompases any conversion options on which the generated
   # code may depend.
   # The cached factory includes the necessary definitions to distinguish
@@ -226,15 +261,14 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
 
   with _CACHE_LOCK:
     # The cache values are _ConvertedEntityFactoryInfo objects.
-    if _CACHE.has(key, subkey):
+    if _CACHE.has(entity, subkey):
       # TODO(mdan): Check whether the module is still loaded.
-      converted_entity_info = _CACHE[key][subkey]
-      logging.log(3, 'Cache hit for entity %s key %s subkey %s: %s', entity,
-                  key, subkey, converted_entity_info)
+      converted_entity_info = _CACHE[entity][subkey]
+      logging.log(3, 'Cache hit for entity %s subkey %s: %s', entity, subkey,
+                  converted_entity_info)
       return converted_entity_info
 
-    logging.log(1, 'Entity %s is not cached for key %s subkey %s', entity, key,
-                subkey)
+    logging.log(1, 'Entity %s is not cached for subkey %s', entity, subkey)
 
     nodes, converted_name, entity_info = convert_entity_to_ast(
         entity, program_ctx)
@@ -257,7 +291,7 @@ def _convert_with_cache(entity, program_ctx, free_nonglobal_var_names):
         converted_name=converted_name,
         factory_factory_name=factory_factory_name,
         source_map=source_map)
-    _CACHE[key][subkey] = converted_entity_info
+    _CACHE[entity][subkey] = converted_entity_info
     return converted_entity_info
 
 
