@@ -370,9 +370,7 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
   // adding a required assignment.
   // TODO(berkin): If these values are already marked alternate memory, use
   // those instead.
-  const HloDataflowAnalysis& dataflow_analysis =
-      alias_analysis_.dataflow_analysis();
-  const HloModule& module = dataflow_analysis.module();
+  const HloModule& module = alias_analysis_.dataflow_analysis().module();
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   HloComputation* entry_computation = module.entry_computation();
   for (HloInstruction* parameter_instruction :
@@ -382,15 +380,16 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
     ShapeUtil::ForEachSubshape(
         parameter_instruction->shape(),
         [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-          for (const HloValue* value :
-               dataflow_analysis.GetValueSet(parameter_instruction, index)
-                   .values()) {
-            VLOG(3) << "Adding required assignment for parameter value = "
-                    << value->ToShortString()
-                    << " time = " << parameter_instruction_time;
-            required_assignments_[value].push_back(
-                {/*memory_space=*/MemorySpace::kDefault,
-                 /*time=*/parameter_instruction_time});
+          for (const HloBuffer* buffer :
+               alias_analysis_.ComputeBuffersAt(parameter_instruction, index)) {
+            for (const HloValue* value : buffer->values()) {
+              VLOG(3) << "Adding required assignment for parameter value = "
+                      << value->ToShortString()
+                      << " time = " << parameter_instruction_time;
+              required_assignments_[value].push_back(
+                  {/*memory_space=*/MemorySpace::kDefault,
+                   /*time=*/parameter_instruction_time});
+            }
           }
         });
   }
@@ -399,14 +398,16 @@ void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
   ShapeUtil::ForEachSubshape(
       root_instruction->shape(),
       [&](const Shape& /*subshape*/, const ShapeIndex& index) {
-        for (const HloValue* value :
-             dataflow_analysis.GetValueSet(root_instruction, index).values()) {
-          VLOG(3) << "Adding required assignment for output value = "
-                  << value->ToShortString()
-                  << " time = " << root_instruction_time;
-          required_assignments_[value].push_back(
-              {/*memory_space=*/MemorySpace::kDefault,
-               /*time=*/root_instruction_time});
+        for (const HloBuffer* buffer :
+             alias_analysis_.ComputeBuffersAt(root_instruction, index)) {
+          for (const HloValue* value : buffer->values()) {
+            VLOG(3) << "Adding required assignment for output value = "
+                    << value->ToShortString()
+                    << " time = " << root_instruction_time;
+            required_assignments_[value].push_back(
+                {/*memory_space=*/MemorySpace::kDefault,
+                 /*time=*/root_instruction_time});
+          }
         }
       });
 }

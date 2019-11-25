@@ -74,7 +74,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  const bool use_tensor = node->inputs->data[index] != kOptionalTensor;
+  const bool use_tensor = node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
     return &context
                 ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];

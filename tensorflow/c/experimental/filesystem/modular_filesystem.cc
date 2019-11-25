@@ -20,6 +20,8 @@ limitations under the License.
 
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/file_system_helper.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -179,10 +181,23 @@ Status ModularFileSystem::GetChildren(const std::string& dir,
 }
 
 Status ModularFileSystem::GetMatchingPaths(const std::string& pattern,
-                                           std::vector<std::string>* results) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+                                           std::vector<std::string>* result) {
+  if (ops_->get_matching_paths == nullptr)
+    return internal::GetMatchingPaths(this, Env::Default(), pattern, result);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  char** matches;
+  const int num_matches = ops_->get_matching_paths(
+      filesystem_.get(), pattern.c_str(), &matches, plugin_status.get());
+  if (num_matches >= 0) {
+    for (int i = 0; i < num_matches; i++) {
+      result->push_back(std::string(matches[i]));
+      free(matches[i]);
+    }
+    free(matches);
+  }
+
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::DeleteFile(const std::string& fname) {
@@ -200,9 +215,24 @@ Status ModularFileSystem::DeleteFile(const std::string& fname) {
 Status ModularFileSystem::DeleteRecursively(const std::string& dirname,
                                             int64* undeleted_files,
                                             int64* undeleted_dirs) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (undeleted_files == nullptr || undeleted_dirs == nullptr)
+    return errors::FailedPrecondition(
+        "DeleteRecursively must not be called with `undeleted_files` or "
+        "`undeleted_dirs` set to NULL");
+
+  if (ops_->delete_recursively == nullptr)
+    return FileSystem::DeleteRecursively(dirname, undeleted_files,
+                                         undeleted_dirs);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  uint64_t plugin_undeleted_files, plugin_undeleted_dirs;
+  ops_->delete_recursively(filesystem_.get(), translated_name.c_str(),
+                           &plugin_undeleted_files, &plugin_undeleted_dirs,
+                           plugin_status.get());
+  *undeleted_files = plugin_undeleted_files;
+  *undeleted_dirs = plugin_undeleted_dirs;
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::DeleteDir(const std::string& dirname) {
@@ -218,9 +248,14 @@ Status ModularFileSystem::DeleteDir(const std::string& dirname) {
 }
 
 Status ModularFileSystem::RecursivelyCreateDir(const std::string& dirname) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->recursively_create_dir == nullptr)
+    return FileSystem::RecursivelyCreateDir(dirname);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_name = TranslateName(dirname);
+  ops_->recursively_create_dir(filesystem_.get(), translated_name.c_str(),
+                               plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::CreateDir(const std::string& dirname) {
@@ -290,16 +325,30 @@ Status ModularFileSystem::GetFileSize(const std::string& fname,
 
 Status ModularFileSystem::RenameFile(const std::string& src,
                                      const std::string& target) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->rename_file == nullptr) {
+    Status status = CopyFile(src, target);
+    if (status.ok()) status = DeleteFile(src);
+    return status;
+  }
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  std::string translated_src = TranslateName(src);
+  std::string translated_target = TranslateName(target);
+  ops_->rename_file(filesystem_.get(), translated_src.c_str(),
+                    translated_target.c_str(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 Status ModularFileSystem::CopyFile(const std::string& src,
                                    const std::string& target) {
-  // TODO(mihaimaruseac): Implementation to come in a new change
-  return Status(error::UNIMPLEMENTED,
-                "Modular filesystem stub not implemented yet");
+  if (ops_->copy_file == nullptr) return FileSystem::CopyFile(src, target);
+
+  UniquePtrTo_TF_Status plugin_status(TF_NewStatus(), TF_DeleteStatus);
+  const std::string& translated_src = TranslateName(src);
+  const std::string& translated_target = TranslateName(target);
+  ops_->copy_file(filesystem_.get(), translated_src.c_str(),
+                  translated_target.c_str(), plugin_status.get());
+  return StatusFromTF_Status(plugin_status.get());
 }
 
 std::string ModularFileSystem::TranslateName(const std::string& name) const {
@@ -314,7 +363,7 @@ std::string ModularFileSystem::TranslateName(const std::string& name) const {
 }
 
 void ModularFileSystem::FlushCaches() {
-  // TODO(mihaimaruseac): Implementation to come in a new change
+  if (ops_->flush_caches != nullptr) ops_->flush_caches(filesystem_.get());
 }
 
 Status ModularRandomAccessFile::Read(uint64 offset, size_t n,

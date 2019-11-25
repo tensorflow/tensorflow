@@ -18,13 +18,8 @@ limitations under the License.
 #ifndef HLO_OPS
 #define HLO_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifndef HLO_OPS_BASE
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
-#endif
 
 def HLO_Dialect : Dialect {
   let name = "xla_hlo";
@@ -524,6 +519,22 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]>,
+    BASE_HLO_BatchNormGradOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$scale,
+    HLO_Tensor:$mean,
+    HLO_Tensor:$variance,
+    HLO_Tensor:$grad_output,
+    F32Attr:$epsilon,
+    I64Attr:$feature_index
+  );
+
+  let results = (outs HLO_Tuple);
+}
+
 def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
     BASE_HLO_BatchNormInferenceOp {
 
@@ -538,6 +549,20 @@ def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
   );
 
   let results = (outs HLO_Tensor);
+}
+
+def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]>,
+    BASE_HLO_BatchNormTrainingOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$scale,
+    HLO_Tensor:$offset,
+    F32Attr:$epsilon,
+    I64Attr:$feature_index
+  );
+
+  let results = (outs HLO_Tuple);
 }
 
 def HLO_BroadcastOp : HLO_Op<"broadcast",

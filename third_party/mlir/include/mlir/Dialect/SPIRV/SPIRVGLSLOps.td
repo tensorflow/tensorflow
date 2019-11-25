@@ -22,9 +22,7 @@
 #ifndef SPIRV_GLSL_OPS
 #define SPIRV_GLSL_OPS
 
-#ifndef SPIRV_BASE
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
 
 //===----------------------------------------------------------------------===//
 // SPIR-V GLSL 4.50 opcode specification.

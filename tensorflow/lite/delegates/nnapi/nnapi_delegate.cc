@@ -1361,10 +1361,10 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinFullyConnected: {
       ExpectMaxOpVersion(version, 4, &val_ctx);
       // TODO(b/132950584): Add support for FullyConnected with no bias.
-      Expect(
-          node->inputs->size == 3 && node->inputs->data[2] != kOptionalTensor,
-          NNAPIValidationFailureType::kMissingRequiredOperand,
-          "FullyConnected with no bias not supported", &val_ctx);
+      Expect(node->inputs->size == 3 &&
+                 node->inputs->data[2] != kTfLiteOptionalTensor,
+             NNAPIValidationFailureType::kMissingRequiredOperand,
+             "FullyConnected with no bias not supported", &val_ctx);
       const auto output_type = context->tensors[node->outputs->data[0]].type;
       Expect(output_type != kTfLiteInt16,
              NNAPIValidationFailureType::kUnsupportedOutputType,
@@ -2254,7 +2254,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         // Add layer normalization tensors if they are provided.
         for (int i = 20; i < 24; ++i) {
           const int input_index = mapping_args.node->inputs->data[i];
-          if (input_index != kOptionalTensor) {
+          if (input_index != kTfLiteOptionalTensor) {
             mapping_args.builder->AddTensorInput(input_index, hybrid_op);
           } else {
             mapping_args.builder->AddVectorFloat32Operand(nullptr, 0);
@@ -2349,7 +2349,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         *nn_op_type = ANEURALNETWORKS_PAD;
       } else {
         const int constant_value_id = mapping_args.node->inputs->data[2];
-        if (constant_value_id == kOptionalTensor) {
+        if (constant_value_id == kTfLiteOptionalTensor) {
           *nn_op_type = ANEURALNETWORKS_PAD;
         } else {
           *nn_op_type = ANEURALNETWORKS_PAD_V2;
@@ -2691,7 +2691,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         if (mapping_args.node->inputs->size == 24) {
           for (int i = 20; i < 24; ++i) {
             const auto input_index = mapping_args.node->inputs->data[i];
-            if (input_index != kOptionalTensor) {
+            if (input_index != kTfLiteOptionalTensor) {
               mapping_args.builder->AddTensorInput(input_index, hybrid_op);
             } else {
               mapping_args.builder->AddVectorFloat32Operand(nullptr, 0);
@@ -2994,7 +2994,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
 
   size_t input_offset = 0;
   for (auto absolute_input_index : TfLiteIntArrayView(node->inputs)) {
-    if (absolute_input_index == kOptionalTensor) {
+    if (absolute_input_index == kTfLiteOptionalTensor) {
       continue;
     }
     TfLiteTensor* tensor = &context->tensors[absolute_input_index];
@@ -3311,7 +3311,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
           // unidirectional sequence LSTM op in NNAPI.
           continue;
         }
-        if (input_index == kOptionalTensor) {
+        if (input_index == kTfLiteOptionalTensor) {
           TF_LITE_ENSURE_STATUS(builder.AddVectorFloat32Operand(nullptr, 0));
           continue;
         }
@@ -3334,7 +3334,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
            reg->builtin_code == kTfLiteBuiltinPad) &&
           node->inputs->size == 3 && input_pos == 2) {
         const int constant_value_id = node->inputs->data[2];
-        if (constant_value_id == kOptionalTensor) {
+        if (constant_value_id == kTfLiteOptionalTensor) {
           continue;
         }
         const TfLiteTensor constant_value = context->tensors[constant_value_id];
@@ -3374,7 +3374,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
         continue;
       }
 
-      if (input_index == kOptionalTensor &&
+      if (input_index == kTfLiteOptionalTensor &&
           (reg->builtin_code == kTfLiteBuiltinLstm ||
            reg->builtin_code == kTfLiteBuiltinSvdf ||
            reg->builtin_code == kTfLiteBuiltinBidirectionalSequenceLstm)) {
@@ -3494,7 +3494,7 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
   // Make the TensorFlow Lite inputs and outputs to ann_indices.
   for (int i : TfLiteIntArrayView(input_tensors)) {
     // Constant tensors are not NNAPI inputs.
-    if (i != kOptionalTensor &&
+    if (i != kTfLiteOptionalTensor &&
         context->tensors[i].allocation_type != kTfLiteMmapRo &&
         // The delegate might not have mapped this input (this can
         // happen if one tensor is split in several ones)

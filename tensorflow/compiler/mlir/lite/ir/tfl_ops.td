@@ -18,10 +18,7 @@ limitations under the License.
 #ifndef TFL_OPS
 #define TFL_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
 include "tensorflow/compiler/mlir/lite/quantization/quantization.td"
 
 def TFL_Dialect : Dialect {
@@ -54,6 +51,13 @@ def TFL_Str : Type<CPred<"$_self.isa<mlir::TF::StringType>()">,
 def TFL_Uint8 : Type<CPred<"$_self.isa<mlir::TF::Uint8Type>()">,
                     "TFLite uint8 type">,
               BuildableType<"getType<mlir::TF::Uint8Type>()">;
+
+//===----------------------------------------------------------------------===//
+// TFLite dialect quint8 type - uses the TF quint8 type as implementation
+//===----------------------------------------------------------------------===//
+def TFL_Quint8 : Type<CPred<"$_self.isa<mlir::TF::Quint8Type>()">,
+                    "TFLite quint8 type">,
+              BuildableType<"getType<mlir::TF::Quint8Type>()">;
 
 //===----------------------------------------------------------------------===//
 // Activation function enum definitions.
@@ -178,11 +182,21 @@ class TFL_Operand0DOr1ElementTensor<int x> :
     Or<[TFL_OperandHasKnownRank<x, 0>,
         And<[TFL_OperandHasKnownRank<x, 1>, TFL_OperandDimEquals<x, 0, 1>]>]>>;
 
+// tf.uint8 and tf.quint8 are mapped to the same tflite types, so they are equal
+// when used as element types.
+class TFL_TFTypesWithSameBits<int i, int j, int num> :
+  And<[
+    Or<[CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isa<mlir::TF::Quint" # num # "Type>()">,
+        CPred<"getElementTypeOrSelf($_op.getResult(" # i # ")).isa<mlir::TF::Uint" # num # "Type>()">]>,
+    Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
+        CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Uint" # num # "Type>()">]>]>;
+
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
   TCOpResIsShapedTypePred<i, j>,
   Or<[
     TCresVTEtIsSameAsOpBase<i, j>,
+    TFL_TFTypesWithSameBits<i, j, 8>,
     And<[
       SubstLeaves<"$_self", "getElementTypeOrSelf($_op.getOperand(" # j # "))",
         quant_QuantizedType.predicate>,
@@ -2389,7 +2403,7 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
     NoSideEffect,
     SameOperandsAndResultsScale,
     PredOpTrait<"input and output must have same element type",
-      TCresVTEtIsSameAsOp<0, 0>>
+      TFL_TCresVTEtIsSameAsOp<0, 0>>
   ]> {
   let summary = "DepthToSpace operator";
 
@@ -2403,12 +2417,12 @@ def TFL_DepthToSpaceOp: TFL_Op<"depth_to_space", [
    }];
 
   let arguments = (ins
-    TensorOf<[F32, I8, I32, I64, TFL_Uint8, QUI8]>:$input,
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_Quint8, QUI8]>:$input,
     I32Attr:$block_size
   );
 
   let results = (outs
-    TensorOf<[F32, I8, I32, I64, TFL_Uint8, QUI8]>:$output
+    TensorOf<[F32, I8, I32, I64, TFL_Uint8, TFL_Quint8, QUI8]>:$output
   );
 
   let hasOptions = 1;
@@ -2560,7 +2574,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   }];
 
   let arguments = (ins
-    TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1]>:$input,
+    TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1, TFL_Quint8, TFL_Uint8]>:$input,
     TensorOf<[I32]>:$begin,
     TensorOf<[I32]>:$end,
     TensorOf<[I32]>:$strides,
@@ -2573,7 +2587,7 @@ def TFL_StridedSliceOp: TFL_Op<"strided_slice",
   );
 
   let results = (outs
-    TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1]>:$output
+    TensorOf<[F32, I32, I64, I8, QI8, QUI8, I1, TFL_Quint8, TFL_Uint8]>:$output
   );
 
   let hasOptions = 1;
@@ -2589,7 +2603,7 @@ def TFL_CastOp : TFL_Op<"cast", [
 
   // TODO(b/135538711): Add complex types here.
   let arguments = (ins
-    TensorOf<[F32, I1, I32, I64]>:$input
+    TensorOf<[F32, I1, I32, I64, TFL_Quint8, TFL_Uint8]>:$input
   );
 
   let results = (outs TensorOf<[F32, I1, I32, I64]>:$output);

@@ -67,7 +67,7 @@ typedef struct {
   TfLiteStatus (*Refresh)(struct TfLiteContext* context);
 } TfLiteExternalContext;
 
-#define kOptionalTensor (-1)
+#define kTfLiteOptionalTensor (-1)
 
 // Fixed size list of integers. Used for dimensions and inputs/outputs tensor
 // indices

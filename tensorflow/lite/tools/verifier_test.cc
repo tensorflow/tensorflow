@@ -503,8 +503,8 @@ TEST(VerifyModel, OutputIsAVariable) {
 
 TEST(VerifyModel, OpWithOptionalTensor) {
   TfLiteFlatbufferModelBuilder builder({}, {"test"});
-  builder.AddOperator({kOptionalTensor, 0, 1}, {2}, BuiltinOperator_CUSTOM,
-                      "test");
+  builder.AddOperator({kTfLiteOptionalTensor, 0, 1}, {2},
+                      BuiltinOperator_CUSTOM, "test");
   builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
   builder.AddTensor(
       {2}, TensorType_STRING,

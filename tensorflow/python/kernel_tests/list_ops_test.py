@@ -564,19 +564,41 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with context.device("gpu:0"):
       self.testTensorListFromTensor()
 
-  def testGetSet(self):
-    t = constant_op.constant([1.0, 2.0])
+  def testGetSetBool(self):
+    t = constant_op.constant([True, False])
     l = list_ops.tensor_list_from_tensor(t, element_shape=[])
-    e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
-    self.assertAllEqual(self.evaluate(e0), 1.0)
-    l = list_ops.tensor_list_set_item(l, 0, 3.0)
-    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
-    self.assertAllEqual(self.evaluate(t), [3.0, 2.0])
+    e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.bool)
+    self.assertAllEqual(self.evaluate(e0), True)
+    l = list_ops.tensor_list_set_item(l, 0, False)
+    t = list_ops.tensor_list_stack(l, element_dtype=dtypes.bool)
+    self.assertAllEqual(self.evaluate(t), [False, False])
 
   @test_util.run_gpu_only
-  def testGetSetGPU(self):
+  def testGetSetBoolGPU(self):
     with context.device("gpu:0"):
-      self.testGetSet()
+      self.testGetSetBool()
+
+  def _testGetSetNumeric(self, dtype):
+    t = constant_op.constant([1.0, 2.0], dtype=dtype)
+    l = list_ops.tensor_list_from_tensor(t, element_shape=[])
+    e0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtype)
+    self.assertAllEqual(self.evaluate(e0), 1.0)
+    l = list_ops.tensor_list_set_item(
+        l, 0, constant_op.constant(3.0, dtype=dtype))
+    t = list_ops.tensor_list_stack(l, element_dtype=dtype)
+    self.assertAllEqual(self.evaluate(t), [3.0, 2.0])
+
+  @parameterized.parameters([dtypes.float32, dtypes.float64,
+                             dtypes.complex64, dtypes.complex128])
+  def testGetSetNumeric(self, dtype):
+    self._testGetSetNumeric(dtype)
+
+  @parameterized.parameters([dtypes.float32, dtypes.float64,
+                             dtypes.complex64, dtypes.complex128])
+  @test_util.run_gpu_only
+  def testGetSetNumericGPU(self, dtype):
+    with context.device("gpu:0"):
+      self._testGetSetNumeric(dtype)
 
   def testGetSetReserved(self):
     l = list_ops.tensor_list_reserve(

@@ -252,7 +252,7 @@ std::vector<int> GetLoggableTensorIndices(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* tensor_buffers) {
   std::vector<int> loggable;
   for (auto tensor_index : tensor_indices) {
-    if (tensor_index == kOptionalTensor) {
+    if (tensor_index == kTfLiteOptionalTensor) {
       continue;
     }
     auto tensor = tensors->Get(tensor_index);

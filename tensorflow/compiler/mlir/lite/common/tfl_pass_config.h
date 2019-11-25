@@ -33,7 +33,8 @@ struct PassConfig {
         trim_functions_whitelist({}),
         quant_specs(specs),
         skip_control_dialect(false),
-        form_clusters(false) {}
+        form_clusters(false),
+        inline_functions(false) {}
 
   // If `emit_builtin_tflite_ops` is true, TF Lite legalization passes will be
   // added, which produces TF Lite ops.

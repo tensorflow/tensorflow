@@ -51,14 +51,10 @@ void MultiRunStatsRecorder::OnBenchmarkStart(const BenchmarkParams& params) {
 
   if (params.Get<bool>("use_gpu")) {
 #if defined(__ANDROID__)
-    const bool allow_precision_loss =
-        params.Get<bool>("gpu_precision_loss_allowed");
-    const std::string precision_tag = allow_precision_loss ? "fp16" : "fp32";
-    current_run_name_ = "gpu(" + precision_tag + ")";
-
-    const auto default_opts = TfLiteGpuDelegateOptionsV2Default();
-    if (default_opts.is_precision_loss_allowed == allow_precision_loss) {
-      current_run_name_ += "-default";
+    if (params.Get<bool>("gpu_precision_loss_allowed")) {
+      current_run_name_ = "gpu-fp16";
+    } else {
+      current_run_name_ = "gpu-default";
     }
 #else
     current_run_name_ = "gpu-default";

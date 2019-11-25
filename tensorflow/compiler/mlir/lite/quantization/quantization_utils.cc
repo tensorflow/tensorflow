@@ -35,6 +35,8 @@ limitations under the License.
 namespace mlir {
 namespace TFL {
 
+const float kNearZeroTolerance = 1.0e-6;
+
 // Returns the quantized type for the
 // input_type/min/max/storag_type_width/narrow_range.
 static Type GetQuantizedType(Builder builder, Type input_type,
@@ -163,9 +165,13 @@ TypeAttr CastQuantizedTypeAttrFromExpressedType(Builder builder,
   return {};
 }
 
-Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
-                                      bool is_signed, bool narrow_range) {
+Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
+                                      unsigned num_bits, bool is_signed,
+                                      bool narrow_range) {
   Builder builder(attr.getContext());
+  // `symmetric` can only be used when it is `signed` and `narrow_range`.
+  if (symmetric && (!is_signed || !narrow_range)) return {};
+
   double min = std::numeric_limits<double>::max();
   double max = std::numeric_limits<double>::min();
   auto fp = attr.dyn_cast<DenseFPElementsAttr>();
@@ -180,9 +186,9 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
     // works for both this value and 0.0.
     if (single_value < 0.0) {
       min = single_value;
-      max = 0.0;
+      max = symmetric ? -single_value : 0.0;
     } else if (single_value > 0.0) {
-      min = 0.0;
+      min = symmetric ? -single_value : 0.0;
       max = single_value;
     } else {
       min = max = single_value;
@@ -192,6 +198,12 @@ Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
       double ele_value = FloatAttr::getValueAsDouble(*it);
       min = std::min(min, ele_value);
       max = std::max(max, ele_value);
+      if (symmetric) {
+        max = std::max(std::abs(min), std::abs(max));
+        // In case the scale is extremely small, a fixed scale is used.
+        if (max < kNearZeroTolerance) max = 1.0;
+        min = -max;
+      }
     }
   }
   auto type =
@@ -257,7 +269,7 @@ Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
       for (int i = 0; i < dim_size; ++i) {
         max[i] = std::max(std::abs(min[i]), std::abs(max[i]));
         // In case the scale is extremely small, a fixed scale is used.
-        if (max[i] < 1.0e-6) max[i] = 1.0;
+        if (max[i] < kNearZeroTolerance) max[i] = 1.0;
         min[i] = -max[i];
       }
     }

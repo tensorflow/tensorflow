@@ -45,6 +45,10 @@ try:
 except ImportError:
   scipy_sparse = None
 
+try:
+  import pandas as pd  # pylint: disable=g-import-not-at-top
+except ImportError:
+  pd = None
 
 try:
   # In Python2 unicode is a scalar type
@@ -214,8 +218,12 @@ class TensorLikeDataAdapter(DataAdapter):
     if y is not None:
       flat_inputs += nest.flatten(y)
 
+    tensor_types = (ops.Tensor, np.ndarray)
+    if pd:
+      tensor_types = (ops.Tensor, np.ndarray, pd.Series, pd.DataFrame)
+
     def _is_tensor(v):
-      if isinstance(v, (ops.Tensor, np.ndarray)):
+      if isinstance(v, tensor_types):
         return True
       return False
 

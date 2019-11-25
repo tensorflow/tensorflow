@@ -83,7 +83,7 @@ func @prepareConv2DSplat(%arg0: tensor<1x5x5x3xf32>) -> tensor<1x5x5x3xf32> {
 // CHECK: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]]
 
 // PerTensor: %[[cst:.*]] = constant dense<1.270000e+02> : tensor<3x3x3x3xf32>
-// PerTensor: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<3x3x3x3x!quant.uniform<i8<-127:127>:f32, 5.000000e-01:-127>>}
+// PerTensor: %[[q:.*]] = "tfl.quantize"(%[[cst]]) {qtype = tensor<3x3x3x3x!quant.uniform<i8<-127:127>:f32, 1.000000e+00>>}
 // PerTensor: %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // PerTensor: %[[conv:.*]] = "tfl.conv_2d"(%arg0, %[[dq]]
 }

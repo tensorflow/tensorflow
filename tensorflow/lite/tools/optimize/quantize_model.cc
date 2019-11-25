@@ -827,7 +827,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         continue;
       }
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == -1 /*kOptionalTensor*/) {
+        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
         if (bias_idx >= op->inputs.size()) {

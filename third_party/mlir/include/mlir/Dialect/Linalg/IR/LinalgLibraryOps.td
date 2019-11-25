@@ -23,13 +23,8 @@
 #ifndef LINALG_LIBRARY_OPS
 #define LINALG_LIBRARY_OPS
 
-#ifndef AFFINE_OPS_BASE
 include "mlir/Dialect/AffineOps/AffineOpsBase.td"
-#endif // AFFINE_OPS_BASE
-
-#ifndef LINALG_BASE
 include "mlir/Dialect/Linalg/IR/LinalgBase.td"
-#endif // LINALG_BASE
 
 class LinalgParametricNativeOpTrait<string prop, string parameters> :
   NativeOpTrait<"linalg::" # prop # parameters>

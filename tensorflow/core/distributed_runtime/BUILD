@@ -23,6 +23,11 @@ package(
 
 exports_files(["LICENSE"])
 
+exports_files(
+    ["server_lib.h"],
+    visibility = ["//tensorflow:internal"],
+)
+
 filegroup(
     name = "c_srcs",
     data = glob([

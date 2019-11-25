@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
@@ -109,12 +110,40 @@ static inline bool HasRankAtMost(Value *value, int64_t rank) {
 static bool AreCastCompatible(Type a, Type b) {
   if (TensorCastOp::areCastCompatible(a, b)) return true;
 
+  // Resource types may optionally contain subtypes information that does not
+  // match. Check subtypes compatibility when possible, otherwise treat them as
+  // compatible.
+  auto a_or_element_type = getElementTypeOrSelf(a);
+  auto b_or_element_type = getElementTypeOrSelf(b);
+
+  auto a_kind = a_or_element_type.getKind();
+  auto b_kind = b_or_element_type.getKind();
+
+  if (a_kind == TensorFlowTypes::RESOURCE &&
+      b_kind == TensorFlowTypes::RESOURCE) {
+    auto a_resource_type = a_or_element_type.dyn_cast<ResourceType>();
+    auto b_resource_type = b_or_element_type.dyn_cast<ResourceType>();
+    bool a_has_subtype = !a_resource_type.getSubtypes().empty();
+    bool b_has_subtype = !b_resource_type.getSubtypes().empty();
+
+    if (!a_has_subtype || !b_has_subtype) return true;
+
+    assert(a_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+    assert(b_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+
+    return TensorCastOp::areCastCompatible(
+        a_resource_type.getSubtypes().front(),
+        b_resource_type.getSubtypes().front());
+  }
+
   // Variant types may optionally contain subtypes information that need not
   // match.  It is also not possible to compare subtypes for compatibility as
-  // their interpretation depends on the ops operating on them.  So, accept all
+  // their interpretation depends on the ops operating on them. So, accept all
   // pairs of variant types.
-  return getElementTypeOrSelf(a).getKind() == TensorFlowTypes::VARIANT &&
-         getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
+  return a_kind == TensorFlowTypes::VARIANT &&
+         b_kind == TensorFlowTypes::VARIANT;
 }
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {

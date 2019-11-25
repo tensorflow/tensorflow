@@ -15,6 +15,8 @@ limitations under the License.
 #include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +27,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
+#include "tensorflow/c/experimental/filesystem/plugins/posix/posix_filesystem_helper.h"
 #include "tensorflow/c/tf_status.h"
 
 // Implementation of a filesystem for POSIX environments.
@@ -288,6 +291,68 @@ static void DeleteDir(const TF_Filesystem* filesystem, const char* path,
     TF_SetStatus(status, TF_OK, "");
 }
 
+static void RenameFile(const TF_Filesystem* filesystem, const char* src,
+                       const char* dst, TF_Status* status) {
+  // If target is a directory return TF_FAILED_PRECONDITION.
+  // Target might be missing, so don't error in that case.
+  struct stat st;
+  if (stat(dst, &st) != 0) {
+    if (errno != ENOENT) {
+      TF_SetStatusFromIOError(status, errno, dst);
+      return;
+    }
+  } else if (S_ISDIR(st.st_mode)) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION, "target path is a directory");
+    return;
+  }
+
+  // We cannot rename directories yet, so prevent this.
+  if (stat(src, &st) != 0) {
+    TF_SetStatusFromIOError(status, errno, src);
+    return;
+  } else if (S_ISDIR(st.st_mode)) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION, "source path is a directory");
+    return;
+  }
+
+  // Do the actual rename. Here both arguments are filenames.
+  if (rename(src, dst) != 0)
+    TF_SetStatusFromIOError(status, errno, dst);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
+static void CopyFile(const TF_Filesystem* filesystem, const char* src,
+                     const char* dst, TF_Status* status) {
+  // If target is a directory return TF_FAILED_PRECONDITION.
+  // Target might be missing, so don't error in that case.
+  struct stat st;
+  if (stat(dst, &st) != 0) {
+    if (errno != ENOENT) {
+      TF_SetStatusFromIOError(status, errno, dst);
+      return;
+    }
+  } else if (S_ISDIR(st.st_mode)) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION, "target path is a directory");
+    return;
+  }
+
+  // We cannot copy directories yet, so prevent this.
+  if (stat(src, &st) != 0) {
+    TF_SetStatusFromIOError(status, errno, src);
+    return;
+  } else if (S_ISDIR(st.st_mode)) {
+    TF_SetStatus(status, TF_FAILED_PRECONDITION, "source path is a directory");
+    return;
+  }
+
+  // Both `src` and `dst` point to files here. Delegate to helper.
+  if (TransferFileContents(src, dst, st.st_mode, st.st_size) < 0)
+    TF_SetStatusFromIOError(status, errno, dst);
+  else
+    TF_SetStatus(status, TF_OK, "");
+}
+
 static void PathExists(const TF_Filesystem* filesystem, const char* path,
                        TF_Status* status) {
   if (access(path, F_OK) != 0)
@@ -307,10 +372,6 @@ static void Stat(const TF_Filesystem* filesystem, const char* path,
     stats->is_directory = S_ISDIR(sbuf.st_mode);
     TF_SetStatus(status, TF_OK, "");
   }
-}
-
-static int RemoveSpecialDirectoryEntries(const struct dirent* d) {
-  return strcmp(d->d_name, ".") != 0 && strcmp(d->d_name, "..") != 0;
 }
 
 static int GetChildren(const TF_Filesystem* filesystem, const char* path,
@@ -362,8 +423,8 @@ void TF_InitPlugin(TF_Status* status) {
       tf_posix_filesystem::DeleteFile,
       tf_posix_filesystem::DeleteDir,
       /*delete_recursively=*/nullptr,
-      /*rename_file=*/nullptr,
-      /*copy_file=*/nullptr,
+      tf_posix_filesystem::RenameFile,
+      tf_posix_filesystem::CopyFile,
       tf_posix_filesystem::PathExists,
       /*paths_exist=*/nullptr,
       tf_posix_filesystem::Stat,
@@ -371,7 +432,8 @@ void TF_InitPlugin(TF_Status* status) {
       /*get_file_size=*/nullptr,
       /*translate_name=*/nullptr,
       tf_posix_filesystem::GetChildren,
-      nullptr,
+      /*get_matching_paths=*/nullptr,
+      /*flush_caches=*/nullptr,
   };
 
   for (const char* scheme : {"", "file"})

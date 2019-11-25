@@ -1,4 +1,3 @@
-# Description:
 # Python support for TensorFlow.
 #
 # Public targets:
@@ -42,6 +41,26 @@ package(
 exports_files(["LICENSE"])
 
 exports_files(["platform/base.i"])
+
+exports_files(
+    ["lib/core/strings.i"],
+    visibility = [
+        "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
+        "//engedu/ml/tf_from_scratch:__pkg__",
+        "//tensorflow:internal",
+        "//tensorflow/lite/toco/python:__pkg__",
+        "//tensorflow_model_optimization:__subpackages__",
+        "//tensorflow_models:__subpackages__",
+        "//third_party/cloud_tpu/convergence_tools:__subpackages__",
+        "//third_party/py/cleverhans:__subpackages__",
+        "//third_party/py/neural_structured_learning:__subpackages__",
+        "//third_party/py/reverb:__subpackages__",
+        "//third_party/py/tensorflow_examples:__subpackages__",
+        "//third_party/py/tf_slim:__subpackages__",
+    ],
+)
+
+# Description:
 
 py_library(
     name = "python",

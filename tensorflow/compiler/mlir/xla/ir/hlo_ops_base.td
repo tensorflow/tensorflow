@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef HLO_OPS_BASE
 #define HLO_OPS_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 def HLO_Int : IntOfWidths<[8, 16, 32, 64]>;
 def HLO_Pred : TypeAlias<I1, "pred (AKA boolean or 1-bit integer)">;
@@ -618,6 +616,16 @@ class BASE_HLO_DynamicUpdateSliceOp {
 // XLA Other op definitions.
 //===----------------------------------------------------------------------===//
 
+class BASE_HLO_BatchNormGradOp {
+  string summary = "Batch Normalization Gradient";
+
+  string description = [{
+    Calculates gradients of batch norm.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormgrad
+  }];
+}
+
 class BASE_HLO_BatchNormInferenceOp {
   string summary = "Batch Normalization for Inference";
 
@@ -625,6 +633,16 @@ class BASE_HLO_BatchNormInferenceOp {
     Normalizes an array across batch and spatial dimensions.
 
     See https://www.tensorflow.org/xla/operation_semantics#batchnorminference
+  }];
+}
+
+class BASE_HLO_BatchNormTrainingOp {
+  string summary = "Batch Normalization for Training";
+
+  string description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormtraining
   }];
 }
 

@@ -211,19 +211,10 @@ class Delegate {
     RETURN_IF_ERROR(
         NewInferenceEnvironment(env_options, &gl_environment_, &properties));
     gl::InferenceOptions options;
-    if (options_.is_precision_loss_allowed == -1) {
-      // DEFAULT
-      options.allow_precision_loss =
-          GetPriorityPosition(options_, InferencePriority::MAX_PRECISION) > 1;
-    } else {
-      options.allow_precision_loss = options_.is_precision_loss_allowed != 0;
-    }
-    options.fuse_operations =
-        options_.inference_preference !=
-        TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
-    options.inline_parameters =
-        options_.inference_preference !=
-        TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
+    options.usage = ToUsage(options_.inference_preference);
+    options.priority1 = ToPriority(options_.inference_priority1);
+    options.priority2 = ToPriority(options_.inference_priority2);
+    options.priority3 = ToPriority(options_.inference_priority3);
     RETURN_IF_ERROR(gl_environment_->NewInferenceBuilder(std::move(*graph),
                                                          options, builder));
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,

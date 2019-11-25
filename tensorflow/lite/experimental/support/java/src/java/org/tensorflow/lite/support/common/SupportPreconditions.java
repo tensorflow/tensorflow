@@ -20,7 +20,7 @@ import org.checkerframework.checker.nullness.qual.NonNull;
 import org.checkerframework.checker.nullness.qual.Nullable;
 
 /** Static error checking util methods. */
-public final class SupportPrecondtions {
+public final class SupportPreconditions {
   /**
    * Ensures that an object reference passed as a parameter to the calling method is not null.
    *
@@ -108,7 +108,7 @@ public final class SupportPrecondtions {
     }
   }
 
-  private SupportPrecondtions() {
-    throw new AssertionError("SupportPrecondtions is Uninstantiable.");
+  private SupportPreconditions() {
+    throw new AssertionError("SupportPreconditions is Uninstantiable.");
   }
 }

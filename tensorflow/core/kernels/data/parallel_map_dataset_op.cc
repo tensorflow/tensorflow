@@ -269,19 +269,12 @@ class ParallelMapIterator : public DatasetBaseIterator {
             params.num_parallel_calls, mu_, cond_var_)),
         sloppy_(params.sloppy),
         preserve_cardinality_(params.preserve_cardinality),
-        autotune_(params.num_parallel_calls == model::kAutotune) {
-    key_prefix_ = base_params.dataset->node_name();
-  }
+        autotune_(params.num_parallel_calls == model::kAutotune),
+        key_prefix_(base_params.dataset->node_name()) {}
 
   ~ParallelMapIterator() override {
-    mutex_lock l(*mu_);
-    // Cancel the runner thread.
-    cancelled_ = true;
-    cond_var_->notify_all();
-    // Wait for all in-flight calls to complete.
-    while (num_calls_ > 0) {
-      cond_var_->wait(l);
-    }
+    CancelThreads(/*wait=*/true);
+    if (deregister_fn_) deregister_fn_();
   }
 
   string BuildTraceMeName() override {
@@ -302,6 +295,9 @@ class ParallelMapIterator : public DatasetBaseIterator {
     if (num_parallel_calls_->value == model::kAutotune) {
       num_parallel_calls_->value = ctx->runner_threadpool_size();
     }
+    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+        ctx->cancellation_manager(),
+        [this]() { CancelThreads(/*wait=*/false); }, &deregister_fn_));
     TF_RETURN_IF_ERROR(
         input_dataset_->MakeIterator(ctx, prefix(), &input_impl_));
     return parallel_map_functor_->InitFunc(ctx);
@@ -425,6 +421,16 @@ class ParallelMapIterator : public DatasetBaseIterator {
     std::vector<Tensor> return_values;
     bool end_of_input;
   };
+
+  void CancelThreads(bool wait) LOCKS_EXCLUDED(mu_) {
+    mutex_lock l(*mu_);
+    cancelled_ = true;
+    cond_var_->notify_all();
+    // Wait for all in-flight calls to complete.
+    while (wait && num_calls_ > 0) {
+      cond_var_->wait(l);
+    }
+  }
 
   void EnsureRunnerThreadStarted(IteratorContext* ctx)
       EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
@@ -636,15 +642,19 @@ class ParallelMapIterator : public DatasetBaseIterator {
   const bool sloppy_;
   const bool preserve_cardinality_;
   const bool autotune_;
+  const string key_prefix_;
   // Counts the number of outstanding calls.
   int64 num_calls_ GUARDED_BY(*mu_) = 0;
   std::unique_ptr<IteratorBase> input_impl_;
   // Buffer for storing the invocation results.
   std::deque<std::shared_ptr<InvocationResult>> invocation_results_
       GUARDED_BY(*mu_);
+
   std::unique_ptr<Thread> runner_thread_ GUARDED_BY(*mu_);
   bool cancelled_ GUARDED_BY(*mu_) = false;
-  string key_prefix_;
+
+  // Method for deregistering the cancellation callback.
+  std::function<void()> deregister_fn_;
 };
 
 }  // namespace

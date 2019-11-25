@@ -4272,7 +4272,7 @@ def gather(params,
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
       negative indexes.
     batch_dims: An `integer`.  The number of batch dimensions.  Must be less
-      than `rank(indices)`.
+      than or equal to `rank(indices)`.
     name: A name for the operation (optional).
 
   Returns:

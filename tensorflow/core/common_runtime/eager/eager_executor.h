@@ -106,6 +106,9 @@ class EagerExecutor {
 
   bool Async() const;
 
+  // Inline execute node if executor is in sync mode.
+  Status SyncExecute(EagerNode* node);
+
   // - Async Mode: schedules `node` for execution.
   // - Sync Mode: inline execute the 'node' directly.
   // If an error occurs (e.g. EagerExecutor has already been shut down), the
@@ -165,6 +168,7 @@ class EagerExecutor {
   const char* StateStringLocked() EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   void NodeDone(const core::RefCountPtr<NodeItem>& item, const Status& status);
+  void NotifyWaiters(uint64 id) EXCLUSIVE_LOCKS_REQUIRED(node_queue_mutex_);
 
   // Starts execution of pending EagerNodes. This function loops till
   // thread_done_ is set to true. If any errors are encontered, these are set

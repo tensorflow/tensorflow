@@ -110,7 +110,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
           mu_(std::make_shared<mutex>()),
-          parent_mu_(std::make_shared<mutex>()),
           cond_var_(std::make_shared<condition_variable>()),
           auto_tuner_(params.dataset->buffer_size_),
           legacy_autotune_(params.dataset->legacy_autotune_),
@@ -121,14 +120,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     ~Iterator() override {
-      {
-        mutex_lock l(*mu_);
-        cancelled_ = true;
-        cond_var_->notify_all();
-      }
-      if (deregister_fn_) {
-        deregister_fn_();
-      }
+      CancelThreads();
+      if (deregister_fn_) deregister_fn_();
     }
 
     string BuildTraceMeName() override {
@@ -154,12 +147,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         buffer_size_->value = 0;
       }
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-          ctx->cancellation_manager(),
-          [this]() {
-            mutex_lock l(*mu_);
-            cancelled_ = true;
-            cond_var_->notify_all();
-          },
+          ctx->cancellation_manager(), [this]() { CancelThreads(); },
           &deregister_fn_));
       return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
     }
@@ -207,7 +195,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         DCHECK_EQ(buffer_limit(), 0);
       }
 
-      mutex_lock parent_l(*parent_mu_);
+      mutex_lock input_l(input_mu_);
       {
         mutex_lock l(*mu_);
         if (stats_aggregator) {
@@ -236,7 +224,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     Status SaveInternal(IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
-      mutex_lock parent_l(*parent_mu_);
+      mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
       TF_RETURN_IF_ERROR(
@@ -260,7 +248,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     Status RestoreInternal(IteratorContext* ctx,
                            IteratorStateReader* reader) override {
-      mutex_lock parent_l(*parent_mu_);
+      mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
       buffer_.clear();
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
@@ -311,6 +299,12 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         return auto_tuner_.buffer_limit();
       }
       return buffer_size_->value;
+    }
+
+    void CancelThreads() LOCKS_EXCLUDED(mu_) {
+      mutex_lock l(*mu_);
+      cancelled_ = true;
+      cond_var_->notify_all();
     }
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
@@ -412,12 +406,11 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         }
 
         // 2. Read the next element.
-        // Acquire the parent lock since we will be reading an element
-        // from the input iterator. Note that we do not wish to release
-        // this lock till we have added the fetched element to the
-        // `buffer_` else there will be local state that may be missed
-        // by SaveInternal.
-        mutex_lock parent_l(*parent_mu_);
+        // Acquire the input mutex since we will be reading an element from the
+        // input iterator. Note that we do not wish to release this mutex till
+        // we have added the fetched element to the `buffer_` else there will be
+        // local state that may be missed by SaveInternal.
+        mutex_lock input_l(input_mu_);
         bool end_of_sequence;
         BufferElement buffer_element;
         buffer_element.status = input_impl_->GetNext(
@@ -480,13 +473,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     // This mutex is used to ensure exclusivity between multiple threads
     // reading/writing this iterator's local state.
-    // Note: We should never call GetNext on the input while holding this.
+    //
+    // NOTE: We should never call GetNext on the input while holding this mutex.
     const std::shared_ptr<mutex> mu_;
     // This mutex is used to ensure exclusivity between multiple threads
-    // accessing the parent iterator. We keep this separate from `mu_` to
-    // allow prefetching to run in parallel with GetNext calls.
-    const std::shared_ptr<mutex> parent_mu_ ACQUIRED_BEFORE(*mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(*parent_mu_);
+    // accessing the input iterator. We keep this separate from `mu_` to allow
+    // prefetching to run in parallel with GetNext calls.
+    mutex input_mu_ ACQUIRED_BEFORE(*mu_);
+    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
     PrefetchAutotuner auto_tuner_ GUARDED_BY(*mu_);
     std::deque<BufferElement> buffer_ GUARDED_BY(*mu_);
@@ -499,6 +493,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
 
     // If legacy_autotune_ is false, identifies the maximum size of the buffer.
     const std::shared_ptr<model::SharedState> buffer_size_;
+
+    // Method for deregistering the cancellation callback.
     std::function<void()> deregister_fn_;
   };
   const DatasetBase* const input_;

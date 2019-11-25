@@ -13,7 +13,7 @@ def aar_with_jni(
       android_library: The `android_library` target to package. Note that the
           AAR will contain *only that library's .jar` sources. It does not
           package the transitive closure of all Java source dependencies.
-      headers: Optional Fileset of headers that will be included in the
+      headers: Optional list of headers that will be included in the
           generated .aar file. This is useful for distributing self-contained
           .aars with native libs that can be used directly by native clients.
     """
@@ -38,7 +38,6 @@ EOF
     # .so files and throw away the apk.
     android_binary(
         name = name + "_dummy_app_for_so",
-        aapt_version = "aapt2",
         manifest = name + "_generated_AndroidManifest.xml",
         custom_package = "dummy.package.for.so",
         deps = [android_library],
@@ -64,11 +63,15 @@ zip -r $$origdir/$(location :{1}.aar) jni/*/*.so
 """.format(android_library, name)
 
     if headers:
-        srcs += [headers]
+        srcs += headers
         cmd += """
-cp -rL $$origdir/$(location {0}) headers
-zip -r $$origdir/$(location :{1}.aar) headers
-""".format(headers, name)
+        mkdir headers
+        """
+        for src in headers:
+            cmd += """
+            cp -rL $$origdir/$(location {0}) headers/$$(basename $(location {0}))
+            """.format(src)
+        cmd += "zip -r $$origdir/$(location :{0}.aar) headers".format(name)
 
     native.genrule(
         name = name,

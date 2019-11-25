@@ -45,7 +45,7 @@ ENTRY %Add (x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @add(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.add"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) {name = "add"} : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.add"(%[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[TYPE]], [[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -62,7 +62,7 @@ ENTRY %Compare (x: f32[2,2], y: f32[2,2]) -> pred[2,2] {
                      R"(
 ;CHECK: func @compare(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[PRED:.*]]: [[PRED_TYPE:.*]]) {
 ;CHECK:   "xla_lhlo.compare"(%[[ARG0]], %[[ARG1]], %[[PRED]])
-;CHECK: {comparison_direction = "EQ", name = "compare"} : ([[TYPE]], [[TYPE]], [[PRED_TYPE]]) -> ()
+;CHECK: {comparison_direction = "EQ"} : ([[TYPE]], [[TYPE]], [[PRED_TYPE]]) -> ()
 ;CHECK: }
 )");
 }
@@ -79,7 +79,7 @@ ENTRY %Select (p: pred[2,2], x: f32[2,2], y: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @select(%[[PRED:.*]]: [[PRED_TYPE:.*]], %[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]], %[[ARG2:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.select"(%[[PRED]], %[[ARG0]], %[[ARG1]], %[[ARG2]]) {name = "select"} : ([[PRED_TYPE]], [[TYPE]], [[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.select"(%[[PRED]], %[[ARG0]], %[[ARG1]], %[[ARG2]]) : ([[PRED_TYPE]], [[TYPE]], [[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -94,7 +94,7 @@ ENTRY %Exp (x: f32[2,2]) -> f32[2,2] {
 })",
                      R"(
 ;CHECK: func @exponential(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-;CHECK:   "xla_lhlo.exp"(%[[ARG0]], %[[ARG1]]) {name = "exponential"} : ([[TYPE]], [[TYPE]]) -> ()
+;CHECK:   "xla_lhlo.exp"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 ;CHECK: }
       )");
 }
@@ -254,8 +254,8 @@ ENTRY %AddMultiply (x: f32[2,2], y: f32[2,2], z: f32[2,2]) -> f32[2,2] {
 ;CHECK:   %[[REF0:.*]] = tensor_load %[[ARG0]] : [[TYPE]]
 ;CHECK:   %[[REF1:.*]] = tensor_load %[[ARG1]] : [[TYPE]]
 ;CHECK:   %[[REF2:.*]] = tensor_load %[[ARG2]] : [[TYPE]]
-;CHECK:   %[[ADD:.*]] = xla_hlo.add %[[REF1]], %[[REF2]] {name = "add"}
-;CHECK:   %[[MUL:.*]] = xla_hlo.mul %[[ADD]], %[[REF0]] {name = "multiply"}
+;CHECK:   %[[ADD:.*]] = xla_hlo.add %[[REF1]], %[[REF2]] 
+;CHECK:   %[[MUL:.*]] = xla_hlo.mul %[[ADD]], %[[REF0]]
 ;CHECK:   tensor_store %[[MUL]], %[[RESULT]]
 ;CHECK:   "xla_lhlo.terminator"()
 ;CHECK-NEXT: }
@@ -290,7 +290,7 @@ ENTRY %FusedReduce (x: f32[100,10]) -> f32[10] {
 ;CHECK:   %[[CT0:.*]] = xla_hlo.constant dense<0.000000e+00>
 ;CHECK:   %[[RED:.*]] = "xla_hlo.reduce"(%0, %1) ( {
 ;CHECK:     ^bb0(%[[BARG0:.*]]: [[ETYPE:.*]], %[[BARG1:.*]]: [[ETYPE]])
-;CHECK:       %[[ADD:.*]] = xla_hlo.add %[[BARG0]], %[[BARG1]] {name = "add"} : [[ETYPE]]
+;CHECK:       %[[ADD:.*]] = xla_hlo.add %[[BARG0]], %[[BARG1]] : [[ETYPE]]
 ;CHECK:       "xla_hlo.return"(%[[ADD]])
 ;CHECK:     })
 ;CHECK:   tensor_store %[[RED]], %[[RESULT]] : [[RTYPE]]
@@ -310,7 +310,7 @@ ENTRY %Broadcast (x: f32[10]) -> f32[10, 5] {
                      R"(
 ;CHECK: func @broadcast(%[[IN:.*]]: [[IN_T:.*]],  %[[OUT:.*]]: [[OUT_T:.*]]) {
 ;CHECK:   "xla_lhlo.broadcast_in_dim"(%[[IN]], %[[OUT]])
-;CHECK:   {broadcast_dimensions = dense<0> : tensor<1xi64>, name = "broadcast"}
+;CHECK:   {broadcast_dimensions = dense<0> : tensor<1xi64>}
 ;CHECK:   : ([[IN_T]], [[OUT_T]]) -> ()
 ;CHECK: }
 )");
@@ -327,7 +327,7 @@ ENTRY %Broadcast (x: f32[10]) -> f32[10, 5] {
 //                      R"(
 // ;CHECK: func @iota(%[[OUT:.*]]: [[OUT_T:.*]]) {
 // ;CHECK:   "xla_lhlo.iota"(%[[OUT]])
-// ;CHECK:   {iota_dimension = 0 : i64, name = "iota"} : ([[OUT_T]]) -> ()
+// ;CHECK:   {iota_dimension = 0 : i64} : ([[OUT_T]]) -> ()
 // ;CHECK: }
 // )");
 // }
@@ -353,10 +353,10 @@ ENTRY %AddReduce (x: f32[100,10], c: f32[]) -> f32[100] {
 ;CHECK:   ^bb0(%[[FARG0:.*]]: memref<f32>, %[[FARG1:.*]]: memref<f32>, %[[FRES:.*]]: memref<f32>):
 ;CHECK:      %[[LHS:.*]] = tensor_load %[[FARG0]] : memref<f32>
 ;CHECK:      %[[RHS:.*]] = tensor_load %[[FARG1]] : memref<f32>
-;CHECK:      %[[RES:.*]] = xla_hlo.add %[[LHS]], %[[RHS]] {name = "add"} : tensor<f32>
+;CHECK:      %[[RES:.*]] = xla_hlo.add %[[LHS]], %[[RHS]] : tensor<f32>
 ;CHECK:      tensor_store %[[RES]], %[[FRES]] : memref<f32>
 ;CHECK:     "xla_lhlo.terminator"() : () -> ()
-;CHECK-NEXT: }) {dimensions = dense<1> : tensor<1xi64>, name = "reduce"} : ([[ARGT]], memref<f32>, [[REST]]) -> ()
+;CHECK-NEXT: }) {dimensions = dense<1> : tensor<1xi64>} : ([[ARGT]], memref<f32>, [[REST]]) -> ()
       )");
 }
 

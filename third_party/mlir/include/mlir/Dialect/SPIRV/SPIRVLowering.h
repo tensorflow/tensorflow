@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 //
-// Defines, utilities and base classes to use while targeting SPIR-V dialect.
+// Defines utilities to use while targeting SPIR-V dialect.
 //
 //===----------------------------------------------------------------------===//
 

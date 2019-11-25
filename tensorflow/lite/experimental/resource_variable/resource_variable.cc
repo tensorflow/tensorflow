@@ -13,14 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/resource/resource_variable.h"
+#include "tensorflow/lite/experimental/resource_variable/resource_variable.h"
 
 #include <cstdlib>
 #include <cstring>
 #include <map>
 
 namespace tflite {
-namespace resource {
 
 ResourceVariable::ResourceVariable() {
   memset(&tensor_, 0, sizeof(TfLiteTensor));
@@ -76,21 +75,4 @@ TfLiteStatus ResourceVariable::AssignFrom(const TfLiteTensor* tensor) {
   return kTfLiteOk;
 }
 
-void CreateResourceVariableIfNotAvailable(ResourceMap* resources,
-                                          int resource_id) {
-  if (resources->count(resource_id) != 0) {
-    return;
-  }
-  resources->emplace(resource_id, new ResourceVariable());
-}
-
-ResourceVariable* GetResourceVariable(ResourceMap* resources, int resource_id) {
-  auto it = resources->find(resource_id);
-  if (it != resources->end()) {
-    return static_cast<ResourceVariable*>(it->second.get());
-  }
-  return nullptr;
-}
-
-}  // namespace resource
 }  // namespace tflite

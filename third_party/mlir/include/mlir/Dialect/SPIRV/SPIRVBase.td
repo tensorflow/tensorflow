@@ -24,9 +24,7 @@
 #ifndef SPIRV_BASE
 #define SPIRV_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // SPIR-V dialect definitions
