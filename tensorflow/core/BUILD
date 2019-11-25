@@ -1953,40 +1953,35 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
-tf_pyclif_proto_library(
-    name = "protobuf/config_pyclif",
-    proto_lib = ":protos_all",
-    proto_srcfile = "protobuf/config.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "protobuf/device_properties_pyclif",
-    proto_lib = ":protos_all",
-    proto_srcfile = "protobuf/device_properties.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "protobuf/graph_debug_info_pyclif",
-    proto_lib = ":protos_all",
-    proto_srcfile = "protobuf/graph_debug_info.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "protobuf/meta_graph_pyclif",
-    proto_lib = ":protos_all",
-    proto_srcfile = "protobuf/meta_graph.proto",
-    visibility = ["//visibility:public"],
-)
-
-tf_pyclif_proto_library(
-    name = "protobuf/saved_model_pyclif",
-    proto_lib = ":protos_all",
-    proto_srcfile = "protobuf/saved_model.proto",
-    visibility = ["//visibility:public"],
-)
+# The following targets will be moved to core/protobuf. The aliases are only temporary
+# since moving existing users will require several CLs over several projects.
+[
+    [
+        alias(
+            name = "protobuf_%s_pyclif%s" % (proto_name, target_suffix),
+            actual = ":protobuf/%s_pyclif%s" % (proto_name, target_suffix),
+            visibility = ["//visibility:public"],
+        )
+        for target_suffix in [
+            "",
+            "_pb2",
+        ]
+    ] + [
+        tf_pyclif_proto_library(
+            name = "protobuf/%s_pyclif" % proto_name,
+            proto_lib = ":protos_all",
+            proto_srcfile = "protobuf/%s.proto" % proto_name,
+            visibility = ["//visibility:public"],
+        ),
+    ]
+    for proto_name in [
+        "config",
+        "device_properties",
+        "graph_debug_info",
+        "meta_graph",
+        "saved_model",
+    ]
+]
 
 # The following targets were moved to core/framework. The aliases are only temporary
 # since moving existing users will require several CLs over several projects.
