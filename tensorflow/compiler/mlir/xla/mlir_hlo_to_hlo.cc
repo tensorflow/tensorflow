@@ -261,14 +261,18 @@ class ConvertToHloModule {
   using ValueLoweringMap = llvm::DenseMap<Value*, xla::XlaOp>;
   using FunctionLoweringMap = llvm::DenseMap<mlir::FuncOp, xla::XlaComputation>;
 
-  explicit ConvertToHloModule(mlir::ModuleOp module,
-                              bool use_tuple_args_for_entry_computation,
-                              bool always_return_tuple)
+  // If use_tuple_args is true, then the entry function's arguments are
+  // converted to a tuple and passed as a single parameter.
+  // Similarly, if return tuple is true, then the entry function's return values
+  // are converted to a tuple even when there is only a single return value.
+  // Multiple return values are always converted to a tuple and returned as a
+  // single value.
+  explicit ConvertToHloModule(mlir::ModuleOp module, bool use_tuple_args,
+                              bool return_tuple)
       : module_(module),
         module_builder_("main"),
-        use_tuple_args_for_entry_computation_(
-            use_tuple_args_for_entry_computation),
-        always_return_tuple_(always_return_tuple) {}
+        use_tuple_args_(use_tuple_args),
+        return_tuple_(return_tuple) {}
 
   // Perform the lowering to XLA. This function returns failure if an error was
   // encountered.
@@ -306,7 +310,8 @@ class ConvertToHloModule {
       ConvertToHloModule::ValueLoweringMap* value_lowering);
 
  private:
-  LogicalResult Lower(mlir::Operation* inst, xla::XlaBuilder* builder,
+  LogicalResult Lower(mlir::Operation* inst, bool is_entry_function,
+                      xla::XlaBuilder* builder,
                       ConvertToHloModule::ValueLoweringMap* value_lowering,
                       xla::XlaComputation* result);
 
@@ -320,10 +325,10 @@ class ConvertToHloModule {
   FunctionLoweringMap lowered_computation_;
 
   // Whether the entry function should take a single tuple as input.
-  bool use_tuple_args_for_entry_computation_;
+  bool use_tuple_args_;
 
   // Whether to always return a tuple.
-  bool always_return_tuple_;
+  bool return_tuple_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -610,7 +615,7 @@ StatusOr<xla::Literal> CreateLiteralFromAttr(Type type, ElementsAttr attr) {
 }
 
 LogicalResult ConvertToHloModule::Lower(
-    mlir::Operation* inst, xla::XlaBuilder* builder,
+    mlir::Operation* inst, bool is_entry_function, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering,
     xla::XlaComputation* result) {
   if (succeeded(ExportXlaOperator(inst, {value_lowering, this, builder}))) {
@@ -639,7 +644,7 @@ LogicalResult ConvertToHloModule::Lower(
     // values returned, then create a tuple, else return value directly.
     xla::XlaOp return_value;
     unsigned num_return_values = inst->getNumOperands();
-    if (always_return_tuple_ || num_return_values > 1) {
+    if ((return_tuple_ && is_entry_function) || num_return_values > 1) {
       std::vector<xla::XlaOp> returns(num_return_values);
       for (unsigned i = 0, e = inst->getNumOperands(); i != e; ++i) {
         returns[i] = value_map[inst->getOperand(i)];
@@ -727,7 +732,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
 
   // If using tuples as input, then there is only one input parameter that is a
   // tuple.
-  if (is_entry_function && use_tuple_args_for_entry_computation_) {
+  if (is_entry_function && use_tuple_args_) {
     std::vector<xla::Shape> arg_shapes;
     arg_shapes.reserve(bb.getNumArguments());
     for (auto& arg : bb.getArguments())
@@ -748,7 +753,8 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
   }
 
   for (auto& inst : bb)
-    if (failed(Lower(&inst, builder, &lowering, result))) return failure();
+    if (failed(Lower(&inst, is_entry_function, builder, &lowering, result)))
+      return failure();
 
   return success();
 }
@@ -764,9 +770,9 @@ LogicalResult ConvertToHloModule::LowerRegionAsComputation(
 }  // namespace
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
-                           bool use_tuple_args, bool always_return_tuple) {
+                           bool use_tuple_args, bool return_tuple) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-  ConvertToHloModule converter(module, use_tuple_args, always_return_tuple);
+  ConvertToHloModule converter(module, use_tuple_args, return_tuple);
   if (failed(converter.Run())) return diag_handler.ConsumeStatus();
   auto hlo_module = converter.ConsumeMainProto();
   hlo_proto->mutable_hlo_module()->Swap(&hlo_module);
