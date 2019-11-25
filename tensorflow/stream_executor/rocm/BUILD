@@ -1,7 +1,6 @@
 # Description:
 #   ROCm-platform specific StreamExecutor support code.
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
     "//tensorflow/stream_executor:build_defs.bzl",
     "stream_executor_friends",
