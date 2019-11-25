@@ -89,6 +89,7 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                const TfLiteTensor* input,
                                const TfLiteTensor* filter,
                                const TfLiteTensor* bias, TfLiteTensor* output) {
+#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   RuntimeShape output_shape = GetTensorShape(output);
   const int batches = output_shape.Dims(0);
   const int output_depth = output_shape.Dims(1);
@@ -96,7 +97,6 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int accum_depth = filter_shape.Dims(filter_dim_count - 1);
 
-#if defined(ARM_MATH_DSP) && defined(ARM_MATH_LOOPUNROLL)
   const int32_t buf_size = arm_fully_connected_s8_get_buffer_size(accum_depth);
   int16_t* buf = nullptr;
   TF_LITE_ENSURE_OK(context, get_cmsis_scratch_buffer(context, &buf, buf_size));
@@ -111,7 +111,25 @@ TfLiteStatus EvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
           data->output_activation_min, data->output_activation_max, buf),
       ARM_MATH_SUCCESS);
 #else
-#error ARM_MATH_DSP and ARM_MATH_LOOPUNROLL must be set
+#pragma message( \
+    "CMSIS-NN optimization for fully_connected not available for this target. Using reference kernel.")
+
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  // TODO(b/138810107): Figure out whether output shift should be inverted
+  op_params.output_shift = -data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  reference_integer_ops::FullyConnected(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(filter), GetTensorData<int8_t>(filter),
+      GetTensorShape(bias), GetTensorData<int32_t>(bias),
+      GetTensorShape(output), GetTensorData<int8_t>(output));
+
 #endif
   return kTfLiteOk;
 }
