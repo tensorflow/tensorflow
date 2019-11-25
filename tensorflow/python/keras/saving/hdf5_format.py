@@ -22,6 +22,8 @@ from __future__ import print_function
 import json
 import os
 
+from operator import attrgetter
+
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
@@ -621,6 +623,7 @@ def save_weights_to_hdf5_group(f, layers):
   f.attrs['backend'] = K.backend().encode('utf8')
   f.attrs['keras_version'] = str(keras_version).encode('utf8')
 
+  layers.sort(key=attrgetter('name'))
   for layer in layers:
     g = f.create_group(layer.name)
     weights = _legacy_weights(layer)
