@@ -574,18 +574,15 @@ static LogicalResult verify(InsertStridedSliceOp op) {
   auto destVectorType = op.getDestVectorType();
   auto offsets = op.offsets();
   auto strides = op.strides();
-  if (offsets.size() != static_cast<unsigned>(destVectorType.getRank())) {
-    op.emitOpError("expected offsets of same size as destination vector rank");
-    return failure();
-  }
-  if (strides.size() != static_cast<unsigned>(sourceVectorType.getRank())) {
-    op.emitOpError("expected strides of same size as source vector rank");
-    return failure();
-  }
-  if (sourceVectorType.getRank() > destVectorType.getRank()) {
-    op.emitOpError("expected source rank to be smaller than destination rank");
-    return failure();
-  }
+  if (offsets.size() != static_cast<unsigned>(destVectorType.getRank()))
+    return op.emitOpError(
+        "expected offsets of same size as destination vector rank");
+  if (strides.size() != static_cast<unsigned>(sourceVectorType.getRank()))
+    return op.emitOpError(
+        "expected strides of same size as source vector rank");
+  if (sourceVectorType.getRank() > destVectorType.getRank())
+    return op.emitOpError(
+        "expected source rank to be smaller than destination rank");
 
   auto sourceShape = sourceVectorType.getShape();
   auto destShape = destVectorType.getShape();
