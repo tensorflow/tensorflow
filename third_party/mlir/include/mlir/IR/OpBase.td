@@ -1668,6 +1668,12 @@ class TCOpResIsShapedTypePred<int i, int j> : And<[
     SubstLeaves<"$_self", "$_op.getOperand(" # j # ")->getType()",
       IsShapedTypePred>]>;
 
+// Predicate to verify that the i'th result and the j'th operand have the same
+// type.
+class TCresIsSameAsOpBase<int i, int j> :
+    CPred<"$_op.getResult(" # i # ")->getType() == "
+          "$_op.getOperand(" # j # ")->getType()">;
+
 // Basic Predicate to verify that the i'th result and the j'th operand have the
 // same elemental type.
 class TCresVTEtIsSameAsOpBase<int i, int j> :

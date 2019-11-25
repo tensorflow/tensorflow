@@ -169,6 +169,40 @@ def Vector_ExtractElementOp :
   }];
 }
 
+def Vector_InsertElementOp :
+  Vector_Op<"insertelement", [NoSideEffect,
+     PredOpTrait<"source operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+     PredOpTrait<"dest operand and result have same type",
+                 TCresIsSameAsOpBase<0, 1>>]>,
+     Arguments<(ins AnyType:$source, AnyVector:$dest, I32ArrayAttr:$position)>,
+     Results<(outs AnyVector)> {
+  let summary = "insertelement operation";
+  let description = [{
+    Takes an n-D source vector, an (n+k)-D destination vector and a k-D position
+    and inserts the n-D source into the (n+k)-D destination at the proper
+    position. Degenerates to a scalar source type when n = 0.
+
+    Examples:
+    ```
+      %2 = vector.insertelement %0, %1[3 : i32]:
+        vector<8x16xf32> into vector<4x8x16xf32>
+      %5 = vector.insertelement %3, %4[3 : i32, 3 : i32, 3 : i32]: 
+        f32 into vector<4x8x16xf32>
+    ```
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *source, " #
+    "Value *dest, ArrayRef<int32_t>">];
+  let extraClassDeclaration = [{
+    static StringRef getPositionAttrName() { return "position"; }
+    Type getSourceType() { return source()->getType(); }
+    VectorType getDestVectorType() {
+      return dest()->getType().cast<VectorType>();
+    }
+  }];
+}
+
 def Vector_StridedSliceOp :
   Vector_Op<"strided_slice", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
