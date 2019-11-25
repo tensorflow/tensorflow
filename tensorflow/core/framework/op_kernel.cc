@@ -1220,6 +1220,16 @@ OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
 namespace {
 
 static const StringPiece kKernelAttr("_kernel");
+static const string& kEmptyString = *new string();
+
+const string& GetNodeAttrStringDepDevice(const AttrSlice& node_attrs,
+                                         const string device_type) {
+  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
+  if ((device_type == "XLA_CPU_JIT" || device_type == "XLA_GPU_JIT" ||
+      device_type == "XLA_CPU" || device_type == "XLA_GPU") && label == "host")
+    return kEmptyString;
+  return label;
+}
 
 // TODO(irving): Replace with const Node& version below.
 Status FindKernelRegistration(
@@ -1231,7 +1241,8 @@ Status FindKernelRegistration(
   *reg = nullptr;
   *was_attr_mismatch = false;
   // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
+  const string& label = GetNodeAttrStringDepDevice(node_attrs,
+                                                   device_type.type_string());
 
   const string key = Key(node_op, device_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();
