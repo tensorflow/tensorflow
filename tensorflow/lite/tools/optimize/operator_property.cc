@@ -30,18 +30,18 @@ struct OpVariant {
 
 const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
                                    int op_index) {
-  OpVariant op_signature;
+  OpVariant op_variant;
   OperatorT* op =
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
-  op_signature.op_code = model->operator_codes[op->opcode_index]->builtin_code;
-  return op_signature;
+  op_variant.op_code = model->operator_codes[op->opcode_index]->builtin_code;
+  return op_variant;
 }
 }  // namespace
 
 OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
                                      int op_index) {
-  OpVariant op_signature = GetOperatorVariant(model, subgraph_index, op_index);
-  BuiltinOperator op_code = op_signature.op_code;
+  OpVariant op_variant = GetOperatorVariant(model, subgraph_index, op_index);
+  BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
   switch (op_code) {
     case BuiltinOperator_ADD:
