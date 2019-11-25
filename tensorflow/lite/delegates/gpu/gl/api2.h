@@ -30,16 +30,15 @@ namespace gpu {
 namespace gl {
 
 struct InferenceOptions {
-  // Allows to quantify tensors, downcast values, process in float16 etc.
-  bool allow_precision_loss = false;
+  InferenceUsage usage = InferenceUsage::SUSTAINED_SPEED;
 
-  // When set few operations are fused into a single shader. Therefore, there
-  // will be less shaders, but each shader will become larger.
-  bool fuse_operations = true;
+  // Ordered priorities provide better understanding of desired semantics,
+  // where priority(n) is more important than priority(n+1).
+  InferencePriority priority1 = InferencePriority::MAX_PRECISION;
 
-  // Parameters will be inlined into a shader. This in turn will generated more
-  // unique shaders where each will need to be compiled.
-  bool inline_parameters = false;
+  InferencePriority priority2 = InferencePriority::MIN_LATENCY;
+
+  InferencePriority priority3 = InferencePriority::MIN_MEMORY_USAGE;
 };
 
 struct InferenceEnvironmentProperties {

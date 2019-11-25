@@ -20,23 +20,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_CONTROLFLOW_OPS
-#else
+#ifndef SPIRV_CONTROLFLOW_OPS
 #define SPIRV_CONTROLFLOW_OPS
 
-#ifdef SPIRV_BASE
-#else
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
-
-#ifdef MLIR_CALLINTERFACES
-#else
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 include "mlir/Analysis/CallInterfaces.td"
-#endif // MLIR_CALLINTERFACES
 
 // -----
 
-def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
+def SPV_BranchOp : SPV_Op<"Branch", [InFunctionScope, Terminator]> {
   let summary = "Unconditional branch to target block.";
 
   let description = [{
@@ -90,7 +82,8 @@ def SPV_BranchOp : SPV_Op<"Branch", [Terminator]> {
 
 // -----
 
-def SPV_BranchConditionalOp : SPV_Op<"BranchConditional", [Terminator]> {
+def SPV_BranchConditionalOp : SPV_Op<"BranchConditional",
+                                     [InFunctionScope, Terminator]> {
   let summary = [{
     If Condition is true, branch to true block, otherwise branch to false
     block.
@@ -252,7 +245,7 @@ def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$callee,
+    FlatSymbolRefAttr:$callee,
     Variadic<SPV_Type>:$arguments
   );
 
@@ -265,7 +258,7 @@ def SPV_FunctionCallOp : SPV_Op<"FunctionCall", [
 
 // -----
 
-def SPV_LoopOp : SPV_Op<"loop"> {
+def SPV_LoopOp : SPV_Op<"loop", [InFunctionScope]> {
   let summary = "Define a structured loop.";
 
   let description = [{
@@ -302,7 +295,12 @@ def SPV_LoopOp : SPV_Op<"loop"> {
 
   let regions = (region AnyRegion:$body);
 
+  let builders = [OpBuilder<"Builder *builder, OperationState &state">];
+
   let extraClassDeclaration = [{
+    // Returns the entry block.
+    Block *getEntryBlock();
+
     // Returns the loop header block.
     Block *getHeaderBlock();
 
@@ -372,6 +370,29 @@ def SPV_ReturnOp : SPV_Op<"Return", [InFunctionScope, Terminator]> {
 
 // -----
 
+def SPV_UnreachableOp : SPV_Op<"Unreachable", [InFunctionScope, Terminator]> {
+  let summary = "Declares that this block is not reachable in the CFG.";
+
+  let description = [{
+    This instruction must be the last instruction in a block.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    unreachable-op ::= `spv.Unreachable`
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs);
+
+  let parser = [{ return parseNoIOOp(parser, result); }];
+  let printer = [{ printNoIOOp(getOperation(), p); }];
+}
+
+// -----
+
 def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
   let summary = "Return a value from a function.";
 
@@ -402,7 +423,7 @@ def SPV_ReturnValueOp : SPV_Op<"ReturnValue", [InFunctionScope, Terminator]> {
   let results = (outs);
 }
 
-def SPV_SelectionOp : SPV_Op<"selection"> {
+def SPV_SelectionOp : SPV_Op<"selection", [InFunctionScope]> {
   let summary = "Define a structured selection.";
 
   let description = [{

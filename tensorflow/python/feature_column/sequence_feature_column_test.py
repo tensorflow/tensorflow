@@ -167,12 +167,11 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
-
+    sequence_input_layer = sfc.SequenceFeatures([embedding_column_a])
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must be of '
         r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
-      sequence_input_layer = sfc.SequenceFeatures([embedding_column_a])
       _, _ = sequence_input_layer({'aaa': sparse_input})
 
   @test_util.run_in_graph_and_eager_modes
@@ -267,11 +266,11 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     shared_embedding_columns = fc.shared_embedding_columns_v2(
         [categorical_column_a, categorical_column_b], dimension=2)
 
+    sequence_input_layer = sfc.SequenceFeatures(shared_embedding_columns)
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_shared_embedding\. categorical_column must '
         r'be of type SequenceCategoricalColumn to use SequenceFeatures\.'):
-      sequence_input_layer = sfc.SequenceFeatures(shared_embedding_columns)
       _, _ = sequence_input_layer({'aaa': sparse_input_a,
                                    'bbb': sparse_input_b})
 
@@ -358,11 +357,11 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     indicator_column_a = fc.indicator_column(categorical_column_a)
 
+    sequence_input_layer = sfc.SequenceFeatures([indicator_column_a])
     with self.assertRaisesRegexp(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must be of '
         r'type SequenceCategoricalColumn to use SequenceFeatures\.'):
-      sequence_input_layer = sfc.SequenceFeatures([indicator_column_a])
       _, _ = sequence_input_layer({'aaa': sparse_input})
 
   @parameterized.named_parameters(
@@ -469,7 +468,9 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError, r'Condition x == y did not hold.*'):
       _, sequence_length = sequence_input_layer({
-          'aaa': sparse_input_a, 'bbb': sparse_input_b})
+          'aaa': sparse_input_a,
+          'bbb': sparse_input_b
+      })
       self.evaluate(sequence_length)
 
   @parameterized.named_parameters(
@@ -661,11 +662,11 @@ class DenseFeaturesTest(test.TestCase):
     embedding_column_a = fc.embedding_column(
         categorical_column_a, dimension=2)
 
+    input_layer = dense_features.DenseFeatures([embedding_column_a])
     with self.assertRaisesRegexp(
         ValueError,
         r'In embedding_column: aaa_embedding\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):
-      input_layer = dense_features.DenseFeatures([embedding_column_a])
       _ = input_layer({'aaa': sparse_input})
 
   def test_indicator_column(self):
@@ -682,11 +683,11 @@ class DenseFeaturesTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     indicator_column_a = fc.indicator_column(categorical_column_a)
 
+    input_layer = dense_features.DenseFeatures([indicator_column_a])
     with self.assertRaisesRegexp(
         ValueError,
         r'In indicator_column: aaa_indicator\. categorical_column must not be '
         r'of type SequenceCategoricalColumn\.'):
-      input_layer = dense_features.DenseFeatures([indicator_column_a])
       _ = input_layer({'aaa': sparse_input})
 
 

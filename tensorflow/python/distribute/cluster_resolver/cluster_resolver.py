@@ -21,17 +21,14 @@ from __future__ import print_function
 import abc
 
 import collections
-import re
 import six
 
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import ops
 from tensorflow.python.training.server_lib import ClusterSpec
 from tensorflow.python.util.tf_export import tf_export
-
-
-DEVICE_TYPE_REGEX = re.compile('.*device:([^:]+).*')
 
 
 def format_master_url(master, rpc_layer=None):
@@ -44,16 +41,12 @@ def format_master_url(master, rpc_layer=None):
 def get_accelerator_devices(master, config_proto):
   """Returns accelerator devices given a master and a configuration."""
   if context.executing_eagerly():
-    device_names = context.list_devices()  # list_devices returns list(string)
+    logical_devices = config.list_logical_devices()
     devices = []
-    for name in device_names:
-      device_type = 'GPU'  # default device type is GPU
-      device_match = DEVICE_TYPE_REGEX.match(name)
-      if device_match:
-        device_type = device_match.group(1)
-      if device_type == 'CPU' or device_type == 'XLA_CPU':  # Filter CPUs
+    for d in logical_devices:
+      if d.device_type == 'CPU' or d.device_type == 'XLA_CPU':  # Filter CPUs
         continue
-      devices.append(session._DeviceAttributes(name, device_type, 0, 0))  # pylint: disable=protected-access
+      devices.append(session._DeviceAttributes(d.name, d.device_type, 0, 0))  # pylint: disable=protected-access
     return devices
   else:
     with ops.Graph().as_default():

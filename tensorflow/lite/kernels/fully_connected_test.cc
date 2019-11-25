@@ -171,8 +171,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
     std::vector<std::vector<int>> inputs = {GetShape(input_),
                                             GetShape(weights_)};
     if (add_bias_for_quantized) {
-      inputs.push_back((bias_ == kOptionalTensor) ? std::vector<int>()
-                                                  : GetShape(bias_));
+      inputs.push_back((bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
+                                                        : GetShape(bias_));
     }
     BuildInterpreter(inputs);
   }

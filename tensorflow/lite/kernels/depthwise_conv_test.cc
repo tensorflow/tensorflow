@@ -90,7 +90,8 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
     }
 
     output_ = AddOutput(output);
-
+    // The CPU kernel now ignores `depthwise_multiplier`. However delegates
+    // like NNAPI still relies on the attribute.
     int input_depth = GetShape(input_)[3];
     int output_depth = GetShape(filter_)[3];
     int depth_mul = output_depth / input_depth;

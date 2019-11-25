@@ -475,6 +475,12 @@ public:
   /// Always print operations in the generic form.
   OpPrintingFlags &printGenericOpForm();
 
+  /// Use local scope when printing the operation. This allows for using the
+  /// printer in a more localized and thread-safe setting, but may not
+  /// necessarily be identical to what the IR will look like when dumping
+  /// the full module.
+  OpPrintingFlags &useLocalScope();
+
   /// Return if the given ElementsAttr should be elided.
   bool shouldElideElementsAttr(ElementsAttr attr) const;
 
@@ -487,6 +493,9 @@ public:
   /// Return if operations should be printed in the generic form.
   bool shouldPrintGenericOpForm() const;
 
+  /// Return if the printer should use local scope when dumping the IR.
+  bool shouldUseLocalScope() const;
+
 private:
   /// Elide large elements attributes if the number of elements is larger than
   /// the upper limit.
@@ -498,6 +507,9 @@ private:
 
   /// Print operations in the generic form.
   bool printGenericOpFormFlag : 1;
+
+  /// Print operations with numberings local to the current operation.
+  bool printLocalScope : 1;
 };
 
 } // end namespace mlir

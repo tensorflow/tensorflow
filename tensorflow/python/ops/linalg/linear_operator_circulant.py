@@ -116,12 +116,14 @@ class _BaseLinearOperatorCirculant(linear_operator.LinearOperator):
 
       super(_BaseLinearOperatorCirculant, self).__init__(
           dtype=dtypes.as_dtype(input_output_dtype),
-          graph_parents=[self.spectrum],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self.spectrum])
 
   def _check_spectrum_and_return_tensor(self, spectrum):
     """Static check of spectrum.  Then return `Tensor` version."""
@@ -535,8 +537,6 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   This means that the result of matrix multiplication `v = Au` has `Lth` column
   given circular convolution between `h` with the `Lth` column of `u`.
 
-  See http://ee.stanford.edu/~gray/toeplitz.pdf
-
   #### Description in terms of the frequency spectrum
 
   There is an equivalent description in terms of the [batch] spectrum `H` and
@@ -692,6 +692,11 @@ class LinearOperatorCirculant(_BaseLinearOperatorCirculant):
   * If `is_X == False`, callers should expect the operator to not have `X`.
   * If `is_X == None` (the default), callers should have no expectation either
     way.
+
+  References:
+    Toeplitz and Circulant Matrices - A Review:
+      [Gray, 2006](https://www.nowpublishers.com/article/Details/CIT-006)
+      ([pdf](https://ee.stanford.edu/~gray/toeplitz.pdf))
   """
 
   def __init__(self,

@@ -147,6 +147,7 @@ TfLiteRegistration* Register_IF();
 TfLiteRegistration* Register_WHILE();
 TfLiteRegistration* Register_NON_MAX_SUPPRESSION_V4();
 TfLiteRegistration* Register_NON_MAX_SUPPRESSION_V5();
+TfLiteRegistration* Register_SCATTER_ND();
 
 }  // namespace builtin
 }  // namespace ops

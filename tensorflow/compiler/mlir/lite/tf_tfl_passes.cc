@@ -36,16 +36,17 @@ CreateTFExecutorToControlDialectConversion();
 namespace tensorflow {
 
 void AddQuantizationPasses(const mlir::TFL::QuantizationSpecs& quant_specs,
-                           bool emit_quant_adaptor_ops,
-                           mlir::PassManager* pass_manager) {
+                           mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::TFL::CreatePrepareQuantizePass(quant_specs));
   pass_manager->addPass(mlir::TFL::CreateQuantizePass());
+  bool emit_quant_adaptor_ops =
+      quant_specs.inference_type != quant_specs.inference_input_type;
   pass_manager->addPass(
       mlir::TFL::CreatePostQuantizePass(emit_quant_adaptor_ops));
 }
 
 void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
-                                mlir::PassManager* pass_manager) {
+                                mlir::OpPassManager* pass_manager) {
   pass_manager->addPass(mlir::tf_executor::CreateSwitchFoldPass());
   if (pass_config.skip_control_dialect) {
     // Merge islands.
@@ -77,6 +78,11 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     pass_manager->addPass(mlir::TFL::CreateLowerStaticTensorListPass());
   }
 
+  // Enable fusing composite ops that can be lowered to built-in TFLite ops.
+  if (pass_config.emit_builtin_tflite_ops) {
+    pass_manager->addPass(mlir::TFL::CreatePrepareCompositeFunctionsPass());
+  }
+
   // The ophint extractions happen before lots of other passes:
   // The assumption of ophint-extraction is each ophinted region is a black-box
   // and nodes within this black-box is NOT connected to the nodes OUTSIDE the
@@ -97,8 +103,12 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
   // Canonicalization includes const folding, which is utilized here to optimize
   // away ops that can't get constant folded after PrepareTF pass. For example,
   // tf.Conv2D is split into tf.Transpose and tfl.Conv2D.
-  pass_manager->addPass(mlir::createCanonicalizerPass());
-  pass_manager->addPass(mlir::createCSEPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+  pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
+
+  if (pass_config.inline_functions) {
+    pass_manager->addPass(mlir::createInlinerPass());
+  }
 
   // The below passes only make sense if Builtin TFLite ops are enabled
   // for emission.
@@ -106,15 +116,15 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Prepare for TFLite dialect, rerun canonicalization, and then legalize to
     // the TFLite dialect.
     pass_manager->addPass(mlir::TFL::CreatePrepareTFPass());
-    pass_manager->addPass(mlir::createCanonicalizerPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
     pass_manager->addPass(mlir::TFL::CreateLegalizeTFPass());
     pass_manager->addPass(mlir::TFL::CreateOptimizePass());
     // This pass operates on TensorFlow ops but is triggered after legalization
     // so that it can target constants introduced once TensorFlow Identity ops
     // are removed during legalization.
     pass_manager->addPass(mlir::TFL::CreateOptimizeFunctionalOpsPass());
-    pass_manager->addPass(mlir::createCanonicalizerPass());
-    pass_manager->addPass(mlir::createCSEPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
+    pass_manager->addNestedPass<mlir::FuncOp>(mlir::createCSEPass());
     // This pass should be always at the end of the floating point model
     // conversion. Some TFL ops like unidirectional
     // sequence lstm will have stateful operands and some optimization passes
@@ -127,8 +137,7 @@ void AddTFToTFLConversionPasses(const mlir::TFL::PassConfig& pass_config,
     // Run quantization after all the floating point model conversion is
     // completed.
     if (pass_config.quant_specs.RunPropagationAndRewriteQuantizationPasses()) {
-      AddQuantizationPasses(pass_config.quant_specs,
-                            pass_config.emit_quant_adaptor_ops, pass_manager);
+      AddQuantizationPasses(pass_config.quant_specs, pass_manager);
     }
   }
 }

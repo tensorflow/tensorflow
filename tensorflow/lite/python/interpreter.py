@@ -306,7 +306,18 @@ class Interpreter(object):
       tensor_index: Tensor index of tensor to query.
 
     Returns:
-      a dictionary containing the name, index, shape and type of the tensor.
+      A dictionary containing the following fields of the tensor:
+        'name': The tensor name.
+        'index': The tensor index in the interpreter.
+        'shape': The shape of the tensor.
+        'quantization': Deprecated, use 'quantization_parameters'. This field
+            only works for per-tensor quantization, whereas
+            'quantization_parameters' works in all cases.
+        'quantization_parameters': The parameters used to quantize the tensor:
+          'scales': List of scales (one if per-tensor quantization)
+          'zero_points': List of zero_points (one if per-tensor quantization)
+          'quantized_dimension': Specifies the dimension of per-axis
+              quantization, in the case of multiple scales/zero_points.
 
     Raises:
       ValueError: If tensor_index is invalid.
@@ -316,6 +327,8 @@ class Interpreter(object):
     tensor_size = self._interpreter.TensorSize(tensor_index)
     tensor_type = self._interpreter.TensorType(tensor_index)
     tensor_quantization = self._interpreter.TensorQuantization(tensor_index)
+    tensor_quantization_params = self._interpreter.TensorQuantizationParameters(
+        tensor_index)
 
     if not tensor_name or not tensor_type:
       raise ValueError('Could not get tensor details')
@@ -326,6 +339,11 @@ class Interpreter(object):
         'shape': tensor_size,
         'dtype': tensor_type,
         'quantization': tensor_quantization,
+        'quantization_parameters': {
+            'scales': tensor_quantization_params[0],
+            'zero_points': tensor_quantization_params[1],
+            'quantized_dimension': tensor_quantization_params[2],
+        }
     }
 
     return details

@@ -2434,6 +2434,14 @@ void ProcessMatrixSetDiagOperator(Model* model, MatrixSetDiagOperator* op) {
       // MatrixDiagV2 operators are converted to MatrixDiag, after which their
       // shapes are propagated.
       break;
+    case OperatorType::kMatrixDiagV3:
+      // MatrixDiagV3 operators are converted to MatrixDiag, after which their
+      // shapes are propagated.
+      break;
+    case OperatorType::kMatrixSetDiagV3:
+      // MatrixSetDiagV3 operators are converted to MatrixSetDiag, after which
+      // their shapes are propagated.
+      break;
     default:
       // Unimplemented, another graph transformation should drop it.
       LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(op->type);

@@ -129,6 +129,17 @@ cc_library(
     ],
 )
 
+tf_cuda_cc_test(
+    name = "memcpy_test",
+    srcs = ["memcpy_test.cc"],
+    tags = tf_cuda_tests_tags(),
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/stream_executor/lib",
+    ],
+)
+
 cc_library(
     name = "cudart_stub",
     srcs = select({

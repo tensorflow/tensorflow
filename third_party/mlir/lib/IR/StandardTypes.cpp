@@ -123,6 +123,8 @@ unsigned Type::getIntOrFloatBitWidth() {
 //===----------------------------------------------------------------------===//
 // ShapedType
 //===----------------------------------------------------------------------===//
+constexpr int64_t ShapedType::kDynamicSize;
+constexpr int64_t ShapedType::kDynamicStrideOrOffset;
 
 Type ShapedType::getElementType() const {
   return static_cast<ImplType *>(impl)->elementType;
@@ -148,6 +150,12 @@ bool ShapedType::hasRank() const { return !isa<UnrankedTensorType>(); }
 int64_t ShapedType::getDimSize(int64_t i) const {
   assert(i >= 0 && i < getRank() && "invalid index for shaped type");
   return getShape()[i];
+}
+
+unsigned ShapedType::getDynamicDimIndex(unsigned index) const {
+  assert(index < getRank() && "invalid index");
+  assert(ShapedType::isDynamic(getDimSize(index)) && "invalid index");
+  return llvm::count_if(getShape().take_front(index), ShapedType::isDynamic);
 }
 
 /// Get the number of bits require to store a value of the given shaped type.

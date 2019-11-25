@@ -39,6 +39,12 @@ def make_resize_bilinear_tests(options):
       "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
       "align_corners": [None, True, False],
       "fully_quantize": [True]
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 16, 24, 3], [1, 12, 18, 3]],
+      "size": [[8, 12], [12, 18]],
+      "align_corners": [None, True, False],
+      "fully_quantize": [True]
   }]
 
   def build_graph(parameters):

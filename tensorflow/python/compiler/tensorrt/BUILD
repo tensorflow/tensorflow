@@ -3,16 +3,8 @@
 #   and provide TensorRT operators and converter package.
 #   APIs are meant to change over time.
 
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_copts",
-)
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load(
-    "@local_config_tensorrt//:build_defs.bzl",
-    "if_tensorrt",
-)
 
 package(
     default_visibility = ["//visibility:public"],
@@ -55,6 +47,15 @@ py_library(
         "//tensorflow/python/saved_model:save",
         "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
+    ],
+)
+
+py_library(
+    name = "trt_convert_windows",
+    srcs = ["trt_convert_windows.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:util",
     ],
 )
 

@@ -93,13 +93,14 @@ upper_tabs:
 
       - heading: "Microcontrollers"
       - title: "Overview"
-        path: /lite/microcontrollers/overview
+        path: /lite/microcontrollers
       - title: "Get started with microcontrollers"
         path: /lite/microcontrollers/get_started
-      - title: "Build and convert models"
-        path: /lite/microcontrollers/build_convert
       - title: "Understand the C++ library"
         path: /lite/microcontrollers/library
+      - title: "Build and convert models"
+        path: /lite/microcontrollers/build_convert
+
 
     - name: "Examples"
       contents:
@@ -122,8 +123,12 @@ upper_tabs:
       - title: "Style transfer"
         path: /lite/models/style_transfer/overview
       - heading: "Text"
+      - title: "Question and answer"
+        path: /lite/models/bert_qa/overview
       - title: "Smart reply"
         path: /lite/models/smart_reply/overview
+      - title: "Text classification"
+        path: /lite/models/text_classification/overview
 
     - name: "Python API"
       skip_translation: true

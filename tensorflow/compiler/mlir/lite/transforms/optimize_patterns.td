@@ -46,9 +46,10 @@ multiclass FuseActFnIntoConvOpPat<dag ActFnOp, dag ActFnAttr> {
 
 // TODO(hinsu): Also fuse ops corresponding to RELU_N1_TO_1 and SIGN_BIT fused
 // activation functions.
+// Currently we're not fusing tanh, sigmoid, hard_swish and other activations
+// those cannot be simply translated into clamping.
 foreach actFnPair = [[TFL_ReluOp, TFL_AF_Relu],
-                     [TFL_Relu6Op, TFL_AF_Relu6],
-		     [TFL_TanhOp, TFL_AF_Tanh]] in
+                     [TFL_Relu6Op, TFL_AF_Relu6]] in
   defm : FuseActFnIntoConvOpPat<actFnPair[0], actFnPair[1]>;
 
 
@@ -182,14 +183,23 @@ def : Pat<
   (TFL_HardSwishOp $x),
   [(EqualOperands $x, $y)]>;
 
-// This pattern constructs L2NormalizationOp from
-// Mul->Rsqrt->Sum->Square
+// Constraint that the attribute value is less than 'n'
+class ConstDoubleValueLessThan<string n> : Constraint<
+  CPred<"$0.isa<DenseElementsAttr>() && "
+  "$0.cast<DenseElementsAttr>().getNumElements() == 1 && "
+  "std::abs(*$0.cast<DenseElementsAttr>().getValues<float>().begin()) < "
+  # n>>;
+
 // Currently L2Normalization doesn't support activation function
 // in TFLite.
 // TODO(karimnosseir): Add constraints that the kernel code assumes.
 // constraint on axis and depth.
-def : Pat<(TFL_MulOp $operand1,
-                     (TFL_RsqrtOp
+multiclass L2NormalizePatterns<dag FirstOp, dag SecondOp> {
+  // This pattern constructs L2NormalizationOp from
+  // Mul->Rsqrt->Sum->Square Or
+  // Div->sqrt->Sum->Square
+  def : Pat<(FirstOp $operand1,
+                     (SecondOp
                         (TFL_SumOp
                            (TFL_SquareOp $square_operand),
                            (ConstantOp I32ElementsAttr:$constant),
@@ -198,18 +208,55 @@ def : Pat<(TFL_MulOp $operand1,
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
            [(EqualOperands $operand1, $square_operand)]>;
 
-// This pattern constructs L2NormalizationOp from
-// Div->sqrt->Sum->Square
-// Currently L2Normalization doesn't support activation function
-// in TFLite.
-// TODO(karimnosseir): Add constraints that the kernel code assumes.
-// constraint on axis and depth.
-def : Pat<(TFL_DivOp $operand1,
-                     (TFL_SqrtOp
-                        (TFL_SumOp
-                           (TFL_SquareOp $square_operand),
-                           (ConstantOp I32ElementsAttr:$constant),
-                           $keep_dims)),
-                     TFL_AF_None),
+  // Below patterns for L2Normalize when there is an Add or Maximum
+  // adding or clamping to a small constant scalar.
+  def : Pat<(FirstOp $operand1,
+                     (SecondOp
+                      (TFL_AddOp
+                       (TFL_SumOp
+                        (TFL_SquareOp $square_operand),
+                        (ConstantOp I32ElementsAttr:$constant),
+                        $keep_dims),
+                       (ConstantOp $epsilon), TFL_AF_None)),
+           TFL_AF_None),
            (TFL_L2NormalizationOp $operand1, TFL_AF_None),
-           [(EqualOperands $operand1, $square_operand)]>;
+           [(EqualOperands $operand1, $square_operand),
+            (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
+
+  def : Pat<(FirstOp $operand1,
+                     (SecondOp
+                      (TFL_MaximumOp
+                       (TFL_SumOp
+                        (TFL_SquareOp $square_operand),
+                        (ConstantOp I32ElementsAttr:$constant),
+                        $keep_dims),
+                       (ConstantOp $epsilon))),
+           TFL_AF_None),
+           (TFL_L2NormalizationOp $operand1, TFL_AF_None),
+           [(EqualOperands $operand1, $square_operand),
+            (ConstDoubleValueLessThan<"1e-3"> $epsilon)]>;
+
+}
+
+foreach L2NormalizePairs = [[TFL_MulOp, TFL_RsqrtOp], [TFL_DivOp, TFL_SqrtOp]]
+  in defm : L2NormalizePatterns<L2NormalizePairs[0], L2NormalizePairs[1]>;
+
+def AreBroadcastableTypes : Constraint<CPred<
+  "TFL::IsBroadcastableElementsAttrAndType($0->getType(), $1->getType())">>;
+
+// Pattern for skipping Tile if it is mainly for broadcasting and the
+// Op is already supporting broadcasting.
+multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
+  def : Pat<(BinaryOp (TFL_TileOp $input, (ConstantOp $tile)),
+             $operand, $act_func),
+  (BinaryOp $input, $operand, $act_func),
+  [(AreBroadcastableTypes $input, $operand)]>;
+
+  def : Pat<(BinaryOp $operand,
+             (TFL_TileOp $input, (ConstantOp $tile)), $act_func),
+  (BinaryOp $operand, $input, $act_func),
+  [(AreBroadcastableTypes $operand, $input)]>;
+}
+
+foreach BroadcastingOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp]
+  in defm : FuseTileBroadcastIntoFollowingBinary<BroadcastingOp>;

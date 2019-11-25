@@ -63,7 +63,7 @@ public:
   static Operation *lookupSymbolIn(Operation *symbolTableOp, StringRef symbol);
 
   /// Returns the operation registered with the given symbol name within the
-  /// closes parent operation of, or including, 'from' with the
+  /// closest parent operation of, or including, 'from' with the
   /// 'OpTrait::SymbolTable' trait. Returns nullptr if no valid symbol was
   /// found.
   static Operation *lookupNearestSymbolFrom(Operation *from, StringRef symbol);
@@ -91,27 +91,11 @@ public:
   /// This class implements a range of SymbolRef uses.
   class UseRange {
   public:
-    /// This class implements an iterator over the symbol use range.
-    class iterator final
-        : public indexed_accessor_iterator<iterator, const UseRange *,
-                                           const SymbolUse> {
-    public:
-      const SymbolUse *operator->() const { return &object->uses[index]; }
-      const SymbolUse &operator*() const { return object->uses[index]; }
-
-    private:
-      iterator(const UseRange *owner, ptrdiff_t it)
-          : indexed_accessor_iterator<iterator, const UseRange *,
-                                      const SymbolUse>(owner, it) {}
-
-      /// Allow access to the constructor.
-      friend class UseRange;
-    };
-
-    /// Contruct a UseRange from a given set of uses.
     UseRange(std::vector<SymbolUse> &&uses) : uses(std::move(uses)) {}
-    iterator begin() const { return iterator(this, /*it=*/0); }
-    iterator end() const { return iterator(this, /*it=*/uses.size()); }
+
+    using iterator = std::vector<SymbolUse>::const_iterator;
+    iterator begin() const { return uses.begin(); }
+    iterator end() const { return uses.end(); }
 
   private:
     std::vector<SymbolUse> uses;
@@ -120,25 +104,41 @@ public:
   /// Get an iterator range for all of the uses, for any symbol, that are nested
   /// within the given operation 'from'. This does not traverse into any nested
   /// symbol tables, and will also only return uses on 'from' if it does not
-  /// also define a symbol table. This function returns None if there are any
-  /// unknown operations that may potentially be symbol tables.
+  /// also define a symbol table. This is because we treat the region as the
+  /// boundary of the symbol table, and not the op itself. This function returns
+  /// None if there are any unknown operations that may potentially be symbol
+  /// tables.
   static Optional<UseRange> getSymbolUses(Operation *from);
 
   /// Get all of the uses of the given symbol that are nested within the given
   /// operation 'from'. This does not traverse into any nested symbol tables,
   /// and will also only return uses on 'from' if it does not also define a
-  /// symbol table. This function returns None if there are any unknown
-  /// operations that may potentially be symbol tables.
+  /// symbol table. This is because we treat the region as the boundary of the
+  /// symbol table, and not the op itself. This function returns None if there
+  /// are any unknown operations that may potentially be symbol tables.
   static Optional<UseRange> getSymbolUses(StringRef symbol, Operation *from);
 
   /// Return if the given symbol is known to have no uses that are nested within
   /// the given operation 'from'. This does not traverse into any nested symbol
   /// tables, and will also only count uses on 'from' if it does not also define
-  /// a symbol table. This function will also return false if there are any
-  /// unknown operations that may potentially be symbol tables. This doesn't
-  /// necessarily mean that there are no uses, we just can't convervatively
-  /// prove it.
+  /// a symbol table. This is because we treat the region as the boundary of
+  /// the symbol table, and not the op itself. This function will also return
+  /// false if there are any unknown operations that may potentially be symbol
+  /// tables. This doesn't necessarily mean that there are no uses, we just
+  /// can't convervatively prove it.
   static bool symbolKnownUseEmpty(StringRef symbol, Operation *from);
+
+  /// Attempt to replace all uses of the given symbol 'oldSymbol' with the
+  /// provided symbol 'newSymbol' that are nested within the given operation
+  /// 'from'. This does not traverse into any nested symbol tables, and will
+  /// also only replace uses on 'from' if it does not also define a symbol
+  /// table. This is because we treat the region as the boundary of the symbol
+  /// table, and not the op itself. If there are any unknown operations that may
+  /// potentially be symbol tables, no uses are replaced and failure is
+  /// returned.
+  LLVM_NODISCARD static LogicalResult replaceAllSymbolUses(StringRef oldSymbol,
+                                                           StringRef newSymbol,
+                                                           Operation *from);
 
 private:
   MLIRContext *context;
@@ -222,6 +222,15 @@ public:
   /// Note: See mlir::SymbolTable::symbolKnownUseEmpty for more details.
   bool symbolKnownUseEmpty(Operation *from) {
     return ::mlir::SymbolTable::symbolKnownUseEmpty(getName(), from);
+  }
+
+  /// Attempt to replace all uses of the current symbol with the provided symbol
+  /// 'newSymbol' that are nested within the given operation 'from'.
+  /// Note: See mlir::SymbolTable::replaceAllSymbolUses for more details.
+  LLVM_NODISCARD LogicalResult replaceAllSymbolUses(StringRef newSymbol,
+                                                    Operation *from) {
+    return ::mlir::SymbolTable::replaceAllSymbolUses(getName(), newSymbol,
+                                                     from);
   }
 };
 

@@ -30,6 +30,7 @@ py_test(
     srcs_version = "PY3",
     tags = [
         "no_oss_py2",
+        "no_oss_py35",
         "no_pip",
     ],
     deps = [
@@ -437,7 +438,7 @@ tf_proto_library(
     name = "tensor_tracer_proto",
     srcs = ["tensor_tracer.proto"],
     protodeps = [
-        "//tensorflow/core:protos_all_proto",
+        "//tensorflow/core:protos_all",
     ],
     visibility = ["//visibility:public"],
 )

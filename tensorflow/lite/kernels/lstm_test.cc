@@ -253,10 +253,10 @@ class LSTMOpModel : public SingleOpModel {
   int cell_to_forget_weights_;
   int cell_to_output_weights_;
 
-  int input_layer_norm_coefficients_ = kOptionalTensor;
-  int forget_layer_norm_coefficients_ = kOptionalTensor;
-  int cell_layer_norm_coefficients_ = kOptionalTensor;
-  int output_layer_norm_coefficients_ = kOptionalTensor;
+  int input_layer_norm_coefficients_ = kTfLiteOptionalTensor;
+  int forget_layer_norm_coefficients_ = kTfLiteOptionalTensor;
+  int cell_layer_norm_coefficients_ = kTfLiteOptionalTensor;
+  int output_layer_norm_coefficients_ = kTfLiteOptionalTensor;
 
   int input_gate_bias_;
   int forget_gate_bias_;
@@ -290,13 +290,13 @@ class LSTMOpModel : public SingleOpModel {
   template <typename T>
   void PopulateTensor(int index, const std::vector<T>& data) {
     // Nothing to do if tensor is an optional input or if data vector is empty.
-    if ((index == kOptionalTensor) || data.empty()) return;
+    if ((index == kTfLiteOptionalTensor) || data.empty()) return;
     SingleOpModel::PopulateTensor(index, data);
   }
 
   void SetWeights(int index, const std::vector<float>& data) {
     if (data.empty()) return;
-    if (index == kOptionalTensor) return;
+    if (index == kTfLiteOptionalTensor) return;
     switch (weight_type_) {
       case TensorType_FLOAT32:
         PopulateTensor(index, data);

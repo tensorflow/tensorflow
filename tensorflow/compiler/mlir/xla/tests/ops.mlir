@@ -202,25 +202,19 @@ func @select_bad_pred_type(%arg0: tensor<3xi32>, %arg1: tensor<2x3xi32>, %arg2: 
 
 // -----
 
+// TODO(jpienaar): Re-enable post updating select function verify.
 func @select_bad_shape_mismatch(%arg0: tensor<3xi1>, %arg1: tensor<2x4xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{on_true type (tensor<2x4xi32>) does not match on_false type (tensor<2x3xi32>)}}
+  // should-be-error@+1 {{on_true type (tensor<2x4xi32>) does not match on_false type (tensor<2x3xi32>)}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x4xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
 
 // -----
 
+// TODO(jpienaar): Re-enable post updating select function verify.
 func @select_bad_element_type_mismatch(%arg0: tensor<3xi1>, %arg1: tensor<2x3xf32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{on_true type (tensor<2x3xf32>) does not match on_false type (tensor<2x3xi32>)}}
+  // should-be-error@+1 {{on_true type (tensor<2x3xf32>) does not match on_false type (tensor<2x3xi32>)}}
   %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xf32>, tensor<2x3xi32>) -> tensor<2x3xi32>
-  return %0 : tensor<2x3xi32>
-}
-
-// -----
-
-func @select_bad_pred_shape(%arg0: tensor<3xi1>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32>) -> tensor<2x3xi32> {
-  // expected-error@+1 {{red shape ([3]) is not scalar and does not match operand shapes ([2, 3])}}
-  %0 = "xla_hlo.select"(%arg0, %arg1, %arg2) : (tensor<3xi1>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
   return %0 : tensor<2x3xi32>
 }
 
@@ -371,6 +365,37 @@ func @get_tuple_element_index_out_of_bounds(%arg0: tuple<tensor<f32>, tensor<i32
   // expected-error@+1 {{index 2 is out of bounds of operand with size 2}}
   %0 = "xla_hlo.get_tuple_element"(%arg0) {index = 2 : i32} : (tuple<tensor<f32>, tensor<i32>>) -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// -----
+
+// CHECK-LABEL: func @and_i32_type
+func @and_i32_type(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  %0 = "xla_hlo.and"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
+}
+
+// -----
+// CHECK-LABEL: func @or_i1_type
+func @or_i1_type(%arg0: tensor<4xi1>, %arg1: tensor<4xi1>) -> tensor<4xi1> {
+  %0 = "xla_hlo.or"(%arg0, %arg1) : (tensor<4xi1>, tensor<4xi1>) -> tensor<4xi1>
+  return %0 : tensor<4xi1>
+}
+
+// -----
+
+func @or_invalid_f32_type(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> tensor<4xf32> {
+  // expected-error@+1 {{must be tensor of pred (AKA boolean or 1-bit integer) or 8/16/32/64-bit integer values, but got 'tensor<4xf32>'}}
+  %0 = "xla_hlo.or"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
+}
+
+// -----
+
+func @floor_invalid_i32_type(%arg0: tensor<4xi32>) -> tensor<4xi32> {
+  // expected-error@+1 {{must be tensor of floating-point values, but got 'tensor<4xi32>'}}
+  %0 = "xla_hlo.floor"(%arg0) : (tensor<4xi32>) -> tensor<4xi32>
+  return %0 : tensor<4xi32>
 }
 
 // -----

@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
@@ -29,7 +29,7 @@ class MapAndBatchFusionTest(test_base.DatasetTestBase):
 
   def testMapAndBatchFusion(self):
     dataset = dataset_ops.Dataset.range(10).apply(
-        optimization.assert_next(
+        testing.assert_next(
             ["MapAndBatch"])).map(lambda x: x * x).batch(10)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False

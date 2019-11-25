@@ -1202,6 +1202,9 @@ class Layer(module.Module):
         # ignored, following the default path for adding updates.
         not call_context.saving):
       # Updates don't need to be run in a cross-replica context.
+      # TODO(b/142574744): Relax this restriction so that metrics/variables
+      # created outside of a strategy scope can be updated in the cross-replica
+      # context.
       if (ops.executing_eagerly_outside_functions() and
           not base_layer_utils.is_in_keras_graph()):
         raise RuntimeError(  # pylint: disable=g-doc-exception
@@ -2103,8 +2106,7 @@ class Layer(module.Module):
         except AttributeError:
           pass
         else:
-          self._dtype_policy = policy.with_input_dtype(self._dtype_policy,
-                                                       dtype)
+          self._dtype_policy = policy.Policy(dtype)
       input_shapes = None
       if all(hasattr(x, 'shape') for x in input_list):
         input_shapes = nest.map_structure(lambda x: x.shape, inputs)

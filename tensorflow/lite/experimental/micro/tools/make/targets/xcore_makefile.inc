@@ -1,10 +1,12 @@
 # Settings for XMOS XS3 based processors
 #-Wno-unknown-attributes
+
+#TODO changing this file doesn't mark build as dirty
 ifeq ($(TARGET), xcore)
   XTIME_URL := "http://totoro.xmos.local:8080/xtimecomposer.zip"
   XTIME_MD5 := "c56789d0ecf12b6eb0582affd33e0de4"
   $(eval $(call add_third_party_download,$(XTIME_URL),$(XTIME_MD5),xtimecomposer))
-  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -Wno-unknown-pragmas -report
+  PLATFORM_FLAGS = -target=XU316-1024-QF60-C20 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -Wno-unknown-pragmas -Wno-unknown-attributes -report
   CXX_TOOL := xcc
   CC_TOOL := xcc
   AR_TOOL := xmosar   

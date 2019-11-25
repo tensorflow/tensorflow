@@ -52,27 +52,6 @@ using mlir::ShapedType;
 using mlir::Type;
 using tensorflow::errors::InvalidArgument;
 
-void ConvertToMlirShape(const TensorShape& input_shape,
-                        llvm::SmallVectorImpl<int64_t>* shape) {
-  shape->reserve(input_shape.dims());
-  for (const auto& d : input_shape) {
-    shape->push_back(d.size);
-  }
-}
-
-Status ConvertToMlirShape(const TensorShapeProto& input_shape,
-                          llvm::SmallVectorImpl<int64_t>* shape) {
-  shape->reserve(input_shape.dim_size());
-  auto& dims = input_shape.dim();
-  for (auto& d : dims) {
-    if (d.size() > std::numeric_limits<int64_t>::max()) {
-      return InvalidArgument("Shape element overflows");
-    }
-    shape->push_back(d.size());
-  }
-  return Status::OK();
-}
-
 static TensorProto ConvertToProto(const Tensor& input_tensor,
                                   bool use_tensor_content = true) {
   TensorProto tensor_proto;

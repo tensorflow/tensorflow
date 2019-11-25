@@ -2,6 +2,8 @@ package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
+        # tensorflow/core/framework references some of the headers in this package
+        "//tensorflow/core/framework:__subpackages__",
         # tensorflow/core/platform still references some of the headers in this package
         "//tensorflow/core/platform:__subpackages__",
     ],

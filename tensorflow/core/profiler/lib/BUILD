@@ -24,7 +24,6 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core/profiler/internal:profiler_interface",
         "//tensorflow/core/profiler/lib:profiler_utils",
-        "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/strings",
     ] + select({
         "//tensorflow:android": [],
@@ -51,7 +50,7 @@ tf_cuda_library(
     alwayslink = 1,
 )
 
-tf_cuda_library(
+cc_library(
     name = "traceme",
     srcs = ["traceme.cc"],
     hdrs = ["traceme.h"],
@@ -59,6 +58,17 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/internal:traceme_recorder",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "scoped_annotation",
+    hdrs = ["scoped_annotation.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/internal:annotation_stack",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -73,6 +83,14 @@ cc_library(
 
 filegroup(
     name = "mobile_srcs",
-    srcs = glob(["*"]),
+    srcs = [
+        "profiler_session.cc",
+        "profiler_session.h",
+        "profiler_utils.cc",
+        "profiler_utils.h",
+        "scoped_annotation.h",
+        "traceme.cc",
+        "traceme.h",
+    ],
     visibility = ["//visibility:public"],
 )

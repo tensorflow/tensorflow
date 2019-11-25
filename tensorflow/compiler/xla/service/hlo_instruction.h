@@ -475,7 +475,8 @@ class HloInstruction {
   static StatusOr<std::unique_ptr<HloInstruction>> CreateFromProto(
       const HloInstructionProto& proto,
       const absl::flat_hash_map<int64, HloInstruction*>& instruction_map,
-      const absl::flat_hash_map<int64, HloComputation*>& computation_map);
+      const absl::flat_hash_map<int64, HloComputation*>& computation_map,
+      bool prohibit_empty_literal = true);
 
   // Creates a parameter-retrieving instruction.
   static std::unique_ptr<HloInstruction> CreateParameter(int64 parameter_number,
@@ -639,7 +640,8 @@ class HloInstruction {
   // It is used to implement the higher-level instruction in XlaBuilder.
   static std::unique_ptr<HloInstruction> CreateAllToAll(
       const Shape& shape, absl::Span<HloInstruction* const> operands,
-      const std::vector<ReplicaGroup>& replica_groups);
+      const std::vector<ReplicaGroup>& replica_groups,
+      const absl::optional<int64>& channel_id);
 
   // Creates a communitation instructions that permutes data cross replicas.
   // Data is sent/received according to the (source_replica_id,
@@ -1410,7 +1412,8 @@ class HloInstruction {
   // Returns the indices that the given operand appear in the operand list of
   // this instruction. Note that an instruction can use the same operand
   // multiple times.
-  std::vector<int64> OperandIndices(const HloInstruction* operand) const;
+  absl::InlinedVector<int64, 4> OperandIndices(
+      const HloInstruction* operand) const;
 
   // Convenience helper for ShapeUtil::InsertedOrDeleted1SizedDimensions. If
   // this reshape merely inserts or deletes 1-sized dimensions, return the input

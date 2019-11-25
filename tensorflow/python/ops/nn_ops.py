@@ -24,7 +24,9 @@ import os
 
 import numpy as np
 
+from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import graph_util
@@ -38,6 +40,7 @@ from tensorflow.python.ops import check_ops
 # TODO(b/138808492): Remove code inside copybara
 from tensorflow.python.ops import control_flow_ops
 # copybara:strip_end
+from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -1449,15 +1452,10 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   the amount of computation.
 
   For a description of atrous convolution and how it can be used for dense
-  feature extraction, please see: [Semantic Image Segmentation with Deep
-  Convolutional Nets and Fully Connected CRFs](http://arxiv.org/abs/1412.7062).
-  The same operation is investigated further in [Multi-Scale Context Aggregation
-  by Dilated Convolutions](http://arxiv.org/abs/1511.07122). Previous works
-  that effectively use atrous convolution in different ways are, among others,
-  [OverFeat: Integrated Recognition, Localization and Detection using
-  Convolutional Networks](http://arxiv.org/abs/1312.6229) and [Fast Image
-  Scanning with Deep Max-Pooling Convolutional Neural
-  Networks](http://arxiv.org/abs/1302.1700).
+  feature extraction, please see: (Chen et al., 2015). The same operation is
+  investigated further in (Yu et al., 2016). Previous works that effectively
+  use atrous convolution in different ways are, among others,
+  (Sermanet et al., 2014) and (Giusti et al., 2013).
   Atrous convolution is also closely related to the so-called noble identities
   in multi-rate signal processing.
 
@@ -1538,6 +1536,23 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
   Raises:
     ValueError: If input/output depth does not match `filters`' shape, or if
       padding is other than `'VALID'` or `'SAME'`.
+
+  References:
+    Multi-Scale Context Aggregation by Dilated Convolutions:
+      [Yu et al., 2016](https://arxiv.org/abs/1511.07122)
+      ([pdf](https://arxiv.org/pdf/1511.07122.pdf))
+    Semantic Image Segmentation with Deep Convolutional Nets and Fully
+    Connected CRFs:
+      [Chen et al., 2015](http://arxiv.org/abs/1412.7062)
+      ([pdf](https://arxiv.org/pdf/1412.7062))
+    OverFeat - Integrated Recognition, Localization and Detection using
+    Convolutional Networks:
+      [Sermanet et al., 2014](https://arxiv.org/abs/1312.6229)
+      ([pdf](https://arxiv.org/pdf/1312.6229.pdf))
+    Fast Image Scanning with Deep Max-Pooling Convolutional Neural Networks:
+      [Giusti et al., 2013]
+      (https://ieeexplore.ieee.org/abstract/document/6738831)
+      ([pdf](https://arxiv.org/pdf/1302.1700.pdf))
   """
   return convolution(
       input=value,
@@ -1760,10 +1775,9 @@ def conv1d_transpose(
     name=None):
   """The transpose of `conv1d`.
 
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
-  but is really the transpose (gradient) of `conv1d` rather than an actual
-  deconvolution.
+  This operation is sometimes called "deconvolution" after
+  (Zeiler et al., 2010), but is actually the transpose (gradient) of `conv1d`
+  rather than an actual deconvolution.
 
   Args:
     input: A 3-D `Tensor` of type `float` and shape
@@ -1792,6 +1806,13 @@ def conv1d_transpose(
     ValueError: If input/output depth does not match `filter`'s shape, if
       `output_shape` is not at 3-element vector, if `padding` is other than
       `'VALID'` or `'SAME'`, or if `data_format` is invalid.
+
+  References:
+    Deconvolutional Networks:
+      [Zeiler et al., 2010]
+      (https://ieeexplore.ieee.org/abstract/document/5539957)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.4023&rep=rep1&type=pdf))
   """
   with ops.name_scope(name, "conv1d_transpose",
                       [input, filters, output_shape]) as name:
@@ -2149,10 +2170,9 @@ def conv2d_transpose(
     dilations=None):
   """The transpose of `conv2d`.
 
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
-  but is really the transpose (gradient) of `conv2d` rather than an actual
-  deconvolution.
+  This operation is sometimes called "deconvolution" after
+  (Zeiler et al., 2010), but is really the transpose (gradient) of `conv2d`
+  rather than an actual deconvolution.
 
   Args:
     value: A 4-D `Tensor` of type `float` and shape
@@ -2189,6 +2209,13 @@ def conv2d_transpose(
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, or if
       padding is other than `'VALID'` or `'SAME'`.
+
+  References:
+    Deconvolutional Networks:
+      [Zeiler et al., 2010]
+      (https://ieeexplore.ieee.org/abstract/document/5539957)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.4023&rep=rep1&type=pdf))
   """
   value = deprecated_argument_lookup("input", input, "value", value)
   filter = deprecated_argument_lookup("filters", filters, "filter", filter)
@@ -2217,10 +2244,9 @@ def conv2d_transpose_v2(
     name=None):
   """The transpose of `conv2d`.
 
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv2d` rather than an actual
-  deconvolution.
+  This operation is sometimes called "deconvolution" after
+  (Zeiler et al., 2010), but is really the transpose (gradient) of
+  `atrous_conv2d` rather than an actual deconvolution.
 
   Args:
     input: A 4-D `Tensor` of type `float` and shape `[batch, height, width,
@@ -2255,6 +2281,13 @@ def conv2d_transpose_v2(
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, or if
       padding is other than `'VALID'` or `'SAME'`.
+
+  References:
+    Deconvolutional Networks:
+      [Zeiler et al., 2010]
+      (https://ieeexplore.ieee.org/abstract/document/5539957)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.4023&rep=rep1&type=pdf))
   """
   with ops.name_scope(name, "conv2d_transpose",
                       [input, filter, output_shape]) as name:
@@ -2285,10 +2318,9 @@ def atrous_conv2d_transpose(value,
                             name=None):
   """The transpose of `atrous_conv2d`.
 
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
-  but is really the transpose (gradient) of `atrous_conv2d` rather than an
-  actual deconvolution.
+  This operation is sometimes called "deconvolution" after
+  (Zeiler et al., 2010), but is really the transpose (gradient) of
+  `atrous_conv2d` rather than an actual deconvolution.
 
   Args:
     value: A 4-D `Tensor` of type `float`. It needs to be in the default `NHWC`
@@ -2318,6 +2350,13 @@ def atrous_conv2d_transpose(value,
     ValueError: If input/output depth does not match `filters`' shape, or if
       padding is other than `'VALID'` or `'SAME'`, or if the `rate` is less
       than one, or if the output_shape is not a tensor with 4 elements.
+
+  References:
+    Deconvolutional Networks:
+      [Zeiler et al., 2010]
+      (https://ieeexplore.ieee.org/abstract/document/5539957)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.4023&rep=rep1&type=pdf))
   """
   with ops.name_scope(name, "atrous_conv2d_transpose",
                       [value, filters, output_shape]) as name:
@@ -2481,10 +2520,9 @@ def conv3d_transpose(
     dilations=None):
   """The transpose of `conv3d`.
 
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
-  but is really the transpose (gradient) of `conv3d` rather than an actual
-  deconvolution.
+  This operation is sometimes called "deconvolution" after
+  (Zeiler et al., 2010), but is really the transpose (gradient) of `conv3d`
+  rather than an actual deconvolution.
 
   Args:
     value: A 5-D `Tensor` of type `float` and shape
@@ -2518,6 +2556,13 @@ def conv3d_transpose(
   Raises:
     ValueError: If input/output depth does not match `filter`'s shape, or if
       padding is other than `'VALID'` or `'SAME'`.
+
+  References:
+    Deconvolutional Networks:
+      [Zeiler et al., 2010]
+      (https://ieeexplore.ieee.org/abstract/document/5539957)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.4023&rep=rep1&type=pdf))
   """
   filter = deprecated_argument_lookup("filters", filters, "filter", filter)
   value = deprecated_argument_lookup("input", input, "value", value)
@@ -2543,10 +2588,9 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
                         name=None):
   """The transpose of `conv3d`.
 
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv2d` rather than an actual
-  deconvolution.
+  This operation is sometimes called "deconvolution" after
+  (Zeiler et al., 2010), but is really the transpose (gradient) of `conv3d`
+  rather than an actual deconvolution.
 
   Args:
     input: A 5-D `Tensor` of type `float` and shape `[batch, height, width,
@@ -2577,6 +2621,13 @@ def conv3d_transpose_v2(input,  # pylint: disable=redefined-builtin
 
   Returns:
     A `Tensor` with the same type as `value`.
+
+  References:
+    Deconvolutional Networks:
+      [Zeiler et al., 2010]
+      (https://ieeexplore.ieee.org/abstract/document/5539957)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.4023&rep=rep1&type=pdf))
   """
   with ops.name_scope(name, "conv3d_transpose",
                       [input, filter, output_shape]) as name:
@@ -2616,10 +2667,9 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
                    name=None):
   """The transpose of `convolution`.
 
-  This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `convolution` rather than an actual
-  deconvolution.
+  This operation is sometimes called "deconvolution" after
+  (Zeiler et al., 2010), but is really the transpose (gradient) of `conv3d`
+  rather than an actual deconvolution.
 
   Args:
     input: An N+2 dimensional `Tensor` of shape
@@ -2657,6 +2707,13 @@ def conv_transpose(input,  # pylint: disable=redefined-builtin
 
   Returns:
     A `Tensor` with the same type as `value`.
+
+  References:
+    Deconvolutional Networks:
+      [Zeiler et al., 2010]
+      (https://ieeexplore.ieee.org/abstract/document/5539957)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.232.4023&rep=rep1&type=pdf))
   """
   with ops.name_scope(name, "conv_transpose",
                       [input, filter, output_shape]) as name:
@@ -2804,6 +2861,12 @@ def crelu(features, name=None, axis=-1):
 
   Returns:
     A `Tensor` with the same type as `features`.
+
+  References:
+    Understanding and Improving Convolutional Neural Networks via Concatenated
+    Rectified Linear Units:
+      [Shang et al., 2016](http://proceedings.mlr.press/v48/shang16)
+      ([pdf](http://proceedings.mlr.press/v48/shang16.pdf))
   """
   with ops.name_scope(name, "CRelu", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
@@ -2821,9 +2884,6 @@ crelu_v2.__doc__ = crelu.__doc__
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
 
-  Source: [Convolutional Deep Belief Networks on CIFAR-10. A.
-  Krizhevsky](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf)
-
   Args:
     features: A `Tensor` with type `float`, `double`, `int32`, `int64`, `uint8`,
       `int16`, or `int8`.
@@ -2831,6 +2891,11 @@ def relu6(features, name=None):
 
   Returns:
     A `Tensor` with the same type as `features`.
+
+  References:
+    Convolutional Deep Belief Networks on CIFAR-10:
+      Krizhevsky et al., 2010
+      ([pdf](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf))
   """
   with ops.name_scope(name, "Relu6", [features]) as name:
     features = ops.convert_to_tensor(features, name="features")
@@ -2842,8 +2907,8 @@ def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
   Source: [Rectifier Nonlinearities Improve Neural Network Acoustic Models.
-  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013](https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
-
+  AL Maas, AY Hannun, AY Ng - Proc. ICML, 2013]
+  (https://ai.stanford.edu/~amaas/papers/relu_hybrid_icml2013_final.pdf).
   Args:
     features: A `Tensor` representing preactivation values. Must be one of
       the following types: `float16`, `float32`, `float64`, `int32`, `int64`.
@@ -2852,6 +2917,13 @@ def leaky_relu(features, alpha=0.2, name=None):
 
   Returns:
     The activation value.
+
+  References:
+    Rectifier Nonlinearities Improve Neural Network Acoustic Models:
+      [Maas et al., 2013]
+      (http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.693.1422)
+      ([pdf]
+      (http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.693.1422&rep=rep1&type=pdf))
   """
   with ops.name_scope(name, "LeakyRelu", [features, alpha]) as name:
     features = ops.convert_to_tensor(features, name="features")
@@ -4310,19 +4382,24 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
 
   >>> tf.random.set_seed(0)
   >>> x = tf.ones([3,5])
-  >>> tf.nn.dropout(x, rate = 0.5).numpy()
-  array([[0., 0., 2., 2., 0.],
-         [2., 0., 2., 2., 0.],
-         [2., 2., 2., 0., 0.]], dtype=float32)
-  >>> tf.nn.dropout(x, rate = 0.8).numpy()
-  array([[0., 0., 5., 0., 0.],
-         [0., 0., 5., 0., 0.],
-         [5., 0., 0., 5., 0.]], dtype=float32)
+  >>> tf.nn.dropout(x, rate = 0.5, seed = 1).numpy()
+  array([[2., 0., 0., 2., 2.],
+       [2., 2., 2., 2., 2.],
+       [2., 0., 2., 0., 2.]], dtype=float32)
 
-  If rate is set to `0` the input is returned, unchanged:
+  >>> tf.random.set_seed(0)
+  >>> x = tf.ones([3,5])
+  >>> tf.nn.dropout(x, rate = 0.8, seed = 1).numpy()
+  array([[0., 0., 0., 5., 5.],
+       [0., 5., 0., 5., 0.],
+       [5., 0., 5., 0., 5.]], dtype=float32)
 
-  >>> tf.nn.dropout(x, rate = 0.0) is x
-  True
+  >>> tf.nn.dropout(x, rate = 0.0) == x
+  <tf.Tensor: shape=(3, 5), dtype=bool, numpy=
+    array([[ True,  True,  True,  True,  True],
+           [ True,  True,  True,  True,  True],
+           [ True,  True,  True,  True,  True]])>
+
 
   By default, each element is kept or dropped independently.  If `noise_shape`
   is specified, it must be
@@ -4331,11 +4408,12 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
   will make independent decisions. This is useful for dropping whole
   channels from an image or sequence. For example:
 
+  >>> tf.random.set_seed(0)
   >>> x = tf.ones([3,10])
-  >>> tf.nn.dropout(x, rate = 2/3, noise_shape=[1,10]).numpy()
-  array([[0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
-         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.],
-         [0., 3., 0., 3., 0., 0., 3., 0., 0., 3.]], dtype=float32)
+  >>> tf.nn.dropout(x, rate = 2/3, noise_shape=[1,10], seed=1).numpy()
+  array([[0., 0., 0., 3., 3., 0., 3., 3., 3., 0.],
+       [0., 0., 0., 3., 3., 0., 3., 3., 3., 0.],
+       [0., 0., 0., 3., 3., 0., 3., 3., 3., 0.]], dtype=float32)
 
   Args:
     x: A floating point tensor.
@@ -4357,53 +4435,100 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       which is likely not what was intended.
   """
   with ops.name_scope(name, "dropout", [x]) as name:
-    x = ops.convert_to_tensor(x, name="x")
-    if not x.dtype.is_floating:
-      raise ValueError("x has to be a floating point tensor since it's going to"
-                       " be scaled. Got a %s tensor instead." % x.dtype)
-    if isinstance(rate, numbers.Real):
-      if not (rate >= 0 and rate < 1):
+    # TODO(b/144930399): Remove this once the compatible window is passed.
+    if compat.forward_compatible(2019, 12, 16):
+      is_rate_number = isinstance(rate, numbers.Real)
+      if is_rate_number and (rate < 0 or rate >= 1):
         raise ValueError("rate must be a scalar tensor or a float in the "
                          "range [0, 1), got %g" % rate)
-      if rate > 0.5:
-        logging.log_first_n(
-            logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
-            "2.x, dropout() uses dropout rate instead of keep_prob. "
-            "Please ensure that this is intended.", 5, rate)
+      x = ops.convert_to_tensor(x, name="x")
+      x_dtype = x.dtype
+      if not x_dtype.is_floating:
+        raise ValueError("x has to be a floating point tensor since it's going "
+                         "to be scaled. Got a %s tensor instead." % x_dtype)
+      is_executing_eagerly = context.executing_eagerly()
+      if not tensor_util.is_tensor(rate):
+        if is_rate_number:
+          keep_prob = 1 - rate
+          scale = 1 / keep_prob
+          scale = ops.convert_to_tensor(scale, dtype=x_dtype)
+          ret = gen_math_ops.mul(x, scale)
+        else:
+          raise ValueError("rate is neither scalar nor scalar tensor %r" % rate)
+      else:
+        rate.get_shape().assert_has_rank(0)
+        rate_dtype = rate.dtype
+        if rate_dtype != x_dtype:
+          if not rate_dtype.is_compatible_with(x_dtype):
+            raise ValueError(
+                "Tensor dtype %s is incomptaible with Tensor dtype %s: %r" %
+                (x_dtype.name, rate_dtype.name, rate))
+          rate = gen_math_ops.cast(rate, x_dtype, name="rate")
+        one_tensor = constant_op.constant(1, dtype=x_dtype)
+        ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
 
-    # Early return if nothing needs to be dropped.
-    if isinstance(rate, numbers.Real) and rate == 0:
-      return x
-    if context.executing_eagerly():
-      if isinstance(rate, ops.EagerTensor):
-        if rate.numpy() == 0:
-          return x
+      noise_shape = _get_noise_shape(x, noise_shape)
+      # Sample a uniform distribution on [0.0, 1.0) and select values larger
+      # than rate.
+      #
+      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+      # and subtract 1.0.
+      random_tensor = random_ops.random_uniform(
+          noise_shape, seed=seed, dtype=x_dtype)
+      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that float is selected,
+      # hence a >= comparison is used.
+      keep_mask = random_tensor >= rate
+      ret = gen_math_ops.mul(ret, gen_math_ops.cast(keep_mask, x_dtype))
+      if not is_executing_eagerly:
+        ret.set_shape(x.get_shape())
+      return ret
     else:
-      rate = ops.convert_to_tensor(
-          rate, dtype=x.dtype, name="rate")
-      rate.get_shape().assert_has_rank(0)
+      x = ops.convert_to_tensor(x, name="x")
+      if not x.dtype.is_floating:
+        raise ValueError("x has to be a floating point tensor since it will "
+                         "be scaled. Got a %s tensor instead." % x.dtype)
+      if isinstance(rate, numbers.Real):
+        if not (rate >= 0 and rate < 1):
+          raise ValueError("rate must be a scalar tensor or a float in the "
+                           "range [0, 1), got %g" % rate)
+        if rate > 0.5:
+          logging.log_first_n(
+              logging.WARN, "Large dropout rate: %g (>0.5). In TensorFlow "
+              "2.x, dropout() uses dropout rate instead of keep_prob. "
+              "Please ensure that this is intended.", 5, rate)
 
-      # Do nothing if we know rate == 0
-      if tensor_util.constant_value(rate) == 0:
+      # Early return if nothing needs to be dropped.
+      if isinstance(rate, numbers.Real) and rate == 0:
         return x
+      if context.executing_eagerly():
+        if isinstance(rate, ops.EagerTensor):
+          if rate.numpy() == 0:
+            return x
+      else:
+        rate = ops.convert_to_tensor(rate, dtype=x.dtype, name="rate")
+        rate.get_shape().assert_has_rank(0)
 
-    noise_shape = _get_noise_shape(x, noise_shape)
-    # Sample a uniform distribution on [0.0, 1.0) and select values larger than
-    # rate.
-    #
-    # NOTE: Random uniform actually can only generate 2^23 floats on [1.0, 2.0)
-    # and subtract 1.0.
-    random_tensor = random_ops.random_uniform(
-        noise_shape, seed=seed, dtype=x.dtype)
-    keep_prob = 1 - rate
-    scale = 1 / keep_prob
-    # NOTE: if (1.0 + rate) - 1 is equal to rate, then we want to consider that
-    # float to be selected, hence we use a >= comparison.
-    keep_mask = random_tensor >= rate
-    ret = x * scale * math_ops.cast(keep_mask, x.dtype)
-    if not context.executing_eagerly():
-      ret.set_shape(x.get_shape())
-    return ret
+        # Do nothing if we know rate == 0
+        if tensor_util.constant_value(rate) == 0:
+          return x
+
+      noise_shape = _get_noise_shape(x, noise_shape)
+      # Sample a uniform distribution on [0.0, 1.0) and select values larger
+      # than rate.
+      #
+      # NOTE: Random uniform can only generate 2^23 floats on [1.0, 2.0)
+      # and subtract 1.0.
+      random_tensor = random_ops.random_uniform(
+          noise_shape, seed=seed, dtype=x.dtype)
+      keep_prob = 1 - rate
+      scale = 1 / keep_prob
+      # NOTE: if (1.0 + rate) - 1 is equal to rate, then that
+      # float is selected, hence we use a >= comparison.
+      keep_mask = random_tensor >= rate
+      ret = x * scale * math_ops.cast(keep_mask, x.dtype)
+      if not context.executing_eagerly():
+        ret.set_shape(x.get_shape())
+      return ret
 
 
 @tf_export("math.top_k", "nn.top_k")
@@ -4507,9 +4632,6 @@ def fractional_max_pool(value,
   3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
   4.  length(row_pooling_sequence) = output_row_length+1
 
-  For more details on fractional max pooling, see this paper: [Benjamin Graham,
-  Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
-
   Args:
     value: A `Tensor`. 4-D with shape `[batch, height, width, channels]`.
     pooling_ratio: A list of `floats` that has length >= 4.  Pooling ratio for
@@ -4520,8 +4642,7 @@ def fractional_max_pool(value,
       ratio on height and width dimensions respectively.
     pseudo_random: An optional `bool`.  Defaults to `False`. When set to `True`,
       generates the pooling sequence in a pseudorandom fashion, otherwise, in a
-      random fashion. Check paper [Benjamin Graham, Fractional
-      Max-Pooling](http://arxiv.org/abs/1412.6071) for difference between
+      random fashion. Check (Graham, 2015) for difference between
       pseudorandom and random.
     overlapping: An optional `bool`.  Defaults to `False`.  When set to `True`,
       it means when pooling, the values at the boundary of adjacent pooling
@@ -4545,6 +4666,11 @@ def fractional_max_pool(value,
       `value`.
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
+
+  References:
+    Fractional Max-Pooling:
+      [Graham, 2015](https://arxiv.org/abs/1412.6071)
+      ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
   return gen_nn_ops.fractional_max_pool(value, pooling_ratio, pseudo_random,
                                         overlapping, deterministic, seed, seed2,
@@ -4586,9 +4712,6 @@ def fractional_max_pool_v2(value,
   3.  K <= (a[i+1] - a[i]) <= K+1 : all intervals are K or K+1 size
   4.  length(row_pooling_sequence) = output_row_length+1
 
-  For more details on fractional max pooling, see this paper: [Benjamin Graham,
-  Fractional Max-Pooling](http://arxiv.org/abs/1412.6071)
-
   Args:
     value: A `Tensor`. 4-D with shape `[batch, height, width, channels]`.
     pooling_ratio: An int or list of `ints` that has length `1`, `2` or `4`.
@@ -4599,8 +4722,7 @@ def fractional_max_pool_v2(value,
       1.73 are pooling ratio on height and width dimensions respectively.
     pseudo_random: An optional `bool`.  Defaults to `False`. When set to `True`,
       generates the pooling sequence in a pseudorandom fashion, otherwise, in a
-      random fashion. Check paper [Benjamin Graham, Fractional
-      Max-Pooling](http://arxiv.org/abs/1412.6071) for difference between
+      random fashion. Check paper (Graham, 2015) for difference between
       pseudorandom and random.
     overlapping: An optional `bool`.  Defaults to `False`.  When set to `True`,
       it means when pooling, the values at the boundary of adjacent pooling
@@ -4621,6 +4743,11 @@ def fractional_max_pool_v2(value,
       `value`.
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
+
+  References:
+    Fractional Max-Pooling:
+      [Graham, 2015](https://arxiv.org/abs/1412.6071)
+      ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
   pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
 
@@ -4665,8 +4792,7 @@ def fractional_avg_pool(value,
       ratio on height and width dimensions respectively.
     pseudo_random: An optional `bool`.  Defaults to `False`. When set to `True`,
       generates the pooling sequence in a pseudorandom fashion, otherwise, in a
-      random fashion. Check paper [Benjamin Graham, Fractional
-      Max-Pooling](http://arxiv.org/abs/1412.6071) for difference between
+      random fashion. Check paper (Graham, 2015) for difference between
       pseudorandom and random.
     overlapping: An optional `bool`.  Defaults to `False`.  When set to `True`,
       it means when pooling, the values at the boundary of adjacent pooling
@@ -4690,6 +4816,11 @@ def fractional_avg_pool(value,
       `value`.
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
+
+  References:
+    Fractional Max-Pooling:
+      [Graham, 2015](https://arxiv.org/abs/1412.6071)
+      ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
   return gen_nn_ops.fractional_avg_pool(value, pooling_ratio, pseudo_random,
                                         overlapping, deterministic, seed, seed2,
@@ -4720,8 +4851,7 @@ def fractional_avg_pool_v2(value,
       ratio on height and width dimensions respectively.
     pseudo_random: An optional `bool`.  Defaults to `False`. When set to `True`,
       generates the pooling sequence in a pseudorandom fashion, otherwise, in a
-      random fashion. Check paper [Benjamin Graham, Fractional
-      Max-Pooling](http://arxiv.org/abs/1412.6071) for difference between
+      random fashion. Check paper (Graham, 2015) for difference between
       pseudorandom and random.
     overlapping: An optional `bool`.  Defaults to `False`.  When set to `True`,
       it means when pooling, the values at the boundary of adjacent pooling
@@ -4742,6 +4872,11 @@ def fractional_avg_pool_v2(value,
       `value`.
     row_pooling_sequence: A `Tensor` of type `int64`.
     col_pooling_sequence: A `Tensor` of type `int64`.
+
+  References:
+    Fractional Max-Pooling:
+      [Graham, 2015](https://arxiv.org/abs/1412.6071)
+      ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
   if seed == 0:
     return gen_nn_ops.fractional_avg_pool(value, pooling_ratio, pseudo_random,

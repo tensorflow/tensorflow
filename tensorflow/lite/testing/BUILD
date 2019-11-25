@@ -13,7 +13,6 @@ load(
     "tf_cc_binary",
     "tf_cc_test",
 )
-# Placeholder for Google-internal load statements.
 
 package(
     default_visibility = [
@@ -480,26 +479,37 @@ tf_py_wrap_cc(
 tflite_portable_test_suite()
 
 edgetpu_ops = [
-    "conv",  # high error
-    "fully_connected",
-    "softmax",
-    "reshape",
     "add",
-    "mul",
-    "sub",
     "avg_pool",
-    "max_pool",
     "concat",
-    "resize_bilinear",
-    "l2norm",  # high error
-    "sum",  # high error
+    "conv",  # high error
+    "conv_relu",
+    "conv_relu1",
+    "conv_relu6",
     "depthwiseconv",  # high error
+    "fully_connected",
+    "l2norm",  # high error
+    "max_pool",
+    "mean",
+    "mul",
+    "pad",  # high error
+    "relu",
+    "relu1",
+    "relu6",
+    "reshape",
+    "resize_bilinear",
+    "resize_nearest_neighbor",
+    "sigmoid",
+    "slice",
+    "softmax",
     "space_to_depth",
     "split",
     "squeeze",
-    "pad",  # high error
-    "slice",
     "strided_slice",
+    "sub",
+    "sum",  # high error
+    "tanh",
+    "transpose_conv",
 ]
 
 [gen_zipped_test_file(

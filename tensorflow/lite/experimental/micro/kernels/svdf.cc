@@ -390,6 +390,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 scratch_input_quantized->type == kTfLiteInt8);
     TF_LITE_ENSURE_EQ(context, scratch_input_quantized->dims->data[0],
                       batch_size);
+    TF_LITE_ENSURE_EQ(context, scratch_input_quantized->dims->data[1],
+                      input_size);
 
     // Validate Scaling Factors Scratch Tensor:
     TF_LITE_ENSURE_EQ(context, scratch_scaling_factors->type, kTfLiteFloat32);
@@ -440,7 +442,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
+  const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* weights_feature =

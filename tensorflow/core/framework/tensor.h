@@ -653,6 +653,7 @@ class Tensor {
 
   friend class DMAHelper;             // For access to buf_.
   friend class TensorCApi;            // For access to buf_.
+  friend class TensorCord;            // For access to buf_.
   friend class TensorReference;       // For access to buf_.
   friend class VariableOp;            // For access to set_shape.
   friend class AutoReloadVariableOp;  // For access to set_shape.

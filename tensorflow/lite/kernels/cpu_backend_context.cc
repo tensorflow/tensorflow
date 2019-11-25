@@ -52,6 +52,9 @@ CpuBackendContext::CpuBackendContext()
       ruy_context_(new ruy::Context),
       gemmlowp_context_(new gemmlowp::GemmContext) {
   SetMaxNumThreads(1);
+#ifdef TFLITE_WITH_RUY_GEMV
+  ruy_context_->cache_policy = ruy::kCacheLHSOnGemV;
+#endif
 }
 
 CpuBackendContext::~CpuBackendContext() {}

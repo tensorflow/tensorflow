@@ -2560,8 +2560,16 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"MatMul", ConvertMatMulOperator},
       {"MatrixDiag", ConvertSimpleOperator<MatrixDiagOperator, 1, 1>},
       {"MatrixDiagV2", ConvertSimpleOperator<MatrixDiagV2Operator, 5, 1>},
+      // `MatrixDiagV3` has an `align` attribute. However, Toco only converts
+      // `MatrixDiagV3` to `MatrixDiag` with default `k, num_rows, num_cols,
+      // padding_value` inputs. In this case, `align` can be ignored.
+      {"MatrixDiagV3", ConvertSimpleOperator<MatrixDiagV3Operator, 5, 1>},
       {"MatrixSetDiag", ConvertSimpleOperator<MatrixSetDiagOperator, 2, 1>},
       {"MatrixSetDiagV2", ConvertSimpleOperator<MatrixSetDiagV2Operator, 3, 1>},
+      // `MatrixSetDiagV3` has an `align` attribute. However, Toco only converts
+      // `MatrixSetDiagV3` to `MatrixSetDiag` with default `k` inputs. In this
+      // case, `align` can be ignored.
+      {"MatrixSetDiagV3", ConvertSimpleOperator<MatrixSetDiagV3Operator, 3, 1>},
       {"Max", ConvertReduceOperator<TensorFlowMaxOperator>},
       {"MaxPool", ConvertMaxPoolOperator},
       {"Maximum", ConvertSimpleOperator<TensorFlowMaximumOperator, 2, 1>},

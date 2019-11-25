@@ -102,7 +102,7 @@ TfLiteQuantizationParams GetLegacyQuantization(
   }
 
   auto* affine_quantization =
-      reinterpret_cast<TfLiteAffineQuantization*>(quantization.params);
+      static_cast<TfLiteAffineQuantization*>(quantization.params);
   if (!affine_quantization || !affine_quantization->scale ||
       !affine_quantization->zero_point ||
       affine_quantization->scale->size != 1 ||
@@ -270,7 +270,7 @@ TfLiteDelegateParams* CreateDelegateParams(TfLiteDelegate* delegate,
 
   // Step 2: Allocate the memory.
   // Use `char*` for conveniently step through the allocated space by bytes.
-  char* allocation = reinterpret_cast<char*>(malloc(allocation_size));
+  char* allocation = static_cast<char*>(malloc(allocation_size));
 
   // Step 3: Fill all data structures structures.
   TfLiteDelegateParams* params =
@@ -444,14 +444,16 @@ void Subgraph::ReserveNodes(int count) {
 
 TfLiteStatus Subgraph::CheckTensorIndices(const char* label, const int* indices,
                                           int length) {
-  // Making sure kOptionalTensor is not re-defined to something other than -1.
-  static_assert(kOptionalTensor == -1, "kOptionalTensor should be defined -1");
+  // Making sure kTfLiteOptionalTensor is not re-defined to something other than
+  // -1.
+  static_assert(kTfLiteOptionalTensor == -1,
+                "kTfLiteOptionalTensor should be defined -1");
 
   for (int i = 0; i < length; i++) {
     int index = indices[i];
-    // Continue if index == kOptionalTensor before additional comparisons below,
-    // size_t(-1) is always >= context_tensors_size.
-    if (index == kOptionalTensor) {
+    // Continue if index == kTfLiteOptionalTensor before additional comparisons
+    // below, size_t(-1) is always >= context_tensors_size.
+    if (index == kTfLiteOptionalTensor) {
       continue;
     }
     if (index < 0 || static_cast<size_t>(index) >= context_.tensors_size) {
@@ -479,6 +481,7 @@ TfLiteStatus Subgraph::BytesRequired(TfLiteType type, const int* dims,
 }
 
 TfLiteStatus Subgraph::AllocateTensors() {
+  TFLITE_SCOPED_TAGGED_DEFAULT_PROFILE(profiler_.get(), "AllocateTensors");
   if (!consistent_) {
     ReportError("AllocateTensors() called on inconsistent model.");
     return kTfLiteError;
@@ -492,6 +495,13 @@ TfLiteStatus Subgraph::AllocateTensors() {
   // allocation as the client may have done the resize manually.
   if (state_ != kStateUninvokable &&
       !HasDynamicTensorImpl(context_, inputs())) {
+    if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
+      // If the only change was the release of non-persistent memory via
+      // ReleaseNonPersistentMemory(), just re-allocate it. For any other type
+      // of memory-planning change (for eg, ResizeInputTensor), the state would
+      // be kStateUninvokable.
+      memory_planner_->AcquireNonPersistentMemory();
+    }
     return kTfLiteOk;
   }
 
@@ -571,9 +581,8 @@ TfLiteStatus Subgraph::AddNodeWithParameters(
   if (init_data) {
     node.user_data = OpInit(*registration, init_data, init_data_size);
   } else {
-    node.user_data =
-        OpInit(*registration,
-               reinterpret_cast<const char*>(builtin_data_deleter.get()), 0);
+    node.user_data = OpInit(
+        *registration, static_cast<const char*>(builtin_data_deleter.get()), 0);
   }
 
   node.builtin_data = builtin_data_deleter.release();
@@ -629,6 +638,13 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
   }
   state_ = kStateUninvokable;
   return ResizeTensorImpl(tensor, ConvertVectorToTfLiteIntArray(dims));
+}
+
+TfLiteStatus Subgraph::ReleaseNonPersistentMemory() {
+  if (memory_planner_) {
+    TF_LITE_ENSURE_STATUS(memory_planner_->ReleaseNonPersistentMemory());
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
@@ -715,6 +731,9 @@ TfLiteStatus Subgraph::Invoke() {
   if (state_ == kStateUninvokable) {
     ReportError("Invoke called on model that is not ready.");
     return kTfLiteError;
+  } else if (memory_planner_ && !memory_planner_->HasNonPersistentMemory()) {
+    ReportError("Non-persistent memory is not available.");
+    return kTfLiteError;
   }
 
   // This is only needed for UseNNAPI(true);
@@ -747,7 +766,7 @@ TfLiteStatus Subgraph::Invoke() {
     // done for a node or not.
     for (int i = 0; i < node.inputs->size; ++i) {
       int tensor_index = node.inputs->data[i];
-      if (tensor_index == kOptionalTensor) {
+      if (tensor_index == kTfLiteOptionalTensor) {
         continue;
       }
       TfLiteTensor* tensor = &tensors_[tensor_index];

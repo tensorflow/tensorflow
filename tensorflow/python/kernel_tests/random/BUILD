@@ -161,6 +161,7 @@ tf_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:stateful_random_ops",
     ],
+    shard_count = 3,
     tags = ["no_oss"],
 )
 

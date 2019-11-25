@@ -35,6 +35,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "mlir/Support/LLVM.h"  // TF:local_config_mlir
 #include "mlir/Support/LogicalResult.h"  // TF:local_config_mlir
+#include "mlir/Transforms/InliningUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
@@ -44,12 +45,27 @@ namespace TFL {
 // TensorFlowLiteDialect
 //===----------------------------------------------------------------------===//
 
+struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
+  using DialectInlinerInterface::DialectInlinerInterface;
+
+  //===--------------------------------------------------------------------===//
+  // Analysis Hooks
+  //===--------------------------------------------------------------------===//
+
+  bool isLegalToInline(Operation *, Region *,
+                       BlockAndValueMapping &) const final {
+    // No TFLite op restricts inlining today, revise as needed in the future.
+    return true;
+  }
+};
+
 TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
     : Dialect(/*name=*/"tfl", context) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
       >();
+  addInterfaces<TensorFlowLiteInlinerInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1057,11 +1073,12 @@ static LogicalResult Verify(UnpackOp op) {
 //===----------------------------------------------------------------------===//
 
 // Extracts and returns the signed integer constant in a 0-rank integer tensor
-// if 'value' is a constant.
+// or 1-element 1-rank integer tensor if 'value' is a constant.
 static llvm::Optional<int64_t> ExtractConstantIntFromTensor(Value *value) {
   ElementsAttr attr;
   if (!matchPattern(value, m_Constant(&attr))) return {};
-  IntegerAttr int_attr = attr.getValue(llvm::None).cast<IntegerAttr>();
+  if (attr.getNumElements() != 1) return {};
+  IntegerAttr int_attr = *attr.getValues<IntegerAttr>().begin();
   return int_attr.getValue().getSExtValue();
 }
 

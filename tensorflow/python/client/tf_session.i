@@ -822,6 +822,24 @@ def TF_Reset(target, containers=None, config=None):
   $1 = &types_local;
 }
 
+%unignore TF_CreatePlaceholders;
+// See comment for "%noexception TF_SessionRun_wrapper;"
+%noexception TF_CreatePlaceholders;
+
+// Build a Python list of TF_Output and return it.
+%typemap(out) std::vector<TF_Output> tensorflow::TF_CreatePlaceholders {
+  $result = PyList_New($1.size());
+  if (!$result) {
+    SWIG_exception_fail(SWIG_MemoryError, "$symname: couldn't create list");
+  }
+
+  // Unwrap the generated SwigValueWrapper<std::vector<TF_Output>>
+  const std::vector<TF_Output>& tf_outputs = $1;
+  for (size_t i = 0; i < tf_outputs.size(); ++i) {
+    PyList_SET_ITEM($result, i, CreateWrappedTFOutput(tf_outputs[i]));
+  }
+}
+
 %unignore TF_NewSessionRef;
 %unignore SetRequireShapeInferenceFns;
 %unignore TF_TryEvaluateConstant_wrapper;

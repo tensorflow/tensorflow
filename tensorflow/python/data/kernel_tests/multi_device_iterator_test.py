@@ -23,7 +23,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
@@ -323,7 +323,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
   @combinations.generate(skip_v2_test_combinations())
   def testOptimization(self):
     dataset = dataset_ops.Dataset.range(10)
-    dataset = dataset.apply(optimization.assert_next(["MemoryCacheImpl"]))
+    dataset = dataset.apply(testing.assert_next(["MemoryCacheImpl"]))
     dataset = dataset.skip(0)  # this should be optimized away
     dataset = dataset.cache()
 

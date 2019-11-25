@@ -54,6 +54,7 @@ TfLiteRegistration* Register_LOGISTIC();
 TfLiteRegistration* Register_MAXIMUM();
 TfLiteRegistration* Register_MAX_POOL_2D();
 TfLiteRegistration* Register_MINIMUM();
+TfLiteRegistration* Register_MUL();
 TfLiteRegistration* Register_NEG();
 TfLiteRegistration* Register_NOT_EQUAL();
 TfLiteRegistration* Register_PACK();

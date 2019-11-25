@@ -23,6 +23,7 @@ import collections
 
 import numpy as np
 
+from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -424,6 +425,11 @@ class RNN(Layer):
     self.constants_spec = None
     self._num_constants = 0
     self._supports_ragged_inputs = True
+
+    if stateful:
+      if ds_context.has_strategy():
+        raise ValueError('RNNs with stateful=True not yet supported with '
+                         'tf.distribute.Strategy.')
 
   @property
   def states(self):

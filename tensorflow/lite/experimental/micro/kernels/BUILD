@@ -28,6 +28,7 @@ cc_library(
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
+        "mul.cc",
         "neg.cc",
         "pack.cc",
         "pooling.cc",
@@ -89,6 +90,7 @@ cc_library(
         "logical.cc",
         "logistic.cc",
         "maximum_minimum.cc",
+        "mul.cc",
         "neg.cc",
         "pack.cc",
         "pooling.cc",
@@ -322,6 +324,19 @@ tflite_micro_cc_test(
 )
 
 tflite_micro_cc_test(
+    name = "mul_test",
+    srcs = [
+        "mul_test.cc",
+    ],
+    deps = [
+        ":all_ops_resolver",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
+tflite_micro_cc_test(
     name = "arg_min_max_test",
     srcs = [
         "arg_min_max_test.cc",
@@ -499,6 +514,7 @@ tflite_micro_cc_test(
         ":all_ops_resolver",
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro:micro_utils",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
         "//tensorflow/lite/kernels/internal:tensor",
     ],

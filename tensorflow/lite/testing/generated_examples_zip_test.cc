@@ -158,8 +158,6 @@ const std::map<string, string>& GetKnownQuantizeBrokenTests() {
       new std::map<string, string>({
           {R"(^\/conv.*fully_quantize=True)", "134594898"},
           {R"(^\/depthwiseconv.*fully_quantize=True)", "134594898"},
-          {R"(^\/mean.*fully_quantize=True)", "134594898"},
-          {R"(^\/pad.*fully_quantize=True)", "134594898"},
           {R"(^\/sum.*fully_quantize=True)", "134594898"},
           {R"(^\/l2norm.*fully_quantize=True)", "134594898"},
       });

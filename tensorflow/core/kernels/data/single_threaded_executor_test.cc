@@ -141,17 +141,18 @@ TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
   auto g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
-  auto in1 = test::graph::Arg(g.get(), 0, DT_FLOAT);
+  auto in1 = test::graph::Arg(g.get(), 1, DT_FLOAT);
   auto tmp = test::graph::Add(g.get(), in0, in1);
-  test::graph::Retval(g.get(), 0, tmp);
+  auto ret = test::graph::Retval(g.get(), 0, tmp);
+  g->AddControlEdge(in1, ret);
   FixupSourceAndSinkEdges(g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT, DT_FLOAT}, {DT_FLOAT});
-  TF_ASSERT_OK(call_frame.SetArgs({V(1.0), V(1.0)}));
+  TF_ASSERT_OK(call_frame.SetArgs({V(1.0), V(2.0)}));
   TF_ASSERT_OK(Run(&call_frame));
   std::vector<Tensor> retvals;
   TF_ASSERT_OK(call_frame.ConsumeRetvals(&retvals, false));
-  EXPECT_EQ(2.0, V(retvals[0]));  // out = 1.0 + 1.0 = 2.0
+  EXPECT_EQ(3.0, V(retvals[0]));  // out = 1.0 + 2.0 = 3.0
 }
 
 TEST_F(ExecutorTest, SelfAdd) {

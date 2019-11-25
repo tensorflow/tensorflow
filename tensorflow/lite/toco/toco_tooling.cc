@@ -54,8 +54,8 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
-  transformations->Add(new ConvertMatrixDiagV2ToV1);
-  transformations->Add(new ConvertMatrixSetDiagV2ToV1);
+  transformations->Add(new ConvertMatrixDiagV2OrV3ToV1);
+  transformations->Add(new ConvertMatrixSetDiagV2OrV3ToV1);
   transformations->Add(new ConvertSqueezeToReshape);
   transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialPackToReshape);
@@ -409,6 +409,23 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
         model, "dequantization graph transformations",
         dequantization_transformations));
   }
+
+  // It's actually unfortunate we have to put the graph transformation here:
+  // If user choose to use broadcast mul to do nearset neighbor upsampling. That
+  // is:
+  //    Input [1, 20, 1, 20, 1, 64] * ones [1, 3, 1, 3, 1, 1]
+  // The problem is if the input is quantized, then the quantization parameters
+  // will be slightly different for the input and the output. (althought the
+  // difference is really small).
+  // But, since we're changing this pattern to be pack-based which enforce
+  // the quantization paramters to be exactly the same.
+  // So we have to wait for all quantization parameters being resolved and
+  // propagated and create our own.
+  // We may need to revisit this logic later.
+  GraphTransformationsSet nearest_upsample_transformations;
+  nearest_upsample_transformations.Add(new toco::IdentifyNearestUpsample);
+  TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
+      model, "Identify nearest upsample.", nearest_upsample_transformations));
 
   if (output_format == TENSORFLOW_GRAPHDEF) {
     EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);

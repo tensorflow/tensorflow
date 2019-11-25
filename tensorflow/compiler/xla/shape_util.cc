@@ -1099,7 +1099,8 @@ ShapeUtil::DimensionsUnmodifiedByReshape(const Shape& input_shape,
   }
   // `CommonFactors(a, b).back() == (a.rank, b.rank)` so we must pop it.
   common_factors.pop_back();
-  return common_factors;
+  return std::vector<std::pair<int64, int64>>(common_factors.begin(),
+                                              common_factors.end());
 }
 
 /* static */ absl::optional<std::vector<int64>>

@@ -348,8 +348,11 @@ public:
 
   /// Generic mlir::Op create. This is the key to being extensible to the whole
   /// of MLIR without duplicating the type system or the op definitions.
+  /// When non-null, the optional pointer `folder` is used to call into the
+  /// `createAndFold` builder method. If `folder` is null, the regular `create`
+  /// method is called.
   template <typename Op, typename... Args>
-  static ValueHandle create(OperationFolder &folder, Args... args);
+  static ValueHandle create(OperationFolder *folder, Args... args);
 
   /// Special case to build composed AffineApply operations.
   // TODO: createOrFold when available and move inside of the `create` method.
@@ -497,9 +500,12 @@ ValueHandle ValueHandle::create(Args... args) {
 }
 
 template <typename Op, typename... Args>
-ValueHandle ValueHandle::create(OperationFolder &folder, Args... args) {
-  return ValueHandle(folder.create<Op>(ScopedContext::getBuilder(),
-                                       ScopedContext::getLocation(), args...));
+ValueHandle ValueHandle::create(OperationFolder *folder, Args... args) {
+  return folder ? ValueHandle(folder->create<Op>(ScopedContext::getBuilder(),
+                                                 ScopedContext::getLocation(),
+                                                 args...))
+                : ValueHandle(ScopedContext::getBuilder().create<Op>(
+                      ScopedContext::getLocation(), args...));
 }
 
 namespace op {

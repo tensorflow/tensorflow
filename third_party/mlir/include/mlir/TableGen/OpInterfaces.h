@@ -23,6 +23,7 @@
 #define MLIR_TABLEGEN_OPINTERFACES_H_
 
 #include "mlir/Support/LLVM.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace llvm {

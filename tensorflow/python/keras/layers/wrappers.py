@@ -394,8 +394,8 @@ class Bidirectional(Wrapper):
    # With custom backward layer
    model = Sequential()
    forward_layer = LSTM(10, return_sequences=True)
-   backard_layer = LSTM(10, activation='relu', return_sequences=True,
-                        go_backwards=True)
+   backward_layer = LSTM(10, activation='relu', return_sequences=True,
+                         go_backwards=True)
    model.add(Bidirectional(forward_layer, backward_layer=backward_layer,
                            input_shape=(5, 10)))
    model.add(Dense(5))
@@ -421,6 +421,12 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    # We don't want to track `layer` since we're already tracking the two copies
+    # of it we actually run.
+    self._setattr_tracking = False
+    super(Bidirectional, self).__init__(layer, **kwargs)
+    self._setattr_tracking = True
+
     # Recreate the forward layer from the original layer config, so that it will
     # not carry over any state from the layer.
     self.forward_layer = self._recreate_layer_from_config(layer)
@@ -459,11 +465,6 @@ class Bidirectional(Wrapper):
     self.supports_masking = True
     self._trainable = True
     self._num_constants = 0
-    # We don't want to track `layer` since we're already tracking the two copies
-    # of it we actually run.
-    self._setattr_tracking = False
-    super(Bidirectional, self).__init__(layer, **kwargs)
-    self._setattr_tracking = True
     self.input_spec = layer.input_spec
     self._supports_ragged_inputs = True
 

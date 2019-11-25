@@ -70,19 +70,18 @@ TEST(CompileSerializedMlirToXlaHloTest, Success) {
   auto status_or_hlo_module = xla::HloModule::CreateFromProto(
       compilation_result.computation->proto(), module_config);
   ASSERT_TRUE(status_or_hlo_module.ok());
-  string expected_hlo_module_string = R"(HloModule main.6
+  string expected_hlo_module_string = R"(HloModule main.5
 
-ENTRY %main.6 (arg_tuple.1: (f32[], f32[])) -> (f32[]) {
+ENTRY %main.5 (arg_tuple.1: (f32[], f32[])) -> f32[] {
   %arg_tuple.1 = (f32[], f32[]) parameter(0)
   %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[]) %arg_tuple.1), index=0
   %get-tuple-element.3 = f32[] get-tuple-element((f32[], f32[]) %arg_tuple.1), index=1
-  %add.4 = f32[] add(f32[] %get-tuple-element.2, f32[] %get-tuple-element.3)
-  ROOT %tuple.5 = (f32[]) tuple(f32[] %add.4)
+  ROOT %add.4 = f32[] add(f32[] %get-tuple-element.2, f32[] %get-tuple-element.3)
 }
 
 )";
-  EXPECT_EQ(status_or_hlo_module.ValueOrDie()->ToString(),
-            expected_hlo_module_string);
+  EXPECT_EQ(expected_hlo_module_string,
+            status_or_hlo_module.ValueOrDie()->ToString());
 
   // Expect an iota like input mapping.
   EXPECT_EQ(compilation_result.input_mapping, std::vector<int>({0, 1}));
@@ -114,6 +113,50 @@ ENTRY %main.6 (arg_tuple.1: (f32[], f32[])) -> (f32[]) {
   EXPECT_TRUE(compilation_result.resource_updates.empty());
 }
 
+// Tests that foldable ops are constant-folded to enable legalization of ops
+// that require compile time constant operand.
+TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
+  // "tf.Shape" can only be folded away after shape inference. tf.Reshape can
+  // only be lowered when tf.Shape is folded into a constant.
+  string mlir_module = R"(
+    module attributes {tf.versions = {producer = 179 : i32}} {
+      func @main(%arg0: tensor<*xf32>, %arg1: tensor<19x10xf32>) -> tensor<?x19xf32> {
+        %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi64>
+        %1 = "tf.Reshape"(%arg1, %0) : (tensor<19x10xf32>, tensor<?xi64>) -> tensor<?x19xf32>
+        return %1 : tensor<?x19xf32>
+      }
+    }
+  )";
+
+  std::vector<TensorShape> arg_shapes{TensorShape({10, 19}),
+                                      TensorShape({19, 10})};
+  XlaCompiler::CompilationResult compilation_result;
+
+  Status s = CompileSerializedMlirToXlaHlo(
+      mlir_module, absl::Span<TensorShape>(arg_shapes), TestShapeRepresentation,
+      &compilation_result);
+  ASSERT_TRUE(s.ok());
+
+  const xla::HloModuleConfig module_config(
+      compilation_result.computation->GetProgramShape().ValueOrDie());
+  auto status_or_hlo_module = xla::HloModule::CreateFromProto(
+      compilation_result.computation->proto(), module_config);
+  ASSERT_TRUE(status_or_hlo_module.ok());
+  string expected_hlo_module_string = R"(HloModule main.6
+
+ENTRY %main.6 (arg_tuple.1: (f32[10,19], f32[19,10])) -> f32[10,19] {
+  %arg_tuple.1 = (f32[10,19]{1,0}, f32[19,10]{1,0}) parameter(0)
+  %get-tuple-element.2 = f32[10,19]{1,0} get-tuple-element((f32[10,19]{1,0}, f32[19,10]{1,0}) %arg_tuple.1), index=0
+  %constant.4 = s64[2]{0} constant({10, 19})
+  %get-tuple-element.3 = f32[19,10]{1,0} get-tuple-element((f32[10,19]{1,0}, f32[19,10]{1,0}) %arg_tuple.1), index=1
+  ROOT %reshape.5 = f32[10,19]{1,0} reshape(f32[19,10]{1,0} %get-tuple-element.3)
+}
+
+)";
+  EXPECT_EQ(expected_hlo_module_string,
+            status_or_hlo_module.ValueOrDie()->ToString());
+}
+
 TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
   string mlir_module = R"(
     module attributes {tf.versions = {producer = 179 : i32}} {
@@ -140,7 +183,7 @@ TEST(CompileSerializedMlirToXlaHloTest, ShapeInference) {
   ASSERT_TRUE(status_or_hlo_module.ok());
 
   string expected_signature =
-      R"((arg_tuple.1: (f32[10,17], f32[17,19])) -> (f32[10,19]))";
+      R"((arg_tuple.1: (f32[10,17], f32[17,19])) -> f32[10,19])";
   EXPECT_THAT(status_or_hlo_module.ValueOrDie()->ToString(),
               ::testing::HasSubstr(expected_signature));
 }

@@ -15,16 +15,12 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_LIB_CORE_PY_EXCEPTION_REGISTRY_H_
 #define TENSORFLOW_PYTHON_LIB_CORE_PY_EXCEPTION_REGISTRY_H_
 
+#include <Python.h>
+
 #include <map>
 
-#include "tensorflow/c/c_api.h"
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/protobuf/error_codes.pb.h"
-
-#ifndef PyObject_HEAD
-struct _object;
-typedef _object PyObject;
-#endif
+#include "tensorflow/c/tf_status.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 
 namespace tensorflow {
 

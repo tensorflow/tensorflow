@@ -104,6 +104,15 @@ def linear_to_mel_weight_matrix(num_mel_bins=20,
   `[0, sample_rate / 2]` into `num_mel_bins` frequency information from
   `[lower_edge_hertz, upper_edge_hertz]` on the [mel scale][mel].
 
+  This function follows the [Hidden Markov Model Toolkit
+  (HTK)](http://htk.eng.cam.ac.uk/) convention, defining the mel scale in
+  terms of a frequency in hertz according to the following formula:
+
+      $$\textrm{mel}(f) = 2595 * \textrm{log}_{10}(1 + \frac{f}{700})$$
+
+  In the returned matrix, all the triangles (filterbanks) have a peak value
+  of 1.0.
+
   For example, the returned matrix `A` can be used to right-multiply a
   spectrogram `S` of shape `[frames, num_spectrogram_bins]` of linear
   scale spectrum values (e.g. STFT magnitudes) to generate a "mel spectrogram"

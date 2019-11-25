@@ -18,6 +18,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/op_def_builder.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -32,6 +33,26 @@ namespace data {
 namespace {
 
 constexpr char kDelimiter[] = "@@";
+
+// clang-format off
+constexpr std::array<const char*, 3> kOpsWithSeed = {
+    "AnonymousRandomSeedGenerator",
+    "ShuffleDataset",
+    "ShuffleAndRepeatDataset"
+};
+// clang-format on
+
+constexpr char kSeedInputName[] = "seed";
+constexpr char kSeed2InputName[] = "seed2";
+
+template <std::size_t SIZE>
+bool IsNodeOfType(const NodeDef& node,
+                  const std::array<const char*, SIZE>& op_types) {
+  for (const auto& type : op_types) {
+    if (node.op() == type) return true;
+  }
+  return false;
+}
 
 Status FindNode(const GraphDef& graph, const string& name,
                 const NodeDef** result) {
@@ -134,6 +155,30 @@ Status HashNodeImpl(const GraphDef& graph, const NodeDef& node, uint64* hash,
 
   for (int i = 0; i < node.input_size(); ++i) {
     DCHECK_GT(node.input(i).length(), 0);
+
+    // We skip trying to take the hash of the seeds of any ops, as they
+    // are irrelevant to the hash of the graph and may vary from run to run.
+    if (IsNodeOfType(node, kOpsWithSeed)) {
+      const OpRegistrationData* reg;
+      auto status = OpRegistry::Global()->LookUp(node.op(), &reg);
+
+      if (status.ok()) {
+        if (reg->op_def.input_arg_size() > i) {
+          const std::string input_arg_name = reg->op_def.input_arg(i).name();
+          if (input_arg_name == kSeedInputName ||
+              input_arg_name == kSeed2InputName) {
+            continue;
+          }
+        }
+      } else if (errors::IsNotFound(status)) {
+        LOG(WARNING) << "Cannot find " << node.op()
+                     << " in global op registry, so cannot determine which "
+                        "inputs are seeds.";
+      } else {
+        return status;
+      }
+    }
+
     if (node.input(i)[0] == '^') {
       // TODO(frankchn): Investigate if control dependencies are necessary
       // inputs to the hash. Control dependency node names start with '^', and
@@ -297,40 +342,21 @@ Status HashFunctionImpl(const FunctionDefLibrary& library,
 
 }  // anonymous namespace
 
-Status AsGraphDef(OpKernelContext* ctx, const DatasetBase* dataset,
-                  SerializationContext&& serialization_ctx,
-                  GraphDef* graph_def) {
-  if (serialization_ctx.check_external_state()) {
-    TF_RETURN_IF_ERROR(dataset->CheckExternalState());
-  }
-  GraphDefBuilder b;
-  DatasetBase::DatasetGraphDefBuilder db(&b);
-  Node* output_node = nullptr;
-  TF_RETURN_IF_ERROR(
-      db.AddInputDataset(&serialization_ctx, dataset, &output_node));
-  // Insert a purely symbolic _Retval node to indicate to consumers which node
-  // represents `dataset`.
-  ops::UnaryOp("_Retval", output_node,
-               b.opts()
-                   .WithName("dataset")
-                   .WithAttr("T", DT_VARIANT)
-                   .WithAttr("index", 0));
-  TF_RETURN_IF_ERROR(b.ToGraphDef(graph_def));
-  return Status::OK();
-}
-
-Status ConnectCancellationManagers(CancellationManager* parent,
-                                   CancellationManager* child,
-                                   std::function<void()>* deregister_fn) {
-  if (parent) {
-    CancellationToken token = parent->get_cancellation_token();
-    if (!parent->RegisterCallback(token, [child]() { child->StartCancel(); })) {
+Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
+                                    std::function<void()> register_fn,
+                                    std::function<void()>* deregister_fn) {
+  if (cancellation_manager) {
+    CancellationToken token = cancellation_manager->get_cancellation_token();
+    if (!cancellation_manager->RegisterCallback(token,
+                                                std::move(register_fn))) {
       return errors::Cancelled("Operation was cancelled");
     }
-    *deregister_fn = [parent, token]() { parent->DeregisterCallback(token); };
+    *deregister_fn = [cancellation_manager, token]() {
+      cancellation_manager->DeregisterCallback(token);
+    };
   } else {
-    VLOG(1) << "Parent cancellation manager is not set. Cancellation will "
-               "not be propagated to the child cancellation manager.";
+    VLOG(1) << "Cancellation manager is not set. Cancellation callback will "
+               "not be registered.";
     *deregister_fn = []() {};
   }
   return Status::OK();
