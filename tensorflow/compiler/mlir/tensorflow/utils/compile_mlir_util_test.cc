@@ -121,10 +121,10 @@ TEST(CompileSerializedMlirToXlaHloTest, CompileTimeConstantFoldedSuccess) {
   // only be lowered when tf.Shape is folded into a constant.
   string mlir_module = R"(
     module attributes {tf.versions = {producer = 179 : i32}} {
-      func @main(%arg0: tensor<*xf32>, %arg1: tensor<19x10xf32>) -> tensor<?x19xf32> {
-        %0 = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi64>
-        %1 = "tf.Reshape"(%arg1, %0) : (tensor<19x10xf32>, tensor<?xi64>) -> tensor<?x19xf32>
-        return %1 : tensor<?x19xf32>
+      func @main(%arg0: tensor<10x19xf32>, %arg1: tensor<19x10xf32>) -> tensor<10x19xf32> {
+        %0 = "tf.Shape"(%arg0) : (tensor<10x19xf32>) -> tensor<2xi64>
+        %1 = "tf.Reshape"(%arg1, %0) : (tensor<19x10xf32>, tensor<2xi64>) -> tensor<10x19xf32>
+        return %1 : tensor<10x19xf32>
       }
     }
   )";
