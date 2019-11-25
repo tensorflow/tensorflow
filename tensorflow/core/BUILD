@@ -2687,6 +2687,8 @@ tf_cuda_library(
         "//tensorflow/core/kernels:bounds_check",
         "//tensorflow/core/platform/default/build_config:platformlib",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal:traceme_recorder_impl",
+        "//tensorflow/core/profiler/internal:annotation_stack_impl",
     ] + if_static(
         extra_deps = ["@com_google_protobuf//:protobuf"],
         otherwise = ["@com_google_protobuf//:protobuf_headers"],
