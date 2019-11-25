@@ -24,6 +24,7 @@
 #define MLIR_IR_FUNCTIONSUPPORT_H
 
 #include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
 #include "llvm/ADT/SmallString.h"
 
 namespace mlir {
@@ -83,6 +84,14 @@ private:
   bool variadic;
 };
 
+/// Adds argument and result attributes, provided as `argAttrs` and
+/// `resultAttrs` arguments, to the list of operation attributes in `result`.
+/// Internally, argument and result attributes are stored as dict attributes
+/// with special names given by getResultAttrName, getArgumentAttrName.
+void addArgAndResultAttrs(Builder &builder, OperationState &result,
+                          ArrayRef<SmallVector<NamedAttribute, 2>> argAttrs,
+                          ArrayRef<SmallVector<NamedAttribute, 2>> resultAttrs);
+
 /// Callback type for `parseFunctionLikeOp`, the callback should produce the
 /// type that will be associated with a function-like operation from lists of
 /// function arguments and results, VariadicFlag indicates whether the function
@@ -90,6 +99,18 @@ private:
 /// argument with a message.
 using FuncTypeBuilder = llvm::function_ref<Type(
     Builder &, ArrayRef<Type>, ArrayRef<Type>, VariadicFlag, std::string &)>;
+
+/// Parses a function signature using `parser`. The `allowVariadic` argument
+/// indicates whether functions with variadic arguments are supported. The
+/// trailing arguments are populated by this function with names, types and
+/// attributes of the arguments and those of the results.
+ParseResult parseFunctionSignature(
+    OpAsmParser &parser, bool allowVariadic,
+    SmallVectorImpl<OpAsmParser::OperandType> &argNames,
+    SmallVectorImpl<Type> &argTypes,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs, bool &isVariadic,
+    SmallVectorImpl<Type> &resultTypes,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &resultAttrs);
 
 /// Parser implementation for function-like operations.  Uses
 /// `funcTypeBuilder` to construct the custom function type given lists of
@@ -108,6 +129,21 @@ void printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
                          ArrayRef<Type> argTypes, bool isVariadic,
                          ArrayRef<Type> resultTypes);
 
+/// Prints the signature of the function-like operation `op`.  Assumes `op` has
+/// the FunctionLike trait and passed the verification.
+void printFunctionSignature(OpAsmPrinter &p, Operation *op,
+                            ArrayRef<Type> argTypes, bool isVariadic,
+                            ArrayRef<Type> resultTypes);
+
+/// Prints the list of function prefixed with the "attributes" keyword. The
+/// attributes with names listed in "elided" as well as those used by the
+/// function-like operation internally are not printed. Nothing is printed
+/// if all attributes are elided. Assumes `op` has the `FunctionLike` trait and
+/// passed the verification.
+void printFunctionAttributes(OpAsmPrinter &p, Operation *op, unsigned numInputs,
+                             unsigned numResults,
+                             ArrayRef<StringRef> elided = {});
+
 } // namespace impl
 
 namespace OpTrait {
@@ -117,7 +153,7 @@ namespace OpTrait {
 /// - Ops have a single region with multiple blocks that corresponds to the body
 ///   of the function;
 /// - the absence of a region corresponds to an external function;
-/// - arguments of the first block of the region are treated as function
+/// - leading arguments of the first block of the region are treated as function
 ///   arguments;
 /// - they can have argument attributes that are stored in a dictionary
 ///   attribute on the Op itself.
@@ -137,6 +173,9 @@ namespace OpTrait {
 ///   redefine the `verifyType()` hook that will be called after verifying the
 ///   presence of the `type` attribute and before any call to
 ///   `getNumFuncArguments`/`getNumFuncResults` from the verifier.
+/// - To verify that the body respects op-specific invariants, concrete ops may
+///   redefine the `verifyBody()` hook that will be called after verifying the
+///   function type and the presence of the (potentially empty) body region.
 template <typename ConcreteType>
 class FunctionLike : public OpTrait::TraitBase<ConcreteType, FunctionLike> {
 public:
@@ -177,6 +216,11 @@ public:
 
   Block &back() { return getBody().back(); }
   Block &front() { return getBody().front(); }
+
+  /// Hook for concrete ops to verify the contents of the body. Called as a
+  /// part of trait verification, after type verification and ensuring that a
+  /// region exists.
+  LogicalResult verifyBody();
 
   //===--------------------------------------------------------------------===//
   // Type Attribute Handling
@@ -384,6 +428,23 @@ protected:
   LogicalResult verifyType() { return success(); }
 };
 
+/// Default verifier checks that if the entry block exists, it has the same
+/// number of arguments as the function-like operation.
+template <typename ConcreteType>
+LogicalResult FunctionLike<ConcreteType>::verifyBody() {
+  auto funcOp = cast<ConcreteType>(this->getOperation());
+
+  if (funcOp.isExternal())
+    return success();
+
+  unsigned numArguments = funcOp.getNumArguments();
+  if (funcOp.front().getNumArguments() != numArguments)
+    return funcOp.emitOpError("entry block must have ")
+           << numArguments << " arguments to match function signature";
+
+  return success();
+}
+
 template <typename ConcreteType>
 LogicalResult FunctionLike<ConcreteType>::verifyTrait(Operation *op) {
   MLIRContext *ctx = op->getContext();
@@ -433,17 +494,7 @@ LogicalResult FunctionLike<ConcreteType>::verifyTrait(Operation *op) {
   if (op->getNumRegions() != 1)
     return funcOp.emitOpError("expects one region");
 
-  // Check that if the entry block exists, it has the same number of arguments
-  // as the function-like operation.
-  if (funcOp.isExternal())
-    return success();
-
-  unsigned numArguments = funcOp.getNumArguments();
-  if (funcOp.front().getNumArguments() != numArguments)
-    return funcOp.emitOpError("entry block must have ")
-           << numArguments << " arguments to match function signature";
-
-  return success();
+  return funcOp.verifyBody();
 }
 
 //===----------------------------------------------------------------------===//
