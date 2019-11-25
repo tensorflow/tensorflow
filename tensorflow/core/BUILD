@@ -2131,6 +2131,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/platform:platform.h",
     "//tensorflow/core/platform:monitoring.h",
     "//tensorflow/core/platform:protobuf_internal.h",
+    "//tensorflow/core/platform:refcount.h",
     "//tensorflow/core/platform:setround.h",
     "//tensorflow/core/platform:snappy.h",
     "//tensorflow/core/platform:tensor_coding.h",

@@ -95,7 +95,7 @@ cc_library(
 cc_library(
     name = "refcount",
     hdrs = ["refcount.h"],
-    deps = ["//tensorflow/core/platform:logging"],
+    deps = ["//tensorflow/core/platform:refcount"],
 )
 
 cc_library(
