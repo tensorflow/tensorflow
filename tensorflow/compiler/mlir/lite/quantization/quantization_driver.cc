@@ -345,25 +345,26 @@ bool QuantizationDriver::SetConstantResultParams(Operation *op) {
   // TODO(fengliuai): make storage_type_width and narrow_range configurable.
   Type final_type;
   auto it = optimized_weights_.find(op);
-  if (it != optimized_weights_.end()) {
+  bool is_weight = it != optimized_weights_.end();
+  bool is_weight_with_per_channel_support =
+      is_weight && it->second != -1 && is_signed_;
+
+  if (is_weight_with_per_channel_support && !disable_per_channel_) {
     // When `disable_per_channel_` is false, per-channel symmetric quantization
     // parameters are created from the weights when the ops support per-channel
     // quantization. Otherwise, uses per-tensor asymmetric quantization with
     // narrow range.
-    if (it->second != -1 && is_signed_ && !disable_per_channel_) {
-      // per-axis quantization weight
-      final_type = GetUniformQuantizedPerAxisTypeForWeight(
-          attr, it->second, /*symmetric=*/true, /*num_bits=*/8, is_signed_,
-          /*narrow_range=*/true);
-    } else {
-      // per-tensor quantization weight
-      final_type = GetUniformQuantizedTypeForWeight(
-          attr, /*num_bits=*/8, is_signed_, /*narrow_range_=*/true);
-    }
+
+    // per-axis quantization weight, with symmetric min/max enforced.
+    final_type = GetUniformQuantizedPerAxisTypeForWeight(
+        attr, it->second, /*symmetric=*/true, /*num_bits=*/8, is_signed_,
+        /*narrow_range=*/true);
   } else {
-    // Normal constant operand
+    // per-tensor quantization weight
     final_type = GetUniformQuantizedTypeForWeight(
-        attr, /*num_bits=*/8, is_signed_, /*narrow_range_=*/false);
+        attr, /*symmetric=*/is_weight_with_per_channel_support,
+        /*num_bits=*/8, is_signed_,
+        /*narrow_range_=*/is_weight);
   }
   if (auto quant_type = final_type.dyn_cast_or_null<quant::QuantizedType>()) {
     return SetResultParams(op, 0, quant_type);
