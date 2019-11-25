@@ -247,17 +247,21 @@ def fill(dims, value, name=None):
 def identity(input, name=None):  # pylint: disable=redefined-builtin
   r"""Return a tensor with the same shape and contents as input.
 
-  For example:
-
-  ```python
-  import tensorflow as tf
-  val0 = tf.ones((1,), dtype=tf.float32)
-  a = tf.atan2(val0, val0)
-  a_identity = tf.identity(a)
-  print(a.numpy())          #[0.7853982]
-  print(a_identity.numpy()) #[0.7853982]
-  ```
-
+  Examples:
+  ---------  
+  >>> val0 = tf.ones((1,), dtype=tf.float32)
+  >>> a = tf.atan2(val0, val0)
+  >>> a_identity = tf.identity(a)
+  >>> print(a.numpy())          #[0.7853982]
+  >>> print(a_identity.numpy()) #[0.7853982]
+  
+  Another example
+  >>> x = tf.constant(4, shape=(3,3))
+  >>> tf.identity(x)
+  <tf.Tensor: id=2, shape=(3, 3), dtype=int32, numpy=
+  array([[4, 4, 4],
+         [4, 4, 4],
+         [4, 4, 4]], dtype=int32)>
   Args:
     input: A `Tensor`.
     name: A name for the operation (optional).
@@ -267,14 +271,6 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     
   Raises:
     ValueError: If input is None.
-    
-  Usage Example:
-    >>> x = tf.constant(4, shape=(3,3))
-    >>> tf.identity(x)
-    <tf.Tensor: id=2, shape=(3, 3), dtype=int32, numpy=
-    array([[4, 4, 4],
-           [4, 4, 4],
-           [4, 4, 4]], dtype=int32)>
   """
   if isinstance(input, composite_tensor.CompositeTensor):
     return nest.map_structure(identity, input, expand_composites=True)
