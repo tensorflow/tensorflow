@@ -253,11 +253,9 @@ TEST_F(MklLayoutPassTest, Basic) {
                                                                            \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");B(" #INPUT ");D(" #INPUT                            \
-        ");DMT/_0(Const);DMT/_1(Const);"                                   \
-        "DMT/_2(Const);E(_MklConv2DWithBias);Y(" #INPUT                    \
-        ");Z(Zeta)|A->E;"                                                  \
-        "A:control->DMT/_0:control;A:control->DMT/_1:control;"             \
+        "A(" #INPUT ");B(" #INPUT ");D(" #INPUT ");DMT/_0(Const);"         \
+        "DMT/_1(Const);DMT/_2(Const);E(_MklConv2DWithBias);Y(" #INPUT ");" \
+        "Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"\
         "A:control->DMT/_2:control;B->E:1;D->E:2;DMT/_0->E:3;DMT/_1->E:4;" \
         "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
   }
@@ -282,10 +280,9 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DWithBias_Positive);
               " input: ['A', 'B']}");                                      \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");B(" #INPUT                                          \
-        ");C(_MklConv2D);DMT/_0(Const);DMT/_1(Const)|"                     \
-        "A->C;A:control->DMT/_0:control;A:control->DMT/_1:control;B->C:1;" \
-        "DMT/_0->C:2;DMT/_1->C:3");                                        \
+        "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);DMT/_0(Const);"         \
+        "DMT/_1(Const)|A->C;A:control->DMT/_0:control;A:control->"         \
+        "DMT/_1:control;B->C:1;DMT/_0->C:2;DMT/_1->C:3");                  \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_NoAddBias);
 #undef REGISTER_TEST
@@ -312,12 +309,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_NoAddBias);
               " attr { key: 'data_format'      value { s: 'NCHW' } }"          \
               " input: ['D', 'E'] }");                                         \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                                   \
-              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(" #INPUT            \
-              ");DMT/_0(Const);"                                               \
-              "DMT/_1(Const);E(" #INPUT                                        \
-              ");F(BiasAdd)|A->C;A:control->DMT/_0:control;"                   \
-              "A:control->DMT/_1:control;B->C:1;D->F;DMT/_0->C:2;DMT/_1->C:3;" \
-              "E->F:1");                                                       \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(" #INPUT ");"       \
+              "DMT/_0(Const);DMT/_1(Const);E(" #INPUT ");F(BiasAdd)|A->C;"     \
+              "A:control->DMT/_0:control;A:control->DMT/_1:control;B->C:1;"    \
+              "D->F;DMT/_0->C:2;DMT/_1->C:3;E->F:1");                          \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow1);
 #undef REGISTER_TEST
@@ -349,12 +344,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow1);
               " input: ['C', 'E'] }");                                     \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(" #INPUT              \
-        ");DMT/_0(Const);"                                                 \
-        "DMT/_1(Const);E(" #INPUT                                          \
-        ");F(BiasAdd);G(Zeta)|A->C;"                                       \
-        "A:control->DMT/_0:control;A:control->DMT/_1:control;B->C:1;C->G;" \
-        "D->F;DMT/_0->C:2;DMT/_1->C:3;E->F:1;E->G:1");                     \
+        "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(" #INPUT ");"         \
+        "DMT/_0(Const);DMT/_1(Const);E(" #INPUT ");F(BiasAdd);G(Zeta)|"    \
+        "A->C;A:control->DMT/_0:control;A:control->DMT/_1:control;B->C:1;" \
+        "C->G;D->F;DMT/_0->C:2;DMT/_1->C:3;E->F:1;E->G:1");                \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow2);
 #undef REGISTER_TEST
@@ -381,11 +374,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_Dataflow2);
               " attr { key: 'data_format'      value { s: 'NHCW' } }"      \
               " input: ['C', 'D'] }");                                     \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
-              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(" #INPUT        \
-              ");DMT/_0(Const);"                                           \
-              "DMT/_1(Const);E(BiasAdd)|A->C;A:control->DMT/_0:control;"   \
-              "A:control->DMT/_1:control;B->C:1;C->E;D->E:1;DMT/_0->C:2;"  \
-              "DMT/_1->C:3");                                              \
+              "A(" #INPUT ");B(" #INPUT ");C(_MklConv2D);D(" #INPUT ");"   \
+              "DMT/_0(Const);DMT/_1(Const);E(BiasAdd)|A->C;A:control->"    \
+              "DMT/_0:control;A:control->DMT/_1:control;B->C:1;C->E;"      \
+              "D->E:1;DMT/_0->C:2;DMT/_1->C:3");                           \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_AttrMismatch);
 #undef REGISTER_TEST
@@ -415,8 +407,8 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DWithBias_Negative_AttrMismatch);
         DoMklLayoutOptimizationPass(),                                       \
         "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                         \
         "D(_MklConv2DBackpropFilterWithBias);DMT/_0(Const);DMT/_1(Const);"   \
-        "DMT/_2(Const)|A->D;A:control->DMT/_0:control;"                      \
-        "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;" \
+        "DMT/_2(Const)|A->D;A:control->DMT/_0:control;A:control->"           \
+        "DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;"            \
         "DMT/_0->D:3;DMT/_1->D:4;DMT/_2->D:5");                              \
   }
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
@@ -447,8 +439,7 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DBackpropFilterFusion_Positive);
               " input: ['A'] }");                                            \
     EXPECT_EQ(                                                               \
         DoMklLayoutOptimizationPass(),                                       \
-        "A(" #INPUT ");B(Int32Input);C(" #INPUT                              \
-        ");"                                                                 \
+        "A(" #INPUT ");B(Int32Input);C(" #INPUT ");"                         \
         "D(_MklConv2DBackpropFilter);DMT/_0(Const);DMT/_1(Const);"           \
         "DMT/_2(Const);E(BiasAddGrad)|A->D;A->E;A:control->DMT/_0:control;"  \
         "A:control->DMT/_1:control;A:control->DMT/_2:control;B->D:1;C->D:2;" \
@@ -475,8 +466,7 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative1);
               "i:1, i:1} } }"                                                \
               " input: ['A', 'B', 'C'] }"                                    \
               "node { name: 'E' op: 'BiasAddGrad'"                           \
-              " attr { key: 'T'                value { type: " #T            \
-              " } }"                                                         \
+              " attr { key: 'T'                value { type: " #T " } }"     \
               " attr { key: 'data_format'      value { s: 'NHWC' } }"        \
               " input: ['A'] }");                                            \
     EXPECT_EQ(                                                               \
@@ -528,8 +518,7 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative2);
               " input: ['E'] }");                                           \
     EXPECT_EQ(                                                              \
         DoMklLayoutOptimizationPass(),                                      \
-        "A(" #INPUT ");B(" #INPUT ");C(" #INPUT                             \
-        ");D(_MklConv2DWithBias);"                                          \
+        "A(" #INPUT ");B(" #INPUT ");C(" #INPUT ");D(_MklConv2DWithBias);"  \
         "E(Zeta);F(Int32Input);G(_MklConv2DBackpropFilter);H(BiasAddGrad);" \
         "M(_MklInput);N(_MklInput);O(_MklInput)|A->D;A->E:1;A->G:2;B->D:1;" \
         "C->D:2;D->E;E->G;E->H;F->G:1;M->D:3;M->G:3;N->D:4;N->G:4;O->D:5;"  \
@@ -582,12 +571,10 @@ REGISTER_TEST_ALL_TYPES(NodeMerge_Conv2DBackpropFilterFusion_Negative3);
               " input: ['G', 'X']}");                                        \
     EXPECT_EQ(                                                               \
         DoMklLayoutOptimizationPass(),                                       \
-        "A(" #INPUT ");B(" #INPUT ");D(" #INPUT                              \
-        ");DMT/_0(Const);DMT/_1(Const);"                                     \
-        "DMT/_2(Const);DMT/_3(Const);E(_MklConv2DWithBias);F(Int32Input);"   \
-        "G(_MklConv2DBackpropInput);X(" #INPUT                               \
-        ");Y(Zeta);Z(Zeta)|"                                                 \
-        "A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"          \
+        "A(" #INPUT ");B(" #INPUT ");D(" #INPUT ");DMT/_0(Const);"           \
+        "DMT/_1(Const);DMT/_2(Const);DMT/_3(Const);E(_MklConv2DWithBias);"   \
+        "F(Int32Input);G(_MklConv2DBackpropInput);X(" #INPUT ");Y(Zeta);"    \
+        "Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"  \
         "A:control->DMT/_2:control;B->E:1;D->E:2;DMT/_0->E:3;"               \
         "DMT/_1->E:4;DMT/_2->E:5;DMT/_3->G:3;E->G:2;E->Y;E:1->G:1;E:2->G:5;" \
         "E:3->G:4;F->G;F:control->DMT/_3:control;G->Z;X->Y:1;X->Z:1");       \
@@ -629,11 +616,9 @@ REGISTER_TEST_FLOAT32(NodeMerge_Conv2DWithBias_ConvBpropInput_FilterFwd);
               " input: ['E', 'Y']}");                                      \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");B(Int32Input);D(" #INPUT                            \
-        ");DMT/_0(Const);DMT/_1(Const);"                                   \
-        "DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT                     \
-        ");Z(Zeta)|A->E;"                                                  \
-        "A:control->DMT/_0:control;A:control->DMT/_1:control;"             \
+        "A(" #INPUT ");B(Int32Input);D(" #INPUT ");DMT/_0(Const);"         \
+        "DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT ");"  \
+        "Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->DMT/_1:control;"\
         "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;" \
         "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
   }
@@ -689,13 +674,11 @@ REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Positive);
     ASSERT_NE(edge_1, nullptr);                                            \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT             \
-        ");DMT/_0(Const);DMT/_1(Const);"                                   \
-        "DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT                     \
-        ");Z(Zeta)|A->E;"                                                  \
-        "A1:control->E:control;A:control->DMT/_0:control;A:control->DMT/"  \
-        "_1:control;"                                                      \
-        "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;" \
+        "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"        \
+        "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);" \
+        "Y(" #INPUT ");Z(Zeta)|A->E;A1:control->E:control;A:control->"    \
+        "DMT/_0:control;A:control->DMT/_1:control;A:control->"           \
+        "DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;"            \
         "DMT/_2->E:5;E->Z;Y->Z:1");                                        \
   }
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
@@ -749,13 +732,12 @@ REGISTER_TEST_FLOAT32(Input_ControlEdge_PadWithConv2D_Positive);
     ASSERT_NE(edge_1, nullptr);                                            \
     EXPECT_EQ(                                                             \
         DoMklLayoutOptimizationPass(),                                     \
-        "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT             \
-        ");DMT/_0(Const);DMT/_1(Const);"                                   \
-        "DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT                     \
-        ");Z(Zeta)|A->E;"                                                  \
-        "A:control->DMT/_0:control;A:control->DMT/_1:control;"             \
-        "A:control->DMT/_2:control;B->E:2;D->E:1;DMT/_0->E:3;DMT/_1->E:4;" \
-        "DMT/_2->E:5;E->Z;E:control->A1:control;Y->Z:1");                  \
+        "A(" #INPUT ");A1(" #INPUT ");B(Int32Input);D(" #INPUT ");"        \
+        "DMT/_0(Const);DMT/_1(Const);DMT/_2(Const);E(_MklPadWithConv2D);"  \
+        "Y(" #INPUT ");Z(Zeta)|A->E;A:control->DMT/_0:control;A:control->" \
+        "DMT/_1:control;A:control->DMT/_2:control;B->E:2;D->E:1;"          \
+        "DMT/_0->E:3;DMT/_1->E:4;DMT/_2->E:5;E->Z;E:control->A1:control;"  \
+        "Y->Z:1");                                                         \
   }
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 REGISTER_TEST_FLOAT32(Output_ControlEdge_PadWithConv2D_Positive);
@@ -792,13 +774,11 @@ REGISTER_TEST_FLOAT32(Output_ControlEdge_PadWithConv2D_Positive);
               " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
-              "A(" #INPUT                                                  \
-              ");B(Int32Input);DMT/_0(Const);DMT/_1(Const);"               \
-              "DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT               \
-              ");Z(Zeta)|A->E;A->E:1;"                                     \
-              "A:control->DMT/_0:control;A:control->DMT/_1:control;"       \
-              "A:control->DMT/_2:control;B->E:2;DMT/_0->E:3;DMT/_1->E:4;"  \
-              "DMT/_2->E:5;E->Z;Y->Z:1");                                  \
+              "A(" #INPUT ");B(Int32Input);DMT/_0(Const);DMT/_1(Const);"   \
+              "DMT/_2(Const);E(_MklPadWithConv2D);Y(" #INPUT ");Z(Zeta)|"  \
+              "A->E;A->E:1;A:control->DMT/_0:control;A:control->"          \
+              "DMT/_1:control;A:control->DMT/_2:control;B->E:2;DMT/_0->E:3;"\
+              "DMT/_1->E:4;DMT/_2->E:5;E->Z;Y->Z:1");                      \
   }
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Common_Input);
@@ -834,19 +814,17 @@ REGISTER_TEST_FLOAT32(NodeMerge_PadWithConv2D_Common_Input);
               "node { name: 'Z' op: '" #OUTPUT "'"                         \
               " input: ['C', 'E']}");                                      \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
-              "A(" #INPUT                                                  \
-              ");B(Int32Input);C(Pad);DMT/_0(Const);DMT/_1(Const);"        \
-              "E(_MklConv2D);Z(" #OUTPUT                                   \
-              ")|A->C;A->E:1;B->C:1;C->E;C->Z;"                            \
-              "C:control->DMT/_0:control;C:control->DMT/_1:control;"       \
-              "DMT/_0->E:2;DMT/_1->E:3;E->Z:1");                           \
+              "A(" #INPUT ");B(Int32Input);C(Pad);DMT/_0(Const);"          \
+              "DMT/_1(Const);E(_MklConv2D);Z(" #OUTPUT ")|A->C;A->E:1;"    \
+              "B->C:1;C->E;C->Z;C:control->DMT/_0:control;C:control->"     \
+              "DMT/_1:control;DMT/_0->E:2;DMT/_1->E:3;E->Z:1");            \
   }
 REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_FLOAT, Float32Input,
-              Float32Output2)
+              Float32Output2);
 #ifdef ENABLE_INTEL_MKL_BFLOAT16
 // TODO(nhasabni): Enable bfloat16 test when we enable the operator.
 REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
-              BFloat16Input, BFloat16Output2)
+              BFloat16Input, BFloat16Output2);
 #endif
 #undef REGISTER_TEST
 
@@ -880,12 +858,11 @@ REGISTER_TEST(NodeMerge_PadWithConv2D_Common_InOutput, DT_BFLOAT16,
               " attr {key: 'T'                 value { type: " #T " } }"   \
               " input: ['E', 'Y']}");                                      \
     EXPECT_EQ(DoMklLayoutOptimizationPass(),                               \
-              "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT               \
-              ");DMT/_0(Const);DMT/_1(Const);"                             \
-              "E(_MklConv2D);Y(" #INPUT                                    \
-              ");Z(Zeta)|A->C;B->C:1;C->E;"                                \
-              "C:control->DMT/_0:control;C:control->DMT/_1:control;"       \
-              "D->E:1;DMT/_0->E:2;DMT/_1->E:3;E->Z;Y->Z:1");               \
+              "A(" #INPUT ");B(Int32Input);C(Pad);D(" #INPUT ");"          \
+              "DMT/_0(Const);DMT/_1(Const);E(_MklConv2D);Y(" #INPUT ");"   \
+              "Z(Zeta)|A->C;B->C:1;C->E;C:control->DMT/_0:control;"        \
+              "C:control->DMT/_1:control;D->E:1;DMT/_0->E:2;DMT/_1->E:3;"  \
+              "E->Z;Y->Z:1");                                              \
   }
 REGISTER_TEST_ALL_TYPES(NodeMerge_PadWithConv2D_Negative);
 #undef REGISTER_TEST
