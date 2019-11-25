@@ -20,8 +20,8 @@ limitations under the License.
 // These are set by openmv py_tf.c code to redirect printing to an error message
 // buffer...
 
-static char *py_tf_putchar_buffer = NULL;
-static size_t py_tf_putchar_buffer_len = 0;
+char *py_tf_putchar_buffer = NULL;
+size_t py_tf_putchar_buffer_len = 0;
 
 extern "C" void DebugLog(const char* s) {
   for (size_t i = 0, j = strlen(s); i < j; i++) {
