@@ -242,6 +242,8 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
         fused_ops.end()) {
       last_op = "with_elu";
+      // TODO(intel-tf): correct typo "Relu" to "Elu" after fixing Conv and
+      // Elu fusion
       next_op = ops::Relu(root.WithOpName(last_op), next_op);
     }
 
