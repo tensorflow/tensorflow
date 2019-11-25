@@ -236,7 +236,7 @@ def _wrap_into_dynamic_factory(nodes, entity_name, factory_factory_name,
         entity_defs
         entity_name.ag_source_map = ag_source_map__
         entity_name.ag_module = ag_module__
-        entity_name.autograph_info__ = {}
+        entity_name = ag__.autograph_artifact(entity_name)
         return entity_name
       return factory_name
   """
