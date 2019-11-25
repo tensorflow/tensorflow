@@ -628,14 +628,14 @@ def ctc_loss_v2(labels,
 
   Args:
     labels: tensor of shape [batch_size, max_label_seq_length] or SparseTensor
-    logits: tensor of shape [frames, batch_size, num_labels], if
-      logits_time_major == False, shape is [batch_size, frames, num_labels].
+    logits: tensor of shape [max_time, batch_size, num_labels] or
+      [batch_size, max_time, num_labels] depending on logits_time_major.
     label_length: tensor of shape [batch_size], None if labels is SparseTensor
       Length of reference label sequence in labels.
     logit_length: tensor of shape [batch_size] Length of input sequence in
       logits.
-    logits_time_major: (optional) If True (default), logits is shaped [time,
-      batch, logits]. If False, shape is [batch, time, logits]
+    logits_time_major: (optional) If True (default), logits is shaped [max_time,
+      batch_size, num_labels]. If False, shape is [batch_size, max_time, num_labels].
     unique: (optional) Unique label indices as computed by
       ctc_unique_labels(labels).  If supplied, enable a faster, memory efficient
       implementation on TPU.
@@ -736,14 +736,14 @@ def ctc_loss_dense(labels,
 
   Args:
     labels: tensor of shape [batch_size, max_label_seq_length]
-    logits: tensor of shape [frames, batch_size, num_labels], if
-      logits_time_major == False, shape is [batch_size, frames, num_labels].
+    logits: tensor of shape [max_time, batch_size, num_labels] or
+      [batch_size, max_time, num_labels] depending on logits_time_major.
     label_length: tensor of shape [batch_size] Length of reference label
       sequence in labels.
     logit_length: tensor of shape [batch_size] Length of input sequence in
       logits.
-    logits_time_major: (optional) If True (default), logits is shaped [time,
-      batch, logits]. If False, shape is [batch, time, logits]
+    logits_time_major: (optional) If True (default), logits is shaped [max_time,
+      batch_size, num_labels]. If False, shape is [batch_size, max_time, num_labels].
     unique: (optional) Unique label indices as computed by unique(labels). If
       supplied, enable a faster, memory efficient implementation on TPU.
     blank_index: (optional) Set the class index to use for the blank label.
