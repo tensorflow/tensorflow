@@ -13,6 +13,6 @@ py_library(
         "functools32/functools32.py",
         "functools32/reprlib32.py",
     ],
-    srcs_version = "PY2",
+    srcs_version = "PY2ONLY",
     visibility = ["//visibility:public"],
 )

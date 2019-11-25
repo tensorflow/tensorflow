@@ -11,5 +11,5 @@ filegroup(
 
 py_library(
     name = "functools32",
-    srcs_version = "PY2",
+    srcs_version = "PY2ONLY",
 )
