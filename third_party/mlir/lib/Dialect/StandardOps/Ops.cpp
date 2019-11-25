@@ -1777,8 +1777,28 @@ bool MemRefCastOp::areCastCompatible(Type a, Type b) {
     return false;
   if (aT.getElementType() != bT.getElementType())
     return false;
-  if (aT.getAffineMaps() != bT.getAffineMaps())
-    return false;
+  if (aT.getAffineMaps() != bT.getAffineMaps()) {
+    int64_t aOffset, bOffset;
+    SmallVector<int64_t, 4> aStrides, bStrides;
+    if (failed(getStridesAndOffset(aT, aStrides, aOffset)) ||
+        failed(getStridesAndOffset(bT, bStrides, bOffset)) ||
+        aStrides.size() != bStrides.size())
+      return false;
+
+    // Strides along a dimension/offset are compatible if the value in the
+    // source memref is static and the value in the target memref is the
+    // same. They are also compatible if either one is dynamic (see description
+    // of MemRefCastOp for details).
+    auto checkCompatible = [](int64_t a, int64_t b) {
+      return (a == MemRefType::getDynamicStrideOrOffset() ||
+              b == MemRefType::getDynamicStrideOrOffset() || a == b);
+    };
+    if (!checkCompatible(aOffset, bOffset))
+      return false;
+    for (auto aStride : enumerate(aStrides))
+      if (!checkCompatible(aStride.value(), bStrides[aStride.index()]))
+        return false;
+  }
   if (aT.getMemorySpace() != bT.getMemorySpace())
     return false;
 
