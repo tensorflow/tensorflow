@@ -96,11 +96,32 @@ bool IsPositive(const HloInstruction* hlo,
           return false;
       }
     }
+    case HloOpcode::kPower:
+    case HloOpcode::kAbs:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSqrt:
+      return IsPositive(hlo->operand(0), options);
+
     case HloOpcode::kMultiply: {
-      return hlo->operand(0) == hlo->operand(1);
+      return hlo->operand(0) == hlo->operand(1) &&
+             IsPositive(hlo->operand(0), options);
     }
     default:
       return false;
+  }
+}
+
+bool IsNonNegative(const HloInstruction* hlo,
+                   const AlgebraicSimplifierOptions& options) {
+  switch (hlo->opcode()) {
+    case HloOpcode::kMultiply: {
+      return hlo->operand(0) == hlo->operand(1);
+    }
+    case HloOpcode::kAbs: {
+      return true;
+    }
+    default:
+      return IsPositive(hlo, options);
   }
 }
 
@@ -536,7 +557,7 @@ Status AlgebraicSimplifierVisitor::HandleAbs(HloInstruction* abs) {
   HloInstruction* abs_operand = abs->mutable_operand(0);
   VLOG(10) << "trying transform [Abs(A) => A] " << abs->ToString()
            << " Abs operand is: " << abs_operand->ToString();
-  if (IsPositive(abs->operand(0), options_)) {
+  if (IsNonNegative(abs->operand(0), options_)) {
     return ReplaceInstruction(abs, abs_operand);
   }
   return Status::OK();
@@ -2184,7 +2205,8 @@ Status AlgebraicSimplifierVisitor::HandleMultiply(HloInstruction* multiply) {
   VLOG(10) << "trying transform [rsqrt(A) * rsqrt(A) => 1/A] "
            << multiply->ToString();
   HloInstruction* b;
-  if (Match(multiply, m::Multiply(m::Rsqrt(m::Op(&b)), m::Rsqrt(m::Op(&b))))) {
+  if (Match(multiply, m::Multiply(m::Rsqrt(m::Op(&b)), m::Rsqrt(m::Op(&b)))) &&
+      IsPositive(multiply->operand(0), options_)) {
     return ReplaceWithNewInstruction(
         multiply,
         HloInstruction::CreateBinary(multiply->shape(), HloOpcode::kDivide,
@@ -3343,7 +3365,8 @@ Status AlgebraicSimplifierVisitor::HandleRsqrt(HloInstruction* rsqrt) {
            << rsqrt->ToString();
   HloInstruction* rsqrt_operand = rsqrt->mutable_operand(0);
   if (rsqrt_operand->opcode() == HloOpcode::kPower &&
-      IsAll(rsqrt_operand->operand(1), -2)) {
+      IsAll(rsqrt_operand->operand(1), -2) &&
+      IsPositive(rsqrt_operand, options_)) {
     return ReplaceWithNewInstruction(
         rsqrt, HloInstruction::CreateUnary(rsqrt->shape(), HloOpcode::kAbs,
                                            rsqrt_operand->mutable_operand(0)));
@@ -3352,7 +3375,8 @@ Status AlgebraicSimplifierVisitor::HandleRsqrt(HloInstruction* rsqrt) {
   VLOG(10) << "trying transform [rsqrt(Divide(1, A)) => sqrt(A)] "
            << rsqrt->ToString();
   if (rsqrt_operand->opcode() == HloOpcode::kDivide &&
-      IsAll(rsqrt_operand->operand(0), 1)) {
+      IsAll(rsqrt_operand->operand(0), 1) &&
+      IsPositive(rsqrt_operand->operand(1), options_)) {
     return ReplaceWithNewInstruction(
         rsqrt, HloInstruction::CreateUnary(rsqrt->shape(), HloOpcode::kSqrt,
                                            rsqrt_operand->mutable_operand(1)));
