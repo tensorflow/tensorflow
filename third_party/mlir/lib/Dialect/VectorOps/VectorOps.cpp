@@ -26,6 +26,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeUtilities.h"
+#include "mlir/Support/Functional.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/StringSet.h"
 
@@ -295,8 +296,8 @@ SmallVector<AffineMap, 4> ContractionOp::getIndexingMaps() {
 // ExtractElementOp
 //===----------------------------------------------------------------------===//
 
-static Type inferExtractOpResultType(VectorType vectorType,
-                                     ArrayAttr position) {
+static Type inferExtractElementOpResultType(VectorType vectorType,
+                                            ArrayAttr position) {
   if (static_cast<int64_t>(position.size()) == vectorType.getRank())
     return vectorType.getElementType();
   return VectorType::get(vectorType.getShape().drop_front(position.size()),
@@ -307,8 +308,8 @@ void ExtractElementOp::build(Builder *builder, OperationState &result,
                              Value *source, ArrayRef<int32_t> position) {
   result.addOperands(source);
   auto positionAttr = builder->getI32ArrayAttr(position);
-  result.addTypes(inferExtractOpResultType(source->getType().cast<VectorType>(),
-                                           positionAttr));
+  result.addTypes(inferExtractElementOpResultType(
+      source->getType().cast<VectorType>(), positionAttr));
   result.addAttribute(getPositionAttrName(), positionAttr);
 }
 
@@ -342,7 +343,7 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
         attributeLoc,
         "expected position attribute of rank smaller than vector rank");
 
-  Type resType = inferExtractOpResultType(vectorType, positionAttr);
+  Type resType = inferExtractElementOpResultType(vectorType, positionAttr);
   result.attributes = attrs;
   return failure(parser.resolveOperand(vector, type, result.operands) ||
                  parser.addTypeToList(resType, result.types));
@@ -440,174 +441,169 @@ static LogicalResult verify(InsertElementOp op) {
 }
 
 //===----------------------------------------------------------------------===//
-// StridedSliceOp
+// InsertStridedSliceOp
 //===----------------------------------------------------------------------===//
 
-static Type inferExtractRangeOpResultType(VectorType vectorType,
-                                          ArrayAttr offsets, ArrayAttr sizes,
-                                          ArrayAttr strides) {
-  assert(offsets.size() == sizes.size() && offsets.size() == strides.size());
-  SmallVector<int64_t, 4> shape;
-  shape.reserve(vectorType.getRank());
-  unsigned idx = 0;
-  for (unsigned e = offsets.size(); idx < e; ++idx)
-    shape.push_back(sizes.getValue()[idx].cast<IntegerAttr>().getInt());
-  for (unsigned e = vectorType.getShape().size(); idx < e; ++idx)
-    shape.push_back(vectorType.getShape()[idx]);
-
-  return VectorType::get(shape, vectorType.getElementType());
-}
-
-void StridedSliceOp::build(Builder *builder, OperationState &result,
-                           Value *source, ArrayRef<int64_t> offsets,
-                           ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides) {
-  result.addOperands(source);
+void InsertStridedSliceOp::build(Builder *builder, OperationState &result,
+                                 Value *source, Value *dest,
+                                 ArrayRef<int64_t> offsets,
+                                 ArrayRef<int64_t> strides) {
+  result.addOperands({source, dest});
   auto offsetsAttr = builder->getI64ArrayAttr(offsets);
-  auto sizesAttr = builder->getI64ArrayAttr(sizes);
   auto stridesAttr = builder->getI64ArrayAttr(strides);
-  result.addTypes(
-      inferExtractRangeOpResultType(source->getType().cast<VectorType>(),
-                                    offsetsAttr, sizesAttr, stridesAttr));
+  result.addTypes(dest->getType());
   result.addAttribute(getOffsetsAttrName(), offsetsAttr);
-  result.addAttribute(getSizesAttrName(), sizesAttr);
   result.addAttribute(getStridesAttrName(), stridesAttr);
 }
 
-static void print(OpAsmPrinter &p, StridedSliceOp op) {
-  p << op.getOperationName() << " " << *op.vector();
+static void print(OpAsmPrinter &p, InsertStridedSliceOp op) {
+  p << op.getOperationName() << " " << *op.source() << ", " << *op.dest()
+    << " ";
   p.printOptionalAttrDict(op.getAttrs());
-  p << " : " << op.vector()->getType() << " to " << op.getResult()->getType();
+  p << " : " << op.getSourceVectorType() << " into " << op.getDestVectorType();
 }
 
-static ParseResult parseStridedSliceOp(OpAsmParser &parser,
-                                       OperationState &result) {
-  llvm::SMLoc attributeLoc, typeLoc;
-  OpAsmParser::OperandType vector;
-  VectorType vectorType, resultVectorType;
-  return failure(parser.parseOperand(vector) ||
-                 parser.getCurrentLocation(&attributeLoc) ||
-                 parser.parseOptionalAttrDict(result.attributes) ||
-                 parser.getCurrentLocation(&typeLoc) ||
-                 parser.parseColonType(vectorType) ||
-                 parser.parseKeywordType("to", resultVectorType) ||
-                 parser.resolveOperand(vector, vectorType, result.operands) ||
-                 parser.addTypeToList(resultVectorType, result.types));
+static ParseResult parseInsertStridedSliceOp(OpAsmParser &parser,
+                                             OperationState &result) {
+  OpAsmParser::OperandType source, dest;
+  VectorType sourceVectorType, destVectorType;
+  return failure(
+      parser.parseOperand(source) || parser.parseComma() ||
+      parser.parseOperand(dest) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(sourceVectorType) ||
+      parser.parseKeywordType("into", destVectorType) ||
+      parser.resolveOperand(source, sourceVectorType, result.operands) ||
+      parser.resolveOperand(dest, destVectorType, result.operands) ||
+      parser.addTypeToList(destVectorType, result.types));
 }
 
 // TODO(ntv) Should be moved to Tablegen Confined attributes.
-static bool isIntegerArrayAttrSmallerThanShape(StridedSliceOp op,
-                                               ArrayAttr arrayAttr,
-                                               ShapedType shape,
-                                               StringRef attrName) {
-  if (arrayAttr.size() > static_cast<unsigned>(shape.getRank())) {
-    op.emitOpError("expected ")
-        << attrName << " attribute of rank smaller than vector rank";
-    return false;
-  }
-  return true;
+template <typename OpType>
+LogicalResult isIntegerArrayAttrSmallerThanShape(OpType op, ArrayAttr arrayAttr,
+                                                 ArrayRef<int64_t> shape,
+                                                 StringRef attrName) {
+  if (arrayAttr.size() > shape.size())
+    return op.emitOpError("expected ")
+           << attrName << " attribute of rank smaller than vector rank";
+  return success();
 }
 
 // Returns true if all integers in `arrayAttr` are in the half-open [min, max}
 // interval. If `halfOpen` is true then the admissible interval is [min, max).
 // Otherwise, the admissible interval is [min, max].
-static bool isIntegerArrayAttrConfinedToRange(StridedSliceOp op,
-                                              ArrayAttr arrayAttr, int64_t min,
-                                              int64_t max, StringRef attrName,
-                                              bool halfOpen = true) {
+template <typename OpType>
+LogicalResult isIntegerArrayAttrConfinedToRange(OpType op, ArrayAttr arrayAttr,
+                                                int64_t min, int64_t max,
+                                                StringRef attrName,
+                                                bool halfOpen = true) {
   for (auto attr : arrayAttr) {
     auto val = attr.cast<IntegerAttr>().getInt();
     auto upper = max;
     if (!halfOpen)
       upper += 1;
-    if (val < min || val >= upper) {
-      op.emitOpError("expected ")
-          << attrName << " to be confined to [" << min << ", " << upper << ")";
-      return false;
-    }
+    if (val < min || val >= upper)
+      return op.emitOpError("expected ") << attrName << " to be confined to ["
+                                         << min << ", " << upper << ")";
   }
-  return true;
+  return success();
 }
 
 // Returns true if all integers in `arrayAttr` are in the half-open [min, max}
 // interval. If `halfOpen` is true then the admissible interval is [min, max).
 // Otherwise, the admissible interval is [min, max].
-static bool
-isIntegerArrayAttrConfinedToShape(StridedSliceOp op, ArrayAttr arrayAttr,
-                                  ShapedType shape, StringRef attrName,
+template <typename OpType>
+LogicalResult
+isIntegerArrayAttrConfinedToShape(OpType op, ArrayAttr arrayAttr,
+                                  ArrayRef<int64_t> shape, StringRef attrName,
                                   bool halfOpen = true, int64_t min = 0) {
-  assert(arrayAttr.size() <= static_cast<unsigned>(shape.getRank()));
-  for (auto it : llvm::zip(arrayAttr, shape.getShape())) {
+  assert(arrayAttr.size() <= shape.size());
+  unsigned index = 0;
+  for (auto it : llvm::zip(arrayAttr, shape)) {
     auto val = std::get<0>(it).cast<IntegerAttr>().getInt();
     auto max = std::get<1>(it);
     if (!halfOpen)
       max += 1;
-    if (val < min || val >= max) {
-      op.emitOpError("expected ")
-          << attrName << " to be confined to [" << min << ", " << max << ")";
-      return false;
-    }
+    if (val < min || val >= max)
+      return op.emitOpError("expected ")
+             << attrName << " dimension " << index << " to be confined to ["
+             << min << ", " << max << ")";
+    ++index;
   }
-  return true;
+  return success();
 }
 
 // Returns true if all integers in `arrayAttr` are in the interval [min, max}.
 // interval. If `halfOpen` is true then the admissible interval is [min, max).
 // Otherwise, the admissible interval is [min, max].
-static bool
-isSumOfIntegerArrayAttrConfinedToShape(StridedSliceOp op, ArrayAttr arrayAttr1,
-                                       ArrayAttr arrayAttr2, ShapedType shape,
-                                       StringRef attrName1, StringRef attrName2,
-                                       bool halfOpen = true, int64_t min = 1) {
-  assert(arrayAttr1.size() <= static_cast<unsigned>(shape.getRank()));
-  assert(arrayAttr2.size() <= static_cast<unsigned>(shape.getRank()));
-  for (auto it : llvm::zip(arrayAttr1, arrayAttr2, shape.getShape())) {
+template <typename OpType>
+LogicalResult isSumOfIntegerArrayAttrConfinedToShape(
+    OpType op, ArrayAttr arrayAttr1, ArrayAttr arrayAttr2,
+    ArrayRef<int64_t> shape, StringRef attrName1, StringRef attrName2,
+    bool halfOpen = true, int64_t min = 1) {
+  assert(arrayAttr1.size() <= shape.size());
+  assert(arrayAttr2.size() <= shape.size());
+  unsigned index = 0;
+  for (auto it : llvm::zip(arrayAttr1, arrayAttr2, shape)) {
     auto val1 = std::get<0>(it).cast<IntegerAttr>().getInt();
     auto val2 = std::get<1>(it).cast<IntegerAttr>().getInt();
     auto max = std::get<2>(it);
     if (!halfOpen)
       max += 1;
-    if (val1 + val2 < 0 || val1 + val2 >= max) {
-      op.emitOpError("expected sum(")
-          << attrName1 << ", " << attrName2 << ") to be confined to [" << min
-          << ", " << max << ")";
-      return false;
-    }
+    if (val1 + val2 < 0 || val1 + val2 >= max)
+      return op.emitOpError("expected sum(")
+             << attrName1 << ", " << attrName2 << ") dimension " << index
+             << " to be confined to [" << min << ", " << max << ")";
+    ++index;
   }
-  return true;
+  return success();
 }
 
-static LogicalResult verify(StridedSliceOp op) {
-  auto type = op.getVectorType();
+static ArrayAttr makeI64ArrayAttr(ArrayRef<int64_t> values,
+                                  MLIRContext *context) {
+  auto attrs = functional::map(
+      [context](int64_t v) -> Attribute {
+        return IntegerAttr::get(IntegerType::get(64, context), APInt(64, v));
+      },
+      values);
+  return ArrayAttr::get(attrs, context);
+}
+
+static LogicalResult verify(InsertStridedSliceOp op) {
+  auto sourceVectorType = op.getSourceVectorType();
+  auto destVectorType = op.getDestVectorType();
   auto offsets = op.offsets();
-  auto sizes = op.sizes();
   auto strides = op.strides();
-  if (offsets.size() != sizes.size() || offsets.size() != strides.size()) {
-    op.emitOpError(
-        "expected offsets, sizes and strides attributes of same size");
+  if (offsets.size() != static_cast<unsigned>(destVectorType.getRank())) {
+    op.emitOpError("expected offsets of same size as destination vector rank");
+    return failure();
+  }
+  if (strides.size() != static_cast<unsigned>(sourceVectorType.getRank())) {
+    op.emitOpError("expected strides of same size as source vector rank");
+    return failure();
+  }
+  if (sourceVectorType.getRank() > destVectorType.getRank()) {
+    op.emitOpError("expected source rank to be smaller than destination rank");
     return failure();
   }
 
-  auto offName = StridedSliceOp::getOffsetsAttrName();
-  auto sizesName = StridedSliceOp::getSizesAttrName();
-  auto stridesName = StridedSliceOp::getStridesAttrName();
-  if (!isIntegerArrayAttrSmallerThanShape(op, offsets, type, offName) ||
-      !isIntegerArrayAttrSmallerThanShape(op, sizes, type, sizesName) ||
-      !isIntegerArrayAttrSmallerThanShape(op, strides, type, stridesName) ||
-      !isIntegerArrayAttrConfinedToShape(op, offsets, type, offName) ||
-      !isIntegerArrayAttrConfinedToShape(op, sizes, type, sizesName,
-                                         /*halfOpen=*/false, /*min=*/1) ||
-      !isIntegerArrayAttrConfinedToRange(op, strides, 1, 1, stridesName,
-                                         /*halfOpen=*/false) ||
-      !isSumOfIntegerArrayAttrConfinedToShape(op, offsets, sizes, type, offName,
-                                              sizesName, /*halfOpen=*/false))
+  auto sourceShape = sourceVectorType.getShape();
+  auto destShape = destVectorType.getShape();
+  SmallVector<int64_t, 4> sourceShapeAsDestShape(
+      destShape.size() - sourceShape.size(), 0);
+  sourceShapeAsDestShape.append(sourceShape.begin(), sourceShape.end());
+  auto offName = InsertStridedSliceOp::getOffsetsAttrName();
+  auto stridesName = InsertStridedSliceOp::getStridesAttrName();
+  if (failed(
+          isIntegerArrayAttrConfinedToShape(op, offsets, destShape, offName)) ||
+      failed(isIntegerArrayAttrConfinedToRange(op, strides, 1, 1, stridesName,
+                                               /*halfOpen=*/false)) ||
+      failed(isSumOfIntegerArrayAttrConfinedToShape(
+          op, offsets,
+          makeI64ArrayAttr(sourceShapeAsDestShape, op.getContext()), destShape,
+          offName, "source vector shape",
+          /*halfOpen=*/false, /*min=*/1)))
     return failure();
-
-  auto resultType = inferExtractRangeOpResultType(
-      op.getVectorType(), op.offsets(), op.sizes(), op.strides());
-  if (op.getResult()->getType() != resultType) {
-    op.emitOpError("expected result type to be ") << resultType;
-    return failure();
-  }
 
   return success();
 }
@@ -663,6 +659,104 @@ static LogicalResult verify(OuterProductOp op) {
     return op.emitOpError("expected #2 operand dim to match result dim #2");
   if (vACC && vACC != vRES)
     return op.emitOpError("expected operand #3 of same type as result type");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// StridedSliceOp
+//===----------------------------------------------------------------------===//
+
+// Inference works as follows:
+//   1. Add 'sizes' from prefix of dims in 'offsets'.
+//   2. Add sizes from 'vectorType' for remaining dims.
+static Type inferStridedSliceOpResultType(VectorType vectorType,
+                                          ArrayAttr offsets, ArrayAttr sizes,
+                                          ArrayAttr strides) {
+  assert(offsets.size() == sizes.size() && offsets.size() == strides.size());
+  SmallVector<int64_t, 4> shape;
+  shape.reserve(vectorType.getRank());
+  unsigned idx = 0;
+  for (unsigned e = offsets.size(); idx < e; ++idx)
+    shape.push_back(sizes.getValue()[idx].cast<IntegerAttr>().getInt());
+  for (unsigned e = vectorType.getShape().size(); idx < e; ++idx)
+    shape.push_back(vectorType.getShape()[idx]);
+
+  return VectorType::get(shape, vectorType.getElementType());
+}
+
+void StridedSliceOp::build(Builder *builder, OperationState &result,
+                           Value *source, ArrayRef<int64_t> offsets,
+                           ArrayRef<int64_t> sizes, ArrayRef<int64_t> strides) {
+  result.addOperands(source);
+  auto offsetsAttr = builder->getI64ArrayAttr(offsets);
+  auto sizesAttr = builder->getI64ArrayAttr(sizes);
+  auto stridesAttr = builder->getI64ArrayAttr(strides);
+  result.addTypes(
+      inferStridedSliceOpResultType(source->getType().cast<VectorType>(),
+                                    offsetsAttr, sizesAttr, stridesAttr));
+  result.addAttribute(getOffsetsAttrName(), offsetsAttr);
+  result.addAttribute(getSizesAttrName(), sizesAttr);
+  result.addAttribute(getStridesAttrName(), stridesAttr);
+}
+
+static void print(OpAsmPrinter &p, StridedSliceOp op) {
+  p << op.getOperationName() << " " << *op.vector();
+  p.printOptionalAttrDict(op.getAttrs());
+  p << " : " << op.vector()->getType() << " to " << op.getResult()->getType();
+}
+
+static ParseResult parseStridedSliceOp(OpAsmParser &parser,
+                                       OperationState &result) {
+  llvm::SMLoc attributeLoc, typeLoc;
+  OpAsmParser::OperandType vector;
+  VectorType vectorType, resultVectorType;
+  return failure(parser.parseOperand(vector) ||
+                 parser.getCurrentLocation(&attributeLoc) ||
+                 parser.parseOptionalAttrDict(result.attributes) ||
+                 parser.getCurrentLocation(&typeLoc) ||
+                 parser.parseColonType(vectorType) ||
+                 parser.parseKeywordType("to", resultVectorType) ||
+                 parser.resolveOperand(vector, vectorType, result.operands) ||
+                 parser.addTypeToList(resultVectorType, result.types));
+}
+
+static LogicalResult verify(StridedSliceOp op) {
+  auto type = op.getVectorType();
+  auto offsets = op.offsets();
+  auto sizes = op.sizes();
+  auto strides = op.strides();
+  if (offsets.size() != sizes.size() || offsets.size() != strides.size()) {
+    op.emitOpError(
+        "expected offsets, sizes and strides attributes of same size");
+    return failure();
+  }
+
+  auto shape = type.getShape();
+  auto offName = StridedSliceOp::getOffsetsAttrName();
+  auto sizesName = StridedSliceOp::getSizesAttrName();
+  auto stridesName = StridedSliceOp::getStridesAttrName();
+  if (failed(isIntegerArrayAttrSmallerThanShape(op, offsets, shape, offName)) ||
+      failed(isIntegerArrayAttrSmallerThanShape(op, sizes, shape, sizesName)) ||
+      failed(isIntegerArrayAttrSmallerThanShape(op, strides, shape,
+                                                stridesName)) ||
+      failed(isIntegerArrayAttrConfinedToShape(op, offsets, shape, offName)) ||
+      failed(isIntegerArrayAttrConfinedToShape(op, sizes, shape, sizesName,
+                                               /*halfOpen=*/false,
+                                               /*min=*/1)) ||
+      failed(isIntegerArrayAttrConfinedToRange(op, strides, 1, 1, stridesName,
+                                               /*halfOpen=*/false)) ||
+      failed(isSumOfIntegerArrayAttrConfinedToShape(op, offsets, sizes, shape,
+                                                    offName, sizesName,
+                                                    /*halfOpen=*/false)))
+    return failure();
+
+  auto resultType = inferStridedSliceOpResultType(
+      op.getVectorType(), op.offsets(), op.sizes(), op.strides());
+  if (op.getResult()->getType() != resultType) {
+    op.emitOpError("expected result type to be ") << resultType;
+    return failure();
+  }
+
   return success();
 }
 

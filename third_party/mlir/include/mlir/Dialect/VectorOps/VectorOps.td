@@ -207,7 +207,7 @@ def Vector_InsertElementOp :
     ```
       %2 = vector.insertelement %0, %1[3 : i32]:
         vector<8x16xf32> into vector<4x8x16xf32>
-      %5 = vector.insertelement %3, %4[3 : i32, 3 : i32, 3 : i32]: 
+      %5 = vector.insertelement %3, %4[3 : i32, 3 : i32, 3 : i32]:
         f32 into vector<4x8x16xf32>
     ```
   }];
@@ -223,45 +223,47 @@ def Vector_InsertElementOp :
   }];
 }
 
-def Vector_StridedSliceOp :
-  Vector_Op<"strided_slice", [NoSideEffect,
-     PredOpTrait<"operand and result have same element type",
-                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
-    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$offsets,
-               I64ArrayAttr:$sizes, I64ArrayAttr:$strides)>,
+def Vector_InsertStridedSliceOp :
+  Vector_Op<"insert_strided_slice", [NoSideEffect,
+    PredOpTrait<"operand #0 and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+    PredOpTrait<"dest operand and result have same type",
+                 TCresIsSameAsOpBase<0, 1>>]>,
+    Arguments<(ins AnyVector:$source, AnyVector:$dest, I64ArrayAttr:$offsets,
+               I64ArrayAttr:$strides)>,
     Results<(outs AnyVector)> {
   let summary = "strided_slice operation";
   let description = [{
-    Takes an n-D vector, k-D `offsets` integer array attribute, a k-D `sizes`
-    integer array attribute, a k-D `strides` integer array attribute and
-    extracts the n-D subvector at the proper offset.
+    Takes a k-D source vector, an n-D destination vector (n >= k), n-D `offsets`
+    integer array attribute, a k-D `strides` integer array attribute and inserts
+    the k-D source vector as a strided subvector at the proper offset into the
+    n-D destination vector.
 
     At the moment strides must contain only 1s.
 
-    Returns an n-D vector where the first k-D dimensions match the `sizes`
-    attribute. The returned subvector contains the elements starting at offset
-    `offsets` and ending at `offsets + sizes`.
+    Returns an n-D vector that is a copy of the n-D destination vector in which
+    the last k-D dimensions contain the k-D source vector elements strided at
+    the proper location as specified by the offsets.
 
     Examples:
     ```
-      %1 = vector.strided_slice %0
-          {offsets : [0, 2], sizes : [2, 4], strides : [1, 1]}:
-        vector<4x8x16xf32> to vector<2x4x16xf32>
+      %2 = vector.insert_strided_slice %0, %1
+          {offsets : [0, 0, 2], strides : [1, 1]}:
+        vector<2x4xf32> into vector<16x4x8xf32>
     ```
-
-    // TODO(Evolve to a range form syntax):
-    %1 = vector.strided_slice %0[0:2:1][2:4:1]
-      vector<4x8x16xf32> to vector<2x4x16xf32>
   }];
   let builders = [OpBuilder<
-    "Builder *builder, OperationState &result, Value *source, " #
-    "ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes, " #
-    "ArrayRef<int64_t> strides">];
+    "Builder *builder, OperationState &result, Value *source, Value *dest, " #
+    "ArrayRef<int64_t> offsets, ArrayRef<int64_t> strides">];
   let extraClassDeclaration = [{
     static StringRef getOffsetsAttrName() { return "offsets"; }
-    static StringRef getSizesAttrName() { return "sizes"; }
     static StringRef getStridesAttrName() { return "strides"; }
-    VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
+    VectorType getSourceVectorType() {
+      return source()->getType().cast<VectorType>();
+    }
+    VectorType getDestVectorType() {
+      return dest()->getType().cast<VectorType>();
+    }
   }];
 }
 
@@ -301,6 +303,49 @@ def Vector_OuterProductOp :
     VectorType getVectorType() {
       return getResult()->getType().cast<VectorType>();
     }
+  }];
+}
+
+def Vector_StridedSliceOp :
+  Vector_Op<"strided_slice", [NoSideEffect,
+    PredOpTrait<"operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>]>,
+    Arguments<(ins AnyVector:$vector, I64ArrayAttr:$offsets,
+               I64ArrayAttr:$sizes, I64ArrayAttr:$strides)>,
+    Results<(outs AnyVector)> {
+  let summary = "strided_slice operation";
+  let description = [{
+    Takes an n-D vector, k-D `offsets` integer array attribute, a k-D `sizes`
+    integer array attribute, a k-D `strides` integer array attribute and
+    extracts the n-D subvector at the proper offset.
+
+    At the moment strides must contain only 1s.
+    // TODO(ntv) support non-1 strides.
+
+    Returns an n-D vector where the first k-D dimensions match the `sizes`
+    attribute. The returned subvector contains the elements starting at offset
+    `offsets` and ending at `offsets + sizes`.
+
+    Examples:
+    ```
+      %1 = vector.strided_slice %0
+          {offsets : [0, 2], sizes : [2, 4], strides : [1, 1]}:
+        vector<4x8x16xf32> to vector<2x4x16xf32>
+    ```
+
+    // TODO(ntv) Evolve to a range form syntax similar to:
+    %1 = vector.strided_slice %0[0:2:1][2:4:1]
+      vector<4x8x16xf32> to vector<2x4x16xf32>
+  }];
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &result, Value *source, " #
+    "ArrayRef<int64_t> offsets, ArrayRef<int64_t> sizes, " #
+    "ArrayRef<int64_t> strides">];
+  let extraClassDeclaration = [{
+    static StringRef getOffsetsAttrName() { return "offsets"; }
+    static StringRef getSizesAttrName() { return "sizes"; }
+    static StringRef getStridesAttrName() { return "strides"; }
+    VectorType getVectorType(){ return vector()->getType().cast<VectorType>(); }
   }];
 }
 
