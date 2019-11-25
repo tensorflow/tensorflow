@@ -636,6 +636,16 @@ class BASE_HLO_BatchNormInferenceOp {
   }];
 }
 
+class BASE_HLO_BatchNormTrainingOp {
+  string summary = "Batch Normalization for Training";
+
+  string description = [{
+    Normalizes an array across batch and spatial dimensions.
+
+    See https://www.tensorflow.org/xla/operation_semantics#batchnormtraining
+  }];
+}
+
 class BASE_HLO_BroadcastOp  {
   string summary = "Broadcast a tensor to a higher rank by prepending dimensions";
 

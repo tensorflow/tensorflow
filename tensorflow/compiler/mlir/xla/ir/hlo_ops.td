@@ -551,6 +551,20 @@ def HLO_BatchNormInferenceOp : HLO_Op<"batch_norm_inference", [NoSideEffect]>,
   let results = (outs HLO_Tensor);
 }
 
+def HLO_BatchNormTrainingOp : HLO_Op<"batch_norm_training", [NoSideEffect]>,
+    BASE_HLO_BatchNormTrainingOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$scale,
+    HLO_Tensor:$offset,
+    F32Attr:$epsilon,
+    I64Attr:$feature_index
+  );
+
+  let results = (outs HLO_Tuple);
+}
+
 def HLO_BroadcastOp : HLO_Op<"broadcast",
       [NoSideEffect, SameOperandsAndResultElementType]>, BASE_HLO_BroadcastOp {
   let arguments = (ins
