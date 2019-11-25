@@ -273,13 +273,11 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
     >>> tf.identity(x)
     <tf.Tensor: id=2, shape=(3, 3), dtype=int32, numpy=
     array([[4, 4, 4],
-       [4, 4, 4],
-       [4, 4, 4]], dtype=int32)>
+           [4, 4, 4],
+           [4, 4, 4]], dtype=int32)>
   """
   if isinstance(input, composite_tensor.CompositeTensor):
     return nest.map_structure(identity, input, expand_composites=True)
-  if input is None:
-    raise ValueError("The input Specified is None. Must specified an input to tf.identity()")
   if context.executing_eagerly() and not hasattr(input, "graph"):
     # Make sure we get an input with handle data attached from resource
     # variables. Variables have correct handle data when graph building.
