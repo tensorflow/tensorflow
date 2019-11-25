@@ -298,7 +298,7 @@ Status DetermineOpState(const Status& file_status,
   }
 
   if (metadata.creation_timestamp() >=
-      (static_cast<int64>(Env::Default()->NowMicros()) -
+      (static_cast<int64>(EnvTime::NowMicros()) -
        pending_snapshot_expiry_seconds * 1000000)) {
     // Someone else is already writing and time has not expired.
     *mode = PASSTHROUGH;
@@ -887,7 +887,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(run_dir_));
 
           experimental::SnapshotMetadataRecord metadata;
-          metadata.set_creation_timestamp(Env::Default()->NowMicros());
+          metadata.set_creation_timestamp(EnvTime::NowMicros());
           metadata.set_graph_hash(dataset()->graph_hash_);
           metadata.set_run_id(run_id_);
           metadata.set_finalized(false);
