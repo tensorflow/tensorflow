@@ -1,8 +1,9 @@
 # Release 2.1.0
 
+TensorFlow 2.1 will be the last TF release supporting Python 2. Python 2 support [officially ends an January 1, 2020](https://www.python.org/dev/peps/pep-0373/#update). [As announced earlier](https://groups.google.com/a/tensorflow.org/d/msg/announce/gVwS5RC8mds/dCt1ka2XAAAJ), TensorFlow will also stop supporting Python 2 starting January 1, 2020, and no more releases are expected in 2019.
+
 ## Major Features and Improvements
 * `Python packages and versions`
-  * The TensorFlow 2.1.0 release will be the last TF release supporting Python 2 binaries. Python 2 support officially stops an January 1, 2020 as announced [here](https://www.python.org/dev/peps/pep-0373/#update). 
   * The `tensorflow` pip package now includes GPU support by default (same as `tensorflow-gpu`) for both Linux and Windows. This runs on machines with and without NVIDIA GPUs. `tensorflow-gpu` is still available, and CPU-only packages can be downloaded at `tensorflow-cpu` for users who are concerned about package size.
 * `tf.keras`
   * `Model.fit_generator`, `Model.evaluate_generator`, `Model.predict_generator`, `Model.train_on_batch`, `Model.test_on_batch`, and `Model.predict_on_batch` methods now respect the `run_eagerly` property, and will correctly run using tf.function by default.
@@ -26,7 +27,7 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
 ## Breaking Changes
 * Deletes `Operation.traceback_with_start_lines` for which we know of no usages.
 * Removed `id` from `tf.Tensor.__repr__()` as `id` is not useful other than internal debugging.
-* Some `tf.assert_*` methods now raise assertions at operation creation time (i.e. when this Python line executes) if the input tensors' values are known at that time, not during the `session.run()`. When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to `session.run()`, an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
+* Some `tf.assert_*` methods now raise assertions at operation creation time if the input tensors' values are known at that time, not during the `session.run()`. This only changes behavior when the graph execution would have resulted in an error. When this happens, a noop is returned and the input tensors are marked non-feedable. In other words, if they are used as keys in `feed_dict` argument to `session.run()`, an error will be raised. Also, because some assert ops don't make it into the graph, the graph structure changes. A different graph can result in different per-op random seeds when they are not given explicitly (most often).
 * The following APIs are not longer experimental: `tf.config.list_logical_devices`, `tf.config.list_physical_devices`, `tf.config.get_visible_devices`, `tf.config.set_visible_devices`, `tf.config.get_logical_device_configuration`, `tf.config.set_logical_device_configuration`.
 * `tf.config.experimentalVirtualDeviceConfiguration` has been renamed to `tf.config.LogicalDeviceConfiguration`.
 * `tf.config.experimental_list_devices` has been removed, please use
@@ -78,10 +79,10 @@ Because of [issues with building on windows](https://github.com/tensorflow/tenso
   * Added multilabel handling to `AUC` metric
   * Optimization on `zeros_like`.
   * Dimension constructor now requires `None` or types with an `__index__` method.
-  * Add `tf random.uniform` microbenchmark.
+  * Add `tf.random.uniform` microbenchmark.
   * Use `_protogen` suffix for proto library targets instead of `_cc_protogen` suffix.
   * Moving the checkpoint reader from `swig` to `pybind11`.
-  * tf.device & MirroredStrategy now supports passing in a tf.config.LogicalDevice
+  * `tf.device` & `MirroredStrategy` now supports passing in a `tf.config.LogicalDevice`
   * If you're building Tensorflow from source, consider using [bazelisk](https://github.com/bazelisk/bazel) to automatically download and use the correct Bazel version. Bazelisk reads the `.bazelversion` file at the root of the project directory.
 
 ## Thanks to our Contributors
