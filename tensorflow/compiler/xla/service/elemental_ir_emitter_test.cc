@@ -189,12 +189,15 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
-XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF16toBF16) {
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF16AndF64toBF16) {
   constexpr char hlo_text[] = R"(
     HloModule convertF16toBF16
-    ENTRY ConvertF16toBF16 (p: f16[]) -> bf16[] {
-      p = f16[] parameter(0)
-      ROOT convert = bf16[] convert(f16[] p)
+    ENTRY ConvertF16toBF16 (p1: f16[], p2: f64[]) -> (bf16[], bf16[]) {
+      p1 = f16[] parameter(0)
+      p2 = f64[] parameter(1)
+      convert1 = bf16[] convert(f16[] p1)
+      convert2 = bf16[] convert(f64[] p2)
+      ROOT tuple = (bf16[], bf16[]) tuple(convert1, convert2)
     }
   )";
   HloModuleConfig config;
