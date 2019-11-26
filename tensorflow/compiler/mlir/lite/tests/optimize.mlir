@@ -577,3 +577,13 @@ func @FuseHardswish(%arg0: tensor<1x112x112x16xf32>) -> tensor<1x56x56x16xf32> {
 // CHECK: tfl.hard_swish
 // CHECK: tfl.depthwise_conv_2d
 }
+
+// CHECK-LABEL: squeezeToReshape
+func @squeezeToReshape(%arg0: tensor<1x1x2xf32>) -> tensor<2xf32> {
+  %0 = "tfl.squeeze"(%arg0) : (tensor<1x1x2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+
+  // CHECK: [[cst:.*]] = constant dense<2> : tensor<1xi32>
+  // CHECK: %0 = "tfl.reshape"(%[[arg:.*]], %[[cst:.*]]) : (tensor<1x1x2xf32>, tensor<1xi32>) -> tensor<2xf32>
+  // CHECK: return %0
+}

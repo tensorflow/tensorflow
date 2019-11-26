@@ -122,6 +122,20 @@ ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
   return ExpandTo4DForConvImpl(a, true);
 }
 
+DenseElementsAttr GetShape(Value *output_val) {
+  auto output_type = output_val->getType().cast<RankedTensorType>();
+  auto shape_vector = output_type.getShape();
+  std::vector<int32_t> shape(shape_vector.size());
+  for (int i = 0; i < shape_vector.size(); ++i) {
+    shape[i] = shape_vector[i];
+  }
+  return mlir::DenseElementsAttr::get(
+      RankedTensorType::get(
+          {static_cast<int>(shape.size())},
+          mlir::IntegerType::get(32, output_val->getContext())),
+      llvm::makeArrayRef(shape));
+}
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
 
 // Fuse Add with proceeding FullyConnected.

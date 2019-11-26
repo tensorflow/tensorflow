@@ -260,3 +260,10 @@ multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
 
 foreach BroadcastingOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp]
   in defm : FuseTileBroadcastIntoFollowingBinary<BroadcastingOp>;
+
+def GetShape: NativeCodeCall<"GetShape($0)">;
+
+def : Pat<(TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
+          (TFL_ReshapeOp $input,
+           (ConstantOp (GetShape $squeeze_op))),
+          [(AnyStaticShapeTensor $squeeze_op)]>;
