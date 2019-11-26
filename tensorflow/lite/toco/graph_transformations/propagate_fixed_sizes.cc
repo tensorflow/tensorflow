@@ -932,12 +932,15 @@ void ProcessAveragePoolOperator(Model* model, AveragePoolOperator* op) {
     return;
   }
   const auto& input_shape = input_array.shape();
-  CHECK_EQ(input_shape.dimensions_count(), 4);
+  CHECK((input_shape.dimensions_count() == 4) ||
+        (input_shape.dimensions_count() == 5));
   const string& output_name = op->outputs[0];
-  const int output_depth = input_shape.dims(3);
-  ComputeConvSizes(input_shape, output_depth,
-                   op->kwidth, op->kheight, 1,
-                   op->stride_width, op->stride_height, 1,
+  const int output_channel = (input_shape.dimensions_count() == 4)
+    ? input_shape.dims(3)
+    : input_shape.dims(4);
+  ComputeConvSizes(input_shape, output_channel,
+                   op->kwidth, op->kheight, op->kdepth,
+                   op->stride_width, op->stride_height, op->stride_depth,
                    1, 1, 1, op->padding.type,
                    model->GetArray(output_name).mutable_shape(),
                    &op->padding.GetOrCreateFixedPadding());
