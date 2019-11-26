@@ -58,7 +58,7 @@ void TestDequantize(const int* input_dims_data, const float* input_data,
 
   // Version 4 ops support int8 quantization.
   const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_DEQUANTIZE, 4);
+      resolver.FindOp(tflite::BuiltinOperator_DEQUANTIZE, 2);
 
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
