@@ -178,7 +178,7 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::ADD); \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB)
 
-#define REGISTER_SCATTER_ND_MIN_MAX(type)
+#define REGISTER_SCATTER_ND_MIN_MAX(type)                        \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MAX); \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MIN)  
   
