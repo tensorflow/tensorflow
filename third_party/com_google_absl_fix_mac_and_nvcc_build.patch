@@ -1,0 +1,35 @@
+--- ./absl/time/internal/cctz/BUILD.bazel	2019-09-23 13:20:52.000000000 -0700
++++ ./absl/time/internal/cctz/BUILD.bazel.fixed	2019-09-23 13:20:48.000000000 -0700
+@@ -76,15 +76,6 @@
+         "include/cctz/time_zone.h",
+         "include/cctz/zone_info_source.h",
+     ],
+-    linkopts = select({
+-        ":osx": [
+-            "-framework Foundation",
+-        ],
+-        ":ios": [
+-            "-framework Foundation",
+-        ],
+-        "//conditions:default": [],
+-    }),
+     visibility = ["//visibility:public"],
+     deps = [":civil_time"],
+ )
+--- ./absl/strings/string_view.h	2019-09-23 13:20:52.000000000 -0700
++++ ./absl/strings/string_view.h.fixed	2019-09-23 13:20:48.000000000 -0700
+@@ -492,7 +492,14 @@
+       (std::numeric_limits<difference_type>::max)();
+ 
+   static constexpr size_type CheckLengthInternal(size_type len) {
++#if defined(__NVCC__) && (__CUDACC_VER_MAJOR__<10 || (__CUDACC_VER_MAJOR__==10 && __CUDACC_VER_MINOR__<2)) && !defined(NDEBUG)
++    // An nvcc bug treats the original return expression as a non-constant,
++    // which is not allowed in a constexpr function. This only happens when
++    // NDEBUG is not defined. This will be fixed in the CUDA 10.2 release.
++    return len;
++#else
+     return ABSL_ASSERT(len <= kMaxSize), len;
++#endif
+   }
+ 
+   const char* ptr_;

@@ -135,6 +135,12 @@ public:
     return symbolTable.lookup<T>(name);
   }
 
+  /// Look up a symbol with the specified name, returning null if no such
+  /// name exists. Names must never include the @ on them.
+  template <typename NameTy> Operation *lookupSymbol(NameTy &&name) const {
+    return symbolTable.lookup(name);
+  }
+
   /// Insert a new symbol into the module, auto-renaming it as necessary.
   void insert(Operation *op) {
     symbolTable.insert(op);

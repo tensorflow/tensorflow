@@ -1,19 +1,13 @@
 set(LIBS
-  MLIRAffineOps
-  MLIRAnalysis
-  MLIREDSC
   MLIRParser
   MLIRPass
   MLIRSPIRV
   MLIRSPIRVSerialization
-  MLIRStandardOps
   MLIRTargetLLVMIR
   MLIRTargetNVVMIR
   MLIRTargetROCDLIR
-  MLIRTransforms
   MLIRTranslation
   MLIRSupport
-  MLIRVectorOps
 )
 add_llvm_executable(mlir-translate
   mlir-translate.cpp

@@ -21,7 +21,7 @@ config.name = 'MLIR'
 config.test_format = lit.formats.ShTest(not llvm_config.use_lit_shell)
 
 # suffixes: A list of file extensions to treat as test files.
-config.suffixes = ['.td', '.mlir', '.toy']
+config.suffixes = ['.td', '.mlir', '.toy', '.ll']
 
 # test_source_root: The root path where tests are located.
 config.test_source_root = os.path.dirname(__file__)
@@ -66,8 +66,8 @@ tools.extend([
     ToolSubst('toy-ch3', unresolved='ignore'),
     ToolSubst('toy-ch4', unresolved='ignore'),
     ToolSubst('toy-ch5', unresolved='ignore'),
-    ToolSubst('%linalg_test_lib_dir', config.linalg_test_lib_dir, unresolved='ignore'),
-    ToolSubst('%cuda_wrapper_library_dir', config.cuda_wrapper_library_dir, unresolved='ignore')
+    ToolSubst('%test_lib_dir', config.test_lib_dir, unresolved='ignore'),
+    ToolSubst('%tools_lib_dir', config.tools_lib_dir, unresolved='ignore')
 ])
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

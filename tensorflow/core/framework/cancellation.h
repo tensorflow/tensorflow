@@ -61,7 +61,9 @@ class CancellationManager {
 
   // Returns a token that must be used in calls to RegisterCallback
   // and DeregisterCallback.
-  CancellationToken get_cancellation_token();
+  CancellationToken get_cancellation_token() {
+    return next_cancellation_token_.fetch_add(1);
+  }
 
   // Attempts to register the given callback to be invoked when this
   // manager is cancelled. Returns true if the callback was
@@ -140,7 +142,7 @@ class CancellationManager {
 
   mutex mu_;
   Notification cancelled_notification_;
-  CancellationToken next_cancellation_token_ GUARDED_BY(mu_);
+  std::atomic<CancellationToken> next_cancellation_token_;
   gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
 };
 

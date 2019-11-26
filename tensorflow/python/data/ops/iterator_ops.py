@@ -585,11 +585,6 @@ class OwnedIterator(trackable.Trackable, composite_tensor.CompositeTensor):
       self._flat_output_shapes = structure.get_flat_tensor_shapes(
           self._element_spec)
       self._iterator_resource, self._deleter = components
-      # Delete the resource when this object is deleted
-      self._resource_deleter = IteratorResourceDeleter(
-          handle=self._iterator_resource,
-          device=self._device,
-          deleter=self._deleter)
     else:
       if (components is not None or element_spec is not None):
         raise ValueError(error_message)

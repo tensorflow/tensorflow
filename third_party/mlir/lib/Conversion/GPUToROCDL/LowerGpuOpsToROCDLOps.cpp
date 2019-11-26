@@ -80,5 +80,5 @@ std::unique_ptr<OpPassBase<ModuleOp>> mlir::createLowerGpuOpsToROCDLOpsPass() {
 }
 
 static PassRegistration<LowerGpuOpsToROCDLOpsPass>
-    pass("lower-gpu-ops-to-rocdl-ops",
+    pass("convert-gpu-to-rocdl",
          "Generate ROCDL operations for gpu operations");

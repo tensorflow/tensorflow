@@ -2,7 +2,7 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_rpc_deps",
 )
 

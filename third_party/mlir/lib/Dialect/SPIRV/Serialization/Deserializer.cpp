@@ -970,7 +970,7 @@ LogicalResult Deserializer::processGlobalVariable(ArrayRef<uint32_t> operands) {
   wordIndex++;
 
   // Initializer.
-  SymbolRefAttr initializer = nullptr;
+  FlatSymbolRefAttr initializer = nullptr;
   if (wordIndex < operands.size()) {
     auto initializerOp = getGlobalVariable(operands[wordIndex]);
     if (!initializerOp) {
@@ -1700,9 +1700,8 @@ spirv::LoopOp ControlFlowStructurizer::createLoopOp() {
   // merge block so that the newly created LoopOp will be inserted there.
   OpBuilder builder(&mergeBlock->front());
 
-  auto control = builder.getI32IntegerAttr(
-      static_cast<uint32_t>(spirv::LoopControl::None));
-  auto loopOp = builder.create<spirv::LoopOp>(location, control);
+  // TODO(antiagainst): handle loop control properly
+  auto loopOp = builder.create<spirv::LoopOp>(location);
   loopOp.addEntryAndMergeBlock();
 
   return loopOp;
@@ -1810,10 +1809,25 @@ LogicalResult ControlFlowStructurizer::structurizeImpl() {
   headerBlock->replaceAllUsesWith(mergeBlock);
 
   if (isLoop) {
+    // The loop selection/loop header block may have block arguments. Since now
+    // we place the selection/loop op inside the old merge block, we need to
+    // make sure the old merge block has the same block argument list.
+    assert(mergeBlock->args_empty() && "OpPhi in loop merge block unsupported");
+    for (BlockArgument *blockArg : headerBlock->getArguments()) {
+      mergeBlock->addArgument(blockArg->getType());
+    }
+
+    // If the loop header block has block arguments, make sure the spv.branch op
+    // matches.
+    SmallVector<Value *, 4> blockArgs;
+    if (!headerBlock->args_empty())
+      blockArgs = {mergeBlock->args_begin(), mergeBlock->args_end()};
+
     // The loop entry block should have a unconditional branch jumping to the
     // loop header block.
     builder.setInsertionPointToEnd(&body.front());
-    builder.create<spirv::BranchOp>(location, mapper.lookupOrNull(headerBlock));
+    builder.create<spirv::BranchOp>(location, mapper.lookupOrNull(headerBlock),
+                                    ArrayRef<Value *>(blockArgs));
   }
 
   // All the blocks cloned into the SelectionOp/LoopOp's region can now be
@@ -1901,16 +1915,23 @@ LogicalResult Deserializer::structurizeControlFlow() {
 
   for (const auto &info : blockMergeInfo) {
     auto *headerBlock = info.first;
-    LLVM_DEBUG(llvm::dbgs() << "[cf] header block " << headerBlock << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "[cf] header block " << headerBlock << ":\n");
+    LLVM_DEBUG(headerBlock->print(llvm::dbgs()));
 
     const auto &mergeInfo = info.second;
+
     auto *mergeBlock = mergeInfo.mergeBlock;
-    auto *continueBlock = mergeInfo.continueBlock;
     assert(mergeBlock && "merge block cannot be nullptr");
-    LLVM_DEBUG(llvm::dbgs() << "[cf] merge block " << mergeBlock << "\n");
+    if (!mergeBlock->args_empty())
+      return emitError(unknownLoc, "OpPhi in loop merge block unimplemented");
+    LLVM_DEBUG(llvm::dbgs() << "[cf] merge block " << mergeBlock << ":\n");
+    LLVM_DEBUG(mergeBlock->print(llvm::dbgs()));
+
+    auto *continueBlock = mergeInfo.continueBlock;
     if (continueBlock) {
       LLVM_DEBUG(llvm::dbgs()
-                 << "[cf] continue block " << continueBlock << "\n");
+                 << "[cf] continue block " << continueBlock << ":\n");
+      LLVM_DEBUG(continueBlock->print(llvm::dbgs()));
     }
 
     if (failed(ControlFlowStructurizer::structurize(unknownLoc, headerBlock,

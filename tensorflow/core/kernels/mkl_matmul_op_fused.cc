@@ -32,15 +32,17 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
  public:
   explicit MklFusedMatMulOp(OpKernelConstruction* ctx)
       : MklDnnMatMulOpBase<T>(ctx) {
-    std::vector<string> fused_ops;
-
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("fused_ops", &fused_ops_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_a", &transpose_a_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("transpose_b", &transpose_b_));
 
-    OP_REQUIRES(ctx, fused_ops.size() == 1,
+    OP_REQUIRES(ctx, fused_ops_.size() <= 2,
                 errors::InvalidArgument(
-                    "MklFusedMatMul must have only one argument: bias."));
+                    "MklFusedMatMul must have 2 post-arguments at most."));
+    OP_REQUIRES(
+        ctx, fused_ops_[0] == "BiasAdd",
+        errors::InvalidArgument(
+            "The 1st post-argument of MklFusedMatMul must be BiasAdd."));
     OP_REQUIRES(
         ctx, transpose_a_ == false,
         errors::InvalidArgument("In[0] of MklMatMul can't be transposed."));
@@ -106,6 +108,9 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
 
     MklDnnMatMulFwdParams matmul_params(src_dims, weight_dims, bias_dims,
                                         dst_dims, weight_format);
+
+    // Extend the basic parameters for data types and fusions.
+    ExtendMklDnnMatMulFwdParams(ctx, matmul_params);
     MklDnnMatMulFwdPrimitive<T, T, T, T, T>* matmul_prim =
         MklDnnMatMulFwdPrimitiveFactory<T, T, T, T, T>::Get(matmul_params, 0);
 
@@ -173,9 +178,29 @@ class MklFusedMatMulOp : public MklDnnMatMulOpBase<T> {
     }
   }
 
+  void ExtendMklDnnMatMulFwdParams(OpKernelContext* ctx,
+                                   MklDnnMatMulFwdParams& params) {
+    if (fused_ops_.size() == 2) {
+      string post_op = fused_ops_[1];
+
+      if (post_op == "Relu") {
+        params.post_op_params.push_back({"relu", {1.0, 0.0, 0.0}});
+      } else if (post_op == "Relu6") {
+        params.post_op_params.push_back({"relu6", {1.0, 6.0, 0.0}});
+      } else if (post_op == "Elu") {
+        params.post_op_params.push_back({"elu", {1.0, 1.0, 0.0}});
+      } else {
+        OP_REQUIRES_OK(
+            ctx, errors::InvalidArgument(
+                     "Unsupported post-argument in MklFusedMatMul: ", post_op));
+      }
+    }
+  }
+
  private:
   bool transpose_a_;
   bool transpose_b_;
+  std::vector<string> fused_ops_;
 };
 
 // Register mkl kernels for supported operations and types.

@@ -157,10 +157,10 @@ static StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
 static std::shared_ptr<Device> MakeDevice(const std::string& platform_name,
                                           int id, int local_device_ordinal) {
   if (platform_name == "cpu") {
-    return std::make_shared<CpuDevice>(id, local_device_ordinal);
+    return std::make_shared<CpuDevice>(id, local_device_ordinal, platform_name);
   } else {
     CHECK_EQ(platform_name, "gpu");
-    return std::make_shared<GpuDevice>(id, local_device_ordinal);
+    return std::make_shared<GpuDevice>(id, local_device_ordinal, platform_name);
   }
 }
 
@@ -670,12 +670,13 @@ PyLocalExecutable::PyLocalExecutable(
     DeviceAssignment device_assignment, std::shared_ptr<PyLocalClient> client)
     : client_(std::move(client)),
       executable_(std::move(executable)),
-      device_assignment_(std::move(device_assignment)) {
+      device_assignment_(
+          std::make_shared<DeviceAssignment>(device_assignment)) {
   VLOG(1) << "PyLocalExecutable device_assignment:\n"
-          << device_assignment_.ToString();
-  int num_replicas = device_assignment_.replica_count();
+          << device_assignment_->ToString();
+  int num_replicas = device_assignment_->replica_count();
   for (int replica = 0; replica < num_replicas; ++replica) {
-    int device_id = device_assignment_(replica, 0);
+    int device_id = (*device_assignment_)(replica, 0);
     std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
     if (device->host_id() != client_->host_id()) {
       VLOG(3) << "Non-local device: " << device_id;
@@ -684,13 +685,13 @@ PyLocalExecutable::PyLocalExecutable(
     local_replicas_.push_back(replica);
     local_devices_.push_back(device);
   }
-  CHECK_GE(local_devices_.size(), 1) << device_assignment_.ToString();
+  CHECK_GE(local_devices_.size(), 1) << device_assignment_->ToString();
 }
 
 StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
     absl::Span<PyLocalBuffer* const> argument_handles, int replica,
     const RunId& run_id) {
-  const int device_id = device_assignment_(replica, 0);
+  const int device_id = (*device_assignment_)(replica, 0);
   std::shared_ptr<Device> device = LookupDevice(*client_, device_id);
   CHECK_EQ(device->host_id(), client_->host_id());
   int device_ordinal = device->local_device_ordinal();
@@ -746,7 +747,7 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
   options.set_allocator(client_->allocator());
   options.set_intra_op_thread_pool(
       client_->client()->backend().eigen_intra_op_thread_pool_device());
-  options.set_device_assignment(&device_assignment_);
+  options.set_device_assignment(device_assignment_.get());
   options.set_run_id(run_id);
 
   StatusOr<ScopedShapedBuffer> result_buffer =
@@ -777,8 +778,9 @@ StatusOr<std::unique_ptr<PyLocalBuffer>> PyLocalExecutable::ExecuteHelper(
                               std::move(device_buffers));
   }
 
-  device_state->ThenRelease(device_state->compute_stream(),
-                            std::make_pair(executable_, compute_reservation));
+  device_state->ThenRelease(
+      device_state->compute_stream(),
+      std::make_tuple(executable_, compute_reservation, device_assignment_));
   return absl::make_unique<PyLocalBuffer>(on_host_shape, std::move(out_buffer),
                                           client_);
 }

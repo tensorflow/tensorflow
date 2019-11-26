@@ -51,7 +51,8 @@ class FunctionLibraryRuntime;
 
 struct EagerRemoteFunctionParams {
   int64 op_id;
-  int64 step_id;
+  // Set when this function is a component function.
+  absl::optional<int64> step_id = absl::nullopt;
 };
 
 class EagerKernelArgs : public FunctionArgsInterface {
@@ -174,7 +175,10 @@ class KernelAndDeviceOp final : public KernelAndDevice {
                         host_cpu_device),
         rendez_(rendez),
         log_memory_(log_memory),
-        compile_with_xla_(compile_with_xla) {}
+        compile_with_xla_(compile_with_xla),
+        step_container_(0, [this](const string& name) {
+          device_->resource_manager()->Cleanup(name).IgnoreError();
+        }) {}
 
   ~KernelAndDeviceOp() override {}
 
@@ -211,6 +215,8 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
   const bool compile_with_xla_;
+
+  ScopedStepContainer step_container_;
 };
 
 // Represents a multi-device function. Functions can also be run using
@@ -240,9 +246,17 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
             std::move(input_resource_dtypes_and_shapes)),
         name_(name),
         rendezvous_creator_(std::move(rendezvous_creator)),
-        get_op_id_(std::move(get_op_id)) {}
+        get_op_id_(std::move(get_op_id)),
+        step_container_(0, [this](const string& name) {
+          // TODO(b/139809335): This does not properly clean up remote resources
+          const std::vector<Device*> devices =
+              pflr_->device_mgr()->ListDevices();
+          for (Device* device : devices) {
+            device->resource_manager()->Cleanup(name).IgnoreError();
+          }
+        }) {}
 
-  virtual ~KernelAndDeviceFunc();
+  ~KernelAndDeviceFunc() override;
 
   bool IsFunction() override { return true; };
 
@@ -294,6 +308,8 @@ class KernelAndDeviceFunc final : public KernelAndDevice {
 
   std::function<Rendezvous*(const int64)> rendezvous_creator_;
   std::function<int64()> get_op_id_;
+
+  ScopedStepContainer step_container_;
 };
 
 }  // namespace tensorflow

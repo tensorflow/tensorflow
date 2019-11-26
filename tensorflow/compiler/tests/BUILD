@@ -1,10 +1,10 @@
-load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 load("//tensorflow/compiler/tests:build_defs.bzl", "generate_backend_suites")
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -1047,10 +1047,6 @@ tf_xla_py_test(
     name = "unary_ops_test",
     size = "medium",
     srcs = ["unary_ops_test.py"],
-    tags = [
-        "noasan",  # b/143400367
-        "nomsan",  # b/142562986
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:array_ops",
@@ -1226,12 +1222,15 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
+<<<<<<< HEAD
     tags = [
         # TODO(b/134780716): Re-enable this test.
         "no_rocm",
         "nogpu",
         "no_cuda_on_cpu_tap",
     ],
+=======
+>>>>>>> google_upstream/master
     xla_enable_strict_auto_jit = False,
 )
 
@@ -1449,6 +1448,28 @@ tf_xla_py_test(
     ],
     deps = [
         ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:linalg_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "determinant_ops_test",
+    size = "medium",
+    srcs = ["determinant_ops_test.py"],
+    disabled_backends = [
+        "cpu_ondemand",
+        "cpu",
+        "gpu",
+    ],
+    tags = [
+        "optonly",
+    ],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:platform_test",

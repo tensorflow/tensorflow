@@ -13,9 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/python/lib/core/py_exception_registry.h"
+
 #include <Python.h>
 
-#include "tensorflow/python/lib/core/py_exception_registry.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
 

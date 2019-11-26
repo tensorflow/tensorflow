@@ -18,6 +18,8 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "llvm/Support/InitLLVM.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SMLoc.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/Support/FileUtilities.h"  // TF:local_config_mlir
@@ -105,8 +107,11 @@ int main(int argc, char** argv) {
       return 1;
     }
 
-    if (failed(
-            (*requested_translation)(std::move(input), output->os(), &context)))
+    llvm::SourceMgr source_mgr;
+    source_mgr.AddNewSourceBuffer(std::move(input), llvm::SMLoc());
+    mlir::SourceMgrDiagnosticHandler diagnostic_handler(source_mgr, &context);
+
+    if (failed((*requested_translation)(source_mgr, output->os(), &context)))
       return 1;
   }
 

@@ -25,11 +25,11 @@ load(
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_kernel_tests_linkstatic",
 )
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 load(
@@ -1158,7 +1158,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_set_diag_op",
     prefix = "matrix_set_diag_op",
-    deps = ARRAY_DEPS,
+    deps = ARRAY_DEPS + [":matrix_diag_op"],
 )
 
 tf_kernel_library(
@@ -2893,6 +2893,7 @@ cc_library(
         ":encode_jpeg_op",
         ":encode_png_op",
         ":extract_jpeg_shape_op",
+        ":generate_box_proposals_op",
         ":non_max_suppression_op",
         ":random_crop_op",
         ":resize_area_op",
@@ -2994,6 +2995,15 @@ tf_kernel_library(
     name = "extract_jpeg_shape_op",
     prefix = "extract_jpeg_shape_op",
     deps = IMAGE_DEPS,
+)
+
+tf_kernel_library(
+    name = "generate_box_proposals_op",
+    gpu_srcs = ["generate_box_proposals_op.cu.cc"],
+    deps = if_cuda([
+        "@cub_archive//:cub",
+        ":non_max_suppression_op_gpu",
+    ]),
 )
 
 tf_kernel_library(
@@ -8116,6 +8126,7 @@ tf_kernel_library(
         "//tensorflow/core/util/proto:proto_utils",
         "//third_party/eigen3",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -8240,3 +8251,5 @@ tf_cc_shared_object(
         "//tensorflow/core:all_kernels_impl",
     ],
 )
+
+exports_files(["ops_testutil.h"])

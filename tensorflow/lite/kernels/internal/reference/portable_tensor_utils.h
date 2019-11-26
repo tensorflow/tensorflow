@@ -18,6 +18,7 @@ limitations under the License.
 // TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/reference/portable_tensor_utils_impl.h"
 
 #if defined(_MSC_VER)
@@ -26,8 +27,6 @@ limitations under the License.
 
 namespace tflite {
 namespace tensor_utils {
-
-float Clip(float f, float abs_limit) { return PortableClip(f, abs_limit); }
 
 // Check if all entries of a vector are zero for float.
 bool IsZeroVector(const float* vector, int v_size) {
@@ -54,8 +53,8 @@ void SymmetricQuantizeFloats(const float* values, const int size,
 }
 
 void AsymmetricQuantizeFloats(const float* values, const int size,
-                              int8_t* quantized_values, float scaling_factor,
-                              int32_t offset) {
+                              int8_t* quantized_values, float* scaling_factor,
+                              int32_t* offset) {
   return PortableAsymmetricQuantizeFloats(values, size, quantized_values,
                                           scaling_factor, offset);
 }
@@ -105,28 +104,24 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
       result_stride);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int16_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int16_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulate(
       input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
-      n_output, output_zp, scratch, output);
+      n_output, output_zp, scratch, output, context);
 }
 
-void MatrixBatchVectorMultiplyAccumulate(const int8_t* input,
-                                         const int32_t* bias,
-                                         const int8_t* input_to_gate_weights,
-                                         int32_t multiplier, int32_t shift,
-                                         int32_t n_batch, int32_t n_input,
-                                         int32_t n_output, int32_t output_zp,
-                                         int32_t* scratch, int8_t* output) {
+void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* input, const int32_t* bias,
+    const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
+    int32_t n_batch, int32_t n_input, int32_t n_output, int32_t output_zp,
+    int32_t* scratch, int8_t* output, CpuBackendContext* context) {
   PortableMatrixBatchVectorMultiplyAccumulate(
       input, bias, input_to_gate_weights, multiplier, shift, n_batch, n_input,
-      n_output, output_zp, scratch, output);
+      n_output, output_zp, scratch, output, context);
 }
 
 void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
@@ -221,6 +216,14 @@ float VectorVectorDotProduct(const float* vector1, const float* vector2,
   return PortableVectorVectorDotProduct(vector1, vector2, v_size);
 }
 
+void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                      const int16_t* vector2, int v_size,
+                                      int n_batch, int32_t* result,
+                                      int result_stride) {
+  return PortableBatchVectorBatchVectorDotProduct(
+      vector1, vector2, v_size, n_batch, result, result_stride);
+}
+
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector) {
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
@@ -260,11 +263,15 @@ void ReductionSumVector(const float* input_vector, float* output_vector,
                              reduction_size);
 }
 
+void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
+                        int output_size, int reduction_size) {
+  PortableReductionSumVector(input_vector, output_vector, output_size,
+                             reduction_size);
+}
+
 void MeanStddevNormalization(const float* input_vector, float* output_vector,
-                             int v_size, int n_batch,
-                             float normalization_epsilon) {
-  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch,
-                                  normalization_epsilon);
+                             int v_size, int n_batch) {
+  PortableMeanStddevNormalization(input_vector, output_vector, v_size, n_batch);
 }
 
 }  // namespace tensor_utils

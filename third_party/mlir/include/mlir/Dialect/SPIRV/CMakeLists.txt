@@ -1,3 +1,8 @@
+set(LLVM_TARGET_DEFINITIONS SPIRVLowering.td)
+mlir_tablegen(SPIRVLowering.h.inc -gen-struct-attr-decls)
+mlir_tablegen(SPIRVLowering.cpp.inc -gen-struct-attr-defs)
+add_public_tablegen_target(MLIRSPIRVLoweringStructGen)
+
 set(LLVM_TARGET_DEFINITIONS SPIRVOps.td)
 mlir_tablegen(SPIRVOps.h.inc -gen-op-decls)
 mlir_tablegen(SPIRVOps.cpp.inc -gen-op-defs)

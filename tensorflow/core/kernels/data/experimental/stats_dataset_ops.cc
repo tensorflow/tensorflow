@@ -108,9 +108,9 @@ class LatencyStatsDatasetOp : public UnaryDatasetOpKernel {
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
         tf_shared_lock l(mu_);
-        uint64 start = ctx->env()->NowMicros();
+        uint64 start = EnvTime::NowMicros();
         Status s = input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
-        uint64 end = ctx->env()->NowMicros();
+        uint64 end = EnvTime::NowMicros();
         auto stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator && !*end_of_sequence) {
           int64 steps = num_elements();

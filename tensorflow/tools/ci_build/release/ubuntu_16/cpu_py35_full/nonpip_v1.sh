@@ -20,6 +20,8 @@ source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_pip_deps pip3.5
 
+update_bazel_linux
+
 # Run configure.
 export TF_NEED_GCP=1
 export TF_NEED_HDFS=1
@@ -35,7 +37,7 @@ source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
 
 # Run tests
 bazel test --test_output=errors --config=opt --test_lang_filters=py \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.0:toolchain \
+  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
   --linkopt=-lrt \
   --build_tag_filters="${tag_filters}" \
   --test_tag_filters="${tag_filters}" -- \

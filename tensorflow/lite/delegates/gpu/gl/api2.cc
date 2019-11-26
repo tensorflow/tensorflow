@@ -463,6 +463,34 @@ class InferenceRunnerImpl : public InferenceRunner {
   bool output_to_cpu_ = false;
 };
 
+int GetPosition(const InferenceOptions& options, InferencePriority p) {
+  if (options.priority1 == p) return 1;
+  if (options.priority2 == p) return 2;
+  if (options.priority3 == p) return 3;
+  return 4;  // least important
+}
+
+enum class PriorityImportance {
+  UNKNOWN,
+  HIGHER,
+  LOWER,
+};
+
+// If both p1 and p2 are not present in options, return UNKNOWN
+// If p1 is present, but p2 is not, return HIGHER
+// If p2 is present, but p1 is not, return LOWER
+// If both are present, and p1 is more important, return HIGHER, otherwise,
+// LOWER.
+PriorityImportance GetRelativeImportance(const InferenceOptions& options,
+                                         InferencePriority p1,
+                                         InferencePriority p2) {
+  int p1_position = GetPosition(options, p1);
+  int p2_position = GetPosition(options, p2);
+  if (p1_position == p2_position) return PriorityImportance::UNKNOWN;
+  return p1_position < p2_position ? PriorityImportance::HIGHER
+                                   : PriorityImportance::LOWER;
+}
+
 class InferenceBuilderImpl : public InferenceBuilder {
  public:
   InferenceBuilderImpl(const InferenceEnvironmentOptions& env_options,
@@ -524,9 +552,19 @@ class InferenceBuilderImpl : public InferenceBuilder {
   Status Build(std::unique_ptr<InferenceRunner>* runner) final {
     auto kernels = NewNodeShaderRegistry();
     CompilationOptions compiler_options;
-    compiler_options.allow_precision_loss = options_.allow_precision_loss;
-    compiler_options.fuse_operations = options_.fuse_operations;
-    compiler_options.inline_parameters = options_.inline_parameters;
+    compiler_options.allow_precision_loss =
+        GetPosition(options_, InferencePriority::MAX_PRECISION) > 1;
+    compiler_options.inline_parameters =
+        options_.usage == InferenceUsage::SUSTAINED_SPEED &&
+        GetPosition(options_, InferencePriority::MIN_LATENCY) == 1;
+    if (GetRelativeImportance(options_, InferencePriority::MIN_MEMORY_USAGE,
+                              InferencePriority::MIN_LATENCY) ==
+        PriorityImportance::HIGHER) {
+      // Buffers have far better memory utilization.
+      compiler_options.preferred_obj_type = ObjectType::BUFFER;
+      compiler_options.ref_obj_type = ObjectType::BUFFER;
+    }
+
     auto compiler = NewCompiler(kernels.get(), gpu_info_, compiler_options);
     auto workgroup_calculator = NewDefaultWorkgroupsCalculator(*gpu_info_);
     auto external_objects = absl::make_unique<ObjectManager>();

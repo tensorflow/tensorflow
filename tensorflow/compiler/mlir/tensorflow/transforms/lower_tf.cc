@@ -35,8 +35,44 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                                Builder *builder) {
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseElementsAttr::get<int64_t>(ty, values)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, values);
+}
+
+// Returns a 1-d i64 elements attribute populated with numbers from start to
+// end, excluding.
+static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
+                                                     Builder *builder) {
+  int size = end - start;
+
+  SmallVector<int64_t, 4> vals;
+  vals.resize(size);
+  std::iota(vals.begin(), vals.end(), start);
+
+  TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
+  return DenseIntElementsAttr::get(ty, vals);
+}
+
+// Returns int or float DenseElementsAttr with scalar shape with the given
+// element type and the integer value.
+static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
+  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
+  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
+    const auto &float_semantics = float_ty.getFloatSemantics();
+    Builder builder(ty.getContext());
+    if (&float_semantics == &APFloat::IEEEsingle())
+      return DenseElementsAttr::get(scalar_ty,
+                                    builder.getF32FloatAttr(raw_value));
+    if (&float_semantics == &APFloat::IEEEdouble())
+      return DenseElementsAttr::get(scalar_ty,
+                                    builder.getF64FloatAttr(raw_value));
+
+    assert(false && "unhandled IEEE float kind");
+    return {};
+  }
+
+  auto int_ty = ty.cast<IntegerType>();
+  APInt value(int_ty.getWidth(), raw_value, /*isSigned=*/true);
+  return DenseElementsAttr::get(scalar_ty, value);
 }
 
 // Returns reduction indices to use while lowering tf.BiasAddGrad op to tf.Sum
@@ -99,7 +135,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
 
     Type prev_input_ty, inferred_ty;
     SmallVector<Value *, 4> expanded_inputs;
-    expanded_inputs.reserve(op.N().getSExtValue());
+    expanded_inputs.reserve(op.N());
     for (Value *input : op.values()) {
       // If input type is different than the previous input type, infer the
       // output type. Otherwise, use the already inferred output type from the
@@ -113,9 +149,8 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
           loc, inferred_ty, input, axis_value));
     }
 
-    rewriter.replaceOpWithNewOp<TF::ConcatV2Op>(
-        op, op.getType(), expanded_inputs, axis_value,
-        op.getAttrOfType<IntegerAttr>("N"));
+    rewriter.replaceOpWithNewOp<TF::ConcatV2Op>(op, op.getType(),
+                                                expanded_inputs, axis_value);
     return matchSuccess();
   }
 };

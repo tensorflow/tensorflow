@@ -185,8 +185,14 @@ public:
   /// Parse a '{' token.
   virtual ParseResult parseLBrace() = 0;
 
+  /// Parse a '{' token if present
+  virtual ParseResult parseOptionalLBrace() = 0;
+
   /// Parse a `}` token.
   virtual ParseResult parseRBrace() = 0;
+
+  /// Parse a `}` token if present
+  virtual ParseResult parseOptionalRBrace() = 0;
 
   /// Parse a `:` token.
   virtual ParseResult parseColon() = 0;
@@ -264,6 +270,12 @@ public:
   /// Parse a `...` token if present;
   virtual ParseResult parseOptionalEllipsis() = 0;
 
+  /// Parse a `?` token.
+  virtual ParseResult parseOptionalQuestion() = 0;
+
+  /// Parse a `*` token.
+  virtual ParseResult parseOptionalStar() = 0;
+
   //===--------------------------------------------------------------------===//
   // Attribute Parsing
   //===--------------------------------------------------------------------===//
@@ -284,7 +296,7 @@ public:
     // Check for the right kind of attribute.
     result = attr.dyn_cast<AttrType>();
     if (!result)
-      return emitError(loc, "invalid kind of constant specified");
+      return emitError(loc, "invalid kind of attribute specified");
     return success();
   }
 

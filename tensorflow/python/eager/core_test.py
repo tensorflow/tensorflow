@@ -69,9 +69,9 @@ def current_device():
 def configure_virtual_cpus():
   cpus = config.list_physical_devices('CPU')
   # Set 2 virtual CPUs
-  config.set_virtual_device_configuration(cpus[0], [
-      context.VirtualDeviceConfiguration(),
-      context.VirtualDeviceConfiguration()
+  config.set_logical_device_configuration(cpus[0], [
+      context.LogicalDeviceConfiguration(),
+      context.LogicalDeviceConfiguration()
   ])
 
 
@@ -1012,6 +1012,14 @@ class TFETest(test_util.TensorFlowTestCase):
 
     for t in threads:
       t.join()
+
+  def testEmptyResourceReturned(self):
+    v = variables.Variable(1.)
+    empty_handle = array_ops.gather(
+        v.handle[array_ops.newaxis], array_ops.zeros([0], dtype=dtypes.int32))
+    self.assertEqual(
+        [0],
+        empty_handle.shape.as_list())
 
 
 class SendRecvTest(test_util.TensorFlowTestCase):

@@ -19,7 +19,7 @@ limitations under the License.
 #include <stdint.h>
 
 #include <GLES3/gl31.h>
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 #ifdef SWIG
 #define TFL_CAPI_EXPORT

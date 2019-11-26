@@ -50,6 +50,9 @@ constexpr char kSavedModelVariablesFilename[] = "variables";
 constexpr char kSavedModelInitOpSignatureKey[] = "__saved_model_init_op";
 constexpr char kSavedModelTrainOpSignatureKey[] = "__saved_model_train_op";
 
+// Key in the TensorBundle for the object graph proto.
+constexpr char kObjectGraphProtoKey[] = "_CHECKPOINTABLE_OBJECT_GRAPH";
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_

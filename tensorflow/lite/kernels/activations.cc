@@ -21,7 +21,7 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/softmax.h"
@@ -36,6 +36,10 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+
+#if __aarch64__ && __clang__
+#include <arm_neon.h>
+#endif
 
 namespace tflite {
 namespace ops {
@@ -125,13 +129,61 @@ void PopulateLookupTable(struct OpData* data, const TfLiteTensor* input,
   }
 }
 
+#if __aarch64__ && __clang__
+namespace {
+// Looks up each element of <indices> in <table>, returns them in a vector.
+// idx_offset must be a int8x16_t vector containing 64 in each lane.
+inline uint8x16_t aarch64_lookup_vector(const uint8x16x4_t table[4],
+                                        uint8x16_t indices) {
+  // Look up in 1st quarter of the table: top 2 bits of indices == 00
+  uint8x16_t output1 = vqtbl4q_u8(table[0], indices);
+  // Look up in 2nd quarter of the table: top 2 bits of indices == 01
+  uint8x16_t output2 =
+      vqtbl4q_u8(table[1], veorq_u8(indices, vdupq_n_u8(0x40)));
+  // Look up in 3rd quarter of the table: top 2 bits of indices == 10
+  uint8x16_t output3 =
+      vqtbl4q_u8(table[2], veorq_u8(indices, vdupq_n_u8(0x80)));
+  // Look up in 4th quarter of the table: top 2 bits of indices == 11
+  uint8x16_t output4 =
+      vqtbl4q_u8(table[3], veorq_u8(indices, vdupq_n_u8(0xc0)));
+
+  // Combine result of the 4 lookups.
+  return vorrq_u8(vorrq_u8(output1, output2), vorrq_u8(output3, output4));
+}
+}  // namespace
+#endif
+
+// TODO(b/143696793): move this to optimized_ops.
 void EvalUsingLookupTable(struct OpData* data, const TfLiteTensor* input,
                           TfLiteTensor* output) {
   const int size =
       MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
   uint8_t* output_data = GetTensorData<uint8_t>(output);
   const uint8_t* input_data = GetTensorData<uint8_t>(input);
-  for (int i = 0; i < size; ++i) {
+  int i = 0;
+#if __aarch64__ && __clang__
+  // This code uses ARM64-only instructions.
+  // TODO(b/143709993): Port to ARMv7
+
+  // Load the tables into registers. (4*4 128-bit registers)
+  uint8x16x4_t table[4];
+  table[0] = vld1q_u8_x4(data->table + 16 * 4 * 0);
+  table[1] = vld1q_u8_x4(data->table + 16 * 4 * 1);
+  table[2] = vld1q_u8_x4(data->table + 16 * 4 * 2);
+  table[3] = vld1q_u8_x4(data->table + 16 * 4 * 3);
+
+  // Vectorized loop; process uint8x16_t (16 elements) at a time.
+  constexpr int vectorized_16_loop_step = 16;
+  const int vectorized_16_loop_end =
+      size / vectorized_16_loop_step * vectorized_16_loop_step;
+  for (; i < vectorized_16_loop_end; i += vectorized_16_loop_step) {
+    uint8x16_t input = vld1q_u8(input_data + i);
+    uint8x16_t output = aarch64_lookup_vector(table, input);
+    vst1q_u8(output_data + i, output);
+  }
+  // Postamble and non-ARM64 code: simple for loop.
+#endif
+  for (; i < size; ++i) {
     output_data[i] = data->table[input_data[i]];
   }
 }

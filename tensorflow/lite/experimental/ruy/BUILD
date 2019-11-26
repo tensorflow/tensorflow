@@ -683,6 +683,7 @@ cc_library(
         ":opt_set",
         ":pack",
         ":path",
+        ":prepacked_cache",
         ":side_pair",
         ":size_util",
         ":spec",
@@ -767,6 +768,7 @@ ruy_test(
         ("i8", "u8", "i32", "i8"),
         ("u8", "u8", "i32", "i16"),
         ("i8", "i8", "i32", "i32"),
+        ("i8", "u8", "i32", "i32"),
     ],
 )
 

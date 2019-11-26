@@ -51,7 +51,7 @@ namespace xla {
 // created produces an LLVM struct with N elements, one for each element of the
 // arrays in the tuple.  It follows that the arrays in the tuple must have the
 // same length.
-class FusedIrEmitter : public DfsHloVisitorWithDefault {
+class FusedIrEmitter : public ConstDfsHloVisitorWithDefault {
  public:
   using IndexedGenerator = llvm_ir::ElementGenerator;
   using NonIndexedGenerator = std::function<StatusOr<llvm::Value*>()>;
@@ -73,18 +73,19 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
         b_(elemental_emitter->b()),
         module_(elemental_emitter->module()) {}
 
-  Status DefaultAction(HloInstruction* hlo) override;
+  Status DefaultAction(const HloInstruction* hlo) override;
 
-  Status HandleConstant(HloInstruction* constant) override;
+  Status HandleConstant(const HloInstruction* constant) override;
 
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleGetTupleElement(
+      const HloInstruction* get_tuple_element) override;
 
-  Status HandleParameter(HloInstruction* parameter) override;
+  Status HandleParameter(const HloInstruction* parameter) override;
 
   // Emits the ir value for each element in the tuple.
-  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleTuple(const HloInstruction* tuple) override;
 
-  Status FinishVisit(HloInstruction* root) override;
+  Status FinishVisit(const HloInstruction* root) override;
 
   // Returns the generator function for the root of the fused computation.
   IndexedGenerator GetRootGenerator() const;

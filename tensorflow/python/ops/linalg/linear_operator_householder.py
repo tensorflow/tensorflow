@@ -146,12 +146,14 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
 
       super(LinearOperatorHouseholder, self).__init__(
           dtype=self._reflection_axis.dtype,
-          graph_parents=[self._reflection_axis],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self._reflection_axis])
 
   def _check_reflection_axis(self, reflection_axis):
     """Static check of reflection_axis."""
@@ -250,6 +252,10 @@ class LinearOperatorHouseholder(linear_operator.LinearOperator):
     eigvals = array_ops.concat(
         [-array_ops.ones(shape=neg_shape, dtype=self.dtype), eigvals], axis=-1)
     return eigvals
+
+  def _cond(self):
+    # Householder matrices are rotations which have condition number 1.
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
 
   @property
   def reflection_axis(self):

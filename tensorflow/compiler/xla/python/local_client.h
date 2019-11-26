@@ -43,10 +43,12 @@ class PyLocalExecutable;
 
 class Device {
  public:
-  explicit Device(int id, int local_device_ordinal, int host_id = 0)
+  explicit Device(int id, int local_device_ordinal,
+                  absl::string_view platform_name, int host_id = 0)
       : id_(id),
         local_device_ordinal_(local_device_ordinal),
-        host_id_(host_id) {}
+        host_id_(host_id),
+        platform_name_(platform_name) {}
   virtual ~Device() {}
 
   // The ID of this device. IDs are unique among devices of this type
@@ -65,12 +67,15 @@ class Device {
   // The ID of this device's host. This is always 0 on single-host platforms.
   int host_id() const { return host_id_; }
 
+  const std::string& platform_name() const { return platform_name_; }
+
   virtual std::string DebugString() const = 0;
 
  private:
   const int id_;
   const int local_device_ordinal_;
   const int host_id_;
+  const std::string platform_name_;
 };
 
 class CpuDevice : public Device {
@@ -313,7 +318,7 @@ class PyLocalExecutable {
   }
 
   const DeviceAssignment& device_assignment() const {
-    return device_assignment_;
+    return *device_assignment_;
   }
 
   const std::vector<std::shared_ptr<Device>>& local_devices() const {
@@ -338,9 +343,12 @@ class PyLocalExecutable {
       absl::Span<PyLocalBuffer* const> argument_handles, int replica,
       const RunId& run_id);
 
+  // Create shared pointers so we can free them after the execution: with
+  // asynchronous execution, the process being executed can outlive the
+  // executable itself.
   std::shared_ptr<PyLocalClient> const client_;
   std::shared_ptr<LocalExecutable> executable_;
-  const DeviceAssignment device_assignment_;
+  std::shared_ptr<DeviceAssignment> device_assignment_;
 
   // The replica indices of device_assignment_ to be run by this client. On
   // single-host platforms, this is all replicas (i.e. local_replicas_[i] = i),

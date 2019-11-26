@@ -193,10 +193,10 @@ Status XlaGatherWithBatchDimsOpImpl(XlaOpKernelContext* context,
     axis = axis.value_or(batch_dims);
 
     if (batch_dims < -indices_shape.dims() ||
-        batch_dims >= indices_shape.dims()) {
+        batch_dims > indices_shape.dims()) {
       return errors::InvalidArgument(
           "Expected batch_dims in the range [", -indices_shape.dims(), ", ",
-          indices_shape.dims(), "), but got ", batch_dims);
+          indices_shape.dims(), "], but got ", batch_dims);
     }
 
     if (batch_dims >= input_shape.dims()) {

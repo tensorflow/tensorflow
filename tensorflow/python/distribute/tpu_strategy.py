@@ -390,7 +390,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
-    if kwargs.pop("tpu_embedding_variable_creator", False):
+    if kwargs.pop("skip_mirrored_creator", False):
       return next_creator(*args, **kwargs)
 
     colocate_with = kwargs.pop("colocate_with", None)
@@ -492,7 +492,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     updates = []
     for i, (d, v) in enumerate(zip(var.devices, var.values)):
       name = "update_%d" % i
-      with ops.device(d), distribute_lib.UpdateContext(d), ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
                           *values.select_device_mirrored(d, args),
@@ -591,8 +591,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
   def _update_non_slot(self, colocate_with, fn, args, kwargs, group):
     del colocate_with
-    with ops.device(self._host_device), distribute_lib.UpdateContext(
-        self._host_device):
+    with ops.device(self._host_device), distribute_lib.UpdateContext(None):
       result = fn(*args, **kwargs)
       if group:
         return result
@@ -676,9 +675,10 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
         flattened_list = nest.flatten(replicate_inputs[0])
         for input_tensor in flattened_list:
           if tensor_util.is_tensor(input_tensor):
-            maximum_shape = input_tensor.get_shape()
+            rank = input_tensor.get_shape().rank
           else:
-            maximum_shape = tensor_shape.TensorShape(np.shape(input_tensor))
+            rank = np.rank(input_tensor)
+          maximum_shape = tensor_shape.TensorShape([None] * rank)
           maximum_shapes.append(maximum_shape)
         maximum_shapes = nest.pack_sequence_as(replicate_inputs[0],
                                                maximum_shapes)

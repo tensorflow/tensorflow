@@ -189,5 +189,26 @@ XLA_TEST_F(ElementalIrEmitterExecutionTest,
   EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
 }
 
+XLA_TEST_F(ElementalIrEmitterExecutionTest, ConvertF16AndF64toBF16) {
+  constexpr char hlo_text[] = R"(
+    HloModule convertF16toBF16
+    ENTRY ConvertF16toBF16 (p1: f16[], p2: f64[]) -> (bf16[], bf16[]) {
+      p1 = f16[] parameter(0)
+      p2 = f64[] parameter(1)
+      convert1 = bf16[] convert(f16[] p1)
+      convert2 = bf16[] convert(f64[] p2)
+      ROOT tuple = (bf16[], bf16[]) tuple(convert1, convert2)
+    }
+  )";
+  HloModuleConfig config;
+  auto debug_options = GetDebugOptionsForTest();
+  debug_options.set_xla_cpu_fast_math_honor_nans(true);
+  debug_options.set_xla_cpu_fast_math_honor_infs(true);
+  config.set_debug_options(debug_options);
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
+  EXPECT_TRUE(RunAndCompare(std::move(module), ErrorSpec{(0.)}));
+}
+
 }  // namespace
 }  // namespace xla

@@ -112,7 +112,8 @@ do_pylint() {
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
-"^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "
+"^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
+"^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
@@ -457,6 +458,22 @@ do_bazel_nobuild() {
     "This is due to invalid BUILD files."
 }
 
+do_bazel_deps_query() {
+  local BUILD_TARGET='//tensorflow/...'
+  # Android targets tend to depend on an Android runtime being available.
+  # Exclude until the sanity test has such a runtime available.
+  #
+  # TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
+  # necessary since the @androidsdk WORKSPACE dependency is commented out by
+  # default in TF WORKSPACE file.
+  local BUILD_TARGET="${BUILD_TARGET}"' - kind("android_*", //tensorflow/...)'
+
+  bazel query ${BAZEL_FLAGS} -- "deps($BUILD_TARGET)" > /dev/null
+
+  cmd_status \
+    "This is due to invalid BUILD files."
+}
+
 do_pip_smoke_test() {
   cd "$ROOT_DIR/tensorflow/tools/pip_package"
   python pip_smoke_test.py
@@ -602,6 +619,7 @@ do_configure_test() {
   for WITH_CUDA in 1 0
   do
     export TF_NEED_CUDA=${WITH_CUDA}
+    export CUDNN_INSTALL_PATH="/usr/local/cudnn"
     export PYTHON_BIN_PATH=$(which python)
     yes "" | ./configure
 
@@ -613,8 +631,8 @@ do_configure_test() {
 }
 
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_configure_test" "do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
-SANITY_STEPS_DESC=("Run ./configure" "Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
+SANITY_STEPS=("do_configure_test" "do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_bazel_deps_query" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_check_file_name_test" "do_pip_no_cuda_deps_check_ubuntu" "do_pip_no_cuda_deps_check_windows")
+SANITY_STEPS_DESC=("Run ./configure" "Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "bazel query" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Check file names for cases" "Check Ubuntu gpu pip package does not depend on cuda shared libraries" "Check Windows gpu pip package does not depend on cuda shared libraries")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS=""

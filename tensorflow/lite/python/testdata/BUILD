@@ -46,6 +46,7 @@ tf_to_tflite(
 filegroup(
     name = "interpreter_test_data",
     srcs = [
+        "pc_conv.bin",
         ":gather_string",
         ":permute_float",
         ":permute_uint8",
@@ -59,7 +60,7 @@ cc_library(
     srcs = ["test_delegate.cc"],
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
     alwayslink = 1,
 )

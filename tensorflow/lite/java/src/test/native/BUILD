@@ -15,7 +15,7 @@ cc_library(
         "interpreter_test_jni.cc",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/java/jni",
         "//tensorflow/lite/kernels:kernel_util",
     ],

@@ -1873,6 +1873,10 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+
+    # TODO(b/144432983): S32 convolutions should not be auto-clustered, only
+    # crashes tests.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -1993,6 +1997,8 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    # TODO(b/144432983): S32 convolutions should not be auto-clustered.
+    xla_enable_strict_auto_jit = False,
 )
 
 cuda_py_test(
@@ -3424,7 +3430,6 @@ tf_py_test(
     tags = [
         "no_rocm",  # flaky test
         "no_windows",
-        "nomsan",  # TODO(b/143081496)
     ],
     # b/127344411: xla_enable_strict_auto_jit = True,
 )
@@ -3840,6 +3845,7 @@ cuda_py_test(
     ],
     shard_count = 10,
 )
+<<<<<<< HEAD
 
 cuda_py_test(
     name = "sparse_csr_matrix_ops_test",
@@ -3895,3 +3901,5 @@ cuda_py_test(
     main = "sparse_csr_matrix_sparse_mat_mul_grad_test.py",
     shard_count = 50,
 )
+=======
+>>>>>>> google_upstream/master

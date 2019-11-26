@@ -26,10 +26,18 @@ limitations under the License.
 
 #include "absl/base/attributes.h"
 #include "absl/strings/numbers.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
 
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
+#elif defined(__APPLE__)
+#include "TargetConditionals.h"
+#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
+// Only enable metal delegate when using a real iPhone device.
+#define REAL_IPHONE_DEVICE
+#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
+#endif
 #endif
 
 #include "tensorflow/lite/kernels/register.h"
@@ -68,10 +76,12 @@ constexpr int kOpProfilingEnabledDefault = false;
 // Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
-  explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
+  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
       : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
+    profiler_.Reset();
+    profiler_.StartProfiling();
   }
 
   void OnSingleRunStart(RunType run_type) override;
@@ -95,7 +105,13 @@ class GemmlowpProfilingListener : public BenchmarkListener {
 };
 
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
+  // Note: we have started profiling when this listener is created. In order
+  // not to count events during the WARMUP phase, we need to stop profiling and
+  // process already-recorded profile events when the WARMUP run starts and
+  // restart profiling at the REGULAR run.
+  if (run_type == WARMUP) {
+    OnSingleRunEnd();
+  } else if (run_type == REGULAR) {
     profiler_.Reset();
     profiler_.StartProfiling();
   }
@@ -255,9 +271,13 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("nnapi_accelerator_name",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
   default_params.AddParam("gpu_precision_loss_allowed",
                           BenchmarkParam::Create<bool>(true));
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+  default_params.AddParam("gpu_wait_type",
+                          BenchmarkParam::Create<std::string>(""));
 #endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
@@ -305,10 +325,16 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
         "nnapi_accelerator_name", &params_,
         "the name of the nnapi accelerator to use (requires Android Q+)"),
     CreateFlag<bool>("use_gpu", &params_, "use gpu"),
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     CreateFlag<bool>("gpu_precision_loss_allowed", &params_,
                      "Allow to process computation in lower precision than "
                      "FP32 in GPU. By default, it's enabled."),
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+    CreateFlag<std::string>(
+        "gpu_wait_type", &params_,
+        "GPU wait type. Should be one of the following: passive, active, "
+        "do_not_wait, aggressive"),
 #endif
     CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
     CreateFlag<bool>("require_full_delegation", &params_,
@@ -354,9 +380,13 @@ void BenchmarkTfLiteModel::LogParams() {
   }
 #endif
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
                    << params_.Get<bool>("gpu_precision_loss_allowed") << "]";
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+  TFLITE_LOG(INFO) << "GPU delegate wait type : ["
+                   << params_.Get<std::string>("gpu_wait_type") << "]";
 #endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
@@ -599,18 +629,21 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     }
   }
 
-  if (interpreter_->AllocateTensors() != kTfLiteOk) {
-    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
-    return kTfLiteError;
-  }
-
-  // Install profilers if necessary.
+  // Install profilers if necessary but *before* any memory allocations inside
+  // the TFLite interpreter because the installed profiler might profile memory
+  // usage information.
   if (params_.Get<bool>("enable_op_profiling")) {
     profiling_listener_.reset(new ProfilingListener(
         interpreter_.get(),
         params_.Get<int32_t>("max_profiling_buffer_entries")));
     AddListener(profiling_listener_.get());
   }
+
+  if (interpreter_->AllocateTensors() != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
+    return kTfLiteError;
+  }
+
 #ifdef GEMMLOWP_PROFILING
   gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
   AddListener(gemmlowp_profiling_listener_.get());
@@ -627,13 +660,40 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
     gpu_opts.inference_preference =
         TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-    gpu_opts.is_precision_loss_allowed =
-        params_.Get<bool>("gpu_precision_loss_allowed") ? 1 : 0;
+    if (params_.Get<bool>("gpu_precision_loss_allowed")) {
+      gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+      gpu_opts.inference_priority2 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+      gpu_opts.inference_priority3 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+    }
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
+#elif defined(REAL_IPHONE_DEVICE)
+    TFLGpuDelegateOptions gpu_opts = {0};
+    gpu_opts.allow_precision_loss =
+        params_.Get<bool>("gpu_precision_loss_allowed");
+
+    std::string string_gpu_wait_type =
+        params_.Get<std::string>("gpu_wait_type");
+    if (!string_gpu_wait_type.empty()) {
+      TFLGpuDelegateWaitType wait_type = TFLGpuDelegateWaitTypePassive;
+      if (string_gpu_wait_type == "passive") {
+        wait_type = TFLGpuDelegateWaitTypePassive;
+      } else if (string_gpu_wait_type == "active") {
+        wait_type = TFLGpuDelegateWaitTypeActive;
+      } else if (string_gpu_wait_type == "do_not_wait") {
+        wait_type = TFLGpuDelegateWaitTypeDoNotWait;
+      } else if (string_gpu_wait_type == "aggressive") {
+        wait_type = TFLGpuDelegateWaitTypeAggressive;
+      }
+      gpu_opts.wait_type = wait_type;
+    }
+    Interpreter::TfLiteDelegatePtr delegate(TFLGpuDelegateCreate(&gpu_opts),
+                                            &TFLGpuDelegateDelete);
 #else
-    TFLITE_LOG(WARN) << "The GPU delegate compile options aren't supported to "
-                        "be benchmarked on non-Android platforms.";
+    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
+                        "to be benchmarked on Android or iOS platforms.";
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get());
 #endif

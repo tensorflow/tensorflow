@@ -477,6 +477,7 @@ class AutoMixedPrecisionTest(test.TestCase):
         x = _input([2, 8, 8, 1])
         y = _conv_bn(x)
         y = nn.dropout(y, rate=0.5)
+        y = math_ops.add(y, 1, name='addition')
         y = _conv_bn(y)
         y = array_ops.identity(y)
         optimizer = gradient_descent.GradientDescentOptimizer(
@@ -487,6 +488,7 @@ class AutoMixedPrecisionTest(test.TestCase):
         output_val_ref, output_val, cost_graph = self._run(output)
         node_map = _build_node_map(cost_graph.node)
         self._assert_output_fp16(node_map, 'Conv2D')
+<<<<<<< HEAD
         # ROCm Dropout only support fp32, disable this assert now
         if not test.is_built_with_rocm:
           self._assert_output_fp16(node_map, 'FusedBatchNormV3')
@@ -499,6 +501,16 @@ class AutoMixedPrecisionTest(test.TestCase):
         # miscompares on ROCm platform, and hence the tolerance bump
         tol = 2e-3 if test.is_built_with_rocm else 1e-3
         self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+=======
+        self._assert_output_fp16(node_map, 'FusedBatchNormV3')
+        # We do not assert dropout's dtype because we do not want to rely on the
+        # node names of dropout's internal implementation.
+        self._assert_output_fp16(node_map, 'addition')
+        self._assert_output_fp16(node_map, 'Conv2D_1')
+
+        output_val_ref, output_val, cost_graph = self._run(output)
+        self.assertAllClose(output_val_ref, output_val, atol=2e-3, rtol=2e-3)
+>>>>>>> google_upstream/master
 
   @test_util.run_deprecated_v1
   @test_util.disable_xla('This test does not pass with XLA')

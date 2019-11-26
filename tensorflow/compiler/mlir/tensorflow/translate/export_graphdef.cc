@@ -77,27 +77,59 @@ using stream_executor::port::StatusOr;
 
 namespace {
 
+bool IsLegalChar(char c, bool first_char) {
+  if (isalpha(c)) return true;
+  if (isdigit(c)) return true;
+  if (c == '.') return true;
+  if (c == '_') return true;
+
+  // First character of a node name can only be a letter, digit, dot or
+  // underscore.
+  if (first_char) return false;
+
+  if (c == '/') return true;
+  if (c == '-') return true;
+
+  return false;
+}
+
+// Convert characters in name that are considered illegal in TensorFlow Node
+// name to '.'.
+std::string LegalizeNodeName(llvm::StringRef name) {
+  assert(!name.empty() && "expected non-empty name");
+
+  std::string legalized_name;
+  for (auto it = name.begin(); it != name.end(); ++it) {
+    if (IsLegalChar(*it, it == name.begin())) {
+      legalized_name += *it;
+    } else {
+      legalized_name += '.';
+    }
+  }
+
+  return legalized_name;
+}
+
 // TODO(jpienaar): unify and move from here to be able to reuse with tflite
 std::string GetName(Operation* inst) {
   // TODO(prakalps): b/137006652 prevents us from using location info (derived
   // from experimental_debug_info) to generate node names. Until it is fixed,
   // first check for "name" attribute to get node name.
-  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
-    return attr.getValue();
-  }
-  if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>())
-    return name_loc.getName().str();
 
-  if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
+  // Default name is Operation type.
+  auto name = inst->getName().getStringRef();
+  if (auto attr = inst->getAttrOfType<mlir::StringAttr>("name")) {
+    name = attr.getValue();
+  } else if (auto name_loc = inst->getLoc().dyn_cast<mlir::NameLoc>()) {
+    name = name_loc.getName().strref();
+  } else if (auto call_loc = inst->getLoc().dyn_cast<mlir::CallSiteLoc>()) {
     // Return name if CallSiteLoc's callee has a NameLoc (as should be the case
     // if imported with DebugInfo), else use the fallback naming scheme below.
     if (auto name_loc = call_loc.getCallee().dyn_cast<mlir::NameLoc>())
-      return name_loc.getName().str();
+      name = name_loc.getName().strref();
   }
 
-  // If the location is none of the expected types, then simply use name
-  // generated using the op type.
-  return inst->getName().getStringRef().str();
+  return LegalizeNodeName(name);
 }
 
 // Stateful helper class to export a function into a Graph.
@@ -200,25 +232,32 @@ std::string Exporter::UniqueName(Operation* op) {
 
 StatusOr<std::unique_ptr<NodeDef>> Exporter::GetArgumentNode(
     BlockArgument* arg, unsigned index, llvm::StringRef name) {
+  auto func = arg->getParentRegion()->getParentOfType<mlir::FuncOp>();
+
   auto node_def = absl::make_unique<NodeDef>();
   if (!name.empty())
     node_def->set_name(name.str());
   else
-    node_def->set_name(UniqueName(arg->getParentRegion()
-                                      ->getParentOfType<mlir::FuncOp>()
-                                      .getName()
-                                      .str()));
+    node_def->set_name(UniqueName(func.getName().str()));
 
   node_def->set_op(FunctionLibraryDefinition::kArgOp);
+
   DataType dtype;
   TF_RETURN_IF_ERROR(ConvertToDataType(
       arg->getType().cast<mlir::TensorType>().getElementType(), &dtype));
   AttrValue type_attr;
   type_attr.set_type(dtype);
   (*node_def->mutable_attr())["T"] = type_attr;
+
   AttrValue index_attr;
   index_attr.set_i(index);
   (*node_def->mutable_attr())["index"] = index_attr;
+
+  if (auto device_attr =
+          func.getArgAttrOfType<mlir::StringAttr>(index, "tf.device")) {
+    *node_def->mutable_device() = device_attr.getValue().str();
+  }
+
   return node_def;
 }
 
@@ -572,7 +611,8 @@ Status Exporter::ConvertLibFunction(const GraphExportConfig& configs,
   // Checks for gradient attribute. If present converts the gradient function
   // and populates the GradientDef.
   auto grad_string = mlir::TF::TensorFlowDialect::GetGradientAttrName();
-  if (auto attr = function.getAttrOfType<mlir::SymbolRefAttr>(grad_string)) {
+  if (auto attr =
+          function.getAttrOfType<mlir::FlatSymbolRefAttr>(grad_string)) {
     auto grad_func =
         function.getParentOfType<mlir::ModuleOp>().lookupSymbol<mlir::FuncOp>(
             attr.getValue());

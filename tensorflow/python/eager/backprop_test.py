@@ -910,7 +910,6 @@ class BackpropTest(test.TestCase, parameterized.TestCase):
     dz_dx = g.gradient(z, x, unconnected_gradients='zero')
     self.assertAllEqual([[0.0, 0.0], [0.0, 0.0]], self.evaluate(dz_dx))
 
-  @test_util.assert_no_new_tensors
   @test_util.run_in_graph_and_eager_modes
   def testUnknownUnconnectedGradientsValueGiven(self):
     x = constant_op.constant(1.0)
