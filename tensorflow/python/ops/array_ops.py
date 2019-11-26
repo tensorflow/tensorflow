@@ -213,18 +213,19 @@ def fill(dims, value, name=None):
 
   *   `tf.fill` only supports scalar contents, whereas `tf.constant` supports
       Tensor values.
-  *   `tf.fill` creates an Op in the computation graph that constructs the
-  actual
-      Tensor value at runtime. This is in contrast to `tf.constant` which embeds
-      the entire Tensor into the graph with a `Const` node.
-  *   Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
-      based on other runtime Tensors, unlike `tf.constant`.
+  *   In graph mode:
+        * `tf.fill` creates an Op in the computation graph that constructs the
+          actual Tensor value at runtime. This is in contrast to `tf.constant` which
+          embeds the entire Tensor into the graph with a `Const` node.
+        * Because `tf.fill` evaluates at graph runtime, it supports dynamic shapes
+          based on other runtime Tensors, unlike `tf.constant`.
+
+  Equivalent to `np.full` in NumPy.
 
   Args:
-    dims: A `Tensor`. Must be one of the following types: `int32`, `int64`. 1-D.
+    dims: A 1-D `Tensor`. Must be one of the following types: `int32`, `int64`.
       Represents the shape of the output tensor.
-    value: A `Tensor`. 0-D (scalar). Value to fill the returned tensor.
-      @compatibility(numpy) Equivalent to np.full @end_compatibility
+    value: A `Tensor`, 0-D (scalar). Value to fill the returned tensor.
     name: A name for the operation (optional).
 
   Returns:
@@ -470,7 +471,7 @@ def broadcast_static_shape(shape_x, shape_y):
   tensors of shapes `shape_x` and `shape_y`.
 
   For example, if shape_x is `TensorShape([1, 2, 3])` and shape_y is
-  `TensorShape([5, 1, 3])`, the result is a TensorShape whose value is 
+  `TensorShape([5, 1, 3])`, the result is a TensorShape whose value is
   `TensorShape([5, 2, 3])`.
 
   This is useful when validating the result of a broadcasting operation when the
