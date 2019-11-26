@@ -826,6 +826,94 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
   }
 };
 
+// Converts the tf.Split op into a series of HLO slice ops when the tensor to be
+// split has fuly static shape and the dimension to split is a constant.
+//
+// The main logic of this pattern is to calculate the index start and end range
+// for each slice. And this happens only on the dimension to be split; for all
+// other dimensions, all resultant slices' index start and end range covers the
+// input tensor's full range. Strides for all resultant slices are all one.
+//
+// For example, the following source IR:
+//
+//   %dim = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+//   %0:3 = "tf.Split"(%dim, %input) : (tensor<i32>, tensor<4x6xf32>) ->
+//                (tensor<4x2xf32>, tensor<4x2xf32>, tensor<4x2xf32>)
+//
+// will be converted into:
+//
+//   %0 = "xla_hlo.slice"(%input) {
+//             limit_indices = dense<[4, 2]> : tensor<2xi64>,
+//             start_indices = dense<0> : tensor<2xi64>,
+//             strides = dense<1> : tensor<2xi64>} :
+//        (tensor<4x6xf32>) -> tensor<4x2xf32>
+//   %1 = "xla_hlo.slice"(%input) {
+//             limit_indices = dense<4> : tensor<2xi64>,
+//              start_indices = dense<[0, 2]> : tensor<2xi64>,
+//            strides = dense<1> : tensor<2xi64>} :
+//        (tensor<4x6xf32>) -> tensor<4x2xf32>
+//    %2 = "xla_hlo.slice"(%input) {
+//            limit_indices = dense<[4, 6]> : tensor<2xi64>,
+//            start_indices = dense<[0, 4]> : tensor<2xi64>,
+//             strides = dense<1> : tensor<2xi64>} :
+//        (tensor<4x6xf32>) -> tensor<4x2xf32>
+// TODO(antiagainst): consider lowering into TF ops so the pattern can be more
+// applicable.
+class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::SplitOp op,
+                                     PatternRewriter &rewriter) const override {
+    // We can only match when the tensor to be split has fully static shape.
+    auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+    if (!input_type || !input_type.hasStaticShape()) return matchFailure();
+
+    // We can only match when the split dimension is a constant scalar.
+    DenseIntElementsAttr split_dim_attr;
+    if (!matchPattern(op.split_dim(), m_Constant(&split_dim_attr)))
+      return matchFailure();
+
+    // Get the dimension we are splitting at. Offset properly if it's negative.
+    int64_t input_rank = input_type.getRank();
+    int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
+    if (dim_index < 0) dim_index += input_rank;
+
+    // Calculate the dimension size for each slice along the split dimension.
+    int64_t input_dim_size = input_type.getDimSize(dim_index);
+    int64_t num_splits = op.getNumResults();
+    int64_t slice_size = input_dim_size / num_splits;
+
+    // Get each slice's type.
+    auto slice_shape = llvm::to_vector<4>(input_type.getShape());
+    slice_shape[dim_index] = slice_size;
+    Type slice_type =
+        RankedTensorType::get(slice_shape, input_type.getElementType());
+
+    // Parameters for constructing each slice.
+    SmallVector<int64_t, 4> begin_indices(input_rank, 0);
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    SmallVector<int64_t, 4> strides(input_rank, 1);
+
+    // All HLO slice results used to replace the original tf.Split op.
+    SmallVector<Value *, 4> slices;
+    slices.reserve(num_splits);
+
+    for (int i = 0; i < num_splits; ++i) {
+      begin_indices[dim_index] = i * slice_size;
+      end_indices[dim_index] = (i + 1) * slice_size;
+      slices.push_back(rewriter.create<xla_hlo::SliceOp>(
+          op.getLoc(), slice_type, op.value(),
+          GetI64ElementsAttr(begin_indices, &rewriter),
+          GetI64ElementsAttr(end_indices, &rewriter),
+          GetI64ElementsAttr(strides, &rewriter)));
+    }
+
+    rewriter.replaceOp(op, slices);
+    return matchSuccess();
+  }
+};
+
 // Converts StridedSlice op to HLO Slice op along with Reverse op to handle
 // negative strides and Reshape op to update the output shape. Indices and
 // strides operands are converted to attributes with non-negative indexing.
@@ -1743,10 +1831,10 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op,
                   mlir::xla::ConvertRangeOp, mlir::xla::ConvertSigmoidOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
-                  mlir::xla::ConvertStridedSliceOp, mlir::xla::ConvertMeanOp,
-                  mlir::xla::ConvertSumOp, mlir::xla::ConvertMaxOp,
-                  mlir::xla::ConvertTileOp, mlir::xla::ConvertMaxPoolGradOp,
-                  mlir::xla::ConvertOneHotOp,
+                  mlir::xla::ConvertSplitOp, mlir::xla::ConvertStridedSliceOp,
+                  mlir::xla::ConvertMeanOp, mlir::xla::ConvertSumOp,
+                  mlir::xla::ConvertMaxOp, mlir::xla::ConvertTileOp,
+                  mlir::xla::ConvertMaxPoolGradOp, mlir::xla::ConvertOneHotOp,
                   mlir::xla::ConvertConv2DBackpropInputOp,
                   mlir::xla::ConvertConv2DBackpropFilterOp>(op->getContext());
 

@@ -1507,6 +1507,49 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SplitOp op) {
+  Value *split_dim = op.split_dim();
+  auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>();
+  if (!split_dim_type) return success();
+  if (split_dim_type.getRank() != 0)
+    return op.emitOpError("split dimension should be an integer scalar tensor");
+
+  // We can perform further verification if the input tensor to be split has
+  // known rank and the split dimension tensor is a constant.
+
+  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t input_rank = input_type.getRank();
+  if (input_rank == 0)
+    return op.emitOpError("cannot split scalar input tensor");
+
+  DenseIntElementsAttr split_dim_attr;
+  if (!matchPattern(split_dim, m_Constant(&split_dim_attr))) return success();
+
+  int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
+
+  if (dim_index + input_rank < 0 || dim_index >= input_rank) {
+    return op.emitOpError("split dimension must be in range [-")
+           << input_rank << ", " << input_rank << ")";
+  }
+
+  if (dim_index < 0) dim_index += input_rank;
+
+  int64_t input_dim_size = input_type.getDimSize(dim_index);
+  if (input_dim_size < 0) return success();
+
+  if (input_dim_size % op.getNumResults() != 0)
+    return op.emitOpError("dimension #")
+           << dim_index << " not divisible by the number of result tensors";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SquareOp
 //===----------------------------------------------------------------------===//
 

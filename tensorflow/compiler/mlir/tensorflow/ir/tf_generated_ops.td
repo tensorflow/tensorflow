@@ -5021,6 +5021,8 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {
