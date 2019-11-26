@@ -300,7 +300,8 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       if (!property.quantizable) {
         continue;
       }
-      if (!property.arbitrary_inputs ||
+      if ((!property.arbitrary_inputs &&
+          !property.restrict_multiple_inputs_scale) ||
           !property.restrict_same_input_output_scale) {
         continue;
       }
@@ -384,7 +385,8 @@ bool ShouldRestrictSameInputOutputScale(
     operator_property::OperatorProperty property) {
   // Ops with multiple inputs (i.e. concat) gets restricted in ApplyConstraints.
   return (!property.arbitrary_inputs &&
-          property.restrict_same_input_output_scale);
+          property.restrict_same_input_output_scale &&
+          !property.restrict_multiple_inputs_scale);
 }
 
 bool IsSubgraphInput(SubGraphT* subgraph, int32_t index) {

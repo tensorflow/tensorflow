@@ -76,6 +76,9 @@ extern const char* kModelMixed;
 // Test model with split op.
 extern const char* kModelSplit;
 
+// Test model with pack op.
+extern const char* kModelPack;
+
 // Test model with LSTM op.
 extern const char* kLstmCalibrated;
 extern const char* kLstmQuantized;
