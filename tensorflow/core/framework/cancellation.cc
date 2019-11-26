@@ -28,6 +28,19 @@ CancellationManager::CancellationManager()
       is_cancelled_(false),
       next_cancellation_token_(0) {}
 
+CancellationManager::CancellationManager(CancellationManager* parent)
+    : is_cancelling_(false),
+      is_cancelled_(false),
+      next_cancellation_token_(0),
+      parent_(parent),
+      parent_token_(parent->get_cancellation_token()) {
+  bool registered = parent->RegisterCallback(parent_token_,
+                                             [this]() { this->StartCancel(); });
+  if (!registered) {
+    is_cancelled_ = true;
+  }
+}
+
 void CancellationManager::StartCancel() {
   gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
   Notification* cancelled_notification = nullptr;
@@ -113,6 +126,9 @@ bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
 }
 
 CancellationManager::~CancellationManager() {
+  if (parent_) {
+    parent_->DeregisterCallback(parent_token_);
+  }
   if (state_) {
     StartCancel();
   }

@@ -469,14 +469,8 @@ class ToSingleElementOp : public AsyncOpKernel {
     params.function_handle_cache = &function_handle_cache;
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
-    CancellationManager cancellation_manager;
+    CancellationManager cancellation_manager(ctx->cancellation_manager());
     params.cancellation_manager = &cancellation_manager;
-    std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-        ctx->cancellation_manager(),
-        [cm = params.cancellation_manager]() { cm->StartCancel(); },
-        &deregister_fn));
-    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
     IteratorContext iter_ctx(std::move(params));
     std::unique_ptr<IteratorBase> iterator;
@@ -553,14 +547,8 @@ class ReduceDatasetOp : public AsyncOpKernel {
     params.function_handle_cache = function_handle_cache.get();
     ResourceMgr resource_mgr;
     params.resource_mgr = &resource_mgr;
-    CancellationManager cancellation_manager;
+    CancellationManager cancellation_manager(ctx->cancellation_manager());
     params.cancellation_manager = &cancellation_manager;
-    std::function<void()> deregister_fn;
-    TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-        ctx->cancellation_manager(),
-        [cm = params.cancellation_manager]() { cm->StartCancel(); },
-        &deregister_fn));
-    auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
     IteratorContext iter_ctx(std::move(params));
     std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func;
