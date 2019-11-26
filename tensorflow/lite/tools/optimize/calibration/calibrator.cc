@@ -171,25 +171,7 @@ logging_kernel_func_ptr GetLoggingEvalFunc(TfLiteContext* context,
   const int lstm_number_input = 24;
   if (node->inputs->size == lstm_number_input) {
     // LSTM Op.
-    // Check the variants.
-    const int cell_to_output_weight_index = 11;
-    const int forget_layer_norm_coefficients_index = 21;
-    const int projection_weights_index = 16;
-    const TfLiteTensor* cell_to_output_weights =
-        GetOptionalInputTensor(context, node, cell_to_output_weight_index);
-    const TfLiteTensor* forget_layer_norm_coefficients = GetOptionalInputTensor(
-        context, node, forget_layer_norm_coefficients_index);
-    const TfLiteTensor* projection_weights =
-        GetOptionalInputTensor(context, node, projection_weights_index);
-
-    const bool use_peephole = (cell_to_output_weights != nullptr);
-    const bool use_layer_norm = (forget_layer_norm_coefficients != nullptr);
-    const bool use_projection = (projection_weights != nullptr);
-
-    // Support lstm with layer norm, with projection, without peephole.
-    if (use_layer_norm && use_projection && (!use_peephole)) {
-      return tflite::optimize::calibration::builtin::lstm_logging_kernel;
-    }
+    return tflite::optimize::calibration::builtin::lstm_logging_kernel;
   }
   return nullptr;
 }
