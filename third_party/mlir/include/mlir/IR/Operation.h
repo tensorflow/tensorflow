@@ -70,6 +70,15 @@ public:
   /// Create a new Operation from the fields stored in `state`.
   static Operation *create(const OperationState &state);
 
+  /// Create a new Operation with the specific fields.
+  static Operation *create(Location location, OperationName name,
+                           ArrayRef<Type> resultTypes,
+                           ArrayRef<Value *> operands,
+                           const NamedAttributeList &attributes,
+                           ArrayRef<Block *> successors = {},
+                           ArrayRef<std::unique_ptr<Region>> regions = {},
+                           bool resizableOperandList = false);
+
   /// The name of an operation is the key identifier for it.
   OperationName getName() { return name; }
 

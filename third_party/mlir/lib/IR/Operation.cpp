@@ -125,13 +125,26 @@ Operation *Operation::create(Location location, OperationName name,
 
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
-  unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.types,
-                         state.operands, state.attributes, state.successors,
-                         numRegions, state.resizableOperandList);
+  return Operation::create(
+      state.location, state.name, state.types, state.operands,
+      NamedAttributeList(state.attributes).getDictionary(), state.successors,
+      state.regions, state.resizableOperandList);
+}
+
+/// Create a new Operation with the specific fields.
+Operation *Operation::create(Location location, OperationName name,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
+                             const NamedAttributeList &attributes,
+                             ArrayRef<Block *> successors,
+                             ArrayRef<std::unique_ptr<Region>> regions,
+                             bool resizableOperandList) {
+  unsigned numRegions = regions.size();
+  Operation *op = create(location, name, resultTypes, operands, attributes,
+                         successors, numRegions, resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
-    if (state.regions[i])
-      op->getRegion(i).takeBody(*state.regions[i]);
+    if (regions[i])
+      op->getRegion(i).takeBody(*regions[i]);
   return op;
 }
 
