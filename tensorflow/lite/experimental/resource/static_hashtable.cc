@@ -26,7 +26,11 @@ template <typename KeyType, typename ValueType>
 TfLiteStatus StaticHashtable<KeyType, ValueType>::Lookup(
     TfLiteContext* context, const TfLiteTensor* keys, TfLiteTensor* values,
     const TfLiteTensor* default_value) {
-  TF_LITE_ENSURE(context, is_initialized_);
+  if (!is_initialized_) {
+    context->ReportError(context,
+                         "hashtable need to be initialized before using");
+    return kTfLiteError;
+  }
   const int size =
       MatchingFlatSize(GetTensorShape(keys), GetTensorShape(values));
 
