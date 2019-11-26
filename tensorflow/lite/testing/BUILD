@@ -21,6 +21,8 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["generated_examples_zip_test.cc"])
+
 [gen_zip_test(
     name = "zip_test_%s" % test_name,
     size = "medium",
