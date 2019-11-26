@@ -2404,14 +2404,17 @@ def sparse_tensor_dense_matmul(sp_a,
         adjoint_a=adjoint_a,
         adjoint_b=adjoint_b)
 
-@tf_export("sparse.dense_sparse_matmul",
-           v1=["sparse.dense_sparse_matmul"])
-def dense_sparse_matmul(dense_a,
+tf_export("sparse.dense_sparse_matmul",
+           v1=["sparse.dense_sparse_matmul",
+               "dense_sparse_tensor_matmul"])
+@deprecation.deprecated_endpoints("dense_sparse_tensor_matmul")
+def dense_sparse_tensor_matmul(a,
                                sp_b,
                                name=None):
   """
   ```
-  This function returns 
+  This function returns the product between a dense matrix and a
+  SparseTensor. Both are rank 2 tensors.
 
   Args:
     dense_a: A dense Matrix, a.
@@ -2426,7 +2429,7 @@ def dense_sparse_matmul(dense_a,
   with ops.name_scope(name, "DenseSparseTensorMatMul",
                       [a, sp_b.indices, sp_b.values]) as name:
     a = ops.convert_to_tensor(a, name="a")
-    return array_ops.transpose(sparse_dense_matmul(sp_b, a, 
+    return array_ops.transpose(sparse_tensor_dense_matmul(sp_b, a,
                                 adjoint_a=True,
                                 adjoint_b=True))
 
