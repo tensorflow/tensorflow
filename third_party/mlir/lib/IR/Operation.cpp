@@ -957,6 +957,47 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
   return success();
 }
 
+static LogicalResult verifyValueSizeAttr(Operation *op, StringRef attrName,
+                                         bool isOperand) {
+  auto sizeAttr = op->getAttrOfType<DenseIntElementsAttr>(attrName);
+  if (!sizeAttr)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  auto sizeAttrType = sizeAttr.getType().dyn_cast<VectorType>();
+  if (!sizeAttrType || sizeAttrType.getRank() != 1)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  if (llvm::any_of(sizeAttr.getIntValues(), [](const APInt &element) {
+        return !element.isNonNegative();
+      }))
+    return op->emitOpError("'")
+           << attrName << "' attribute cannot have negative elements";
+
+  size_t totalCount = std::accumulate(
+      sizeAttr.begin(), sizeAttr.end(), 0,
+      [](unsigned all, APInt one) { return all + one.getZExtValue(); });
+
+  if (isOperand && totalCount != op->getNumOperands())
+    return op->emitOpError("operand count (")
+           << op->getNumOperands() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  else if (!isOperand && totalCount != op->getNumResults())
+    return op->emitOpError("result count (")
+           << op->getNumResults() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifyOperandSizeAttr(Operation *op,
+                                                   StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/true);
+}
+
+LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
+                                                  StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/false);
+}
+
 //===----------------------------------------------------------------------===//
 // BinaryOp implementation
 //===----------------------------------------------------------------------===//

@@ -1307,8 +1307,7 @@ class NativeOpTrait<string prop> : OpTrait {
 // the value in `prop` as the trait name and the value in `params` as
 // parameters to construct the native trait class name.
 class ParamNativeOpTrait<string prop, string params>
-    : NativeOpTrait<prop # "<" # params # ">::Impl"> {
-}
+    : NativeOpTrait<prop # "<" # params # ">::Impl">;
 
 // GenInternalOpTrait is an op trait that does not have direct C++ mapping but
 // affects op definition generator internals, like how op builders and
@@ -1351,7 +1350,7 @@ def Symbol : NativeOpTrait<"Symbol">;
 // Op defines a symbol table.
 def SymbolTable : NativeOpTrait<"SymbolTable">;
 // Op is a terminator.
-def Terminator       : NativeOpTrait<"IsTerminator">;
+def Terminator : NativeOpTrait<"IsTerminator">;
 
 // Op's regions have a single block with the specified terminator.
 class SingleBlockImplicitTerminator<string op>
@@ -1380,6 +1379,18 @@ def SameVariadicOperandSize : GenInternalOpTrait<"SameVariadicOperandSize">;
 // known at runtime. This trait requires all variadic results of an op
 // to have the same array size.
 def SameVariadicResultSize : GenInternalOpTrait<"SameVariadicResultSize">;
+
+// Uses an attribute named `operand_segment_sizes` to specify how many actual
+// operand each ODS-declared operand (variadic or not) corresponds to.
+// This trait is used for ops that have multiple variadic operands but do
+// not know statically their size relationship. The attribute must be a 1D
+// vector that has the same number of elements as the number of ODS declared
+// operands. That means even if some operands are non-variadic, the attribute
+// still need to have an element for its size, which is always 1.
+def AttrSizedOperandSegments : NativeOpTrait<"AttrSizedOperandSegments">;
+// Similar to AttrSizedOperandSegments, but used for results. The attribute
+// should be named as `result_segment_sizes`.
+def AttrSizedResultSegments  : NativeOpTrait<"AttrSizedResultSegments">;
 
 //===----------------------------------------------------------------------===//
 // OpInterface definitions

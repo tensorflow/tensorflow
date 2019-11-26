@@ -413,6 +413,30 @@ def TestBranchOp : TEST_Op<"br", [Terminator]> {
   let arguments = (ins Variadic<AnyType>:$operands);
 }
 
+def AttrSizedOperandOp : TEST_Op<"attr_sized_operands",
+                                 [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+}
+
+def AttrSizedResultOp : TEST_Op<"attr_sized_results",
+                                [AttrSizedResultSegments]> {
+  let arguments = (ins
+    I32ElementsAttr:$result_segment_sizes
+  );
+  let results = (outs
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//

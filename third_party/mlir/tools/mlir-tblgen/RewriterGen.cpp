@@ -761,8 +761,8 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   // special cases listed below, DRR needs to supply types for all results
   // when building an op.
   bool isSameOperandsAndResultType =
-      resultOp.hasTrait("OpTrait::SameOperandsAndResultType");
-  bool useFirstAttr = resultOp.hasTrait("OpTrait::FirstAttrDerivedResultType");
+      resultOp.getTrait("OpTrait::SameOperandsAndResultType");
+  bool useFirstAttr = resultOp.getTrait("OpTrait::FirstAttrDerivedResultType");
 
   if (isSameOperandsAndResultType || useFirstAttr) {
     // We know how to deduce the result type for ops with these traits and we've
@@ -780,7 +780,7 @@ std::string PatternEmitter::handleOpCreation(DagNode tree, int resultIndex,
   }
 
   bool isBroadcastable =
-      resultOp.hasTrait("OpTrait::BroadcastableTwoOperandsOneResult");
+      resultOp.getTrait("OpTrait::BroadcastableTwoOperandsOneResult");
   bool usePartialResults = valuePackName != resultValue;
 
   if (isBroadcastable || usePartialResults || depth > 0 || resultIndex < 0) {
