@@ -48,6 +48,15 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_profiling_label_wrapper",
+    hdrs = ["scoped_profiling_label_wrapper.h"],
+    copts = tflite_copts(),
+    deps = [
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "types",
     hdrs = ["types.h"],
     copts = tflite_copts(),
@@ -448,6 +457,7 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        ":scoped_profiling_label_wrapper",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
         "//third_party/eigen3",
