@@ -137,13 +137,17 @@ class CancellationManager {
   bool TryDeregisterCallback(CancellationToken token);
 
  private:
+  struct State {
+    Notification cancelled_notification;
+    gtl::FlatMap<CancellationToken, CancelCallback> callbacks;
+  };
+
   bool is_cancelling_;
   std::atomic_bool is_cancelled_;
+  std::atomic<CancellationToken> next_cancellation_token_;
 
   mutex mu_;
-  Notification cancelled_notification_;
-  std::atomic<CancellationToken> next_cancellation_token_;
-  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
+  std::unique_ptr<State> state_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow
