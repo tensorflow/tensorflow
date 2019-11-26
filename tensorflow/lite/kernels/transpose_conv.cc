@@ -154,8 +154,9 @@ static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
     ++temporaries_count;
   }
 
-  // Allocate scratch buffer tensor for UInt8 inputs.
-  if (input_type == kTfLiteUInt8 || input_type == kTfLiteInt8) {
+  // Allocate scratch buffer tensor
+  if (input_type == kTfLiteUInt8 || input_type == kTfLiteInt8 ||
+      input_type == kTfLiteInt16) {
     if (data->scratch_tensor_id == kTensorNotAllocated) {
       context->AddTensors(context, 1, &data->scratch_tensor_id);
     }
@@ -226,13 +227,15 @@ TfLiteStatus ResizeAndTransposeWeights(TfLiteContext* context,
                              GetTensorShape(transposed_weights),
                              GetTensorData<uint8>(transposed_weights));
   } else if (weights->type == kTfLiteInt8) {
+    // int16 transpose_conv also with int8 weights
     optimized_ops::Transpose(transpose_params, input_shape,
                              GetTensorData<int8>(weights),
                              GetTensorShape(transposed_weights),
                              GetTensorData<int8>(transposed_weights));
   } else {
     context->ReportError(
-        context, "Transpose conv only support float & uint8 right now.");
+        context,
+        "Transpose conv only support float, uint8, int8, int16 right now.");
     return kTfLiteError;
   }
 
@@ -258,10 +261,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumDimensions(output_shape), 1);
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
   TF_LITE_ENSURE_EQ(context, NumDimensions(weights), 4);
-  TF_LITE_ENSURE(context, input->type == kTfLiteFloat32 ||
-                              input->type == kTfLiteUInt8 ||
-                              input->type == kTfLiteInt8);
-  TF_LITE_ENSURE_EQ(context, weights->type, input->type);
+  TF_LITE_ENSURE(context,
+                 input->type == kTfLiteFloat32 || input->type == kTfLiteUInt8 ||
+                     input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
+  if (input->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, weights->type, kTfLiteInt8);
+  } else {
+    TF_LITE_ENSURE_EQ(context, weights->type, input->type);
+  }
   TF_LITE_ENSURE_EQ(context, output->type, input->type);
   // Ensure that weights and inputs have the same channel dimension.
   // Note: TOCO will reorder weights in the following format: OHWI.
@@ -305,12 +312,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8 ||
+      input->type == kTfLiteInt16) {
     node->temporaries->data[data->scratch_tensor_index] =
         data->scratch_tensor_id;
     TfLiteTensor* scratch_buffer =
         GetTemporary(context, node, data->scratch_tensor_index);
-    scratch_buffer->type = kTfLiteInt32;
+    if (input->type == kTfLiteInt16) {
+      scratch_buffer->type = kTfLiteInt64;
+    } else {
+      scratch_buffer->type = kTfLiteInt32;
+    }
+
     scratch_buffer->allocation_type = kTfLiteDynamic;
     if (!IsConstantTensor(output_shape)) {
       SetTensorToDynamic(scratch_buffer);
@@ -473,6 +486,38 @@ void EvalQuantizedPerChannel(TfLiteContext* context,
   }
 }
 
+void EvalQuantizedPerChannel16x8(TfLiteContext* context,
+                                 const TfLiteTransposeConvParams* params,
+                                 OpData* data, const TfLiteTensor* input,
+                                 const TfLiteTensor* weights,
+                                 const TfLiteTensor* transposed_weights,
+                                 TfLiteTensor* col2im, TfLiteTensor* output,
+                                 TfLiteTensor* scratch_buffer) {
+  tflite::ConvParams op_params;
+  op_params.padding_type = PaddingType::kSame;
+  op_params.padding_values.width = data->padding.width;
+  op_params.padding_values.height = data->padding.height;
+  op_params.padding_values.width_offset = data->padding.width_offset;
+  op_params.padding_values.height_offset = data->padding.height_offset;
+  op_params.stride_width = params->stride_width;
+  op_params.stride_height = params->stride_height;
+  // Need to flip the sign of input offset to add it directly to the quantized
+  // buffer.
+  op_params.input_offset = -input->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+
+  // Need to add optimized kernel
+  reference_integer_ops::TransposeConv(
+      op_params, data->per_channel_output_multiplier.data(),
+      data->per_channel_output_shift.data(), GetTensorShape(input),
+      GetTensorData<int16>(input), GetTensorShape(weights),
+      GetTensorData<int8>(weights), GetTensorShape(output),
+      GetTensorData<int16>(output), GetTensorShape(col2im),
+      GetTensorData<int8>(col2im), GetTensorData<int64_t>(scratch_buffer));
+}
+
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Retrieve tensors (All should be allocated by now)
@@ -513,7 +558,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       filter_height, filter_width, params->padding, &unused_output_height,
       &unused_output_width);
 
-  // Currently support float32 and uint8.
+  // Currently support float32, uint8, int8, int16.
   switch (input->type) {
     case kTfLiteFloat32: {
       // Only for GenericOptimized path, we use transposed weights.
@@ -556,6 +601,21 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       EvalQuantizedPerChannel<kernel_type>(context, params, data, input,
                                            weights, transposed_weights, col2im,
                                            output, scratch_buffer);
+      break;
+    }
+    case kTfLiteInt16: {
+      TfLiteTensor* scratch_buffer =
+          GetTemporary(context, node, data->scratch_tensor_index);
+      if (IsDynamicTensor(scratch_buffer)) {
+        TF_LITE_ENSURE_OK(context,
+                          ResizeTensor(context, output_shape, scratch_buffer));
+      }
+      if (data->weights_are_transposed && !IsConstantTensor(weights)) {
+        ResizeAndTransposeWeights(context, weights, transposed_weights);
+      }
+      EvalQuantizedPerChannel16x8(context, params, data, input, weights,
+                                  transposed_weights, col2im, output,
+                                  scratch_buffer);
       break;
     }
     default:

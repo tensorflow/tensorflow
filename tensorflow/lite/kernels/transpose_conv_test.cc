@@ -76,7 +76,10 @@ class BaseTransposeConvOpModel : public SingleOpModel {
 
     if (test_type == TestType::DYNAMIC) {
       PopulateTensor<int32_t>(output_shape_, output_shape_data);
-      PopulateTensor<InputType>(filter_, filter_data);
+      if (!std::is_same<InputType, int16_t>::value &&
+          !std::is_same<InputType, int8_t>::value) {
+        PopulateTensor<InputType>(filter_, filter_data);
+      }
     }
   }
 
@@ -85,6 +88,8 @@ class BaseTransposeConvOpModel : public SingleOpModel {
       QuantizeAndPopulate<uint8_t>(input_, data);
     } else if (std::is_same<InputType, int8_t>::value) {
       QuantizeAndPopulate<int8_t>(input_, data);
+    } else if (std::is_same<InputType, int16_t>::value) {
+      QuantizeAndPopulate<int16_t>(input_, data);
     } else {
       PopulateTensor(input_, data);
     }
@@ -325,10 +330,6 @@ class PerChannelQuantizedTransposeConvOpModel
                               GetZeroPoint(output_));
   }
 
-  void SetInput(const std::initializer_list<float>& data) {
-    QuantizeAndPopulate<int8_t>(input_, data);
-  }
-
   void SetFilter(const std::initializer_list<float>& data) {
     PerChannelSymmetricQuantizeAndPopulate(filter_, data);
   }
@@ -449,6 +450,87 @@ TEST_P(TransposeConvOpTest, PaddingValidTestQuantized) {
                    3648, 2752, 1536, 704,  1536, 2528, 2720, 2016, 1088},
                   1e-5)));
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 6, 6, 1}));
+}
+
+class PerChannelQuantizedTransposeConvOpModel16x8
+    : public BaseTransposeConvOpModel<int16_t> {
+ public:
+  using BaseTransposeConvOpModel::BaseTransposeConvOpModel;
+
+  std::vector<float> GetDequantizedOutput() {
+    return Dequantize<int16_t>(ExtractVector<int16_t>(output_),
+                               GetScale(output_), GetZeroPoint(output_));
+  }
+
+  void SetFilter(const std::initializer_list<float>& data) {
+    PerChannelSymmetricQuantizeAndPopulate(filter_, data);
+  }
+};
+
+TEST_P(TransposeConvOpTest, SimpleTestQuantizedPerChannel16x8) {
+  // TensorData(TensorType type = TensorType_FLOAT32, std::vector<int> shape =
+  // {},
+  //              float min = 0.0f, float max = 0.0f, float scale = 0.0f,
+  //              int32_t zero_point = 0, bool per_channel_quantization = false,
+  //              std::vector<float> per_channel_quantization_scales = {},
+  //              std::vector<int64_t> per_channel_quantization_offsets = {},
+  //              int32_t channel_index = 0)
+  const std::initializer_list<float> filter_data = {
+      // [2 * 2 * 2 * 2] as [output_channel, y, x, input_channel]
+      1, 2,  // out channel = 0, y = 0, x = 0
+      3, 4,  // out channel = 0, y = 0, x = 1
+      3, 4,  // out channel = 0, y = 1, x = 0
+      5, 6,  // out channel = 0, y = 1, x = 1
+      7, 8,  // out channel = 1, y = 0, x = 0
+      5, 6,  // out channel = 1, y = 0, x = 1
+      3, 4,  // out channel = 1, y = 1, x = 0
+      1, 2,  // out channel = 1, y = 1, x = 1
+  };
+  PerChannelQuantizedTransposeConvOpModel16x8 model(
+      GetRegistration(),
+      /*output_shape_data=*/{1, 2, 3, 2},
+      /*filter=*/
+      {TensorType_INT8,
+       /*shape=*/{2, 2, 2, 2},
+       /*min=*/-64, /*max=*/64,
+       /*scale=*/0, /*zero_point=*/0,
+       /*per_channel=*/true,
+       /*per_channel_scales=*/{7.0 / 127, 8.0 / 127},
+       /*per_channel_offsets=*/{0, 0},
+       /*channel_index=*/0},
+      /*filter_data=*/{},
+      /*input=*/
+      {TensorType_INT16,
+       /*shape=*/{1, 2, 3, 2},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/4.0 / 127,
+       /*zero_point=*/0},
+      /*output=*/
+      {TensorType_INT16,
+       /*shape=*/{},
+       /*min=*/0, /*max=*/0,
+       /*scale=*/1.0,
+       /*zero_point=*/0},
+      /*padding=*/Padding_SAME,
+      /*stride_w=*/1, /*stride_h=*/1, GetTestType());
+  model.SetInput({
+      // [1 * 2 * 3 * 2] as [batch, y, x, input_channel]
+      3, 2,    // batch = 0, y = 0, x = 0
+      1, -1,   // batch = 0, y = 0, x = 1
+      -2, -3,  // batch = 0, y = 0, x = 2
+      4, 3,    // batch = 0, y = 1, x = 0
+      2, -2,   // batch = 0, y = 1, x = 1
+      -3, -4,  // batch = 0, y = 1, x = 2
+  });
+  model.SetFilter(filter_data);
+  model.Invoke();
+
+  EXPECT_THAT(model.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {7, 37, 16, 26, -9, -39, 27, 69, 48, 42, -32, -74}, 1e-5)));
+
+  // GetOutputShape() should always be same as model.SetOutputShape(...);
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 2, 3, 2}));
 }
 
 INSTANTIATE_TEST_SUITE_P(
