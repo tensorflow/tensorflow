@@ -1355,6 +1355,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"Relu6"}) {
       this->set_fuse_activation(true, ALGORITHM::eltwise_bounded_relu, 6.0);
     } else if (fused_ops == std::vector<string>{"Elu"}) {
+      // TODO(intel-tf): wrong Alpha for Elu fusion, will fix it in future.
       this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
@@ -1370,6 +1371,7 @@ class MklFusedConvOp
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
+      // TODO(intel-tf): wrong Alpha for Elu fusion, will fix it in future.
       this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
@@ -1400,6 +1402,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
+      // TODO(intel-tf): wrong Alpha for Elu fusion, will fix it in future.
       this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
       OP_REQUIRES(
           context, num_args == 2,

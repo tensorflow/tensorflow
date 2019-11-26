@@ -174,7 +174,7 @@ class CommonTestUtilities : public OpsTestBase {
     weight.flat<T>() = weight.flat<T>().setRandom();
 
     Tensor bias(dtype, {weight_count});
-    bias.flat<T>() = bias.flat<T>().setRandom();
+    bias.flat<T>() = bias.flat<T>().setConstant(-1.0);
 
     Tensor output;
     Tensor fused_output;
@@ -242,6 +242,8 @@ class MklFusedConv2DOpTest : public OpsTestBase {
     if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
         fused_ops.end()) {
       last_op = "with_elu";
+      // TODO(intel-tf): correct typo "Relu" to "Elu" after fixing Conv and
+      // Elu fusion
       next_op = ops::Relu(root.WithOpName(last_op), next_op);
     }
 
@@ -618,7 +620,8 @@ template <typename T>
 class MklFusedMatMulOpTest : public OpsTestBase {
  protected:
   void VerifyFusedMatMul(const int kBatch, const int kInputChannel,
-                         const int kOutputChannel) {
+                         const int kOutputChannel,
+                         const std::vector<string>& fused_ops) {
     const FusedGraphRunner run_default =
         [this](const Tensor& input, const Tensor& weight, const Tensor& bias,
                const std::vector<string>& fused_ops, Tensor* output) {
@@ -638,6 +641,24 @@ class MklFusedMatMulOpTest : public OpsTestBase {
                 ops::Const(root.WithOpName("bias"), Input::Initializer(bias)));
           }
 
+          if (std::find(fused_ops.begin(), fused_ops.end(), "Relu") !=
+              fused_ops.end()) {
+            last_op = "with_relu";
+            next_op = ops::Relu(root.WithOpName(last_op), next_op);
+          }
+
+          if (std::find(fused_ops.begin(), fused_ops.end(), "Relu6") !=
+              fused_ops.end()) {
+            last_op = "with_relu6";
+            next_op = ops::Relu6(root.WithOpName(last_op), next_op);
+          }
+
+          if (std::find(fused_ops.begin(), fused_ops.end(), "Elu") !=
+              fused_ops.end()) {
+            last_op = "with_elu";
+            next_op = ops::Elu(root.WithOpName(last_op), next_op);
+          }
+
           CommonTestUtilities<T>::RunAndFetch(root, last_op, output);
         };
 
@@ -645,7 +666,7 @@ class MklFusedMatMulOpTest : public OpsTestBase {
         [this](const Tensor& input, const Tensor& weight, const Tensor& bias,
                const std::vector<string>& fused_ops, Tensor* output) {
           DataType dtype = DataTypeToEnum<T>::v();
-          const int num_args = fused_ops.size();
+          const int num_args = 1;
 
           TF_EXPECT_OK(NodeDefBuilder("MklFusedMatMul", "_MklFusedMatMul")
                            .Input(FakeInput(dtype))
@@ -683,22 +704,53 @@ class MklFusedMatMulOpTest : public OpsTestBase {
         };
 
     CommonTestUtilities<T>::VerifyFusedMatrixClose(kInputChannel, kBatch,
-                                                   kOutputChannel, {"BiasAdd"},
+                                                   kOutputChannel, fused_ops,
                                                    run_default, run_fused);
   }
 };
 
 TYPED_TEST_CASE_P(MklFusedMatMulOpTest);
 
-TYPED_TEST_P(MklFusedMatMulOpTest, BasicTest) {
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBias) {
   const int batch = 3;
   const int input_channel = 4;
   const int output_channel = 5;
 
-  this->VerifyFusedMatMul(batch, input_channel, output_channel);
+  this->VerifyFusedMatMul(batch, input_channel, output_channel, {"BiasAdd"});
 }
 
-REGISTER_TYPED_TEST_CASE_P(MklFusedMatMulOpTest, BasicTest);
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndRelu) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel,
+                          {"BiasAdd", "Relu"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndRelu6) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel,
+                          {"BiasAdd", "Relu6"});
+}
+
+TYPED_TEST_P(MklFusedMatMulOpTest, WithBiasAndElu) {
+  const int batch = 3;
+  const int input_channel = 4;
+  const int output_channel = 5;
+
+  this->VerifyFusedMatMul(batch, input_channel, output_channel,
+                          {"BiasAdd", "Elu"});
+}
+
+REGISTER_TYPED_TEST_CASE_P(MklFusedMatMulOpTest,  //
+                           WithBias,              //
+                           WithBiasAndRelu,       //
+                           WithBiasAndRelu6,      //
+                           WithBiasAndElu);
 
 using MklFusedMatMulDataTypes = ::testing::Types<float>;
 INSTANTIATE_TYPED_TEST_CASE_P(Test, MklFusedMatMulOpTest,
