@@ -564,7 +564,10 @@ Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
 
 void TensorHandle::Poison(Status status) {
   DCHECK(!is_ready_notification_.HasBeenNotified())
-      << "Poison(status) can only be called on non-ready handles.";
+      << "Poison(status) can only be called on non-ready handle: " << this;
+
+  DVLOG(3) << "Poison on TensorHandle: " << this;
+
   is_poisoned_ = status;
   is_ready_notification_.Notify();
 }

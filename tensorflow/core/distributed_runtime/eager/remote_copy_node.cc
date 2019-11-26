@@ -81,7 +81,8 @@ RemoteCopyNode::RemoteCopyNode(EagerContext* ctx, EagerExecutor* executor,
       recv_device_(recv_device),
       wire_id_(GetUniqueWireID()),
       recv_op_id_(recv_op_id),
-      captured_state_(std::make_shared<CapturedSharedState>(dst)) {
+      captured_state_(std::make_shared<CapturedSharedState>(dst)),
+      started_(false) {
   DCHECK(!send_device_->IsLocal() || !recv_device_->IsLocal());
   src_->Ref();
   ctx_->Ref();
@@ -342,6 +343,7 @@ Status RemoteCopyNode::Prepare() {
 }
 
 void RemoteCopyNode::RunAsync(StatusCallback done) {
+  started_ = true;
   if (ctx_->UseSendTensorRPC() && send_device_->IsLocal() &&
       !recv_device_->IsLocal()) {
     return StartRemoteSendTensor(std::move(done));
@@ -369,7 +371,9 @@ void RemoteCopyNode::RunAsync(StatusCallback done) {
 }
 
 void RemoteCopyNode::Abort(Status status) {
-  captured_state_->dst()->Poison(status);
+  if (!started_) {
+    captured_state_->dst()->Poison(status);
+  }
 }
 
 }  // namespace eager
