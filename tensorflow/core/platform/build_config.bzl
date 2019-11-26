@@ -32,6 +32,7 @@ load(
     _tf_protos_all_impl = "tf_protos_all_impl",
     _tf_protos_grappler = "tf_protos_grappler",
     _tf_protos_grappler_impl = "tf_protos_grappler_impl",
+    _tf_protos_profiler_impl = "tf_protos_profiler_impl",
     _tf_py_clif_cc = "tf_py_clif_cc",
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
 )
@@ -66,5 +67,6 @@ tf_protos_all = _tf_protos_all
 tf_protos_all_impl = _tf_protos_all_impl
 tf_protos_grappler = _tf_protos_grappler
 tf_protos_grappler_impl = _tf_protos_grappler_impl
+tf_protos_profiler_impl = _tf_protos_profiler_impl
 tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
