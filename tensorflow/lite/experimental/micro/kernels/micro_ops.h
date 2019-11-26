@@ -35,6 +35,7 @@ TfLiteRegistration* Register_ARG_MAX();
 TfLiteRegistration* Register_ARG_MIN();
 TfLiteRegistration* Register_AVERAGE_POOL_2D();
 TfLiteRegistration* Register_CEIL();
+TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_CONV_2D();
 TfLiteRegistration* Register_COS();
 TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
