@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/experimental/resource/resource_variable.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
@@ -36,10 +37,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, node->inputs->size, 1);
   TF_LITE_ENSURE_EQ(context, node->outputs->size, 1);
 
-  const TfLiteTensor* input_variable_id_tensor =
+  const TfLiteTensor* input_resource_id_tensor =
       GetInput(context, node, kInputVariableId);
-  TF_LITE_ENSURE_EQ(context, input_variable_id_tensor->type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, NumElements(input_variable_id_tensor), 1);
+  TF_LITE_ENSURE_EQ(context, input_resource_id_tensor->type, kTfLiteInt32);
+  TF_LITE_ENSURE_EQ(context, NumElements(input_resource_id_tensor), 1);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputValue);
   SetTensorToDynamic(output);
@@ -50,20 +51,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   Subgraph* subgraph = reinterpret_cast<Subgraph*>(context->impl_);
 
-  const TfLiteTensor* input_variable_id_tensor =
+  const TfLiteTensor* input_resource_id_tensor =
       GetInput(context, node, kInputVariableId);
-  int variable_id = input_variable_id_tensor->data.i32[0];
-  auto& resource_variables = subgraph->resource_variables();
+  int resource_id = input_resource_id_tensor->data.i32[0];
+  auto& resources = subgraph->resources();
+  auto* variable = resource::GetResourceVariable(&resources, resource_id);
+  TF_LITE_ENSURE(context, variable != nullptr);
 
-  const auto& variable_iterator = resource_variables.find(variable_id);
-  if (variable_iterator == resource_variables.end()) {
-    context->ReportError(context, "Variable ID %d is read before initialized.",
-                         variable_id);
-    return kTfLiteError;
-  }
-  auto& variable = variable_iterator->second;
-
-  TfLiteTensor* variable_tensor = variable.GetTensor();
+  TfLiteTensor* variable_tensor = variable->GetTensor();
   TfLiteTensor* output = GetOutput(context, node, kOutputValue);
 
   TF_LITE_ENSURE_EQ(context, variable_tensor->type, output->type);

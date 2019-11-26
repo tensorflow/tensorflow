@@ -215,7 +215,7 @@ cc_library(
         "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
-        "//tensorflow/lite/experimental/resource_variable",
+        "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "//tensorflow/lite/schema:schema_fbs",
     ],
