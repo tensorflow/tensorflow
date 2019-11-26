@@ -784,6 +784,18 @@ class BASE_HLO_ReshapeOp {
   }];
 }
 
+class BASE_HLO_ScatterOp {
+  string summary = "Scatter operator";
+
+  string description = [{
+    Generates a result which is the value of the input array `operand`,
+    with several slices (at indices specified by `scatter_indices`)
+    updated with the values in `updates` using `update_computation`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#scatter.
+  }];
+}
+
 class BASE_HLO_SelectOp {
   string summary = "Select operator";
 

@@ -756,6 +756,31 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
   let hasCustomHLOConverter = 1;
 }
 
+def ScatterDimensionNumbers : StructAttr<"ScatterDimensionNumbers", HLO_Dialect,
+      [StructFieldAttr<"update_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for scatter";
+}
+
+def HLO_ScatterOp: HLO_Op<"scatter", [NoSideEffect]>, BASE_HLO_ScatterOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$scatter_indices,
+    HLO_Tensor:$updates,
+    ScatterDimensionNumbers:$scatter_dimension_numbers,
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
+    DefaultValuedAttr<BoolAttr, "false">:$unique_indices
+  );
+
+  let regions = (region SizedRegion<1>:$update_computation);
+
+  let results = (outs HLO_Tensor);
+
+  let hasCustomHLOConverter = 1;
+}
+
 // TODO(jpienaar): Add broadcastable trait.
 def HLO_SelectOp: HLO_Op<"select", [NoSideEffect]>, BASE_HLO_SelectOp {
   let arguments = (ins
