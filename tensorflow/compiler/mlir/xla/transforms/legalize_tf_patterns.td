@@ -20,14 +20,6 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
-def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
-def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
-
-def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
-
-class ConstantSplat<string value> : NativeCodeCall<
-    "getSplat($_builder, $0, " # value # ")">;
-
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -64,10 +56,6 @@ def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
 //===----------------------------------------------------------------------===//
-
-// Get the broadcast dimensions attribute from the binary operands.
-def BinBroadcastDimensions : NativeCodeCall<
-    "getBroadcastDimensionsAttr($_builder, $0, $1)">;
 
 // Check that two values can be broadcasted together
 def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,

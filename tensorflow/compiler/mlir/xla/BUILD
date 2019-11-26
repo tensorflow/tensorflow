@@ -28,6 +28,7 @@ filegroup(
     srcs = [
         "ir/hlo_ops.td",
         "ir/hlo_ops_base.td",
+        "ir/hlo_utils.td",
         "ir/lhlo_ops.td",
         "@local_config_mlir//:OpBaseTdFiles",
     ],
@@ -43,6 +44,7 @@ gentbl(
     ],
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "ir/hlo_ops.td",
+    td_includes = ["ir/hlo_utils.td"],
     td_srcs = [":hlo_ops_td_files"],
 )
 
@@ -232,9 +234,27 @@ cc_library(
     alwayslink = 1,
 )
 
+gentbl(
+    name = "xla_lower_complex_inc_gen",
+    tbl_outs = [
+        ("-gen-rewriters", "transforms/generated_lower_complex.inc"),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "transforms/lower_complex_patterns.td",
+    td_srcs = [
+        ":hlo_ops_td_files",
+        "@llvm//:support",
+        "@local_config_mlir//:StdOpsTdFiles",
+    ],
+)
+
 cc_library(
-    name = "xla_lower_general_dot",
-    srcs = ["transforms/lower_general_dot.cc"],
+    name = "xla_lower",
+    srcs = [
+        "transforms/generated_lower_complex.inc",
+        "transforms/lower_complex.cc",
+        "transforms/lower_general_dot.cc",
+    ],
     deps = [
         ":hlo",
         ":xla_dialect_registration",
@@ -243,6 +263,8 @@ cc_library(
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",
+        "@local_config_mlir//:Support",
+        "@local_config_mlir//:Transforms",
     ],
     alwayslink = 1,
 )
@@ -253,9 +275,11 @@ cc_library(
         "ir/hlo_ops.cc",
         "ir/hlo_ops.cc.inc",
         "ir/hlo_ops.h.inc",
+        "ir/hlo_utils.cc",
     ],
     hdrs = [
         "ir/hlo_ops.h",
+        "ir/hlo_utils.h",
         "transforms/passes.h",
         "transforms/rewriters.h",
     ],
@@ -468,6 +492,7 @@ genrule(
         "@local_config_mlir//:include/mlir/IR/OpBase.td",
         ":ir/hlo_ops.td",
         ":ir/hlo_ops_base.td",
+        ":ir/hlo_utils.td",
     ],
     outs = ["operator_writers.inc"],
     cmd = ("$(location :operator_writer_gen) " +

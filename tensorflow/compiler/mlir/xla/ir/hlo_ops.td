@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
+include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 
 def HLO_Dialect : Dialect {
   let name = "xla_hlo";

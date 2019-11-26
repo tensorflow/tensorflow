@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/kernels/conv_grad_shape_utils.h"
@@ -274,24 +275,6 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
 // Binary op utilities.
 //===----------------------------------------------------------------------===//
 
-/// Get a constant splat for the given value type.
-template <typename T>
-static ElementsAttr getSplat(Builder &b, Value *val, T constant) {
-  auto valType = val->getType().cast<TensorType>();
-  auto valElementType = getElementTypeOrSelf(val->getType());
-
-  // Handle integer elements.
-  Attribute elementAttr;
-  if (valElementType.isa<IntegerType>())
-    elementAttr = b.getIntegerAttr(valElementType, constant);
-  else if (valElementType.isa<FloatType>())
-    elementAttr = b.getFloatAttr(valElementType, constant);
-  else
-    llvm_unreachable("unhandled element type");
-
-  return DenseElementsAttr::get(valType, elementAttr);
-}
-
 // Returns whether the two values are guaranteed to be broadcastable to the
 // same shape, this broadcasts size 1 tensors up to any rank. Dynamic dimensions
 // must be broadcasted with a size 1 tensor or another dynamic dimension.
@@ -320,37 +303,6 @@ static bool AreBroadcastCompatible(Value *x, Value *y) {
   }
 
   return true;
-}
-
-static DenseIntElementsAttr getBroadcastDimensionsAttr(Builder &b, Value *x,
-                                                       Value *y) {
-  TensorType xType = x->getType().dyn_cast<RankedTensorType>();
-  TensorType yType = y->getType().dyn_cast<RankedTensorType>();
-  if (xType == yType || !xType || !yType) return {};
-
-  // If the shapes have the same rank, then there is nothing to do.
-  auto xRank = xType.getRank(), yRank = yType.getRank();
-  if (xRank == yRank) return {};
-
-  // Otherwise if the ranks of the inputs don't match, TensorFlow automatically
-  // reshapes the smaller by padding with dimensions of size 1 as a prefix. In
-  // other words to pad a 5-vector to a 3-dimensional tensor it is reshaped to
-  // have shape [1,1,5]. XLA's automatic broadcast code is able to broadcast
-  // from lower to higher rank, but doesn't assume you want to pad as a prefix
-  // of the dimensions, and instead needs to be told which dimensions of the
-  // higher rank tensor to match to the lower rank tensor.
-  auto maxRank = std::max(xRank, yRank);
-  auto minRank = std::min(xRank, yRank);
-
-  // Match the lower rank tensor along the larger-numbered dimensions of the
-  // higher rank tensor.
-  SmallVector<int64_t, 4> broadcastDimensions(minRank);
-  std::iota(broadcastDimensions.begin(), broadcastDimensions.end(),
-            maxRank - minRank);
-
-  RankedTensorType type =
-      RankedTensorType::get({minRank}, b.getIntegerType(64));
-  return DenseIntElementsAttr::get(type, broadcastDimensions);
 }
 
 // Return a new TensorType the same rank and dimensions as the input with an
@@ -1017,10 +969,10 @@ class ConvertRangeOp : public OpRewritePattern<TF::RangeOp> {
                                                  rewriter.getI64IntegerAttr(0));
     auto scaled = rewriter.create<xla_hlo::MulOp>(
         op.getLoc(), result_type, iota, op.delta(),
-        getBroadcastDimensionsAttr(rewriter, iota, op.delta()));
+        getBroadcastDimensionsAttr(&rewriter, iota, op.delta()));
     rewriter.replaceOpWithNewOp<xla_hlo::AddOp>(
         op, result_type, scaled, op.start(),
-        getBroadcastDimensionsAttr(rewriter, scaled, op.start()));
+        getBroadcastDimensionsAttr(&rewriter, scaled, op.start()));
     return matchSuccess();
   }
 };

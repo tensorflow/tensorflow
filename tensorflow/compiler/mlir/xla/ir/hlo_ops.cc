@@ -241,8 +241,8 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return xla::ConvertElementsAttr(elementsAttr,
-                                    getElementTypeOrSelf(getResult()));
+    return ::xla::ConvertElementsAttr(elementsAttr,
+                                      getElementTypeOrSelf(getResult()));
   }
 
   return {};
@@ -717,7 +717,7 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
                              DenseIntElementsAttr broadcast_dimensions) {
   auto x_ranked = x.dyn_cast<RankedTensorType>();
   auto y_ranked = y.dyn_cast<RankedTensorType>();
-  if (!x || !y) {
+  if (!x_ranked || !y_ranked) {
     return UnrankedTensorType::get(element_type);
   }
 
