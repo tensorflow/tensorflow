@@ -312,7 +312,7 @@ struct ResizeBilinearGrad<CPUDevice, T> {
     // Each resized output pixel was computed as a weighted average of four
     // input pixels. Here we find the four input pixel locations that
     // contributed to each output pixel and propgate the gradient at the output
-    // pixel location to each of those four input pixels locations in the same
+    // pixel location to each of those four input pixel locations in the same
     // proportions that they originally contributed to the output pixel.
     // Here is the forward-propagation pseudo-code, for reference:
     // resized(b, y, x, c) = top_left     * (1 - y) * (1 - x)
