@@ -441,6 +441,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    tags = ["notsan"],  # b/144706539
 )
 
 tf_py_test(
