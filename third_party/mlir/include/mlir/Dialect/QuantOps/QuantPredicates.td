@@ -19,8 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef DIALECT_QUANTOPS_QUANT_PREDICATES_
-#else
+#ifndef DIALECT_QUANTOPS_QUANT_PREDICATES_
+#define DIALECT_QUANTOPS_QUANT_PREDICATES_
 
 //===----------------------------------------------------------------------===//
 // Quantization type definitions

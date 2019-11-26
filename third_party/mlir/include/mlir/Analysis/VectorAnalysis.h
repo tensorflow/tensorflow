@@ -46,14 +46,14 @@ class VectorType;
 ///   - shapeRatio({3, 4, 5, 8}, {2, 5, 2}) returns {3, 2, 1, 4}
 ///   - shapeRatio({3, 4, 4, 8}, {2, 5, 2}) returns None
 ///   - shapeRatio({1, 2, 10, 32}, {2, 5, 2}) returns {1, 1, 2, 16}
-llvm::Optional<llvm::SmallVector<unsigned, 4>>
+llvm::Optional<llvm::SmallVector<int64_t, 4>>
 shapeRatio(ArrayRef<int64_t> superShape, ArrayRef<int64_t> subShape);
 
 /// Computes and returns the multi-dimensional ratio of the shapes of
 /// `superVector` to `subVector`. If integral division is not possible, returns
 /// None.
 /// Assumes and enforces that the VectorTypes have the same elemental type.
-llvm::Optional<llvm::SmallVector<unsigned, 4>>
+llvm::Optional<llvm::SmallVector<int64_t, 4>>
 shapeRatio(VectorType superVectorType, VectorType subVectorType);
 
 /// Constructs a permutation map of invariant memref indices to vector

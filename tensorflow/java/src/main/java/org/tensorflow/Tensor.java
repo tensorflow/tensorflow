@@ -247,23 +247,8 @@ public final class Tensor<T> implements AutoCloseable {
     return ret;
   }
 
-  /**
-   * Creates a Tensor of any type with data from the given buffer.
-   *
-   * <p>Creates a Tensor with the provided shape of any type where the tensor's data has been
-   * encoded into {@code data} as per the specification of the TensorFlow <a
-   * href="https://www.tensorflow.org/code/tensorflow/c/c_api.h">C
-   * API</a>.
-   *
-   * @param <T> The tensor element type
-   * @param type the tensor element type, specified as a DataType. This must agree with T.
-   * @param shape the tensor shape.
-   * @param data a buffer containing the tensor data.
-   * @throws IllegalArgumentException If the tensor datatype or shape is not compatible with the
-   *     buffer
-   */
   private static Tensor<?> create(DataType dtype, long[] shape, ByteBuffer data) {
-    int nremaining = 0;
+    int nremaining;
     if (dtype != DataType.STRING) {
       int elemBytes = elemByteSize(dtype);
       if (data.remaining() % elemBytes != 0) {
@@ -633,7 +618,7 @@ public final class Tensor<T> implements AutoCloseable {
    *
    * <p>This helper class wraps the tensor native handle and support both situations; If an eager
    * reference to the tensor exists, it will take care of releasing the tensor at the end of its
-   * life. If the tensor is being explicetly closed before this happens, it will take cake of
+   * life. If the tensor is being explicitly closed before this happens, it will take cake of
    * clearing its association with any eager session before cleaning up the resources.
    */
   private static class NativeReference {

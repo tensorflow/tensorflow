@@ -136,8 +136,8 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
     param: the index of the target parameter.
 
   Returns:
-    A 2-d numpy array representing the Jacobian. It has "x_size" rows
-    and "y_size" columns where "x_size" is the number of elements in xs[param]
+    A 2-d numpy array representing the Jacobian. It has "y_size" rows
+    and "x_size" columns where "x_size" is the number of elements in xs[param]
     and "y_size" is the number of elements in the result.
 
   Raises:
@@ -153,30 +153,30 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
   x_val_size = _product(x_shape[1:])  # This is used for sparse gradients
   y_size = _product(y_shape) * y_factor
 
-  # Allocate 2-D Jacobian, with x dimensions smashed into the first
-  # dimension and y dimensions smashed into the second.
-  jacobian = np.zeros((x_size, y_size), dtype=x.dtype.real_dtype.as_numpy_dtype)
+  # Allocate 2-D Jacobian, with y dimensions smashed into the first
+  # dimension and x dimensions smashed into the second.
+  jacobian = np.zeros((y_size, x_size), dtype=x.dtype.real_dtype.as_numpy_dtype)
 
   # For each of the entry of dy, we set this to be 1 and
   # everything else to be 0 and compute the gradients -- this will give us one
-  # one column of the Jacobian matrix.
+  # one row of the Jacobian matrix.
   dy_data = np.zeros(y_shape, dtype=y_dtype.as_numpy_dtype)
   dy_data_flat = dy_data.ravel().view(y_dtype.real_dtype.as_numpy_dtype)
   grad_fn_unprep = backprop.gradients_function(f, [param])
   grad_fn = _prepare(lambda dy, *xs: grad_fn_unprep(*xs, dy=dy),
-                     [y_dtype] + [x.dtype for x in xs])
-  for col in range(y_size):
-    dy_data_flat[col] = 1
+                     [y_dtype] + [z.dtype for z in xs])
+  for row in range(y_size):
+    dy_data_flat[row] = 1
     grad = _to_numpy(grad_fn(dy_data, *xs)[0])
     grad = _eval_indexed_slices(grad)
-    dy_data_flat[col] = 0
+    dy_data_flat[row] = 0
     if isinstance(grad, ops.IndexedSlicesValue):
       for i, v in zip(grad.indices, grad.values):
-        r_begin = i * x_val_size
-        r_end = r_begin + x_val_size
-        jacobian[r_begin:r_end, col] += v.flat
-    else:
-      jacobian[:, col] = grad.ravel().view(jacobian.dtype)
+        c_begin = i * x_val_size
+        c_end = c_begin + x_val_size
+        jacobian[row, c_begin:c_end] += v.flat
+    elif grad is not None:
+      jacobian[row, :] = grad.ravel().view(jacobian.dtype)
 
   # If the output is empty, run the gradients at least once and make sure
   # they produce zeros.
@@ -207,8 +207,8 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param,
     delta: the amount of perturbation we give to the input.
 
   Returns:
-    A 2-d numpy array representing the Jacobian. It has "x_size" rows
-    and "y_size" columns where "x_size" is the number of elements in xs[param]
+    A 2-d numpy array representing the Jacobian. It has "y_size" rows
+    and "x_size" columns where "x_size" is the number of elements in xs[param]
     and "y_size" is the number of elements in the result.
   """
   # bfloat16 doesn't have enough bits to represent high precision numbers such
@@ -235,22 +235,22 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param,
   # Make sure we have the right types
   scale = np.asarray(2 * delta, dtype=y_dtype)[()]
 
-  jacobian = np.zeros((x_size, y_size), dtype=x_dtype)
+  jacobian = np.zeros((y_size, x_size), dtype=x_dtype)
+
   # For each of the entry of x, we slightly perturbs this by adding and
   # subtracting a delta and then compute difference between the outputs. This
-  # will give us one row of the Jacobian matrix.
-
+  # will give us one column of the Jacobian matrix.
   f = _prepare(f, xs_dtypes)
-  for row in range(x_size):
-    original = x.ravel().view(x_dtype)[row]
-    x.ravel().view(x_dtype)[row] += delta
+  for col in range(x_size):
+    original = x.ravel().view(x_dtype)[col]
+    x.ravel().view(x_dtype)[col] += delta
     y_pos = _to_numpy(f(*xs))
-    x.ravel().view(x_dtype)[row] = original
-    x.ravel().view(x_dtype)[row] -= delta
+    x.ravel().view(x_dtype)[col] = original
+    x.ravel().view(x_dtype)[col] -= delta
     y_neg = _to_numpy(f(*xs))
-    x.ravel().view(x_dtype)[row] = original
+    x.ravel().view(x_dtype)[col] = original
     diff = (y_pos - y_neg) / scale
-    jacobian[row, :] = diff.ravel().view(y_dtype)
+    jacobian[:, col] = diff.ravel().view(y_dtype)
 
   logging.vlog(1, "Numeric Jacobian =\n%s", jacobian)
   return jacobian
@@ -307,8 +307,8 @@ def compute_gradient(f, x, delta=1e-3):
   Returns:
     A pair of lists, where the first is a list of 2-d numpy arrays representing
     the theoretical Jacobians for each argument, and the second list is the
-    numerical ones. Each 2-d array has "x_size" rows
-    and "y_size" columns where "x_size" is the number of elements in the
+    numerical ones. Each 2-d array has "y_size" rows
+    and "x_size" columns where "x_size" is the number of elements in the
     corresponding argument and "y_size" is the number of elements in f(x).
 
   Raises:

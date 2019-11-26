@@ -22,13 +22,16 @@ import numpy as np
 
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.feature_column import dense_features_v2
+from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
+from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import losses
 from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
@@ -37,8 +40,8 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class LinearModelTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class LinearModelTest(keras_parameterized.TestCase):
 
   def test_linear_model_with_single_input(self):
     model = linear.LinearModel()
@@ -68,11 +71,6 @@ class LinearModelTest(test.TestCase):
     output_np = .3 * input_a_np + .2 * input_b_np
     model.compile('sgd', 'mse', [])
     model.fit([input_a_np, input_b_np], output_np, epochs=5)
-
-  def test_linear_model_with_int_input(self):
-    inp = input_layer.Input(shape=(1,), dtype=dtypes.int32)
-    with self.assertRaisesRegexp(TypeError, 'Unable to build'):
-      linear.LinearModel()(inp)
 
   def test_linear_model_with_sparse_input(self):
     indices = constant_op.constant([[0, 0], [0, 2], [1, 0], [1, 1]],
@@ -130,6 +128,39 @@ class LinearModelTest(test.TestCase):
         grads = t.gradient(loss, model.trainable_variables)
         grads_and_vars = zip(grads, model.trainable_variables)
         opt.apply_gradients(grads_and_vars)
+
+  # This test is an example for a regression on categorical inputs, i.e.,
+  # the output is 0.4, 0.6, 0.9 when input is 'alpha', 'beta', 'gamma'
+  # separately.
+  def test_linear_model_with_feature_column(self):
+    with context.eager_mode():
+      vocab_list = ['alpha', 'beta', 'gamma']
+      vocab_val = [0.4, 0.6, 0.9]
+      data = np.random.choice(vocab_list, size=256)
+      y = np.zeros_like(data, dtype=np.float32)
+      for vocab, val in zip(vocab_list, vocab_val):
+        indices = np.where(data == vocab)
+        y[indices] = val + np.random.uniform(
+            low=-0.01, high=0.01, size=indices[0].shape)
+      cat_column = fc.categorical_column_with_vocabulary_list(
+          key='symbol', vocabulary_list=vocab_list)
+      ind_column = fc.indicator_column(cat_column)
+      dense_feature_layer = dense_features_v2.DenseFeatures([ind_column])
+      linear_model = linear.LinearModel(
+          use_bias=False, kernel_initializer='zeros')
+      combined = sequential.Sequential([dense_feature_layer, linear_model])
+      opt = gradient_descent.SGD(learning_rate=0.1)
+      combined.compile(opt, 'mse', [])
+      combined.fit(x={'symbol': data}, y=y, batch_size=32, epochs=10)
+      self.assertAllClose([[0.4], [0.6], [0.9]],
+                          combined.layers[1].dense_layers[0].kernel.numpy(),
+                          atol=0.01)
+
+  def test_config(self):
+    linear_model = linear.LinearModel(units=3, use_bias=True)
+    config = linear_model.get_config()
+    cloned_linear_model = linear.LinearModel.from_config(config)
+    self.assertEqual(linear_model.units, cloned_linear_model.units)
 
 
 if __name__ == '__main__':

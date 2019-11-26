@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import os
 import tensorflow as tf
 
 from tensorflow.python.platform import test
@@ -39,7 +40,7 @@ class DeprecationTest(test.TestCase):
     tf.tables_initializer()
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"tables_initializer")
     self.assertRegexpMatches(
@@ -60,7 +61,7 @@ class DeprecationTest(test.TestCase):
     tf.ragged.RaggedTensorValue(value, row_splits)
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"ragged.RaggedTensorValue")
     self.assertRegexpMatches(
@@ -83,7 +84,7 @@ class DeprecationTest(test.TestCase):
     tf.sparse_mask(array, mask_indices)
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"sparse_mask")
     self.assertRegexpMatches(
@@ -101,7 +102,7 @@ class DeprecationTest(test.TestCase):
     tf.VarLenFeature(tf.dtypes.int32)
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2], r"VarLenFeature")
     self.assertRegexpMatches(
@@ -119,7 +120,7 @@ class DeprecationTest(test.TestCase):
     tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY  # pylint: disable=pointless-statement
     self.assertEqual(1, mock_warning.call_count)
     self.assertRegexpMatches(mock_warning.call_args[0][1],
-                             "module_wrapper.py:")
+                             "deprecation_test.py:")
     self.assertRegexpMatches(
         mock_warning.call_args[0][2],
         r"saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY")
@@ -145,12 +146,29 @@ class DeprecationTest(test.TestCase):
   def testKerasDeprecation(self, mock_warning):
     self.assertEqual(0, mock_warning.call_count)
     tf.keras.backend.get_session()
-    self.assertEqual(1, mock_warning.call_count)
-    self.assertRegexpMatches(
-        mock_warning.call_args[0][-1],
-        "tf.compat.v1.keras.backend.get_session")
+    # if OpenMP is set in environment, then logging.warning
+    # is called two times. First for deprecation and 2nd for
+    # OMP related warning.
+    if os.environ.get("OMP_NUM_THREADS"):
+      self.assertEqual(2, mock_warning.call_count)
+      # First message on deprecation warning.
+      self.assertRegexpMatches(mock_warning.call_args_list[0][0][-1],
+                               "tf.compat.v1.keras.backend.get_session")
+      # Second message is not a deprecation warning.
+      self.assertRegexpMatches(
+          mock_warning.call_args_list[1][0][0],
+          "OMP_NUM_THREADS is no longer used by the default Keras config."
+          " To configure the number of threads, use tf.config.threading"
+          " APIs")
+    else:
+      self.assertEqual(1, mock_warning.call_count)
+      self.assertRegexpMatches(mock_warning.call_args[0][-1],
+                               "tf.compat.v1.keras.backend.get_session")
     tf.keras.backend.get_session()
-    self.assertEqual(1, mock_warning.call_count)
+    if os.environ.get("OMP_NUM_THREADS"):
+      self.assertEqual(2, mock_warning.call_count)
+    else:
+      self.assertEqual(1, mock_warning.call_count)
 
   @test.mock.patch.object(logging, "warning", autospec=True)
   def testKerasEndpointDeprecation(self, mock_warning):

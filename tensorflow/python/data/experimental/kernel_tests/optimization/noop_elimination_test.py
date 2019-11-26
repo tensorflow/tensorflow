@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -37,7 +37,7 @@ class NoopEliminationTest(test_base.DatasetTestBase):
 
     dataset = dataset_ops.Dataset.range(5)
     dataset = dataset.apply(
-        optimization.assert_next(
+        testing.assert_next(
             ["FiniteRepeat", "FiniteSkip", "Prefetch", "MemoryCacheImpl"]))
     dataset = dataset.repeat(some_tensor).skip(5).take(-1).skip(0).repeat(
         1).prefetch(0).prefetch(1).cache()

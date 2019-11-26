@@ -28,6 +28,29 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+TEST(MakeStateless, Cache) {
+  using test::function::NDef;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("start", "Const", {}, {{"value", 0}, {"dtype", DT_INT32}}),
+       NDef("stop", "Const", {}, {{"value", 10}, {"dtype", DT_INT32}}),
+       NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
+       NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
+       NDef("filename", "Const", {}, {{"value", ""}, {"dtype", DT_INT64}}),
+       NDef("handle", "Const", {}, {{"value", 1}, {"dtype", DT_RESOURCE}}),
+       graph_tests_utils::MakeCacheV2Node("cache", "range", "filename",
+                                          "handle")},
+      {});
+
+  MakeStateless optimizer;
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
+  EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("cache", output));
+  int index = graph_utils::FindGraphNodeWithName("cache", output);
+  EXPECT_EQ(output.node(index).op(), "CacheDataset");
+  EXPECT_EQ(output.node(index).input_size(), 2);
+}
+
 TEST(MakeStateless, Shuffle) {
   using test::function::NDef;
   GrapplerItem item;
@@ -37,10 +60,9 @@ TEST(MakeStateless, Shuffle) {
        NDef("step", "Const", {}, {{"value", 1}, {"dtype", DT_INT32}}),
        NDef("range", "RangeDataset", {"start", "stop", "step"}, {}),
        NDef("buffer_size", "Const", {}, {{"value", 1}, {"dtype", DT_INT64}}),
-       NDef("seed_generator", "Const", {},
-            {{"value", 1}, {"dtype", DT_RESOURCE}}),
+       NDef("handle", "Const", {}, {{"value", 1}, {"dtype", DT_RESOURCE}}),
        graph_tests_utils::MakeShuffleV2Node("shuffle", "range", "buffer_size",
-                                            "seed_generator")},
+                                            "handle")},
       {});
 
   MakeStateless optimizer;

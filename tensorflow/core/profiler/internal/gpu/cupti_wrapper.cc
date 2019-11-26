@@ -44,6 +44,11 @@ CUptiResult CuptiWrapper::ActivityGetNumDroppedRecords(CUcontext context,
   return cuptiActivityGetNumDroppedRecords(context, stream_id, dropped);
 }
 
+CUptiResult CuptiWrapper::ActivityConfigureUnifiedMemoryCounter(
+    CUpti_ActivityUnifiedMemoryCounterConfig* config, uint32_t count) {
+  return cuptiActivityConfigureUnifiedMemoryCounter(config, count);
+}
+
 CUptiResult CuptiWrapper::ActivityRegisterCallbacks(
     CUpti_BuffersCallbackRequestFunc func_buffer_requested,
     CUpti_BuffersCallbackCompleteFunc func_buffer_completed) {
@@ -226,6 +231,17 @@ CUptiResult CuptiWrapper::MetricGetValue(CUdevice device, CUpti_MetricID metric,
 CUptiResult CuptiWrapper::GetResultString(CUptiResult result,
                                           const char** str) {
   return cuptiGetResultString(result, str);
+}
+
+CUptiResult CuptiWrapper::GetContextId(CUcontext context,
+                                       uint32_t* context_id) {
+  return cuptiGetContextId(context, context_id);
+}
+
+CUptiResult CuptiWrapper::GetStreamIdEx(CUcontext context, CUstream stream,
+                                        uint8_t per_thread_stream,
+                                        uint32_t* stream_id) {
+  return cuptiGetStreamIdEx(context, stream, per_thread_stream, stream_id);
 }
 
 }  // namespace profiler

@@ -41,7 +41,7 @@ versions {
 # CHECK:      {
 # CHECK-NEXT:   version: 3,
 # CHECK-NEXT:   operator_codes: [ {
-# CHECK-EMPTY:
+# CHECK-NEXT:     version: 1
 # CHECK-NEXT:   } ],
 # CHECK-NEXT:   subgraphs: [ {
 # CHECK-NEXT:     tensors: [ {

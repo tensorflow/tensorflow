@@ -72,6 +72,16 @@ T GetRawValue(T val) {
 }
 uint16 GetRawValue(Eigen::half val) { return val.x; }
 
+bool LiteralProtoHasValues(const LiteralProto& proto) {
+  return proto.preds_size() || !proto.s8s().empty() || !proto.u8s().empty() ||
+         proto.s32s_size() || proto.s64s_size() || proto.u32s_size() ||
+         proto.u64s_size() || proto.f32s_size() || proto.f64s_size() ||
+         proto.c64s_size() || proto.c128s_size() ||
+         proto.tuple_literals_size() || !proto.f16s().empty() ||
+         !proto.bf16s().empty() || !proto.u16s().empty() ||
+         !proto.s16s().empty() || proto.sparse_indices_size();
+}
+
 }  // namespace
 
 LiteralBase::~LiteralBase() {}
@@ -288,7 +298,7 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
 }
 
 /* static */ StatusOr<Literal> MutableLiteralBase::CreateFromProto(
-    const LiteralProto& proto) {
+    const LiteralProto& proto, bool prohibit_empty_literal) {
   if (!proto.has_shape()) {
     return InvalidArgument("LiteralProto has no shape");
   }
@@ -328,7 +338,13 @@ Status MutableLiteralBase::CopyElementFrom(const LiteralSlice& src_literal,
         }
 
         CHECK(piece->subshape().IsArray());
-        TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+
+        // When prohibit_empty_literal is false (allowing literal with no
+        // values), only copy from proto if the literal proto has values. This
+        // mode is used for a learned cost model.
+        if (prohibit_empty_literal || LiteralProtoHasValues(*proto_element)) {
+          TF_RETURN_IF_ERROR(piece->CopyFromProto(*proto_element));
+        }
 
         return Status::OK();
       }));
@@ -810,21 +826,22 @@ string LiteralBase::GetAsString(absl::Span<const int64> multi_index,
     case U64:
       return StrCat(Get<uint64>(multi_index, shape_index));
     case F16:
-      return StrCat(static_cast<float>(Get<half>(multi_index, shape_index)));
+      return RoundTripFpToString(Get<half>(multi_index, shape_index));
     case F32:
-      return StrCat(Get<float>(multi_index, shape_index));
+      return RoundTripFpToString(Get<float>(multi_index, shape_index));
     case BF16:
-      return StrCat(
-          static_cast<float>(Get<bfloat16>(multi_index, shape_index)));
+      return RoundTripFpToString(Get<bfloat16>(multi_index, shape_index));
     case F64:
-      return StrCat(Get<double>(multi_index, shape_index));
+      return RoundTripFpToString(Get<double>(multi_index, shape_index));
     case C64: {
       complex64 c = Get<complex64>(multi_index, shape_index);
-      return StrCat("(", c.real(), ", ", c.imag(), ")");
+      return StrCat("(", RoundTripFpToString(c.real()), ", ",
+                    RoundTripFpToString(c.imag()), ")");
     }
     case C128: {
       complex128 c = Get<complex128>(multi_index, shape_index);
-      return StrCat("(", c.real(), ", ", c.imag(), ")");
+      return StrCat("(", RoundTripFpToString(c.real()), ", ",
+                    RoundTripFpToString(c.imag()), ")");
     }
     default:
       LOG(FATAL) << PrimitiveType_Name(subshape.element_type());
@@ -944,6 +961,8 @@ absl::optional<complex128> LiteralBase::GetAsComplex128(
       return {Get<complex64>(multi_index)};
     case C128:
       return {Get<complex128>(multi_index)};
+    case S8:
+      return {Get<int8>(multi_index)};
     default:
       return absl::nullopt;
   }

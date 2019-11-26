@@ -357,10 +357,10 @@ Status S3FileSystem::NewAppendableFile(const string& fname,
     status = reader->Read(offset, kS3ReadAppendableFileBufferSize, &read_chunk,
                           buffer.get());
     if (status.ok()) {
-      (*result)->Append(read_chunk);
+      (void)(*result)->Append(read_chunk);
       offset += kS3ReadAppendableFileBufferSize;
     } else if (status.code() == error::OUT_OF_RANGE) {
-      (*result)->Append(read_chunk);
+      (void)(*result)->Append(read_chunk);
       break;
     } else {
       (*result).reset();

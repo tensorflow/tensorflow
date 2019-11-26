@@ -22,9 +22,8 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
-        "//tensorflow/lite/tools/accuracy:android_required_build_flags",
         "//tensorflow/lite/tools/accuracy/ilsvrc/default:custom_delegates",
         "//tensorflow/lite/tools/evaluation:utils",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
@@ -42,10 +41,9 @@ cc_binary(
     deps = [
         ":imagenet_model_evaluator",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
-        "//tensorflow/lite/tools/accuracy:android_required_build_flags",
         "//tensorflow/lite/tools/accuracy:csv_writer",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_absl//absl/memory",

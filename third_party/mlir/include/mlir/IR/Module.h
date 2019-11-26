@@ -25,6 +25,8 @@
 #include "mlir/IR/SymbolTable.h"
 
 namespace mlir {
+class ModuleTerminatorOp;
+
 //===----------------------------------------------------------------------===//
 // Module Operation.
 //===----------------------------------------------------------------------===//
@@ -33,30 +35,37 @@ namespace mlir {
 /// single block containing opaque operations. The region of a module is not
 /// allowed to implicitly capture global values, and all external references
 /// must use symbolic references via attributes(e.g. via a string name).
-class ModuleOp : public Op<ModuleOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                           OpTrait::IsIsolatedFromAbove, OpTrait::SymbolTable> {
+class ModuleOp
+    : public Op<
+          ModuleOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
+          OpTrait::IsIsolatedFromAbove, OpTrait::SymbolTable,
+          OpTrait::SingleBlockImplicitTerminator<ModuleTerminatorOp>::Impl> {
 public:
   using Op::Op;
   using Op::print;
 
   static StringRef getOperationName() { return "module"; }
 
-  static void build(Builder *builder, OperationState *result);
+  static void build(Builder *builder, OperationState &result,
+                    Optional<StringRef> name = llvm::None);
 
-  /// Construct a module from the given location.
-  static ModuleOp create(Location loc);
+  /// Construct a module from the given location with an optional name.
+  static ModuleOp create(Location loc, Optional<StringRef> name = llvm::None);
 
   /// Operation hooks.
-  static ParseResult parse(OpAsmParser *parser, OperationState *result);
-  void print(OpAsmPrinter *p);
+  static ParseResult parse(OpAsmParser &parser, OperationState &result);
+  void print(OpAsmPrinter &p);
   LogicalResult verify();
 
   /// Return body of this module.
   Region &getBodyRegion();
   Block *getBody();
 
+  /// Return the name of this module if present.
+  Optional<StringRef> getName();
+
   /// Print the this module in the custom top-level form.
-  void print(raw_ostream &os);
+  void print(raw_ostream &os, OpPrintingFlags flags = llvm::None);
   void dump();
 
   //===--------------------------------------------------------------------===//
@@ -102,13 +111,11 @@ public:
 /// the terminator in their custom syntax for brevity.
 class ModuleTerminatorOp
     : public Op<ModuleTerminatorOp, OpTrait::ZeroOperands, OpTrait::ZeroResult,
-                OpTrait::IsTerminator> {
+                OpTrait::HasParent<ModuleOp>::Impl, OpTrait::IsTerminator> {
 public:
   using Op::Op;
   static StringRef getOperationName() { return "module_terminator"; }
-
-  static void build(Builder *, OperationState *) {}
-  LogicalResult verify();
+  static void build(Builder *, OperationState &) {}
 };
 
 //===----------------------------------------------------------------------===//
@@ -117,7 +124,7 @@ public:
 
 /// A class used to manage the symbols held by a module. This class handles
 /// ensures that symbols inserted into a module have a unique name, and provides
-/// efficent named lookup to held symbols.
+/// efficient named lookup to held symbols.
 class ModuleManager {
 public:
   ModuleManager(ModuleOp module) : module(module), symbolTable(module) {}
@@ -126,6 +133,12 @@ public:
   /// name exists. Names must never include the @ on them.
   template <typename T, typename NameTy> T lookupSymbol(NameTy &&name) const {
     return symbolTable.lookup<T>(name);
+  }
+
+  /// Look up a symbol with the specified name, returning null if no such
+  /// name exists. Names must never include the @ on them.
+  template <typename NameTy> Operation *lookupSymbol(NameTy &&name) const {
+    return symbolTable.lookup(name);
   }
 
   /// Insert a new symbol into the module, auto-renaming it as necessary.

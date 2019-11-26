@@ -24,63 +24,18 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/allocation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"  // IWYU pragma: export
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/core/subgraph.h"
-#include "tensorflow/lite/experimental/resource_variable/resource_variable.h"
+#include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/external_cpu_backend_context.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/stderr_reporter.h"
+#include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
-// Map statically from a c++ type to a TfLiteType (used below for safe casts).
-template <class T>
-constexpr TfLiteType typeToTfLiteType() {
-  return kTfLiteNoType;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int>() {
-  return kTfLiteInt32;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int16_t>() {
-  return kTfLiteInt16;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int64_t>() {
-  return kTfLiteInt64;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<float>() {
-  return kTfLiteFloat32;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<unsigned char>() {
-  return kTfLiteUInt8;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<int8_t>() {
-  return kTfLiteInt8;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<bool>() {
-  return kTfLiteBool;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<std::complex<float>>() {
-  return kTfLiteComplex64;
-}
-template <>
-constexpr TfLiteType typeToTfLiteType<string>() {
-  return kTfLiteString;
-}
-
-template <>
-constexpr TfLiteType typeToTfLiteType<TfLiteFloat16>() {
-  return kTfLiteFloat16;
-}
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
 /// set of output Tensors. All inputs/output tensors are referenced by index.
@@ -299,6 +254,16 @@ class Interpreter {
     return nullptr;
   }
 
+  /// Return a mutable pointer to the given input tensor. The given index must
+  /// be between 0 and inputs().size().
+  TfLiteTensor* input_tensor(size_t index) { return tensor(inputs()[index]); }
+
+  /// Return an immutable pointerto the given input tensor. The given index must
+  /// be between 0 and inputs().size().
+  const TfLiteTensor* input_tensor(size_t index) const {
+    return tensor(inputs()[index]);
+  }
+
   /// Return a mutable pointer into the data of a given input tensor. The given
   /// index must be between 0 and inputs().size().
   template <class T>
@@ -311,6 +276,16 @@ class Interpreter {
   template <class T>
   const T* typed_input_tensor(int index) const {
     return typed_tensor<T>(inputs()[index]);
+  }
+
+  /// Return a mutable pointer to the given output tensor. The given index must
+  /// be between 0 and outputs().size().
+  TfLiteTensor* output_tensor(size_t index) { return tensor(outputs()[index]); }
+
+  /// Return an immutable pointer to the given output tensor. The given index
+  /// must be between 0 and outputs().size().
+  const TfLiteTensor* output_tensor(size_t index) const {
+    return tensor(outputs()[index]);
   }
 
   /// Return a mutable pointer into the data of a given output tensor. The given
@@ -335,6 +310,12 @@ class Interpreter {
   ///   if our partners determine that dependency is acceptable.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
+
+  // This releases memory held by non-persistent tensors. It does NOT re-perform
+  // memory planning.
+  // AllocateTensors needs to be called before next invocation.
+  /// WARNING: Experimental interface, subject to change
+  TfLiteStatus ReleaseNonPersistentMemory();
 
   /// Update allocations for all tensors. This will redim dependent tensors
   /// using the input tensor dimensionality as given. This is relatively
@@ -541,9 +522,8 @@ class Interpreter {
   // Subgraphs
   std::vector<std::unique_ptr<Subgraph>> subgraphs_;
 
-  // A map of resource variables. Owned by interpreter and shared by multiple
-  // subgraphs.
-  ResourceVariableMap resource_variables_;
+  // A map of resources. Owned by interpreter and shared by multiple subgraphs.
+  resource::ResourceMap resources_;
 };
 
 }  // namespace tflite

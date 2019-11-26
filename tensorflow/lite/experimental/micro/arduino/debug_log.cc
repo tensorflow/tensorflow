@@ -34,5 +34,5 @@ extern "C" void DebugLog(const char* s) {
     DEBUG_SERIAL_OBJECT.begin(9600);
     is_initialized = true;
   }
-  DEBUG_SERIAL_OBJECT.println(s);
+  DEBUG_SERIAL_OBJECT.print(s);
 }

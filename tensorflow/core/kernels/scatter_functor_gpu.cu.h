@@ -36,42 +36,55 @@ struct ScatterOpKernelBody;
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::ASSIGN> {
-  __device__ void operator()(T* dest, T src) const { *dest = src; }
+  __device__ void operator()(T* __restrict__ dest, T src) const { *dest = src; }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::ADD> {
-  __device__ void operator()(T* dest, T src) const { GpuAtomicAdd(dest, src); }
+  __device__ void operator()(T* __restrict__ dest, T src) const {
+    GpuAtomicAdd(dest, src);
+  }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::SUB> {
-  __device__ void operator()(T* dest, T src) const { GpuAtomicSub(dest, src); }
+  __device__ void operator()(T* __restrict__ dest, T src) const {
+    GpuAtomicSub(dest, src);
+  }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::MUL> {
-  __device__ void operator()(T* dest, T src) const { GpuAtomicMul(dest, src); }
+  __device__ void operator()(T* __restrict__ dest, T src) const {
+    GpuAtomicMul(dest, src);
+  }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::DIV> {
-  __device__ void operator()(T* dest, T src) const { GpuAtomicDiv(dest, src); }
+  __device__ void operator()(T* __restrict__ dest, T src) const {
+    GpuAtomicDiv(dest, src);
+  }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::MIN> {
-  __device__ void operator()(T* dest, T src) const { GpuAtomicMin(dest, src); }
+  __device__ void operator()(T* __restrict__ dest, T src) const {
+    GpuAtomicMin(dest, src);
+  }
 };
 
 template <typename T>
 struct ScatterOpKernelBody<T, scatter_op::UpdateOp::MAX> {
-  __device__ void operator()(T* dest, T src) const { GpuAtomicMax(dest, src); }
+  __device__ void operator()(T* __restrict__ dest, T src) const {
+    GpuAtomicMax(dest, src);
+  }
 };
 
 template <typename T, typename Index, scatter_op::UpdateOp op>
-__global__ void ScatterOpCustomKernel(T* params, const T* updates,
-                                      const Index* indices,
+__global__ void ScatterOpCustomKernel(T* __restrict__ params,
+                                      const T* __restrict__ updates,
+                                      const Index* __restrict__ indices,
                                       Index first_dim_size, Index updates_size,
                                       Index indices_size) {
   Index update_block = updates_size / indices_size;
@@ -90,8 +103,9 @@ __global__ void ScatterOpCustomKernel(T* params, const T* updates,
 }
 
 template <typename T, typename Index, scatter_op::UpdateOp op>
-__global__ void ScatterScalarOpCustomKernel(T* params, const T* update,
-                                            const Index* indices,
+__global__ void ScatterScalarOpCustomKernel(T* __restrict__ params,
+                                            const T* __restrict__ update,
+                                            const Index* __restrict__ indices,
                                             Index first_dim_size,
                                             Index indices_size,
                                             Index synthesized_updates_size) {

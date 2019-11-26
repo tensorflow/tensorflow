@@ -20,12 +20,14 @@ from __future__ import print_function
 
 import contextlib
 import imp
+import inspect
 import sys
 
 import six
 
 from tensorflow.python.autograph import operators
 from tensorflow.python.autograph import utils
+from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import function_wrappers
 from tensorflow.python.autograph.core import naming
@@ -36,6 +38,35 @@ from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.platform import test
+
+
+def whitelist(entity):
+  if 'test_whitelisted_call' not in sys.modules:
+    whitelisted_mod = imp.new_module('test_whitelisted_call')
+    sys.modules['test_whitelisted_call'] = whitelisted_mod
+    config.CONVERSION_RULES = ((config.DoNotConvert('test_whitelisted_call'),) +
+                               config.CONVERSION_RULES)
+
+  entity.__module__ = 'test_whitelisted_call'
+
+
+def is_inside_generated_code():
+  """Tests whether the caller is generated code. Implementation-specific."""
+  frame = inspect.currentframe()
+  try:
+    frame = frame.f_back
+
+    internal_stack_functions = ('converted_call', '_call_unconverted')
+    # Walk up the stack until we're out of the internal functions.
+    while (frame is not None and
+           frame.f_code.co_name in internal_stack_functions):
+      frame = frame.f_back
+    if frame is None:
+      return False
+
+    return 'ag__' in frame.f_locals
+  finally:
+    del frame
 
 
 class TestCase(test.TestCase):
@@ -57,7 +88,8 @@ class TestCase(test.TestCase):
 
     self.dynamic_calls = []
     # See api.converted_call
-    def converted_call(f, unused_opts, args, kwargs):
+    def converted_call(
+        f, args, kwargs, unused_opts=None, unused_function_ctx=None):
       """Mock version of api.converted_call."""
       self.dynamic_calls.append((args, kwargs))
       if kwargs is None:
@@ -135,7 +167,8 @@ class TestCase(test.TestCase):
         source_file='<fragment>',
         future_features=future_features,
         namespace=namespace)
-    ctx = converter.EntityContext(namer, entity_info, program_ctx)
+    ctx = converter.EntityContext(
+        namer, entity_info, program_ctx, 'test_fn')
     origin_info.resolve_entity(node, source, test_fn)
     node = converter.standard_analysis(node, ctx, is_initial=True)
     return node, ctx

@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		6FE7579A20D59CE500F01636 /* benchmark_params.json in Resources */ = {isa = PBXBuildFile; fileRef = 6FE7579920D59CE500F01636 /* benchmark_params.json */; };
-		6FE7579D20D5A5E000F01636 /* benchmark-lib.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 6FE7579C20D5A5E000F01636 /* benchmark-lib.a */; };
 		6FE7579F20D5A6A700F01636 /* Accelerate.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 6FE7579E20D5A6A700F01636 /* Accelerate.framework */; };
 		6FE757A120D5AB8100F01636 /* mobilenet_v1_1.0_224.tflite in Resources */ = {isa = PBXBuildFile; fileRef = 6FE757A020D5AB8000F01636 /* mobilenet_v1_1.0_224.tflite */; };
 		6FE93FFD20D592D8008C9FE4 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = 6FE93FFC20D592D8008C9FE4 /* AppDelegate.m */; };
@@ -16,7 +15,23 @@
 		6FE9400320D592D8008C9FE4 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 6FE9400120D592D8008C9FE4 /* Main.storyboard */; };
 		6FE9400520D592DA008C9FE4 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6FE9400420D592DA008C9FE4 /* Assets.xcassets */; };
 		6FE9400B20D592DA008C9FE4 /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 6FE9400A20D592DA008C9FE4 /* main.m */; };
+		DC4D465D2373ECF400397CBD /* TensorFlowLiteBenchmarkC.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */; };
+		DC4D465E2373ECF400397CBD /* TensorFlowLiteBenchmarkC.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		DC4D465F2373ECF400397CBD /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 8;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				DC4D465E2373ECF400397CBD /* TensorFlowLiteBenchmarkC.framework in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		6FE7579920D59CE500F01636 /* benchmark_params.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = benchmark_params.json; sourceTree = "<group>"; };
@@ -32,6 +47,7 @@
 		6FE9400420D592DA008C9FE4 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		6FE9400920D592DA008C9FE4 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		6FE9400A20D592DA008C9FE4 /* main.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = main.m; sourceTree = "<group>"; };
+		DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = TensorFlowLiteBenchmarkC.framework; path = TFLiteBenchmark/Frameworks/TensorFlowLiteBenchmarkC.framework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -40,7 +56,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				6FE7579F20D5A6A700F01636 /* Accelerate.framework in Frameworks */,
-				6FE7579D20D5A5E000F01636 /* benchmark-lib.a in Frameworks */,
+				DC4D465D2373ECF400397CBD /* TensorFlowLiteBenchmarkC.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -59,6 +75,7 @@
 		6FE7579B20D5A5E000F01636 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				DC4D465C2373ECF300397CBD /* TensorFlowLiteBenchmarkC.framework */,
 				6FE7579E20D5A6A700F01636 /* Accelerate.framework */,
 				6FE7579C20D5A5E000F01636 /* benchmark-lib.a */,
 			);
@@ -108,6 +125,7 @@
 				6FE93FF420D592D8008C9FE4 /* Sources */,
 				6FE93FF520D592D8008C9FE4 /* Frameworks */,
 				6FE93FF620D592D8008C9FE4 /* Resources */,
+				DC4D465F2373ECF400397CBD /* Embed Frameworks */,
 			);
 			buildRules = (
 			);
@@ -308,6 +326,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/TFLiteBenchmark/Frameworks",
+				);
 				"HEADER_SEARCH_PATHS[arch=*]" = (
 					$SRCROOT/../../../../../../,
 					$SRCROOT/../../../../../../tensorflow/lite/tools/make/downloads/eigen,
@@ -334,6 +356,10 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
+				FRAMEWORK_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/TFLiteBenchmark/Frameworks",
+				);
 				"HEADER_SEARCH_PATHS[arch=*]" = (
 					$SRCROOT/../../../../../../,
 					$SRCROOT/../../../../../../tensorflow/lite/tools/make/downloads/eigen,

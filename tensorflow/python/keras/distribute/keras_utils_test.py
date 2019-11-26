@@ -258,15 +258,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             experimental_run_tf_function=experimental_run_tf_function)
 
       dataset = keras_test_lib.get_dataset(distribution)
-
-      if experimental_run_tf_function and mode == 'eager':
-        exception_error_message = (
-            '`validation_split` argument is not supported when data adapter'
-            ' is.+')
-      else:
-        exception_error_message = (
-            '`validation_split` argument is not supported when input `x`'
-            ' is a dataset or a dataset iterator.+')
+      exception_error_message = (
+          '`validation_split` argument is not supported when ')
 
       # Test with validation split
       with self.assertRaisesRegexp(ValueError, exception_error_message):
@@ -281,8 +274,8 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
       # Test with sample weight.
       sample_weight = np.random.random((10,))
       with self.assertRaisesRegexp(
-          ValueError, '`sample_weight` argument is not supported when input '
-          '`x` is a dataset or a dataset iterator.'):
+          ValueError, '`sample_weight` argument is not supported when.*'
+          'dataset'):
         model.fit(
             dataset,
             epochs=1,
@@ -672,8 +665,8 @@ class TestDistributionStrategyWithStaticShapes(test.TestCase,
   def test_input_batch_size_not_divisible_by_num_replicas(self, distribution):
     with distribution.scope():
       with self.assertRaisesRegexp(
-          ValueError, 'The `batch_size` argument value 5 cannot be divisible '
-          'by number of replicas 2'):
+          ValueError, r'The `batch_size` argument \(5\) must be divisible by '
+                      r'the number of replicas \(2\)'):
         keras.layers.Input(shape=(3,), batch_size=5, name='input')
 
   @combinations.generate(

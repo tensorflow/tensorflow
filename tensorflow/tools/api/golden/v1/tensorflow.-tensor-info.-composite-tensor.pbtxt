@@ -1,0 +1,20 @@
+path: "tensorflow.TensorInfo.CompositeTensor"
+tf_proto {
+  descriptor {
+    name: "CompositeTensor"
+    field {
+      name: "type_spec"
+      number: 1
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TypeSpecProto"
+    }
+    field {
+      name: "components"
+      number: 2
+      label: LABEL_REPEATED
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TensorInfo"
+    }
+  }
+}

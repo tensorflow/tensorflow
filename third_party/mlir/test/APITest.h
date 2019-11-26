@@ -45,7 +45,7 @@ struct TestRegistration {
 } // end namespace test_detail
 
 /// Declares a test function with the given name and adds it to the list of
-/// known tets.  The body of the function must follow immediately.  Example:
+/// known tests.  The body of the function must follow immediately.  Example:
 ///
 /// TEST_FUNC(mytest) {
 ///   // CHECK: expected-output-here

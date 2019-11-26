@@ -37,15 +37,6 @@ class RemapperTest : public GrapplerTest {
     // This is a requirement for fusing FusedBatchNorm + SideInput + Activation.
     setenv("TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT", "1", 1 /* replace */);
   }
-
-  // TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
-  // contractions with non-default contraction output kernels.
-  bool EigenSupportsContractionOutputKernel() {
-#if defined(EIGEN_USE_LIBXSMM)
-    return false;
-#endif
-    return true;
-  }
 };
 
 TEST_F(RemapperTest, FusedBatchNorm) {
@@ -336,8 +327,6 @@ TEST_F(RemapperTest, FuseBatchNormWithAddAndRelu) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBias) {
-  if (!EigenSupportsContractionOutputKernel()) return;
-
   using ::tensorflow::ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -400,8 +389,6 @@ TEST_F(RemapperTest, FuseConv2DWithBias) {
 }
 
 TEST_F(RemapperTest, FuseMatMulWithBias) {
-  if (!EigenSupportsContractionOutputKernel()) return;
-
   using ::tensorflow::ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -463,8 +450,6 @@ TEST_F(RemapperTest, FuseMatMulWithBias) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
-  if (!EigenSupportsContractionOutputKernel()) return;
-
   using ::tensorflow::ops::Placeholder;
 
   for (const string& activation : {"Relu", "Relu6", "Elu"}) {
@@ -545,8 +530,6 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
 }
 
 TEST_F(RemapperTest, FuseMatMulWithBiasAndActivation) {
-  if (!EigenSupportsContractionOutputKernel()) return;
-
   using ::tensorflow::ops::Placeholder;
 
   for (const string& activation : {"Relu", "Relu6", "Elu"}) {
@@ -625,8 +608,6 @@ TEST_F(RemapperTest, FuseMatMulWithBiasAndActivation) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
-  if (!EigenSupportsContractionOutputKernel()) return;
-
   using ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -705,8 +686,6 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
-  if (!EigenSupportsContractionOutputKernel()) return;
-
   using ops::Placeholder;
 
   for (const string& activation : {"Relu", "Relu6", "Elu"}) {
@@ -802,8 +781,6 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
 }
 
 TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
-  if (!EigenSupportsContractionOutputKernel()) return;
-
   using ops::Placeholder;
 
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -819,9 +796,8 @@ TEST_F(RemapperTest, FuseConv2DWithSqueezeAndBias) {
   std::vector<int> strides = {1, 1, 1, 1};
   auto conv = ops::Conv2D(s.WithOpName("conv"), input, filter, strides, "SAME");
 
-  ops::Squeeze::Attrs attrs;
-  attrs = attrs.Axis({2});
-  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), conv, attrs);
+  auto squeeze = ops::Squeeze(s.WithOpName("squeeze"), conv,
+                              ops::Squeeze::Attrs().Axis({2}));
 
   auto bias_add = ops::BiasAdd(s.WithOpName("bias_add"), squeeze, bias);
   auto fetch = ops::Identity(s.WithOpName("fetch"), bias_add);

@@ -63,7 +63,7 @@ void MaybeConvertFromHalf(DataType data_type, absl::string_view value,
 }
 
 struct ReadFromTextureGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -103,7 +103,7 @@ struct ReadFromTextureGenerator {
 };
 
 struct ReadFromBufferGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -180,7 +180,7 @@ RewriteStatus GenerateReadAccessor(
 }
 
 struct WriteToBufferGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -236,7 +236,7 @@ struct WriteToBufferGenerator {
 };
 
 struct WriteToTextureGenerator {
-  RewriteStatus operator()(uint32_t) const {
+  RewriteStatus operator()(size_t) const {
     if (element.indices.size() != 1) {
       result->append("WRONG_NUMBER_OF_INDICES");
       return RewriteStatus::ERROR;
@@ -314,7 +314,7 @@ std::string ToBufferType(DataType data_type) {
 }
 
 struct TextureImageTypeGetter {
-  std::string operator()(uint32_t) const {
+  std::string operator()(size_t) const {
     // 1D textures are emulated as 2D textures
     return (*this)(uint2());
   }
@@ -355,7 +355,7 @@ struct TextureImageTypeGetter {
 };
 
 struct TextureSamplerTypeGetter {
-  std::string operator()(uint32_t) const {
+  std::string operator()(size_t) const {
     // 1D textures are emulated as 2D textures
     return (*this)(uint2());
   }
@@ -438,7 +438,7 @@ std::string ToImagePrecision(DataType type) {
 }
 
 struct SizeParametersAdder {
-  void operator()(uint32_t) const {}
+  void operator()(size_t) const {}
 
   void operator()(const uint2& size) const {
     variable_accessor->AddUniformParameter(
@@ -577,24 +577,16 @@ std::string ObjectAccessor::GetObjectDeclarations() const {
 }
 
 std::string ObjectAccessor::GetFunctionsDeclarations() const {
-  std::string modifier = "";
-  // Mali compiler does not want to compile a function without readonly
-  // modifier. See b/111601761 for the context.
-  if (is_mali_) {
-    modifier = "readonly ";
-  }
-  // If there is a single object SSBO with F16, then we need to output functions
+  // If there is a single object SSBO with F16, then we need to output macros
   // as well.
   for (const auto& o : name_to_object_) {
     if (o.second.data_type == DataType::FLOAT16 &&
         o.second.object_type == ObjectType::BUFFER) {
-      return absl::StrCat("vec4 Vec4FromHalf(in ", modifier,
-                          "uvec2 v) { return vec4(unpackHalf2x16(v.x), "
-                          "unpackHalf2x16(v.y)); }\n"
-                          "uvec2 Vec4ToHalf(in ",
-                          modifier,
-                          "vec4 v) { return uvec2(packHalf2x16(v.xy), "
-                          "packHalf2x16(v.zw)); }\n");
+      return absl::StrCat(
+          "#define Vec4FromHalf(v) vec4(unpackHalf2x16(v.x), "
+          "unpackHalf2x16(v.y))\n",
+          "#define Vec4ToHalf(v) uvec2(packHalf2x16(v.xy), "
+          "packHalf2x16(v.zw))");
     }
   }
   return "";

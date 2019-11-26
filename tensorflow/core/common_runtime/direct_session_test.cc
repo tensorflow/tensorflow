@@ -51,9 +51,11 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
-#ifdef GOOGLE_CUDA
+#if GOOGLE_CUDA
 #include "third_party/gpus/cuda/include/cuda.h"
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
+#elif TENSORFLOW_USE_ROCM
+#include "rocm/include/hip/hip_runtime.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -222,6 +224,114 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_OptimizeForStaticGraph) {
   EXPECT_TRUE(errors::IsFailedPrecondition(s));
   EXPECT_TRUE(
       absl::StrContains(s.error_message(), "optimize_for_static_graph"));
+}
+
+TEST_F(DirectSessionMinusAXTest,
+       RunSimpleNetwork_DisableOutputPartitionGraphs) {
+  Initialize({3, 2, -1, 0});
+  SessionOptions options(DefaultSessionOptions());
+  options.config.mutable_experimental()->set_disable_output_partition_graphs(
+      true);
+  auto session = absl::WrapUnique(NewSession(options));
+
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+  std::vector<std::pair<string, Tensor>> inputs;
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<string> output_names = {y_ + ":0"};
+  std::vector<string> target_nodes = {y_neg_};
+  std::vector<Tensor> outputs;
+  Status s = session->Run(inputs, output_names, target_nodes, &outputs);
+  TF_ASSERT_OK(s);
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct
+  // output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // The Run() call should fail when `output_partition_graphs` is set to true.
+  RunOptions run_options;
+  run_options.set_output_partition_graphs(true);
+  RunMetadata run_metadata;
+  s = session->Run(run_options, inputs, output_names, target_nodes, &outputs,
+                   &run_metadata);
+
+  EXPECT_TRUE(errors::IsInvalidArgument(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "disable_output_partition_graphs"));
+}
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithCallables) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
+
+  // Making a new callable fails because the session has been finalized.
+  Status s =
+      session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle);
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "Session has been finalized."));
+}
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithRun) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run({}, {y_ + ":0"}, {y_neg_}, &outputs));
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // Running the exact same subgraph succeeds after finalization.
+  TF_ASSERT_OK(session->Run({}, {y_ + ":0"}, {y_neg_}, &outputs));
+  ASSERT_EQ(1, outputs.size());
+  mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Running a different subgraph fails because the session has been finalized.
+  Status s = session->Run({}, {y_ + ":0"}, {}, &outputs);
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "Session has been finalized."));
 }
 
 TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
@@ -608,7 +718,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts) {
 
   // Prepares RunOptions and RunMetadata
   RunOptions run_options;
-  run_options.set_trace_level(RunOptions::FULL_TRACE);
+  run_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
   RunMetadata run_metadata;
   EXPECT_EQ(run_metadata.step_stats().dev_stats_size(), 0);
 
@@ -639,7 +749,7 @@ TEST_F(DirectSessionMinusAXTest, RunSimpleNetworkWithOpts_Callable) {
   CallableOptions callable_options =
       MakeCallableOptions({}, {y_ + ":0"}, {y_neg_});
   callable_options.mutable_run_options()->set_trace_level(
-      RunOptions::FULL_TRACE);
+      RunOptions::SOFTWARE_TRACE);
   TF_ASSERT_OK(session->MakeCallable(callable_options, &handle));
 
   RunMetadata run_metadata;
@@ -1055,14 +1165,30 @@ class SessionMetadataReaderOp : public OpKernel {
     OP_REQUIRES_OK(ctx,
                    ctx->allocate_output("y", TensorShape({}), &out_tensor));
     if (ctx->session_metadata() != nullptr) {
-      out_tensor->scalar<string>()() = ctx->session_metadata()->DebugString();
+      out_tensor->scalar<tstring>()() = ctx->session_metadata()->DebugString();
     } else {
-      out_tensor->scalar<string>()() = "";
+      out_tensor->scalar<tstring>()() = "";
     }
   }
 };
 REGISTER_KERNEL_BUILDER(Name("SessionMetadataReader").Device(DEVICE_CPU),
                         SessionMetadataReaderOp);
+REGISTER_KERNEL_BUILDER(Name("SessionMetadataReader").Device(DEVICE_GPU),
+                        SessionMetadataReaderOp);
+
+FunctionDef SessionMetadataReaderOpFn() {
+  return FunctionDefHelper::Define(
+      // Name
+      "SessionMetadataReaderFn",
+      // Args
+      {"x: int64"},
+      // Return values
+      {"y: string"},
+      // Attr def
+      {},
+      // Nodes
+      {{{"y"}, "SessionMetadataReader", {"x"}, {}}});
+}
 
 TEST(DirectSessionTest, SessionMetadataAbsent) {
   Graph g(OpRegistry::Global());
@@ -1079,7 +1205,29 @@ TEST(DirectSessionTest, SessionMetadataAbsent) {
   run_opts.set_inter_op_thread_pool(-1);
   auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
 
-  EXPECT_EQ("", outputs[0].scalar<string>()());
+  EXPECT_EQ("", outputs[0].scalar<tstring>()());
+}
+
+TEST(DirectSessionTest, SessionMetadataAbsentViaFunction) {
+  FunctionDefLibrary library_graph_def;
+  *library_graph_def.add_function() = SessionMetadataReaderOpFn();
+  FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
+  Graph g(&flib);
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
+  GraphDef def;
+  g.ToGraphDef(&def);
+  *def.mutable_library() = library_graph_def;
+  auto sess = CreateSession();
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  EXPECT_EQ("", outputs[0].scalar<tstring>()());
 }
 
 TEST(DirectSessionTest, SessionMetadataPresent) {
@@ -1104,7 +1252,38 @@ TEST(DirectSessionTest, SessionMetadataPresent) {
 
   SessionMetadata read_metadata;
   ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
-      outputs[0].scalar<string>()(), &read_metadata));
+      outputs[0].scalar<tstring>()(), &read_metadata));
+  EXPECT_EQ("name", read_metadata.name());
+  EXPECT_EQ(1, read_metadata.version());
+}
+
+TEST(DirectSessionTest, SessionMetadataPresentViaFunction) {
+  FunctionDefLibrary library_graph_def;
+  *library_graph_def.add_function() = SessionMetadataReaderOpFn();
+  FunctionLibraryDefinition flib(OpRegistry::Global(), library_graph_def);
+  Graph g(&flib);
+  Tensor vx(DT_INT64, TensorShape({}));
+  vx.scalar<int64>()() = 17;
+  Node* x = test::graph::Constant(&g, vx);
+  Node* y = test::graph::Unary(&g, "SessionMetadataReaderFn", x);
+  GraphDef def;
+  g.ToGraphDef(&def);
+  *def.mutable_library() = library_graph_def;
+  auto session_options = DefaultSessionOptions();
+  auto* session_metadata =
+      session_options.config.mutable_experimental()->mutable_session_metadata();
+  session_metadata->set_name("name");
+  session_metadata->set_version(1);
+  auto sess = std::unique_ptr<Session>(NewSession(session_options));
+  TF_ASSERT_OK(sess->Create(def));
+  std::vector<Tensor> outputs;
+  RunOptions run_opts;
+  run_opts.set_inter_op_thread_pool(-1);
+  auto s = sess->Run(run_opts, {}, {y->name() + ":0"}, {}, &outputs, nullptr);
+
+  SessionMetadata read_metadata;
+  ASSERT_TRUE(protobuf::TextFormat::ParseFromString(
+      outputs[0].scalar<tstring>()(), &read_metadata));
   EXPECT_EQ("name", read_metadata.name());
   EXPECT_EQ(1, read_metadata.version());
 }
@@ -1468,7 +1647,7 @@ TEST(DirectSessionTest, RunHandleTest) {
 
   const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
-  string_handle.flat<string>().setConstant(resource_handle.name());
+  string_handle.flat<tstring>().setConstant(resource_handle.name());
 
   // Second run call: Use a handle.
   std::vector<Tensor> outputs1;
@@ -1521,7 +1700,7 @@ TEST(DirectSessionTest, RunHandleTest_Callable) {
 
   const ResourceHandle& resource_handle = outputs[0].scalar<ResourceHandle>()();
   Tensor string_handle(DT_STRING, {});
-  string_handle.flat<string>().setConstant(resource_handle.name());
+  string_handle.flat<tstring>().setConstant(resource_handle.name());
 
   // Second run call: Use a handle.
   std::vector<Tensor> outputs1;
@@ -2089,6 +2268,12 @@ bool IsCUDATensor(const Tensor& t) {
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
   return (attributes.memoryType == cudaMemoryTypeDevice);
+#elif TENSORFLOW_USE_ROCM
+  hipPointerAttribute_t attributes;
+  hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
+  if (err == hipErrorInvalidValue) return false;
+  CHECK_EQ(hipSuccess, err) << hipGetErrorString(err);
+  return (attributes.memoryType == hipMemoryTypeDevice);
 #else
   return false;
 #endif
@@ -2341,8 +2526,9 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds,
-                              bool use_make_callable) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
+                              int inter_op_threads,
+                              bool use_single_threaded_executor) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());
@@ -2376,6 +2562,11 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
   GraphDef gd;
   g.ToGraphDef(&gd);
   SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(inter_op_threads);
+  if (use_single_threaded_executor) {
+    opts.config.mutable_experimental()->set_executor_type(
+        "SINGLE_THREADED_EXECUTOR");
+  }
   std::unique_ptr<Session> session(NewSession(opts));
   TF_CHECK_OK(session->Create(gd));
   if (use_make_callable) {
@@ -2419,14 +2610,34 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
 }
 
 void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
 }
 void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ true);
 }
 
 BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThread)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThreadExecutor)
+    ->Arg(1)
+    ->Arg(2)
+    ->Arg(5)
+    ->Arg(10);
 
 }  // namespace
 

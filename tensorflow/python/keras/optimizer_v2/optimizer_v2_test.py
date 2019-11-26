@@ -50,6 +50,7 @@ from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import nadam
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -64,8 +65,11 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBasic(self):
-    for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session():
+    for _, dtype in enumerate([
+        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.complex128
+    ]):
+      with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
@@ -85,7 +89,10 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAdaptiveLearningRate(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+    for dtype in [
+        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.complex128
+    ]:
       var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
       var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
 
@@ -128,8 +135,11 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testPrecomputedGradient(self):
-    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
-      with self.cached_session():
+    for dtype in [
+        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.complex128
+    ]:
+      with test_util.use_gpu():
         var0 = variables.Variable([1.0, 2.0], dtype=dtype)
         var1 = variables.Variable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
@@ -152,8 +162,11 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradients(self):
-    for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session():
+    for _, dtype in enumerate([
+        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.complex128
+    ]):
+      with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0  # pylint: disable=cell-var-from-loop
@@ -164,8 +177,11 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_Minimize(self):
-    for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session():
+    for _, dtype in enumerate([
+        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.complex128
+    ]):
+      with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: constant_op.constant(5.0)
@@ -177,8 +193,11 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNoGradientsForAnyVariables_ApplyGradients(self):
-    for _, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session():
+    for _, dtype in enumerate([
+        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.complex128
+    ]):
+      with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         sgd_op = gradient_descent.SGD(3.0)
@@ -188,8 +207,11 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGradientsAsVariables(self):
-    for i, dtype in enumerate([dtypes.half, dtypes.float32, dtypes.float64]):
-      with self.cached_session():
+    for i, dtype in enumerate([
+        dtypes.half, dtypes.float32, dtypes.float64, dtypes.complex64,
+        dtypes.complex128
+    ]):
+      with test_util.use_gpu():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         loss = lambda: 5 * var0 + 3 * var1  # pylint: disable=cell-var-from-loop
@@ -227,7 +249,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testComputeGradientsWithTensors(self):
-    with self.cached_session():
+    with test_util.use_gpu():
       x = ops.convert_to_tensor(1.0)
 
       def f():
@@ -247,7 +269,7 @@ class OptimizerTest(test.TestCase):
   def testConstraint(self):
     constraint_01 = lambda x: clip_ops.clip_by_value(x, -0.1, 0.)
     constraint_0 = lambda x: clip_ops.clip_by_value(x, 0., 1.)
-    with self.cached_session():
+    with test_util.use_gpu():
       var0 = variables.Variable([1.0, 2.0],
                                 constraint=constraint_01)
       var1 = variables.Variable([3.0, 4.0],
@@ -269,14 +291,14 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testIterationWithoutMinimize(self):
-    with self.cached_session():
+    with test_util.use_gpu():
       sgd = gradient_descent.SGD(3.0)
       self.evaluate(sgd.iterations.initializer)
       self.assertEqual(0, self.evaluate(sgd.iterations))
 
   @test_util.run_in_graph_and_eager_modes
   def testConfig(self):
-    with self.cached_session():
+    with test_util.use_gpu():
       opt = gradient_descent.SGD(learning_rate=1.0)
       config = opt.get_config()
       opt2 = gradient_descent.SGD.from_config(config)
@@ -296,7 +318,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testConfigWithLearningRateDecay(self):
-    with self.cached_session():
+    with test_util.use_gpu():
       var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
       for decay_schedule in [
           learning_rate_schedule.InverseTimeDecay(
@@ -327,7 +349,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGradClipValue(self):
-    with self.cached_session():
+    with test_util.use_gpu():
       var = resource_variable_ops.ResourceVariable([1.0, 2.0])
       loss = lambda: 3 * var
       opt = gradient_descent.SGD(learning_rate=1.0, clipvalue=1.0)
@@ -338,7 +360,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testGradClipNorm(self):
-    with self.cached_session():
+    with test_util.use_gpu():
       var = resource_variable_ops.ResourceVariable([1.0])
       loss = lambda: 3 * var
       opt = gradient_descent.SGD(learning_rate=1.0, clipnorm=1.0)
@@ -359,7 +381,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testWeights(self):
-    with self.cached_session():
+    with test_util.use_gpu():
       opt1 = adam.Adam(learning_rate=1.0)
       var1 = resource_variable_ops.ResourceVariable([1.0, 2.0],
                                                     dtype=dtypes.float32)
@@ -556,7 +578,7 @@ class OptimizerTest(test.TestCase):
         test_samples=10,
         input_shape=(input_dim,),
         num_classes=num_classes)
-    y = keras.utils.to_categorical(y)
+    y = np_utils.to_categorical(y)
 
     num_hidden = 1
     model = testing_utils.get_small_sequential_mlp(
@@ -608,6 +630,12 @@ class OptimizerTest(test.TestCase):
       self.assertLen(opt_vars, 5)
       self.assertEqual('outter/Adam/var_2/m:0', opt_vars[3].name)
 
+  @test_util.run_in_graph_and_eager_modes
+  def testEmptyVarList(self):
+    opt = gradient_descent.SGD(1.)
+    opt.minimize(lambda: constant_op.constant(1.), [])
+    opt.apply_gradients([])
+
 
 @keras_parameterized.run_all_keras_modes
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):
@@ -620,7 +648,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           'v1 optimizer does not run in experimental_run_tf_function mode or '
           'eager mode')
     np.random.seed(1331)
-    with self.cached_session():
+    with test_util.use_gpu():
       train_samples = 20
       input_dim = 3
       num_classes = 2
@@ -629,7 +657,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           test_samples=10,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      y = keras.utils.to_categorical(y)
+      y = np_utils.to_categorical(y)
 
       num_hidden = 5
       model_v1 = testing_utils.get_small_sequential_mlp(
@@ -708,7 +736,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           'v1 optimizer does not run in experimental_run_tf_function mode or '
           'eager mode')
     np.random.seed(1331)
-    with self.cached_session():
+    with test_util.use_gpu():
       train_samples = 20
       input_dim = 3
       num_classes = 2
@@ -717,7 +745,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           test_samples=10,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      y = keras.utils.to_categorical(y)
+      y = np_utils.to_categorical(y)
 
       num_hidden = 5
       model_k_v1 = testing_utils.get_small_sequential_mlp(
@@ -769,7 +797,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           'v1 optimizer does not run in experimental_run_tf_function mode or '
           'eager mode')
     np.random.seed(1331)
-    with self.cached_session():
+    with test_util.use_gpu():
       train_samples = 20
       input_dim = 3
       num_classes = 2
@@ -778,7 +806,7 @@ class OptimizersCompatibilityTest(keras_parameterized.TestCase):
           test_samples=10,
           input_shape=(input_dim,),
           num_classes=num_classes)
-      y = keras.utils.to_categorical(y)
+      y = np_utils.to_categorical(y)
 
       num_hidden = 5
       model_k_v1 = testing_utils.get_small_sequential_mlp(

@@ -7,14 +7,15 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
 load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_binary_deps",
 )
 load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
+    "get_compat_files",
+    "get_nested_compat_files",
 )
-load("//tensorflow/python/tools/api/generator:api_gen.bzl", "get_compat_files")
 load(
     "//tensorflow/python/tools/api/generator:api_init_files.bzl",
     "TENSORFLOW_API_INIT_FILES",  # @unused
@@ -31,6 +32,7 @@ load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
 )
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 
 package(
     default_visibility = [":internal"],
@@ -40,7 +42,8 @@ package(
 exports_files([
     "LICENSE",
     "ACKNOWLEDGMENTS",
-    # The leakr files are used by //third_party/cloud_tpu.
+    # The leakr files are used by //third_party/cloud_tpu and
+    # //third_party/tensorboard/google:copybara_config_test.
     "leakr_badwords.dic",
     "leakr_badfiles.dic",
     "leakr_file_type_recipe.ftrcp",
@@ -50,14 +53,20 @@ exports_files([
 TENSORFLOW_API_INIT_FILES_V2 = (
     TENSORFLOW_API_INIT_FILES +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V1 = (
     TENSORFLOW_API_INIT_FILES_V1 +
     get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
-    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1) + get_nested_compat_files([
+        1,
+        2,
+    ])
 )
 
 # Config setting used when building for products
@@ -268,18 +277,6 @@ config_setting(
 )
 
 config_setting(
-    name = "no_ignite_support",
-    define_values = {"no_ignite_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "no_kafka_support",
-    define_values = {"no_kafka_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "no_nccl_support",
     define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
@@ -306,18 +303,6 @@ config_setting(
 config_setting(
     name = "no_xla_deps_in_cuda",
     define_values = {"no_xla_deps_in_cuda": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gdr_support",
-    define_values = {"with_gdr_support": "true"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_verbs_support",
-    define_values = {"with_verbs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -356,6 +341,15 @@ config_setting(
     },
 )
 
+# Flag to indicate open source build, .bazelrc always has it set to be true
+config_setting(
+    name = "oss",
+    define_values = {
+        "open_source_build": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "using_cuda_clang_with_dynamic_build",
     define_values = {
@@ -364,11 +358,20 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "build_oss_using_cuda_clang",
+    define_values = {
+        "using_cuda_clang": "true",
+        "open_source_build": "true",
+    },
+)
+
 # Setting to use when loading kernels dynamically
 config_setting(
     name = "dynamic_loaded_kernels",
     define_values = {
         "dynamic_loaded_kernels": "true",
+        "framework_shared_object": "true",
     },
     visibility = ["//visibility:public"],
 )
@@ -389,16 +392,18 @@ config_setting(
 )
 
 config_setting(
-    name = "using_rocm_hipcc",
+    name = "build_oss_using_cuda_nvcc",
     define_values = {
-        "using_rocm_hipcc": "true",
+        "using_cuda_nvcc": "true",
+        "open_source_build": "true",
     },
 )
 
 config_setting(
-    name = "with_mpi_support",
-    values = {"define": "with_mpi_support=true"},
-    visibility = ["//visibility:public"],
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
 )
 
 config_setting(
@@ -420,6 +425,7 @@ config_setting(
 config_setting(
     name = "api_version_2",
     define_values = {"tf_api_version": "2"},
+    visibility = ["//visibility:public"],
 )
 
 # This flag is defined for select statements that match both
@@ -444,6 +450,7 @@ config_setting(
 package_group(
     name = "internal",
     packages = [
+        "//perftools/accelerators/xprof/api/...",
         "//tensorflow/...",
         "//tensorflow_estimator/python/estimator/...",
         "//tensorflow_models/official/...",
@@ -458,6 +465,22 @@ filegroup(
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
+)
+
+bzl_library(
+    name = "tensorflow_bzl",
+    srcs = ["tensorflow.bzl"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform:build_config_root_bzl",
+        "//tensorflow/core/platform:cuda_build_defs_bzl",
+        "//third_party/mkl:build_defs_bzl",
+        "//third_party/mkl_dnn:build_defs_bzl",
+        "//third_party/ngraph:build_defs_bzl",
+        "@local_config_cuda//cuda:build_defs_bzl",
+        "@local_config_rocm//rocm:build_defs_bzl",
+        "@local_config_tensorrt//:build_defs_bzl",
+    ],
 )
 
 cc_library(
@@ -564,6 +587,18 @@ tf_cc_shared_object(
     ] + tf_additional_binary_deps(),
 )
 
+# This is intended to be the same as tf_binary_additional_srcs:
+# https://github.com/tensorflow/tensorflow/blob/cd67f4f3723f9165aabedd0171aaadc6290636e5/tensorflow/tensorflow.bzl#L396-L425
+# And is usable in the "deps" attribute instead of the "srcs" attribute
+# as a workaround for https://github.com/tensorflow/tensorflow/issues/34117
+cc_import(
+    name = "libtensorflow_framework_import_lib",
+    shared_library = select({
+        "//tensorflow:macos": ":libtensorflow_framework.dylib",
+        "//conditions:default": ":libtensorflow_framework.so",
+    }),
+)
+
 # -------------------------------------------
 # New rules should be added above this target.
 # -------------------------------------------
@@ -607,6 +642,7 @@ tf_cc_shared_object(
         "//tensorflow/c:version_script.lds",
         "//tensorflow/c/eager:c_api",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_session",
     ],
 )
 
@@ -750,8 +786,8 @@ genrule(
     mkdir $@
     for f in $(SRCS); do
       d="$${f%/*}"
-      d="$${d#bazel-out*genfiles/}"
-      d="$${d#*external/eigen_archive/}"
+      d="$${d#bazel-out/*/genfiles/}"
+      d="$${d#bazel-out/*/bin/}"
 
       if [[ $${d} == *local_config_* ]]; then
         continue
@@ -763,6 +799,9 @@ genrule(
         if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
           continue
         fi
+
+        d="$${d#*external/farmhash_archive/src}"
+        d="$${d#*external/$${extname}/}"
       fi
 
       mkdir -p "$@/$${d}"
@@ -781,8 +820,8 @@ genrule(
     }),
     outs = ["__init__.py"],
     cmd = select({
-        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS)",
-        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS)",
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v2 import:g' $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS) && sed -i'.original' 's:from . import:from ._api.v1 import:g' $(OUTS)",
     }),
 )
 
@@ -848,7 +887,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = select({
         "api_version_2": [],
-        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+        "//conditions:default": [],
     }) + [
         ":tensorflow_py_no_contrib",
         "//tensorflow/python/estimator:estimator_py",

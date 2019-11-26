@@ -24,6 +24,13 @@ from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.base_preprocessing_layer import PreprocessingLayer
+
+# Preprocessing layers.
+from tensorflow.python.keras.layers.preprocessing.normalization import Normalization
+from tensorflow.python.keras.layers.preprocessing.normalization_v1 import Normalization as NormalizationV1
+from tensorflow.python.keras.layers.preprocessing.text_vectorization import TextVectorization
+from tensorflow.python.keras.layers.preprocessing.text_vectorization_v1 import TextVectorization as TextVectorizationV1
 
 # Advanced activations.
 from tensorflow.python.keras.layers.advanced_activations import LeakyReLU

@@ -1,7 +1,13 @@
+set(LLVM_TARGET_DEFINITIONS SPIRVCanonicalization.td)
+mlir_tablegen(SPIRVCanonicalization.inc -gen-rewriters)
+add_public_tablegen_target(MLIRSPIRVCanonicalizationIncGen)
+
 add_llvm_library(MLIRSPIRV
   DialectRegistration.cpp
+  LayoutUtils.cpp
   SPIRVDialect.cpp
   SPIRVOps.cpp
+  SPIRVLowering.cpp
   SPIRVTypes.cpp
 
   ADDITIONAL_HEADER_DIRS
@@ -9,13 +15,17 @@ add_llvm_library(MLIRSPIRV
   )
 
 add_dependencies(MLIRSPIRV
-  MLIRSPIRVOpsIncGen
+  MLIRSPIRVCanonicalizationIncGen
   MLIRSPIRVEnumsIncGen
+  MLIRSPIRVLoweringStructGen
+  MLIRSPIRVOpsIncGen
   MLIRSPIRVOpUtilsGen)
 
 target_link_libraries(MLIRSPIRV
   MLIRIR
   MLIRParser
-  MLIRSupport)
+  MLIRSupport
+  MLIRTransforms)
 
 add_subdirectory(Serialization)
+add_subdirectory(Transforms)

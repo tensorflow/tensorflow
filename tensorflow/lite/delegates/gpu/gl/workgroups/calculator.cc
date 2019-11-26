@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/calculator.h"
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/shader_code.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 
 namespace tflite {
 namespace gpu {

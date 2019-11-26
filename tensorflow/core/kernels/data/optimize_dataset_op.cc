@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
@@ -48,20 +48,20 @@ OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
 
 void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
-  std::vector<string> optimizations;
+  std::vector<tstring> optimizations;
   OP_REQUIRES_OK(
-      ctx, ParseVectorArgument<string>(ctx, kOptimizations, &optimizations));
+      ctx, ParseVectorArgument<tstring>(ctx, kOptimizations, &optimizations));
 
   auto config_factory = [this, &optimizations]() {
     return CreateConfig(optimizations, optimization_configs_);
   };
-  OP_REQUIRES_OK(ctx,
-                 RewriteDataset(ctx, input, std::move(config_factory),
-                                /*optimize_function_library=*/true, output));
+  OP_REQUIRES_OK(ctx, RewriteDataset(ctx, input, std::move(config_factory),
+                                     /*optimize_function_library=*/true,
+                                     /*record_fingerprint=*/true, output));
 }
 
 RewriterConfig OptimizeDatasetOp::CreateConfig(
-    std::vector<string> optimizations,
+    std::vector<tstring> optimizations,
     std::vector<string> optimizations_configs) {
   RewriterConfig rewriter_config;
   rewriter_config.add_optimizers(kOptimizerName);
@@ -72,13 +72,13 @@ RewriterConfig OptimizeDatasetOp::CreateConfig(
   auto* custom_optimizations_list =
       (*custom_optimizer->mutable_parameter_map())[kOptimizers].mutable_list();
   for (const auto& opt : optimizations) {
-    custom_optimizations_list->add_s(opt);
+    custom_optimizations_list->add_s(opt.data(), opt.size());
   }
   auto* config_list =
       (*custom_optimizer->mutable_parameter_map())[kOptimizerConfigs]
           .mutable_list();
   for (const auto& config : optimizations_configs) {
-    config_list->add_s(config);
+    config_list->add_s(config.data(), config.size());
   }
   return rewriter_config;
 }

@@ -26,20 +26,19 @@
 // op traits, arguments, results, and sections after the results are retained.
 // Besides, ops in this file must be separated via the '// -----' marker.
 
-#ifdef SPIRV_OPS
-#else
+#ifndef SPIRV_OPS
 #define SPIRV_OPS
 
-#ifdef SPIRV_BASE
-#else
 include "mlir/Dialect/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
-
-#ifdef SPIRV_STRUCTURE_OPS
-#else
+include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
+include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
+include "mlir/Dialect/SPIRV/SPIRVCastOps.td"
+include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
+include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
 // Pull in ops for defining the SPIR-V module structure
 include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
-#endif // SPIRV_STRUCTURE_OPS
+// Pull in ops for extended instruction set for GLSL
+include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
 
 // -----
 
@@ -98,6 +97,11 @@ def SPV_AccessChainOp : SPV_Op<"AccessChain", [NoSideEffect]> {
   let results = (outs
     SPV_AnyPtr:$component_ptr
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              Value *basePtr, ArrayRef<Value *> indices}]>];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----
@@ -142,72 +146,79 @@ def SPV_CompositeExtractOp : SPV_Op<"CompositeExtract", [NoSideEffect]> {
   let results = (outs
     SPV_Type:$component
   );
+
+  let hasFolder = 1;
 }
 
 // -----
 
-def SPV_EntryPointOp : SPV_Op<"EntryPoint", [ModuleOnly]> {
+def SPV_ControlBarrierOp : SPV_Op<"ControlBarrier", []> {
   let summary = [{
-    Declare an entry point, its execution model, and its interface.
+    Wait for other invocations of this module to reach the current point of
+    execution.
   }];
 
   let description = [{
-    Execution Model is the execution model for the entry point and its
-    static call tree. See Execution Model.
+    All invocations of this module within Execution scope must reach this
+    point of execution before any invocation will proceed beyond it.
 
-    Entry Point must be the Result <id> of an OpFunction instruction.
+    When Execution is Workgroup or larger, behavior is undefined if this
+    instruction is used in control flow that is non-uniform within
+    Execution. When Execution is Subgroup or Invocation, the behavior of
+    this instruction in non-uniform control flow is defined by the client
+    API.
 
-    Name is a name string for the entry point. A module cannot have two
-    OpEntryPoint instructions with the same Execution Model and the same
-    Name string.
+    If Semantics is not None, this instruction also serves as an
+    OpMemoryBarrier instruction, and must also perform and adhere to the
+    description and semantics of an OpMemoryBarrier instruction with the
+    same Memory and Semantics operands.  This allows atomically specifying
+    both a control barrier and a memory barrier (that is, without needing
+    two instructions). If Semantics is None, Memory is ignored.
 
-    Interface is a list of <id> of global OpVariable instructions. These
-    declare the set of global variables from a module that form the
-    interface of this entry point. The set of Interface <id> must be equal
-    to or a superset of the global OpVariable Result <id> referenced by the
-    entry point’s static call tree, within the interface’s storage classes.
-    Before version 1.4, the interface’s storage classes are limited to the
-    Input and Output storage classes. Starting with version 1.4, the
-    interface’s storage classes are all storage classes used in declaring
-    all global variables referenced by the entry point’s call tree.
+    Before version 1.3, it is only valid to use this instruction with
+    TessellationControl, GLCompute, or Kernel execution models. There is no
+    such restriction starting with version 1.3.
 
-    Interface <id> are forward references. Before version 1.4, duplication
-    of these <id> is tolerated. Starting with version 1.4, an <id> must not
-    appear more than once.
+    When used with the TessellationControl execution model, it also
+    implicitly synchronizes the Output Storage Class:  Writes to Output
+    variables performed by any invocation executed prior to a
+    OpControlBarrier will be visible to any other invocation after return
+    from that OpControlBarrier.
 
     ### Custom assembly form
 
     ``` {.ebnf}
-    execution-model ::= "Vertex" | "TesellationControl" |
-                        <and other SPIR-V execution models...>
+    scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
 
-    entry-point-op ::= ssa-id ` = spv.EntryPoint ` execution-model fn-name
-                       (ssa-use ( `, ` ssa-use)* ` : `
-                        pointer-type ( `, ` pointer-type)* )?
+    memory-semantics ::= `"None"` | `"Acquire"` | "Release"` | ...
+
+    control-barrier-op ::= `spv.ControlBarrier` scope, scope, memory-semantics
     ```
 
     For example:
 
     ```
-    spv.EntryPoint "GLCompute" @foo
-    spv.EntryPoint "Kernel" @foo, %1, %2 : !spv.ptr<f32, Input>, !spv.ptr<f32, Output>
+    spv.ControlBarrier "Workgroup", "Device", "Acquire|UniformMemory"
 
     ```
   }];
 
   let arguments = (ins
-    SPV_ExecutionModelAttr:$execution_model,
-    SymbolRefAttr:$fn,
-    Variadic<SPV_AnyPtr>:$interface
+    SPV_ScopeAttr:$execution_scope,
+    SPV_ScopeAttr:$memory_scope,
+    SPV_MemorySemanticsAttr:$memory_semantics
   );
 
   let results = (outs);
+
+  let verifier = [{ return verifyMemorySemantics(*this); }];
+
   let autogenSerialization = 0;
 }
 
 // -----
 
-def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
+def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [InModuleScope]> {
   let summary = "Declare an execution mode for an entry point.";
 
   let description = [{
@@ -239,9 +250,9 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$fn,
+    FlatSymbolRefAttr:$fn,
     SPV_ExecutionModeAttr:$execution_mode,
-    OptionalAttr<I32ArrayAttr>:$values
+    I32ArrayAttr:$values
   );
 
   let results = (outs);
@@ -249,303 +260,11 @@ def SPV_ExecutionModeOp : SPV_Op<"ExecutionMode", [ModuleOnly]> {
   let verifier = [{ return success(); }];
 
   let autogenSerialization = 0;
-}
 
-// -----
-
-def SPV_FAddOp : SPV_ArithmeticOp<"FAdd", SPV_Float, [Commutative]> {
-  let summary = "Floating-point addition of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fadd-op ::= ssa-id `=` `spv.FAdd` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.FAdd %0, %1 : f32
-    %5 = spv.FAdd %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FDivOp : SPV_ArithmeticOp<"FDiv", SPV_Float> {
-  let summary = "Floating-point division of Operand 1 divided by Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fdiv-op ::= ssa-id `=` `spv.FDiv` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FDiv %0, %1 : f32
-    %5 = spv.FDiv %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FModOp : SPV_ArithmeticOp<"FMod", SPV_Float> {
-  let summary = [{
-    The floating-point remainder whose sign matches the sign of Operand 2.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.  Otherwise, the result is the remainder r of Operand
-    1 divided by Operand 2 where if r ≠ 0, the sign of r is the same as the
-    sign of Operand 2.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fmod-op ::= ssa-id `=` `spv.FMod` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-    For example:
-
-    ```
-    %4 = spv.FMod %0, %1 : f32
-    %5 = spv.FMod %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FMulOp : SPV_ArithmeticOp<"FMul", SPV_Float, [Commutative]> {
-  let summary = "Floating-point multiplication of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fmul-op ::= `spv.FMul` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FMul %0, %1 : f32
-    %5 = spv.FMul %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FRemOp : SPV_ArithmeticOp<"FRem", SPV_Float> {
-  let summary = [{
-    The floating-point remainder whose sign matches the sign of Operand 1.
-  }];
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.  The resulting value is undefined
-    if Operand 2 is 0.  Otherwise, the result is the remainder r of Operand
-    1 divided by Operand 2 where if r ≠ 0, the sign of r is the same as the
-    sign of Operand 1.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    frem-op ::= ssa-id `=` `spv.FRemOp` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FRemOp %0, %1 : f32
-    %5 = spv.FRemOp %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_FSubOp : SPV_ArithmeticOp<"FSub", SPV_Float> {
-  let summary = "Floating-point subtraction of Operand 2 from Operand 1.";
-
-  let description = [{
-    Result Type must be a scalar or vector of floating-point type.
-
-     The types of Operand 1 and Operand 2 both must be the same as Result
-    Type.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    float-scalar-vector-type ::= float-type |
-                                 `vector<` integer-literal `x` float-type `>`
-    fsub-op ::= ssa-id `=` `spv.FRemOp` ssa-use, ssa-use
-                          `:` float-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.FRemOp %0, %1 : f32
-    %5 = spv.FRemOp %2, %3 : vector<4xf32>
-    ```
-  }];
-}
-
-// -----
-
-def SPV_IAddOp : SPV_ArithmeticOp<"IAdd", SPV_Integer, [Commutative]> {
-  let summary = "Integer addition of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-    The resulting value will equal the low-order N bits of the correct
-    result R, where N is the component width and R is computed with enough
-    precision to avoid overflow and underflow.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    iadd-op ::= ssa-id `=` `spv.IAdd` ssa-use, ssa-use
-                          `:` integer-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.IAdd %0, %1 : i32
-    %5 = spv.IAdd %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_IMulOp : SPV_ArithmeticOp<"IMul", SPV_Integer, [Commutative]> {
-  let summary = "Integer multiplication of Operand 1 and Operand 2.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-    The resulting value will equal the low-order N bits of the correct
-    result R, where N is the component width and R is computed with enough
-    precision to avoid overflow and underflow.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    imul-op ::= ssa-id `=` `spv.IMul` ssa-use, ssa-use
-                          `:` integer-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.IMul %0, %1 : i32
-    %5 = spv.IMul %2, %3 : vector<4xi32>
-
-    ```
-  }];
-}
-
-// -----
-
-def SPV_ISubOp : SPV_ArithmeticOp<"ISub", SPV_Integer> {
-  let summary = "Integer subtraction of Operand 2 from Operand 1.";
-
-  let description = [{
-    Result Type must be a scalar or vector of integer type.
-
-     The type of Operand 1 and Operand 2  must be a scalar or vector of
-    integer type.  They must have the same number of components as Result
-    Type. They must have the same component width as Result Type.
-
-    The resulting value will equal the low-order N bits of the correct
-    result R, where N is the component width and R is computed with enough
-    precision to avoid overflow and underflow.
-
-     Results are computed per component.
-
-    ### Custom assembly form
-    ``` {.ebnf}
-    integer-scalar-vector-type ::= integer-type |
-                                 `vector<` integer-literal `x` integer-type `>`
-    isub-op ::= `spv.ISub` ssa-use, ssa-use
-                          `:` integer-scalar-vector-type
-    ```
-
-    For example:
-
-    ```
-    %4 = spv.ISub %0, %1 : i32
-    %5 = spv.ISub %2, %3 : vector<4xi32>
-
-    ```
-  }];
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                              FuncOp function,
+                              spirv::ExecutionMode executionMode,
+                              ArrayRef<int32_t> params}]>];
 }
 
 // -----
@@ -594,31 +313,60 @@ def SPV_LoadOp : SPV_Op<"Load", []> {
   let results = (outs
     SPV_Type:$value
   );
+
+  let builders = [OpBuilder<[{Builder *builder, OperationState &state,
+                  Value *basePtr, /*optional*/IntegerAttr memory_access,
+                  /*optional*/IntegerAttr alignment}]>];
 }
 
 // -----
 
-def SPV_ReturnOp : SPV_Op<"Return", [Terminator]> {
-  let summary = "Return with no value from a function with void return type.";
+def SPV_MemoryBarrierOp : SPV_Op<"MemoryBarrier", []> {
+  let summary = "Control the order that memory accesses are observed.";
 
   let description = [{
-    This instruction must be the last instruction in a block.
+    Ensures that memory accesses issued before this instruction will be
+    observed before memory accesses issued after this instruction. This
+    control is ensured only for memory accesses issued by this invocation
+    and observed by another invocation executing within Memory scope. If the
+    Vulkan memory model is declared, this ordering only applies to memory
+    accesses that use the NonPrivatePointer memory operand or
+    NonPrivateTexel image operand.
+
+    Semantics declares what kind of memory is being controlled and what kind
+    of control to apply.
+
+    To execute both a memory barrier and a control barrier, see
+    OpControlBarrier.
 
     ### Custom assembly form
 
     ``` {.ebnf}
-    return-op ::= `spv.Return`
+    scope ::= `"CrossDevice"` | `"Device"` | `"Workgroup"` | ...
+
+    memory-semantics ::= `"None"` | `"Acquire"` | `"Release"` | ...
+
+    memory-barrier-op ::= `spv.MemoryBarrier` scope, memory-semantics
+    ```
+
+    For example:
+
+    ```
+    spv.MemoryBarrier "Device", "Acquire|UniformMemory"
+
     ```
   }];
 
-  let arguments = (ins);
+  let arguments = (ins
+    SPV_ScopeAttr:$memory_scope,
+    SPV_MemorySemanticsAttr:$memory_semantics
+  );
 
   let results = (outs);
 
-  let parser = [{ return parseNoIOOp(parser, result); }];
-  let printer = [{ printNoIOOp(getOperation(), p); }];
+  let verifier = [{ return verifyMemorySemantics(*this); }];
 
-  let verifier = [{ return verifyReturn(*this); }];
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -660,7 +408,54 @@ def SPV_StoreOp : SPV_Op<"Store", []> {
     OptionalAttr<I32Attr>:$alignment
   );
 
+  let builders = [
+    OpBuilder<"Builder *builder, OperationState &state, "
+      "Value *ptr, Value *value, ArrayRef<NamedAttribute> namedAttrs", [{
+      state.addOperands(ptr);
+      state.addOperands(value);
+      state.addAttributes(namedAttrs);
+    }]>
+  ];
+
   let results = (outs);
+}
+
+// -----
+
+def SPV_UndefOp : SPV_Op<"undef", []> {
+  let summary = "Make an intermediate object whose value is undefined.";
+
+  let description = [{
+    Result Type is the type of object to make.
+
+    Each consumption of Result <id> yields an arbitrary, possibly different
+    bit pattern or abstract value resulting in possibly different concrete,
+    abstract, or opaque values.
+
+    ### Custom assembly form
+
+    ``` {.ebnf}
+    undef-op ::= `spv.undef` `:` sprirv-type
+    ```
+
+    For example:
+
+    ```
+    %0 = spv.undef : f32
+    %1 = spv.undef : !spv.struct<!spv.array<4 x vector<4xi32>>>
+    ```
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs
+    SPV_Type:$result
+  );
+
+  let verifier = [{ return success(); }];
+
+  let hasOpcode = 0;
+  let autogenSerialization = 0;
 }
 
 // -----
@@ -690,11 +485,13 @@ def SPV_VariableOp : SPV_Op<"Variable", []> {
     ``` {.ebnf}
     variable-op ::= ssa-id `=` `spv.Variable` (`init(` ssa-use `)`)?
                     (`bind(` integer-literal, integer-literal `)`)?
+                    (`built_in(` string-literal `)`)?
                     attribute-dict? `:` spirv-pointer-type
     ```
 
-    where `init` specifies initializer and `bind` specifies the descriptor set
-    and binding number.
+    where `init` specifies initializer and `bind` specifies the
+    descriptor set and binding number. `built_in` specifies SPIR-V
+    BuiltIn decoration associated with the op.
 
     For example:
 
@@ -704,6 +501,7 @@ def SPV_VariableOp : SPV_Op<"Variable", []> {
     %1 = spv.Variable : !spv.ptr<f32, Function>
     %2 = spv.Variable init(%0): !spv.ptr<f32, Private>
     %3 = spv.Variable init(%0) bind(1, 2): !spv.ptr<f32, Uniform>
+    %3 = spv.Variable built_in("GlobalInvocationID") : !spv.ptr<vector<3xi32>, Uniform>
     ```
   }];
 

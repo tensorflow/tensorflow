@@ -25,62 +25,64 @@ using namespace mlir;
 // Module Operation.
 //===----------------------------------------------------------------------===//
 
-// Insert `module_terminator` at the end of the region's only block if it does
-// not have a terminator already. If the region is empty, insert a new block
-// first.
-static void ensureModuleTerminator(Region &region, Builder &builder,
-                                   Location loc) {
-  impl::ensureRegionTerminator<ModuleTerminatorOp>(region, builder, loc);
-}
-
-void ModuleOp::build(Builder *builder, OperationState *result) {
-  ensureModuleTerminator(*result->addRegion(), *builder, result->location);
+void ModuleOp::build(Builder *builder, OperationState &result,
+                     Optional<StringRef> name) {
+  ensureTerminator(*result.addRegion(), *builder, result.location);
+  if (name)
+    result.attributes.push_back(builder->getNamedAttr(
+        mlir::SymbolTable::getSymbolAttrName(), builder->getStringAttr(*name)));
 }
 
 /// Construct a module from the given context.
-ModuleOp ModuleOp::create(Location loc) {
+ModuleOp ModuleOp::create(Location loc, Optional<StringRef> name) {
   OperationState state(loc, "module");
   Builder builder(loc->getContext());
-  ModuleOp::build(&builder, &state);
+  ModuleOp::build(&builder, state, name);
   return llvm::cast<ModuleOp>(Operation::create(state));
 }
 
-ParseResult ModuleOp::parse(OpAsmParser *parser, OperationState *result) {
+ParseResult ModuleOp::parse(OpAsmParser &parser, OperationState &result) {
+  // If the name is present, parse it.
+  StringAttr nameAttr;
+  (void)parser.parseOptionalSymbolName(
+      nameAttr, mlir::SymbolTable::getSymbolAttrName(), result.attributes);
+
   // If module attributes are present, parse them.
-  if (succeeded(parser->parseOptionalKeyword("attributes")))
-    if (parser->parseOptionalAttributeDict(result->attributes))
-      return failure();
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
 
   // Parse the module body.
-  auto *body = result->addRegion();
-  if (parser->parseRegion(*body, llvm::None, llvm::None))
+  auto *body = result.addRegion();
+  if (parser.parseRegion(*body, llvm::None, llvm::None))
     return failure();
 
   // Ensure that this module has a valid terminator.
-  ensureModuleTerminator(*body, parser->getBuilder(), result->location);
+  ensureTerminator(*body, parser.getBuilder(), result.location);
   return success();
 }
 
-void ModuleOp::print(OpAsmPrinter *p) {
-  *p << "module";
+void ModuleOp::print(OpAsmPrinter &p) {
+  p << "module";
 
-  // Print the module attributes.
-  auto attrs = getAttrs();
-  if (!attrs.empty()) {
-    *p << " attributes";
-    p->printOptionalAttrDict(attrs, {});
+  if (Optional<StringRef> name = getName()) {
+    p << ' ';
+    p.printSymbolName(*name);
   }
 
+  // Print the module attributes.
+  p.printOptionalAttrDictWithKeyword(getAttrs(),
+                                     {mlir::SymbolTable::getSymbolAttrName()});
+
   // Print the region.
-  p->printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,
-                 /*printBlockTerminators=*/false);
+  p.printRegion(getOperation()->getRegion(0), /*printEntryBlockArgs=*/false,
+                /*printBlockTerminators=*/false);
 }
 
 LogicalResult ModuleOp::verify() {
   auto &bodyRegion = getOperation()->getRegion(0);
 
   // The body must contain a single basic block.
-  if (bodyRegion.empty() || std::next(bodyRegion.begin()) != bodyRegion.end())
+  if (!has_single_element(bodyRegion))
     return emitOpError("expected body region to have a single block");
 
   // Check that the body has no block arguments.
@@ -88,12 +90,14 @@ LogicalResult ModuleOp::verify() {
   if (body->getNumArguments() != 0)
     return emitOpError("expected body to have no arguments");
 
-  if (body->empty() || !isa<ModuleTerminatorOp>(body->back())) {
-    return emitOpError("expects region to end with '" +
-                       ModuleTerminatorOp::getOperationName() + "'")
-               .attachNote()
-           << "in custom textual format, the absence of terminator implies '"
-           << ModuleTerminatorOp::getOperationName() << "'";
+  // Check that none of the attributes are non-dialect attributes, except for
+  // the symbol name attribute.
+  for (auto attr : getOperation()->getAttrList().getAttrs()) {
+    if (!attr.first.strref().contains('.') &&
+        attr.first.strref() != mlir::SymbolTable::getSymbolAttrName())
+      return emitOpError(
+                 "can only contain dialect-specific attributes, found: '")
+             << attr.first << "'";
   }
 
   return success();
@@ -103,13 +107,9 @@ LogicalResult ModuleOp::verify() {
 Region &ModuleOp::getBodyRegion() { return getOperation()->getRegion(0); }
 Block *ModuleOp::getBody() { return &getBodyRegion().front(); }
 
-//===----------------------------------------------------------------------===//
-// Module Terminator Operation.
-//===----------------------------------------------------------------------===//
-
-LogicalResult ModuleTerminatorOp::verify() {
-  if (!isa_and_nonnull<ModuleOp>(getOperation()->getParentOp()))
-    return emitOpError() << "is expected to terminate a '"
-                         << ModuleOp::getOperationName() << "' operation";
-  return success();
+Optional<StringRef> ModuleOp::getName() {
+  if (auto nameAttr =
+          getAttrOfType<StringAttr>(mlir::SymbolTable::getSymbolAttrName()))
+    return nameAttr.getValue();
+  return llvm::None;
 }

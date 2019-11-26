@@ -37,10 +37,17 @@ namespace {
 // clang-format off
 constexpr char kShardDatasetOpName[] = "ShardDataset";
 constexpr char kShuffleDatasetOpName[] = "ShuffleDataset";
+constexpr char kShuffleDatasetV2OpName[] = "ShuffleDatasetV2";
 
-constexpr std::array<const char*, 4> kReaderDatasetOps = {
+constexpr char kNumWorkersAttrName[] = "num_workers";
+constexpr char kIndexAttrName[] = "index";
+constexpr char kAutoShardPolicyAttrName[] = "auto_shard_policy";
+
+constexpr std::array<const char*, 6> kReaderDatasetOps = {
     "FixedLengthRecordDataset",
     "FixedLengthRecordDatasetV2",
+    "RecordIODataset",
+    "SSTableDataset",
     "TextLineDataset",
     "TFRecordDataset"
 };
@@ -50,14 +57,17 @@ constexpr std::array<const char*, 2> kMultipleInputsDatasetOps = {
     "ZipDataset"
 };
 
-constexpr std::array<const char*, 23> kPassThroughOps = {
+constexpr std::array<const char*, 28> kPassThroughOps = {
     "_Retval",
+    "AssertNextDataset",
     "BatchDataset",
     "BatchDatasetV2",
     "ExperimentalMapAndBatchDataset",
+    "ExperimentalRebatchDataset",
     "PaddedBatchDataset",
     "PaddedBatchDatasetV2",
     "CacheDataset",
+    "CacheDatasetV2",
     "FilterDataset",
     "Identity",
     "MapAndBatchDataset",
@@ -67,13 +77,15 @@ constexpr std::array<const char*, 23> kPassThroughOps = {
     "ParallelMapDataset",
     "PrefetchDataset",
     "ReduceDataset",
+    "RebatchDataset",
     "RepeatDataset",
     "ShardDataset",
     "ShuffleAndRepeatDataset",
     "ShuffleDataset",
+    "ShuffleDatasetV2",
     "SkipDataset",
     "TakeDataset",
-    "WindowDataset"
+    "WindowDataset",
 };
 
 // TODO(frankchn): Process functions within kFuncDatasetOps as well.
@@ -95,7 +107,7 @@ constexpr std::array<const char*, 5> kUnshardableSourceDatasetOps = {
 // clang-format on
 
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
-                     GraphDef* output);
+                     AutoShardPolicy policy, GraphDef* output);
 
 template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
@@ -158,11 +170,10 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
     // and we need to shard the Const.
     // This is probably not a dataset, so we bail because we can't infer the
     // output types and shape.
-    LOG(WARNING)
-        << "Unable to shard this input. You may need to wrap "
-           "the inputs to your reader dataset in a TensorSliceDataset.";
-    LOG(WARNING) << "Input node is: " << add_after->DebugString();
-    return errors::NotFound("Cannot shard non-dataset node.");
+    return errors::NotFound(
+        "Unable to shard this input. You may need to wrap the inputs to your "
+        "reader dataset in a TensorSliceDataset. Input node is ",
+        add_after->DebugString());
   }
 
   // Add new node into graph and update edges
@@ -174,13 +185,13 @@ Status AddShardNode(MutableGraphView* graph, const NodeDef& add_before,
 }
 
 Status AddShuffleNode(MutableGraphView* graph, const NodeDef& add_before,
-                      const string& op_name, const string& buffer_size_node,
-                      const string& seed_node, const string& seed2_node,
-                      bool reshuffle_each_iteration) {
+                      const string& buffer_size_node, const string& seed_node,
+                      const string& seed2_node, bool reshuffle_each_iteration) {
   NodeDef* add_after = graph->GetNode(add_before.input(0));
   NodeDef new_node;
-  new_node.set_op(op_name);
-  graph_utils::SetUniqueGraphNodeName(op_name, graph->graph(), &new_node);
+  new_node.set_op(kShuffleDatasetOpName);
+  graph_utils::SetUniqueGraphNodeName(kShuffleDatasetOpName, graph->graph(),
+                                      &new_node);
 
   new_node.add_input(add_before.input(0));
   new_node.add_input(buffer_size_node);
@@ -193,6 +204,29 @@ Status AddShuffleNode(MutableGraphView* graph, const NodeDef& add_before,
   AttrValue reshuffle_attr;
   reshuffle_attr.set_b(reshuffle_each_iteration);
   (*new_node.mutable_attr())["reshuffle_each_iteration"] = reshuffle_attr;
+
+  NodeDef* new_node_graph = graph->AddNode(std::move(new_node));
+
+  TF_RETURN_IF_ERROR(
+      graph->UpdateFanouts(add_after->name(), new_node_graph->name()));
+  return Status::OK();
+}
+
+Status AddShuffleV2Node(MutableGraphView* graph, const NodeDef& add_before,
+                        const string& buffer_size_node,
+                        const string& seed_generator_node) {
+  NodeDef* add_after = graph->GetNode(add_before.input(0));
+  NodeDef new_node;
+  new_node.set_op(kShuffleDatasetV2OpName);
+  graph_utils::SetUniqueGraphNodeName(kShuffleDatasetV2OpName, graph->graph(),
+                                      &new_node);
+
+  new_node.add_input(add_before.input(0));
+  new_node.add_input(buffer_size_node);
+  new_node.add_input(seed_generator_node);
+
+  graph_utils::CopyAttribute("output_shapes", *add_after, &new_node);
+  graph_utils::CopyAttribute("output_types", *add_after, &new_node);
 
   NodeDef* new_node_graph = graph->AddNode(std::move(new_node));
 
@@ -244,6 +278,28 @@ Status RemoveShuffleDataset(MutableGraphView* graph, const NodeDef& node,
   return Status::OK();
 }
 
+Status RemoveShuffleDatasetV2(MutableGraphView* graph, const NodeDef& node,
+                              absl::flat_hash_set<string>* nodes_to_delete,
+                              string* op_name, string* buffer_size_node,
+                              string* seed_generator_node) {
+  if (node.op() == kShuffleDatasetV2OpName) {
+    *op_name = node.op();
+    *buffer_size_node = node.input(1);
+    *seed_generator_node = node.input(2);
+    TF_RETURN_IF_ERROR(graph->UpdateFanouts(node.name(), node.input(0)));
+    nodes_to_delete->insert(node.name());
+  }
+
+  for (const auto& fanin : graph->GetFanins(node, true)) {
+    TF_RETURN_IF_ERROR(
+        RemoveShuffleDatasetV2(graph, *fanin.node, nodes_to_delete, op_name,
+                               buffer_size_node, seed_generator_node));
+  }
+
+  // TODO(frankchn): Traverse functions too.
+  return Status::OK();
+}
+
 Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
                                 absl::flat_hash_set<string>* nodes_to_delete,
                                 int64 num_workers, int64 index) {
@@ -251,17 +307,25 @@ Status ProcessDatasetSourceNode(MutableGraphView* graph, const NodeDef& node,
   string buffer_size_node = "";
   string seed_node = "";
   string seed2_node = "";
+  string seed_generator_node = "";
   bool reshuffle_each_iteration;
 
   TF_RETURN_IF_ERROR(AddShardNode(graph, node, num_workers, index));
   TF_RETURN_IF_ERROR(RemoveShuffleDataset(
       graph, node, nodes_to_delete, &shuffle_op_name, &buffer_size_node,
       &seed_node, &seed2_node, &reshuffle_each_iteration));
+  if (shuffle_op_name.empty()) {
+    TF_RETURN_IF_ERROR(
+        RemoveShuffleDatasetV2(graph, node, nodes_to_delete, &shuffle_op_name,
+                               &buffer_size_node, &seed_generator_node));
+  }
 
-  if (!shuffle_op_name.empty()) {
-    TF_RETURN_IF_ERROR(AddShuffleNode(graph, node, shuffle_op_name,
-                                      buffer_size_node, seed_node, seed2_node,
-                                      reshuffle_each_iteration));
+  if (shuffle_op_name == kShuffleDatasetOpName) {
+    TF_RETURN_IF_ERROR(AddShuffleNode(graph, node, buffer_size_node, seed_node,
+                                      seed2_node, reshuffle_each_iteration));
+  } else if (shuffle_op_name == kShuffleDatasetV2OpName) {
+    TF_RETURN_IF_ERROR(
+        AddShuffleV2Node(graph, node, buffer_size_node, seed_generator_node));
   }
 
   return Status::OK();
@@ -308,7 +372,13 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
   if (!IsDatasetNodeOfType(node, kPassThroughOps)) {
     return errors::NotFound(
         "Did not find a shardable source, walked to ",
-        "a node which is not a dataset: ", node.DebugString());
+        "a node which is not a dataset: ", node.DebugString(),
+        ". Consider either turning off auto-sharding or switching the "
+        "auto_shard_policy to DATA to shard this dataset. You can do this by "
+        "creating a new `tf.data.Options()` object then setting "
+        "`options.experimental_distribute.auto_shard_policy = "
+        "AutoShardPolicy.DATA` before applying the options object to the "
+        "dataset via `dataset.with_options(options)`.");
   }
 
   const NodeDef* input_node = graph_utils::GetInputNode(node, *graph, 0);
@@ -317,8 +387,8 @@ Status RecursivelyHandleOp(const NodeDef& node, int64 num_workers, int64 index,
 }
 
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
-                     GraphDef* output) {
-  if (num_workers == 1 && index == 0) {
+                     AutoShardPolicy policy, GraphDef* output) {
+  if (policy == AutoShardPolicy::OFF || (num_workers == 1 && index == 0)) {
     return Status::OK();
   }
 
@@ -329,29 +399,47 @@ Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
   NodeDef target_node;
   absl::flat_hash_set<string> nodes_to_delete;
 
+  NodeDef* sink_node;
+  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
+
   // The basic approach here is to walk the graph from sink to source, and find
   // the latest occurrence of a ReaderDataset (e.g. CSVDataset, TFRecordDataset,
   // etc...). We then add a shard after that dataset to shard the outputs of
   // that dataset, in effect giving a piece to each worker. Finally, we remove
   // occurences from randomness from before that point in the graph (e.g. things
   // like ShuffleDataset) to ensure that `shard` returns a sensible result.
-  NodeDef* sink_node;
-  TF_RETURN_IF_ERROR(graph_utils::GetFetchNode(graph, item, &sink_node));
-  Status s = RecursivelyHandleOp(*sink_node, num_workers, index, &flib, &graph,
-                                 &nodes_to_delete);
+  switch (policy) {
+    case AutoShardPolicy::OFF:
+      return Status::OK();
 
-  if (!s.ok() && errors::IsNotFound(s)) {
-    LOG(WARNING) << "Cannot find shardable dataset, adding a shard node at "
-                 << "the end of the dataset instead. This may have performance "
-                 << "implications.";
-    TF_RETURN_IF_ERROR(AddShardNode(&graph, *sink_node, num_workers, index));
-  } else if (!s.ok()) {
-    return s;
+    case AutoShardPolicy::FILE:
+      TF_RETURN_IF_ERROR(RecursivelyHandleOp(*sink_node, num_workers, index,
+                                             &flib, &graph, &nodes_to_delete));
+      return graph.DeleteNodes(nodes_to_delete);
+      break;
+
+    case AutoShardPolicy::DATA:
+      return AddShardNode(&graph, *sink_node, num_workers, index);
+      break;
+
+    case AutoShardPolicy::AUTO:
+    default:
+      Status s = RecursivelyHandleOp(*sink_node, num_workers, index, &flib,
+                                     &graph, &nodes_to_delete);
+      if (!s.ok() && errors::IsNotFound(s)) {
+        LOG(WARNING) << "In AUTO-mode, and switching to DATA-based sharding, "
+                        "instead of FILE-based sharding as we cannot find "
+                        "appropriate reader dataset op(s) to shard. Error: "
+                     << s.error_message();
+        TF_RETURN_IF_ERROR(
+            AddShardNode(&graph, *sink_node, num_workers, index));
+      } else if (!s.ok()) {
+        return s;
+      }
+
+      return graph.DeleteNodes(nodes_to_delete);
+      break;
   }
-
-  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
-
-  return Status::OK();
 }
 
 }  // anonymous namespace
@@ -360,27 +448,36 @@ Status AutoShard::Init(
     const tensorflow::RewriterConfig_CustomGraphOptimizer* config) {
   if (!config) return errors::InvalidArgument("RewriterConfig not found.");
 
-  if ((config->parameter_map().find("num_workers") ==
+  if ((config->parameter_map().find(kNumWorkersAttrName) ==
        config->parameter_map().end())) {
-    return errors::InvalidArgument("num_workers parameter missing.");
+    return errors::InvalidArgument(kNumWorkersAttrName, " parameter missing.");
   }
 
-  if ((config->parameter_map().find("index") ==
+  if ((config->parameter_map().find(kIndexAttrName) ==
        config->parameter_map().end())) {
-    return errors::InvalidArgument("index parameter missing.");
+    return errors::InvalidArgument(kIndexAttrName, " parameter missing.");
   }
 
-  num_workers_ = config->parameter_map().at("num_workers").i();
-  index_ = config->parameter_map().at("index").i();
+  num_workers_ = config->parameter_map().at(kNumWorkersAttrName).i();
+  index_ = config->parameter_map().at(kIndexAttrName).i();
+  auto_shard_policy_ =
+      AutoShardPolicy(config->parameter_map().at(kAutoShardPolicyAttrName).i());
+
+  if (auto_shard_policy_ != AutoShardPolicy::OFF &&
+      auto_shard_policy_ != AutoShardPolicy::AUTO &&
+      auto_shard_policy_ != AutoShardPolicy::DATA &&
+      auto_shard_policy_ != AutoShardPolicy::FILE) {
+    return errors::InvalidArgument(kAutoShardPolicyAttrName, " is invalid.");
+  }
 
   if (num_workers_ < 1) {
-    return errors::InvalidArgument("num_workers should be >= 1, currently ",
-                                   num_workers_);
+    return errors::InvalidArgument(kNumWorkersAttrName,
+                                   " should be >= 1, currently ", num_workers_);
   }
 
   if (index_ < 0 || index_ >= num_workers_) {
-    return errors::InvalidArgument("index should be >= 0 and < ", num_workers_,
-                                   ", currently ", index_);
+    return errors::InvalidArgument(kIndexAttrName, " should be >= 0 and < ",
+                                   num_workers_, ", currently ", index_);
   }
 
   return Status::OK();
@@ -391,7 +488,8 @@ Status AutoShard::OptimizeAndCollectStats(Cluster* /* cluster */,
                                           GraphDef* output,
                                           OptimizationStats* stats) {
   *output = item.graph;
-  TF_RETURN_IF_ERROR(OptimizeGraph(item, num_workers_, index_, output));
+  TF_RETURN_IF_ERROR(
+      OptimizeGraph(item, num_workers_, index_, auto_shard_policy_, output));
   stats->num_changes++;
   return Status::OK();
 }

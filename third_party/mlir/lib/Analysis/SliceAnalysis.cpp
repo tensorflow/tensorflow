@@ -20,12 +20,13 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/Analysis/SliceAnalysis.h"
-#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/VectorAnalysis.h"
+#include "mlir/Dialect/AffineOps/AffineOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Support/Functional.h"
+#include "mlir/Support/LLVM.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 
@@ -35,7 +36,6 @@
 
 using namespace mlir;
 
-using llvm::DenseSet;
 using llvm::SetVector;
 
 static void getForwardSliceImpl(Operation *op,
@@ -117,7 +117,7 @@ static void getBackwardSliceImpl(Operation *op,
           getBackwardSliceImpl(loopOp, backwardSlice, filter);
       } else if (blockArg->getOwner() !=
                  &op->getParentOfType<FuncOp>().getBody().front()) {
-        op->emitError("Unsupported CF for operand ") << en.index();
+        op->emitError("unsupported CF for operand ") << en.index();
         llvm_unreachable("Unsupported control flow");
       }
       continue;

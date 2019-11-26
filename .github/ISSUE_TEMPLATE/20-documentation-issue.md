@@ -44,6 +44,9 @@ https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/feature_column/categ
 
 Is there a usage example?
 
+See the API guide: https://www.tensorflow.org/community/contribute/docs_ref
+on how to write testable usage examples.
+
 ### Request visuals, if applicable
 
 Are there currently visuals? If not, will it clarify the content?
@@ -51,5 +54,6 @@ Are there currently visuals? If not, will it clarify the content?
 ### Submit a pull request?
 
 Are you planning to also submit a pull request to fix the issue? See the docs
-contributor guide: https://www.tensorflow.org/community/contribute/docs and the
+contributor guide: https://www.tensorflow.org/community/contribute/docs,
+docs API guide: https://www.tensorflow.org/community/contribute/docs_ref and the
 docs style guide: https://www.tensorflow.org/community/contribute/docs_style

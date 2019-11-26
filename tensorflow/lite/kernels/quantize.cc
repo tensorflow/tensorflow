@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -23,6 +23,12 @@ namespace tflite {
 namespace ops {
 namespace builtin {
 namespace quantize {
+
+// This file has two implementation of Quantize.
+enum KernelType {
+  kReference,
+  kGenericOptimized,
+};
 
 struct OpData {
   int32_t output_multiplier;
@@ -87,6 +93,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                TfLiteIntArrayCopy(op_context.input->dims));
 }
 
+template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
@@ -100,17 +107,35 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       op_params.zero_point = output->params.zero_point;
       op_params.scale = output->params.scale;
       if (output->type == kTfLiteInt8) {
-        optimized_ops::AffineQuantize(
-            op_params, GetTensorShape(input), GetTensorData<float>(input),
-            GetTensorShape(output), GetTensorData<int8_t>(output));
+        if (kernel_type == kReference) {
+          reference_ops::AffineQuantize(
+              op_params, GetTensorShape(input), GetTensorData<float>(input),
+              GetTensorShape(output), GetTensorData<int8_t>(output));
+        } else {
+          optimized_ops::AffineQuantize(
+              op_params, GetTensorShape(input), GetTensorData<float>(input),
+              GetTensorShape(output), GetTensorData<int8_t>(output));
+        }
       } else if (output->type == kTfLiteUInt8) {
-        optimized_ops::AffineQuantize(
-            op_params, GetTensorShape(input), GetTensorData<float>(input),
-            GetTensorShape(output), GetTensorData<uint8_t>(output));
+        if (kernel_type == kReference) {
+          reference_ops::AffineQuantize(
+              op_params, GetTensorShape(input), GetTensorData<float>(input),
+              GetTensorShape(output), GetTensorData<uint8_t>(output));
+        } else {
+          optimized_ops::AffineQuantize(
+              op_params, GetTensorShape(input), GetTensorData<float>(input),
+              GetTensorShape(output), GetTensorData<uint8_t>(output));
+        }
       } else if (output->type == kTfLiteInt16) {
-        optimized_ops::AffineQuantize(
-            op_params, GetTensorShape(input), GetTensorData<float>(input),
-            GetTensorShape(output), GetTensorData<int16_t>(output));
+        if (kernel_type == kReference) {
+          reference_ops::AffineQuantize(
+              op_params, GetTensorShape(input), GetTensorData<float>(input),
+              GetTensorShape(output), GetTensorData<int16_t>(output));
+        } else {
+          optimized_ops::AffineQuantize(
+              op_params, GetTensorShape(input), GetTensorData<float>(input),
+              GetTensorShape(output), GetTensorData<int16_t>(output));
+        }
       } else {
         context->ReportError(
             context,
@@ -124,15 +149,29 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       const int32_t size =
           MatchingFlatSize(GetTensorShape(input), GetTensorShape(output));
       if (output->type == kTfLiteInt8) {
-        optimized_ops::Requantize<int8_t, int8_t>(
-            GetTensorData<int8_t>(input), size, data->output_multiplier,
-            data->output_shift, input->params.zero_point,
-            output->params.zero_point, GetTensorData<int8_t>(output));
+        if (kernel_type == kReference) {
+          reference_ops::Requantize<int8_t, int8_t>(
+              GetTensorData<int8_t>(input), size, data->output_multiplier,
+              data->output_shift, input->params.zero_point,
+              output->params.zero_point, GetTensorData<int8_t>(output));
+        } else {
+          optimized_ops::Requantize<int8_t, int8_t>(
+              GetTensorData<int8_t>(input), size, data->output_multiplier,
+              data->output_shift, input->params.zero_point,
+              output->params.zero_point, GetTensorData<int8_t>(output));
+        }
       } else if (output->type == kTfLiteUInt8) {
-        optimized_ops::Requantize<int8_t, uint8_t>(
-            GetTensorData<int8_t>(input), size, data->output_multiplier,
-            data->output_shift, input->params.zero_point,
-            output->params.zero_point, GetTensorData<uint8_t>(output));
+        if (kernel_type == kReference) {
+          reference_ops::Requantize<int8_t, uint8_t>(
+              GetTensorData<int8_t>(input), size, data->output_multiplier,
+              data->output_shift, input->params.zero_point,
+              output->params.zero_point, GetTensorData<uint8_t>(output));
+        } else {
+          optimized_ops::Requantize<int8_t, uint8_t>(
+              GetTensorData<int8_t>(input), size, data->output_multiplier,
+              data->output_shift, input->params.zero_point,
+              output->params.zero_point, GetTensorData<uint8_t>(output));
+        }
       } else {
         context->ReportError(
             context,
@@ -185,11 +224,25 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 // scale and zero point.
 TfLiteRegistration* Register_QUANTIZE_OPT() {
   static TfLiteRegistration r = {quantize::Init, quantize::Free,
-                                 quantize::Prepare, quantize::Eval};
+                                 quantize::Prepare,
+                                 quantize::Eval<quantize::kGenericOptimized>};
   return &r;
 }
 
-TfLiteRegistration* Register_QUANTIZE() { return Register_QUANTIZE_OPT(); }
+TfLiteRegistration* Register_QUANTIZE_REF() {
+  static TfLiteRegistration r = {quantize::Init, quantize::Free,
+                                 quantize::Prepare,
+                                 quantize::Eval<quantize::kReference>};
+  return &r;
+}
+
+TfLiteRegistration* Register_QUANTIZE() {
+#ifdef USE_NEON
+  return Register_QUANTIZE_OPT();
+#else
+  return Register_QUANTIZE_REF();
+#endif
+}
 
 }  // namespace builtin
 }  // namespace ops

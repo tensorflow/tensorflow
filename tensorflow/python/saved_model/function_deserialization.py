@@ -29,6 +29,7 @@ from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
@@ -60,9 +61,11 @@ def _call_concrete_function(function, inputs):
     The structured function output.
   """
   expected_structure = function.graph.structured_input_signature
-  flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
+  flatten_inputs = nest.flatten_up_to(
+      expected_structure, inputs, expand_composites=True)
+  flatten_expected = nest.flatten(expected_structure, expand_composites=True)
   tensor_inputs = []
-  for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
+  for arg, expected in zip(flatten_inputs, flatten_expected):
     if isinstance(expected, tensor_spec.TensorSpec):
       tensor_inputs.append(
           ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
@@ -111,9 +114,11 @@ def _concrete_function_callable_with(function, inputs, allow_conversion):
         return False
       if not expected.shape.is_compatible_with(arg.shape):
         return False
-    else:
-      if arg != expected:
-        return False
+    elif isinstance(expected, type_spec.TypeSpec):
+      return expected.is_compatible_with(arg)
+    elif (_is_tensor(arg) and
+          id(arg) != id(expected)) or (not _is_tensor(arg) and arg != expected):
+      return False
   return True
 
 
@@ -281,7 +286,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   Args:
     library: FunctionDefLibrary proto message.
     load_shared_name_suffix: If specified, used to uniquify shared
-      names. Otherwise a unique name is generated.
+      names. Otherwise, a unique name is generated.
 
   Returns:
     Map of original function names in the library to instances of
@@ -292,6 +297,7 @@ def load_function_def_library(library, load_shared_name_suffix=None):
   """
   library_function_names = set(fdef.signature.name for fdef in library.function)
   functions = {}
+  renamed_functions = {}
 
   if load_shared_name_suffix is None:
     load_shared_name_suffix = "_load_{}".format(ops.uid())
@@ -303,8 +309,8 @@ def load_function_def_library(library, load_shared_name_suffix=None):
     # extra function definitions are a no-op since they already imported as a
     # function before and passed in explicitly (due to the topologic sort
     # import).
-    func_graph = function_def_lib.function_def_to_graph(
-        copy, copy_functions=False)
+    func_graph = function_def_lib.function_def_to_graph(copy)
+    _restore_gradient_functions(func_graph, renamed_functions)
 
     for dep in _list_function_deps(fdef, library_function_names):
       functions[dep].add_to_graph(func_graph)
@@ -314,12 +320,21 @@ def load_function_def_library(library, load_shared_name_suffix=None):
       func.add_to_graph(ops.get_default_graph())
 
     functions[fdef.signature.name] = func
-
-    # Also register the gradients in the current root context.
-    with ops.init_scope():
-      func._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
+    renamed_functions[func.name] = func
 
   return functions
+
+
+def _restore_gradient_functions(func_graph, renamed_functions):
+  """Populate function op's _gradient_function with default gradient."""
+  for op in func_graph.get_operations():
+    # TODO(andresp): This code assumes that the gradient registered for this
+    # function call is the default gradient for the function and not a custom
+    # one.
+    if op.type in ["StatefulPartitionedCall", "PartitionedCall"]:
+      function = renamed_functions[compat.as_bytes(
+          op.node_def.attr["f"].func.name)]
+      op._gradient_function = function._get_gradient_function()  # pylint: disable=protected-access
 
 
 def _sort_function_defs(library, library_function_names):
@@ -357,18 +372,11 @@ def _sort_function_defs(library, library_function_names):
 
 def fix_node_def(node_def, functions, shared_name_suffix, debug_name):
   """Replace functions calls and shared names in `node_def`."""
-  if "_gradient_op_type" in node_def.attr:
-    if node_def.op in ["StatefulPartitionedCall", "PartitionedCall"]:
-      # TODO(andresp): This code assumes that the gradient registered for this
-      # function call is the default gradient for the function and not a
-      # custom one.
-      fname = node_def.attr["f"].func.name
-      gradient_name = functions[fname]._register_delayed_rewrite_gradient()  # pylint: disable=protected-access
-      node_def.attr["_gradient_op_type"].s = compat.as_bytes(gradient_name)
-    else:
-      logging.warning("Importing a function (%s) with ops with custom "
-                      "gradients. Will likely fail if a gradient is "
-                      "requested.", debug_name)
+  if ("_gradient_op_type" in node_def.attr and
+      node_def.op not in ["StatefulPartitionedCall", "PartitionedCall"]):
+    logging.warning(
+        "Importing a function (%s) with ops with custom gradients. Will likely "
+        "fail if a gradient is requested.", debug_name)
   if node_def.op in functions:
     node_def.op = functions[node_def.op].name
   for _, attr_value in node_def.attr.items():

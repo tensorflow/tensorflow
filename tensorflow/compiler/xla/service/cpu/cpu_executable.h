@@ -55,14 +55,10 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<ScopedShapedBuffer> ExecuteOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
-
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -86,16 +82,6 @@ class CpuExecutable : public Executable {
   const BufferAssignment& buffer_assignment() const { return *assignment_; }
 
  private:
-  // This is for sharing the code between ExecuteOnStream and
-  // ExecuteAsyncOnStream.
-  //
-  // Notice that it's tricky to use correctly, as the profile object (when it
-  // exists) must out-live the task.
-  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamImpl(
-      const ServiceExecutableRunOptions* run_options,
-      absl::Span<const ShapedBuffer* const> arguments,
-      HloExecutionProfile* hlo_execution_profile);
-
   // Creates an array suitable for passing as the "buffer_table" argument to the
   // JIT compiled function pointer.
   //

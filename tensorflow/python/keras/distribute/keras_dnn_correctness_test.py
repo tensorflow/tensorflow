@@ -158,8 +158,6 @@ class TestDistributionStrategyDnnMetricCorrectness(
                                   experimental_run_tf_function):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution,
-                                               experimental_run_tf_function)
 
       x_train, y_train, _ = self.get_data()
       model = self.get_model(
@@ -207,8 +205,6 @@ class TestDistributionStrategyDnnMetricEvalCorrectness(
                                         experimental_run_tf_function):
     with self.cached_session():
       self.set_up_test_config()
-      self.skip_unsupported_test_configuration(distribution,
-                                               experimental_run_tf_function)
 
       model = self.get_model(
           experimental_run_tf_function, distribution=distribution)

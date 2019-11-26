@@ -93,24 +93,13 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(i + 1, &resource));
 
-      arg.initialized = resource->initialized();
-      arg.kind = XlaCompiler::Argument::kResource;
-      arg.resource_kind = resource->kind();
-
-      arg.type = resource->type();
-      arg.shape = resource->shape();
+      XlaCompiler::PopulateArgumentFromResource(*resource, &arg);
       OP_REQUIRES(ctx, arg.initialized,
                   errors::Unimplemented("Uninitialized arguments: ", arg.name));
-      arg.max_array_size = resource->max_array_size();
-      for (const auto& gradient : resource->tensor_array_gradients()) {
-        arg.tensor_array_gradients.insert(gradient.first);
-      }
-      arg.name = resource->name();
       VLOG(2) << "Resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
               << " shape: " << arg.HumanString()
               << " initialized: " << arg.initialized;
-
       num_resource_args++;
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
@@ -142,7 +131,6 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
   // Compile both branches of the conditional.
   XlaCompiler::CompileOptions options;
   options.use_tuple_arg = true;
-  options.resolve_compile_time_constants = false;
   options.return_updated_values_for_all_resources = true;
   options.is_entry_computation = false;
   options.add_token_input_output = has_token_input_output_;
@@ -220,6 +208,22 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
           xla::ShapeUtil::HumanString(then_result.xla_output_shape), " vs. ",
           xla::ShapeUtil::HumanString(else_result.xla_output_shape)));
 
+  // Check that both branches have same TensorList output indices.
+  for (int output_index = 0; output_index < then_result.outputs.size();
+       output_index++) {
+    bool is_tensor_list_in_then_branch =
+        then_result.outputs[output_index].is_tensor_list;
+    bool is_tensor_list_in_else_branch =
+        else_result.outputs[output_index].is_tensor_list;
+    OP_REQUIRES(
+        ctx, is_tensor_list_in_then_branch == is_tensor_list_in_else_branch,
+        errors::FailedPrecondition("Output #", output_index, " is ",
+                                   (is_tensor_list_in_then_branch ? "" : "not"),
+                                   " a TensorList in then branch, but is ",
+                                   (is_tensor_list_in_else_branch ? "" : "not"),
+                                   " a TensorList in else branch"));
+  }
+
   VLOG(2) << "Input shape: " << xla::ShapeUtil::HumanString(then_input_shape);
   VLOG(2) << "Output shape: "
           << xla::ShapeUtil::HumanString(then_result.xla_output_shape);
@@ -282,7 +286,12 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
         LOG(INFO) << "Shape unknown for output " << i;
       }
     }
-    ctx->SetOutput(i, output_handle);
+    // We have checked that both branches have same TensorList output indices.
+    if (then_result.outputs[i].is_tensor_list) {
+      ctx->SetTensorListOutput(i, output_handle);
+    } else {
+      ctx->SetOutput(i, output_handle);
+    }
   }
   if (has_token_input_output_) {
     // Set token output for this "If" op. Token output is the last output of

@@ -178,6 +178,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kTriangularSolve:
     case HloOpcode::kWhile:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
       return true;
   }
 
@@ -468,8 +469,10 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
   module_ = module;
   int64 fuse_count = 0;
   std::vector<std::vector<bool>>* fusion_config = nullptr;
+  HloModuleConfig module_config;
   if (config_collection_mode_ != FusionConfigCollection::kOff) {
-    fusion_config = module->mutable_fusion_config();
+    module_config = module->config();
+    fusion_config = module_config.mutable_fusion_config();
     fusion_config->clear();
   }
 
@@ -568,7 +571,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     if (config_collection_mode_ != FusionConfigCollection::kOff) {
       const std::vector<bool>* comp_fusion_config =
           fusion_queue->FusionConfiguration();
-      if (comp_fusion_config && comp_fusion_config->size() > 0) {
+      if (comp_fusion_config && !comp_fusion_config->empty()) {
         fusion_config->push_back(*comp_fusion_config);
       }
     }
@@ -586,6 +589,7 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
     VLOG(1) << "There are " << fused_count << " fused bits that cause "
             << fuse_count << " fusion actions.";
     VLOG(1) << FusionConfigToString(*fusion_config);
+    module->set_config(module_config);
   }
   VLOG(1) << "Fusion count: " << fuse_count;
 
@@ -615,6 +619,9 @@ HloInstruction* InstructionFusion::Fuse(HloInstruction* producer,
           << consumer->ToString();
   HloInstruction* fusion_instruction = AddFusionInstruction(producer, consumer);
   fusion_instruction->FuseInstruction(producer);
+  if (fusion_instruction != producer && fusion_instruction != consumer) {
+    VLOG(2) << "       created new fusion: " << fusion_instruction->ToString();
+  }
   return fusion_instruction;
 }
 

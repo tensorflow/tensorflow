@@ -143,7 +143,11 @@ class PrintV2Op : public OpKernel {
   void Compute(OpKernelContext* ctx) override {
     const Tensor* input_;
     OP_REQUIRES_OK(ctx, ctx->input("input", &input_));
-    const string& msg = input_->scalar<string>()();
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(input_->shape()),
+        errors::InvalidArgument("Input is expected to be scalar, but got ",
+                                input_->shape()));
+    const string& msg = input_->scalar<tstring>()();
 
     string ended_msg = strings::StrCat(msg, end_);
 

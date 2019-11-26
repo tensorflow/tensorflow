@@ -33,12 +33,12 @@ class LLVMTypeConverter;
 struct LogicalResult;
 class MLIRContext;
 class ModuleOp;
-class ModulePassBase;
+template <typename T> class OpPassBase;
 class RewritePattern;
 class Type;
 
 // Owning list of rewriting patterns.
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList;
 
 /// Type for a callback constructing the owning list of patterns for the
 /// conversion to the LLVMIR dialect.  The callback is expected to append
@@ -57,24 +57,24 @@ void populateStdToLLVMConversionPatterns(LLVMTypeConverter &converter,
                                          OwningRewritePatternList &patterns);
 
 /// Creates a pass to convert the Standard dialect into the LLVMIR dialect.
-ModulePassBase *createConvertToLLVMIRPass();
+std::unique_ptr<OpPassBase<ModuleOp>> createLowerToLLVMPass();
 
 /// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
 /// is defined by a list of patterns and a type converter that will be obtained
 /// during the pass using the provided callbacks.
-ModulePassBase *
-createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller,
-                          LLVMTypeConverterMaker typeConverterMaker);
+std::unique_ptr<OpPassBase<ModuleOp>>
+createLowerToLLVMPass(LLVMPatternListFiller patternListFiller,
+                      LLVMTypeConverterMaker typeConverterMaker);
 
 /// Creates a pass to convert operations to the LLVMIR dialect.  The conversion
 /// is defined by a list of patterns obtained during the pass using the provided
 /// callback and an optional type conversion class, an instance is created
 /// during the pass.
 template <typename TypeConverter = LLVMTypeConverter>
-ModulePassBase *
-createConvertToLLVMIRPass(LLVMPatternListFiller patternListFiller) {
-  return createConvertToLLVMIRPass(patternListFiller, [](MLIRContext *context) {
-    return llvm::make_unique<TypeConverter>(context);
+std::unique_ptr<OpPassBase<ModuleOp>>
+createLowerToLLVMPass(LLVMPatternListFiller patternListFiller) {
+  return createLowerToLLVMPass(patternListFiller, [](MLIRContext *context) {
+    return std::make_unique<TypeConverter>(context);
   });
 }
 

@@ -158,28 +158,34 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
       super(LinearOperatorDiag, self).__init__(
           dtype=self._diag.dtype,
-          graph_parents=[self._diag],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      # TODO(b/143910018) Remove graph_parents in V3.
+      self._set_graph_parents([self._diag])
 
   def _check_diag(self, diag):
     """Static check of diag."""
-    if diag.get_shape().ndims is not None and diag.get_shape().ndims < 1:
+    if diag.shape.ndims is not None and diag.shape.ndims < 1:
       raise ValueError("Argument diag must have at least 1 dimension.  "
                        "Found: %s" % diag)
 
   def _shape(self):
     # If d_shape = [5, 3], we return [5, 3, 3].
-    d_shape = self._diag.get_shape()
+    d_shape = self._diag.shape
     return d_shape.concatenate(d_shape[-1:])
 
   def _shape_tensor(self):
     d_shape = array_ops.shape(self._diag)
     k = d_shape[-1]
     return array_ops.concat((d_shape, [k]), 0)
+
+  @property
+  def diag(self):
+    return self._diag
 
   def _assert_non_singular(self):
     return linear_operator_util.assert_no_entries_with_modulus_zero(
@@ -244,6 +250,10 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
     new_diag = self._diag + x_diag
     return array_ops.matrix_set_diag(x, new_diag)
 
-  @property
-  def diag(self):
-    return self._diag
+  def _eigvals(self):
+    return ops.convert_to_tensor(self.diag)
+
+  def _cond(self):
+    abs_diag = math_ops.abs(self.diag)
+    return (math_ops.reduce_max(abs_diag, axis=-1) /
+            math_ops.reduce_min(abs_diag, axis=-1))

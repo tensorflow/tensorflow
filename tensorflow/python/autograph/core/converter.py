@@ -262,13 +262,15 @@ class EntityContext(transformer.Context):
   Attributes:
     namer: Namer
     info: transformer.EntityInfo
-    program: ProgramContext
+    program: ProgramContext,
+    targe_name: Text
   """
 
-  def __init__(self, namer, entity_info, program_ctx):
+  def __init__(self, namer, entity_info, program_ctx, target_name=None):
     super(EntityContext, self).__init__(entity_info)
     self.namer = namer
     self.program = program_ctx
+    self.target_name = target_name
 
 
 class Base(transformer.Base):

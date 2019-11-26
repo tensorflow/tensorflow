@@ -24,7 +24,6 @@ load(
     "feature_set",
     "flag_group",
     "flag_set",
-    "make_variable",
     "tool",
     "tool_path",
     "variable_with_value",

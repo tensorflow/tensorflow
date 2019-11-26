@@ -21,6 +21,7 @@ limitations under the License.
 #include <memory>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include "absl/types/optional.h"
@@ -174,7 +175,9 @@ enum class OperatorType : uint8 {
   kMatrixDiag,
   kMatrixSetDiag,
   kMatrixDiagV2,
-  kMatrixSetDiagV2
+  kMatrixSetDiagV2,
+  kMatrixDiagV3,
+  kMatrixSetDiagV3
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -553,6 +556,10 @@ struct FullyConnectedOperator : Operator {
   FullyConnectedOperator() : Operator(OperatorType::kFullyConnected) {}
   FullyConnectedWeightsFormat weights_format =
       FullyConnectedWeightsFormat::kDefault;
+
+  // `keep_num_dims` is supported in the FullyConnected kernel version 5, but
+  // it's never supported by Toco.
+  bool keep_num_dims = false;
 };
 
 // Dequantization operator, converting a quantized array of integers with
@@ -943,6 +950,10 @@ struct MinMax {
 
 inline bool operator==(const MinMax& m1, const MinMax& m2) {
   return m1.min == m2.min && m1.max == m2.max;
+}
+
+inline bool operator!=(const MinMax& m1, const MinMax& m2) {
+  return m1.min != m2.min || m1.max != m2.max;
 }
 
 // Fake-quantization operator. This does two things:
@@ -2113,10 +2124,22 @@ struct MatrixDiagOperator : Operator {
 
 // Matrix Diag Operator V2:
 // Construct a batched diagonal tensor with given batched diagonal values.
-// Not fully supported, constains 4 extra inputs compared to MatrixDiag, support
-// default parameters settings which performs the same as MatrixDiag
+// Not fully supported, contains 4 extra inputs compared to MatrixDiag. Behave
+// like MatrixDiag when default parameters are used.
 struct MatrixDiagV2Operator : Operator {
   MatrixDiagV2Operator() : Operator(OperatorType::kMatrixDiagV2) {}
+};
+
+// Matrix Diag Operator V3:
+// Construct a batched diagonal tensor with given batched diagonal values.
+// Not fully supported, contains 5 extra inputs compared to MatrixDiag. Behave
+// like MatrixDiag when default parameters are used.
+// V3 is only different from V2 because it has an extra attribute (align) which
+// controls the alignment of diagonals in the band matrix (compact) format.
+// The alignment in V2 contradicts with the default alignment in V3 so V2 is
+// skipped. (It has never been, and should never be, exposed in the public API.)
+struct MatrixDiagV3Operator : Operator {
+  MatrixDiagV3Operator() : Operator(OperatorType::kMatrixDiagV3) {}
 };
 
 // Matrix Set Diag Operator:
@@ -2131,10 +2154,22 @@ struct MatrixSetDiagOperator : Operator {
 
 // Matrix Set Diag Operator V2:
 // Construct a batched diagonal tensor with given input and diagonal values.
-// Not fully supported, constains 1 extra inputs compared to MatrixSetDiag,
-// support default parameters settings which performs the same as MatrixSetDiag
+// Not fully supported, contains 1 extra inputs compared to MatrixSetDiag.
+// Behave like MatrixSetDiag when default parameters are used.
 struct MatrixSetDiagV2Operator : Operator {
   MatrixSetDiagV2Operator() : Operator(OperatorType::kMatrixSetDiagV2) {}
+};
+
+// Matrix Set Diag Operator V3:
+// Construct a batched diagonal tensor with given input and diagonal values.
+// Not fully supported, contains 2 extra inputs compared to MatrixSetDiag.
+// Behave like MatrixSetDiag when default parameters are used.
+// V3 is only different from V2 because it has an extra attribute (align) which
+// controls the alignment of diagonals in the band matrix (compact) format.
+// The alignment in V2 contradicts with the default alignment in V3 so V2 is
+// skipped. (It has never been, and should never be, exposed in the public API.)
+struct MatrixSetDiagV3Operator : Operator {
+  MatrixSetDiagV3Operator() : Operator(OperatorType::kMatrixSetDiagV3) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

@@ -85,9 +85,9 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
       // With `parallel_iterations == 1` it's safe to use TemporaryVariable.
       if (is_in_while_loop) {
         int parallel_iterations;
-        Status s = GetNodeAttr(frame->attrs(), kParallelIterationsAttrName,
-                               &parallel_iterations);
-        if (s.ok() && parallel_iterations == 1) {
+        bool found = TryGetNodeAttr(frame->attrs(), kParallelIterationsAttrName,
+                                    &parallel_iterations);
+        if (found && parallel_iterations == 1) {
           is_in_while_loop = false;
         }
       }
@@ -112,8 +112,8 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
 
       // The pieces of AccumulateNV2 should all be on the same node.
       node_builder.Device(n->requested_device());
-      string colo;
-      if (GetNodeAttr(n_attrs, kColocationAttrName, &colo).ok()) {
+      const string& colo = GetNodeAttrString(n_attrs, kColocationAttrName);
+      if (!colo.empty()) {
         node_builder.Attr(kColocationAttrName, colo);
       }
       return node_builder;
@@ -261,8 +261,8 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
             .Attr("T", dtype)
             .Input(data_inputs)
             .ControlInputs(control_inputs);
-    string colo;
-    if (GetNodeAttr(n_attrs, kColocationAttrName, &colo).ok()) {
+    const string& colo = GetNodeAttrString(n_attrs, kColocationAttrName);
+    if (!colo.empty()) {
       builder.Attr(kColocationAttrName, colo);
     }
     TF_RETURN_IF_ERROR(builder.Finalize(g, &add_n_node));
@@ -284,7 +284,7 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
     return Status::OK();
   }
 };
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 0,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::PRE_PLACEMENT, 10,
                       AccumulateNV2RemovePass);
 
 }  // namespace

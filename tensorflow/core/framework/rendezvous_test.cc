@@ -86,7 +86,7 @@ class LocalRendezvousTest : public ::testing::Test {
 // string -> Tensor<string>
 Tensor V(const string& content) {
   Tensor tensor(DT_STRING, TensorShape({}));
-  tensor.scalar<string>()() = content;
+  tensor.scalar<tstring>()() = content;
   return tensor;
 }
 
@@ -94,7 +94,7 @@ Tensor V(const string& content) {
 string V(const Tensor& tensor) {
   CHECK_EQ(tensor.dtype(), DT_STRING);
   CHECK(TensorShapeUtils::IsScalar(tensor.shape()));
-  return tensor.scalar<string>()();
+  return tensor.scalar<tstring>()();
 }
 
 Rendezvous::ParsedKey MakeKey(const string& name) {
@@ -107,13 +107,13 @@ Rendezvous::ParsedKey MakeKey(const string& name) {
 }
 
 const Rendezvous::ParsedKey& KeyFoo() {
-  static auto key = MakeKey("foo");
-  return key;
+  static auto* key = new Rendezvous::ParsedKey(MakeKey("foo"));
+  return *key;
 }
 
 const Rendezvous::ParsedKey& KeyBar() {
-  static auto key = MakeKey("bar");
-  return key;
+  static auto* key = new Rendezvous::ParsedKey(MakeKey("bar"));
+  return *key;
 }
 
 TEST_F(LocalRendezvousTest, SendRecv) {
@@ -450,6 +450,32 @@ void BM_SendRecv(int iters) {
   rendez->Unref();
 }
 BENCHMARK(BM_SendRecv);
+
+void BM_RecvSend(int iters) {
+  Rendezvous* rendez = NewLocalRendezvous();
+  Tensor orig = V("val");
+  Tensor val(DT_STRING, TensorShape({}));
+  bool is_dead = false;
+  Rendezvous::Args args;
+  if (iters > 0) {
+    while (iters--) {
+      bool received = false;
+      rendez->RecvAsync(
+          KeyFoo(), args,
+          [&val, &received](const Status& s, const Rendezvous::Args& send_args,
+                            const Rendezvous::Args& recv_args,
+                            const Tensor& tensor, bool is_dead) {
+            val = tensor;
+            received = true;
+          });
+      TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
+      CHECK(received);
+    }
+    CHECK_EQ(V(val), V(orig));
+  }
+  rendez->Unref();
+}
+BENCHMARK(BM_RecvSend);
 
 void BM_PingPong(int iters) {
   CHECK_GT(iters, 0);

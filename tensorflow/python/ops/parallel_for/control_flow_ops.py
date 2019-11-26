@@ -23,7 +23,6 @@ import functools
 
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -214,7 +213,7 @@ def _pfor_impl(loop_fn, iters, parallel_iterations=None, pfor_config=None):
   existing_ops = set(ops.get_default_graph().get_operations())
   # Run the loop body
   with ops.name_scope("loop_body"):
-    loop_var = array_ops.placeholder(dtypes.int32, shape=[])
+    loop_var = array_ops.placeholder_with_default(0, shape=[])
     if loop_fn_has_config:
       if pfor_config is None:
         pfor_config = PForConfig()
@@ -335,20 +334,6 @@ def vectorized_map(fn, elems):
     - The shape and dtype of any intermediate or output tensors in the
       computation of `fn` should not depend on the input to `fn`.
 
-  Args:
-    fn: The callable to be performed. It accepts one argument, which will have
-      the same (possibly nested) structure as `elems`, and returns a possibly
-      nested structure of Tensors and Operations, which may be different than
-      the structure of `elems`.
-    elems: A tensor or (possibly nested) sequence of tensors, each of which will
-      be unpacked along their first dimension. The nested sequence of the
-      resulting slices will be mapped over by `fn`.
-
-  Returns:
-    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
-    results of applying fn to tensors unpacked from elems along the first
-    dimension, from first to last.
-
   Examples:
   ```python
   def outer_product(a):
@@ -376,15 +361,34 @@ def vectorized_map(fn, elems):
       loss = tf.nn.l2_loss(label - prediction)
     return g.gradient(loss, (layer.kernel, layer.bias))
 
-  inputs = tf.random_uniform([batch_size, num_features])
-  labels = tf.random_uniform([batch_size, 1])
+  inputs = tf.random.uniform([batch_size, num_features])
+  labels = tf.random.uniform([batch_size, 1])
   per_example_gradients = tf.vectorized_map(model_fn, (inputs, labels))
   assert per_example_gradients[0].shape == (batch_size, num_features, 1)
   assert per_example_gradients[1].shape == (batch_size, 1)
   ```
+
+  Args:
+    fn: The callable to be performed. It accepts one argument, which will have
+      the same (possibly nested) structure as `elems`, and returns a possibly
+      nested structure of Tensors and Operations, which may be different than
+      the structure of `elems`.
+    elems: A tensor or (possibly nested) sequence of tensors, each of which will
+      be unpacked along their first dimension. The nested sequence of the
+      resulting slices will be mapped over by `fn`.
+
+  Returns:
+    A tensor or (possibly nested) sequence of tensors. Each tensor packs the
+    results of applying fn to tensors unpacked from elems along the first
+    dimension, from first to last.
   """
   def loop_fn(i):
     gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
     return fn(gathered_elems)
-  batch_size = array_ops.shape(nest.flatten(elems)[0])[0]
+  batch_size = None
+  first_elem = ops.convert_to_tensor(nest.flatten(elems)[0])
+  if first_elem.shape.rank is not None:
+    batch_size = first_elem.shape.as_list()[0]
+  if batch_size is None:
+    batch_size = array_ops.shape(first_elem)[0]
   return pfor(loop_fn, batch_size)

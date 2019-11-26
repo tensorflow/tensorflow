@@ -149,7 +149,7 @@ class BitcastOp : public XlaOpKernel {
       auto reshaped_input_shape = ctx->InputShape(0);
       broadcasted_input_shape.AddDim(input_bit_width / output_bit_width);
       reshaped_input_shape.AddDim(1);
-      auto output_bit_width_mask = (1 << output_bit_width) - 1;
+      auto output_bit_width_mask = (int64(1) << output_bit_width) - 1;
 
       auto status_or_input =
           BroadcastTo(xla::Reshape(input, reshaped_input_shape.dim_sizes()),

@@ -15,6 +15,8 @@ limitations under the License.
 
 // This test contains cheap test cases, completes in a few seconds.
 
+#include <vector>
+
 #include "tensorflow/lite/experimental/ruy/test.h"
 
 namespace ruy {
@@ -93,6 +95,16 @@ TEST(RuyTest, TestNarrowMuls) {
     TestLinearAllOrders<TestSetType>(width, 123, 137);
     TestLinearAllOrders<TestSetType>(158, 119, width);
   }
+}
+
+TEST(RuyTest, TestGEMV) {
+  for (int size = 1; size < 1024; size *= 2) {
+    for (int depth = 1; depth < 500; depth += 47) {
+      TestLinearAllOrders<TestSetType>(size, depth, 1);
+    }
+  }
+  TestLinearAllOrders<TestSetType>(5, 5001, 1);
+  TestLinearAllOrders<TestSetType>(8193, 17, 1);
 }
 
 }  // namespace ruy

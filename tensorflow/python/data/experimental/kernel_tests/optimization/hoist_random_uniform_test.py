@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -81,7 +81,7 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.named_parameters(*_hoist_random_uniform_test_cases())
   def testHoisting(self, function, will_optimize):
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(
+        testing.assert_next(
             ["Zip[0]", "Map"] if will_optimize else ["Map"])).map(function)
 
     options = dataset_ops.Options()
@@ -100,7 +100,7 @@ class HoistRandomUniformTest(test_base.DatasetTestBase, parameterized.TestCase):
           [], minval=1, maxval=10, dtype=dtypes.float32, seed=42)
 
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(["Zip[0]", "Map"])).map(random_with_capture)
+        testing.assert_next(["Zip[0]", "Map"])).map(random_with_capture)
     options = dataset_ops.Options()
     options.experimental_optimization.apply_default_optimizations = False
     options.experimental_optimization.hoist_random_uniform = True

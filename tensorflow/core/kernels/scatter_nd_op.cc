@@ -230,6 +230,9 @@ class ScatterNdUpdateOp : public OpKernel {
     const DataType dt_ref = DataTypeToEnum<T>::ref();
     const DataType index_t = DataTypeToEnum<Index>::v();
     dtype_ = c->input_type(0);
+    // If we are updating a resource, we always use the exclusive lock.
+    // For ref types, we lock based on the use_locking parameter
+    // Otherwise, we don't mutate the input tensor (we copy-on-write if needed).
     if (c->input_type(0) == DT_RESOURCE) {
       // TODO(apassos): what to validate here?
     } else if (IsRefType(c->input_type(0))) {
@@ -378,7 +381,8 @@ class ScatterNdUpdateOp : public OpKernel {
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_CPU);
-TF_CALL_string(REGISTER_SCATTER_ND_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_ADD_SUB_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
@@ -428,7 +432,7 @@ TF_CALL_bool(REGISTER_SCATTER_ND_CPU);
 // Register TensorScatterUpdate/Add/Sub for all number types.
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_TENSOR_CPU);
 // Register only TensorScatterUpdate for string/bool types as well.
-TF_CALL_string(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
+TF_CALL_tstring(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 TF_CALL_bool(REGISTER_SCATTER_ND_TENSOR_UPDATE_CPU);
 
 #undef REGISTER_SCATTER_ND_TENSOR_CPU

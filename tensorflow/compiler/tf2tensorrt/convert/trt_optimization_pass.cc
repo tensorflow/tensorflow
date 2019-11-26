@@ -67,8 +67,8 @@ Status TRTOptimizationPass::Init(
   if (params.count("use_calibration")) {
     use_calibration_ = params.at("use_calibration").b();
   }
-  if (params.count("use_function_backup")) {
-    use_function_backup_ = params.at("use_function_backup").b();
+  if (params.count("trt_logger")) {
+    trt_logger_name_ = params.at("trt_logger").s();
   }
   return Status::OK();
 }
@@ -183,9 +183,11 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   // generated funcdefs! This is fragile but we don't have any other option
   // until framework fixes it.
   if (item.id != "tf_graph") {
-    LOG(WARNING) << name_
-                 << " is probably called on funcdef! This optimizer must *NOT* "
-                    "be called on function objects.";
+    VLOG(1) << "Called TRTOptimization Pass " << name_
+            << " on a grappler item with id=" << item.id
+            << ", which is probably a function object (funcdef). "
+            << "Skipping optimization because TensorRTOptimizer "
+            << "should not be called on function objects.";
     *optimized_graph = item.graph;
     return Status::OK();
   }
@@ -248,6 +250,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   }
   cp.input_graph_def = &item.graph;
   cp.output_names = &nodes_to_preserve;
+  cp.trt_logger_name = trt_logger_name_;
   cp.max_batch_size = maximum_batch_size_;
   cp.max_workspace_size_bytes = max_workspace_size_bytes_;
   cp.output_graph_def = optimized_graph;
@@ -258,7 +261,6 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.is_dyn_op = is_dynamic_op_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
-  cp.use_function_backup = use_function_backup_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;

@@ -31,12 +31,15 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
 @six.add_metaclass(abc.ABCMeta)
-@tf_export('train.experimental.LossScale')
+@deprecation.deprecated_endpoints('train.experimental.LossScale')
+@tf_export('mixed_precision.experimental.LossScale',
+           'train.experimental.LossScale')
 class LossScale(trackable.Trackable):
   """Loss scale base class.
 
@@ -186,7 +189,9 @@ def get_loss_scale_weights(loss_scale):
   return loss_scale._weights.values()  # pylint: disable=protected-access
 
 
-@tf_export('train.experimental.FixedLossScale')
+@deprecation.deprecated_endpoints('train.experimental.FixedLossScale')
+@tf_export('mixed_precision.experimental.FixedLossScale',
+           'train.experimental.FixedLossScale')
 class FixedLossScale(LossScale):
   """Loss scale with a fixed value.
 
@@ -205,7 +210,7 @@ class FixedLossScale(LossScale):
         number as long as no nan or inf is encountered in training.
 
     Raises:
-      ValueError: If loss_scale is less than 1.
+      ValueError: If loss_scale_value is less than 1.
     """
     super(FixedLossScale, self).__init__()
     if not isinstance(loss_scale_value, six.integer_types + (float,)):
@@ -226,6 +231,9 @@ class FixedLossScale(LossScale):
   def update(self, grads):
     del grads
     return control_flow_ops.no_op(), True
+
+  def __repr__(self):
+    return 'FixedLossScale(%s)' % self._loss_scale_value
 
   def get_config(self):
     return {'loss_scale_value': self._loss_scale_value}
@@ -263,7 +271,9 @@ def _assign_if_finite(var, value):
       control_flow_ops.no_op)
 
 
-@tf_export('train.experimental.DynamicLossScale')
+@deprecation.deprecated_endpoints('train.experimental.DynamicLossScale')
+@tf_export('mixed_precision.experimental.DynamicLossScale',
+           'train.experimental.DynamicLossScale')
 class DynamicLossScale(LossScale):
   """Loss scale that dynamically adjusts itself.
 
@@ -375,6 +385,17 @@ class DynamicLossScale(LossScale):
                                       update_if_not_finite_grads)
     should_apply_gradients = is_finite
     return update_op, should_apply_gradients
+
+  def __repr__(self):
+    if context.executing_eagerly():
+      return ('DynamicLossScale(current_loss_scale=%s, num_good_steps=%s, '
+              'initial_loss_scale=%s, increment_period=%s, multiplier=%s)' %
+              (self._current_loss_scale.numpy(), self._num_good_steps.numpy(),
+               self.initial_loss_scale, self.increment_period, self.multiplier))
+    else:
+      return ('DynamicLossScale(initial_loss_scale=%s, increment_period=%s, '
+              'multiplier=%s)' %
+              (self.initial_loss_scale, self.increment_period, self.multiplier))
 
   def get_config(self):
     return {

@@ -38,6 +38,7 @@ from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util import nest
 
 
 UNSPECIFIED = object()
@@ -49,11 +50,34 @@ def overload_of(f):
   return f
 
 
-def eval_in_original_context(f, args, caller_level_delta):
-  """Executes the eval function with the user-specified globals/locals."""
+def _find_originating_frame(caller_fn_scope, innermost=True):
+  """Locates the frame in which `caller_fn_scope` was defined."""
   ctx_frame = inspect.currentframe()
-  for _ in range(caller_level_delta + 1):
+  result = None
+  while ctx_frame is not None:
+    # Note it should not be normally possible to get false positives this way
+    # because the function scope object is not accessible to user code (barring
+    # call stack introspection).
+    if ctx_frame.f_locals.get(caller_fn_scope.name, None) is caller_fn_scope:
+      result = ctx_frame
+      if innermost:
+        break
     ctx_frame = ctx_frame.f_back
+
+  assert result is not None, (
+      'the conversion process should ensure the caller_fn_scope is always'
+      ' found somewhere on the call stack')
+
+  return result
+
+
+def eval_in_original_context(f, args, caller_fn_scope):
+  """Executes the eval function in the context of a specified function."""
+  # When control flow is rewritten using functions, eval should use the
+  # variables found in the same block where it was called. That is equivalent
+  # to the innermost function call.
+  ctx_frame = _find_originating_frame(caller_fn_scope, innermost=True)
+
   args = (
       args[0],
       ctx_frame.f_globals if len(args) < 2 else args[1],
@@ -62,33 +86,34 @@ def eval_in_original_context(f, args, caller_level_delta):
   return f(*args)
 
 
-def super_in_original_context(f, args, caller_level_delta):
-  """Executes the super function with the correct implicit argument handling.
+def super_in_original_context(f, args, caller_fn_scope):
+  """Executes the super function in the context of a specified function.
 
   See https://docs.python.org/3/library/functions.html#super for the exact
   details
 
   Args:
-    f: super builtin function object.
-    args: Arguments that will be passed to super(...).  A valid call should have
-      0, 1, or 2 number of arguments
-    caller_level_delta: The number of nested frames to the original super(...)'s
-      context frame.
+    f: Callable, typically the super builtin
+    args: List[Any], the original call arguments
+    caller_fn_scope: Optional[function_wrappers.FunctionScope], the function
+      scope of the converted function in which this call was originally made
 
   Returns:
-    The result of super(...) call.
+    The result of calling `f` as if it was called in the frame indicated by
+      `caller_fn_scope`.
   """
 
   # Python 2 doesn't support implicit argument super variants.
   if six.PY2:
-    return overload_of(f)(*args)
+    return f(*args)
 
-  if len(args) >= 1:
-    return overload_of(f)(*args)
+  # Only the no-arg call is desugared.
+  if args:
+    return f(*args)
 
-  ctx_frame = inspect.currentframe()
-  for _ in range(caller_level_delta + 1):
-    ctx_frame = ctx_frame.f_back
+  # Inner functions seem to include their closure in f_locals, so we need
+  # to find the outermost frame.
+  ctx_frame = _find_originating_frame(caller_fn_scope, innermost=False)
 
   # When super(..) is called without arguments, it looks for __class__ cell
   # variable and the first argument passed in the enclosing function according
@@ -104,43 +129,42 @@ def super_in_original_context(f, args, caller_level_delta):
   #   https://github.com/python/cpython/blame/2f224a077a83ac9de8a12bb7dcc516642b8176d8/Lib/lib2to3/tests/data/py2_test_grammar.py#L157
   #   https://github.com/python/cpython/blame/2f224a077a83ac9de8a12bb7dcc516642b8176d8/Lib/lib2to3/tests/data/py3_test_grammar.py#L192
   #
-  # TODO(kkimlabs): mdan@ had an idea to do it more correctly without relying
-  #                 on the co_varnames argument order assumption.
-  #                 1. Getting the caller function from the call stack.
-  #                 2. Getting its argspec.
-  #                 3. Get the name of the first argument from argspec.
-  #                 4. Retrieve its value from locals.
+  # Note: the name can be more reliably obtained by inspecting the calling
+  # function's argspec.
   #
-  #                 Sample code snippet:
+  # Even though methods can be declared using *args (def method(*args)),
+  # that pattern is disallowed by super() -- it raises super() no arguments.
+  # Method definitions using **kwargs are not allowed at all.
+  # In other words, we can always assume that self is on the first positional
+  # argument (for correct code).
   #
-  #                 def fn2():
-  #                   fr = inspect.currentframe()
-  #                   parent_fr = fr.f_back
-  #                   grandparent_fr = parent_fr.f_back
-  #                   f_name = parent_fr.f_code.co_name
-  #                   f = grandparent_fr.f_locals[f_name]
-  #
-  #                 def fn1():
-  #                   fn2()
-  #
-  #                 fn1()
-  #
-  #                 However, we also need to handle some edge cases like
-  #                 function in the closure or globals, etc,...
+  # TODO(mdan): Consider additional checks in case the input code is incorrect.
+  # For example, the error might be cryptic compared to what super() regularly
+  # raises.
 
-  first_arg_name = ctx_frame.f_code.co_varnames[0]
-  first_arg = ctx_frame.f_locals[first_arg_name]
-  return f(ctx_frame.f_locals['__class__'], first_arg)
+  type_arg = ctx_frame.f_locals['__class__']
+  self_arg_name = ctx_frame.f_code.co_varnames[0]
+  self_arg = ctx_frame.f_locals[self_arg_name]
+  return f(type_arg, self_arg)
 
 
 def abs_(x):
   if tensor_util.is_tensor(x):
     return _tf_abs(x)
+  if isinstance(x, dataset_ops.DatasetV2):
+    return _tf_dataset_abs(x)
   return _py_abs(x)
 
 
 def _tf_abs(x):
   return math_ops.abs(x)
+
+
+def _tf_dataset_abs(x):
+  specs = nest.flatten(x.element_spec)
+  if len(specs) == 1:
+    return x.map(math_ops.abs)
+  return x.map(lambda *e: nest.map_structure(math_ops.abs, e))
 
 
 def _py_abs(x):
@@ -328,7 +352,105 @@ def _py_enumerate(s, start=0):
   return enumerate(s, start)
 
 
-SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate)
+def zip_(*iterables):
+  if all(isinstance(x, dataset_ops.DatasetV2) for x in iterables):
+    return _tf_dataset_zip(*iterables)
+  return _py_zip(*iterables)
+
+
+def _tf_dataset_zip(*iterables):
+  return dataset_ops.DatasetV2.zip(iterables)
+
+
+def _py_zip(*iterables):
+  return zip(*iterables)
+
+
+def map_(fn, *iterables):
+  if all(isinstance(x, dataset_ops.DatasetV2) for x in iterables):
+    return _tf_dataset_map(fn, *iterables)
+  return _py_map(fn, *iterables)
+
+
+def _tf_dataset_map(fn, *iterables):
+  return dataset_ops.DatasetV2.zip(iterables).map(fn)
+
+
+def _py_map(fn, *iterables):
+  return map(fn, *iterables)
+
+
+def filter_(function, iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_filter(function, iterable)
+  return _py_filter(function, iterable)
+
+
+def _tf_dataset_filter(function, iterable):
+  return iterable.filter(function)
+
+
+def _py_filter(function, iterable):
+  return filter(function, iterable)
+
+
+def any_(iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_any(iterable)
+  return _py_any(iterable)
+
+
+# any() operation is essentially a "if first True element exist".
+# For that it could be translated to `filter(True)` to filter out
+# only `True` element, and then `take(1)`. This works in tf.data
+# as tf.data's filter+take is done in pipeline so it will stop
+# as soon as `take(1)` returns.
+def _tf_dataset_any(iterable):
+  # check and make sure iterable.element_spec only consists of one
+  # element of tf.bool.
+  specs = nest.flatten(iterable.element_spec)
+  if len(specs) != 1 or specs[0].dtype != dtypes.bool:
+    raise ValueError('in graph mode, the "any" builtin only supports datasets '
+                     'that return bool scalars; got: {}'.format(
+                         iterable.element_spec))
+  ds = iterable.filter(lambda x: x)
+  ds = ds.take(1)
+  ds = ds.reduce(constant_op.constant(False, dtype=dtypes.bool), lambda _, y: y)
+  return ds
+
+
+def _py_any(iterable):
+  return any(iterable)
+
+
+def all_(iterable):
+  if isinstance(iterable, dataset_ops.DatasetV2):
+    return _tf_dataset_all(iterable)
+  return _py_all(iterable)
+
+
+# all() operation is similiar to any() and could be translated
+# to `filter(False)` then `take(1)`, and check if `False` exists.
+def _tf_dataset_all(iterable):
+  # check and make sure iterable.element_spec only consists of one
+  # element of tf.bool.
+  specs = nest.flatten(iterable.element_spec)
+  if len(specs) != 1 or specs[0].dtype != dtypes.bool:
+    raise ValueError('in graph mode, the "all" builtin only supports datasets '
+                     'that return bool scalars; got: {}'.format(
+                         iterable.element_spec))
+  ds = iterable.filter(lambda x: math_ops.logical_not(x))
+  ds = ds.take(1)
+  ds = ds.reduce(constant_op.constant(True, dtype=dtypes.bool), lambda _, y: y)
+  return ds
+
+
+def _py_all(iterable):
+  return all(iterable)
+
+
+SUPPORTED_BUILTINS = (abs, float, int, len, print, range, enumerate, zip, map,
+                      filter, any, all)
 
 if six.PY2:
   SUPPORTED_BUILTINS += (xrange,)
@@ -343,4 +465,9 @@ BUILTIN_FUINCTIONS_MAP = {
     # TODO(mdan): This might make more sense as tf.data.range.
     'xrange': range_,
     'enumerate': enumerate_,
+    'zip': zip_,
+    'map': map_,
+    'filter': filter_,
+    'any': any_,
+    'all': all_,
 }

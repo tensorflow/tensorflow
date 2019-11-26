@@ -150,17 +150,18 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
       super(LinearOperatorLowerTriangular, self).__init__(
           dtype=self._tril.dtype,
-          graph_parents=[self._tril],
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+      self._set_graph_parents([self._tril])
 
   def _check_tril(self, tril):
     """Static check of the `tril` argument."""
 
-    if tril.get_shape().ndims is not None and tril.get_shape().ndims < 2:
+    if tril.shape.ndims is not None and tril.shape.ndims < 2:
       raise ValueError(
           "Argument tril must have at least 2 dimensions.  Found: %s"
           % tril)
@@ -174,7 +175,7 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
     return array_ops.matrix_diag_part(self._tril)
 
   def _shape(self):
-    return self._tril.get_shape()
+    return self._tril.shape
 
   def _shape_tensor(self):
     return array_ops.shape(self._tril)
@@ -202,3 +203,6 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
 
   def _to_dense(self):
     return self._get_tril()
+
+  def _eigvals(self):
+    return self._get_diag()

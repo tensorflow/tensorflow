@@ -18,6 +18,14 @@ tf_proto {
       oneof_index: 0
     }
     field {
+      name: "composite_tensor"
+      number: 5
+      label: LABEL_OPTIONAL
+      type: TYPE_MESSAGE
+      type_name: ".tensorflow.TensorInfo.CompositeTensor"
+      oneof_index: 0
+    }
+    field {
       name: "dtype"
       number: 2
       label: LABEL_OPTIONAL
@@ -50,6 +58,23 @@ tf_proto {
         number: 3
         label: LABEL_OPTIONAL
         type: TYPE_STRING
+      }
+    }
+    nested_type {
+      name: "CompositeTensor"
+      field {
+        name: "type_spec"
+        number: 1
+        label: LABEL_OPTIONAL
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.TypeSpecProto"
+      }
+      field {
+        name: "components"
+        number: 2
+        label: LABEL_REPEATED
+        type: TYPE_MESSAGE
+        type_name: ".tensorflow.TensorInfo"
       }
     }
     oneof_decl {

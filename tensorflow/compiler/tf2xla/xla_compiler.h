@@ -153,6 +153,9 @@ class XlaCompiler {
     // For a kResource, has this resource been initialized?
     bool initialized = false;
 
+    // For a kResource, is this resource on Fast Memory.
+    bool fast_mem = false;
+
     // For a TensorArray or Stack resource, what is the array's declared size?
     // (Used for lazy initialization.)
     int64 max_array_size = -1;
@@ -176,6 +179,7 @@ class XlaCompiler {
 
     // Returns the dimension sizes for either TensorShape or xla::Shape.
     std::vector<int64> DimensionSizes() const;
+    absl::InlinedVector<int64, 4> DimensionSizesAsInlinedVector() const;
 
     // Returns the human-readable string for either TensorShape or xla::Shape.
     string ShapeHumanString() const;
@@ -194,12 +198,6 @@ class XlaCompiler {
     // modified by the computation. Used when compiling loop bodies to ensure
     // the input and output signatures match.
     bool return_updated_values_for_all_resources = false;
-
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
 
     // If 'always_return_tuple' is true, then the output of a computation will
     // always be a tuple. Otherwise, a single-element output will not be wrapped
@@ -286,7 +284,8 @@ class XlaCompiler {
     std::shared_ptr<xla::XlaComputation> computation;
   };
 
-  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType)>
+  typedef std::function<xla::StatusOr<xla::Shape>(const TensorShape&, DataType,
+                                                  bool)>
       ShapeRepresentationFn;
   struct Options {
     // Name of the compilation device to use. It must be set by the caller.
@@ -340,11 +339,19 @@ class XlaCompiler {
     // allocate most or all available memory on the device, leaving none for the
     // compiler to access, unless it can use TensorFlow's allocator.
     se::DeviceMemoryAllocator* device_allocator = nullptr;
+
+    // Alias input and output buffers for parameters that are passed-through XLA
+    // modules without being changed.
+    bool alias_passthrough_params = false;
   };
 
   explicit XlaCompiler(Options options);
 
   ~XlaCompiler();
+
+  // Helper function to populate an XlaCompiler::Argument from XlaResource.
+  static void PopulateArgumentFromResource(const XlaResource& resource,
+                                           Argument* arg);
 
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
@@ -469,7 +476,7 @@ class XlaCompiler {
   int64 next_step_id_;
 
   XlaCompilationDevice* device_;  // Owned by device_mgr_
-  DeviceMgr device_mgr_;
+  StaticDeviceMgr device_mgr_;
 
   // To avoid copying the client's function library, use a local function
   // library and runtime for functions created as part of the functionalize

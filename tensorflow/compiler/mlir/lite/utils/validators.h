@@ -19,8 +19,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_UTILS_VALIDATORS_H_
 
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
 
 namespace mlir {
 namespace TFL {
@@ -44,6 +44,10 @@ bool TFIntListIs1XY1(Operation *op, StringRef name, IntegerAttr *x,
 
 // Returns true if the attribute is an integer list of the form [1, X, Y, 1],
 bool TFIntListIs1XY1(const ArrayAttr &attr);
+
+// Returns true if every element of the attribute is 1. All elements of `attr`
+// must be `IntegerAttr`.
+bool TFIntListIsAllOnes(const ArrayAttr &attr);
 
 // Returns true iff the given value is a float tensor.
 // is "DT_FLOAT".

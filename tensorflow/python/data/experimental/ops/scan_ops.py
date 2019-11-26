@@ -30,7 +30,11 @@ from tensorflow.python.util.tf_export import tf_export
 class _ScanDataset(dataset_ops.UnaryDataset):
   """A dataset that scans a function across its input."""
 
-  def __init__(self, input_dataset, initial_state, scan_func):
+  def __init__(self,
+               input_dataset,
+               initial_state,
+               scan_func,
+               use_default_device=None):
     """See `scan()` for details."""
     self._input_dataset = input_dataset
     self._initial_state = structure.normalize_element(initial_state)
@@ -121,16 +125,18 @@ class _ScanDataset(dataset_ops.UnaryDataset):
     self._scan_func = wrapped_func
     self._scan_func.function.add_to_graph(ops.get_default_graph())
     # pylint: disable=protected-access
-    if compat.forward_compatible(2019, 8, 3):
+    if compat.forward_compatible(2019, 10,
+                                 15) or use_default_device is not None:
       variant_tensor = gen_experimental_dataset_ops.scan_dataset(
           self._input_dataset._variant_tensor,
           structure.to_tensor_list(self._state_structure, self._initial_state),
           self._scan_func.function.captured_inputs,
           f=self._scan_func.function,
           preserve_cardinality=True,
+          use_default_device=use_default_device,
           **self._flat_structure)
     else:
-      variant_tensor = gen_experimental_dataset_ops.experimental_scan_dataset(
+      variant_tensor = gen_experimental_dataset_ops.scan_dataset(
           self._input_dataset._variant_tensor,
           structure.to_tensor_list(self._state_structure, self._initial_state),
           self._scan_func.function.captured_inputs,

@@ -18,9 +18,12 @@ limitations under the License.
 #include <cmath>
 #include <cstring>
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/frontend.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/frontend_util.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/frontend.h"
+#include "tensorflow/lite/experimental/microfrontend/lib/frontend_util.h"
+
+// Configure FFT to output 16 bit fixed point.
+#define FIXED_POINT 16
 
 namespace {
 
@@ -47,7 +50,7 @@ TfLiteStatus InitializeMicroFeatures(tflite::ErrorReporter* error_reporter) {
   config.pcan_gain_control.gain_bits = 21;
   config.log_scale.enable_log = 1;
   config.log_scale.scale_shift = 6;
-  if (!FrontendPopulateState(error_reporter, &config, &g_micro_features_state,
+  if (!FrontendPopulateState(&config, &g_micro_features_state,
                              kAudioSampleFrequency)) {
     error_reporter->Report("FrontendPopulateState() failed");
     return kTfLiteError;

@@ -48,7 +48,7 @@ RpcCollectiveExecutorMgr::~RpcCollectiveExecutorMgr() {
 CollectiveExecutor* RpcCollectiveExecutorMgr::Create(int64 step_id) {
   CollectiveRemoteAccessDistributed* rma =
       new CollectiveRemoteAccessDistributed(
-          dev_mgr_, dev_resolver_.get(), &work_queue_, worker_cache_, step_id);
+          dev_mgr_, dev_resolver_.get(), work_queue_, worker_cache_, step_id);
   return new BaseCollectiveExecutor(this, rma, step_id, dev_mgr_,
                                     &gpu_ring_order_);
 }

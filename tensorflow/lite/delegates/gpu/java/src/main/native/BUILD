@@ -25,7 +25,7 @@ cc_library(
         "notap",
     ],
     deps = [
-        "//tensorflow/lite/delegates/gpu:gl_delegate",
+        "//tensorflow/lite/delegates/gpu:delegate",
         "//tensorflow/lite/java/jni",
     ],
     alwayslink = 1,

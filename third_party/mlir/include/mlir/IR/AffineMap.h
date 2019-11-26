@@ -52,6 +52,9 @@ public:
   AffineMap(const AffineMap &other) : map(other.map) {}
   AffineMap &operator=(const AffineMap &other) = default;
 
+  /// Returns a zero result affine map with no dimensions or symbols: () -> ().
+  static AffineMap get(MLIRContext *context);
+
   static AffineMap get(unsigned dimCount, unsigned symbolCount,
                        ArrayRef<AffineExpr> results);
 
@@ -72,6 +75,9 @@ public:
   /// An identity affine map corresponds to an identity affine function on the
   /// dimensional identifiers.
   bool isIdentity() const;
+
+  /// Returns true if this affine map is an empty map, i.e., () -> ().
+  bool isEmpty() const;
 
   /// Returns true if this affine map is a single result constant function.
   bool isSingleConstant() const;
@@ -122,7 +128,7 @@ public:
   ///
   /// Example:
   ///   map1: `(d0, d1)[s0, s1] -> (d0 + 1 + s1, d1 - 1 - s0)`
-  ///   map2: `(d0)[s0] -> (d0 + s0, d0 - s0))`
+  ///   map2: `(d0)[s0] -> (d0 + s0, d0 - s0)`
   ///   map1.compose(map2):
   ///     `(d0)[s0, s1, s2] -> (d0 + s1 + s2 + 1, d0 - s0 - s2 - 1)`
   AffineMap compose(AffineMap map);
@@ -141,6 +147,9 @@ public:
 
 private:
   ImplType *map;
+
+  static AffineMap getImpl(unsigned dimCount, unsigned symbolCount,
+                           ArrayRef<AffineExpr> results, MLIRContext *context);
 };
 
 // Make AffineExpr hashable.
@@ -153,11 +162,12 @@ AffineMap simplifyAffineMap(AffineMap map);
 
 /// Returns a map of codomain to domain dimensions such that the first codomain
 /// dimension for a particular domain dimension is selected.
-/// Returns an empty map if the input map is empty.
+/// Returns an empty map if the input map is empty or if `map` is not invertible
+/// (i.e. `map` does not contain a subset that is a permutation of full domain
+/// rank).
 ///
 /// Prerequisites:
-///   1. `map` must contain a subset that is a permutation of full domain rank.
-///   2. `map` has no symbols.
+///   1. `map` has no symbols.
 ///
 /// Example 1:
 ///

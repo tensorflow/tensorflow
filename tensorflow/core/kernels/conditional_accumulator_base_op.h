@@ -113,7 +113,7 @@ class ConditionalAccumulatorBaseOp : public OpKernel {
     // Verify that the shared accumulator is compatible
     // with the requested arguments.
     TF_RETURN_IF_ERROR(accumulator->MatchesNodeDef(def()));
-    auto h = accumulator_handle_.AccessTensor(ctx)->template flat<string>();
+    auto h = accumulator_handle_.AccessTensor(ctx)->template flat<tstring>();
     h(0) = cinfo_.container();
     h(1) = cinfo_.name();
     accumulator_handle_set_ = true;

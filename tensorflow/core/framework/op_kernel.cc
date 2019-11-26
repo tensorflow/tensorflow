@@ -26,8 +26,8 @@ limitations under the License.
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
-#include "tensorflow/core/framework/graph.pb_text.h"
-#include "tensorflow/core/framework/kernel_def.pb_text.h"
+#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/kernel_def.pb.h"
 #include "tensorflow/core/framework/kernel_def_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -257,16 +257,14 @@ Status OpKernelConstruction::allocate_persistent(
   // for now just do the same thing as allocate_temp
   // TODO(misard) add specific memory tracking for persistent tensors
   Tensor persistent;
-  Status s = allocate_temp(type, shape, &persistent);
-  if (!s.ok()) {
-    return s;
-  }
+  TF_RETURN_IF_ERROR(allocate_temp(type, shape, &persistent));
+
   *out_persistent = PersistentTensor(persistent);
   Tensor* allocated = out_persistent->AccessTensor(this);
   if (out_tensor) {
     *out_tensor = allocated;
   }
-  return s;
+  return Status::OK();
 }
 
 // OpKernelContext -----------------------------------------------------------
@@ -712,6 +710,8 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
+  MEMDEBUG_CACHE_OP(op_kernel().name().c_str());
+  MEMDEBUG_CACHE_STEPID(step_id());
   Tensor new_tensor(a, type, shape,
                     AllocationAttributes(allocation_attr.no_retry_on_failure,
                                          /* allocation_will_be_logged= */ true,
@@ -1244,12 +1244,18 @@ Status FindKernelRegistration(
     TF_RETURN_IF_ERROR(KernelAttrsMatch(iter->second.def, node_attrs, &match));
     if (match) {
       if (*reg != nullptr) {
-        return errors::InvalidArgument(
-            "Multiple OpKernel registrations match NodeDef '",
-            FormatNodeDefForError(node_name, has_experimental_debug_info,
-                                  experimental_debug_info),
-            "': '", ProtoShortDebugString((*reg)->def), "' and '",
-            ProtoShortDebugString(iter->second.def), "'");
+        if ((*reg)->def.priority() == iter->second.def.priority()) {
+          return errors::InvalidArgument(
+              "Multiple OpKernel registrations match NodeDef at the same "
+              "priority '",
+              FormatNodeDefForError(node_name, has_experimental_debug_info,
+                                    experimental_debug_info),
+              "': '", (*reg)->def.ShortDebugString(), "' and '",
+              iter->second.def.ShortDebugString(), "'");
+        } else if ((*reg)->def.priority() > iter->second.def.priority()) {
+          continue;
+        }
+        // iter->second's priority is higher than *reg.
       }
       *reg = &iter->second;
     } else {
@@ -1274,8 +1280,8 @@ Status FindKernelRegistration(
               "Multiple Default OpKernel registrations match NodeDef '",
               FormatNodeDefForError(node_name, has_experimental_debug_info,
                                     experimental_debug_info),
-              "': '", ProtoShortDebugString((*reg)->def), "' and '",
-              ProtoShortDebugString(iter->second.def), "'");
+              "': '", (*reg)->def.ShortDebugString(), "' and '",
+              iter->second.def.ShortDebugString(), "'");
         }
         *reg = &iter->second;
       } else {
@@ -1359,7 +1365,8 @@ Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
 
 Status SupportedDeviceTypesForNode(
     const std::vector<DeviceType>& prioritized_types, const NodeDef& def,
-    PrioritizedDeviceTypeVector* prioritized_device_types) {
+    PrioritizedDeviceTypeVector* prioritized_device_types,
+    const DeviceNameUtils::ParsedName* local_address_spec) {
   // TODO(zhifengc): Changes the callers (SimplePlacer and
   // DynamicPlacer) to consider the possibility that 'def' is call to
   // a user-defined function and only calls this
@@ -1367,14 +1374,42 @@ Status SupportedDeviceTypesForNode(
   const OpRegistrationData* op_reg_data;
   const Status s = OpRegistry::Global()->LookUp(def.op(), &op_reg_data);
   if (s.ok()) {
+    bool exists_attr_mismatch = false;
     for (const DeviceType& device_type : prioritized_types) {
       const KernelRegistration* reg = nullptr;
-      bool was_attr_mismatch;
+      bool was_attr_mismatch = false;
       TF_RETURN_IF_ERROR(
           FindKernelRegistration(device_type, def, &reg, &was_attr_mismatch));
+      exists_attr_mismatch = exists_attr_mismatch || was_attr_mismatch;
       if (reg != nullptr) {
         int32 priority = reg->def.priority();
         prioritized_device_types->emplace_back(device_type, priority);
+      }
+    }
+    // Add extra supported device types if the following conditions are
+    // satisfied:
+    // 1) No kernel is defined for the given op (e.g. PyFunc on worker process)
+    // 2) A device is requested for this node which specifies job/replica/task
+    // 3) A local device is provided which specifies job/replica/task
+    // 4) The local device does not have the same (job, replica, task) as the
+    //    requested device
+    //
+    // The goal is to address the issue where a graph includes op (e.g. PyFunc)
+    // whose kernel is known to a remote process but not to the current process.
+    if (prioritized_device_types->empty() && !exists_attr_mismatch &&
+        local_address_spec != nullptr) {
+      DeviceNameUtils::ParsedName requested_device_name;
+      DeviceNameUtils::ParseFullName(def.device(), &requested_device_name);
+      if (DeviceNameUtils::IsDifferentAddressSpace(*local_address_spec,
+                                                   requested_device_name)) {
+        if (requested_device_name.has_type) {
+          prioritized_device_types->push_back(
+              std::make_pair(DeviceType(requested_device_name.type), 0));
+        } else {
+          for (const DeviceType& device_type : prioritized_types) {
+            prioritized_device_types->push_back(std::make_pair(device_type, 0));
+          }
+        }
       }
     }
     std::sort(prioritized_device_types->begin(),
@@ -1395,7 +1430,7 @@ Status SupportedDeviceTypesForNode(
 void LogAllRegisteredKernels() {
   KernelList kernel_list = GetAllRegisteredKernels();
   for (const auto& kernel_def : kernel_list.kernel()) {
-    LOG(INFO) << "OpKernel ('" << ProtoShortDebugString(kernel_def) << "')";
+    LOG(INFO) << "OpKernel ('" << kernel_def.ShortDebugString() << "')";
   }
 }
 
@@ -1459,18 +1494,16 @@ Status CreateOpKernel(DeviceType device_type, DeviceBase* device,
 
   // Look up the Op registered for this op name.
   const OpDef* op_def = nullptr;
-  Status s = OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def);
-  if (!s.ok()) return s;
+  TF_RETURN_IF_ERROR(OpRegistry::Global()->LookUpOpDef(node_def.op(), &op_def));
 
   // Validate node_def against OpDef.
-  s = ValidateNodeDef(node_def, *op_def);
-  if (!s.ok()) return s;
+  TF_RETURN_IF_ERROR(ValidateNodeDef(node_def, *op_def));
 
   // Look up kernel registration.
   const KernelRegistration* registration;
   bool was_attr_mismatch;
-  s = FindKernelRegistration(device_type, node_def, &registration,
-                             &was_attr_mismatch);
+  Status s = FindKernelRegistration(device_type, node_def, &registration,
+                                    &was_attr_mismatch);
   if (!s.ok()) {
     errors::AppendToMessage(&s, " when instantiating ", node_def.op());
     return s;
@@ -1543,7 +1576,7 @@ Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry) {
     const Status status = op_registry.LookUp(kernel_def.op(), &op_reg_data);
     if (!status.ok()) {
       // TODO(josh11b): Make this a hard error.
-      LOG(ERROR) << "OpKernel ('" << ProtoShortDebugString(kernel_def)
+      LOG(ERROR) << "OpKernel ('" << kernel_def.ShortDebugString()
                  << "') for unknown op: " << kernel_def.op();
       continue;
     }

@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -112,7 +113,7 @@ using ::tflite::gpu::TensorUsageRecord;
   }
 
   tflite::gpu::ObjectsAssignment<size_t> assignment;
-  RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY, &assignment));
+  RETURN_IF_ERROR(AssignObjectsToTensors(usageRecords, MemoryStrategy::GREEDY_BEST, &assignment));
   auto objectsCount = assignment.object_sizes.size();
   std::vector<id<MTLBuffer>> sharedBuffers(objectsCount);
   size_t dataTypeSize = _options.storage_precision == RuntimeOptions::Precision::FP32

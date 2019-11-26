@@ -30,6 +30,7 @@
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/EDSC/Intrinsics.h"
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
+#include "mlir/ExecutionEngine/OptUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
@@ -150,17 +151,15 @@ struct PythonMLIRModule {
         module(mlir::ModuleOp::create(mlir::UnknownLoc::get(&mlirContext))),
         moduleManager(*module) {}
 
-  PythonType makeScalarType(const std::string &mlirElemType,
-                            unsigned bitwidth) {
-    return ::makeScalarType(mlir_context_t{&mlirContext}, mlirElemType.c_str(),
-                            bitwidth);
-  }
   PythonType makeMemRefType(PythonType elemType, std::vector<int64_t> sizes) {
     return ::makeMemRefType(mlir_context_t{&mlirContext}, elemType,
                             int64_list_t{sizes.data(), sizes.size()});
   }
   PythonType makeIndexType() {
     return ::makeIndexType(mlir_context_t{&mlirContext});
+  }
+  PythonType makeType(const std::string &type) {
+    return ::mlirParseType(type.c_str(), mlir_context_t{&mlirContext}, nullptr);
   }
 
   // Declare a function with the given name, input types and their attributes,
@@ -192,18 +191,38 @@ struct PythonMLIRModule {
   // Create a boolean attribute.
   PythonAttribute boolAttr(bool value);
 
-  void compile() {
-    PassManager manager;
-    manager.addPass(mlir::createCanonicalizerPass());
-    manager.addPass(mlir::createCSEPass());
+  // Compile the module save the execution engine. "optLevel" and
+  // "codegenOptLevel" contain the levels of optimization to run (0 to 3) for
+  // transformations and codegen. -1 means ExecutionEngine default.
+  void compile(int optLevel, int codegenOptLevel) {
+    PassManager manager(module->getContext());
+    manager.addNestedPass<FuncOp>(mlir::createCanonicalizerPass());
+    manager.addNestedPass<FuncOp>(mlir::createCSEPass());
     manager.addPass(mlir::createLowerAffinePass());
-    manager.addPass(mlir::createConvertToLLVMIRPass());
+    manager.addPass(mlir::createLowerToLLVMPass());
     if (failed(manager.run(*module))) {
       llvm::errs() << "conversion to the LLVM IR dialect failed\n";
       return;
     }
 
-    auto created = mlir::ExecutionEngine::create(*module);
+    // Make sure the executione engine runs LLVM passes for the specified
+    // optimization level.
+    auto tmBuilderOrError = llvm::orc::JITTargetMachineBuilder::detectHost();
+    assert(tmBuilderOrError);
+    auto tmOrError = tmBuilderOrError->createTargetMachine();
+    assert(tmOrError);
+    targetMachine = std::move(tmOrError.get());
+    auto transformer = mlir::makeLLVMPassesTransformer(
+        /*llvmPasses=*/{},
+        optLevel == -1 ? llvm::Optional<unsigned>() : optLevel,
+        targetMachine.get(),
+        /*optPassesInsertPos=*/0);
+
+    auto created = mlir::ExecutionEngine::create(
+        *module, transformer,
+        codegenOptLevel == -1
+            ? llvm::Optional<llvm::CodeGenOpt::Level>()
+            : static_cast<llvm::CodeGenOpt::Level>(codegenOptLevel));
     llvm::handleAllErrors(created.takeError(),
                           [](const llvm::ErrorInfoBase &b) {
                             b.log(llvm::errs());
@@ -238,7 +257,11 @@ private:
   // One single module in a python-exposed MLIRContext for now.
   mlir::OwningModuleRef module;
   mlir::ModuleManager moduleManager;
+
+  // An execution engine and an associated target machine. The latter must
+  // outlive the former since it may be used by the transformation layers.
   std::unique_ptr<mlir::ExecutionEngine> engine;
+  std::unique_ptr<llvm::TargetMachine> targetMachine;
 };
 
 struct PythonFunctionContext {
@@ -308,7 +331,7 @@ struct PythonLoopContext {
 
   PythonValueHandle enter() {
     ValueHandle iv(lb.value.getType());
-    builder = new LoopBuilder(&iv, lb.value, ub.value, step);
+    builder = new AffineLoopNestBuilder(&iv, lb.value, ub.value, step);
     return iv;
   }
 
@@ -320,7 +343,7 @@ struct PythonLoopContext {
 
   PythonValueHandle lb, ub;
   int64_t step;
-  LoopBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonLoopNestContext {
@@ -350,7 +373,7 @@ struct PythonLoopNestContext {
     handlePtrs.reserve(steps.size());
     for (auto &h : handles)
       handlePtrs.push_back(&h.value);
-    builder = new LoopNestBuilder(
+    builder = new AffineLoopNestBuilder(
         handlePtrs, std::vector<ValueHandle>(lbs.begin(), lbs.end()),
         std::vector<ValueHandle>(ubs.begin(), ubs.end()), steps);
     return handles;
@@ -365,7 +388,7 @@ struct PythonLoopNestContext {
   std::vector<PythonValueHandle> lbs;
   std::vector<PythonValueHandle> ubs;
   std::vector<int64_t> steps;
-  LoopNestBuilder *builder = nullptr;
+  AffineLoopNestBuilder *builder = nullptr;
 };
 
 struct PythonBlockAppender {
@@ -399,7 +422,7 @@ public:
   }
 
   // EDSC maintain an implicit stack of builders (mostly for keeping track of
-  // insretion points); every operation gets inserted using the top-of-the-stack
+  // insertion points); every operation gets inserted using the top-of-the-stack
   // builder.  Creating a new EDSC Builder automatically puts it on the stack,
   // effectively entering the block for it.
   void createBlockBuilder() {
@@ -424,7 +447,7 @@ public:
   PythonBlockHandle getHandle() { return handle; }
 
   // EDSC maintain an implicit stack of builders (mostly for keeping track of
-  // insretion points); every operation gets inserted using the top-of-the-stack
+  // insertion points); every operation gets inserted using the top-of-the-stack
   // builder.  Calling operator() on a builder pops the builder from the stack,
   // effectively resetting the insertion point to its position before we entered
   // the block.
@@ -525,7 +548,7 @@ struct PythonIndexedValue {
 
   void store(const std::vector<PythonValueHandle> &indices,
              PythonValueHandle value) {
-    // Uses the overloaded `opreator=` to emit a store.
+    // Uses the overloaded `operator=` to emit a store.
     index(indices).indexed = value.value;
   }
 
@@ -692,6 +715,11 @@ PYBIND11_MODULE(pybind, m) {
                             falseArguments);
         return PythonValueHandle(nullptr);
       });
+  m.def("index_cast",
+        [](PythonValueHandle element, PythonType type) -> PythonValueHandle {
+          return ValueHandle::create<IndexCastOp>(
+              element.value, Type::getFromOpaquePointer(type.type));
+        });
   m.def("select",
         [](PythonValueHandle condition, PythonValueHandle trueValue,
            PythonValueHandle falseValue) -> PythonValueHandle {
@@ -784,31 +812,18 @@ PYBIND11_MODULE(pybind, m) {
            "function context for building the body of the function.")
       .def("get_function", &PythonMLIRModule::getNamedFunction,
            "Looks up the function with the given name in the module.")
-      .def(
-          "make_scalar_type",
-          [](PythonMLIRModule &instance, const std::string &type,
-             unsigned bitwidth) {
-            return instance.makeScalarType(type, bitwidth);
-          },
-          py::arg("type"), py::arg("bitwidth") = 0,
-          "Returns a scalar mlir::Type using the following convention:\n"
-          "  - makeScalarType(c, \"bf16\") return an "
-          "`mlir::FloatType::getBF16`\n"
-          "  - makeScalarType(c, \"f16\") return an `mlir::FloatType::getF16`\n"
-          "  - makeScalarType(c, \"f32\") return an `mlir::FloatType::getF32`\n"
-          "  - makeScalarType(c, \"f64\") return an `mlir::FloatType::getF64`\n"
-          "  - makeScalarType(c, \"index\") return an `mlir::IndexType::get`\n"
-          "  - makeScalarType(c, \"i\", bitwidth) return an "
-          "`mlir::IntegerType::get(bitwidth)`\n\n"
-          " No other combinations are currently supported.")
       .def("make_memref_type", &PythonMLIRModule::makeMemRefType,
            "Returns an mlir::MemRefType of an elemental scalar. -1 is used to "
            "denote symbolic dimensions in the resulting memref shape.")
       .def("make_index_type", &PythonMLIRModule::makeIndexType,
            "Returns an mlir::IndexType")
+      .def("make_type", &PythonMLIRModule::makeType,
+           "Returns an mlir::Type defined by the IR passed in as the argument.")
       .def("compile", &PythonMLIRModule::compile,
            "Compiles the mlir::ModuleOp to LLVMIR a creates new opaque "
-           "ExecutionEngine backed by the ORC JIT.")
+           "ExecutionEngine backed by the ORC JIT. The arguments, if present, "
+           "indicates the level of LLVM optimizations to run (similar to -O?).",
+           py::arg("optLevel") = -1, py::arg("codegenOptLevel") = -1)
       .def("get_ir", &PythonMLIRModule::getIR,
            "Returns a dump of the MLIR representation of the module. This is "
            "used for serde to support out-of-process execution as well as "
@@ -855,37 +870,37 @@ PYBIND11_MODULE(pybind, m) {
         .def("__lt__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SLT, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::slt, lhs.value,
                                                   rhs.value);
              })
         .def("__le__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SLE, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::sle, lhs.value,
                                                   rhs.value);
              })
         .def("__gt__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SGT, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::sgt, lhs.value,
                                                   rhs.value);
              })
         .def("__ge__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::SGE, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::sge, lhs.value,
                                                   rhs.value);
              })
         .def("__eq__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::EQ, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::eq, lhs.value,
                                                   rhs.value);
              })
         .def("__ne__",
              [](PythonValueHandle lhs,
                 PythonValueHandle rhs) -> PythonValueHandle {
-               return ValueHandle::create<CmpIOp>(CmpIPredicate::NE, lhs.value,
+               return ValueHandle::create<CmpIOp>(CmpIPredicate::ne, lhs.value,
                                                   rhs.value);
              })
         .def("__invert__",

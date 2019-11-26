@@ -67,6 +67,9 @@ string FileFormatString(FileFormat magic, StringPiece data) {
 
 // Decode an image (either jpeg, png, or gif).  We use a single op so that
 // users don't have to care about which format they have.
+// TODO(b/141645641): Separate concerns here: constructors uses name to
+// determine type of parsing, compute uses file magic to parse and these might
+// not match.
 class DecodeImageOp : public OpKernel {
  public:
   explicit DecodeImageOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -154,7 +157,7 @@ class DecodeImageOp : public OpKernel {
                                         contents.shape().DebugString()));
 
     // Determine format
-    const StringPiece input = contents.scalar<string>()();
+    const StringPiece input = contents.scalar<tstring>()();
     const auto magic = ClassifyFileFormat(input);
     OP_REQUIRES(
         context,

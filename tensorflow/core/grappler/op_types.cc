@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/op_types.h"
+
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
@@ -50,10 +51,13 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyBatchMatMul(const NodeDef& node) {
+  return node.op() == "BatchMatMul" || node.op() == "BatchMatMulV2";
+}
+
 bool IsAnyMatMul(const NodeDef& node) {
-  const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
-         IsQuantizedMatMul(node);
+  return node.op() == "MatMul" || node.op() == "SparseMatMul" ||
+         IsAnyBatchMatMul(node) || IsQuantizedMatMul(node);
 }
 
 bool IsAnyMax(const NodeDef& node) {
@@ -152,6 +156,7 @@ bool IsControlFlow(const NodeDef& node) {
          node.op() == "Exit" ||
          node.op() == "LoopCond" ||
          node.op() == "Merge" ||
+         node.op() == "_XlaMerge" ||
          node.op() == "NextIteration" ||
          node.op() == "Switch" ||
          node.op() == "_SwitchN";
@@ -331,7 +336,7 @@ bool IsMean(const NodeDef& node) { return node.op() == "Mean"; }
 
 bool IsMerge(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "Merge" || op == "RefMerge";
+  return op == "Merge" || op == "RefMerge" || op == "_XlaMerge";
 }
 
 bool IsMin(const NodeDef& node) { return node.op() == "Min"; }
@@ -455,7 +460,9 @@ bool IsRsqrt(const NodeDef& node) { return node.op() == "Rsqrt"; }
 
 bool IsRsqrtGrad(const NodeDef& node) { return node.op() == "RsqrtGrad"; }
 
-bool IsSelect(const NodeDef& node) { return node.op() == "Select"; }
+bool IsSelect(const NodeDef& node) {
+  return node.op() == "Select" || node.op() == "SelectV2";
+}
 
 bool IsSeluGrad(const NodeDef& node) { return node.op() == "SeluGrad"; }
 
@@ -856,6 +863,7 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "ArgMin",
                                 "AudioSpectrogram",
                                 "BatchMatMul",
+                                "BatchMatMulV2",
                                 "BatchToSpace",
                                 "BatchToSpaceND",
                                 "Bincount",
@@ -876,8 +884,10 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "CudnnRNNBackpropV2",
                                 "CudnnRNNBackpropV3",
                                 "CudnnRNNCanonicalToParams",
+                                "CudnnRNNCanonicalToParamsV2",
                                 "CudnnRNNParamsSize",
                                 "CudnnRNNParamsToCanonical",
+                                "CudnnRNNParamsToCanonicalV2",
                                 "CudnnRNNV2",
                                 "CudnnRNNV3",
                                 "CumSum",
@@ -910,7 +920,9 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "LowerBound",
                                 "MatMul",
                                 "MatrixDiag",
+                                "MatrixDiagV2",
                                 "MatrixDiagPart",
+                                "MatrixDiagPartV2",
                                 "Mfcc",
                                 "OneHot",
                                 "Pack",
@@ -941,8 +953,6 @@ bool NeverForwardsInputs(const NodeDef& node) {
                                 "Bucketize",
                                 "AvgPool",
                                 "BatchNormWithGlobalNormalization",
-                                "FusedBatchNorm",
-                                "FusedBatchNormV2",
                                 "Conv2D",
                                 "RandomUniform",
                                 "RandomUniformInt",
@@ -958,6 +968,8 @@ bool NeverForwardsInputs(const NodeDef& node) {
          absl::StrContains(op_name, "Segment") ||
          absl::StartsWith(op_name, "Quantize");
 }
+
+bool IsXlaLaunch(const NodeDef& node) { return node.op() == "XlaLaunch"; }
 
 }  // namespace grappler
 }  // end namespace tensorflow

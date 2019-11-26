@@ -34,10 +34,8 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_test_base as test_base
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
@@ -199,77 +197,6 @@ class MultiWorkerVerificationCallback(callbacks.Callback):
             # Each of the Worker should be called num_epoch of times.
             'worker': worker_call_count
         })
-
-
-# TODO(yuefengz): right now, fit or evaluate has to be called under distribution
-# strategy's scope.
-def _run_standalone_client(test_obj, strategy, cluster_spec):
-  input_shape = (28, 28, 1)
-  with strategy.scope():
-    orig_model = multi_worker_testing_utils.get_mnist_model(input_shape)
-
-  def worker_fn(strategy):
-    with ops.Graph().as_default():
-      batch_size = 64
-      steps = 2
-
-      with strategy.scope():
-        train_ds, _ = multi_worker_testing_utils.mnist_synthetic_dataset(
-            batch_size, steps)
-        model = _clone_and_build_model(orig_model, strategy)
-
-        orig_loss, orig_acc = model.evaluate(train_ds, steps=steps)
-
-        # Workaround for the metrics issue (b/122928955) in async training. This
-        # can only be used in standalone client mode.
-        multi_worker_util.wait_for_other_workers()
-
-        model.fit(x=train_ds, epochs=2, steps_per_epoch=steps)
-
-        multi_worker_util.wait_for_other_workers()
-
-        trained_loss, trained_acc = model.evaluate(train_ds, steps=steps)
-
-      test_obj.assertLessEqual(trained_loss, orig_loss)
-      test_obj.assertGreaterEqual(trained_acc, orig_acc)
-
-  dc.run_distribute_coordinator(
-      worker_fn,
-      strategy,
-      mode=dc.CoordinatorMode.STANDALONE_CLIENT,
-      cluster_spec=cluster_spec)
-
-
-class KerasMultiWorkerTestStandaloneClient(test.TestCase,
-                                           parameterized.TestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    """Create a local cluster with 2 workers."""
-    super(KerasMultiWorkerTestStandaloneClient, cls).setUpClass()
-    cls._cluster_spec = test_base.create_in_process_cluster(
-        num_workers=2, num_ps=1, has_eval=False)
-
-  @combinations.generate(
-      combinations.combine(
-          mode=['graph'],
-          strategy_cls=[
-              ParameterServerStrategy,
-              collective_strategy.CollectiveAllReduceStrategy,
-          ],
-          required_gpus=[0, 1]))
-  def testSimpleModelStandaloneClient(self, strategy_cls):
-    # With standalone client, training_utils.should_run_multi_worker returns
-    # False which means the distribute coordinator won't be called again in
-    # `fit`. This is still correct and intended since session is still
-    # configured under distribute coordinator's worker context and distribution
-    # strategy object is already configured by distribute coordinator for
-    # multi-worker training.
-    # The logic should be much clearer once standalone client is merged into
-    # core Keras as well.
-    strategy = strategy_cls()
-
-    _run_standalone_client(self, strategy, self._cluster_spec)
 
 
 class KerasMultiWorkerTestIndependentWorker(test_base.IndependentWorkerTestBase,

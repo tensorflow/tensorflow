@@ -52,12 +52,11 @@ using GPUDevice = Eigen::GpuDevice;
 // rows of input data and all reduction elements share one inner
 // dimension index.
 template <typename T, typename Index, int OuterDimTileSize>
-__global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
-                                             const Index inner_dim_size,
-                                             const Index output_outer_dim_size,
-                                             const Index* segment_ids,
-                                             const T* input, T* output,
-                                             const Index total_stripe_count) {
+__global__ void SortedSegmentSumCustomKernel(
+    const Index input_outer_dim_size, const Index inner_dim_size,
+    const Index output_outer_dim_size, const Index* __restrict__ segment_ids,
+    const T* __restrict__ input, T* __restrict__ output,
+    const Index total_stripe_count) {
   for (int stripe_index : GpuGridRangeX(total_stripe_count)) {
     const Index segment_offset = stripe_index % inner_dim_size;
     const Index input_outer_dim_index_base =
@@ -106,11 +105,10 @@ __global__ void SortedSegmentSumCustomKernel(const Index input_outer_dim_size,
 // Each element is mapped from input to output by a combination of its
 // 'segment_ids' mapping and 'inner_dim_size'.
 template <typename T, typename Index, typename KernelReductionFunctor>
-__global__ void UnsortedSegmentCustomKernel(const int64 input_outer_dim_size,
-                                            const int64 inner_dim_size,
-                                            const int64 output_outer_dim_size,
-                                            const Index* segment_ids,
-                                            const T* input, T* output) {
+__global__ void UnsortedSegmentCustomKernel(
+    const int64 input_outer_dim_size, const int64 inner_dim_size,
+    const int64 output_outer_dim_size, const Index* __restrict__ segment_ids,
+    const T* __restrict__ input, T* __restrict__ output) {
   const int64 input_total_size = input_outer_dim_size * inner_dim_size;
   for (int64 input_index : GpuGridRangeX(input_total_size)) {
     const int64 input_segment_index = input_index / inner_dim_size;

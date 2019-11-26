@@ -30,11 +30,10 @@ using namespace mlir;
 //===----------------------------------------------------------------------===//
 
 OperationState::OperationState(Location location, StringRef name)
-    : context(location->getContext()), location(location),
-      name(name, location->getContext()) {}
+    : location(location), name(name, location->getContext()) {}
 
 OperationState::OperationState(Location location, OperationName name)
-    : context(location->getContext()), location(location), name(name) {}
+    : location(location), name(name) {}
 
 OperationState::OperationState(Location location, StringRef name,
                                ArrayRef<Value *> operands, ArrayRef<Type> types,
@@ -42,15 +41,13 @@ OperationState::OperationState(Location location, StringRef name,
                                ArrayRef<Block *> successors,
                                MutableArrayRef<std::unique_ptr<Region>> regions,
                                bool resizableOperandList)
-    : context(location->getContext()), location(location),
-      name(name, location->getContext()),
+    : location(location), name(name, location->getContext()),
       operands(operands.begin(), operands.end()),
       types(types.begin(), types.end()),
       attributes(attributes.begin(), attributes.end()),
       successors(successors.begin(), successors.end()) {
-  for (std::unique_ptr<Region> &r : regions) {
+  for (std::unique_ptr<Region> &r : regions)
     this->regions.push_back(std::move(r));
-  }
 }
 
 Region *OperationState::addRegion() {

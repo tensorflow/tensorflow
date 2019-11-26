@@ -16,7 +16,7 @@ limitations under the License.
 // This is the quantization pattern definition file for TensorFlow Lite.
 
 include "mlir/IR/OpBase.td"
-include "mlir/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_ops.td"
 
 // Quantize attribute $0 by using quantization parameter from %1.

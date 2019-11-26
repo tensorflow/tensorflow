@@ -29,7 +29,7 @@ cc_library(
     hdrs = ["evaluation_stage.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools/evaluation/proto:evaluation_config_cc_proto",
     ],
 )
@@ -45,7 +45,7 @@ cc_library(
         "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
     ] + select({
         "//tensorflow:android": [
-            "//tensorflow/lite/delegates/gpu:gl_delegate",
+            "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }),

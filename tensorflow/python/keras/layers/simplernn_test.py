@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -41,6 +42,20 @@ class SimpleRNNLayerTest(keras_parameterized.TestCase):
         kwargs={'units': units,
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
+
+  @tf_test_util.run_v2_only
+  def test_float64_SimpleRNN(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        keras.layers.SimpleRNN,
+        kwargs={'units': units,
+                'return_sequences': True,
+                'dtype': 'float64'},
+        input_shape=(num_samples, timesteps, embedding_dim),
+        input_dtype='float64')
 
   def test_dynamic_behavior_SimpleRNN(self):
     num_samples = 2

@@ -43,6 +43,18 @@ class FunctionBodyTransformer(converter.Base):
         function_context_name=self.state[_Function].context_name,
         value=node.value)
 
+  def _function_scope_options(self):
+    """Returns the options with which to create function scopes."""
+    # Top-level function receive the options that were directly requested.
+    # All others receive the options corresponding to a recursive conversion.
+    # Note: this mainly controls the user_requested flag, which is important
+    # primarily because the FunctionScope context also creates a
+    # ControlStatusCtx(autograph=ENABLED) when user_requested is True. See
+    # function_wrappers.py.
+    if self.state[_Function].level == 2:
+      return self.ctx.program.options
+    return self.ctx.program.options.call_options()
+
   def visit_Lambda(self, node):
     self.state[_Function].enter()
     node = self.generic_visit(node)
@@ -56,18 +68,20 @@ class FunctionBodyTransformer(converter.Base):
       return node
 
     scope = anno.getanno(node, anno.Static.SCOPE)
-    function_context_name = self.ctx.namer.new_symbol(
-        'lambda_scope', scope.referenced)
+    function_context_name = self.ctx.namer.new_symbol('lscope',
+                                                      scope.referenced)
     self.state[_Function].context_name = function_context_name
     anno.setanno(node, 'function_context_name', function_context_name)
 
     template = """
-      ag__.with_function_scope(lambda function_context_name: body, options)
+      ag__.with_function_scope(
+          lambda function_context: body, function_context_name, options)
     """
     node.body = templates.replace_as_expression(
         template,
-        options=self.ctx.program.options.to_ast(),
-        function_context_name=function_context_name,
+        options=self._function_scope_options().to_ast(),
+        function_context=function_context_name,
+        function_context_name=gast.Str(function_context_name),
         body=node.body)
 
     self.state[_Function].exit()
@@ -77,8 +91,8 @@ class FunctionBodyTransformer(converter.Base):
     self.state[_Function].enter()
     scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
 
-    function_context_name = self.ctx.namer.new_symbol(
-        '{}_scope'.format(node.name), scope.referenced)
+    function_context_name = self.ctx.namer.new_symbol('fscope',
+                                                      scope.referenced)
     self.state[_Function].context_name = function_context_name
     anno.setanno(node, 'function_context_name', function_context_name)
 
@@ -93,14 +107,16 @@ class FunctionBodyTransformer(converter.Base):
         node.body = node.body[1:]
 
     template = """
-      with ag__.FunctionScope(function_name, options) as function_context_name:
+      with ag__.FunctionScope(
+          function_name, context_name, options) as function_context:
         body
     """
     wrapped_body = templates.replace(
         template,
         function_name=gast.Str(node.name),
-        options=self.ctx.program.options.to_ast(),
-        function_context_name=function_context_name,
+        context_name=gast.Str(function_context_name),
+        options=self._function_scope_options().to_ast(),
+        function_context=function_context_name,
         body=node.body)
 
     if docstring_node is not None:

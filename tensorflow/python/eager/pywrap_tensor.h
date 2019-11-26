@@ -23,7 +23,7 @@ limitations under the License.
 bool EagerTensor_CheckExact(const PyObject* o);
 tensorflow::int64 PyEagerTensor_ID(const PyObject* tensor);
 tensorflow::DataType PyEagerTensor_Dtype(const PyObject* tensor);
-tensorflow::int64 PyEagerTensor_NumElements(const PyObject* tensor);
+tensorflow::int64 PyEagerTensor_NumElements(PyObject* tensor);
 
 namespace tensorflow {
 

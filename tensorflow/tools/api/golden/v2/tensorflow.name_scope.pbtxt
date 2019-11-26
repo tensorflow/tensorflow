@@ -1,7 +1,6 @@
 path: "tensorflow.name_scope"
 tf_class {
   is_instance: "<class \'tensorflow.python.framework.ops.name_scope_v2\'>"
-  is_instance: "<class \'tensorflow.python.framework.ops.name_scope\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "name"

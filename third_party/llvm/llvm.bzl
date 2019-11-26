@@ -291,6 +291,11 @@ win32_cmake_vars = {
 
     # LLVM features
     "LTDL_SHLIB_EXT": ".dll",
+
+    # ThreadPoolExecutor global destructor and thread handshaking do not work
+    # on this platform when used as a DLL.
+    # See: https://github.com/google/iree/issues/114
+    "LLVM_ENABLE_THREADS": 0,
 }
 
 # Select a set of CMake variables based on the platform.

@@ -29,6 +29,7 @@ from tensorflow.python import keras
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import callbacks_v1
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.utils import np_utils
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 
@@ -55,8 +56,8 @@ class TestTensorBoardV1(test.TestCase):
         test_samples=TEST_SAMPLES,
         input_shape=(INPUT_DIM,),
         num_classes=NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
+    y_test = np_utils.to_categorical(y_test)
+    y_train = np_utils.to_categorical(y_train)
 
     def data_generator(train):
       if train:
@@ -164,8 +165,8 @@ class TestTensorBoardV1(test.TestCase):
           test_samples=TEST_SAMPLES,
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
 
       def data_generator(train):
         if train:
@@ -268,8 +269,8 @@ class TestTensorBoardV1(test.TestCase):
         test_samples=TEST_SAMPLES,
         input_shape=(INPUT_DIM,),
         num_classes=NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
+    y_test = np_utils.to_categorical(y_test)
+    y_train = np_utils.to_categorical(y_train)
 
     with self.cached_session():
       model = keras.models.Sequential()
@@ -364,8 +365,8 @@ class TestTensorBoardV1(test.TestCase):
           test_samples=TEST_SAMPLES,
           input_shape=(INPUT_DIM,),
           num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
+      y_test = np_utils.to_categorical(y_test)
+      y_train = np_utils.to_categorical(y_train)
 
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
@@ -475,8 +476,8 @@ class TestTensorBoardV1(test.TestCase):
         test_samples=TEST_SAMPLES,
         input_shape=(INPUT_DIM,),
         num_classes=NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
+    y_test = np_utils.to_categorical(y_test)
+    y_train = np_utils.to_categorical(y_train)
 
     model = testing_utils.get_small_sequential_mlp(
         num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)

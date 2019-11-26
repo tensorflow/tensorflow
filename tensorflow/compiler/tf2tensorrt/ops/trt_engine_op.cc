@@ -33,7 +33,7 @@ namespace tensorflow {
 // key to cache the instantiated functions for different executor subgraphs.
 REGISTER_OP("TRTEngineOp")
     .Attr("serialized_segment: string")
-    .Attr("segment_funcdef_name: string")
+    .Attr("segment_func: func = {}")
     .Attr("InT: list({int8,float16,float32,int32})")
     .Attr("OutT: list({int8,float16,float32,int32})")
     .Attr("max_cached_engines_count: int = 1")
@@ -51,10 +51,11 @@ REGISTER_OP("TRTEngineOp")
     // inference function as a workaround.
     .SetShapeFn(shape_inference::UnknownShape)
     // Deprecated attributes.
+    .Attr("segment_funcdef_name: string = ''")
     .Attr("cached_engine_batches: list(int) >= 0 = []")
     .Attr("fixed_input_size: bool = true")
-    .Attr("input_shapes: list(shape)")
-    .Attr("output_shapes: list(shape)")
+    .Attr("input_shapes: list(shape) = []")
+    .Attr("output_shapes: list(shape) = []")
     .Attr("static_engine: bool = true");
 }  // namespace tensorflow
 

@@ -28,6 +28,8 @@ class FilterWithRandomUniformFusion : public TFDataOptimizerBase {
 
   string name() const override { return "filter_with_random_uniform_fusion"; };
 
+  bool UsesFunctionLibrary() const override { return false; }
+
   Status Init(
       const tensorflow::RewriterConfig_CustomGraphOptimizer* config) override {
     return Status::OK();

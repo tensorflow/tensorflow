@@ -257,22 +257,6 @@ class HeapAlgorithm {
   // Finish collects the buffer offset assignment results.  Free may only be
   // called once, after the Alloc and Free calls.
   virtual Result Finish() = 0;
-
-  // Heap algorithms can optionally make use of the instruction/computation
-  // schedule. These data structures are guaranteed to be valid while Finish()
-  // is being called.
-  virtual void SetSchedules(
-      const HloInstructionSequence* flattened_instruction_sequence,
-      const absl::flat_hash_map<const HloInstruction*, int64>*
-          instruction_schedule) {
-    flattened_instruction_sequence_ = flattened_instruction_sequence;
-    instruction_schedule_ = instruction_schedule;
-  }
-
- protected:
-  const HloInstructionSequence* flattened_instruction_sequence_;
-  const absl::flat_hash_map<const HloInstruction*, int64>*
-      instruction_schedule_;
 };
 
 // NoFragmentationStatsHeap computes the heap size assuming no fragmentation;
@@ -312,20 +296,6 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     kTemporal,
   };
 
-  explicit GlobalDecreasingSizeBestFitHeap(int64 alignment,
-                                           Type type = kSpatial)
-      : alignment_(alignment), type_(type) {}
-  ~GlobalDecreasingSizeBestFitHeap() override {}
-
-  void Alloc(const HloValue* buffer, int64 size) override;
-  void Free(const HloValue* buffer, int64 size) override;
-
-  void ShareWith(const HloValue* buffer, const HloValue* share_with,
-                 int64 size) override;
-
-  Result Finish() override;
-
- protected:
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
     const HloValue* buffer;
@@ -343,6 +313,27 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     bool need_allocation;
   };
 
+  // Comparison function that is used to store buffer intervals.
+  using BufferIntervalCompare =
+      std::function<bool(const BufferInterval&, const BufferInterval&)>;
+
+  explicit GlobalDecreasingSizeBestFitHeap(int64 alignment,
+                                           Type type = kSpatial);
+  ~GlobalDecreasingSizeBestFitHeap() override {}
+
+  void Alloc(const HloValue* buffer, int64 size) override;
+  void Free(const HloValue* buffer, int64 size) override;
+
+  void ShareWith(const HloValue* buffer, const HloValue* share_with,
+                 int64 size) override;
+
+  Result Finish() override;
+
+  // Return a BufferIntervalCompare function that sort by spatial size. We don't
+  // look at co-locates as they should have the same size.
+  static BufferIntervalCompare GetSpatialBufferIntervalCompare();
+
+ protected:
   // Node in BufferIntervalTree that stores the alloc and free times of a
   // buffer, and the chunk assigned to it.
   struct BufferIntervalTreeNode {
@@ -383,7 +374,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     int64 heap_size;
   };
 
-  // Returns the buffer intervals sorted according to type_.
+  // Returns the buffer intervals sorted according to buffer_interval_compare_.
   std::vector<BufferInterval> GetSortedBufferIntervals() const;
 
   // These two methods below are exposed to other heap algorithms that inherit
@@ -401,12 +392,19 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
   // Adds the buffer and the chunk to the result chunk map.
   virtual void AddToChunkMap(const HloValue* buffer, Chunk chunk);
 
+  // Return a BufferIntervalCompare function that sorts by live ranges.  A live
+  // range is defined by the range between the start of the first buffer and the
+  // end of the last co-located buffer.  There could be "holes" in the live
+  // ranges of each co-located buffers, but in this heuristics we think they are
+  // contiguous.
+  BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
+
   absl::flat_hash_map<const HloValue*, BufferInterval> buffer_intervals_;
   Result result_;
+  BufferIntervalCompare buffer_interval_compare_;
 
  private:
   int64 alignment_;
-  Type type_;
 
   // The current time represented as an integer. It increments by 1 at each
   // Alloc or Free call.

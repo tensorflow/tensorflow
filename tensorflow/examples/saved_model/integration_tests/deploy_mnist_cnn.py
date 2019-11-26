@@ -39,6 +39,9 @@ flags.DEFINE_bool(
 flags.DEFINE_string(
     'tflite_output_file', None,
     'The filename of the .tflite model file to write (optional).')
+flags.DEFINE_bool(
+    'reload_as_keras_model', True,
+    'Also test tf.keras.models.load_model() on --saved_model_dir.')
 
 
 def main(argv):
@@ -76,16 +79,29 @@ def main(argv):
     y_tf = tf_model(x)
     # This numpy primitive uses plain `raise` and works outside tf.TestCase.
     # Model outputs are probabilities that sum to 1, so atol makes sense here.
-    np.testing.assert_allclose(y_lite, y_tf, rtol=0, atol=1e-5,
-                               err_msg='Mismatch at test example %d' % i)
+    np.testing.assert_allclose(
+        y_lite, y_tf, rtol=0, atol=1e-5,
+        err_msg='Mismatch with TF Lite at test example %d' % i)
 
-  # Test that it loads correctly with v1 load APIs as well.
+  # Test that the SavedModel loads correctly with v1 load APIs as well.
   with tf.compat.v1.Graph().as_default(), tf.compat.v1.Session() as session:
     tf.compat.v1.saved_model.load(
         session,
         [tf.compat.v1.saved_model.SERVING],
         FLAGS.saved_model_dir)
 
+  # The SavedModel actually was a Keras Model; test that it also loads as that.
+  if FLAGS.reload_as_keras_model:
+    keras_model = tf.keras.models.load_model(FLAGS.saved_model_dir)
+    for i, x in enumerate(x_test):
+      x = x[None, ...]  # Make batch of size 1.
+      y_tf = tf_model(x)
+      y_keras = keras_model(x)
+      # This numpy primitive uses plain `raise` and works outside tf.TestCase.
+      # Model outputs are probabilities that sum to 1, so atol makes sense here.
+      np.testing.assert_allclose(
+          y_tf, y_keras, rtol=0, atol=1e-5,
+          err_msg='Mismatch with Keras at test example %d' % i)
 
 if __name__ == '__main__':
   app.run(main)

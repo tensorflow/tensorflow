@@ -2,7 +2,6 @@ licenses(["notice"])  # Apache 2.0
 
 package(default_visibility = ["//tensorflow/stream_executor:__subpackages__"])
 
-load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 
 cc_library(
@@ -15,10 +14,11 @@ cc_library(
 
 cc_library(
     name = "dso_loader",
-    srcs = ["dso_loader.cc"] + if_static(
-        ["dlopen_checker_stub.cc"],
-        ["dlopen_checker.cc"],
-    ),
+    srcs = ["dso_loader.cc"] + select({
+        # include dynamic loading checker only for open source build
+        "//tensorflow:oss": ["dlopen_checker.cc"],
+        "//conditions:default": ["dlopen_checker_stub.cc"],
+    }),
     hdrs = ["dso_loader.h"],
     copts = tf_copts(),
     deps = [

@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/api/profiler.h"
 #include "tensorflow/lite/delegates/flex/delegate_data.h"
 #include "tensorflow/lite/delegates/flex/util.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 // Note: this is part of TF Lite's Flex delegation code which is to be
 // completed soon.
@@ -258,9 +258,7 @@ class OpNode {
 
     // Precalculating a cache key saves about 10% of inference time for very
     // small models.
-    tensorflow::Device* device = op_->Device();
-    op_->MutableAttrs()->CacheKey(device == nullptr ? "unspecified"
-                                                    : device->name());
+    op_->MutableAttrs()->CacheKey(op_->GetDeviceName());
 
     return tensorflow::Status::OK();
   }
@@ -342,7 +340,7 @@ tensorflow::Status ExecuteFlexOp(TfLiteContext* context, BufferMap* buffer_map,
   int num_retvals = node_data->NumOutputs();
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
       EagerExecute(node_data->op(),
-                   node_data->mutable_outputs()->GetTensorHandles(),
+                   node_data->mutable_outputs()->GetTensorHandles()->data(),
                    &num_retvals),
       " (while executing '", node_data->name(), "' via Eager)");
 
@@ -530,9 +528,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   // Execute the TensorFlow Ops sequentially.
   for (auto& node_data : op_data->nodes) {
-    TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(
-        reinterpret_cast<Profiler*>(context->profiler),
-        node_data->name().c_str(), node_data->index());
+    TFLITE_SCOPED_DELEGATE_OPERATOR_PROFILE(
+        reinterpret_cast<Profiler*>(context->profiler), node_data->index());
 
     auto status = ExecuteFlexOp(context, buffer_map, node_data.get());
     TF_LITE_ENSURE_OK(context, ConvertStatus(context, status));

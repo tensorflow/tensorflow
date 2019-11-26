@@ -20,6 +20,9 @@ from __future__ import print_function
 from tensorflow.python.data.util import options
 from tensorflow.python.util.tf_export import tf_export
 
+# Do not modify.
+_ENABLE_AUTOTUNE_BUFFERS_BY_DEFAULT = False
+
 
 @tf_export("data.experimental.MapVectorizationOptions")
 class MapVectorizationOptions(options.OptionsBase):
@@ -214,7 +217,11 @@ class OptimizationOptions(options.OptionsBase):
     if self.map_vectorization is not None:
       result.update(self.map_vectorization._static_optimizations())  # pylint: disable=protected-access
 
-    if self.autotune is not False and self.autotune_buffers:  # pylint: disable=g-bool-id-comparison
+    # The default setting for autotune_buffers is based on
+    # _ENABLE_AUTOTUNE_BUFFERS_BY_DEFAULT
+    autotune_buffers = self.autotune_buffers or (
+        self.autotune_buffers is None and _ENABLE_AUTOTUNE_BUFFERS_BY_DEFAULT)
+    if self.autotune is not False and autotune_buffers:  # pylint: disable=g-bool-id-comparison
       result.add("inject_prefetch")
     return sorted(list(result))
 

@@ -13,10 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include <string.h>
+
 #include <algorithm>
 #include <complex>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -82,7 +84,7 @@ TfLiteStatus copyToTensor(const FromT* in, TfLiteTensor* out,
       copyCast(in, out->data.uint8, num_elements);
       break;
     case kTfLiteFloat32:
-      copyCast(in, out->data.f, num_elements);
+      copyCast(in, GetTensorData<float>(out), num_elements);
       break;
     case kTfLiteBool:
       copyCast(in, out->data.b, num_elements);
@@ -111,7 +113,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8:
       return copyToTensor(input->data.uint8, output, num_elements);
     case kTfLiteFloat32:
-      return copyToTensor(input->data.f, output, num_elements);
+      return copyToTensor(GetTensorData<float>(input), output, num_elements);
     case kTfLiteBool:
       return copyToTensor(input->data.b, output, num_elements);
     case kTfLiteComplex64:

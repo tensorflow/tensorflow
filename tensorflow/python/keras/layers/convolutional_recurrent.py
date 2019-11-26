@@ -921,7 +921,8 @@ class ConvLSTM2D(ConvRNN2D):
                           recurrent_constraint=recurrent_constraint,
                           bias_constraint=bias_constraint,
                           dropout=dropout,
-                          recurrent_dropout=recurrent_dropout)
+                          recurrent_dropout=recurrent_dropout,
+                          dtype=kwargs.get('dtype'))
     super(ConvLSTM2D, self).__init__(cell,
                                      return_sequences=return_sequences,
                                      go_backwards=go_backwards,
@@ -930,8 +931,7 @@ class ConvLSTM2D(ConvRNN2D):
     self.activity_regularizer = regularizers.get(activity_regularizer)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell.reset_dropout_mask()
-    self.cell.reset_recurrent_dropout_mask()
+    self._maybe_reset_cell_dropout_mask(self.cell)
     return super(ConvLSTM2D, self).call(inputs,
                                         mask=mask,
                                         training=training,

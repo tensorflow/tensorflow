@@ -38,6 +38,7 @@ import datetime
 import os
 import threading
 
+from tensorflow.python import _pywrap_events_writer
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
@@ -97,7 +98,7 @@ def stop():
       raise ProfilerNotRunningError(
           'Cannot stop profiling. No profiler is running.')
     if context.default_execution_mode == context.EAGER_MODE:
-      context.async_wait()
+      context.context().executor.wait()
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tensorflow.TFE_ProfilerSerializeToString(
           _profiler,
@@ -122,7 +123,7 @@ def maybe_create_event_file(logdir):
     if file_name.endswith(_EVENT_FILE_SUFFIX):
       return
   # TODO(b/127330388): Use summary_ops_v2.create_file_writer instead.
-  event_writer = pywrap_tensorflow.EventsWriter(
+  event_writer = _pywrap_events_writer.EventsWriter(
       compat.as_bytes(os.path.join(logdir, 'events')))
   event_writer.InitWithSuffix(compat.as_bytes(_EVENT_FILE_SUFFIX))
 

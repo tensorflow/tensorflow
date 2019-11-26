@@ -30,7 +30,7 @@ limitations under the License.
 // most usage will be by language-specific wrappers.
 //
 // Conventions:
-// * We use the prefix TFL_ for everything in the API.
+// * We use the prefix TfLite for everything in the API.
 // * size_t is used to represent byte sizes of objects that are
 //   materialized in the address space of the calling process.
 // * int is used as an index into arrays.
@@ -39,11 +39,11 @@ limitations under the License.
 #define TFL_CAPI_EXPORT
 #else
 #if defined(_WIN32)
-#ifdef TF_COMPILE_LIBRARY
+#ifdef TFL_COMPILE_LIBRARY
 #define TFL_CAPI_EXPORT __declspec(dllexport)
 #else
 #define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TF_COMPILE_LIBRARY
+#endif  // TFL_COMPILE_LIBRARY
 #else
 #define TFL_CAPI_EXPORT __attribute__((visibility("default")))
 #endif  // _WIN32
@@ -53,45 +53,51 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
-typedef TfLiteQuantizationParams TFL_QuantizationParams;
-typedef TfLiteRegistration TFL_Registration;
-typedef TfLiteStatus TFL_Status;
-typedef TfLiteTensor TFL_Tensor;
-typedef TfLiteType TFL_Type;
-
 // --------------------------------------------------------------------------
-// TFL_Version returns a string describing version information of the
+// TfLiteVersion returns a string describing version information of the
 // TensorFlow Lite library. TensorFlow Lite uses semantic versioning.
-TFL_CAPI_EXPORT extern const char* TFL_Version(void);
+TFL_CAPI_EXPORT extern const char* TfLiteVersion(void);
 
 // --------------------------------------------------------------------------
-// TFL_Model wraps a loaded TensorFlow Lite model.
-typedef struct TFL_Model TFL_Model;
+// TfLiteModel wraps a loaded TensorFlow Lite model.
+typedef struct TfLiteModel TfLiteModel;
 
 // Returns a model from the provided buffer, or null on failure.
-TFL_CAPI_EXPORT extern TFL_Model* TFL_NewModel(const void* model_data,
-                                               size_t model_size);
+TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreate(const void* model_data,
+                                                      size_t model_size);
 
 // Returns a model from the provided file, or null on failure.
-TFL_CAPI_EXPORT extern TFL_Model* TFL_NewModelFromFile(const char* model_path);
+TFL_CAPI_EXPORT extern TfLiteModel* TfLiteModelCreateFromFile(
+    const char* model_path);
 
 // Destroys the model instance.
-TFL_CAPI_EXPORT extern void TFL_DeleteModel(TFL_Model* model);
+TFL_CAPI_EXPORT extern void TfLiteModelDelete(TfLiteModel* model);
 
 // --------------------------------------------------------------------------
-// TFL_InterpreterOptions allows customized interpreter configuration.
-typedef struct TFL_InterpreterOptions TFL_InterpreterOptions;
+// TfLiteInterpreterOptions allows customized interpreter configuration.
+typedef struct TfLiteInterpreterOptions TfLiteInterpreterOptions;
 
 // Returns a new interpreter options instances.
-TFL_CAPI_EXPORT extern TFL_InterpreterOptions* TFL_NewInterpreterOptions();
+TFL_CAPI_EXPORT extern TfLiteInterpreterOptions*
+TfLiteInterpreterOptionsCreate();
 
 // Destroys the interpreter options instance.
-TFL_CAPI_EXPORT extern void TFL_DeleteInterpreterOptions(
-    TFL_InterpreterOptions* options);
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsDelete(
+    TfLiteInterpreterOptions* options);
 
 // Sets the number of CPU threads to use for the interpreter.
-TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetNumThreads(
-    TFL_InterpreterOptions* options, int32_t num_threads);
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetNumThreads(
+    TfLiteInterpreterOptions* options, int32_t num_threads);
+
+// Adds a delegate to be applied during `TfLiteInterpreter` creation.
+//
+// If delegate application fails, interpreter creation will also fail with an
+// associated error logged.
+//
+// NOTE: The caller retains ownership of the delegate and should ensure that it
+// remains valid for the duration of any created interpreter's lifetime.
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsAddDelegate(
+    TfLiteInterpreterOptions* options, TfLiteDelegate* delegate);
 
 // Sets a custom error reporter for interpreter execution.
 //
@@ -99,14 +105,14 @@ TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetNumThreads(
 //   format string and arg list (see also vprintf).
 // * `user_data` is optional. If provided, it is owned by the client and must
 //   remain valid for the duration of the interpreter lifetime.
-TFL_CAPI_EXPORT extern void TFL_InterpreterOptionsSetErrorReporter(
-    TFL_InterpreterOptions* options,
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetErrorReporter(
+    TfLiteInterpreterOptions* options,
     void (*reporter)(void* user_data, const char* format, va_list args),
     void* user_data);
 
 // --------------------------------------------------------------------------
-// TFL_Interpreter provides inference from a provided model.
-typedef struct TFL_Interpreter TFL_Interpreter;
+// TfLiteInterpreter provides inference from a provided model.
+typedef struct TfLiteInterpreter TfLiteInterpreter;
 
 // Returns a new interpreter using the provided model and options, or null on
 // failure.
@@ -119,28 +125,29 @@ typedef struct TFL_Interpreter TFL_Interpreter;
 //
 // NOTE: The client *must* explicitly allocate tensors before attempting to
 // access input tensor data or invoke the interpreter.
-TFL_CAPI_EXPORT extern TFL_Interpreter* TFL_NewInterpreter(
-    const TFL_Model* model, const TFL_InterpreterOptions* optional_options);
+TFL_CAPI_EXPORT extern TfLiteInterpreter* TfLiteInterpreterCreate(
+    const TfLiteModel* model, const TfLiteInterpreterOptions* optional_options);
 
 // Destroys the interpreter.
-TFL_CAPI_EXPORT extern void TFL_DeleteInterpreter(TFL_Interpreter* interpreter);
+TFL_CAPI_EXPORT extern void TfLiteInterpreterDelete(
+    TfLiteInterpreter* interpreter);
 
 // Returns the number of input tensors associated with the model.
-TFL_CAPI_EXPORT extern int TFL_InterpreterGetInputTensorCount(
-    const TFL_Interpreter* interpreter);
+TFL_CAPI_EXPORT extern int TfLiteInterpreterGetInputTensorCount(
+    const TfLiteInterpreter* interpreter);
 
 // Returns the tensor associated with the input index.
-// REQUIRES: 0 <= input_index < TFL_InterpreterGetInputTensorCount(tensor)
-TFL_CAPI_EXPORT extern TFL_Tensor* TFL_InterpreterGetInputTensor(
-    const TFL_Interpreter* interpreter, int32_t input_index);
+// REQUIRES: 0 <= input_index < TfLiteInterpreterGetInputTensorCount(tensor)
+TFL_CAPI_EXPORT extern TfLiteTensor* TfLiteInterpreterGetInputTensor(
+    const TfLiteInterpreter* interpreter, int32_t input_index);
 
 // Resizes the specified input tensor.
 //
 // NOTE: After a resize, the client *must* explicitly allocate tensors before
 // attempting to access the resized tensor data or invoke the interpreter.
-// REQUIRES: 0 <= input_index < TFL_InterpreterGetInputTensorCount(tensor)
-TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterResizeInputTensor(
-    TFL_Interpreter* interpreter, int32_t input_index, const int* input_dims,
+// REQUIRES: 0 <= input_index < TfLiteInterpreterGetInputTensorCount(tensor)
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterResizeInputTensor(
+    TfLiteInterpreter* interpreter, int32_t input_index, const int* input_dims,
     int32_t input_dims_size);
 
 // Updates allocations for all tensors, resizing dependent tensors using the
@@ -148,80 +155,80 @@ TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterResizeInputTensor(
 //
 // This is a relatively expensive operation, and need only be called after
 // creating the graph and/or resizing any inputs.
-TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterAllocateTensors(
-    TFL_Interpreter* interpreter);
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterAllocateTensors(
+    TfLiteInterpreter* interpreter);
 
 // Runs inference for the loaded graph.
 //
 // NOTE: It is possible that the interpreter is not in a ready state to
 // evaluate (e.g., if a ResizeInputTensor() has been performed without a call to
 // AllocateTensors()).
-TFL_CAPI_EXPORT extern TFL_Status TFL_InterpreterInvoke(
-    TFL_Interpreter* interpreter);
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteInterpreterInvoke(
+    TfLiteInterpreter* interpreter);
 
 // Returns the number of output tensors associated with the model.
-TFL_CAPI_EXPORT extern int32_t TFL_InterpreterGetOutputTensorCount(
-    const TFL_Interpreter* interpreter);
+TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorCount(
+    const TfLiteInterpreter* interpreter);
 
 // Returns the tensor associated with the output index.
-// REQUIRES: 0 <= input_index < TFL_InterpreterGetOutputTensorCount(tensor)
+// REQUIRES: 0 <= input_index < TfLiteInterpreterGetOutputTensorCount(tensor)
 //
 // NOTE: The shape and underlying data buffer for output tensors may be not
 // be available until after the output tensor has been both sized and allocated.
 // In general, best practice is to interact with the output tensor *after*
-// calling TFL_InterpreterInvoke().
-TFL_CAPI_EXPORT extern const TFL_Tensor* TFL_InterpreterGetOutputTensor(
-    const TFL_Interpreter* interpreter, int32_t output_index);
+// calling TfLiteInterpreterInvoke().
+TFL_CAPI_EXPORT extern const TfLiteTensor* TfLiteInterpreterGetOutputTensor(
+    const TfLiteInterpreter* interpreter, int32_t output_index);
 
 // --------------------------------------------------------------------------
-// TFL_Tensor wraps data associated with a graph tensor.
+// TfLiteTensor wraps data associated with a graph tensor.
 //
-// Note that, while the TFL_Tensor struct is not currently opaque, and its
+// Note that, while the TfLiteTensor struct is not currently opaque, and its
 // fields can be accessed directly, these methods are still convenient for
 // language bindings. In the future the tensor struct will likely be made opaque
 // in the public API.
 
 // Returns the type of a tensor element.
-TFL_CAPI_EXPORT extern TFL_Type TFL_TensorType(const TFL_Tensor* tensor);
+TFL_CAPI_EXPORT extern TfLiteType TfLiteTensorType(const TfLiteTensor* tensor);
 
 // Returns the number of dimensions that the tensor has.
-TFL_CAPI_EXPORT extern int32_t TFL_TensorNumDims(const TFL_Tensor* tensor);
+TFL_CAPI_EXPORT extern int32_t TfLiteTensorNumDims(const TfLiteTensor* tensor);
 
 // Returns the length of the tensor in the "dim_index" dimension.
 // REQUIRES: 0 <= dim_index < TFLiteTensorNumDims(tensor)
-TFL_CAPI_EXPORT extern int32_t TFL_TensorDim(const TFL_Tensor* tensor,
-                                             int32_t dim_index);
+TFL_CAPI_EXPORT extern int32_t TfLiteTensorDim(const TfLiteTensor* tensor,
+                                               int32_t dim_index);
 
 // Returns the size of the underlying data in bytes.
-TFL_CAPI_EXPORT extern size_t TFL_TensorByteSize(const TFL_Tensor* tensor);
+TFL_CAPI_EXPORT extern size_t TfLiteTensorByteSize(const TfLiteTensor* tensor);
 
 // Returns a pointer to the underlying data buffer.
 //
 // NOTE: The result may be null if tensors have not yet been allocated, e.g.,
-// if the Tensor has just been created or resized and `TFL_AllocateTensors()`
+// if the Tensor has just been created or resized and `TfLiteAllocateTensors()`
 // has yet to be called, or if the output tensor is dynamically sized and the
 // interpreter hasn't been invoked.
-TFL_CAPI_EXPORT extern void* TFL_TensorData(const TFL_Tensor* tensor);
+TFL_CAPI_EXPORT extern void* TfLiteTensorData(const TfLiteTensor* tensor);
 
 // Returns the (null-terminated) name of the tensor.
-TFL_CAPI_EXPORT extern const char* TFL_TensorName(const TFL_Tensor* tensor);
+TFL_CAPI_EXPORT extern const char* TfLiteTensorName(const TfLiteTensor* tensor);
 
 // Returns the parameters for asymmetric quantization. The quantization
 // parameters are only valid when the tensor type is `kTfLiteUInt8` and the
 // `scale != 0`. Quantized values can be converted back to float using:
 //    real_value = scale * (quantized_value - zero_point);
-TFL_CAPI_EXPORT extern TFL_QuantizationParams TFL_TensorQuantizationParams(
-    const TFL_Tensor* tensor);
+TFL_CAPI_EXPORT extern TfLiteQuantizationParams TfLiteTensorQuantizationParams(
+    const TfLiteTensor* tensor);
 
 // Copies from the provided input buffer into the tensor's buffer.
-// REQUIRES: input_data_size == TFL_TensorByteSize(tensor)
-TFL_CAPI_EXPORT extern TFL_Status TFL_TensorCopyFromBuffer(
-    TFL_Tensor* tensor, const void* input_data, size_t input_data_size);
+// REQUIRES: input_data_size == TfLiteTensorByteSize(tensor)
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteTensorCopyFromBuffer(
+    TfLiteTensor* tensor, const void* input_data, size_t input_data_size);
 
 // Copies to the provided output buffer from the tensor's buffer.
-// REQUIRES: output_data_size == TFL_TensorByteSize(tensor)
-TFL_CAPI_EXPORT extern TFL_Status TFL_TensorCopyToBuffer(
-    const TFL_Tensor* output_tensor, void* output_data,
+// REQUIRES: output_data_size == TfLiteTensorByteSize(tensor)
+TFL_CAPI_EXPORT extern TfLiteStatus TfLiteTensorCopyToBuffer(
+    const TfLiteTensor* output_tensor, void* output_data,
     size_t output_data_size);
 
 #ifdef __cplusplus

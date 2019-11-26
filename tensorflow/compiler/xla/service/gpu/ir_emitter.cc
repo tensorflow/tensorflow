@@ -193,7 +193,8 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
     store->setAtomic(llvm::AtomicOrdering::Unordered);
     // Derive a minimum alignment from the type. The optimizer can increase it
     // later.
-    store->setAlignment(ShapeUtil::ByteSizeOfPrimitiveType(element_type));
+    store->setAlignment(
+        llvm::MaybeAlign(ShapeUtil::ByteSizeOfPrimitiveType(element_type)));
     return true;
   }
 

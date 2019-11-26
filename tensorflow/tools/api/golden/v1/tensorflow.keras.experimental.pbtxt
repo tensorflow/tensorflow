@@ -13,6 +13,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearModel"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "NoisyLinearCosineDecay"
     mtype: "<type \'type\'>"
   }
@@ -22,6 +26,10 @@ tf_module {
   }
   member {
     name: "SequenceFeatures"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "WideDeepModel"
     mtype: "<type \'type\'>"
   }
   member_method {

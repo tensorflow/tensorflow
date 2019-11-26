@@ -26,6 +26,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/MathExtras.h"
+#include <numeric>
 
 using namespace mlir;
 using namespace mlir::quant;
@@ -60,8 +61,7 @@ public:
 
 void StorageCastOp::getCanonicalizationPatterns(
     OwningRewritePatternList &patterns, MLIRContext *context) {
-  patterns.push_back(
-      llvm::make_unique<RemoveRedundantStorageCastsRewrite>(context));
+  patterns.insert<RemoveRedundantStorageCastsRewrite>(context);
 }
 
 QuantizationDialect::QuantizationDialect(MLIRContext *context)

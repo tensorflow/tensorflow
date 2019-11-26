@@ -18,10 +18,10 @@ limitations under the License.
 #include <map>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
-#include "tensorflow/lite/delegates/gpu/gl/gpu_info.h"
 #include "tensorflow/lite/delegates/gpu/gl/workgroups/calculator.h"
 
 namespace tflite {

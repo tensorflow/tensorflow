@@ -17,6 +17,7 @@ py_library(
     srcs = ["functional_saver.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":saveable_hook",
         ":saveable_object",
         ":saveable_object_util",
         "//tensorflow/python/eager:def_function",
@@ -31,15 +32,24 @@ cuda_py_test(
     ],
     additional_deps = [
         ":functional_saver",
+        ":saveable_hook",
         "//tensorflow/python/eager:test",
     ],
-    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
     name = "saveable_object",
     srcs = ["saveable_object.py"],
     srcs_version = "PY2AND3",
+)
+
+py_library(
+    name = "saveable_hook",
+    srcs = ["saveable_hook.py"],
+    deps = [
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python/training/tracking:base",
+    ],
 )
 
 py_library(

@@ -22,7 +22,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/profiling/time.h"
 #include "tensorflow/lite/tools/accuracy/csv_writer.h"
 #include "tensorflow/lite/tools/accuracy/ilsvrc/imagenet_model_evaluator.h"

@@ -185,6 +185,12 @@ HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
       broadcast_shape, operand, broadcast_dimensions));
 }
 
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 const Shape& shape) {
+  return MakeBroadcastHlo(operand, broadcast_dimensions, shape.dimensions());
+}
+
 StatusOr<HloInstruction*> MakeGetTupleElementHlo(HloInstruction* operand,
                                                  int64 index) {
   HloComputation* computation = operand->parent();
@@ -222,6 +228,22 @@ HloInstruction* MakeConvertToHlo(HloInstruction* hlo, PrimitiveType type) {
       hlo->parent()->AddInstruction(HloInstruction::CreateConvert(shape, hlo));
   CHECK_EQ(hlo->shape().element_type(), type);
   return hlo;
+}
+
+HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
+                                        PrimitiveType type) {
+  CHECK_NE(hlo->shape().element_type(), type);
+  Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
+  hlo = hlo->parent()->AddInstruction(
+      HloInstruction::CreateBitcastConvert(shape, hlo));
+  CHECK_EQ(hlo->shape().element_type(), type);
+  return hlo;
+}
+
+HloInstruction* MakeIotaHlo(HloComputation* computation, const Shape& shape,
+                            int64 iota_dimension) {
+  return computation->AddInstruction(
+      HloInstruction::CreateIota(shape, iota_dimension));
 }
 
 StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,

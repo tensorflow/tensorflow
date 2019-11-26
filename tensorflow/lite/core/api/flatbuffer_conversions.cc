@@ -18,7 +18,7 @@ limitations under the License.
 #include <cstdlib>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
@@ -435,6 +435,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
                                    lstm_params->kernel_type());
             return kTfLiteError;
         }
+      } else {
+        error_reporter->Report("No valid LSTM builtin options exist");
+        return kTfLiteError;
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
       break;
@@ -519,6 +522,15 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto params = safe_allocator.Allocate<TfLiteSpaceToDepthParams>();
       if (const auto* schema_params =
               op->builtin_options_as_SpaceToDepthOptions()) {
+        params->block_size = schema_params->block_size();
+      }
+      *builtin_data = reinterpret_cast<void*>(params.release());
+      break;
+    }
+    case BuiltinOperator_DEPTH_TO_SPACE: {
+      auto params = safe_allocator.Allocate<TfLiteDepthToSpaceParams>();
+      if (const auto* schema_params =
+              op->builtin_options_as_DepthToSpaceOptions()) {
         params->block_size = schema_params->block_size();
       }
       *builtin_data = reinterpret_cast<void*>(params.release());
@@ -804,6 +816,9 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_WHERE:
     case BuiltinOperator_RANK:
     case BuiltinOperator_QUANTIZE:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V4:
+    case BuiltinOperator_NON_MAX_SUPPRESSION_V5:
+    case BuiltinOperator_SCATTER_ND:
       break;
   }
   return kTfLiteOk;

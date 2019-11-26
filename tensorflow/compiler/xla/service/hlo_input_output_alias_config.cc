@@ -103,9 +103,13 @@ StatusOr<HloInputOutputAliasConfig> HloInputOutputAliasConfig::CreateFromProto(
   return result;
 }
 
+const Shape& HloInputOutputAliasConfig::shape() const { return alias_.shape(); }
+
 string HloInputOutputAliasConfig::ToString() const {
   std::vector<string> pieces;
   pieces.push_back("HloInputOutputAliasConfig");
+  pieces.push_back(
+      absl::StrFormat("  Output shape: %s", alias_.shape().ToString()));
 
   ForEachAlias([&](const ShapeIndex& output_index, const Alias& alias) {
     const char* kind = alias.kind == AliasKind::kUserAlias ? "USER" : "SYSTEM";

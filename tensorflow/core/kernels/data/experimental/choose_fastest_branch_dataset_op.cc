@@ -242,13 +242,11 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
       return static_cast<double>(n) * ratio_numerator_ / ratio_denominator_;
     }
 
-    bool IsStateful() const override {
+    Status CheckExternalState() const override {
       for (const auto& captured_func : captured_funcs_) {
-        if (captured_func->IsStateful()) {
-          return true;
-        }
+        TF_RETURN_IF_ERROR(captured_func->CheckExternalState());
       }
-      return input_->IsStateful();
+      return input_->CheckExternalState();
     }
 
    protected:
@@ -444,7 +442,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
         DCHECK_GE(branch_index_, 0);
         DCHECK_LT(branch_index_, histograms_.size());
 
-        int64 start = ctx->env()->NowNanos();
+        int64 start = EnvTime::NowNanos();
         Status s =
             current_iterator_->GetNext(ctx, out_tensors, end_of_sequence);
 
@@ -452,7 +450,7 @@ class ChooseFastestBranchDatasetOp : public UnaryDatasetOpKernel {
           // Ignore the first experiment when benchmarking. It may be an outlier
           // due to session set up time and other overheads.
           histograms_[branch_index_].Add(
-              static_cast<double>(ctx->env()->NowNanos() - start));
+              static_cast<double>(EnvTime::NowNanos() - start));
         }
         return s;
       }

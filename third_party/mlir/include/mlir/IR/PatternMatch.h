@@ -273,7 +273,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy create(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
     auto result = dyn_cast<OpTy>(op);
     assert(result && "Builder didn't return the right type");
@@ -286,7 +286,7 @@ public:
   template <typename OpTy, typename... Args>
   OpTy createChecked(Location location, Args... args) {
     OperationState state(location, OpTy::getOperationName());
-    OpTy::build(this, &state, args...);
+    OpTy::build(this, state, args...);
     auto *op = createOperation(state);
 
     // If the Operation we produce is valid, return it.
@@ -307,12 +307,23 @@ public:
   virtual Operation *createOperation(const OperationState &state) = 0;
 
   /// Move the blocks that belong to "region" before the given position in
-  /// another region "parent".  The two regions must be different.  The caller
+  /// another region "parent". The two regions must be different. The caller
   /// is responsible for creating or updating the operation transferring flow
-  // of control to the region and pass it the correct block arguments.
+  /// of control to the region and passing it the correct block arguments.
   virtual void inlineRegionBefore(Region &region, Region &parent,
                                   Region::iterator before);
   void inlineRegionBefore(Region &region, Block *before);
+
+  /// Clone the blocks that belong to "region" before the given position in
+  /// another region "parent". The two regions must be different. The caller is
+  /// responsible for creating or updating the operation transferring flow of
+  /// control to the region and passing it the correct block arguments.
+  virtual void cloneRegionBefore(Region &region, Region &parent,
+                                 Region::iterator before,
+                                 BlockAndValueMapping &mapping);
+  void cloneRegionBefore(Region &region, Region &parent,
+                         Region::iterator before);
+  void cloneRegionBefore(Region &region, Block *before);
 
   /// This method performs the final replacement for a pattern, where the
   /// results of the operation are updated to use the specified list of SSA
@@ -345,11 +356,19 @@ public:
                                     valuesToRemoveIfDead);
   }
 
+  /// This method erases an operation that is known to have no uses.
+  virtual void eraseOp(Operation *op);
+
+  /// Merge the operations of block 'source' into the end of block 'dest'.
+  /// 'source's predecessors must either be empty or only contain 'dest`.
+  /// 'argValues' is used to replace the block arguments of 'source' after
+  /// merging.
+  virtual void mergeBlocks(Block *source, Block *dest,
+                           ArrayRef<Value *> argValues = llvm::None);
+
   /// Split the operations starting at "before" (inclusive) out of the given
   /// block into a new block, and return it.
-  virtual Block *splitBlock(Block *block, Block::iterator before) {
-    return block->splitBlock(before);
-  }
+  virtual Block *splitBlock(Block *block, Block::iterator before);
 
   /// This method is used as the final notification hook for patterns that end
   /// up modifying the pattern root in place, by changing its operands.  This is
@@ -394,8 +413,39 @@ private:
 // Pattern-driven rewriters
 //===----------------------------------------------------------------------===//
 
-/// This is a vector that owns the patterns inside of it.
-using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
+class OwningRewritePatternList {
+  using PatternListT = std::vector<std::unique_ptr<RewritePattern>>;
+
+public:
+  PatternListT::iterator begin() { return patterns.begin(); }
+  PatternListT::iterator end() { return patterns.end(); }
+  PatternListT::const_iterator begin() const { return patterns.begin(); }
+  PatternListT::const_iterator end() const { return patterns.end(); }
+  void clear() { patterns.clear(); }
+
+  //===--------------------------------------------------------------------===//
+  // Pattern Insertion
+  //===--------------------------------------------------------------------===//
+
+  /// Add an instance of each of the pattern types 'Ts' to the pattern list with
+  /// the given arguments.
+  /// Note: ConstructorArg is necessary here to separate the two variadic lists.
+  template <typename... Ts, typename ConstructorArg,
+            typename... ConstructorArgs,
+            typename = std::enable_if_t<sizeof...(Ts) != 0>>
+  void insert(ConstructorArg &&arg, ConstructorArgs &&... args) {
+    // The following expands a call to emplace_back for each of the pattern
+    // types 'Ts'. This magic is necessary due to a limitation in the places
+    // that a parameter pack can be expanded in c++11.
+    // FIXME: In c++17 this can be simplified by using 'fold expressions'.
+    using dummy = int[];
+    (void)dummy{
+        0, (patterns.emplace_back(std::make_unique<Ts>(arg, args...)), 0)...};
+  }
+
+private:
+  PatternListT patterns;
+};
 
 /// This class manages optimization and execution of a group of rewrite
 /// patterns, providing an API for finding and applying, the best match against
@@ -404,7 +454,7 @@ using OwningRewritePatternList = std::vector<std::unique_ptr<RewritePattern>>;
 class RewritePatternMatcher {
 public:
   /// Create a RewritePatternMatcher with the specified set of patterns.
-  explicit RewritePatternMatcher(OwningRewritePatternList &&patterns);
+  explicit RewritePatternMatcher(const OwningRewritePatternList &patterns);
 
   /// Try to match the given operation to a pattern and rewrite it. Return
   /// true if any pattern matches.
@@ -416,7 +466,7 @@ private:
 
   /// The group of patterns that are matched for optimization through this
   /// matcher.
-  OwningRewritePatternList patterns;
+  std::vector<RewritePattern *> patterns;
 };
 
 /// Rewrite the regions of the specified operation, which must be isolated from
@@ -424,32 +474,14 @@ private:
 /// work-list driven manner. Return true if no more patterns can be matched in
 /// the result operation regions.
 /// Note: This does not apply patterns to the top-level operation itself.
+/// Note: These methods also perform folding and simple dead-code elimination
+///       before attempting to match any of the provided patterns.
 ///
-bool applyPatternsGreedily(Operation *op, OwningRewritePatternList &&patterns);
-
-/// Helper class to create a list of rewrite patterns given a list of their
-/// types and a list of attributes perfect-forwarded to each of the conversion
-/// constructors.
-template <typename Arg, typename... Args> struct RewriteListBuilder {
-  template <typename... ConstructorArgs>
-  static void build(OwningRewritePatternList &patterns,
-                    ConstructorArgs &&... constructorArgs) {
-    RewriteListBuilder<Args...>::build(
-        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
-    RewriteListBuilder<Arg>::build(
-        patterns, std::forward<ConstructorArgs>(constructorArgs)...);
-  }
-};
-
-// Template specialization to stop recursion.
-template <typename Arg> struct RewriteListBuilder<Arg> {
-  template <typename... ConstructorArgs>
-  static void build(OwningRewritePatternList &patterns,
-                    ConstructorArgs &&... constructorArgs) {
-    patterns.emplace_back(llvm::make_unique<Arg>(
-        std::forward<ConstructorArgs>(constructorArgs)...));
-  }
-};
+bool applyPatternsGreedily(Operation *op,
+                           const OwningRewritePatternList &patterns);
+/// Rewrite the given regions, which must be isolated from above.
+bool applyPatternsGreedily(MutableArrayRef<Region> regions,
+                           const OwningRewritePatternList &patterns);
 } // end namespace mlir
 
 #endif // MLIR_PATTERN_MATCH_H

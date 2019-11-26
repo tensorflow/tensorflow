@@ -16,27 +16,30 @@ limitations under the License.
 // This file implements logic for lowering XLA dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
+#include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
 #include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/Pass/Pass.h"  // TF:local_config_mlir
-#include "mlir/StandardOps/Ops.h"  // TF:local_config_mlir
-#include "tensorflow/compiler/mlir/xla/ir/xla_ops.h"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
+#include "tensorflow/compiler/mlir/xla/transforms/rewriters.h"
 
 using mlir::Builder;
 using mlir::FunctionPass;
-using mlir::FunctionPassBase;
+using mlir::OpPassBase;
 using mlir::OwningRewritePatternList;
 using mlir::PassRegistration;
 
 namespace mlir {
-namespace XLA {
 namespace {
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_to_standard.inc"
+}  // end anonymous namespace
+namespace xla_hlo {
+namespace {
 
 struct CompareIConvert : public RewritePattern {
   explicit CompareIConvert(MLIRContext *context)
-      : RewritePattern("xla.compare", 1, context) {}
+      : RewritePattern("xla_hlo.compare", 1, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -55,27 +58,27 @@ struct CompareIConvert : public RewritePattern {
       return matchFailure();
 
     auto comparison_direction = compare_op.comparison_direction();
-    CmpIPredicate compare_predicate =
-        llvm::StringSwitch<CmpIPredicate>(comparison_direction)
-            .Case("EQ", CmpIPredicate::EQ)
-            .Case("NE", CmpIPredicate::NE)
-            .Case("LT", CmpIPredicate::SLT)
-            .Case("LE", CmpIPredicate::SLE)
-            .Case("GT", CmpIPredicate::SGT)
-            .Case("GE", CmpIPredicate::SGE)
-            .Default(CmpIPredicate::NumPredicates);
+    auto compare_predicate =
+        llvm::StringSwitch<Optional<CmpIPredicate>>(comparison_direction)
+            .Case("EQ", CmpIPredicate::eq)
+            .Case("NE", CmpIPredicate::ne)
+            .Case("LT", CmpIPredicate::slt)
+            .Case("LE", CmpIPredicate::sle)
+            .Case("GT", CmpIPredicate::sgt)
+            .Case("GE", CmpIPredicate::sge)
+            .Default(llvm::None);
 
-    if (compare_predicate == CmpIPredicate::NumPredicates)
-      return matchFailure();
+    if (!compare_predicate.hasValue()) return matchFailure();
 
-    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate, lhs, rhs);
+    rewriter.replaceOpWithNewOp<CmpIOp>(op, compare_predicate.getValue(), lhs,
+                                        rhs);
     return matchSuccess();
   }
 };
 
 struct CompareFConvert : public RewritePattern {
   explicit CompareFConvert(MLIRContext *context)
-      : RewritePattern("xla.compare", 1, context) {}
+      : RewritePattern("xla_hlo.compare", 1, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
@@ -113,7 +116,7 @@ struct CompareFConvert : public RewritePattern {
 };
 
 }  // end anonymous namespace
-}  // end namespace XLA
+}  // end namespace xla_hlo
 }  // end namespace mlir
 
 namespace {
@@ -123,21 +126,24 @@ struct LegalizeToStandard : public FunctionPass<LegalizeToStandard> {
 };
 }  // end anonymous namespace
 
-FunctionPassBase *mlir::XLA::createLegalizeToStdPass() {
-  return new LegalizeToStandard();
+std::unique_ptr<mlir::OpPassBase<mlir::FuncOp>>
+mlir::xla_hlo::createLegalizeToStdPass() {
+  return std::make_unique<LegalizeToStandard>();
+}
+
+void mlir::xla_hlo::PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
+                                             mlir::MLIRContext *ctx) {
+  mlir::populateWithGenerated(ctx, patterns);
+  patterns
+      ->insert<mlir::xla_hlo::CompareFConvert, mlir::xla_hlo::CompareIConvert>(
+          ctx);
 }
 
 /// Perform the lowering to standard dialect.
 void LegalizeToStandard::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto func = getFunction();
-
-  mlir::XLA::populateWithGenerated(func.getContext(), &patterns);
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareFConvert>(&getContext()));
-  patterns.push_back(
-      llvm::make_unique<mlir::XLA::CompareIConvert>(&getContext()));
-  applyPatternsGreedily(func, std::move(patterns));
+  mlir::xla_hlo::PopulateXlaToStdPatterns(&patterns, &getContext());
+  applyPatternsGreedily(getFunction(), patterns);
 }
 
 static PassRegistration<LegalizeToStandard> legalize_pass(

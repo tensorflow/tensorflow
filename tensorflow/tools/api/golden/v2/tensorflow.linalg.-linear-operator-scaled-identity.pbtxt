@@ -112,6 +112,10 @@ tf_class {
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cholesky\'], "
   }
   member_method {
+    name: "cond"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'cond\'], "
+  }
+  member_method {
     name: "determinant"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'det\'], "
   }
@@ -122,6 +126,10 @@ tf_class {
   member_method {
     name: "domain_dimension_tensor"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'domain_dimension_tensor\'], "
+  }
+  member_method {
+    name: "eigvals"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'eigvals\'], "
   }
   member_method {
     name: "inverse"

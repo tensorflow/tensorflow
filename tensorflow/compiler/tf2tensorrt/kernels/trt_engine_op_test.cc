@@ -22,14 +22,20 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/strings/str_cat.h"
+#include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
+#include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
 #include "tensorflow/core/framework/fake_input.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/test.h"
 
 #if GOOGLE_CUDA
@@ -38,6 +44,7 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tensorrt {
+using ::absl::StrCat;
 using ::testing::ElementsAre;
 
 class TRTEngineOpTestBase : public OpsTestBase {
@@ -49,25 +56,32 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
     // Create simple TF graph.
     Scope s = Scope::NewRootScope();
-    auto feed = ops::Placeholder(s.WithOpName("TensorRTInputPH_0"), dtype,
-                                 ops::Placeholder::Shape({-1, -1}));
+    auto feed = ops::_Arg(s.WithOpName("TensorRTInputPH_0"), dtype, 0);
     auto add = ops::Add(s.WithOpName("add"), feed, feed);
-    ops::Identity(s.WithOpName("TensorRTOutputPH_0"), add);
+    ops::_Retval(s.WithOpName("TensorRTOutputPH_0"), add, 0);
 
     // Serialize the graph. TRTEngineOp will convert it using dynamic mode.
     GraphDef graph_def;
     TF_ASSERT_OK(s.ToGraphDef(&graph_def));
+    Graph* graph = s.graph();
+    const char* op_name = "myop";
+    TF_ASSERT_OK(
+        convert::RegisterGraphToFunctionLibrary(graph_def, graph, op_name));
+    TF_ASSERT_OK(flib_def_->AddLibrary(graph->flib_def()));
+
     PartialTensorShape shape({-1, -1});
 
     // Create the op.
     OpsTestBase::SetDevice(DEVICE_GPU, std::move(device));
-    TF_ASSERT_OK(NodeDefBuilder("myop", "TRTEngineOp")
+    NameAttrList function;
+    function.set_name(StrCat(op_name, "_native_segment"));
+    TF_ASSERT_OK(NodeDefBuilder(op_name, "TRTEngineOp")
                      .Input(FakeInput(1, dtype))
                      .Attr("input_shapes", {shape})
                      .Attr("output_shapes", {shape})
                      .Attr("static_engine", false)
-                     .Attr("segment_funcdef_name", "")  // no native fallback
-                     .Attr("serialized_segment", graph_def.SerializeAsString())
+                     .Attr("segment_func", function)
+                     .Attr("serialized_segment", "")
                      .Attr("calibration_data", "")
                      .Attr("max_cached_engines_count", max_cached_engines_count)
                      .Attr("workspace_size_bytes", 1 << 20)
@@ -75,7 +89,7 @@ class TRTEngineOpTestBase : public OpsTestBase {
                      .Attr("use_calibration", false)
                      .Attr("OutT", {dtype})
                      .Finalize(OpsTestBase::node_def()));
-    TF_ASSERT_OK(OpsTestBase::InitOp());
+    TF_ASSERT_OK(InitOpWithFunctionLibrary());
   }
 
   template <typename T>
@@ -87,11 +101,25 @@ class TRTEngineOpTestBase : public OpsTestBase {
 
   void ResetInputs() {
     inputs_.clear();
-    gtl::STLDeleteElements(&tensors_);
+    for (auto& temp : tensors_) {
+      delete temp;
+    }
+    tensors_.clear();
+  }
+
+ private:
+  Status InitOpWithFunctionLibrary() {
+    OpKernel* kernel = nullptr;
+    Status status = CreateOpKernel(device_type_, device_, allocator(),
+                                   pflr_->GetFLR(device_->name()), node_def_,
+                                   TF_GRAPH_DEF_VERSION, &kernel);
+    kernel_ = std::unique_ptr<OpKernel>(kernel);
+    if (kernel_ != nullptr) input_types_ = kernel_->input_types();
+    return status;
   }
 };
 
-TEST_F(TRTEngineOpTestBase, dynamic_shapes) {
+TEST_F(TRTEngineOpTestBase, DynamicShapes) {
   TRTEngineOpTestBase::AddSimpleTrtOp(DT_FLOAT, /*max_cached_engines_count=*/4);
 
   // Execute the op with batch size > 1.
@@ -100,14 +128,14 @@ TEST_F(TRTEngineOpTestBase, dynamic_shapes) {
 
   // Get the engine cache.
   TRTEngineCacheResource* cache_resource = nullptr;
-  TF_ASSERT_OK(device_->resource_manager()->Lookup("TF-TRT-Engine-Cache",
-                                                   "myop", &cache_resource));
+  TF_ASSERT_OK(
+      device_->resource_manager()->Lookup("TF-TRT", "myop", &cache_resource));
   core::ScopedUnref sc(cache_resource);
 
   // It should contain only one engine.
   auto cache = &cache_resource->cache_;
   EXPECT_EQ(1, cache->size());
-  EXPECT_THAT(cache->begin()->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
 
   // Execute the op with batch size 1. It should reuse existing engine to
   // execute.
@@ -115,15 +143,15 @@ TEST_F(TRTEngineOpTestBase, dynamic_shapes) {
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 2}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(1, cache->size());
-  EXPECT_THAT(cache->begin()->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
 
   // Execute the op with a larger batch size.
   ResetInputs();
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({3, 2}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(2, cache->size());
-  EXPECT_THAT(cache->begin()->first, ElementsAre(TensorShape({3, 2})));
-  EXPECT_THAT((++cache->begin())->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
 
   // Execute the op with an input that has different non-batch dimension.
   ResetInputs();
@@ -135,10 +163,9 @@ TEST_F(TRTEngineOpTestBase, dynamic_shapes) {
   TRTEngineOpTestBase::AddSimpleInput<float>(TensorShape({1, 10}));
   TF_ASSERT_OK(OpsTestBase::RunOpKernel());
   EXPECT_EQ(3, cache->size());  // Should only create 3 engines in total.
-  auto iter = cache->begin();
-  EXPECT_THAT(iter->first, ElementsAre(TensorShape({10, 10})));
-  EXPECT_THAT((++iter)->first, ElementsAre(TensorShape({3, 2})));
-  EXPECT_THAT((++iter)->first, ElementsAre(TensorShape({2, 2})));
+  EXPECT_EQ(1, cache->count({TensorShape({2, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({3, 2})}));
+  EXPECT_EQ(1, cache->count({TensorShape({10, 10})}));
 }
 
 template <typename T>

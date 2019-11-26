@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <condition_variable>  // NOLINT(build/c++11)
 #include <functional>
-#include <mutex>  // NOLINT(build/c++11)
+#include <mutex>  //  NOLINT(build/c++11)
 
 #include "tensorflow/lite/experimental/ruy/time.h"
 

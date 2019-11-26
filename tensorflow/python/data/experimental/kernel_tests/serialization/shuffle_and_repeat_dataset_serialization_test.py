@@ -17,19 +17,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
 from tensorflow.python.data.experimental.ops import shuffle_ops
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
 class ShuffleAndRepeatSerializationTest(
-    dataset_serialization_test_base.DatasetSerializationTestBase):
+    dataset_serialization_test_base.DatasetSerializationTestBase,
+    parameterized.TestCase):
 
   def _build_ds(self, seed):
     return dataset_ops.Dataset.range(20).apply(
         shuffle_ops.shuffle_and_repeat(buffer_size=5, count=5, seed=seed))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testCore(self):
     self.run_core_tests(lambda: self._build_ds(10), 100)
 

@@ -81,8 +81,9 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  bool IsStateful() const override {
-    return captured_func_->IsStateful() || input_->IsStateful();
+  Status CheckExternalState() const override {
+    TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
+    return input_->CheckExternalState();
   }
 
  protected:
@@ -118,6 +119,12 @@ class InterleaveDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params),
           current_elements_(params.dataset->cycle_length_),
           args_list_(params.dataset->cycle_length_) {}
+
+    string BuildTraceMeName() override {
+      return strings::StrCat(prefix(),
+                             "#cycle_length=", dataset()->cycle_length_,
+                             ",block_length=", dataset()->block_length_, "#");
+    }
 
     Status Initialize(IteratorContext* ctx) override {
       TF_RETURN_IF_ERROR(

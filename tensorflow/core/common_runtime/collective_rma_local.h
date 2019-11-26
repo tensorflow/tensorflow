@@ -28,14 +28,15 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
  public:
   CollectiveRemoteAccessLocal(const DeviceMgr* dev_mgr,
                               DeviceResolverInterface* dev_resolver,
-                              UnboundedWorkQueue* work_queue, int64 step_id)
+                              std::shared_ptr<UnboundedWorkQueue> work_queue,
+                              int64 step_id)
       : dev_mgr_(dev_mgr),
         dev_resolver_(dev_resolver),
-        work_queue_(work_queue),
+        work_queue_(std::move(work_queue)),
         buf_rendezvous_(step_id, dev_mgr),
         step_id_(step_id) {}
 
-  virtual ~CollectiveRemoteAccessLocal() {}
+  ~CollectiveRemoteAccessLocal() override = default;
 
   void StartAbort(const Status& s) override;
 
@@ -95,7 +96,9 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
  protected:
   const DeviceMgr* dev_mgr_;               // not owned
   DeviceResolverInterface* dev_resolver_;  // not owned
-  UnboundedWorkQueue* work_queue_;         // not owned
+  // Ownership of `work_queue_` is shared between `this` and
+  // `CollectiveExecutorMgr`.
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   BufRendezvous buf_rendezvous_;
   int64 step_id_;
 };

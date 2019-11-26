@@ -30,10 +30,10 @@ StatusOr<bool> MultiOutputFusion::Run(HloModule* module) {
 
   for (auto* computation : module->MakeNonfusionComputations()) {
     computation_ = computation;
-    RecomputeReachability();
     candidates_.clear();
     candidates_index_.clear();
     all_fusion_candidates_.clear();
+    RecomputeReachability();
 
     int64 index = 0;
     for (auto it : computation_->MakeInstructionPostOrder()) {
@@ -123,7 +123,6 @@ HloInstruction* MultiOutputFusion::Fuse(HloInstruction* instr1,
   if (fused->IsMultiOutputFusion()) {
     std::swap(remaining, fused);
   }
-
   if (fused->opcode() == HloOpcode::kFusion) {
     remaining->MergeFusionInstructionIntoMultiOutput(fused);
   } else {
@@ -249,18 +248,18 @@ bool MultiOutputFusion::LegalToFuse(HloInstruction* instr1,
       multioutput_user_is_not_gte(instr2)) {
     return false;
   }
-
   if (is_connected(instr1, instr2)) {
     return false;
   }
   if (!ShapesCompatibleForFusion(instr1, instr2)) {
     return false;
   }
-
   return true;
 }
 
 void MultiOutputFusion::RecomputeReachability() {
+  // Free the memory used for the reachability map before computing a new one.
+  reachability_.reset();
   reachability_ = HloReachabilityMap::Build(computation_);
 }
 
@@ -339,4 +338,5 @@ bool MultiOutputFusion::Perform() {
 }
 
 bool MultiOutputFusion::DoProducerConsumerMultiOutputFusion() { return false; }
+
 }  // namespace xla

@@ -45,6 +45,9 @@ public:
   /// at the designated point in the input.
   void resetPointer(const char *newPointer) { curPtr = newPointer; }
 
+  /// Returns the start of the buffer.
+  const char *getBufferBegin() { return curBuffer.data(); }
+
 private:
   // Helpers.
   Token formToken(Token::Kind kind, const char *tokStart) {
@@ -54,12 +57,15 @@ private:
   Token emitError(const char *loc, const Twine &message);
 
   // Lexer implementation methods.
-  Token lexComment();
-  Token lexBareIdentifierOrKeyword(const char *tokStart);
   Token lexAtIdentifier(const char *tokStart);
-  Token lexPrefixedIdentifier(const char *tokStart);
+  Token lexBareIdentifierOrKeyword(const char *tokStart);
+  Token lexEllipsis(const char *tokStart);
   Token lexNumber(const char *tokStart);
+  Token lexPrefixedIdentifier(const char *tokStart);
   Token lexString(const char *tokStart);
+
+  /// Skip a comment line, starting with a '//'.
+  void skipComment();
 
   const llvm::SourceMgr &sourceMgr;
   MLIRContext *context;

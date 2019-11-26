@@ -9,16 +9,14 @@ graph.
 *   [Interacting with the generated code](generated_code.md)
 *   [Debugging AutoGraph code](debugging.md)
 *   [Control flow](control_flow.md)
-*   Functions calls (coming soon)
-*   Exception handling (coming soon)
-*   Conversion mechanics (coming soon)
-*   Collections (coming soon)
+*   [Functions and function calls](functions.md)
+*   [Error handling](error_handling.md)
 *   [Limitations](limitations.md)
-*   Common errors (coming soon)
+*   [Common errors](common_errors.md)
 
 For more information on AutoGraph, see the following articles:
 
-*   [AutoGraph tutorial](https://www.tensorflow.org/alpha/beta/autograph)
-*   [Eager tutorial](https://www.tensorflow.org/alpha/guide/eager)
-*   [TensorFlow 2.0 Alpha](https://www.tensorflow.org/alpha)
+*   [AutoGraph guide](https://www.tensorflow.org/guide/function)
+*   [tf.function tutorial](https://www.tensorflow.org/tutorials/customization/performance)
+*   [Eager guide](https://www.tensorflow.org/guide/eager)
 *   [AutoGraph blog post](https://medium.com/tensorflow/autograph-converts-python-into-tensorflow-graphs-b2a871f87ec7)

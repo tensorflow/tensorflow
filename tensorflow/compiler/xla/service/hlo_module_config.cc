@@ -64,6 +64,7 @@ string HloModuleConfig::compilation_cache_key() const {
     StrAppend(&key, "::intra_op_parallelism_threads=",
               intra_op_parallelism_threads());
   }
+  StrAppend(&key, "::alias_passthrough_params=", alias_passthrough_params_);
   return key;
 }
 

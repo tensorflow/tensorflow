@@ -23,7 +23,7 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.experimental.ops import batching
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
@@ -353,7 +353,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     map_node_name = "Map" if num_parallel_calls is None else "ParallelMap"
 
     def _make_dataset(node_names):
-      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = base_dataset.apply(testing.assert_next(node_names))
       dataset = dataset.map(map_fn, num_parallel_calls)
       dataset = dataset.batch(100)
       options = dataset_ops.Options()
@@ -416,7 +416,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     base_dataset = base_dataset.with_options(options)
 
     def _make_dataset(node_names):
-      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = base_dataset.apply(testing.assert_next(node_names))
       dataset = dataset.apply(batching.map_and_batch(map_fn, 100))
       return dataset
 
@@ -464,7 +464,7 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     apply_fn_2 = make_apply_fn(fuse_second)
 
     def make_dataset(node_names):
-      dataset = base_dataset.apply(optimization.assert_next(node_names))
+      dataset = base_dataset.apply(testing.assert_next(node_names))
       dataset = apply_fn_1(dataset)
       dataset = apply_fn_2(dataset)
       return dataset

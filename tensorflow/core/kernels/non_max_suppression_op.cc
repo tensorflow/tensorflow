@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
@@ -174,7 +173,8 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& scores,
   };
 
   auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
-    return bs_i.score < bs_j.score;
+    return ((bs_i.score == bs_j.score) && (bs_i.box_index > bs_j.box_index)) ||
+           bs_i.score < bs_j.score;
   };
   std::priority_queue<Candidate, std::deque<Candidate>, decltype(cmp)>
       candidate_priority_queue(cmp);

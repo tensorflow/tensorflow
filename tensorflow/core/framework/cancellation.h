@@ -61,7 +61,9 @@ class CancellationManager {
 
   // Returns a token that must be used in calls to RegisterCallback
   // and DeregisterCallback.
-  CancellationToken get_cancellation_token();
+  CancellationToken get_cancellation_token() {
+    return next_cancellation_token_.fetch_add(1);
+  }
 
   // Attempts to register the given callback to be invoked when this
   // manager is cancelled. Returns true if the callback was
@@ -135,13 +137,17 @@ class CancellationManager {
   bool TryDeregisterCallback(CancellationToken token);
 
  private:
+  struct State {
+    Notification cancelled_notification;
+    gtl::FlatMap<CancellationToken, CancelCallback> callbacks;
+  };
+
   bool is_cancelling_;
   std::atomic_bool is_cancelled_;
+  std::atomic<CancellationToken> next_cancellation_token_;
 
   mutex mu_;
-  Notification cancelled_notification_;
-  CancellationToken next_cancellation_token_ GUARDED_BY(mu_);
-  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
+  std::unique_ptr<State> state_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

@@ -1,7 +1,7 @@
 VERS_1.0 {
   # Export symbols in c_api.h.
   global:
-    *TFL_*;
+    TfLite*;
 
   # Hide everything else.
   local:

@@ -637,19 +637,6 @@ class CopyRemover {
     DCHECK(src != nullptr);
     DCHECK(dest != nullptr);
 
-    auto is_live_range_before = [this](const ValueNode& a, const ValueNode& b) {
-      VLOG(3) << "Checking live range of " << *a.value << " WRT " << *b.value;
-      if (LiveRangeBefore(a, b)) {
-        VLOG(2) << "  Live range of " << a.value->ToShortString()
-                << " is before " << b.value->ToShortString();
-        return true;
-      } else {
-        VLOG(2) << "  Live range of " << a.value->ToShortString()
-                << " is not before " << b.value->ToShortString();
-        return false;
-      }
-    };
-
     VLOG(3) << copy->name() << " copies value " << src->value->ToShortString();
     VLOG(3) << "Source buffer values: " << ValueListToString(src);
     VLOG(3) << "Dest buffer values: " << ValueListToString(dest);
@@ -715,7 +702,7 @@ class CopyRemover {
       ValueNode* next_dest = Next(*dest);
       if (next_dest != nullptr) {
         // Live range of 'from' value (s_x) must be before 'next_dest' (d_1);
-        if (!is_live_range_before(*src, *next_dest)) {
+        if (!LiveRangeBefore(*src, *next_dest)) {
           return false;
         }
       }
@@ -725,7 +712,7 @@ class CopyRemover {
         // Live range of 'last_dest' (d_m) must be before 'next_src' s_{x+1}.
         ValueNode* last_dest = dest->prev;
         DCHECK(IsTail(*last_dest));
-        if (!is_live_range_before(*last_dest, *next_src)) {
+        if (!LiveRangeBefore(*last_dest, *next_src)) {
           return false;
         }
       }
@@ -754,13 +741,13 @@ class CopyRemover {
       DCHECK(prev_dest != nullptr);
       ValueNode* first_src = src->next;
       DCHECK(IsHead(*first_src));
-      if (!is_live_range_before(*prev_dest, *first_src)) {
+      if (!LiveRangeBefore(*prev_dest, *first_src)) {
         // Live range of value d_{y-1} is not before s_0.
         return false;
       }
       ValueNode* next_dest = Next(*dest);
       if (next_dest != nullptr) {
-        if (!is_live_range_before(*src, *next_dest)) {
+        if (!LiveRangeBefore(*src, *next_dest)) {
           // Live range of value s_n is not before d_{y+1}.
           return false;
         }
@@ -829,19 +816,30 @@ class CopyRemover {
   // We cannot use LiveRangeStrictlyBefore because HloValue::uses() is not
   // updated as copies are removed.
   bool LiveRangeBefore(const ValueNode& a, const ValueNode& b) {
-    if (a.uses.empty()) {
-      VLOG(2) << "Empty uses for " << *a.value;
-      return ordering_.IsDefinedBefore(*a.value, *b.value);
-    }
-    for (const HloUse* use : a.uses) {
-      VLOG(2) << "Checking use " << *use << " against " << *b.value;
-      if (!ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_)) {
-        VLOG(2) << "Use " << *use << " is NOT before " << *b.value;
-        return false;
+    VLOG(3) << "Checking live range of " << *a.value << " WRT " << *b.value;
+    bool is_live_range_before = [&] {
+      if (a.uses.empty()) {
+        VLOG(2) << "Empty uses for " << *a.value;
+        return ordering_.IsDefinedBefore(*a.value, *b.value);
       }
-      VLOG(2) << "Use " << *use << " is before " << *b.value;
+      for (const HloUse* use : a.uses) {
+        VLOG(3) << "Checking use " << *use << " against " << *b.value;
+        if (!ordering_.UseIsBeforeValueDefinition(*use, *b.value, dataflow_)) {
+          VLOG(2) << "Use " << *use << " is NOT before " << *b.value;
+          return false;
+        }
+        VLOG(3) << "Use " << *use << " is before " << *b.value;
+      }
+      return true;
+    }();
+    if (is_live_range_before) {
+      VLOG(2) << "  Live range of " << a.value->ToShortString() << " is before "
+              << b.value->ToShortString();
+    } else {
+      VLOG(2) << "  Live range of " << a.value->ToShortString()
+              << " is not before " << b.value->ToShortString();
     }
-    return true;
+    return is_live_range_before;
   }
 
   // Returns whether 'node' is the last node in its list.
@@ -1198,27 +1196,4 @@ StatusOr<bool> CopyInsertion::Run(HloModule* module) {
 
   return true;
 }
-
-namespace {
-
-bool IsWhileBody(const HloComputation* computation,
-                 const CallGraph& call_graph) {
-  const CallGraphNode& node = call_graph.GetNode(computation);
-
-  if (node.context() == CallContext::kSequential &&
-      !node.caller_callsites().empty()) {
-    // Callgraph should be flattened so sequential context computations can
-    // have at most one caller.
-    CHECK_EQ(node.caller_callsites().size(), 1);
-    const HloInstruction* calling_instruction =
-        node.caller_callsites()[0].instruction();
-    if (calling_instruction->opcode() == HloOpcode::kWhile &&
-        calling_instruction->while_body() == node.computation()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-}  // namespace
 }  // namespace xla

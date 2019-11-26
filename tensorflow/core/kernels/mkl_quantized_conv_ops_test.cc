@@ -36,9 +36,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(bhavanis): Move ConvMklToTF to mkl_test_util.h as it is used by
-// most unit tests.
-
 // Helper class for converting MKL tensors to TF tensors and comparing to
 // expected values
 
@@ -47,6 +44,7 @@ static const TensorShape dummy_shape({8});
 
 class ConvMklToTF : public OpsTestBase {
  public:
+  // TODO(bhavanis): Move the below ConvertMklToTF() to mkl_util.h
   template <typename T>
   void ConvertMklToTF(DataType dtype, const Tensor& input,
                       const Tensor& input_metadata_tensor, Tensor& output) {
@@ -287,6 +285,109 @@ TEST_F(QuantizedConv2DTest, Small) {
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
+TEST_F(QuantizedConv2DTest, SmallS8) {
+  const int stride = 1;
+  const int depth = 1;
+  const int image_width = 3;
+  const int image_height = 3;
+  const int image_batch_count = 1;
+
+  // Image -> uint8
+  const float image_min = -127.0f;
+  const float image_max = 127.0f;
+
+  TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "_MklQuantizedConv2D")
+                   .Input(FakeInput(DT_QINT8))  // Input
+                   .Input(FakeInput(DT_QINT8))  // Filter
+                   .Input(FakeInput(DT_FLOAT))  // Min input
+                   .Input(FakeInput(DT_FLOAT))  // Max input
+                   .Input(FakeInput(DT_FLOAT))  // Min filter
+                   .Input(FakeInput(DT_FLOAT))  // Max filter
+                   //  MKL metadata tensors //
+                   .Input(FakeInput(DT_UINT8))
+                   .Input(FakeInput(DT_UINT8))
+                   .Input(FakeInput(DT_UINT8))
+                   .Input(FakeInput(DT_UINT8))
+                   .Input(FakeInput(DT_UINT8))
+                   .Input(FakeInput(DT_UINT8))
+                   ///////////////////////////
+                   .Attr("Tinput", DataTypeToEnum<qint8>::v())
+                   .Attr("Tfilter", DataTypeToEnum<qint8>::v())
+                   .Attr("T", DataTypeToEnum<quint8>::v())
+                   .Attr("padding", "VALID")
+                   .Attr("out_type", DataTypeToEnum<qint32>::v())
+                   .Attr("strides", {1, stride, stride, 1})
+                   .Attr("_kernel", "QuantizedMklOp")
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  // The image matrix is:
+  // | 2 |  3 |  4 |
+  // | 6 | -4 | -2 |
+  // | 3 |  0 |  4 |
+  Tensor image_float(DT_FLOAT,
+                     {image_batch_count, image_height, image_width, depth});
+  test::FillValues<float>(&image_float, {2, 3, 4, 6, -4, -2, 3, 0, 4});
+  Tensor image_quantized =
+      FloatTensorToQuantized<qint8>(image_float, image_min, image_max);
+
+  const int filter_size = 3;
+  const int filter_count = 1;
+
+  // Filter -> int8 with symmetric range
+  const float filter_min = -127.0f;
+  const float filter_max = 127.0f;
+
+  // The filter matrix is:
+  // | 1 | 4 | 2 |
+  // | 0 | 5 |-1 |
+  // | 3 |-1 |-3 |
+  Tensor filter_float(DT_FLOAT,
+                      {filter_size, filter_size, depth, filter_count});
+  test::FillValues<float>(&filter_float, {1, 4, 2, 0, 5, -1, 3, -1, -3});
+  Tensor filter_quantized =
+      FloatTensorToQuantized<qint8>(filter_float, filter_min, filter_max);
+
+  AddInputFromArray<qint8>(image_quantized.shape(),
+                           image_quantized.flat<qint8>());
+  AddInputFromArray<qint8>(filter_quantized.shape(),
+                           filter_quantized.flat<qint8>());
+  AddInputFromArray<float>(TensorShape({1}), {image_min});
+  AddInputFromArray<float>(TensorShape({1}), {image_max});
+  AddInputFromArray<float>(TensorShape({1}), {filter_min});
+  AddInputFromArray<float>(TensorShape({1}), {filter_max});
+
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+  AddInputFromArray<uint8>(dummy_shape, dummy_tensor);
+
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Output -> float
+  const int expected_width = 1;
+  const int expected_height = 1;
+  Tensor expected_float(
+      DT_FLOAT, TensorShape({image_batch_count, expected_height, expected_width,
+                             filter_count}));
+  test::FillValues<float>(&expected_float, {1});
+
+  const Tensor& output = *GetOutput(0);
+  const Tensor& output_mkl_metadata = *GetOutput(3);
+
+  ConvMklToTF conv_comp;
+  Tensor output_quantized;
+  conv_comp.ConvertMklToTF<qint32>(DT_QINT32, output, output_mkl_metadata,
+                                   output_quantized);
+
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  Tensor output_float =
+      QuantizedTensorToFloat<qint32>(output_quantized, output_min, output_max);
+
+  test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
+}
 // Output -> qint32
 TEST_F(QuantizedConv2DTest, Small32Bit) {
   const int stride = 1;

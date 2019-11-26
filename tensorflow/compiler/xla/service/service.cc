@@ -166,8 +166,9 @@ Service::Service(const ServiceOptions& options,
           << "Requested more replicas than there are devices.";
     }
     LOG(INFO) << StrFormat(
-        "XLA service %p executing computations on platform %s. Devices:", this,
-        execute_backend_->platform()->Name());
+        "XLA service %p initialized for platform %s (this does not guarantee "
+        "that XLA will be used). Devices:",
+        this, execute_backend_->platform()->Name());
     auto stream_executors = execute_backend_->stream_executors();
     for (int i = 0; i < execute_backend_->device_count(); ++i) {
       se::StreamExecutor* executor = stream_executors.at(i);
@@ -264,7 +265,8 @@ Service::ResolveAndValidateArguments(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const Shape* const> argument_shapes,
-    const ExecutionOptions* execution_options) {
+    const ExecutionOptions* execution_options,
+    const AotCompilationOptions* aot_options) {
   auto config = absl::make_unique<HloModuleConfig>(program_shape);
   ComputationLayout* computation_layout =
       config->mutable_entry_computation_layout();
@@ -308,6 +310,9 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     } else {
       config->set_replica_count(options_.number_of_replicas());
     }
+    if (execution_options->num_partitions() > 0) {
+      config->set_num_partitions(execution_options->num_partitions());
+    }
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
   } else {
@@ -328,6 +333,15 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
         DeviceAssignment::Deserialize(execution_options->device_assignment()));
     config->set_static_device_assignment(*device_assignment);
   }
+  config->set_alias_passthrough_params(
+      execution_options->alias_passthrough_params());
+
+  if (aot_options != nullptr &&
+      aot_options->fusion_config_collection() != FusionConfigCollection::kOff) {
+    config->set_fusion_config_collection(
+        aot_options->fusion_config_collection());
+    *config->mutable_fusion_config() = aot_options->fusion_config();
+  }
 
   return std::move(config);
 }
@@ -335,12 +349,14 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
 StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     const ProgramShape& program_shape,
     absl::Span<const ShapedBuffer* const> arguments,
-    const ExecutionOptions& execution_options) {
+    const ExecutionOptions& execution_options,
+    const AotCompilationOptions* aot_options) {
   std::vector<const Shape*> argument_shapes;
   for (const auto* arg : arguments) {
     argument_shapes.push_back(&arg->on_host_shape());
   }
-  return CreateModuleConfig(program_shape, argument_shapes, &execution_options);
+  return CreateModuleConfig(program_shape, argument_shapes, &execution_options,
+                            aot_options);
 }
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
@@ -451,13 +467,19 @@ Service::ExecuteParallelAndRegisterResult(
       options.set_intra_op_thread_pool(
           backend->eigen_intra_op_thread_pool_device());
       options.set_device_assignment(&device_assignment);
+      // Use run-time profile information from execution_profile on the 0th
+      // device.
+      if (i == 0) {
+        options.set_execution_profile(profile);
+      }
       ServiceExecutableRunOptions run_options(options,
                                               backend->StreamBorrower());
 
       // Asynchronously launch the computation.
       TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                           executables[i]->ExecuteAsyncOnStream(
-                              &run_options, arguments[i][replica]));
+                              &run_options, arguments[i][replica],
+                              /*hlo_execution_profile=*/nullptr));
 
       if (replica == 0 && profile != nullptr) {
         streams.back()->ThenStopTimer(timers.back().get());
@@ -489,10 +511,6 @@ Service::ExecuteParallelAndRegisterResult(
     }
     uint64 nanoseconds =
         *std::max_element(timer_nanoseconds.begin(), timer_nanoseconds.end());
-
-    // Merge in run-time profile information from execution_profile on the
-    // zeroth device.
-    profile->MergeFrom(executables[0]->execution_profile());
 
     // Overall execution time (in nanoseconds) from the executor timer.
     profile->set_compute_and_transfer_time_ns(nanoseconds);
@@ -546,13 +564,13 @@ StatusOr<GlobalDataHandle> Service::ExecuteAndRegisterResult(
     options.set_intra_op_thread_pool(
         backend->eigen_intra_op_thread_pool_device());
     options.set_device_assignment(&device_assignment);
+    options.set_execution_profile(profile);
     run_options.emplace_back(options, backend->StreamBorrower());
   }
 
   if (options_.number_of_replicas() == 1) {
-    TF_ASSIGN_OR_RETURN(
-        auto result, executable->ExecuteOnStreamWrapper(&run_options[0],
-                                                        profile, arguments[0]));
+    TF_ASSIGN_OR_RETURN(auto result, executable->ExecuteOnStreamWrapper(
+                                         &run_options[0], arguments[0]));
     return allocation_tracker_.Register(std::move(result), result_tag);
   }
 

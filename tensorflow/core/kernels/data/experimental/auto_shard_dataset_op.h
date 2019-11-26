@@ -21,15 +21,13 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
-// See documentation in ../../ops/experimental_dataset_ops.cc for a high-level
-// description of the following op.
-
 class AutoShardDatasetOp : public UnaryDatasetOpKernel {
  public:
   static constexpr const char* const kDatasetType = "AutoShard";
   static constexpr const char* const kInputDataset = "input_dataset";
   static constexpr const char* const kNumWorkers = "num_workers";
   static constexpr const char* const kIndex = "index";
+  static constexpr const char* const kAutoShardPolicy = "auto_shard_policy";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
 
@@ -40,7 +38,9 @@ class AutoShardDatasetOp : public UnaryDatasetOpKernel {
                    DatasetBase** output) override;
 
  private:
-  static RewriterConfig CreateConfig(int64 num_workers, int64 index);
+  static RewriterConfig CreateConfig(int64 num_workers, int64 index,
+                                     int64 auto_shard_policy);
+  int64 auto_shard_policy_;
 };
 
 }  // namespace experimental

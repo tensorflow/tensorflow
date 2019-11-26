@@ -232,7 +232,7 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
     std::vector<std::unique_ptr<Device>> devices;
     TF_CHECK_OK(DeviceFactory::AddDevices(
         session_options, "/job:localhost/replica:0/task:0", &devices));
-    device_mgr_ = absl::make_unique<DeviceMgr>(std::move(devices));
+    device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
   }
 
   Status ExtractOutsideCompilationTest(
@@ -246,8 +246,9 @@ class ExtractOutsideCompilationForFunctionTest : public ::testing::Test {
       bool *has_outside_compilation) {
     OptimizerOptions opts;
     pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
-        device_mgr_.get(), Env::Default(), TF_GRAPH_DEF_VERSION, fld, opts,
-        /*default_thread_pool=*/nullptr, /*cluster_flr=*/nullptr);
+        device_mgr_.get(), Env::Default(), /*config=*/nullptr,
+        TF_GRAPH_DEF_VERSION, fld, opts,
+        /*default_thread_pool=*/nullptr);
     auto flr = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
     return ExtractOutsideCompilationForFunction(
         xla_cluster_attr_name, outside_compilation_attr_name, xla_cluster_name,
@@ -417,16 +418,8 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, NoHostGraph) {
       host_compute_core, &fld, &shape_inference_graphs,
       &has_outside_compilation));
 
-  // Check host graph is empty.
-  std::unique_ptr<FunctionBody> host_fbody;
-  AttrValue device_ordinal_temp_value;
-  device_ordinal_temp_value.set_i(0);
-  protobuf::Map<string, AttrValue> host_func_attrs;
-  host_func_attrs["_device_ordinal"] = device_ordinal_temp_value;
-  TF_CHECK_OK(FunctionDefToBodyHelper(
-      *fld.Find("host_graph"), AttrSlice(&host_func_attrs), &fld, &host_fbody));
-  Graph *host_graph = host_fbody->graph;
-  EXPECT_EQ(host_graph->num_nodes(), 2);
+  // Check host graph is not created.
+  EXPECT_EQ(fld.Find("host_graph"), nullptr);
 }
 
 REGISTER_OP("XlaSendToHost")
@@ -539,7 +532,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     EXPECT_EQ(if_oc_node_cond_input, recv_if_pred_node);
 
     // Check that then_branch outside compilation has node "identity_true_fn".
-    const FunctionDef *true_def = fld.Find("oc_then_branch_host_if_if");
+    const FunctionDef *true_def = fld.Find("oc_then_branch_host_if_true_fn");
     EXPECT_NE(true_def, nullptr);
     bool has_identity_true_fn_node = false;
     for (const auto &node_def : true_def->node_def()) {
@@ -551,7 +544,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInIf) {
     EXPECT_TRUE(has_identity_true_fn_node);
 
     // Check that else_branch outside compilation has node "identity_false_fn".
-    const FunctionDef *false_def = fld.Find("oc_else_branch_host_if_if");
+    const FunctionDef *false_def = fld.Find("oc_else_branch_host_if_false_fn");
     EXPECT_NE(false_def, nullptr);
     bool has_identity_false_fn_node = false;
     for (const auto &node_def : false_def->node_def()) {
@@ -681,7 +674,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     EXPECT_NE(while_oc_node, nullptr);
 
     // Check that cond outside compilation has node "identity_cond_fn".
-    const FunctionDef *cond_def = fld.Find("oc_cond_host_while_while");
+    const FunctionDef *cond_def = fld.Find("oc_cond_host_while_cond_fn");
     EXPECT_NE(cond_def, nullptr);
     bool has_identity_cond_fn_node = false;
     for (const auto &node_def : cond_def->node_def()) {
@@ -693,7 +686,7 @@ TEST_F(ExtractOutsideCompilationForFunctionTest, OutsideCompilationInWhile) {
     EXPECT_TRUE(has_identity_cond_fn_node);
 
     // Check that body outside compilation has node "identity_body_fn".
-    const FunctionDef *body_def = fld.Find("oc_body_host_while_while");
+    const FunctionDef *body_def = fld.Find("oc_body_host_while_body_fn");
     EXPECT_NE(body_def, nullptr);
     bool has_identity_body_fn_node = false;
     for (const auto &node_def : body_def->node_def()) {

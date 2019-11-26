@@ -38,11 +38,9 @@ constexpr const char* const kLowerAsMultiDeviceFunctionAttr =
 class CaseBuilder {
  public:
   // Create a CaseBuilder to create the lowered form of `case` with branch
-  // functions identified by `branch_fn_names` in the `graph`. The functions
-  // should be available in `flib`.
+  // functions identified by `branch_fn_names` in the `graph`.
   CaseBuilder(Node* case_op, const std::vector<string>& branch_fn_names,
-              const FunctionLibraryDefinition& flib, bool keep_node_fetchable,
-              Graph* graph);
+              bool keep_node_fetchable, Graph* graph);
 
   // Constructs the basic conditional control flow using switch and merge nodes.
   Status CreatePivotNodes();
@@ -91,7 +89,6 @@ class CaseBuilder {
   // for the side effects.
   Node* branch_executed_node_;
   Graph* graph_;
-  const FunctionLibraryDefinition& flib_;
   string name_;
   bool keep_node_fetchable_;
 
@@ -101,12 +98,10 @@ class CaseBuilder {
 
 CaseBuilder::CaseBuilder(Node* case_op,
                          const std::vector<string>& branch_fn_names,
-                         const FunctionLibraryDefinition& flib,
                          bool keep_node_fetchable, Graph* graph)
     : case_op_(case_op),
       num_branches_(branch_fn_names.size()),
       graph_(graph),
-      flib_(flib),
       name_(case_op->name()),
       keep_node_fetchable_(keep_node_fetchable),
       debug_info_(*case_op_) {
@@ -273,8 +268,7 @@ Status CaseBuilder::BuildLoweredCaseOutput() {
 
 }  // namespace
 
-Status RewriteCaseNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib,
-                       bool keep_node_fetchable) {
+Status RewriteCaseNode(Node* n, Graph* g, bool keep_node_fetchable) {
   VLOG(2) << "Lower Case node (keep_node_fetchable=" << keep_node_fetchable
           << "): " << SummarizeNode(*n);
   const AttrValue* branches_attr = n->attrs().Find("branches");
@@ -288,7 +282,7 @@ Status RewriteCaseNode(Node* n, Graph* g, const FunctionLibraryDefinition& flib,
   for (int b = 0; b < num_branches; b++) {
     branch_fn_names.emplace_back(branches_attr->list().func(b).name());
   }
-  CaseBuilder cb(n, branch_fn_names, flib, keep_node_fetchable, g);
+  CaseBuilder cb(n, branch_fn_names, keep_node_fetchable, g);
   TF_RETURN_IF_ERROR(cb.CreatePivotNodes());
   TF_RETURN_IF_ERROR(cb.AddInputs());
   TF_RETURN_IF_ERROR(cb.AddOutputs());

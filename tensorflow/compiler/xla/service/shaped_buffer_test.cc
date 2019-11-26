@@ -28,10 +28,8 @@ namespace xla {
 namespace {
 
 TEST(ShapedBufferTest, ScopedShapeBufferAsShapedBufferB71629047) {
-  TF_ASSERT_OK_AND_ASSIGN(auto platforms,
-                          xla::PlatformUtil::GetSupportedPlatforms());
-  ASSERT_FALSE(platforms.empty());
-  auto* platform = platforms[0];
+  TF_ASSERT_OK_AND_ASSIGN(auto* platform,
+                          xla::PlatformUtil::GetDefaultPlatform());
   TF_ASSERT_OK_AND_ASSIGN(auto executors,
                           xla::PlatformUtil::GetStreamExecutors(platform));
   xla::se::StreamExecutorMemoryAllocator allocator(platform, executors);
@@ -58,8 +56,9 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   // Pull in two-arg overload of Allocate.
   using se::DeviceMemoryAllocator::Allocate;
 
-  StatusOr<se::OwningDeviceMemory> Allocate(
-      int device_ordinal, uint64 size, bool /*retry_on_failure*/) override {
+  StatusOr<se::OwningDeviceMemory> Allocate(int device_ordinal, uint64 size,
+                                            bool /*retry_on_failure*/,
+                                            int64 /*memory_space*/) override {
     // By contract, we must return null if size == 0.
     if (size == 0) {
       return se::OwningDeviceMemory();
@@ -86,6 +85,10 @@ class TestAllocator : public se::DeviceMemoryAllocator {
   }
 
   bool AllowsAsynchronousDeallocation() const override { return false; }
+
+  StatusOr<se::Stream*> GetStream(int device_ordinal) override {
+    LOG(FATAL) << "Not implemented";
+  }
 
  private:
   std::set<std::pair</*device_ordinal*/ int64, void*>> allocations_;
