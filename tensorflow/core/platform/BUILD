@@ -9,7 +9,7 @@
 #   to any TensorFlow code outside this package.
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
     "tf_additional_monitoring_srcs",

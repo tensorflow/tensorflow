@@ -2,7 +2,7 @@
 #   GPU-specific components in XLA service implementation.
 
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
 )
 load(

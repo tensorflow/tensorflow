@@ -6,7 +6,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_cupti_utils_cuda_deps",
     "tf_additional_device_tracer_srcs",
     "tf_kernel_tests_linkstatic",

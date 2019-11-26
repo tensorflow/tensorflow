@@ -1,5 +1,5 @@
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_py_clif_cc",
 )
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
