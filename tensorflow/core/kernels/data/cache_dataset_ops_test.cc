@@ -62,10 +62,10 @@ class CacheDatasetParams : public DatasetParams {
   string filename_;
 };
 
-class CacheDatasetOpTest : public DatasetOpsTestBaseV2 {
+class CacheDatasetOpTest : public DatasetOpsTestBase {
  public:
   Status Initialize(const DatasetParams& dataset_params) {
-    TF_RETURN_IF_ERROR(DatasetOpsTestBaseV2::Initialize(dataset_params));
+    TF_RETURN_IF_ERROR(DatasetOpsTestBase::Initialize(dataset_params));
     auto params = static_cast<const CacheDatasetParams&>(dataset_params);
     cache_filename_ = params.filename();
     return Status::OK();

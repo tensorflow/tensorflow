@@ -52,7 +52,7 @@ class UniqueDatasetParams : public DatasetParams {
   string dataset_type() const override { return UniqueDatasetOp::kDatasetType; }
 };
 
-class UniqueDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class UniqueDatasetOpTest : public DatasetOpsTestBase {};
 
 UniqueDatasetParams NormalCaseParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(

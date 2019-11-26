@@ -67,7 +67,7 @@ class ZipDatasetParams : public DatasetParams {
   int32 num_input_datasets_;
 };
 
-class ZipDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class ZipDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: the input datasets with same number of outputs.
 ZipDatasetParams ZipDatasetParams1() {
