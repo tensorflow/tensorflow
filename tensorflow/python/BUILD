@@ -3610,13 +3610,10 @@ cuda_py_test(
         "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
     ],
-<<<<<<< HEAD
-=======
     python_version = "PY3",
     tags = [
         "no_rocm",
     ],
->>>>>>> google_upstream/master
 )
 
 py_library(
@@ -7443,15 +7440,11 @@ cuda_py_test(
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
     ],
-<<<<<<< HEAD
-    tags = ["grappler"],
-=======
     python_version = "PY3",
     tags = [
         "grappler",
         "no_rocm",
     ],
->>>>>>> google_upstream/master
     # This test analyzes the graph, but XLA changes the names of nodes.
     xla_enable_strict_auto_jit = False,
 )

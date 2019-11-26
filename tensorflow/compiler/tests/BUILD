@@ -1222,15 +1222,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 5,
-<<<<<<< HEAD
-    tags = [
-        # TODO(b/134780716): Re-enable this test.
-        "no_rocm",
-        "nogpu",
-        "no_cuda_on_cpu_tap",
-    ],
-=======
->>>>>>> google_upstream/master
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = False,
 )
 

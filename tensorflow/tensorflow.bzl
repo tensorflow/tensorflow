@@ -1147,17 +1147,7 @@ def tf_gpu_only_cc_test(
         args = args,
         features = if_cuda(["-use_header_modules"]),
         data = data + tf_binary_dynamic_kernel_dsos(),
-<<<<<<< HEAD
-        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_cuda_is_configured([
-            clean_dep("//tensorflow/core:cuda"),
-            clean_dep("//tensorflow/core:gpu_lib"),
-        ]) + if_rocm_is_configured([
-            clean_dep("//tensorflow/core:rocm"),
-            clean_dep("//tensorflow/core:gpu_lib"),
-        ]),
-=======
         deps = [":" + gpu_lib_name],
->>>>>>> google_upstream/master
         linkopts = if_not_windows(["-lpthread", "-lm"]) + linkopts + _rpath_linkopts(name),
         linkstatic = linkstatic or select({
             # cc_tests with ".so"s in srcs incorrectly link on Darwin
@@ -1814,13 +1804,8 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
         cuda_library(
             name = basename + "_gpu",
             srcs = gpu_srcs,
-<<<<<<< HEAD
-            copts = copts + _cuda_copts() + rocm_copts() + if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
-            features = if_cuda(["-use_header_modules"]),
-=======
             copts = copts + tf_copts() + _cuda_copts() + rocm_copts() +
                     if_tensorrt(["-DGOOGLE_TENSORRT=1"]),
->>>>>>> google_upstream/master
             deps = deps + if_cuda_is_configured_compat(cuda_deps) + if_rocm_is_configured(rocm_deps),
             **kwargs
         )

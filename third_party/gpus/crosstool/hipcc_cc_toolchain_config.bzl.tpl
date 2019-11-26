@@ -67,59 +67,6 @@ lto_index_actions = [
 ]
 
 def _impl(ctx):
-<<<<<<< HEAD
-    if (ctx.attr.cpu == "darwin"):
-        toolchain_identifier = "local_darwin"
-    elif (ctx.attr.cpu == "local"):
-        toolchain_identifier = "local_linux"
-    elif (ctx.attr.cpu == "x64_windows"):
-        toolchain_identifier = "local_windows"
-    else:
-        fail("Unreachable")
-
-    host_system_name = "local"
-
-    target_system_name = "local"
-
-    if (ctx.attr.cpu == "darwin"):
-        target_cpu = "darwin"
-    elif (ctx.attr.cpu == "local"):
-        target_cpu = "local"
-    elif (ctx.attr.cpu == "x64_windows"):
-        target_cpu = "x64_windows"
-    else:
-        fail("Unreachable")
-
-    if (ctx.attr.cpu == "local"):
-        target_libc = "local"
-    elif (ctx.attr.cpu == "darwin"):
-        target_libc = "macosx"
-    elif (ctx.attr.cpu == "x64_windows"):
-        target_libc = "msvcrt"
-    else:
-        fail("Unreachable")
-
-    if (ctx.attr.cpu == "darwin" or
-        ctx.attr.cpu == "local"):
-        compiler = "compiler"
-    elif (ctx.attr.cpu == "x64_windows"):
-        compiler = "msvc-cl"
-    else:
-        fail("Unreachable")
-
-    abi_version = "local"
-
-    abi_libc_version = "local"
-
-    cc_target_os = None
-
-    builtin_sysroot = ctx.attr.builtin_sysroot
-
-    all_link_actions = [
-        ACTION_NAMES.cpp_link_executable,
-        ACTION_NAMES.cpp_link_dynamic_library,
-        ACTION_NAMES.cpp_link_nodeps_dynamic_library,
-=======
     tool_paths = [
         tool_path(name = "gcc", path = ctx.attr.host_compiler_path),
         tool_path(name = "ar", path = ctx.attr.host_compiler_prefix + "/ar"),
@@ -132,7 +79,6 @@ def _impl(ctx):
         tool_path(name = "objcopy", path = ctx.attr.host_compiler_prefix + "/objcopy"),
         tool_path(name = "objdump", path = ctx.attr.host_compiler_prefix + "/objdump"),
         tool_path(name = "strip", path = ctx.attr.host_compiler_prefix + "/strip"),
->>>>>>> google_upstream/master
     ]
 
     action_configs = []
@@ -1210,19 +1156,6 @@ cc_toolchain_config = rule(
         "host_compiler_path": attr.string(),
         "host_compiler_prefix": attr.string(),
         "linker_bin_path": attr.string(),
-<<<<<<< HEAD
-        "builtin_sysroot": attr.string(),
-        "cuda_path": attr.string(),
-        "msvc_cl_path": attr.string(default = "msvc_not_used"),
-        "msvc_env_include": attr.string(default = "msvc_not_used"),
-        "msvc_env_lib": attr.string(default = "msvc_not_used"),
-        "msvc_env_path": attr.string(default = "msvc_not_used"),
-        "msvc_env_tmp": attr.string(default = "msvc_not_used"),
-        "msvc_lib_path": attr.string(default = "msvc_not_used"),
-        "msvc_link_path": attr.string(default = "msvc_not_used"),
-        "msvc_ml_path": attr.string(default = "msvc_not_used"),
-=======
->>>>>>> google_upstream/master
     },
     provides = [CcToolchainConfigInfo],
 )

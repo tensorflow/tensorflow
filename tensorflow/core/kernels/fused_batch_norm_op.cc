@@ -692,15 +692,11 @@ struct FusedBatchNorm<GPUDevice, T, U> {
     const bool fast_nhwc_batch_norm =
         !is_training ||
         (BatchnormSpatialPersistentEnabled() &&
-<<<<<<< HEAD
-         DataTypeToEnum<T>::value == DT_HALF && has_reserve_space_3);
+         DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
 #else
     // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
 #endif
-=======
-         DataTypeToEnum<T>::value == DT_HALF && use_reserved_space);
->>>>>>> google_upstream/master
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.
@@ -917,16 +913,11 @@ struct FusedBatchNormGrad<GPUDevice, T, U> {
     //       FusedBatchNormGradV3 passed non-null reserve space and allocator.
     const bool fast_nhwc_batch_norm = BatchnormSpatialPersistentEnabled() &&
                                       DataTypeToEnum<T>::value == DT_HALF &&
-<<<<<<< HEAD
-                                      reserve_space != nullptr &&
-                                      workspace_allocator != nullptr;
+                                      use_reserved_space;
 #else
     // fast NHWC implementation is a CUDA only feature
     const bool fast_nhwc_batch_norm = false;
 #endif
-=======
-                                      use_reserved_space;
->>>>>>> google_upstream/master
 
     // If input tensor is in NHWC format, and we have a fast cuDNN
     // implementation, there is no need to do data format conversion.

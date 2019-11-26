@@ -727,22 +727,6 @@ tf_py_test(
 )
 
 tf_py_test(
-<<<<<<< HEAD
-    name = "applications_test",
-    size = "medium",
-    srcs = ["applications/applications_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python:client_testlib",
-    ],
-    tags = ["no_rocm"],
-    shard_count = 11,
-)
-
-tf_py_test(
-=======
->>>>>>> google_upstream/master
     name = "advanced_activations_test",
     size = "medium",
     srcs = ["layers/advanced_activations_test.py"],

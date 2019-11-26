@@ -3,13 +3,8 @@
 
 load("//tensorflow/compiler/xla/tests:build_defs.bzl", "generate_backend_suites", "generate_backend_test_macros", "xla_test", "xla_test_library")
 load(
-<<<<<<< HEAD
-    "//tensorflow/core/platform:default/build_config_root.bzl",
-    "tf_cuda_tests_tags", "tf_gpu_tests_tags",
-=======
     "//tensorflow/core/platform:build_config_root.bzl",
-    "tf_cuda_tests_tags",
->>>>>>> google_upstream/master
+    "tf_cuda_tests_tags", "tf_gpu_tests_tags",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 

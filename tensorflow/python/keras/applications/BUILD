@@ -42,6 +42,7 @@ tf_py_test(
     name = "applications_test",
     size = "medium",
     srcs = ["applications_test.py"],
+    tags = ["no_rocm"],
     additional_deps = [
         ":applications",
         "@absl_py//absl/testing:parameterized",

@@ -4469,6 +4469,14 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
         ret = gen_math_ops.real_div(x, gen_math_ops.sub(one_tensor, rate))
 
       noise_shape = _get_noise_shape(x, noise_shape)
+
+      # Should there be ROCm support, use it. Otherwise fallback to generic
+      # implementation
+      if build_info.is_rocm_build and x.dtype is dtypes.float32:
+        if seed is None:
+          seed = 0
+        return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
+
       # Sample a uniform distribution on [0.0, 1.0) and select values larger
       # than rate.
       #
@@ -4509,39 +4517,19 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
         rate = ops.convert_to_tensor(rate, dtype=x.dtype, name="rate")
         rate.get_shape().assert_has_rank(0)
 
-<<<<<<< HEAD
-    noise_shape = _get_noise_shape(x, noise_shape)
-
-    if seed is None:
-        seed = 0
-
-    # Should there be ROCm support, use it. Otherwise fallback to generic
-    # implementation
-    if build_info.is_rocm_build and x.dtype is dtypes.float32:
-      return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
-
-    # Sample a uniform distribution on [0.0, 1.0) and select values larger than
-    # rate.
-    #
-    # NOTE: Random uniform actually can only generate 2^23 floats on [1.0, 2.0)
-    # and subtract 1.0.
-    random_tensor = random_ops.random_uniform(
-        noise_shape, seed=seed, dtype=x.dtype)
-    keep_prob = 1 - rate
-    scale = 1 / keep_prob
-    # NOTE: if (1.0 + rate) - 1 is equal to rate, then we want to consider that
-    # float to be selected, hence we use a >= comparison.
-    keep_mask = random_tensor >= rate
-    ret = x * scale * math_ops.cast(keep_mask, x.dtype)
-    if not context.executing_eagerly():
-      ret.set_shape(x.get_shape())
-    return ret
-=======
         # Do nothing if we know rate == 0
         if tensor_util.constant_value(rate) == 0:
           return x
 
       noise_shape = _get_noise_shape(x, noise_shape)
+
+      # Should there be ROCm support, use it. Otherwise fallback to generic
+      # implementation
+      if build_info.is_rocm_build and x.dtype is dtypes.float32:
+        if seed is None:
+          seed = 0
+        return gen_nn_ops.dropout(x,rate,noise_shape=noise_shape,seed=seed)
+
       # Sample a uniform distribution on [0.0, 1.0) and select values larger
       # than rate.
       #
@@ -4558,7 +4546,6 @@ def dropout_v2(x, rate, noise_shape=None, seed=None, name=None):
       if not context.executing_eagerly():
         ret.set_shape(x.get_shape())
       return ret
->>>>>>> google_upstream/master
 
 
 @tf_export("math.top_k", "nn.top_k")
