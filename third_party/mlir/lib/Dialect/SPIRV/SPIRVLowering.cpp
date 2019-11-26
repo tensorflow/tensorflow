@@ -80,6 +80,18 @@ Type convertIndexType(MLIRContext *context) {
   return IntegerType::get(32, context);
 }
 
+// TODO(ravishankarm): This is a utility function that should probably be
+// exposed by the SPIR-V dialect. Keeping it local till the use case arises.
+Optional<int64_t> getTypeNumBytes(Type t) {
+  if (auto integerType = t.dyn_cast<IntegerType>()) {
+    return integerType.getWidth() / 8;
+  } else if (auto floatType = t.dyn_cast<FloatType>()) {
+    return floatType.getWidth() / 8;
+  }
+  // TODO: Add size computation for other types.
+  return llvm::None;
+}
+
 Type typeConversionImpl(Type t) {
   // Check if the type is SPIR-V supported. If so return the type.
   if (spirv::SPIRVDialect::isValidType(t)) {
@@ -91,16 +103,46 @@ Type typeConversionImpl(Type t) {
   }
 
   if (auto memRefType = t.dyn_cast<MemRefType>()) {
-    auto elementType = memRefType.getElementType();
-    // TODO(ravishankarm) : Handle dynamic shapes and memref with strides.
-    if (memRefType.hasStaticShape() && memRefType.getAffineMaps().empty()) {
-      // Convert to a multi-dimensional spv.array if size is known.
-      for (auto size : reverse(memRefType.getShape())) {
-        elementType = spirv::ArrayType::get(elementType, size);
+    // TODO(ravishankarm): For now only support default memory space. The memory
+    // space description is not set is stone within MLIR, i.e. it depends on the
+    // context it is being used. To map this to SPIR-V storage classes, we
+    // should rely on the ABI attributes, and not on the memory space. This is
+    // still evolving, and needs to be revisited when there is more clarity.
+    if (memRefType.getMemorySpace()) {
+      return Type();
+    }
+    auto elementType = typeConversionImpl(memRefType.getElementType());
+    if (!elementType) {
+      return Type();
+    }
+    auto elementSize = getTypeNumBytes(elementType);
+    if (!elementSize) {
+      return Type();
+    }
+    // TODO(ravishankarm) : Handle dynamic shapes.
+    if (memRefType.hasStaticShape()) {
+      // Get the strides and offset
+      int64_t offset;
+      SmallVector<int64_t, 4> strides;
+      if (failed(getStridesAndOffset(memRefType, strides, offset)) ||
+          offset == MemRefType::getDynamicStrideOrOffset() ||
+          llvm::is_contained(strides, MemRefType::getDynamicStrideOrOffset())) {
+        // TODO(ravishankarm) : Handle dynamic strides and offsets.
+        return Type();
       }
+      // Convert to a multi-dimensional spv.array if size is known.
+      auto shape = memRefType.getShape();
+      assert(shape.size() == strides.size());
+      for (int i = shape.size(); i > 0; --i) {
+        elementType = spirv::ArrayType::get(
+            elementType, shape[i - 1], strides[i - 1] * elementSize.getValue());
+      }
+      // For the offset, need to wrap the array in a struct.
+      auto structType =
+          spirv::StructType::get(elementType, offset * elementSize.getValue());
       // For now initialize the storage class to StorageBuffer. This will be
       // updated later based on whats passed in w.r.t to the ABI attributes.
-      return spirv::PointerType::get(elementType,
+      return spirv::PointerType::get(structType,
                                      spirv::StorageClass::StorageBuffer);
     }
   }
@@ -109,6 +151,10 @@ Type typeConversionImpl(Type t) {
 } // namespace
 
 Type SPIRVTypeConverter::convertType(Type t) { return typeConversionImpl(t); }
+
+Type SPIRVTypeConverter::getIndexType(MLIRContext *context) {
+  return convertType(IndexType::get(context));
+}
 
 //===----------------------------------------------------------------------===//
 // Builtin Variables

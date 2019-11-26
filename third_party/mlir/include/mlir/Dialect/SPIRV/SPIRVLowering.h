@@ -39,6 +39,9 @@ public:
 
   /// Converts types to SPIR-V types using the basic type converter.
   Type convertType(Type t) override;
+
+  /// Gets the index type equivalent in SPIR-V.
+  Type getIndexType(MLIRContext *context);
 };
 
 /// Base class to define a conversion pattern to translate Ops into SPIR-V.
