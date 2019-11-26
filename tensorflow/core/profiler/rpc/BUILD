@@ -15,6 +15,7 @@ cc_library(
         "//tensorflow/core/profiler/lib:profiler_lib",
         "//tensorflow/core/profiler/lib:profiler_session",
     ],
+    alwayslink = True,
 )
 
 cc_library(
