@@ -369,6 +369,47 @@ static LogicalResult verify(ExtractElementOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, BroadcastOp op) {
+  p << op.getOperationName() << " " << *op.source() << ", " << *op.dest();
+  p << " : " << op.getSourceType();
+  p << " into " << op.getDestVectorType();
+}
+
+static LogicalResult verify(BroadcastOp op) {
+  VectorType srcVectorType = op.getSourceType().dyn_cast<VectorType>();
+  VectorType dstVectorType = op.getDestVectorType();
+  // Scalar to vector broadcast is always valid. A vector
+  // to vector broadcast needs some additional checking.
+  if (srcVectorType) {
+    const int64_t srcRank = srcVectorType.getRank();
+    const int64_t dstRank = dstVectorType.getRank();
+    // TODO(ajcbik): implement proper rank testing for broadcast;
+    // this is just a temporary placeholder check.
+    if (srcRank > dstRank) {
+      return op.emitOpError("source rank higher than destination rank");
+    }
+  }
+  return success();
+}
+
+static ParseResult parseBroadcastOp(OpAsmParser &parser,
+                                    OperationState &result) {
+  OpAsmParser::OperandType source, dest;
+  Type sourceType;
+  VectorType destType;
+  return failure(parser.parseOperand(source) || parser.parseComma() ||
+                 parser.parseOperand(dest) ||
+                 parser.parseColonType(sourceType) ||
+                 parser.parseKeywordType("into", destType) ||
+                 parser.resolveOperand(source, sourceType, result.operands) ||
+                 parser.resolveOperand(dest, destType, result.operands) ||
+                 parser.addTypeToList(destType, result.types));
+}
+
+//===----------------------------------------------------------------------===//
 // InsertElementOp
 //===----------------------------------------------------------------------===//
 

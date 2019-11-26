@@ -162,6 +162,34 @@ def Vector_ContractionOp :
   }];
 }
 
+def Vector_BroadcastOp :
+  Vector_Op<"broadcast", [NoSideEffect,
+     PredOpTrait<"source operand and result have same element type",
+                 TCresVTEtIsSameAsOpBase<0, 0>>,
+     PredOpTrait<"dest operand and result have same type",
+                 TCresIsSameAsOpBase<0, 1>>]>,
+    Arguments<(ins AnyType:$source, AnyVector:$dest)>,
+    Results<(outs AnyVector:$vector)> {
+  let summary = "broadcast operation";
+  let description = [{
+    Broadcasts the scalar or k-D vector value in the source to the n-D
+    destination vector of a proper shape such that the broadcast makes sense.
+
+    Examples:
+    ```
+      %0 = constant 0.0 : f32
+      %1 = vector.broadcast %0, %x : f32 into vector<16xf32>
+      %2 = vector.broadcast %1, %y : vector<16xf32> into vector<4x16xf32>
+    ```
+  }];
+  let extraClassDeclaration = [{
+    Type getSourceType() { return source()->getType(); }
+    VectorType getDestVectorType() {
+      return dest()->getType().cast<VectorType>();
+    }
+  }];
+}
+
 def Vector_ExtractElementOp :
   Vector_Op<"extractelement", [NoSideEffect,
      PredOpTrait<"operand and result have same element type",
