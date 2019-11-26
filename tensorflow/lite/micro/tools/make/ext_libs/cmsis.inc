@@ -48,6 +48,8 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_depthwise_separable_conv_HWC_q7_nonsquare.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_convolve_HWC_q15_fast_nonsquare.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_depthwise_conv_s8_opt.c \
+      $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_nn_depthwise_conv_s8_core.c \
+      $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_nn_mat_mult_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_nn_mat_mult_kernel_s8_s16.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_convolve_HWC_q15_basic.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ConvolutionFunctions/arm_convolve_HWC_q15_fast.c \
