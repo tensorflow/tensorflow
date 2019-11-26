@@ -368,6 +368,29 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   let hasCustomHLOConverter = 1;
 }
 
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+def ChannelHandle : StructAttr<"ChannelHandle", HLO_Dialect, [
+                StructFieldAttr<"handle", I64Attr>,
+                StructFieldAttr<"type", I64Attr>]> {
+  let description = "two 64-bit integers 'handle' and 'type'";
+}
+
+def HLO_AllReduceOp : HLO_Op<"all_reduce",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AllReduceOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<ChannelHandle>:$channel_id
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let results = (outs HLO_Tensor);
+
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ReduceOp: HLO_Op<"reduce", [
       NoSideEffect,
       SameVariadicOperandSize,

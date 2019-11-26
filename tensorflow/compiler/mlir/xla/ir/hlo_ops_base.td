@@ -465,6 +465,16 @@ class BASE_HLO_XorOp {
   }];
 }
 
+class BASE_HLO_AllReduceOp {
+  string summary = "AllReduce operator";
+
+  string description = [{
+    Performs a custom reduction across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allreduce.
+  }];
+}
+
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
