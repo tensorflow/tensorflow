@@ -428,6 +428,16 @@ cc_library(
 )
 
 cc_library(
+    name = "setround",
+    srcs = ["setround.cc"],
+    hdrs = ["setround.h"],
+    deps = [
+        ":logging",
+        ":macros",
+    ],
+)
+
+cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
     deps = [
@@ -453,12 +463,21 @@ cc_library(
 )
 
 cc_library(
-    name = "setround",
-    srcs = ["setround.cc"],
-    hdrs = ["setround.h"],
+    name = "status",
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
     deps = [
         ":logging",
         ":macros",
+        ":mutex",
+        ":stacktrace",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "//tensorflow/core:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -805,6 +824,7 @@ filegroup(
             "protobuf_util.cc",
             "scanner.cc",
             "setround.cc",
+            "status.cc",
             "strcat.cc",
             "stringprintf.cc",
             "str_util.cc",
