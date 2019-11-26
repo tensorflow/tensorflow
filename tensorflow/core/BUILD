@@ -386,11 +386,6 @@ filegroup(
 )
 
 alias(
-    name = "grpc_services",
-    actual = "//tensorflow/core/platform:grpc_services",
-)
-
-alias(
     name = "human_readable_json",
     actual = "//tensorflow/core/platform:human_readable_json",
 )

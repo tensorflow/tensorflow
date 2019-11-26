@@ -203,16 +203,6 @@ cc_library(
 )
 
 cc_library(
-    name = "grpc_services",
-    hdrs = ["grpc_services.h"],
-    deps = [
-        ":platform",
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
-    ],
-)
-
-cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
     deps = tf_mobile_aware_deps("human_readable_json_impl"),

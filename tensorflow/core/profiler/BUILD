@@ -45,6 +45,7 @@ tf_proto_library(
         ":op_profile_proto",
         ":profiler_service_monitor_result_proto",
     ] + tf_additional_all_protos(),
+    use_grpc_namespace = True,
     visibility = ["//visibility:public"],
 )
 
@@ -55,6 +56,7 @@ tf_proto_library(
     cc_api_version = 2,
     cc_grpc_version = 1,
     protodeps = [":profiler_service_proto"],
+    use_grpc_namespace = True,
     visibility = ["//visibility:public"],
 )
 
