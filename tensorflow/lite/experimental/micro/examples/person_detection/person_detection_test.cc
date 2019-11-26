@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/no_person_image_data.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/person_detect_model_data.h"

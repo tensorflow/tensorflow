@@ -51,7 +51,7 @@ cc_library(
     deps = [
         ":ctc_utils",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels/internal:optimized",
@@ -104,7 +104,7 @@ cc_library(
     deps = [
         ":gru_cell",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
@@ -136,7 +136,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",

@@ -18,7 +18,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/kernels/internal:tensor",
     ],

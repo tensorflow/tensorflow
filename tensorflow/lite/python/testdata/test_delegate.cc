@@ -16,7 +16,7 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 

@@ -64,7 +64,7 @@ cc_library(
         ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",

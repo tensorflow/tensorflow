@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/resource/lookup_util.h"
 #include "tensorflow/lite/experimental/resource/resource_base.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"

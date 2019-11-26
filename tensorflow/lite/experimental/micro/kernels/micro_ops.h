@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_KERNELS_MICRO_OPS_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_KERNELS_MICRO_OPS_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 namespace ops {

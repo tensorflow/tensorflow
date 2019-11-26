@@ -93,7 +93,7 @@ MICROLITE_CC_BASE_SRCS := \
 $(wildcard tensorflow/lite/experimental/micro/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/kernels/*.cc) \
 $(wildcard tensorflow/lite/experimental/micro/memory_planner/*.cc) \
-tensorflow/lite/c/c_api_internal.c \
+tensorflow/lite/c/common.c \
 tensorflow/lite/core/api/error_reporter.cc \
 tensorflow/lite/core/api/flatbuffer_conversions.cc \
 tensorflow/lite/core/api/op_resolver.cc \
@@ -110,7 +110,7 @@ $(wildcard tensorflow/lite/experimental/micro/memory_planner/*.h) \
 LICENSE \
 tensorflow/core/public/version.h \
 tensorflow/lite/c/builtin_op_data.h \
-tensorflow/lite/c/c_api_internal.h \
+tensorflow/lite/c/common.h \
 tensorflow/lite/core/api/error_reporter.h \
 tensorflow/lite/core/api/flatbuffer_conversions.h \
 tensorflow/lite/core/api/op_resolver.h \

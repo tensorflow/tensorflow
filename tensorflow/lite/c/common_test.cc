@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+
 #include <gtest/gtest.h>
 
 namespace tflite {
 
 // NOTE: this tests only the TfLiteIntArray part of context.
-// most of c_api_internal.h is provided in the context of using it with
+// most of common.h is provided in the context of using it with
 // interpreter.h and interpreter.cc, so interpreter_test.cc tests context
 // structures more thoroughly.
 

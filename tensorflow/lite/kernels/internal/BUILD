@@ -236,7 +236,7 @@ cc_library(
         "//third_party/eigen3",
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -282,7 +282,7 @@ cc_library(
         ":round",
         "//third_party/eigen3",
         "@gemmlowp",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:cpu_backend_threadpool",
         "//tensorflow/lite/kernels:cpu_backend_gemm",
@@ -314,7 +314,7 @@ cc_library(
         ":types",
         "//tensorflow/core/kernels:eigen_spatial_convolutions-inl",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//third_party/eigen3",
     ],
 )
@@ -450,7 +450,7 @@ cc_library(
         "@gemmlowp//:fixedpoint",
         "@gemmlowp//:profiler",
         "//third_party/eigen3",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -506,7 +506,7 @@ cc_library(
         ":types",
         "//third_party/eigen3",
         "@gemmlowp",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -531,7 +531,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -546,7 +546,7 @@ cc_library(
     deps = [
         ":types",
         "//tensorflow/lite:string_util",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -564,7 +564,7 @@ cc_library(
         ":common",
         ":compatibility",
         ":round",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "@gemmlowp",
@@ -587,7 +587,7 @@ cc_library(
         ":cpu_check",
         ":portable_tensor_utils",
         ":round",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/ruy",
         "//tensorflow/lite/experimental/ruy:detect_arm",
         "//tensorflow/lite/kernels:cpu_backend_context",
@@ -610,7 +610,7 @@ cc_library(
         ":cpu_check",
         ":neon_tensor_utils",
         ":portable_tensor_utils",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
     ],
 )
@@ -622,7 +622,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":tensor_utils",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -662,7 +662,7 @@ cc_library(
         ":compatibility",
         ":cpu_check",
         ":types",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "//tensorflow/lite/kernels:op_macros",
         "@gemmlowp//:fixedpoint",
@@ -751,7 +751,7 @@ cc_test(
     deps = [
         ":quantization_util",
         ":tensor_utils",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest_main",
     ],
