@@ -1392,10 +1392,10 @@ def _resize_image_with_pad_common(image, target_height, target_width,
     _, height, width, _ = _ImageDimensions(image, rank=4)
 
     # convert values to float, to ease divisions
-    f_height = math_ops.cast(height, dtype=dtypes.float64)
-    f_width = math_ops.cast(width, dtype=dtypes.float64)
-    f_target_height = math_ops.cast(target_height, dtype=dtypes.float64)
-    f_target_width = math_ops.cast(target_width, dtype=dtypes.float64)
+    f_height = math_ops.cast(height, dtype=dtypes.float32)
+    f_width = math_ops.cast(width, dtype=dtypes.float32)
+    f_target_height = math_ops.cast(target_height, dtype=dtypes.float32)
+    f_target_width = math_ops.cast(target_width, dtype=dtypes.float32)
 
     # Find the ratio by which the image must be adjusted
     # to fit within the target
