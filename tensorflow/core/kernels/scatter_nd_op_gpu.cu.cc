@@ -90,6 +90,7 @@ struct LeftUpdate<std::complex<T>, scatter_nd_op::UpdateOp::SUB> {
   }
 };
 
+
 }  // namespace
 
 template <typename T, typename Index, scatter_nd_op::UpdateOp op, int IXDIM>
