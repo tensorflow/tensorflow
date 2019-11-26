@@ -33,12 +33,9 @@ perspective.**
 ## Running untrusted models
 
 As a general rule: **Always** execute untrusted models inside a sandbox (e.g.,
-[nsjail](https://github.com/google/nsjail)).
+[nsjail](https://github.com/google/nsjail)) to separate untrusted code execution from the actual kernel.
 
-There are several ways in which a model could become untrusted. Obviously, if an
-untrusted party supplies TensorFlow kernels, arbitrary code may be executed.
-The same is true if the untrusted party provides Python code, such as the
-Python code that generates TensorFlow graphs.
+There are several ways in which a model could become untrusted. TensorFlow kernels supplied by untrusted party can execute arbitrary code or scripts, causing unwanted outcomes. Similarly, Python code (i.e. code for generating TensorFlow graphs) provided by untrusted party should be executed in sandboxes.
 
 Even if the untrusted party only supplies the serialized computation
 graph (in form of a `GraphDef`, `SavedModel`, or equivalent on-disk format), the
