@@ -67,12 +67,7 @@ cc_library(
     name = "errors",
     hdrs = ["errors.h"],
     deps = [
-        ":status",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:strcat",
-        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:errors",
     ],
 )
 

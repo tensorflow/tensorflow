@@ -180,6 +180,19 @@ cc_library(
 )
 
 cc_library(
+    name = "errors",
+    hdrs = ["errors.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":status",
+        ":str_util",
+        ":strcat",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
     deps = [":types"],
