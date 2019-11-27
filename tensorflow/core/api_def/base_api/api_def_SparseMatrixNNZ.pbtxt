@@ -1,5 +1,6 @@
 op {
   graph_op_name: "SparseMatrixNNZ"
+  visibility: HIDDEN
   in_arg {
     name: "sparse_matrix"
     description: "A CSRSparseMatrix."
