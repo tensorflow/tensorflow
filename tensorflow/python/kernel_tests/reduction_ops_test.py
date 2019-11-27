@@ -444,6 +444,27 @@ class MeanReductionTest(BaseReductionTest):
       np_arr = self._makeRandom((2,) * rank, dtypes.uint8)
       self._compareAllAxes(np_arr)
 
+  # This tests the issue reported in b/145030710.
+  @test_util.run_deprecated_v1
+  def testSizeOverflowUint8(self):
+    np_arr = self._makeRandom((2**8,), dtypes.uint8)
+    self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testSizeOverflowInt8(self):
+    np_arr = self._makeRandom((2**7,), dtypes.int8)
+    self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testSizeOverflowUint16(self):
+    np_arr = self._makeRandom((2**16,), dtypes.uint16)
+    self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testSizeOverflowInt16(self):
+    np_arr = self._makeRandom((2**15,), dtypes.int16)
+    self._compareAllAxes(np_arr)
+
   @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
