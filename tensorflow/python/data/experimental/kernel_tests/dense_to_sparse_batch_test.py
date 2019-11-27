@@ -17,20 +17,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class DenseToSparseBatchTest(test_base.DatasetTestBase):
+class DenseToSparseBatchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDenseToSparseBatchDataset(self):
     components = np.random.randint(12, size=(100,)).astype(np.int32)
     dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -53,6 +54,7 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDenseToSparseBatchDatasetWithUnknownShape(self):
     components = np.random.randint(5, size=(40,)).astype(np.int32)
     dataset = dataset_ops.Dataset.from_tensor_slices(
@@ -80,12 +82,14 @@ class DenseToSparseBatchTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDenseToSparseBatchDatasetWithInvalidShape(self):
     input_tensor = array_ops.constant([[1]])
     with self.assertRaisesRegexp(ValueError, "Dimension -2 must be >= 0"):
       dataset_ops.Dataset.from_tensors(input_tensor).apply(
           batching.dense_to_sparse_batch(4, [-2]))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testDenseToSparseBatchDatasetShapeErrors(self):
 
     def dataset_fn(input_tensor):
