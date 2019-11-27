@@ -191,6 +191,12 @@ class TFL_TFTypesWithSameBits<int i, int j, int num> :
     Or<[CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Quint" # num # "Type>()">,
         CPred<"getElementTypeOrSelf($_op.getOperand(" # j # ")).isa<mlir::TF::Uint" # num # "Type>()">]>]>;
 
+class TFL_OperandHasRankLessThan<int n, int m> :
+  PredOpTrait<"operand " # n # " is maximum " # m # "-D",
+    Or<[TFL_OperandIsUnrankedPred<n>,
+      CPred<"$_op.getOperand(" # n #
+      ")->getType().cast<ShapedType>().getRank() <= " # m>]>>;
+
 // This is a quantization-aware version of TCresVTEtIsSameAsOp
 class TFL_TCresVTEtIsSameAsOp<int i, int j> : And<[
   TCOpResIsShapedTypePred<i, j>,
@@ -1409,7 +1415,8 @@ def TFL_MaxPool2DOp : TFL_Op<"max_pool_2d", [
 }
 
 def TFL_MaximumOp : TFL_Op<"maximum", [
-    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale,
+    TFL_OperandHasRankLessThan<0, 4>, TFL_OperandHasRankLessThan<1, 4>]> {
   let summary = "Max operator";
   let description = [{
     Element-wise max operation.
@@ -1605,7 +1612,8 @@ def TFL_ReduceProdOp: TFL_Op<"reduce_prod", [NoSideEffect]> {
 }
 
 def TFL_MinimumOp : TFL_Op<"minimum", [
-    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale]> {
+    Broadcastable, NoSideEffect, Commutative, SameOperandsAndResultsScale,
+    TFL_OperandHasRankLessThan<0, 4>, TFL_OperandHasRankLessThan<1, 4>]> {
   let summary = "Min operator";
   let description = [{
     Element-wise min operation.

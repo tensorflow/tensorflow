@@ -459,6 +459,19 @@ func @InvalidL2NormalizePattern2(%arg0: tensor<2xf32>, %arg1: tensor<2xf32>) -> 
   // CHECK: return %[[RES]]
 }
 
+// CHECK-LABEL: @InvalidL2NormalizePattern3
+// Axis must be last dimension.
+func @InvalidL2NormalizePattern3(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
+  %cst = constant dense<[0]> : tensor<1xi32>
+  %0 = "tfl.square"(%arg0) : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  %1 = "tfl.sum"(%0, %cst) {keep_dims = false} : (tensor<2x2xf32>, tensor<1xi32>) -> tensor<f32>
+  %2 = "tfl.sqrt"(%1) : (tensor<f32>) -> tensor<f32>
+  %3 = "tfl.div"(%arg0, %2) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  return %3: tensor<2x2xf32>
+  // CHECK: %[[RES:[0-9].*]] = "tfl.div"([[INPUT:%.*]], %2) {fused_activation_function = "NONE"} : (tensor<2x2xf32>, tensor<f32>) -> tensor<2x2xf32>
+  // CHECK: return %[[RES]]
+}
+
 // CHECK-LABEL: @fuseDivIntoConv2d
 func @fuseDivIntoConv2d(%arg0: tensor<1x112x112x2xf32>) -> tensor<1x112x112x2xf32> {
   %cst0 = constant dense<[[[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0], [7.0, 8.0]]], [[[9.0, 10.0], [11.0, 12.0]], [[13.0, 14.0], [15.0, 16.0]]]]> : tensor<2x2x2x2xf32>
