@@ -45,6 +45,10 @@ namespace optimized_integer_ops {
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
                     const int8* input_data, const RuntimeShape& output_shape,
                     int8* output_data) {
+  if (input_shape.DimensionsCount() == 5) {
+    return reference_integer_ops::MaxPool(
+      params, input_shape, input_data, output_shape, output_data);
+  }
   gemmlowp::ScopedProfilingLabel label("MaxPool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
@@ -293,6 +297,10 @@ inline void AveragePool16(const PoolParams& params,
 inline void AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape, const int8* input_data,
                         const RuntimeShape& output_shape, int8* output_data) {
+  if (input_shape.DimensionsCount() == 5) {
+    return reference_integer_ops::AveragePool(
+      params, input_shape, input_data, output_shape, output_data);
+  }
   if (params.filter_height * params.filter_width > 16 * 16) {
     reference_integer_ops::AveragePool(params, input_shape, input_data,
                                        output_shape, output_data);

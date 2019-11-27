@@ -420,8 +420,8 @@ class FloatPoolingOpModel : public SingleOpModelWithNNAPI {
 
     SetBuiltinOp(
         type, BuiltinOptions_Pool2DOptions,
-        CreatePool2DOptions(builder_, Padding_VALID, 2, 2, filter_width,
-                            filter_height, ActivationFunctionType_NONE)
+        CreatePool2DOptions(builder_, Padding_VALID, 2, 2, 1, filter_width,
+                            filter_height, 1, ActivationFunctionType_NONE)
             .Union());
 
     BuildInterpreter({GetShape(input_)});

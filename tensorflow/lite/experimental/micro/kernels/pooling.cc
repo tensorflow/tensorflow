@@ -103,10 +103,13 @@ void AverageEvalInt8(const TfLiteContext* context, const TfLiteNode* node,
                                &activation_max);
 
   PoolParams op_params;
+  op_params.stride_depth = params->stride_depth;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
+  op_params.filter_depth = params->filter_depth;
   op_params.filter_height = params->filter_height;
   op_params.filter_width = params->filter_width;
+  op_params.padding_values.depth = data->padding.depth;
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
   op_params.quantized_activation_min = activation_min;
@@ -124,10 +127,13 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
                            &activation_max);
 
   tflite::PoolParams op_params;
+  op_params.stride_depth = params->stride_depth;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
+  op_params.filter_depth = params->filter_depth;
   op_params.filter_height = params->filter_height;
   op_params.filter_width = params->filter_width;
+  op_params.padding_values.depth = data->padding.depth;
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
   op_params.float_activation_min = activation_min;
@@ -145,10 +151,13 @@ void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
                                 &activation_max);
 
   tflite::PoolParams op_params;
+  op_params.stride_depth = params->stride_depth;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
+  op_params.filter_depth = params->filter_depth;
   op_params.filter_height = params->filter_height;
   op_params.filter_width = params->filter_width;
+  op_params.padding_values.depth = data->padding.depth;
   op_params.padding_values.height = data->padding.height;
   op_params.padding_values.width = data->padding.width;
   op_params.quantized_activation_min = activation_min;

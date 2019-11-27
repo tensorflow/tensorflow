@@ -3227,6 +3227,10 @@ inline void AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const float* input_data,
                         const RuntimeShape& output_shape, float* output_data) {
+  if (input_shape.DimensionsCount() == 5) {
+    return reference_ops::AveragePool(
+      params, input_shape, input_data, output_shape, output_data);
+  }
   gemmlowp::ScopedProfilingLabel label("AveragePool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -3559,6 +3563,10 @@ inline void AveragePool(const PoolParams& params,
                         const RuntimeShape& input_shape,
                         const uint8* input_data,
                         const RuntimeShape& output_shape, uint8* output_data) {
+  if (input_shape.DimensionsCount() == 5) {
+    return reference_ops::AveragePool(
+      params, input_shape, input_data, output_shape, output_data);
+  }
   if (params.filter_height * params.filter_width > 16 * 16) {
     AveragePool32(params, input_shape, input_data, output_shape, output_data);
   } else {
@@ -3569,6 +3577,10 @@ inline void AveragePool(const PoolParams& params,
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
                     const float* input_data, const RuntimeShape& output_shape,
                     float* output_data) {
+  if (input_shape.DimensionsCount() == 5) {
+    return reference_ops::MaxPool(
+      params, input_shape, input_data, output_shape, output_data);
+  }
   gemmlowp::ScopedProfilingLabel label("MaxPool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);
@@ -3623,6 +3635,10 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
 inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
                     const uint8* input_data, const RuntimeShape& output_shape,
                     uint8* output_data) {
+  if (input_shape.DimensionsCount() == 5) {
+    return reference_ops::MaxPool(
+      params, input_shape, input_data, output_shape, output_data);
+  }
   gemmlowp::ScopedProfilingLabel label("MaxPool/8bit");
 
   // Here, and in other pooling ops, in order to maintain locality of reference,
@@ -3732,6 +3748,10 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
 inline void L2Pool(const PoolParams& params, const RuntimeShape& input_shape,
                    const float* input_data, const RuntimeShape& output_shape,
                    float* output_data) {
+  if (input_shape.DimensionsCount() == 5) {
+    return reference_ops::L2Pool(
+      params, input_shape, input_data, output_shape, output_data);
+  }
   gemmlowp::ScopedProfilingLabel label("L2Pool");
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_EQ(output_shape.DimensionsCount(), 4);

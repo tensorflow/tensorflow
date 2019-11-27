@@ -72,22 +72,30 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
   const TfLiteTensor* input = GetInput(context, node, 0);
-  TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
+  TF_LITE_ENSURE(context, NumDimensions(input) == 4 ||
+                          NumDimensions(input) == 5);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  int batches = input->dims->data[0];
-  int height = input->dims->data[1];
-  int width = input->dims->data[2];
-  int channels_out = input->dims->data[3];
+  const RuntimeShape input_shape = GetTensorShape(input);
+  const RuntimeShape ext_input_shape =
+      RuntimeShape::ExtendedShape(5, input_shape);
+
+  int batches = ext_input_shape.Dims(0);
+  int depth =  ext_input_shape.Dims(1);
+  int height =  ext_input_shape.Dims(2);
+  int width =  ext_input_shape.Dims(3);
+  int channels_out =  ext_input_shape.Dims(4);
 
   // Matching GetWindowedOutputSize in TensorFlow.
-  auto padding = params->padding;
-  int out_width, out_height;
+  const auto padding = params->padding;
+  int out_width, out_height, out_depth;
 
-  data->padding = ComputePaddingHeightWidth(
-      params->stride_height, params->stride_width, 1, 1, height, width,
-      params->filter_height, params->filter_width, padding, &out_height,
-      &out_width);
+  data->padding = ComputePaddingDepthHeightWidth(
+      params->stride_depth, params->stride_height, params->stride_width,
+      1, 1, 1,
+      depth, height, width,
+      params->filter_depth, params->filter_height, params->filter_width,
+      padding, &out_depth, &out_height, &out_width);
 
   if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     if (pool_type == kAverage || pool_type == kMax) {
@@ -101,11 +109,20 @@ TfLiteStatus GenericPrepare(TfLiteContext* context, TfLiteNode* node) {
     }
   }
 
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
-  output_size->data[0] = batches;
-  output_size->data[1] = out_height;
-  output_size->data[2] = out_width;
-  output_size->data[3] = channels_out;
+  TfLiteIntArray* output_size = TfLiteIntArrayCreate(input_shape.DimensionsCount());
+  if (output_size->size == 4) {
+    output_size->data[0] = batches;
+    output_size->data[1] = out_height;
+    output_size->data[2] = out_width;
+    output_size->data[3] = channels_out;
+  } else {
+    output_size->data[0] = batches;
+    output_size->data[1] = out_depth;
+    output_size->data[2] = out_height;
+    output_size->data[3] = out_width;
+    output_size->data[4] = channels_out;
+  }
+
   return context->ResizeTensor(context, output, output_size);
 }
 
@@ -118,10 +135,13 @@ void AverageEvalFloat(TfLiteContext* context, TfLiteNode* node,
                            &activation_max);
 #define TF_LITE_AVERAGE_POOL(type)                                       \
   tflite::PoolParams op_params;                                          \
+  op_params.stride_depth = params->stride_depth;                         \
   op_params.stride_height = params->stride_height;                       \
   op_params.stride_width = params->stride_width;                         \
+  op_params.filter_depth = params->filter_depth;                         \
   op_params.filter_height = params->filter_height;                       \
   op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.depth = data->padding.depth;                  \
   op_params.padding_values.height = data->padding.height;                \
   op_params.padding_values.width = data->padding.width;                  \
   op_params.float_activation_min = activation_min;                       \
@@ -148,12 +168,15 @@ void AverageEvalQuantizedUint8(TfLiteContext* context, TfLiteNode* node,
                                 &activation_max);
 #define TF_LITE_AVERAGE_POOL(type)                                         \
   tflite::PoolParams op_params;                                            \
-  op_params.stride_height = params->stride_height;                         \
-  op_params.stride_width = params->stride_width;                           \
-  op_params.filter_height = params->filter_height;                         \
-  op_params.filter_width = params->filter_width;                           \
-  op_params.padding_values.height = data->padding.height;                  \
-  op_params.padding_values.width = data->padding.width;                    \
+  op_params.stride_depth = params->stride_depth;                         \
+  op_params.stride_height = params->stride_height;                       \
+  op_params.stride_width = params->stride_width;                         \
+  op_params.filter_depth = params->filter_depth;                         \
+  op_params.filter_height = params->filter_height;                       \
+  op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.depth = data->padding.depth;                  \
+  op_params.padding_values.height = data->padding.height;                \
+  op_params.padding_values.width = data->padding.width;                  \
   op_params.quantized_activation_min = activation_min;                     \
   op_params.quantized_activation_max = activation_max;                     \
   type::AveragePool(op_params, GetTensorShape(input),                      \
@@ -177,12 +200,15 @@ void AverageEvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                &activation_max);
 #define TF_LITE_AVERAGE_POOL(type)                                        \
   tflite::PoolParams op_params;                                           \
-  op_params.stride_height = params->stride_height;                        \
-  op_params.stride_width = params->stride_width;                          \
-  op_params.filter_height = params->filter_height;                        \
-  op_params.filter_width = params->filter_width;                          \
-  op_params.padding_values.height = data->padding.height;                 \
-  op_params.padding_values.width = data->padding.width;                   \
+  op_params.stride_depth = params->stride_depth;                         \
+  op_params.stride_height = params->stride_height;                       \
+  op_params.stride_width = params->stride_width;                         \
+  op_params.filter_depth = params->filter_depth;                         \
+  op_params.filter_height = params->filter_height;                       \
+  op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.depth = data->padding.depth;                  \
+  op_params.padding_values.height = data->padding.height;                \
+  op_params.padding_values.width = data->padding.width;                  \
   op_params.quantized_activation_min = activation_min;                    \
   op_params.quantized_activation_max = activation_max;                    \
   type::AveragePool(op_params, GetTensorShape(input),                     \
@@ -205,12 +231,15 @@ void MaxEvalFloat(TfLiteContext* context, TfLiteNode* node,
                            &activation_max);
 #define TF_LITE_MAX_POOL(type)                                                 \
   tflite::PoolParams op_params;                                                \
-  op_params.stride_height = params->stride_height;                             \
-  op_params.stride_width = params->stride_width;                               \
-  op_params.filter_height = params->filter_height;                             \
-  op_params.filter_width = params->filter_width;                               \
-  op_params.padding_values.height = data->padding.height;                      \
-  op_params.padding_values.width = data->padding.width;                        \
+  op_params.stride_depth = params->stride_depth;                         \
+  op_params.stride_height = params->stride_height;                       \
+  op_params.stride_width = params->stride_width;                         \
+  op_params.filter_depth = params->filter_depth;                         \
+  op_params.filter_height = params->filter_height;                       \
+  op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.depth = data->padding.depth;                  \
+  op_params.padding_values.height = data->padding.height;                \
+  op_params.padding_values.width = data->padding.width;                  \
   op_params.float_activation_min = activation_min;                             \
   op_params.float_activation_max = activation_max;                             \
   type::MaxPool(op_params, GetTensorShape(input), GetTensorData<float>(input), \
@@ -233,12 +262,15 @@ void MaxEvalQuantizedUInt8(TfLiteContext* context, TfLiteNode* node,
                                 &activation_max);
 #define TF_LITE_MAX_POOL(type)                                         \
   tflite::PoolParams op_params;                                        \
-  op_params.stride_height = params->stride_height;                     \
-  op_params.stride_width = params->stride_width;                       \
-  op_params.filter_height = params->filter_height;                     \
-  op_params.filter_width = params->filter_width;                       \
-  op_params.padding_values.height = data->padding.height;              \
-  op_params.padding_values.width = data->padding.width;                \
+  op_params.stride_depth = params->stride_depth;                         \
+  op_params.stride_height = params->stride_height;                       \
+  op_params.stride_width = params->stride_width;                         \
+  op_params.filter_depth = params->filter_depth;                         \
+  op_params.filter_height = params->filter_height;                       \
+  op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.depth = data->padding.depth;                  \
+  op_params.padding_values.height = data->padding.height;                \
+  op_params.padding_values.width = data->padding.width;                  \
   op_params.quantized_activation_min = activation_min;                 \
   op_params.quantized_activation_max = activation_max;                 \
   type::MaxPool(op_params, GetTensorShape(input),                      \
@@ -262,12 +294,15 @@ void MaxEvalQuantizedInt8(TfLiteContext* context, TfLiteNode* node,
                                &activation_max);
 #define TF_LITE_MAX_POOL(type)                                        \
   tflite::PoolParams op_params;                                       \
-  op_params.stride_height = params->stride_height;                    \
-  op_params.stride_width = params->stride_width;                      \
-  op_params.filter_height = params->filter_height;                    \
-  op_params.filter_width = params->filter_width;                      \
-  op_params.padding_values.height = data->padding.height;             \
-  op_params.padding_values.width = data->padding.width;               \
+  op_params.stride_depth = params->stride_depth;                         \
+  op_params.stride_height = params->stride_height;                       \
+  op_params.stride_width = params->stride_width;                         \
+  op_params.filter_depth = params->filter_depth;                         \
+  op_params.filter_height = params->filter_height;                       \
+  op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.depth = data->padding.depth;                  \
+  op_params.padding_values.height = data->padding.height;                \
+  op_params.padding_values.width = data->padding.width;                  \
   op_params.quantized_activation_min = activation_min;                \
   op_params.quantized_activation_max = activation_max;                \
   type::MaxPool(op_params, GetTensorShape(input),                     \
@@ -290,12 +325,15 @@ void L2EvalFloat(TfLiteContext* context, TfLiteNode* node,
                            &activation_max);
 #define TF_LITE_L2_POOL(type)                                                 \
   tflite::PoolParams op_params;                                               \
-  op_params.stride_height = params->stride_height;                            \
-  op_params.stride_width = params->stride_width;                              \
-  op_params.filter_height = params->filter_height;                            \
-  op_params.filter_width = params->filter_width;                              \
-  op_params.padding_values.height = data->padding.height;                     \
-  op_params.padding_values.width = data->padding.width;                       \
+  op_params.stride_depth = params->stride_depth;                         \
+  op_params.stride_height = params->stride_height;                       \
+  op_params.stride_width = params->stride_width;                         \
+  op_params.filter_depth = params->filter_depth;                         \
+  op_params.filter_height = params->filter_height;                       \
+  op_params.filter_width = params->filter_width;                         \
+  op_params.padding_values.depth = data->padding.depth;                  \
+  op_params.padding_values.height = data->padding.height;                \
+  op_params.padding_values.width = data->padding.width;                  \
   op_params.float_activation_min = activation_min;                            \
   op_params.float_activation_max = activation_max;                            \
   type::L2Pool(op_params, GetTensorShape(input), GetTensorData<float>(input), \
