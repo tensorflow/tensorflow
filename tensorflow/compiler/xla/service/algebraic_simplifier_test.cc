@@ -5814,9 +5814,9 @@ TEST_F(AlgebraicSimplifierTest, SqrtOfSelfMultiply) {
   const char* kModuleStr = R"(
     HloModule m
     test {
-      %p0 = f32[32]{0} parameter(0)
-      %multiply = f32[32]{0} multiply(f32[32]{0} %p0, f32[32]{0} %p0)
-      ROOT %sqrt = f32[32]{0} sqrt(f32[32]{0} %multiply)
+      p0 = f32[32]{0} parameter(0)
+      m0 = f32[32]{0} multiply(f32[32]{0} p0, f32[32]{0} p0)
+      ROOT s0 = f32[32]{0} sqrt(f32[32]{0} m0)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
@@ -5829,27 +5829,26 @@ TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
   const char* kModuleStr = R"(
     HloModule m
     test {
-      %p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
-      %p1 = f32[32]{0} parameter(1)
-      %p2 = f32[32]{0} parameter(2)
-      %constant = f32[] constant(0.001)
-      %constant.1 = s64[] constant(1)
-      %custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(f32[128,32,2,112]{3,2,1,0} %p0, f32[32]{0} %p1, f32[32]{0} %p2, f32[] %constant, s64[] %constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
-      %get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=0
-      %get-tuple-element.2 = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=1
-      %get-tuple-element = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=2
-      %constant.2 = f32[] constant(-2)
-      %broadcast = f32[32]{0} broadcast(f32[] %constant.2), dimensions={}
-      %power = f32[32]{0} power(f32[32]{0} %get-tuple-element, f32[32]{0} %broadcast)
-      %rsqrt = f32[32]{0} rsqrt(f32[32]{0} %power)
-      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(f32[128,32,2,112]{3,2,1,0} %get-tuple-element.1, f32[32]{0} %get-tuple-element.2, f32[32]{0} %rsqrt)
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      c0 = f32[] constant(0.001)
+      c1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, c0, c1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      c2 = f32[] constant(-2)
+      broadcast = f32[32]{0} broadcast(f32[] c2), dimensions={}
+      power = f32[32]{0} power(get-tuple-element, broadcast)
+      rsqrt = f32[32]{0} rsqrt(f32[32]{0} power)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, rsqrt)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-
   // Expected transformation: rsqrt(power(gte.2,-2)) -> abs(gte.2)
   auto computation = m->entry_computation();
   auto root = computation->root_instruction();
@@ -5857,13 +5856,17 @@ TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
   bool found_power = false;
   bool found_rsqrt = false;
   for (HloInstruction* inst : computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kPower) {
-      found_power = true;
-      break;
-    }
-    if (inst->opcode() == HloOpcode::kRsqrt) {
-      found_rsqrt = true;
-      break;
+    switch (inst->opcode()) {
+      case HloOpcode::kPower: {
+        found_power = true;
+        break;
+      }
+      case HloOpcode::kRsqrt: {
+        found_rsqrt = true;
+        break;
+      }
+      default:
+        break;
     }
   }
   EXPECT_EQ(found_power, false);
@@ -5877,20 +5880,20 @@ TEST_F(AlgebraicSimplifierTest, RsqrtDivide) {
   const char* kModuleStr = R"(
     HloModule m
     test {
-      %p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
-      %p1 = f32[32]{0} parameter(1)
-      %p2 = f32[32]{0} parameter(2)
-      %constant = f32[] constant(0.001)
-      %constant.1 = s64[] constant(1)
-      %custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(f32[128,32,2,112]{3,2,1,0} %p0, f32[32]{0} %p1, f32[32]{0} %p2, f32[] %constant, s64[] %constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
-      %get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=0
-      %get-tuple-element.2 = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=1
-      %get-tuple-element = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=2
-      %constant.2 = f32[] constant(1)
-      %broadcast.1 = f32[32]{0} broadcast(f32[] %constant.2), dimensions={}
-      %divide = f32[32]{0} divide(f32[32]{0} %broadcast.1, f32[32]{0} %get-tuple-element)
-      %rsqrt = f32[32]{0} rsqrt(f32[32]{0} %divide)
-      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(f32[128,32,2,112]{3,2,1,0} %get-tuple-element.1, f32[32]{0} %get-tuple-element.2, f32[32]{0} %rsqrt)
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      constant.2 = f32[] constant(1)
+      broadcast.1 = f32[32]{0} broadcast(constant.2), dimensions={}
+      divide = f32[32]{0} divide(broadcast.1, get-tuple-element)
+      rsqrt = f32[32]{0} rsqrt(divide)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, rsqrt)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
@@ -5905,13 +5908,17 @@ TEST_F(AlgebraicSimplifierTest, RsqrtDivide) {
   bool found_divide = false;
   bool found_rsqrt = false;
   for (HloInstruction* inst : computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kPower) {
-      found_divide = true;
-      break;
-    }
-    if (inst->opcode() == HloOpcode::kRsqrt) {
-      found_rsqrt = true;
-      break;
+    switch (inst->opcode()) {
+      case HloOpcode::kDivide: {
+        found_divide = true;
+        break;
+      }
+      case HloOpcode::kRsqrt: {
+        found_rsqrt = true;
+        break;
+      }
+      default:
+        break;
     }
   }
   EXPECT_EQ(found_divide, false);
@@ -5925,18 +5932,18 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
   const char* kModuleStr = R"(
     HloModule m
     test {
-      %p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
-      %p1 = f32[32]{0} parameter(1)
-      %p2 = f32[32]{0} parameter(2)
-      %constant = f32[] constant(0.001)
-      %constant.1 = s64[] constant(1)
-      %custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(f32[128,32,2,112]{3,2,1,0} %p0, f32[32]{0} %p1, f32[32]{0} %p2, f32[] %constant, s64[] %constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
-      %get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=0
-      %get-tuple-element.2 = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=1
-      %get-tuple-element = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=2
-      %rsqrt = f32[32]{0} rsqrt(f32[32]{0} %get-tuple-element)
-      %multiply = f32[32]{0} multiply(f32[32]{0} %rsqrt, f32[32]{0} %rsqrt)
-      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(f32[128,32,2,112]{3,2,1,0} %get-tuple-element.1, f32[32]{0} %get-tuple-element.2, f32[32]{0} %multiply)
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      rsqrt = f32[32]{0} rsqrt(get-tuple-element)
+      multiply = f32[32]{0} multiply(rsqrt, rsqrt)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, multiply)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
@@ -5951,39 +5958,113 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
   bool found_multiply = false;
   bool found_rsqrt = false;
+  bool found_divide = false;
+  bool found_broadcast = false;
   for (HloInstruction* inst : computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kPower) {
-      found_multiply = true;
-      break;
-    }
-    if (inst->opcode() == HloOpcode::kRsqrt) {
-      found_rsqrt = true;
-      break;
+    switch (inst->opcode()) {
+      case HloOpcode::kMultiply: {
+        found_multiply = true;
+        break;
+      }
+      case HloOpcode::kRsqrt: {
+        found_rsqrt = true;
+        break;
+      }
+      case HloOpcode::kDivide: {
+        found_divide = true;
+        break;
+      }
+      case HloOpcode::kBroadcast: {
+        found_broadcast = true;
+        break;
+      }
+      default:
+        break;
     }
   }
   EXPECT_EQ(found_multiply, false);
   EXPECT_EQ(found_rsqrt, false);
+  EXPECT_EQ(found_divide, true);
+  EXPECT_EQ(found_broadcast, true);
   EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kDivide);
   EXPECT_EQ(root->operand(2)->operand(0)->opcode(), HloOpcode::kBroadcast);
   EXPECT_EQ(root->operand(2)->operand(1)->opcode(),
             HloOpcode::kGetTupleElement);
 }
 
-TEST_F(AlgebraicSimplifierTest, AbsElimination_batchnorm_training) {
+TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt_NegativeTestCase) {
   const char* kModuleStr = R"(
     HloModule m
     test {
-      %p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
-      %p1 = f32[32]{0} parameter(1)
-      %p2 = f32[32]{0} parameter(2)
-      %constant = f32[] constant(0.001)
-      %constant.1 = s64[] constant(1)
-      %custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(f32[128,32,2,112]{3,2,1,0} %p0, f32[32]{0} %p1, f32[32]{0} %p2, f32[] %constant, s64[] %constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
-      %get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=0
-      %get-tuple-element.2 = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=1
-      %get-tuple-element = f32[32]{0} get-tuple-element((f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) %custom-call.1), index=2
-      %abs = f32[32]{0} abs(f32[32]{0} %get-tuple-element)
-      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(f32[128,32,2,112]{3,2,1,0} %get-tuple-element.1, f32[32]{0} %get-tuple-element.2, f32[32]{0} %abs)
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      rsqrt = f32[32]{0} rsqrt(get-tuple-element)
+      multiply = f32[32]{0} multiply(rsqrt, rsqrt)
+      ROOT tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, multiply)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForward");
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  auto computation = m->entry_computation();
+  auto root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  bool found_multiply = false;
+  bool found_rsqrt = false;
+  bool found_divide = false;
+  bool found_broadcast = false;
+  for (HloInstruction* inst : computation->instructions()) {
+    switch (inst->opcode()) {
+      case HloOpcode::kMultiply: {
+        found_multiply = true;
+        break;
+      }
+      case HloOpcode::kRsqrt: {
+        found_rsqrt = true;
+        break;
+      }
+      case HloOpcode::kDivide: {
+        found_divide = true;
+        break;
+      }
+      case HloOpcode::kBroadcast: {
+        found_broadcast = true;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  EXPECT_EQ(found_multiply, true);
+  EXPECT_EQ(found_rsqrt, true);
+  EXPECT_EQ(found_divide, false);
+  EXPECT_EQ(found_broadcast, false);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kMultiply);
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      abs = f32[32]{0} abs(get-tuple-element)
+      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, abs)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
@@ -6006,13 +6087,51 @@ TEST_F(AlgebraicSimplifierTest, AbsElimination_batchnorm_training) {
   EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kGetTupleElement);
 }
 
-TEST_F(AlgebraicSimplifierTest, AbsElimination_multiply) {
+TEST_F(AlgebraicSimplifierTest,
+       AbsEliminationBatchnormTraining_NegativeTestCase) {
   const char* kModuleStr = R"(
     HloModule m
     test {
-      %p = f32[32]{0} parameter(0)
-      %multiply = f32[32]{0} multiply(f32[32]{0} %p, f32[32]{0} %p)
-      ROOT %abs = f32[32]{0} abs(f32[32]{0} %multiply)
+      p0 = f32[128,32,2,112]{3,2,1,0} parameter(0)
+      p1 = f32[32]{0} parameter(1)
+      p2 = f32[32]{0} parameter(2)
+      constant = f32[] constant(0.001)
+      constant.1 = s64[] constant(1)
+      custom-call.1 = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) custom-call(p0, p1, p2, constant, constant.1), custom_call_target="__cudnn$batchNormalizationForwardTraining"
+      get-tuple-element.1 = f32[128,32,2,112]{3,2,1,0} get-tuple-element(custom-call.1), index=0
+      get-tuple-element.2 = f32[32]{0} get-tuple-element(custom-call.1), index=1
+      get-tuple-element = f32[32]{0} get-tuple-element(custom-call.1), index=2
+      abs = f32[32]{0} abs(get-tuple-element)
+      ROOT %tuple = (f32[128,32,2,112]{3,2,1,0}, f32[32]{0}, f32[32]{0}) tuple(get-tuple-element.1, get-tuple-element.2, abs)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  default_options_.set_cudnn_batchnorm_forward_training_metadata(
+      "__cudnn$batchNormalizationForwardInference");
+  ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+
+  // Verify that the graph build still has abs node.
+  auto computation = m->entry_computation();
+  auto root = computation->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
+  bool found_abs = false;
+  for (HloInstruction* inst : computation->instructions()) {
+    if (inst->opcode() == HloOpcode::kAbs) {
+      found_abs = true;
+      break;
+    }
+  }
+  EXPECT_EQ(found_abs, true);
+  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kAbs);
+}
+
+TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p = f32[32]{0} parameter(0)
+      m = f32[32]{0} multiply(p, p)
+      ROOT a = f32[32]{0} abs(m)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
@@ -6021,15 +6140,15 @@ TEST_F(AlgebraicSimplifierTest, AbsElimination_multiply) {
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
 
-TEST_F(AlgebraicSimplifierTest, AbsElimination_power_2) {
+TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
   const char* kModuleStr = R"(
     HloModule m
     test {
-      %p0 = f32[32]{0} parameter(0)
-      %constant = f32[] constant(2)
-      %broadcast = f32[32]{0} broadcast(f32[] %constant), dimensions={}
-      %power = f32[32]{0} power(f32[32]{0} %p0, f32[32]{0} %broadcast)
-      ROOT %abs = f32[32]{0} abs(f32[32]{0} %power)
+      p0 = f32[32]{0} parameter(0)
+      c0 = f32[] constant(2)
+      b0 = f32[32]{0} broadcast(c0), dimensions={}
+      pow = f32[32]{0} power(p0, b0)
+      ROOT a = f32[32]{0} abs(pow)
     }
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
