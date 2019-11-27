@@ -1140,11 +1140,24 @@ py_library(
     srcs_version = "PY2AND3",
 )
 
+tf_python_pybind_extension(
+    name = "_dtypes",
+    srcs = ["framework/dtypes.cc"],
+    module_name = "_dtypes",
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
+        "@pybind11",
+    ],
+)
+
 py_library(
     name = "dtypes",
     srcs = ["framework/dtypes.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":_dtypes",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
