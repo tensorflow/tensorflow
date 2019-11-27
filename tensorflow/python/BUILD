@@ -5495,6 +5495,29 @@ tf_py_wrap_cc(
 # ** Targets for Windows build (start) **
 # We need the following targets to expose symbols from _pywrap_tensorflow.dll
 
+WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
+    ":cpp_python_util",  # util
+    ":py_func_lib",  # py_func
+    ":model_analyzer_lib",  # model_analyzer
+    "//tensorflow/core:util_port",  # util_port
+    "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
+    "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
+    "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
+    "//tensorflow/core:framework_internal_impl",  # op_def_registry
+    "//tensorflow/core:lib_internal_impl",  # device_lib
+    "//tensorflow/core:core_cpu_impl",  # device_lib
+    ":py_exception_registry",  # py_exception_registry
+    ":kernel_registry",  # kernel_registry
+    "//tensorflow/lite/toco/python:toco_python_api",  # toco
+    "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
+    "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
+    ":ndarray_tensor",  # checkpoint_reader
+    ":numpy_lib",  # checkpoint_reader
+    ":safe_ptr",  # checkpoint_reader
+    ":python_op_gen",  # python_op_gen
+    "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
+]
+
 # Filter the DEF file to reduce the number of symbols to 64K or less.
 # Note that we also write the name of the pyd file into DEF file so that
 # the dynamic libraries of custom ops can find it at runtime.
@@ -5505,7 +5528,7 @@ genrule(
             "//tensorflow:tensorflow_def_file",
             ":pybind_symbol_target_libs_file",
             "//tensorflow/tools/def_file_filter:symbols_pybind",
-        ],
+        ] + WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
         "//conditions:default": [],
     }),
     outs = ["pywrap_tensorflow_filtered_def_file.def"],
@@ -5527,28 +5550,7 @@ genrule(
 # Write to a file a list of all cc_library targets that we need for exporting symbols on Windows.
 genrule(
     name = "pybind_symbol_target_libs_file",
-    srcs = [
-        ":cpp_python_util",  # util
-        ":py_func_lib",  # py_func
-        ":model_analyzer_lib",  # model_analyzer
-        "//tensorflow/core:util_port",  # util_port
-        "//tensorflow/stream_executor:stream_executor_pimpl",  # stat_summarizer
-        "//tensorflow/core/grappler/graph_analyzer:graph_analyzer_tool",  # graph_analyzer
-        "//tensorflow/core/profiler/internal:print_model_analysis",  # tfprof
-        "//tensorflow/core:framework_internal_impl",  # op_def_registry
-        "//tensorflow/core:lib_internal_impl",  # device_lib
-        "//tensorflow/core:core_cpu_impl",  # device_lib
-        ":py_exception_registry",  # py_exception_registry
-        ":kernel_registry",  # kernel_registry
-        "//tensorflow/lite/toco/python:toco_python_api",  # toco
-        "//tensorflow/tools/graph_transforms:transform_graph_lib",  # transform_graph
-        "//tensorflow/c:checkpoint_reader",  # checkpoint_reader
-        ":ndarray_tensor",  # checkpoint_reader
-        ":numpy_lib",  # checkpoint_reader
-        ":safe_ptr",  # checkpoint_reader
-        ":python_op_gen",  # python_op_gen
-        "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
-    ],
+    srcs = WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS,
     outs = ["pybind_symbol_target_libs_file.txt"],
     cmd = select({
         "//tensorflow:windows": """
