@@ -273,3 +273,19 @@ def : Pat<(TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
           (TFL_ReshapeOp $input,
            (ConstantOp (GetShape $squeeze_op))),
           [(AnyStaticShapeTensor $squeeze_op)]>;
+
+class ValueEquals<string val> : Constraint<CPred<
+  "$0.cast<DenseElementsAttr>().getNumElements() == 1 &&"
+  "*$0.cast<DenseElementsAttr>().getValues<float>().begin() == " # val>>;
+
+def : Pat<(TFL_MinimumOp (TFL_MaximumOp $input,
+                          (ConstantOp $NegOne)),
+           (ConstantOp $One)),
+          (TFL_Relu1Op $input),
+          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;
+
+def : Pat<(TFL_MaximumOp (TFL_MinimumOp $input,
+                          (ConstantOp $One)),
+           (ConstantOp $NegOne)),
+          (TFL_Relu1Op $input),
+          [(ValueEquals<"-1"> $NegOne), (ValueEquals<"1"> $One)]>;

@@ -600,3 +600,25 @@ func @squeezeToReshape(%arg0: tensor<1x1x2xf32>) -> tensor<2xf32> {
   // CHECK: %[[RESULT:.*]] = "tfl.reshape"(%arg0, %[[CONST:.*]]) : (tensor<1x1x2xf32>, tensor<1xi32>) -> tensor<2xf32>
   // CHECK: return %[[RESULT]]
 }
+
+// CHECK-LABEL: Relu1
+func @Relu1(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense<-1.0> : tensor<f32>
+  %cst1 = constant dense<1.0> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %1 = "tfl.minimum"(%0, %cst1) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  return %1 : tensor<2x3xf32>
+
+  // CHECK: %[[relu_n1_to_1:[0-9].*]] = "tfl.relu_n1_to_1"
+}
+
+// CHECK-LABEL: Relu1_2
+func @Relu1_2(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense<-1.0> : tensor<f32>
+  %cst1 = constant dense<1.0> : tensor<f32>
+  %0 = "tfl.minimum"(%arg0, %cst1) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %1 = "tfl.maximum"(%0, %cst) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  return %1 : tensor<2x3xf32>
+
+  // CHECK: %[[relu_n1_to_1:[0-9].*]] = "tfl.relu_n1_to_1"
+}
