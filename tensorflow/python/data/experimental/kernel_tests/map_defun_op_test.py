@@ -32,7 +32,6 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import data_flow_ops
@@ -41,7 +40,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
-@test_util.run_v1_only("b/123903858: Add eager and V2 test coverage")
+# TODO(b/123903858): Add eager and V2 test coverage
 class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
