@@ -59,11 +59,6 @@ class IntraProcessRendezvous : public Rendezvous {
   const DeviceMgr* device_mgr_;
   Rendezvous* local_;  // Owns a Ref on this object.
 
-  mutable mutex mu_;
-
-  // Status given by StartAbort() if any.
-  Status status_ GUARDED_BY(mu_);
-
   ~IntraProcessRendezvous() override;
 
   // Callback handling the case when a rendezvous has been

@@ -41,11 +41,6 @@ Status IntraProcessRendezvous::Send(const ParsedKey& parsed,
                                     const Rendezvous::Args& args,
                                     const Tensor& val, const bool is_dead) {
   VLOG(1) << "IntraProcessRendezvous Send " << this << " " << parsed.FullKey();
-  {
-    mutex_lock l(mu_);
-    if (!status_.ok()) return status_;
-  }
-
   // Buffers "val" and "device_context" in local_.
   return local_->Send(parsed, args, val, is_dead);
 }
