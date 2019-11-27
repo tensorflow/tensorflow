@@ -890,6 +890,18 @@ class TrtConvertTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         # to fall back to TF function.
         self._TestRun(sess, 2)
 
+  @test_util.run_v2_only
+  def testBackwardCompatibility(self):
+    """Load and execute a model that was saved in TF2.0."""
+    if not is_tensorrt_enabled():
+      return
+
+    model_dir = test.test_src_dir_path(
+        'python/compiler/tensorrt/test/testdata/tftrt_2.0_saved_model')
+    root = load.load(model_dir)
+    np_input1 = np.random.random_sample([4, 1, 1]).astype(np.float32)
+    np_input2 = np.random.random_sample([4, 1, 1]).astype(np.float32)
+    root.run(np_input1, np_input2)
 
 if __name__ == "__main__":
   test.main()
