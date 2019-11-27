@@ -14,12 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/micro/examples/micro_speech/main_functions.h"
-
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
 #include "tensorflow/lite/micro/examples/micro_speech/command_responder.h"
 #include "tensorflow/lite/micro/examples/micro_speech/feature_provider.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"
-#include "tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
+#include "tensorflow/lite/micro/examples/micro_speech/micro_features/app_model.h"
 #include "tensorflow/lite/micro/examples/micro_speech/recognize_commands.h"
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
@@ -55,7 +54,7 @@ void setup() {
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  model = tflite::GetModel(g_tiny_conv_micro_features_model_data);
+  model = tflite::GetModel(g_app_micro_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "
@@ -70,17 +69,8 @@ void setup() {
   // incur some penalty in code space for op implementations that are not
   // needed by this graph.
   //
-  // tflite::ops::micro::AllOpsResolver resolver;
   // NOLINTNEXTLINE(runtime-global-variables)
-  static tflite::MicroMutableOpResolver micro_mutable_op_resolver;
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_DEPTHWISE_CONV_2D,
-      tflite::ops::micro::Register_DEPTHWISE_CONV_2D());
-  micro_mutable_op_resolver.AddBuiltin(
-      tflite::BuiltinOperator_FULLY_CONNECTED,
-      tflite::ops::micro::Register_FULLY_CONNECTED());
-  micro_mutable_op_resolver.AddBuiltin(tflite::BuiltinOperator_SOFTMAX,
-                                       tflite::ops::micro::Register_SOFTMAX());
+  static tflite::MicroMutableOpResolver micro_mutable_op_resolver = app_get_model_ops_resolver();
 
   // Build an interpreter to run the model with.
   static tflite::MicroInterpreter static_interpreter(
