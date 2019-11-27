@@ -3687,9 +3687,9 @@ py_library(
     srcs = ["ops/math_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "constant_op",
         ":array_ops",
         ":common_shapes",
+        ":constant_op",
         ":control_flow_ops_gen",
         ":data_flow_ops_gen",
         ":dtypes",
