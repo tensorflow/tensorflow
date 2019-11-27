@@ -19,10 +19,13 @@ from __future__ import print_function
 
 import time
 
+from absl.testing import parameterized
+
 from tensorflow.python.client import session
 from tensorflow.python.data.experimental.ops import map_defun
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.eager import function
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -39,8 +42,10 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_v1_only("b/123903858: Add eager and V2 test coverage")
-class MapDefunTest(test_base.DatasetTestBase):
+class MapDefunTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testNoIntraOpLimit(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -55,6 +60,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     expected = elems * 2 + 3
     self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunSimple(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -67,6 +74,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     expected = elems * 2 + 3
     self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunMismatchedTypes(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
@@ -79,6 +88,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(r)
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunReduceDim(self):
     # Tests where the output has a different rank from the input
 
@@ -92,6 +103,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     expected = constant_op.constant([1, 3, 5])
     self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunMultipleOutputs(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -105,6 +118,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     expected = [elems, elems * 2 + 3]
     self.assertAllEqual(self.evaluate(r), self.evaluate(expected))
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunShapeInference(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -116,6 +131,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [(2,)])[0]
     self.assertEqual(result.get_shape(), (3, 2))
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunPartialShapeInference(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -126,6 +143,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     result = map_defun.map_defun(fn, [elems], [dtypes.int32], [(2,)])
     self.assertEqual(result[0].get_shape().as_list(), [None, 2])
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunRaisesErrorOnRuntimeShapeMismatch(self):
 
     @function.defun(input_signature=[
@@ -145,6 +164,8 @@ class MapDefunTest(test_base.DatasetTestBase):
           "All inputs must have the same dimension 0."):
         sess.run(result, feed_dict={elems1: [1, 2, 3, 4, 5], elems2: [1, 2, 3]})
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunRaisesDefunError(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.int32)])
@@ -157,6 +178,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(result)
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunCancelledCorrectly(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([5], dtypes.int64)])
@@ -173,6 +196,8 @@ class MapDefunTest(test_base.DatasetTestBase):
                                  r"indices = 10 is not in \[0, 5\)"):
       self.evaluate(map_defun_op)
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithUnspecifiedOutputShape(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -190,6 +215,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     self.assertAllEqual(self.evaluate(r[1]), self.evaluate(expected + 1))
     self.assertAllEqual(self.evaluate(r[2]), self.evaluate(expected + 2))
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithDifferentOutputShapeEachRun(self):
 
     @function.defun(
@@ -204,6 +231,8 @@ class MapDefunTest(test_base.DatasetTestBase):
       self.assertAllEqual(
           sess.run(r, feed_dict={elems: [[0], [1]]}), [[3], [5]])
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithWrongOutputShape(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([2], dtypes.int32)])
@@ -216,6 +245,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(r)
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithInvalidInput(self):
 
     @function.defun(
@@ -233,6 +264,8 @@ class MapDefunTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(r, feed_dict={p: 0})
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithParentCancellation(self):
     # Checks that a cancellation of the parent graph is threaded through to
     # MapDefunOp correctly.
@@ -254,6 +287,8 @@ class MapDefunTest(test_base.DatasetTestBase):
       sess.close()
       thread.join()
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithCapturedInputs(self):
     c = constant_op.constant(2)
 
@@ -266,6 +301,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     expected = x + c
     self.assertAllEqual(self.evaluate(expected), self.evaluate(map_defun_op))
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithVariantTensor(self):
 
     @function.defun(
@@ -288,6 +325,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     actual = self.evaluate(deserialized)
     self.assertValuesEqual(expected, actual)
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithVariantTensorAsCaptured(self):
 
     st = sparse_tensor.SparseTensor(
@@ -309,6 +348,8 @@ class MapDefunTest(test_base.DatasetTestBase):
     actual = self.evaluate(deserialized)
     self.assertValuesEqual(expected, actual)
 
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testMapDefunWithStrTensor(self):
 
     @function.defun(input_signature=[tensor_spec.TensorSpec([], dtypes.string)])
