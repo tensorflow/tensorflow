@@ -3572,8 +3572,8 @@ tf_cc_test(
     ],
     tags = [
         "local",
+        "no_gpu",
         "no_windows",
-        "nogpu",
         "nomac",
         "notap",
     ],
