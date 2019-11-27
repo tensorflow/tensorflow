@@ -473,7 +473,6 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
-        ":stacktrace",
         ":str_util",
         ":strcat",
         ":stringpiece",
