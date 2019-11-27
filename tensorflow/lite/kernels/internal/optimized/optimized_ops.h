@@ -2640,6 +2640,11 @@ inline void Div(const ArithmeticParams& params,
   int i = 0;
   const int size = MatchingFlatSize(input1_shape, input2_shape, output_shape);
 #ifdef USE_NEON
+  // NEON does not offer division instruction, multiplication by the reciprocal
+  // is used instead. This parameter controls the number of Newton-Raphson
+  // iterations used to refine the initial estimate of the reciprocal given by
+  // vrecpeq_f32 instruction. Typically, two iterations are enough to match
+  // the float division accuracy closely.
   static constexpr int kNewtonSteps = 2;
   static const auto TWO_F32 = vdupq_n_f32(2.f);
   const auto activation_min = vdupq_n_f32(output_activation_min);
