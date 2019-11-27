@@ -373,14 +373,14 @@ static LogicalResult verify(ExtractElementOp op) {
 //===----------------------------------------------------------------------===//
 
 static void print(OpAsmPrinter &p, BroadcastOp op) {
-  p << op.getOperationName() << " " << *op.source() << ", " << *op.dest();
+  p << op.getOperationName() << " " << *op.source();
   p << " : " << op.getSourceType();
-  p << " into " << op.getDestVectorType();
+  p << " to " << op.getVectorType();
 }
 
 static LogicalResult verify(BroadcastOp op) {
   VectorType srcVectorType = op.getSourceType().dyn_cast<VectorType>();
-  VectorType dstVectorType = op.getDestVectorType();
+  VectorType dstVectorType = op.getVectorType();
   // Scalar to vector broadcast is always valid. A vector
   // to vector broadcast needs some additional checking.
   if (srcVectorType) {
@@ -397,16 +397,14 @@ static LogicalResult verify(BroadcastOp op) {
 
 static ParseResult parseBroadcastOp(OpAsmParser &parser,
                                     OperationState &result) {
-  OpAsmParser::OperandType source, dest;
+  OpAsmParser::OperandType source;
   Type sourceType;
-  VectorType destType;
-  return failure(parser.parseOperand(source) || parser.parseComma() ||
-                 parser.parseOperand(dest) ||
+  VectorType vectorType;
+  return failure(parser.parseOperand(source) ||
                  parser.parseColonType(sourceType) ||
-                 parser.parseKeywordType("into", destType) ||
+                 parser.parseKeywordType("to", vectorType) ||
                  parser.resolveOperand(source, sourceType, result.operands) ||
-                 parser.resolveOperand(dest, destType, result.operands) ||
-                 parser.addTypeToList(destType, result.types));
+                 parser.addTypeToList(vectorType, result.types));
 }
 
 //===----------------------------------------------------------------------===//
