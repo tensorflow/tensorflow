@@ -194,8 +194,8 @@ FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
     if (isScalarOrVectorType(argType.value())) {
       auto indexType =
           typeConverter.convertType(IndexType::get(funcOp.getContext()));
-      auto zero = rewriter.create<spirv::ConstantOp>(
-          funcOp.getLoc(), indexType, rewriter.getIntegerAttr(indexType, 0));
+      auto zero =
+          spirv::ConstantOp::getZero(indexType, funcOp.getLoc(), &rewriter);
       auto loadPtr = rewriter.create<spirv::AccessChainOp>(
           funcOp.getLoc(), replacement, zero.constant());
       replacement = rewriter.create<spirv::LoadOp>(funcOp.getLoc(), loadPtr,

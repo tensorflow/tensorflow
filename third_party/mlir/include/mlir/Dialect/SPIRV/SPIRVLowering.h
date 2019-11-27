@@ -56,8 +56,6 @@ public:
 protected:
   /// Type lowering class.
   SPIRVTypeConverter &typeConverter;
-
-private:
 };
 
 #include "mlir/Dialect/SPIRV/SPIRVLowering.h.inc"

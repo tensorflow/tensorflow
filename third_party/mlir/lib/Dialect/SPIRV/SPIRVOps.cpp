@@ -1169,6 +1169,35 @@ bool spirv::ConstantOp::isBuildableWith(Type type) {
   return true;
 }
 
+spirv::ConstantOp spirv::ConstantOp::getZero(Type type, Location loc,
+                                             OpBuilder *builder) {
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    unsigned width = intType.getWidth();
+    Attribute val;
+    if (width == 1)
+      return builder->create<spirv::ConstantOp>(loc, type,
+                                                builder->getBoolAttr(false));
+    return builder->create<spirv::ConstantOp>(
+        loc, type, builder->getIntegerAttr(type, APInt(width, 0)));
+  }
+
+  llvm_unreachable("unimplemented types for ConstantOp::getZero()");
+}
+
+spirv::ConstantOp spirv::ConstantOp::getOne(Type type, Location loc,
+                                            OpBuilder *builder) {
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    unsigned width = intType.getWidth();
+    if (width == 1)
+      return builder->create<spirv::ConstantOp>(loc, type,
+                                                builder->getBoolAttr(true));
+    return builder->create<spirv::ConstantOp>(
+        loc, type, builder->getIntegerAttr(type, APInt(width, 1)));
+  }
+
+  llvm_unreachable("unimplemented types for ConstantOp::getOne()");
+}
+
 //===----------------------------------------------------------------------===//
 // spv.ControlBarrier
 //===----------------------------------------------------------------------===//
