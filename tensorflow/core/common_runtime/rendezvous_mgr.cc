@@ -50,16 +50,6 @@ Status IntraProcessRendezvous::Send(const ParsedKey& parsed,
   return local_->Send(parsed, args, val, is_dead);
 }
 
-Status IntraProcessRendezvous::ParseKey(const string& key, bool is_src,
-                                        Rendezvous::ParsedKey* parsed) {
-  {
-    mutex_lock l(mu_);
-    if (!status_.ok()) return status_;
-  }
-  TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, parsed));
-  return Status::OK();
-}
-
 void IntraProcessRendezvous::SameWorkerRecvDone(
     const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& send_args,
     const Rendezvous::Args& recv_args, const Tensor& in, Tensor* out,

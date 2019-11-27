@@ -66,12 +66,6 @@ class IntraProcessRendezvous : public Rendezvous {
 
   ~IntraProcessRendezvous() override;
 
-  // Parses "key" into "parsed". If "is_src" is true, checks that the
-  // rendezvous key's source is in this process. If "is_src" is false,
-  // checks that the rendezvous key's destination is in this process.
-  Status ParseKey(const string& key, bool is_src,
-                  Rendezvous::ParsedKey* parsed);
-
   // Callback handling the case when a rendezvous has been
   // accomplished in local_ and the consumer is local to this process.
   // Tensor "in" will be copied into "out". The key "parsed" encodes
