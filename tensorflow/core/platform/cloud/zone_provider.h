@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_CLOUD_ZONE_PROVIDER_H_
 
 #include <string>
+
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {
 
