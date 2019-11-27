@@ -1090,9 +1090,11 @@ class OpKernelContext {
   }
 
   gtl::InlinedVector<WrappedAllocator, 4> ConsumeWrappedAllocators() {
-    mutex_lock lock(mu_);
     gtl::InlinedVector<WrappedAllocator, 4> retrieved;
-    retrieved.swap(wrapped_allocators_);
+    if (tracking_state_) {
+      mutex_lock lock(tracking_state_->mu);
+      retrieved.swap(tracking_state_->wrapped_allocators);
+    }
     return retrieved;
   }
 
@@ -1233,27 +1235,29 @@ class OpKernelContext {
   // Records temp memory allocation. Tensor object is recorded to identify the
   // case where temp memory is used as output memory.
   void record_temp_memory_allocation(int64 size, const Tensor& t)
-      LOCKS_EXCLUDED(stats_mu_);
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size of temporary memory;
-  int64 temp_memory_allocated() const LOCKS_EXCLUDED(stats_mu_);
+  int64 temp_memory_allocated() const LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Records persistent memory allocation, size can be negative indicating
   // deallocation.
   void record_persistent_memory_allocation(int64 size, int64 alloc_id = -1)
-      LOCKS_EXCLUDED(stats_mu_);
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Returns recorded size and ids of persistent memory.
-  int64 persistent_memory_allocated() const LOCKS_EXCLUDED(stats_mu_);
+  int64 persistent_memory_allocated() const
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
-  std::vector<int64> persistent_alloc_ids() const LOCKS_EXCLUDED(stats_mu_);
+  std::vector<int64> persistent_alloc_ids() const
+      LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   // Resets counters for temp and persistent memory and recorded ids.
-  void clear_recorded_memory() LOCKS_EXCLUDED(stats_mu_);
+  void clear_recorded_memory() LOCKS_EXCLUDED(tracking_state_->stats_mu);
 
   bool input_is_ref(int index) const;
 
-  void set_record_memory_consumption(bool v) { record_memory_consumption_ = v; }
+  void set_record_memory_consumption(bool v);
 
   // Used by OpKernel implementations to track actively running deferred ops.
   //
@@ -1312,26 +1316,30 @@ class OpKernelContext {
   Status status_;
   friend class CollectiveExecutor;  // for access to params_
   Params* params_;                  // not owned
-  mutable mutex mu_;  // mutable so const accessors can acquire the lock
-  gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators_ GUARDED_BY(mu_);
   gtl::InlinedVector<TensorValue, 4> outputs_;
 
   // Keep track of calls to ScopedAllocator.
   // TODO(ayushd): change to absl::flat_hash_set.
   std::unique_ptr<std::unordered_set<int32>> allocated_scope_ids_;
 
-  // Constructed only if <params->record_tensor_accesses>.
-  ManualConstructor<UniqueTensorReferences> referenced_tensors_ GUARDED_BY(mu_);
-
   // The following data members are only used when allocation tracking is
-  // enabled.
-  mutable mutex stats_mu_;
-  int64 temp_memory_allocated_ GUARDED_BY(stats_mu_);
-  int64 persistent_memory_allocated_ GUARDED_BY(stats_mu_);
-  std::unique_ptr<gtl::InlinedVector<std::pair<const void*, int64>, 2>>
-      temp_tensor_buffer_and_size_ GUARDED_BY(stats_mu_);
-  std::unique_ptr<gtl::InlinedVector<int64, 2>> persistent_alloc_ids_
-      GUARDED_BY(stats_mu_);
+  // enabled, memory consumption is being recorded, or tensor access is being
+  // recorded.
+  struct TrackingState {
+    mutable mutex mu;
+    gtl::InlinedVector<WrappedAllocator, 4> wrapped_allocators GUARDED_BY(mu);
+
+    UniqueTensorReferences referenced_tensors GUARDED_BY(mu);
+
+    mutable mutex stats_mu;
+    int64 temp_memory_allocated GUARDED_BY(stats_mu) = 0;
+
+    int64 persistent_memory_allocated GUARDED_BY(stats_mu) = 0;
+    gtl::InlinedVector<std::pair<const void*, int64>, 2>
+        temp_tensor_buffer_and_size GUARDED_BY(stats_mu);
+    gtl::InlinedVector<int64, 2> persistent_alloc_ids GUARDED_BY(stats_mu);
+  };
+  std::unique_ptr<TrackingState> tracking_state_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(OpKernelContext);
 };
@@ -1618,8 +1626,9 @@ inline void OpKernelContext::record_tensor_reference(const Tensor& tensor) {
 inline void OpKernelContext::retrieve_accessed_tensors(
     TensorReferenceVector* out_vector) {
   if (params_->record_tensor_accesses) {
-    mutex_lock l(mu_);
-    referenced_tensors_->FreezeAndReturnReferences(out_vector);
+    DCHECK(tracking_state_);
+    mutex_lock l(tracking_state_->mu);
+    tracking_state_->referenced_tensors.FreezeAndReturnReferences(out_vector);
   }
 }
 
