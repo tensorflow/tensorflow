@@ -161,7 +161,9 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
 }
 
 namespace {
-REGISTER_KERNEL_BUILDER(Name("RangeDataset").Device(DEVICE_CPU),
+REGISTER_KERNEL_BUILDER(Name("RangeDataset").Device(DEVICE_CPU).TypeConstraint<int32>("T"),
+                        RangeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("RangeDataset").Device(DEVICE_CPU).TypeConstraint<int64>("T"),
                         RangeDatasetOp);
 }  // namespace
 

@@ -880,7 +880,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return id_dataset.flat_map(flat_map_fn)
 
   @staticmethod
-  def range(*args):
+  def range(*args, **kwargs):
     """Creates a `Dataset` of a step-separated range of values.
 
     >>> list(Dataset.range(5).as_numpy_iterator())
@@ -908,7 +908,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Raises:
       ValueError: if len(args) == 0.
     """
-    return RangeDataset(*args)
+    return RangeDataset(*args, **kwargs)
 
   @staticmethod
   def zip(datasets):
@@ -3345,10 +3345,10 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
 class RangeDataset(DatasetSource):
   """A `Dataset` of a step separated range of values."""
 
-  def __init__(self, *args):
+  def __init__(self, *args, **kwargs):
     """See `Dataset.range()` for details."""
-    self._parse_args(*args)
-    self._structure = tensor_spec.TensorSpec([], dtypes.int64)
+    self._parse_args(*args, **kwargs)
+    self._structure = tensor_spec.TensorSpec([], self._dtype)
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,
@@ -3356,8 +3356,11 @@ class RangeDataset(DatasetSource):
         **self._flat_structure)
     super(RangeDataset, self).__init__(variant_tensor)
 
-  def _parse_args(self, *args):
+  def _parse_args(self, *args, **kwargs):
     """Parse arguments according to the same rules as the `range()` builtin."""
+    self._dtype = kwargs.get('dtype', None)
+    if self._dtype is None:
+      self._dtype = dtypes.int64
     if len(args) == 1:
       self._start = self._build_tensor(0, "start")
       self._stop = self._build_tensor(args[0], "stop")
@@ -3373,8 +3376,8 @@ class RangeDataset(DatasetSource):
     else:
       raise ValueError("Invalid arguments to RangeDataset: %s" % str(args))
 
-  def _build_tensor(self, int64_value, name):
-    return ops.convert_to_tensor(int64_value, dtype=dtypes.int64, name=name)
+  def _build_tensor(self, value, name):
+    return ops.convert_to_tensor(value, self._dtype, name=name)
 
   @property
   def element_spec(self):

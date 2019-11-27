@@ -338,12 +338,13 @@ REGISTER_OP("PaddedBatchDatasetV2")
     });
 
 REGISTER_OP("RangeDataset")
-    .Input("start: int64")
-    .Input("stop: int64")
-    .Input("step: int64")
+    .Input("start: T")
+    .Input("stop: T")
+    .Input("step: T")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("T: {int32,int64}")
     .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
