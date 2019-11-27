@@ -113,10 +113,10 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
   return errors::InvalidArgument("Invalid  rendezvous key: ", key);
 }
 
-Rendezvous::~Rendezvous() {}
+RendezvousInterface::~RendezvousInterface() {}
 
-Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
-                        Tensor* val, bool* is_dead, int64 timeout_ms) {
+Status RendezvousInterface::Recv(const ParsedKey& key, const Args& recv_args,
+                                 Tensor* val, bool* is_dead, int64 timeout_ms) {
   Status ret;
   Notification n;
   RecvAsync(key, recv_args,
@@ -141,8 +141,8 @@ Status Rendezvous::Recv(const ParsedKey& key, const Args& recv_args,
   return ret;
 }
 
-Status Rendezvous::Recv(const ParsedKey& key, const Args& args, Tensor* val,
-                        bool* is_dead) {
+Status RendezvousInterface::Recv(const ParsedKey& key, const Args& args,
+                                 Tensor* val, bool* is_dead) {
   const int64 no_timeout = 0;
   return Recv(key, args, val, is_dead, no_timeout);
 }

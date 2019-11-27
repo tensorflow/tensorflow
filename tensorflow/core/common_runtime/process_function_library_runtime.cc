@@ -122,7 +122,7 @@ Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& key_prefix, int64 src_incarnation,
     gtl::ArraySlice<Tensor> tensors_to_send, DeviceContext* device_context,
     const std::vector<AllocatorAttributes>& alloc_attrs,
-    Rendezvous* rendezvous) {
+    RendezvousInterface* rendezvous) {
   std::vector<string> keys;
   for (int i = 0; i < tensors_to_send.size(); ++i) {
     string name = strings::StrCat(key_prefix, i);
@@ -140,8 +140,9 @@ void ProcessFunctionLibraryRuntime::ReceiveTensorsAsync(
     const string& source_device, const string& target_device,
     const string& key_prefix, int64 src_incarnation, int64 num_tensors,
     DeviceContext* device_context,
-    const std::vector<AllocatorAttributes>& alloc_attrs, Rendezvous* rendezvous,
-    std::vector<Tensor>* received_tensors, StatusCallback done) {
+    const std::vector<AllocatorAttributes>& alloc_attrs,
+    RendezvousInterface* rendezvous, std::vector<Tensor>* received_tensors,
+    StatusCallback done) {
   std::vector<string> keys;
   for (int64 i = 0; i < num_tensors; ++i) {
     string name = strings::StrCat(key_prefix, i);
