@@ -439,6 +439,12 @@ class MeanReductionTest(BaseReductionTest):
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
+  def testUint8(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeRandom((2,) * rank, dtypes.uint8)
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
