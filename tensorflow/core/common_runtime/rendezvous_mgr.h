@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/local_rendezvous.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -31,12 +32,11 @@ namespace tensorflow {
 
 // IntraProcessRendezvous is a Rendezvous which expects all producers
 // and consumers to be devices immediately accessible within the
-// process.  That is, it will never be necessary to perform an RPC to
+// process. That is, it will never be necessary to perform an RPC to
 // communicate with either.
 //
-// Buffering of Tensor values is delegated to a "local" Rendezvous
-// obtained from NewLocalRendezvous().  This class just adds
-// functionality to coordinate multiple process-local devices.
+// Buffering of Tensor values is delegated to a `LocalRendezvous`. This class
+// just adds functionality to coordinate multiple process-local devices.
 class IntraProcessRendezvous : public Rendezvous {
  public:
   explicit IntraProcessRendezvous(const DeviceMgr* device_mgr);
@@ -57,7 +57,7 @@ class IntraProcessRendezvous : public Rendezvous {
 
  private:
   const DeviceMgr* device_mgr_;
-  Rendezvous* local_;  // Owns a Ref on this object.
+  LocalRendezvous local_;
 
   ~IntraProcessRendezvous() override;
 
