@@ -11,11 +11,6 @@ package(
 
 exports_files(["LICENSE"])
 
-config_setting(
-    name = "empty_condition",
-    values = {"define": "UNUSED=unused"},
-)
-
 py_library(
     name = "keras",
     srcs = [
@@ -42,7 +37,6 @@ py_library(
         ":backend",
         ":engine",
         ":layers",
-        ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
         "//tensorflow/python/eager:monitoring",
@@ -53,14 +47,6 @@ py_library(
         "//tensorflow/python/keras/premade",
         "//tensorflow/python/saved_model",
     ],
-)
-
-py_library(
-    name = "pil_for_keras",
-    deps = select({
-        ":empty_condition": [],
-        "//conditions:default": [],
-    }),
 )
 
 py_library(
