@@ -267,6 +267,8 @@ multiclass FuseTileBroadcastIntoFollowingBinary<dag BinaryOp> {
 foreach BroadcastingOp = [TFL_AddOp, TFL_SubOp, TFL_DivOp, TFL_MulOp]
   in defm : FuseTileBroadcastIntoFollowingBinary<BroadcastingOp>;
 
+// Returns shape of a ranked tensor.
+// if called without a ranked tensor it will fail.
 def GetShape: NativeCodeCall<"GetShape($0)">;
 
 def : Pat<(TFL_SqueezeOp:$squeeze_op $input, $squeeze_dims),
