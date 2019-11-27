@@ -30,21 +30,23 @@
 
 namespace mlir {
 
-/// Converts a function type according to the requirements of a SPIR-V entry
-/// function. The arguments need to be converted to spv.GlobalVariables of
-/// spv.ptr types so that they could be bound by the runtime.
+/// Type conversion from stdandard types to SPIR-V types for shader interface.
+///
+/// For composite types, this converter additionally performs type wrapping to
+/// satisfy shader interface requirements: shader interface types must be
+/// pointers to structs.
 class SPIRVTypeConverter final : public TypeConverter {
 public:
   using TypeConverter::TypeConverter;
 
-  /// Converts types to SPIR-V types using the basic type converter.
-  Type convertType(Type t) override;
+  /// Converts the given standard `type` to SPIR-V correspondance.
+  Type convertType(Type type) override;
 
-  /// Gets the index type equivalent in SPIR-V.
-  Type getIndexType(MLIRContext *context);
+  /// Gets the SPIR-V correspondance for the standard index type.
+  static Type getIndexType(MLIRContext *context);
 };
 
-/// Base class to define a conversion pattern to translate Ops into SPIR-V.
+/// Base class to define a conversion pattern to lower `SourceOp` into SPIR-V.
 template <typename SourceOp>
 class SPIRVOpLowering : public OpConversionPattern<SourceOp> {
 public:
@@ -54,7 +56,6 @@ public:
         typeConverter(typeConverter) {}
 
 protected:
-  /// Type lowering class.
   SPIRVTypeConverter &typeConverter;
 };
 
