@@ -359,11 +359,16 @@ public:
   /// This method erases an operation that is known to have no uses.
   virtual void eraseOp(Operation *op);
 
+  /// Merge the operations of block 'source' into the end of block 'dest'.
+  /// 'source's predecessors must either be empty or only contain 'dest`.
+  /// 'argValues' is used to replace the block arguments of 'source' after
+  /// merging.
+  virtual void mergeBlocks(Block *source, Block *dest,
+                           ArrayRef<Value *> argValues = llvm::None);
+
   /// Split the operations starting at "before" (inclusive) out of the given
   /// block into a new block, and return it.
-  virtual Block *splitBlock(Block *block, Block::iterator before) {
-    return block->splitBlock(before);
-  }
+  virtual Block *splitBlock(Block *block, Block::iterator before);
 
   /// This method is used as the final notification hook for patterns that end
   /// up modifying the pattern root in place, by changing its operands.  This is

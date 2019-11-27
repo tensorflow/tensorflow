@@ -1009,12 +1009,14 @@ class AutographControlFlowTest(keras_parameterized.TestCase):
         'mse',
         run_eagerly=testing_utils.should_run_eagerly(),
         experimental_run_tf_function=testing_utils.should_run_tf_function())
-    _, train_metric = model.train_on_batch(np.ones((2, 3)),
+    for _ in range(3):
+      _, train_metric = model.train_on_batch(np.ones((2, 3)),
+                                             np.ones((2, 3)))
+
+      self.assertEqual(train_metric, 2 * 3)
+      _, test_metric = model.test_on_batch(np.ones((2, 3)),
                                            np.ones((2, 3)))
-    self.assertEqual(train_metric, 2 * 3)
-    _, test_metric = model.test_on_batch(np.ones((2, 3)),
-                                         np.ones((2, 3)))
-    self.assertEqual(test_metric, 0)
+      self.assertEqual(test_metric, 0)
 
   def test_if_training_pattern_update(self):
 

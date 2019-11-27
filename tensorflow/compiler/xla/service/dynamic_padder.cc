@@ -106,6 +106,10 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
     case HloOpcode::kSort:
     case HloOpcode::kSlice:
       return nullptr;
+    // Assume that custom calls created by the client are valid with padded
+    // dynamic dimensions.
+    case HloOpcode::kCustomCall:
+      return nullptr;
     default:
       return UnimplementedStrCat("Unimplemented padding for instruction: ",
                                  inst->ToString());

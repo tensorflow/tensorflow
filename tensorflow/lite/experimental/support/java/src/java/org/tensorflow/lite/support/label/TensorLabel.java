@@ -23,7 +23,7 @@ import java.util.List;
 import java.util.Map;
 import org.checkerframework.checker.nullness.qual.NonNull;
 import org.tensorflow.lite.DataType;
-import org.tensorflow.lite.support.common.SupportPrecondtions;
+import org.tensorflow.lite.support.common.SupportPreconditions;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
 /**
@@ -73,17 +73,17 @@ public class TensorLabel {
    */
   public TensorLabel(
       @NonNull Map<Integer, List<String>> axisLabels, @NonNull TensorBuffer tensorBuffer) {
-    SupportPrecondtions.checkNotNull(axisLabels, "Axis labels cannot be null.");
-    SupportPrecondtions.checkNotNull(tensorBuffer, "Tensor Buffer cannot be null.");
+    SupportPreconditions.checkNotNull(axisLabels, "Axis labels cannot be null.");
+    SupportPreconditions.checkNotNull(tensorBuffer, "Tensor Buffer cannot be null.");
     this.axisLabels = axisLabels;
     this.tensorBuffer = tensorBuffer;
     this.shape = tensorBuffer.getShape();
     for (Map.Entry<Integer, List<String>> entry : axisLabels.entrySet()) {
       int axis = entry.getKey();
-      SupportPrecondtions.checkArgument(
+      SupportPreconditions.checkArgument(
           axis >= 0 && axis < shape.length, "Invalid axis id: " + axis);
-      SupportPrecondtions.checkNotNull(entry.getValue(), "Label list is null on axis " + axis);
-      SupportPrecondtions.checkArgument(
+      SupportPreconditions.checkNotNull(entry.getValue(), "Label list is null on axis " + axis);
+      SupportPreconditions.checkArgument(
           shape[axis] == entry.getValue().size(),
           "Label number " + entry.getValue().size() + " mismatch the shape on axis " + axis);
     }
@@ -113,7 +113,7 @@ public class TensorLabel {
     int labeledAxis = getFirstAxisWithSizeGreaterThanOne(tensorBuffer);
 
     Map<String, TensorBuffer> labelToTensorMap = new LinkedHashMap<>();
-    SupportPrecondtions.checkArgument(
+    SupportPreconditions.checkArgument(
         axisLabels.containsKey(labeledAxis),
         "get a <String, TensorBuffer> map requires the labels are set on the first non-1 axis.");
     List<String> labels = axisLabels.get(labeledAxis);
@@ -130,7 +130,7 @@ public class TensorLabel {
     // than 1.
     int subArrayLength = flatSize / shape[labeledAxis] * typeSize;
     int i = 0;
-    SupportPrecondtions.checkNotNull(labels, "Label list should never be null");
+    SupportPreconditions.checkNotNull(labels, "Label list should never be null");
     for (String label : labels) {
       // Gets the corresponding TensorBuffer.
       byteBuffer.position(i * subArrayLength);
@@ -155,12 +155,12 @@ public class TensorLabel {
   @NonNull
   public Map<String, Float> getMapWithFloatValue() {
     int labeledAxis = getFirstAxisWithSizeGreaterThanOne(tensorBuffer);
-    SupportPrecondtions.checkArgument(
+    SupportPreconditions.checkArgument(
         labeledAxis == shape.length - 1,
         "get a <String, Scalar> map is only valid when the only labeled axis is the last one.");
     List<String> labels = axisLabels.get(labeledAxis);
     float[] data = tensorBuffer.getFloatArray();
-    SupportPrecondtions.checkArgument(labels.size() == data.length);
+    SupportPreconditions.checkArgument(labels.size() == data.length);
     Map<String, Float> result = new LinkedHashMap<>();
     int i = 0;
     for (String label : labels) {

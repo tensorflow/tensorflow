@@ -110,6 +110,7 @@ tf_py_test(
     additional_deps = [
         ":feature_column_test_main_lib",
     ],
+    python_version = "PY3",
     tags = [
         "no_rocm",
         "no_cuda",
@@ -125,6 +126,7 @@ tf_py_test(
     additional_deps = [
         ":feature_column_test_main_lib",
     ],
+    python_version = "PY3",
     tags = ["no_pip"],
 )
 
@@ -161,6 +163,7 @@ tf_py_test(
     name = "feature_column_v2_test",
     srcs = ["feature_column_v2_test.py"],
     additional_deps = [":feature_column_v2_test_main_lib"],
+    python_version = "PY3",
     shard_count = 5,
     tags = [
         "no_rocm",
@@ -177,6 +180,7 @@ tf_py_test(
     additional_deps = [
         ":feature_column_v2_test_main_lib",
     ],
+    python_version = "PY3",
     tags = ["no_pip"],
 )
 
@@ -239,12 +243,13 @@ tf_py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
     ],
+    python_version = "PY3",
 )
 
 py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["sequence_feature_column_integration_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -267,4 +272,5 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
+    python_version = "PY3",
 )

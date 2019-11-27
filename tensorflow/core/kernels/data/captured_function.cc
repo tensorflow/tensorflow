@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 
 namespace tensorflow {
 namespace data {
@@ -624,7 +625,7 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
       f_handle_(f_handle),
       ret_types_(std::move(ret_types)),
       captured_runner_(std::move(runner)),
-      cancellation_manager_(cancellation_manager),
+      captured_cancellation_manager_(cancellation_manager),
       captured_func_(captured_func) {}
 
 // NOTE: We don't release f_handle_ here and instead delegate the function
@@ -654,7 +655,7 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      cancellation_manager_,
+      ctx->cancellation_manager(),
       [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
@@ -662,6 +663,12 @@ Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                            ret_types_);
   Notification n;
   Status s;
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::Run#id=", f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -691,7 +698,7 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      cancellation_manager_,
+      ctx->cancellation_manager(),
       [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
@@ -700,6 +707,13 @@ Status InstantiatedCapturedFunction::RunWithBorrowedArgs(
   Notification n;
   Status s;
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::RunWithBorrowedArgs#id=",
+            f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -728,7 +742,7 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   f_opts.cancellation_manager = &cancellation_manager;
   std::function<void()> deregister_fn;
   TF_RETURN_IF_ERROR(RegisterCancellationCallback(
-      cancellation_manager_,
+      captured_cancellation_manager_,
       [cm = &cancellation_manager]() { cm->StartCancel(); }, &deregister_fn));
   auto cleanup = gtl::MakeCleanup(std::move(deregister_fn));
 
@@ -737,6 +751,12 @@ Status InstantiatedCapturedFunction::RunInstantiated(
   Notification n;
   Status s;
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat("InstantiatedCapturedFunction::RunInstantiated#id=",
+                            f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, &frame, [&n, &s](Status func_status) {
     s.Update(func_status);
     n.Notify();
@@ -780,7 +800,7 @@ void InstantiatedCapturedFunction::RunAsync(
   f_opts.cancellation_manager = cancellation_manager.get();
   std::function<void()> deregister_fn;
   Status s = RegisterCancellationCallback(
-      cancellation_manager_,
+      ctx->cancellation_manager(),
       [cm = cancellation_manager.get()]() { cm->StartCancel(); },
       &deregister_fn);
   if (!s.ok()) {
@@ -839,6 +859,12 @@ void InstantiatedCapturedFunction::RunAsync(
       std::move(done), ctx, std::move(deregister_fn), prefix,
       std::move(stats_collector), std::placeholders::_1);
 
+  profiler::TraceMe activity(
+      [&] {
+        return absl::StrCat(
+            "InstantiatedCapturedFunction::RunAsync#id=", f_opts.step_id, "#");
+      },
+      profiler::TraceMeLevel::kInfo);
   lib_->Run(f_opts, f_handle_, frame, std::move(callback));
 }
 

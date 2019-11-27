@@ -14,8 +14,10 @@ limitations under the License.
 ==============================================================================*/
 
 #include <jni.h>
+
 #include <algorithm>
-#include "tensorflow/lite/c/c_api_internal.h"
+
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 #ifdef __cplusplus

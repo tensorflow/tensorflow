@@ -421,10 +421,14 @@ void* BFCAllocator::AllocateRawInternal(size_t unused_alignment,
   // Dump the memory log for analysis.
   MaybeWriteMemoryMap();
   if (dump_log_on_failure) {
+    string op_ident;
+#ifdef TENSORFLOW_MEM_DEBUG
+    op_ident = strings::StrCat(" requested by op ", pending_op_name);
+#endif
     LOG(WARNING) << "Allocator (" << Name() << ") ran out of memory trying "
                  << "to allocate " << strings::HumanReadableNumBytes(num_bytes)
-                 << " (rounded to " << rounded_bytes
-                 << ").  Current allocation summary follows.";
+                 << " (rounded to " << rounded_bytes << ")" << op_ident
+                 << "\nCurrent allocation summary follows.";
     DumpMemoryLog(rounded_bytes);
     LOG(WARNING) << RenderOccupancy();
   }

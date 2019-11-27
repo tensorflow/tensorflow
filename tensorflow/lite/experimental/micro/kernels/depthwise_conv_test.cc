@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 #include "tensorflow/lite/experimental/micro/testing/test_utils.h"
@@ -162,6 +162,12 @@ void TestDepthwiseConvQuantizedPerLayer(
       FloatArrayFromFloats(filter_scales),
       IntArrayFromInts(filter_zero_points)};
   tensors[1].quantization = {kTfLiteAffineQuantization, &filter_quant};
+
+  float bias_scales[] = {1, filter_scale * input_scale};
+  int bias_zero_points[] = {1, 128};
+  TfLiteAffineQuantization bias_quant = {FloatArrayFromFloats(bias_scales),
+                                         IntArrayFromInts(bias_zero_points)};
+  tensors[2].quantization = {kTfLiteAffineQuantization, &bias_quant};
 
   AsymmetricQuantize(golden, golden_quantized, output_dims_count, output_scale,
                      output_zero_point);

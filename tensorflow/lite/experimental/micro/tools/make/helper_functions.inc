@@ -46,6 +46,10 @@ endef
 # versions of their source files. The only argument is a list of file paths.
 specialize = $(call specialize_on_tags,$(1),$(strip $(call reverse,$(ALL_TAGS))))
 
+# TODO(b/143904317): It would be better to have the dependency be
+# THIRD_PARTY_TARGETS instead of third_party_downloads. However, that does not
+# quite work for the generate_project functions.
+#
 # Creates a set of rules to build a standalone makefile project for an
 # executable, including all of the source and header files required in a
 # separate folder and a simple makefile.

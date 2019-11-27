@@ -498,6 +498,10 @@ class DropoutTest(test_lib.TestCase):
     t = constant_op.constant(1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
     _ = nn_ops.dropout_v2(t, 0.9)
 
+  def testVariableRef(self):
+    x = variable_scope.get_variable("x", shape=[10, 10], dtype=dtypes.float32)
+    _ = nn_ops.dropout(x, keep_prob=0.1)
+
   @test_util.run_deprecated_v1
   def testShapedDropoutShapeError(self):
     if test_lib.is_built_with_rocm():
@@ -523,13 +527,13 @@ class DropoutTest(test_lib.TestCase):
     _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[x_dim, 1])
     _ = nn_ops.dropout(t, rate=(1 - keep_prob), noise_shape=[1, 1])
 
-  def testNoDropoutFast(self):
+  def testNoDropout(self):
     x = array_ops.zeros((5,))
     y = nn_ops.dropout(x, rate=0)
-    self.assertTrue(x is y)
+    self.assertAllEqual(x, y)
 
     y = nn_ops.dropout_v2(x, rate=0)
-    self.assertTrue(x is y)
+    self.assertAllEqual(x, y)
 
   def testDropoutWithIntegerInputs(self):
     x = constant_op.constant([1, 1, 1, 1, 1])

@@ -69,7 +69,8 @@ class SGD(optimizer_v2.OptimizerV2):
     """Construct a new Stochastic Gradient Descent or Momentum optimizer.
 
     Arguments:
-      learning_rate: float hyperparameter >= 0. Learning rate.
+      learning_rate: A `Tensor`, floating point value, or a schedule that is a
+        `tf.keras.optimizers.schedules.LearningRateSchedule`. The learning rate.
       momentum: float hyperparameter >= 0 that accelerates SGD in the relevant
         direction and dampens oscillations.
       nesterov: boolean. Whether to apply Nesterov momentum.

@@ -145,12 +145,14 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     with ops.name_scope(name, values=operator.graph_parents):
       super(LinearOperatorAdjoint, self).__init__(
           dtype=operator.dtype,
-          graph_parents=operator.graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+    # TODO(b/143910018) Remove graph_parents in V3.
+    self._set_graph_parents(operator.graph_parents)
 
   @property
   def operator(self):
@@ -217,3 +219,6 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     if not self.operator.is_self_adjoint:
       eigvals = math_ops.conj(eigvals)
     return eigvals
+
+  def _cond(self):
+    return self.operator.cond()

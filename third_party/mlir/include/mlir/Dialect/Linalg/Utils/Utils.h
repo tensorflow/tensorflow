@@ -20,6 +20,7 @@
 
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
 #include "mlir/Dialect/LoopOps/LoopOps.h"
+#include "mlir/Dialect/StandardOps/Ops.h"
 #include "mlir/EDSC/Helpers.h"
 
 namespace mlir {
@@ -40,7 +41,7 @@ public:
   /// *only* way to capture the loop induction variable.
   LoopRangeBuilder(ValueHandle *iv, ValueHandle range);
   LoopRangeBuilder(ValueHandle *iv, Value *range);
-  LoopRangeBuilder(ValueHandle *iv, linalg::SubViewOp::Range range);
+  LoopRangeBuilder(ValueHandle *iv, SubViewOp::Range range);
 
   LoopRangeBuilder(const LoopRangeBuilder &) = delete;
   LoopRangeBuilder(LoopRangeBuilder &&) = default;
@@ -64,7 +65,7 @@ public:
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
                        llvm::ArrayRef<Value *> ranges);
   LoopNestRangeBuilder(llvm::ArrayRef<edsc::ValueHandle *> ivs,
-                       llvm::ArrayRef<linalg::SubViewOp::Range> ranges);
+                       llvm::ArrayRef<SubViewOp::Range> ranges);
   edsc::ValueHandle operator()(std::function<void(void)> fun = nullptr);
 
 private:
@@ -170,12 +171,14 @@ struct PromotionInfo {
 ///   2. Take a full view on the buffer and `linalg.fill` it with zeros (use
 ///      float zero for now).
 ///   3. Take a partial slice of the full view in step 2. and copy into it.
+/// Infers statically sized buffers from subViews unless `dynamicBuffers` is
+/// true.
 ///
 /// Returns a list of PromotionInfo which hold the promoted buffer and the
 /// full and partial views indexing into the buffer.
-llvm::SmallVector<PromotionInfo, 8> promoteSubViews(OpBuilder &b, Location loc,
-                                                    ArrayRef<Value *> subViews,
-                                                    OperationFolder *folder);
+llvm::SmallVector<PromotionInfo, 8>
+promoteSubViews(OpBuilder &b, Location loc, ArrayRef<Value *> subViews,
+                bool dynamicBuffers = false, OperationFolder *folder = nullptr);
 
 /// Returns all the operands of `linalgOp` that are not views.
 /// Asserts that these operands are value types to allow transformations like

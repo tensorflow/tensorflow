@@ -254,10 +254,12 @@ void BufferAllocation::AddAssignment(const HloValue& buffer, int64 offset,
   assigned_buffers_.emplace(&buffer, offset_size);
   // For debugging purposes, store the assigned memory space in the
   // instruction's layout.
-  HloInstruction* defining_instruction = buffer.defining_instruction();
-  if (defining_instruction->shape().has_layout()) {
-    defining_instruction->mutable_shape()->mutable_layout()->set_memory_space(
-        buffer.color().value());
+  for (HloPosition position : buffer.positions()) {
+    Shape* shape = ShapeUtil::GetMutableSubshape(
+        position.instruction->mutable_shape(), position.index);
+    if (shape->has_layout()) {
+      shape->mutable_layout()->set_memory_space(buffer.color().value());
+    }
   }
 }
 
@@ -1323,22 +1325,24 @@ Status BufferAssigner::AssignPresetBuffers(
   }
 
   const HloAliasAnalysis& alias_analysis = assignment->alias_analysis();
+  const HloDataflowAnalysis& dataflow_analysis =
+      alias_analysis.dataflow_analysis();
 
   for (auto& position_and_chunk : preset_assignments_->chunks()) {
     const HloPosition& position = position_and_chunk.first;
-    const HloBuffer& buffer =
-        alias_analysis.GetUniqueBufferAt(position.instruction, position.index);
-    VLOG(3) << "Preset allocation for buffer: " << buffer;
+    const HloValue& value = dataflow_analysis.GetUniqueValueAt(
+        position.instruction, position.index);
+    VLOG(3) << "Preset allocation for value: " << value.ToShortString();
     const HeapSimulator::Chunk& chunk = position_and_chunk.second;
-    auto preset_allocations_iter = preset_allocations.find(buffer.color());
+    auto preset_allocations_iter = preset_allocations.find(value.color());
     CHECK(preset_allocations_iter != preset_allocations.end())
-        << "No preset buffer allocation for color " << buffer.color()
+        << "No preset value allocation for color " << value.color()
         << " found.";
-    preset_allocations_iter->second->AddAssignment(buffer.GetUniqueValue(),
-                                                   chunk.offset, chunk.size);
-    // Ensure that there is at most one preset allocation for each buffer.
-    CHECK_EQ(assigned_buffers->count(&buffer), 0);
-    assigned_buffers->emplace(&buffer);
+    preset_allocations_iter->second->AddAssignment(value, chunk.offset,
+                                                   chunk.size);
+
+    const HloBuffer& buffer = alias_analysis.GetBufferContainingValue(value);
+    assigned_buffers->insert(&buffer);
   }
 
   // Upon consumption of the preset assignments, delete it so that if this

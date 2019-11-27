@@ -261,23 +261,6 @@ TensorHandle::TensorHandle(std::unique_ptr<UnshapedRemoteTensorHandleData> t,
 }
 #endif
 
-TensorHandle::TensorHandle(OutputGraphNode symbolic_tensor, DataType dtype)
-    : dtype(dtype),
-      device_(nullptr),
-      op_device_(nullptr),
-      resource_device_(nullptr),
-#if !defined(IS_MOBILE_PLATFORM)
-      remote_op_id_(kInvalidOpId),
-      remote_output_num_(kInvalidOutputNum),
-#endif
-      ctx_(nullptr),
-      is_remote_(false),
-      symbolic_tensor_(new OutputGraphNode(symbolic_tensor)) {
-  DVLOG(3) << "Creating Symbolic TensorHandle: " << this;
-  // Notify immediately since this handle is already ready.
-  is_ready_notification_.Notify();
-}
-
 bool TensorHandle::IsReady() {
   return is_ready_notification_.HasBeenNotified();
 }
@@ -470,6 +453,15 @@ bool TensorHandle::HasRemoteMirror(Device* d) {
   return false;
 }
 
+bool TensorHandle::HasResourceShapeMirror(Device* d) {
+  tf_shared_lock l(resource_shape_mirrors_mutex_);
+  auto mirror = resource_shape_mirrors_.find(d);
+  if (mirror != resource_shape_mirrors_.end()) {
+    return true;
+  }
+  return false;
+}
+
 Status TensorHandle::AddUnshapedRemoteMirror(
     std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d) {
   mutex_lock l(remote_mirrors_mutex_);
@@ -481,6 +473,17 @@ Status TensorHandle::AddUnshapedRemoteMirror(
   if (!ret.second) {
     return errors::Internal(
         "Attempted to duplicate an unshaped remote mirror.");
+  }
+
+  return Status::OK();
+}
+
+Status TensorHandle::AddResourceShapeMirror(
+    std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d) {
+  mutex_lock l(resource_shape_mirrors_mutex_);
+  auto ret = resource_shape_mirrors_.insert(std::make_pair(d, std::move(t)));
+  if (!ret.second) {
+    return errors::Internal("Attempted to duplicate a resource shape mirror.");
   }
 
   return Status::OK();
@@ -549,7 +552,7 @@ Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
 
   DVLOG(3) << "SetTensor on TensorHandle: " << this;
 
-  if (tensor.dtype() == DT_RESOURCE) {
+  if (tensor.dtype() == DT_RESOURCE && tensor.NumElements() > 0) {
     auto& resource_handle = tensor.flat<class ResourceHandle>()(0);
     handle_dtypes_and_shapes_ = resource_handle.dtypes_and_shapes();
   }
@@ -645,11 +648,6 @@ Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx) {
 
 string TensorHandle::DebugString() const {
   DVLOG(1) << "Calling TensorHandle::DebugString() on " << this;
-
-  if (symbolic_tensor_) {
-    return absl::Substitute("TF_Output($0, $1)", symbolic_tensor_->oper,
-                            symbolic_tensor_->index);
-  }
 
   string out;
   strings::StrAppend(&out, "Device: ", device_ ? device_->DebugString() : "[]");

@@ -20,6 +20,7 @@ from __future__ import print_function
 import json
 
 from tensorflow.python.eager import function as defun
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import input_spec
@@ -55,6 +56,9 @@ network_lib = LazyLoader(
 training_lib = LazyLoader(
     "training_lib", globals(),
     "tensorflow.python.keras.engine.training")
+training_lib_v1 = LazyLoader(
+    "training_lib_v1", globals(),
+    "tensorflow.python.keras.engine.training_v1")
 # pylint:enable=g-inconsistent-quotes
 
 
@@ -196,11 +200,16 @@ class KerasObjectLoader(tf_load.Loader):
     # pylint: enable=protected-access
 
   def _recreate_base_user_object(self, proto):
+    if ops.executing_eagerly_outside_functions():
+      model_class = training_lib.Model
+    else:
+      model_class = training_lib_v1.Model
+
     revived_classes = {
         '_tf_keras_layer': (RevivedLayer, base_layer.Layer),
         '_tf_keras_input_layer': (RevivedInputLayer, input_layer.InputLayer),
         '_tf_keras_network': (RevivedNetwork, network_lib.Network),
-        '_tf_keras_model': (RevivedNetwork, training_lib.Model),
+        '_tf_keras_model': (RevivedNetwork, model_class),
         '_tf_keras_sequential': (RevivedNetwork, models_lib.Sequential)
     }
 
@@ -210,9 +219,7 @@ class KerasObjectLoader(tf_load.Loader):
       parent_classes = revived_classes[proto.identifier]
       metadata = json.loads(proto.metadata)
       revived_cls = type(
-          compat.as_str(metadata['class_name']),
-          parent_classes,
-          {'__setattr__': parent_classes[1].__setattr__})
+          compat.as_str(metadata['class_name']), parent_classes, {})
       return revived_cls._init_from_metadata(metadata)  # pylint: disable=protected-access
 
     return super(KerasObjectLoader, self)._recreate_base_user_object(proto)
@@ -377,4 +384,3 @@ def _set_network_attributes_from_metadata(revived_obj):
       revived_obj.activity_regularizer = regularizers.deserialize(
           metadata['activity_regularizer'])
     # pylint:enable=protected-access
-

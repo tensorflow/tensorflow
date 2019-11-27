@@ -21,8 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <assert.h>
-#include <memory.h>
+#include <cassert>
+#include <numeric>
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -80,42 +80,36 @@ extern "C" int32_t mcuStreamSynchronize(void *stream) {
 
 /// Helper functions for writing mlir example code
 
+// Allows to register byte array with the CUDA runtime. Helpful until we have
+// transfer functions implemented.
+extern "C" void mcuMemHostRegister(void *ptr, uint64_t sizeBytes) {
+  reportErrorIfAny(cuMemHostRegister(ptr, sizeBytes, /*flags=*/0),
+                   "MemHostRegister");
+}
+
 // A struct that corresponds to how MLIR represents memrefs.
 template <typename T, int N> struct MemRefType {
+  T *basePtr;
   T *data;
   int64_t offset;
   int64_t sizes[N];
   int64_t strides[N];
 };
 
-// Allows to register a pointer with the CUDA runtime. Helpful until
-// we have transfer functions implemented.
-extern "C" void mcuMemHostRegister(const MemRefType<float, 1> *arg,
-                                   int32_t flags) {
-  reportErrorIfAny(
-      cuMemHostRegister(arg->data, arg->sizes[0] * sizeof(float), flags),
-      "MemHostRegister");
-  for (int pos = 0; pos < arg->sizes[0]; pos++) {
-    arg->data[pos] = 1.23f;
-  }
+// Allows to register a MemRef with the CUDA runtime. Initializes array with
+// value. Helpful until we have transfer functions implemented.
+template <typename T, int N>
+void mcuMemHostRegisterMemRef(const MemRefType<T, N> *arg, T value) {
+  auto count = std::accumulate(arg->sizes, arg->sizes + N, 1,
+                               std::multiplies<int64_t>());
+  std::fill_n(arg->data, count, value);
+  mcuMemHostRegister(arg->data, count * sizeof(T));
 }
-
-// Allows to register a pointer with the CUDA runtime. Helpful until
-// we have transfer functions implemented.
-extern "C" void mcuMemHostRegisterPtr(void *ptr, int32_t flags) {
-  reportErrorIfAny(cuMemHostRegister(ptr, sizeof(void *), flags),
-                   "MemHostRegister");
+extern "C" void
+mcuMemHostRegisterMemRef1dFloat(const MemRefType<float, 1> *arg) {
+  mcuMemHostRegisterMemRef(arg, 1.23f);
 }
-
-/// Prints the given float array to stderr.
-extern "C" void mcuPrintFloat(const MemRefType<float, 1> *arg) {
-  if (arg->sizes[0] == 0) {
-    llvm::outs() << "[]\n";
-    return;
-  }
-  llvm::outs() << "[" << arg->data[0];
-  for (int pos = 1; pos < arg->sizes[0]; pos++) {
-    llvm::outs() << ", " << arg->data[pos];
-  }
-  llvm::outs() << "]\n";
+extern "C" void
+mcuMemHostRegisterMemRef3dFloat(const MemRefType<float, 3> *arg) {
+  mcuMemHostRegisterMemRef(arg, 1.23f);
 }

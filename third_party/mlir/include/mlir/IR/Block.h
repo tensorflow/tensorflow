@@ -150,12 +150,12 @@ public:
   //===--------------------------------------------------------------------===//
 
   /// This is the list of operations in the block.
-  using InstListType = llvm::iplist<Operation>;
-  InstListType &getOperations() { return operations; }
+  using OpListType = llvm::iplist<Operation>;
+  OpListType &getOperations() { return operations; }
 
   // Iteration over the operations in the block.
-  using iterator = InstListType::iterator;
-  using reverse_iterator = InstListType::reverse_iterator;
+  using iterator = OpListType::iterator;
+  using reverse_iterator = OpListType::reverse_iterator;
 
   iterator begin() { return operations.begin(); }
   iterator end() { return operations.end(); }
@@ -174,7 +174,7 @@ public:
   /// the latter fails.
   /// TODO: This is very specific functionality that should live somewhere else,
   /// probably in Dominance.cpp.
-  Operation *findAncestorInstInBlock(Operation &op);
+  Operation *findAncestorOpInBlock(Operation &op);
 
   /// This drops all operand uses from operations within this block, which is
   /// an essential step in breaking cyclic dependences between references when
@@ -187,17 +187,17 @@ public:
 
   /// Returns true if the ordering of the child operations is valid, false
   /// otherwise.
-  bool isInstOrderValid();
+  bool isOpOrderValid();
 
   /// Invalidates the current ordering of operations.
-  void invalidateInstOrder();
+  void invalidateOpOrder();
 
   /// Verifies the current ordering of child operations matches the
-  /// validInstOrder flag. Returns false if the order is valid, true otherwise.
-  bool verifyInstOrder();
+  /// validOpOrder flag. Returns false if the order is valid, true otherwise.
+  bool verifyOpOrder();
 
   /// Recomputes the ordering of child operations within the block.
-  void recomputeInstOrder();
+  void recomputeOpOrder();
 
 private:
   /// A utility iterator that filters out operations that are not 'OpT'.
@@ -216,7 +216,7 @@ private:
   };
 
 public:
-  /// This class provides iteration over the held instructions of a block for a
+  /// This class provides iteration over the held operations of a block for a
   /// specific operation type.
   template <typename OpT>
   class op_iterator : public llvm::mapped_iterator<op_filter_iterator<OpT>,
@@ -348,12 +348,12 @@ public:
   /// The newly formed Block is returned, and the specified iterator is
   /// invalidated.
   Block *splitBlock(iterator splitBefore);
-  Block *splitBlock(Operation *splitBeforeInst) {
-    return splitBlock(iterator(splitBeforeInst));
+  Block *splitBlock(Operation *splitBeforeOp) {
+    return splitBlock(iterator(splitBeforeOp));
   }
 
   /// Returns pointer to member of operation list.
-  static InstListType Block::*getSublistAccess(Operation *) {
+  static OpListType Block::*getSublistAccess(Operation *) {
     return &Block::operations;
   }
 
@@ -368,10 +368,10 @@ public:
 private:
   /// Pair of the parent object that owns this block and a bit that signifies if
   /// the operations within this block have a valid ordering.
-  llvm::PointerIntPair<Region *, /*IntBits=*/1, bool> parentValidInstOrderPair;
+  llvm::PointerIntPair<Region *, /*IntBits=*/1, bool> parentValidOpOrderPair;
 
   /// This is the list of operations in the block.
-  InstListType operations;
+  OpListType operations;
 
   /// This is the list of arguments to the block.
   std::vector<BlockArgument *> arguments;

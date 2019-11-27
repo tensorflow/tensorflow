@@ -208,8 +208,13 @@ class MarkForCompilationPassImpl {
         return absl::StrCat("NULL NODE IN #", cycles_graph_node_id());
       }
 
-      return absl::StrCat("<", node->name(), " + ", cluster_size(), " others #",
-                          cycles_graph_node_id(), ">");
+      if (cluster_size() == 1) {
+        return absl::StrCat("<", node->name(), " #", cycles_graph_node_id(),
+                            ">");
+      }
+
+      return absl::StrCat("<", node->name(), " + ", cluster_size() - 1,
+                          " others #", cycles_graph_node_id(), ">");
     }
 
    private:

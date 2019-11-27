@@ -25,15 +25,19 @@ namespace lookup {
 
 // Gets the LookupTable stored in the ctx->resource_manager() with key
 // passed by attribute with name input_name, returns null if the table
-// doesn't exist.
-Status GetLookupTable(const string& input_name, OpKernelContext* ctx,
+// doesn't exist. Use GetResourceLookupTable() or GetReferenceLookupTable() if
+// the input dtype is known.
+Status GetLookupTable(StringPiece input_name, OpKernelContext* ctx,
                       LookupInterface** table);
+Status GetResourceLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                              LookupInterface** table);
+Status GetReferenceLookupTable(StringPiece input_name, OpKernelContext* ctx,
+                               LookupInterface** table);
 
 // Gets the InitializableLookupTable stored in the
 // ctx->resource_manager() with key passed by attribute with name
 // input_name, returns null if the table doesn't exist.
-Status GetInitializableLookupTable(const string& input_name,
-                                   OpKernelContext* ctx,
+Status GetInitializableLookupTable(StringPiece input_name, OpKernelContext* ctx,
                                    InitializableLookupTable** table);
 
 // Verify that the given key_dtype and value_dtype matches the corresponding

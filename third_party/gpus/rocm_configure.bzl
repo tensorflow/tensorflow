@@ -11,7 +11,6 @@
   * `TF_MIOPEN_VERSION`: The version of the MIOpen library.
   * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets. Default is
     `gfx803,gfx900`.
-  * `TF_SYSROOT`: The sysroot to use when compiling.
 """
 
 load(
@@ -19,13 +18,11 @@ load(
     "make_copy_dir_rule",
     "make_copy_files_rule",
     "to_list_of_strings",
-    "verify_build_defines",
 )
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
 _ROCM_TOOLKIT_PATH = "ROCM_TOOLKIT_PATH"
-_TF_SYSROOT = "TF_SYSROOT"
 _TF_ROCM_VERSION = "TF_ROCM_VERSION"
 _TF_MIOPEN_VERSION = "TF_MIOPEN_VERSION"
 _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
@@ -36,21 +33,32 @@ _DEFAULT_MIOPEN_VERSION = ""
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
 _DEFAULT_ROCM_AMDGPU_TARGETS = ["gfx803", "gfx900"]
 
-def _get_win_rocm_defines(repository_ctx):
-    """Return CROSSTOOL defines for Windows"""
+def verify_build_defines(params):
+    """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
 
-    # Return fake vaules for Windows specific fields.
-    # This ensures the CROSSTOOL file parser is happy.
-    return {
-        "%{msvc_env_tmp}": "msvc_not_used",
-        "%{msvc_env_path}": "msvc_not_used",
-        "%{msvc_env_include}": "msvc_not_used",
-        "%{msvc_env_lib}": "msvc_not_used",
-        "%{msvc_cl_path}": "msvc_not_used",
-        "%{msvc_ml_path}": "msvc_not_used",
-        "%{msvc_link_path}": "msvc_not_used",
-        "%{msvc_lib_path}": "msvc_not_used",
-    }
+    Args:
+      params: dict of variables that will be passed to the BUILD.tpl template.
+    """
+    missing = []
+    for param in [
+        "cxx_builtin_include_directories",
+        "extra_no_canonical_prefixes_flags",
+        "host_compiler_path",
+        "host_compiler_prefix",
+        "linker_bin_path",
+        "unfiltered_compile_flags",
+    ]:
+        if ("%{" + param + "}") not in params:
+            missing.append(param)
+
+    if missing:
+        auto_configure_fail(
+            "BUILD.rocm.tpl template is missing these variables: " +
+            str(missing) +
+            ".\nWe only got: " +
+            str(params) +
+            ".",
+        )
 
 def find_cc(repository_ctx):
     """Find the C++ compiler."""
@@ -80,16 +88,13 @@ def _cxx_inc_convert(path):
     path = path.strip()
     return path
 
-def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
+def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp):
     """Compute the list of default C or C++ include directories."""
     if lang_is_cpp:
         lang = "c++"
     else:
         lang = "c"
 
-    sysroot = []
-    if tf_sysroot:
-        sysroot += ["--sysroot", tf_sysroot]
     # TODO: We pass -no-canonical-prefixes here to match the compiler flags,
     #       but in rocm_clang CROSSTOOL file that is a `feature` and we should
     #       handle the case when it's disabled and no flag is passed
@@ -100,7 +105,7 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         "-x" + lang,
         "-",
         "-v",
-    ] + sysroot)
+    ])
     index1 = result.stderr.find(_INC_DIR_MARKER_BEGIN)
     if index1 == -1:
         return []
@@ -121,24 +126,14 @@ def _get_cxx_inc_directories_impl(repository_ctx, cc, lang_is_cpp, tf_sysroot):
         for p in inc_dirs.split("\n")
     ]
 
-def get_cxx_inc_directories(repository_ctx, cc, tf_sysroot):
+def get_cxx_inc_directories(repository_ctx, cc):
     """Compute the list of default C and C++ include directories."""
 
     # For some reason `clang -xc` sometimes returns include paths that are
     # different from the ones from `clang -xc++`. (Symlink and a dir)
     # So we run the compiler with both `-xc` and `-xc++` and merge resulting lists
-    includes_cpp = _get_cxx_inc_directories_impl(
-        repository_ctx,
-        cc,
-        True,
-        tf_sysroot,
-    )
-    includes_c = _get_cxx_inc_directories_impl(
-        repository_ctx,
-        cc,
-        False,
-        tf_sysroot,
-    )
+    includes_cpp = _get_cxx_inc_directories_impl(repository_ctx, cc, True)
+    includes_c = _get_cxx_inc_directories_impl(repository_ctx, cc, False)
 
     includes_cpp_set = depset(includes_cpp)
     return includes_cpp + [
@@ -153,6 +148,12 @@ def auto_configure_fail(msg):
     no_color = "\033[0m"
     fail("\n%sROCm Configuration Error:%s %s\n" % (red, no_color, msg))
 
+def auto_configure_warning(msg):
+    """Output warning message during auto configuration."""
+    yellow = "\033[1;33m"
+    no_color = "\033[0m"
+    print("\n%sAuto-Configuration Warning:%s %s\n" % (yellow, no_color, msg))
+
 # END cc_configure common functions (see TODO above).
 
 def _host_compiler_includes(repository_ctx, cc):
@@ -165,7 +166,7 @@ def _host_compiler_includes(repository_ctx, cc):
     Returns:
       A list of gcc include directories.
     """
-    inc_dirs = get_cxx_inc_directories(repository_ctx, cc, "")
+    inc_dirs = get_cxx_inc_directories(repository_ctx, cc)
 
     # Add numpy headers
     inc_dirs.append("/usr/lib/python2.7/dist-packages/numpy/core/include")
@@ -240,7 +241,11 @@ def _rocm_include_path(repository_ctx, rocm_config):
 def enable_rocm(repository_ctx):
     if "TF_NEED_ROCM" in repository_ctx.os.environ:
         enable_rocm = repository_ctx.os.environ["TF_NEED_ROCM"].strip()
-        return enable_rocm == "1"
+        if enable_rocm == "1":
+            if _cpu_value(repository_ctx) != "Linux":
+                auto_configure_warning("ROCm configure is only supported on Linux")
+                return False
+            return True
     return False
 
 def _rocm_toolkit_path(repository_ctx):
@@ -295,7 +300,7 @@ def _hipcc_env(repository_ctx):
                          repository_ctx.os.environ[name].strip() + "\";")
     return hipcc_env.strip()
 
-def _hipcc_is_hipclang(repository_ctx,rocm_config):
+def _hipcc_is_hipclang(repository_ctx, rocm_config):
     """Returns if hipcc is based on hip-clang toolchain.
 
     Args:
@@ -338,7 +343,7 @@ def _if_hipcc_is_hipclang(repository_ctx, rocm_config, if_true, if_false = []):
     Returns :
         either the if_true arg or the of_False arg
     """
-    if _hipcc_is_hipclang(repository_ctx,rocm_config) == "True":
+    if _hipcc_is_hipclang(repository_ctx, rocm_config) == "True":
         return if_true
     return if_false
 
@@ -373,40 +378,27 @@ def _cpu_value(repository_ctx):
     result = repository_ctx.execute(["uname", "-s"])
     return result.stdout.strip()
 
-def _lib_name(lib, cpu_value, version = "", static = False):
-    """Constructs the platform-specific name of a library.
+def _lib_name(lib, version = "", static = False):
+    """Constructs the name of a library on Linux.
 
     Args:
       lib: The name of the library, such as "hip"
-      cpu_value: The name of the host operating system.
       version: The version of the library.
       static: True the library is static or False if it is a shared object.
 
     Returns:
       The platform-specific name of the library.
     """
-    if cpu_value in ("Linux", "FreeBSD"):
-        if static:
-            return "lib%s.a" % lib
-        else:
-            if version:
-                version = ".%s" % version
-            return "lib%s.so%s" % (lib, version)
-    elif cpu_value == "Windows":
-        return "%s.lib" % lib
-    elif cpu_value == "Darwin":
-        if static:
-            return "lib%s.a" % lib
-        elif version:
-            version = ".%s" % version
-        return "lib%s%s.dylib" % (lib, version)
+    if static:
+        return "lib%s.a" % lib
     else:
-        auto_configure_fail("Invalid cpu_value: %s" % cpu_value)
+        if version:
+            version = ".%s" % version
+        return "lib%s.so%s" % (lib, version)
 
 def _find_rocm_lib(
         lib,
         repository_ctx,
-        cpu_value,
         basedir,
         version = "",
         static = False):
@@ -415,7 +407,6 @@ def _find_rocm_lib(
     Args:
       lib: The name of the library, such as "hip"
       repository_ctx: The repository context.
-      cpu_value: The name of the host operating system.
       basedir: The install directory of ROCm.
       version: The version of the library.
       static: True if static library, False if shared object.
@@ -425,20 +416,19 @@ def _find_rocm_lib(
         file_name: The basename of the library found on the system.
         path: The full path to the library.
     """
-    file_name = _lib_name(lib, cpu_value, version, static)
-    if cpu_value == "Linux":
-        path = repository_ctx.path("%s/lib64/%s" % (basedir, file_name))
-        if path.exists:
-            return struct(file_name = file_name, path = str(path.realpath))
-        path = repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name))
-        if path.exists:
-            return struct(file_name = file_name, path = str(path.realpath))
-        path = repository_ctx.path(
-            "%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name),
-        )
-        if path.exists:
-            return struct(file_name = file_name, path = str(path.realpath))
+    file_name = _lib_name(lib, version, static)
 
+    path = repository_ctx.path("%s/lib64/%s" % (basedir, file_name))
+    if path.exists:
+        return struct(file_name = file_name, path = str(path.realpath))
+    path = repository_ctx.path("%s/lib64/stubs/%s" % (basedir, file_name))
+    if path.exists:
+        return struct(file_name = file_name, path = str(path.realpath))
+    path = repository_ctx.path(
+        "%s/lib/x86_64-linux-gnu/%s" % (basedir, file_name),
+    )
+    if path.exists:
+        return struct(file_name = file_name, path = str(path.realpath))
     path = repository_ctx.path("%s/lib/%s" % (basedir, file_name))
     if path.exists:
         return struct(file_name = file_name, path = str(path.realpath))
@@ -459,48 +449,40 @@ def _find_libs(repository_ctx, rocm_config):
       Map of library names to structs of filename and path as returned by
       _find_rocm_lib.
     """
-    cpu_value = rocm_config.cpu_value
     return {
         "hip": _find_rocm_lib(
             "hip_hcc",
             repository_ctx,
-            cpu_value,
             rocm_config.rocm_toolkit_path,
         ),
         "rocblas": _find_rocm_lib(
             "rocblas",
             repository_ctx,
-            cpu_value,
             rocm_config.rocm_toolkit_path + "/rocblas",
         ),
         "rocfft": _find_rocm_lib(
             "rocfft",
             repository_ctx,
-            cpu_value,
             rocm_config.rocm_toolkit_path + "/rocfft",
         ),
         "hiprand": _find_rocm_lib(
             "hiprand",
             repository_ctx,
-            cpu_value,
             rocm_config.rocm_toolkit_path + "/hiprand",
         ),
         "miopen": _find_rocm_lib(
             "MIOpen",
             repository_ctx,
-            cpu_value,
             rocm_config.rocm_toolkit_path + "/miopen",
         ),
         "rccl": _find_rocm_lib(
             "rccl",
             repository_ctx,
-            cpu_value,
             rocm_config.rocm_toolkit_path + "/rccl",
         ),
         "hipsparse": _find_rocm_lib(
             "hipsparse",
             repository_ctx,
-            cpu_value,
             rocm_config.rocm_toolkit_path + "/hipsparse",
         ),
     }
@@ -515,14 +497,11 @@ def _get_rocm_config(repository_ctx):
       A struct containing the following fields:
         rocm_toolkit_path: The ROCm toolkit installation directory.
         amdgpu_targets: A list of the system's AMDGPU targets.
-        cpu_value: The name of the host operating system.
     """
-    cpu_value = _cpu_value(repository_ctx)
     rocm_toolkit_path = _rocm_toolkit_path(repository_ctx)
     return struct(
         rocm_toolkit_path = rocm_toolkit_path,
         amdgpu_targets = _amdgpu_targets(repository_ctx),
-        cpu_value = cpu_value,
     )
 
 def _tpl(repository_ctx, tpl, substitutions = {}, out = None):
@@ -567,8 +546,6 @@ error_gpu_disabled()
 """
 
 def _create_dummy_repository(repository_ctx):
-    cpu_value = _cpu_value(repository_ctx)
-
     # Set up BUILD file for rocm/.
     _tpl(
         repository_ctx,
@@ -582,13 +559,13 @@ def _create_dummy_repository(repository_ctx):
         repository_ctx,
         "rocm:BUILD",
         {
-            "%{hip_lib}": _lib_name("hip", cpu_value),
-            "%{rocblas_lib}": _lib_name("rocblas", cpu_value),
-            "%{miopen_lib}": _lib_name("miopen", cpu_value),
-            "%{rccl_lib}": _lib_name("rccl", cpu_value),
-            "%{rocfft_lib}": _lib_name("rocfft", cpu_value),
-            "%{hiprand_lib}": _lib_name("hiprand", cpu_value),
-            "%{hipsparse_lib}": _lib_name("hipsparse", cpu_value),
+            "%{hip_lib}": _lib_name("hip"),
+            "%{rocblas_lib}": _lib_name("rocblas"),
+            "%{miopen_lib}": _lib_name("miopen"),
+            "%{rccl_lib}": _lib_name("rccl"),
+            "%{rocfft_lib}": _lib_name("rocfft"),
+            "%{hiprand_lib}": _lib_name("hiprand"),
+            "%{hipsparse_lib}": _lib_name("hipsparse"),
             "%{copy_rules}": "",
             "%{rocm_headers}": "",
         },
@@ -687,11 +664,6 @@ def _read_dir(repository_ctx, src_dir):
     result = find_result.stdout
     return result
 
-def _tf_sysroot(repository_ctx):
-    if _TF_SYSROOT in repository_ctx.os.environ:
-        return repository_ctx.os.environ[_TF_SYSROOT]
-    return ""
-
 def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
     if False:
         amdgpu_target_flags = ["--amdgpu-target=" +
@@ -785,24 +757,19 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hipsparse_lib}": rocm_libs["hipsparse"].file_name,
             "%{copy_rules}": "\n".join(copy_rules),
             "%{rocm_headers}": ('":rocm-include",\n' +
-                                '\t":rocfft-include",\n' +
-                                '\t":rocblas-include",\n' +
-                                '\t":miopen-include",\n' +
-                                '\t":rccl-include",\n' +
-                                '\t":hipsparse-include",'),
+                                '":rocfft-include",\n' +
+                                '":rocblas-include",\n' +
+                                '":miopen-include",\n' +
+                                '":rccl-include",\n' +
+                                '":hipsparse-include",'),
         },
     )
 
     # Set up crosstool/
-    tf_sysroot = _tf_sysroot(repository_ctx)
 
     cc = find_cc(repository_ctx)
 
-    host_compiler_includes = get_cxx_inc_directories(
-        repository_ctx,
-        cc,
-        tf_sysroot,
-    )
+    host_compiler_includes = get_cxx_inc_directories(repository_ctx, cc)
 
     host_compiler_prefix = "/usr/bin"
     if _GCC_HOST_COMPILER_PREFIX in repository_ctx.os.environ:
@@ -810,7 +777,6 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines = {}
 
-    rocm_defines["%{builtin_sysroot}"] = tf_sysroot
     rocm_defines["%{host_compiler_prefix}"] = host_compiler_prefix
 
     rocm_defines["%{linker_bin_path}"] = rocm_config.rocm_toolkit_path + "/hcc/compiler/bin"
@@ -840,28 +806,18 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
-    # # Enable a few more warnings that aren't part of -Wall.
-    # compiler_flag: "-Wunused-but-set-parameter"
-
-    # # But disable some that are problematic.
-    # compiler_flag: "-Wno-free-nonheap-object" # has false positives
-
-    rocm_defines["%{host_compiler_warnings}"] = to_list_of_strings(["-Wunused-but-set-parameter", "-Wno-free-nonheap-object"])
-
     rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
                                                                             _rocm_include_path(repository_ctx, rocm_config))
-
-    rocm_defines["%{linker_files}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
-
-    rocm_defines["%{win_linker_files}"] = ":empty"
-
-    # Add the dummy defines for windows...requried to pass the "verify_build_defines" check
-    rocm_defines.update(_get_win_rocm_defines(repository_ctx))
 
     verify_build_defines(rocm_defines)
 
     # Only expand template variables in the BUILD file
-    _tpl(repository_ctx, "crosstool:BUILD", rocm_defines)
+    _tpl(
+        repository_ctx,
+        "crosstool:BUILD.rocm",
+        rocm_defines,
+        out = "crosstool/BUILD",
+    )
 
     # No templating of cc_toolchain_config - use attributes and templatize the
     # BUILD file.
@@ -878,7 +834,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{cpu_compiler}": str(cc),
             "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
-            "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx,rocm_config),
+            "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx, rocm_config),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/hip/lib",

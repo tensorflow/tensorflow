@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/cuda.h"
 #elif TENSORFLOW_USE_ROCM
@@ -701,6 +702,9 @@ void NcclManager::LoopKernelLaunches(NcclStream* nccl_stream) {
         if (p->output) {
           recvbuff = const_cast<char*>(p->output->tensor_data().data());
           num_elements = p->output->NumElements();
+        } else {
+          // Operate in-place if no output (for the src node).
+          recvbuff = const_cast<void*>(sendbuff);
         }
         if (num_elements < 0) {
           p->done_callback(errors::Internal(

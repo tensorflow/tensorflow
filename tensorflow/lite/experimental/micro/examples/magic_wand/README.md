@@ -13,6 +13,7 @@ then outputs the gesture to the serial port.
 -   [Getting started](#getting-started)
 -   [Deploy to Arduino](#deploy-to-arduino)
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
+-   [Deploy to Adafruit devices](#deploy-to-adafruit)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 
 ## Deploy to Arduino
@@ -26,9 +27,14 @@ The sample has been tested with the following devices:
 
 ### Install the Arduino_TensorFlowLite library
 
-This example application is included as part of the official TensorFlow Lite
-Arduino library. To install it, open the Arduino library manager in
-`Tools -> Manage Libraries...` and search for `Arduino_TensorFlowLite`.
+Download the current nightly build of the library:
+[magic_wand.zip](https://storage.googleapis.com/tensorflow-nightly/github/tensorflow/tensorflow/lite/experimental/micro/tools/make/gen/arduino_x86_64/prj/magic_wand/magic_wand.zip)
+
+Next, import this zip file into the Arduino Desktop IDE by going to `Sketch
+->Include Library -> Add .ZIP Library...`. This example application is included
+as part of the official TensorFlow Lite Arduino library. To install it, open the
+Arduino library manager in `Tools -> Manage Libraries...` and search for
+`Arduino_TensorFlowLite`.
 
 ### Install and patch the accelerometer driver
 
@@ -311,6 +317,16 @@ SLOPE:
 
 To stop viewing the debug output with `screen`, hit `Ctrl+A`, immediately
 followed by the `K` key, then hit the `Y` key.
+
+## Deploy to Adafruit devices <a name="deploy-to-adafruit"></a>
+
+This sample has been tested with the following Adafruit devices. To deploy to
+each device, read the accompanying guide on Adafruit's website.
+
+| Device                                                                                     | Guide                                                                                                                            |
+|--------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
+| [Adafruit EdgeBadge](https://www.adafruit.com/product/4400)                                | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
+| [Adafruit TensorFlow Lite for Microcontrollers Kit](https://www.adafruit.com/product/4317) | [TensorFlow Lite for EdgeBadge Kit Quickstart](https://learn.adafruit.com/tensorflow-lite-for-edgebadge-kit-quickstart?view=all) |
 
 ## Run the tests on a development machine
 

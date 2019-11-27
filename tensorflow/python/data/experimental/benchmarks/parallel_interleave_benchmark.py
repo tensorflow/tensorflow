@@ -22,7 +22,7 @@ import time
 import numpy as np
 
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import sleep
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
@@ -52,7 +52,7 @@ def _make_fake_dataset_fn(initial_delay_us, remainder_delay_us):
     def make_dataset(time_us, num_elements):
       dataset = dataset_ops.Dataset.range(num_elements)
       if time_us > 0:
-        dataset = dataset.apply(sleep.sleep(time_us))
+        dataset = dataset.apply(testing.sleep(time_us))
       return dataset
 
     if not initial_delay_us:

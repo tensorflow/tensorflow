@@ -347,14 +347,13 @@ cuda_py_test(
     shard_count = 32,
     tags = [
         "no_oss",  # TODO(b/130369494): Investigate why it times out on OSS.
-        "nomsan",  # b/140958724
         # TODO(b/123307453): Add "multi_and_single_gpu",
     ],
 )
 
 cuda_py_test(
-    name = "multi_worker_callback_test",
-    srcs = ["multi_worker_callback_test.py"],
+    name = "multi_worker_callback_tf1_test",
+    srcs = ["multi_worker_callback_tf1_test.py"],
     additional_deps = [
         ":distribute",
         "//tensorflow/python:platform",
@@ -377,6 +376,18 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "multi_worker_callback_tf2_test",
+    srcs = ["multi_worker_callback_tf2_test.py"],
+    additional_deps = [
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
+    ],
+)
+
+cuda_py_test(
     name = "multi_worker_fault_tolerance_test",
     srcs = ["multi_worker_fault_tolerance_test.py"],
     additional_deps = [
@@ -394,7 +405,6 @@ cuda_py_test(
     # TODO(b/132384649): Enable once fixed.
     tags = [
         "no_oss",
-        "nomsan",  # b/140958724
     ],
 )
 
@@ -414,7 +424,6 @@ cuda_py_test(
         "manual",  # b/139844866
         "multi_and_single_gpu",
         "no_oss",
-        "nomsan",  # b/140958724
         "notap",
     ],
 )

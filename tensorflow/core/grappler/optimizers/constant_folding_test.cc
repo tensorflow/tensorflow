@@ -509,10 +509,12 @@ TEST_F(ConstantFoldingTest, ConstantPushDownBiasAdd) {
   Output parent5 = ops::BiasAdd(s.WithOpName("parent5"), c_mat, child5);
   Output child6 = ops::Add(s.WithOpName("child6"), x_vec, c_vec);
   Output parent6 = ops::BiasAdd(s.WithOpName("parent6"), c_mat, child6);
+  Output child7 = ops::Add(s.WithOpName("child7"), x_mat, c_vec);
+  Output parent7 = ops::BiasAdd(s.WithOpName("parent7"), child7, c_vec);
 
   GrapplerItem item;
   item.fetch = {"parent1",  "parent2", "parent3", "parent1a", "parent2a",
-                "parent3a", "parent4", "parent5", "parent6"};
+                "parent3a", "parent4", "parent5", "parent6",  "parent7"};
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   ConstantFolding optimizer(/*cpu_device=*/nullptr);
@@ -520,7 +522,7 @@ TEST_F(ConstantFoldingTest, ConstantPushDownBiasAdd) {
   Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(22, output.node_size());
+  EXPECT_EQ(24, output.node_size());
   for (const auto& node : output.node()) {
     if (node.name() == "child1" || node.name() == "child1a" ||
         node.name() == "child2" || node.name() == "child2a" ||

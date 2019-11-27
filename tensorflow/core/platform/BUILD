@@ -7,19 +7,18 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
-    "tf_additional_libdevice_srcs",
     "tf_additional_monitoring_srcs",
     "tf_additional_proto_hdrs",
     "tf_additional_tensor_coding_deps",
     "tf_additional_test_srcs",
+    "tf_fingerprint_deps",
     "tf_protobuf_compiler_deps",
     "tf_protobuf_deps",
-    "tf_fingerprint_deps",
 )
 load(
     "//tensorflow/core/platform:default/build_refactor.bzl",
@@ -30,6 +29,7 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_not_android",
     "tf_copts",  # @unused
 )
 load(
@@ -81,31 +81,6 @@ cc_library(
     srcs = ["abi.cc"],
     hdrs = ["abi.h"],
     deps = [":types"],
-)
-
-filegroup(
-    name = "annotation_hdrs",
-    srcs = [
-        "annotation.h",
-    ],
-    visibility = [
-        "//tensorflow/core:__pkg__",
-        "//tensorflow/python:__pkg__",
-    ],
-)
-
-cc_library(
-    name = "annotation",
-    srcs = ["annotation.cc"],
-    hdrs = ["annotation.h"],
-    visibility = [
-        "//perftools/accelerators/xprof:__subpackages__",
-        "//tensorflow:__subpackages__",
-    ],
-    deps = [
-        ":macros",
-        "@com_google_absl//absl/strings",
-    ],
 )
 
 cc_library(
@@ -399,6 +374,23 @@ cc_library(
 )
 
 cc_library(
+    name = "raw_coding",
+    hdrs = ["raw_coding.h"],
+    deps = [
+        ":byte_order",
+        ":types",
+    ],
+)
+
+cc_library(
+    name = "refcount",
+    hdrs = ["refcount.h"],
+    deps = [
+        ":logging",
+    ],
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
@@ -476,6 +468,7 @@ cc_library(
     hdrs = ["str_util.h"],
     deps = [
         ":logging",
+        ":macros",
         ":stringpiece",
         ":types",
         "@com_google_absl//absl/strings",
@@ -615,7 +608,6 @@ cc_binary(
     visibility = ["//visibility:private"],
     deps = [
         ":abi",
-        ":annotation",
         ":byte_order",
         ":cord",
         ":cpu_feature_guard",
@@ -636,7 +628,6 @@ cc_binary(
         ":png",
         ":prefetch",
         ":protobuf",
-        ":rocm_rocdl_path",
         ":scanner",
         ":setround",
         ":stacktrace",
@@ -653,7 +644,7 @@ cc_binary(
         ":threadpool_options",
         ":tstring",
         ":types",
-    ],
+    ] + if_not_android([":rocm_rocdl_path"]),
 )
 
 # --------------------------------------------------------------------------
@@ -762,7 +753,6 @@ filegroup(
             "profile_utils/**/*.h",
         ],
         exclude = [
-            "annotation.h",
             "dynamic_annotations.h",
             "denormal.h",
             "gif.h",
@@ -801,7 +791,6 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",
-            "annotation.cc",
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",
@@ -834,12 +823,6 @@ filegroup(
 )
 
 filegroup(
-    name = "legacy_libdevice_srcs",
-    srcs = tf_additional_libdevice_srcs(),
-    visibility = ["//tensorflow/core:__pkg__"],
-)
-
-filegroup(
     name = "legacy_monitoring_srcs",
     srcs = tf_additional_monitoring_srcs(),
     visibility = ["//tensorflow/core:__pkg__"],
@@ -868,10 +851,27 @@ exports_files(
 
 bzl_library(
     name = "build_config_root_bzl",
-    srcs = ["default/build_config_root.bzl"],
+    srcs = [
+        "build_config_root.bzl",
+        "default/build_config_root.bzl",
+    ],
 )
 
 bzl_library(
     name = "cuda_build_defs_bzl",
     srcs = ["default/cuda_build_defs.bzl"],
+)
+
+exports_files(
+    [
+        "stacktrace.h",
+        "cpu_info.h",
+        "types.h",
+        "macros.h",
+        "abi.h",
+        "logging.h",
+        "platform.h",
+        "byte_order.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )

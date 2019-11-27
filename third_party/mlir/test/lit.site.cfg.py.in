@@ -31,10 +31,10 @@ config.host_arch = "@HOST_ARCH@"
 config.mlir_src_root = "@MLIR_SOURCE_DIR@"
 config.mlir_obj_root = "@MLIR_BINARY_DIR@"
 config.mlir_tools_dir = "@MLIR_TOOLS_DIR@"
-config.linalg_test_lib_dir = "@MLIR_DIALECT_LINALG_INTEGRATION_TEST_LIB_DIR@"
+config.test_lib_dir = "@MLIR_TEST_LIB_DIR@"
 config.build_examples = @LLVM_BUILD_EXAMPLES@
 config.run_cuda_tests = @MLIR_CUDA_CONVERSIONS_ENABLED@
-config.cuda_wrapper_library_dir = "@MLIR_CUDA_WRAPPER_LIBRARY_DIR@"
+config.tools_lib_dir = "@MLIR_TOOLS_LIB_DIR@"
 config.enable_cuda_runner = @MLIR_CUDA_RUNNER_ENABLED@
 
 # Support substitution of the tools_dir with user parameters. This is

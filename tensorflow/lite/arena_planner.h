@@ -19,7 +19,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/graph_info.h"
 #include "tensorflow/lite/memory_planner.h"
 #include "tensorflow/lite/simple_memory_arena.h"
@@ -68,6 +68,7 @@ class ArenaPlanner : public MemoryPlanner {
   TfLiteStatus ExecuteAllocations(int first_node, int last_node) override;
   TfLiteStatus ReleaseNonPersistentMemory() override;
   TfLiteStatus AcquireNonPersistentMemory() override;
+  bool HasNonPersistentMemory() override;
 
   // Returns the base arena location for a given allocation type.
   std::intptr_t BasePointer(TfLiteAllocationType type);

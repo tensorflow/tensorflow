@@ -147,7 +147,7 @@ ParseResult ParseReplicateOp(OpAsmParser* parser, OperationState* state) {
   Region& body = *state->addRegion();
   if (ParseReplicateOpOperands(parser, state, &operands, &region_args,
                                &region_arg_types) ||
-      parser->parseOptionalAttributeDict(state->attributes) ||
+      parser->parseOptionalAttrDict(state->attributes) ||
       SetOperands(loc, parser, state, operands, region_arg_types, &n) ||
       parser->parseRegion(body, region_args, region_arg_types))
     return failure();

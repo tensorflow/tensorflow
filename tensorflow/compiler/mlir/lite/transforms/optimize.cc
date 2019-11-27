@@ -440,10 +440,16 @@ void Optimize::runOnFunction() {
   auto *ctx = &getContext();
   auto func = getFunction();
 
-  // Add the generated patterns to the list.
+  // Potentially the binary ops might be fused together, like hard_swish, thus
+  // we explore these potentially first and then fuse the binary ops with the
+  // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, &patterns);
   patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
-                  FuseFullyConnectedAndMul, FuseBinaryOpToFollowingConv2D,
+                  FuseFullyConnectedAndMul>(ctx);
+  applyPatternsGreedily(func, patterns);
+
+  // Fuse the binary ops with the following ops.
+  patterns.insert<FuseBinaryOpToFollowingConv2D,
                   FuseBinaryOpToFollowingDepthwiseConv2D,
                   FuseBinaryOpToFollowingFullyConnected>(ctx);
   applyPatternsGreedily(func, patterns);

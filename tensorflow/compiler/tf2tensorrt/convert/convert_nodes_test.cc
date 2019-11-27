@@ -2615,8 +2615,7 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     EXPECT_THAT(GetSpanForData<int32>(output_data[3]), ElementsAre(2));
   }
 }
-
-#endif  // CombinedNonMaxSuppression
+#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
 
 TEST_F(OpConverterTest, ConvertActivation) {
   {

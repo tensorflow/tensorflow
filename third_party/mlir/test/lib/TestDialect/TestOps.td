@@ -19,6 +19,7 @@
 #define TEST_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
 include "mlir/Analysis/InferTypeOpInterface.td"
 
@@ -206,7 +207,7 @@ def UpdateFloatElementsAttr : Pat<
 
 def SymbolRefOp : TEST_Op<"symbol_ref_attr"> {
   let arguments = (ins
-    Confined<SymbolRefAttr, [ReferToOp<"FuncOp">]>:$symbol
+    Confined<FlatSymbolRefAttr, [ReferToOp<"FuncOp">]>:$symbol
   );
 }
 
@@ -232,7 +233,7 @@ def SizedRegionOp : TEST_Op<"sized_region_op", []> {
 
 def ConversionCallOp : TEST_Op<"conversion_call_op",
     [CallOpInterface]> {
-  let arguments = (ins Variadic<AnyType>:$inputs, SymbolRefAttr:$callee);
+  let arguments = (ins Variadic<AnyType>:$inputs, FlatSymbolRefAttr:$callee);
   let results = (outs Variadic<AnyType>);
 
   let extraClassDeclaration = [{
@@ -241,7 +242,7 @@ def ConversionCallOp : TEST_Op<"conversion_call_op",
 
     /// Return the callee of this operation.
     CallInterfaceCallable getCallableForCallee() {
-      return getAttrOfType<SymbolRefAttr>("callee");
+      return getAttrOfType<FlatSymbolRefAttr>("callee");
     }
   }];
 }
@@ -395,8 +396,9 @@ def I32ElementsAttrOp : TEST_Op<"i32ElementsAttr"> {
   let arguments = (ins I32ElementsAttr:$attr);
 }
 
-def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if",
-    [DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
+def OpWithInferTypeInterfaceOp : TEST_Op<"op_with_infer_type_if", [
+    DeclareOpInterfaceMethods<InferTypeOpInterface>,
+    InferTypeOpInterfaceDefault]> {
   let arguments = (ins AnyTensor, AnyTensor);
   let results = (outs AnyTensor);
 }
@@ -406,6 +408,34 @@ def IsNotScalar : Constraint<CPred<"$0.getType().getRank() != 0">>;
 def UpdateAttr : Pat<(I32ElementsAttrOp $attr),
                      (I32ElementsAttrOp ConstantAttr<I32ElementsAttr, "0">),
                      [(IsNotScalar $attr)]>;
+
+def TestBranchOp : TEST_Op<"br", [Terminator]> {
+  let arguments = (ins Variadic<AnyType>:$operands);
+}
+
+def AttrSizedOperandOp : TEST_Op<"attr_sized_operands",
+                                 [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+}
+
+def AttrSizedResultOp : TEST_Op<"attr_sized_results",
+                                [AttrSizedResultSegments]> {
+  let arguments = (ins
+    I32ElementsAttr:$result_segment_sizes
+  );
+  let results = (outs
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d
+  );
+}
 
 //===----------------------------------------------------------------------===//
 // Test Patterns
@@ -466,6 +496,30 @@ def OpInterleavedOperandAttribute2 : TEST_Op<"interleaved_operand_attr2"> {
     I64Attr:$attr2
   );
 }
+
+def ManyArgsOp : TEST_Op<"many_arguments"> {
+  let arguments = (ins
+    I32:$input1, I32:$input2, I32:$input3, I32:$input4, I32:$input5,
+    I32:$input6, I32:$input7, I32:$input8, I32:$input9,
+    I64Attr:$attr1, I64Attr:$attr2, I64Attr:$attr3, I64Attr:$attr4,
+    I64Attr:$attr5, I64Attr:$attr6, I64Attr:$attr7, I64Attr:$attr8,
+    I64Attr:$attr9
+  );
+}
+
+// Test that DRR does not blow up when seeing lots of arguments.
+def : Pat<(ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "42">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9),
+          (ManyArgsOp
+            $input1, $input2, $input3, $input4, $input5,
+            $input6, $input7, $input8, $input9,
+            ConstantAttr<I64Attr, "24">,
+            $attr2, $attr3, $attr4, $attr5, $attr6,
+            $attr7, $attr8, $attr9)>;
 
 // Test that we can capture and reference interleaved operands and attributes.
 def : Pat<(OpInterleavedOperandAttribute1 $input1, $attr1, $input2, $attr2),
@@ -664,7 +718,7 @@ def MultiResultOpKind5: I64EnumAttrCase<"kind5", 5>;
 def MultiResultOpKind6: I64EnumAttrCase<"kind6", 6>;
 
 def MultiResultOpEnum: I64EnumAttr<
-  "Multi-result op kinds", "", [
+  "MultiResultOpEnum", "Multi-result op kinds", [
     MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
     MultiResultOpKind4, MultiResultOpKind5, MultiResultOpKind6
   ]>;
@@ -968,6 +1022,18 @@ def PolyForOp : TEST_Op<"polyfor">
 
   let regions = (region SizedRegion<1>:$region);
   let parser = [{ return ::parse$cppClass(parser, result); }];
+}
+
+//===----------------------------------------------------------------------===//
+// Test OpAsmInterface.
+
+def AsmInterfaceOp : TEST_Op<"asm_interface_op"> {
+  let results = (outs AnyType:$first, Variadic<AnyType>:$middle_results,
+                      AnyType);
+}
+
+def AsmDialectInterfaceOp : TEST_Op<"asm_dialect_interface_op"> {
+  let results = (outs AnyType);
 }
 
 #endif // TEST_OPS

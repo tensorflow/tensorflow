@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate.h"
 
 #include "absl/memory/memory.h"
-#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
@@ -43,15 +42,14 @@ using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 
 static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
-    std::unique_ptr<llvm::MemoryBuffer> input,
-    absl::string_view debug_info_file, absl::string_view input_arrays,
-    absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    bool add_pseudo_input_nodes, mlir::MLIRContext* context) {
+    llvm::StringRef input, absl::string_view debug_info_file,
+    absl::string_view input_arrays, absl::string_view input_dtypes,
+    absl::string_view input_shapes, absl::string_view output_arrays,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
   GraphDef graphdef;
-  TF_RETURN_IF_ERROR(tensorflow::LoadProtoFromBuffer(
-      {input->getBufferStart(), input->getBufferSize()}, &graphdef));
+  TF_RETURN_IF_ERROR(
+      tensorflow::LoadProtoFromBuffer({input.data(), input.size()}, &graphdef));
 
   GraphDebugInfo debug_info;
   if (!debug_info_file.empty()) {
@@ -63,7 +61,6 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
   specs.convert_legacy_fed_inputs = convert_legacy_fed_inputs;
   specs.graph_as_function = graph_as_function;
   specs.upgrade_legacy = upgrade_legacy;
-  specs.add_pseudo_input_nodes = add_pseudo_input_nodes;
   TF_RETURN_IF_ERROR(ParseInputArrayInfo(input_arrays, input_dtypes,
                                          input_shapes, &specs.inputs));
   TF_RETURN_IF_ERROR(ParseOutputArrayInfo(output_arrays, &specs.output_arrays,
@@ -91,17 +88,15 @@ static StatusOr<mlir::OwningModuleRef> GraphdefToMlirImport(
 }
 
 mlir::OwningModuleRef GraphdefToMlirTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input,
-    absl::string_view debug_info_file, absl::string_view input_arrays,
-    absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    bool add_pseudo_input_nodes, mlir::MLIRContext* context) {
+    llvm::StringRef input, absl::string_view debug_info_file,
+    absl::string_view input_arrays, absl::string_view input_dtypes,
+    absl::string_view input_shapes, absl::string_view output_arrays,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
-      std::move(input), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      add_pseudo_input_nodes, context);
+      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
+      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
+      graph_as_function, upgrade_legacy, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;
@@ -114,20 +109,16 @@ mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
-  SessionOptions session_options;
-  RunOptions run_options;
-  tensorflow::SavedModelBundle bundle;
-  auto load_status = LoadSavedModel(
-      session_options, run_options,
-      std::string(saved_model_dir.data(), saved_model_dir.length()), tags,
-      &bundle);
+  tensorflow::SavedModelV2Bundle bundle;
+  auto load_status = tensorflow::SavedModelV2Bundle::Load(
+      std::string(saved_model_dir.data(), saved_model_dir.length()), &bundle);
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model '" << saved_model_dir
                << "': " << load_status;
     return nullptr;
   }
 
-  auto module_or = ConvertSavedModelToMlir(bundle, context, exported_names);
+  auto module_or = ConvertSavedModelToMlir(&bundle, context, exported_names);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
     return nullptr;
@@ -136,17 +127,15 @@ mlir::OwningModuleRef SavedModelToMlirImport(
 }
 
 mlir::OwningModuleRef GraphdefToSplattedMlirTranslateFunction(
-    std::unique_ptr<llvm::MemoryBuffer> input,
-    absl::string_view debug_info_file, absl::string_view input_arrays,
-    absl::string_view input_dtypes, absl::string_view input_shapes,
-    absl::string_view output_arrays, bool prune_unused_nodes,
-    bool convert_legacy_fed_inputs, bool graph_as_function, bool upgrade_legacy,
-    bool add_pseudo_input_nodes, mlir::MLIRContext* context) {
+    llvm::StringRef input, absl::string_view debug_info_file,
+    absl::string_view input_arrays, absl::string_view input_dtypes,
+    absl::string_view input_shapes, absl::string_view output_arrays,
+    bool prune_unused_nodes, bool convert_legacy_fed_inputs,
+    bool graph_as_function, bool upgrade_legacy, mlir::MLIRContext* context) {
   auto module_or = GraphdefToMlirImport(
-      std::move(input), debug_info_file, input_arrays, input_dtypes,
-      input_shapes, output_arrays, prune_unused_nodes,
-      convert_legacy_fed_inputs, graph_as_function, upgrade_legacy,
-      add_pseudo_input_nodes, context);
+      input, debug_info_file, input_arrays, input_dtypes, input_shapes,
+      output_arrays, prune_unused_nodes, convert_legacy_fed_inputs,
+      graph_as_function, upgrade_legacy, context);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "Graph import failed: " << module_or.status();
     return nullptr;

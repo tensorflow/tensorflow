@@ -44,6 +44,7 @@ tf_py_test(
         ":impl",
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python/autograph/core:test_lib",
         "//tensorflow/python/autograph/utils",
     ],
 )

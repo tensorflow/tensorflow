@@ -65,7 +65,11 @@ TEST_F(QuantizationUtilsTest, NumElements) {
 
   tensor.shape = {};
   EXPECT_EQ(kTfLiteOk, NumElements(tensor, &num_elements));
+  // Scalars with empty shape have 1 element.
   EXPECT_EQ(num_elements, 1);
+
+  tensor.shape = {1, 2, 3, -1};
+  EXPECT_EQ(kTfLiteError, NumElements(tensor, &num_elements));
 }
 
 TEST_F(QuantizationUtilsTest, GetAsymmetricQuantizationParamsUnitRange) {
@@ -711,6 +715,27 @@ TEST_F(QuantizationUtilsTest, SymmetricPerLayerBiasQuantize) {
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
 }
 
+TEST_F(QuantizationUtilsTest, GetEffectiveScale) {
+  // Create data.
+  auto model = absl::make_unique<ModelT>();
+  auto subgraph = absl::make_unique<SubGraphT>();
+  auto tensor = absl::make_unique<TensorT>();
+  auto op = absl::make_unique<OperatorT>();
+  tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  tensor->quantization->scale.push_back(3.0);
+  op->inputs.push_back(0);
+
+  // Wire the model.
+  subgraph->operators.push_back(std::move(op));
+  model->subgraphs.push_back(std::move(subgraph));
+  model->subgraphs[0]->tensors.push_back(std::move(tensor));
+
+  // Call and verify.
+  EXPECT_EQ(GetEffectiveScale(model.get(), model->subgraphs[0].get(), 0, {0},
+                              {}, {5.0}),
+            15.0);
+}
+
 TEST_F(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   // Create data.
   auto model = absl::make_unique<ModelT>();
@@ -741,6 +766,12 @@ TEST_F(QuantizationUtilsTest, SymmetricPerChannelBiasQuantize) {
   EXPECT_THAT(model->buffers[model->subgraphs[0]->tensors[0]->buffer]->data,
               ElementsAreArray({16, 0, 0, 0, 2, 0, 0, 0}));
   EXPECT_EQ(model->subgraphs[0]->tensors[0]->type, TensorType_INT32);
+}
+
+TEST_F(QuantizationUtilsTest, ExtendToPowerOfTwo) {
+  EXPECT_EQ(GetPowerOfTwoScale(-1.0, 1.0), 0);
+  EXPECT_EQ(GetPowerOfTwoScale(-10.0, 10.0), 4);
+  EXPECT_EQ(GetPowerOfTwoScale(3.0, 10.0), 4);
 }
 
 }  // namespace

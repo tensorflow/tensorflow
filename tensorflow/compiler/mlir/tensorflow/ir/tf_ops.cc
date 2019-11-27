@@ -38,6 +38,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
@@ -109,12 +110,40 @@ static inline bool HasRankAtMost(Value *value, int64_t rank) {
 static bool AreCastCompatible(Type a, Type b) {
   if (TensorCastOp::areCastCompatible(a, b)) return true;
 
+  // Resource types may optionally contain subtypes information that does not
+  // match. Check subtypes compatibility when possible, otherwise treat them as
+  // compatible.
+  auto a_or_element_type = getElementTypeOrSelf(a);
+  auto b_or_element_type = getElementTypeOrSelf(b);
+
+  auto a_kind = a_or_element_type.getKind();
+  auto b_kind = b_or_element_type.getKind();
+
+  if (a_kind == TensorFlowTypes::RESOURCE &&
+      b_kind == TensorFlowTypes::RESOURCE) {
+    auto a_resource_type = a_or_element_type.dyn_cast<ResourceType>();
+    auto b_resource_type = b_or_element_type.dyn_cast<ResourceType>();
+    bool a_has_subtype = !a_resource_type.getSubtypes().empty();
+    bool b_has_subtype = !b_resource_type.getSubtypes().empty();
+
+    if (!a_has_subtype || !b_has_subtype) return true;
+
+    assert(a_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+    assert(b_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+
+    return TensorCastOp::areCastCompatible(
+        a_resource_type.getSubtypes().front(),
+        b_resource_type.getSubtypes().front());
+  }
+
   // Variant types may optionally contain subtypes information that need not
   // match.  It is also not possible to compare subtypes for compatibility as
-  // their interpretation depends on the ops operating on them.  So, accept all
+  // their interpretation depends on the ops operating on them. So, accept all
   // pairs of variant types.
-  return getElementTypeOrSelf(a).getKind() == TensorFlowTypes::VARIANT &&
-         getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
+  return a_kind == TensorFlowTypes::VARIANT &&
+         b_kind == TensorFlowTypes::VARIANT;
 }
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
@@ -132,10 +161,14 @@ static Type DeduceEqualCmpOpType(Builder *builder, Location loc, Value *x,
     if (incompatible_shape_error.getValue()) {
       mlir::emitError(loc, "non-broadcastable operands");
     } else {
-      result_type = UnrankedTensorType::get(builder->getI1Type());
+      return UnrankedTensorType::get(builder->getI1Type());
     }
   }
-  return result_type;
+
+  auto ranked_type = result_type.dyn_cast<RankedTensorType>();
+  if (!ranked_type) return UnrankedTensorType::get(builder->getI1Type());
+
+  return RankedTensorType::get(ranked_type.getShape(), builder->getI1Type());
 }
 
 // Returns dimension index for the given TensorFlow axis that supports negative
@@ -306,6 +339,24 @@ void AssertOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// BatchMatMulOp
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulToMatMul>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// BatchMatMulV2Op
+//===----------------------------------------------------------------------===//
+
+void BatchMatMulV2Op::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<BatchMatMulV2ToMatMul>(context);
+}
+
+//===----------------------------------------------------------------------===//
 // BiasAddOp
 //===----------------------------------------------------------------------===//
 
@@ -418,14 +469,6 @@ template <typename OpT,
 static LogicalResult Verify(OpT op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
-
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
 
   int axis_idx = std::is_same<OpT, ConcatOp>() ? 0 : 1;
   Value *axis = *op.getODSOperands(axis_idx).begin();
@@ -743,6 +786,19 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// FillOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(FillOp op) {
+  if (!IsOfRankOrUnranked(op.dims(), 1))
+    return op.emitOpError() << "requires dims to be a 1D tensor";
+  if (!IsOfRankOrUnranked(op.value(), 0))
+    return op.emitOpError() << "requires value to be a scalar";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // FusedBatchNormOp
 //===----------------------------------------------------------------------===//
 
@@ -1004,14 +1060,6 @@ static LogicalResult Verify(OneHotOp op) {
 static LogicalResult Verify(PackOp op) {
   // TODO(hinsu): Convert variadic length attributes to derived attributes.
   Operation::operand_range values = op.values();
-
-  auto num_values = std::distance(values.begin(), values.end());
-  int64_t attr_N = op.N().getSExtValue();
-  if (num_values != attr_N) {
-    return op.emitOpError()
-           << "requires attribute 'N' to match the number of inputs; expected: "
-           << num_values << " Found: " << attr_N;
-  }
 
   if (failed(VerifyTypesCompatibility(values,
                                       /*mask_one_dim=*/false,
@@ -1325,17 +1373,17 @@ void ShapeOp::build(Builder *builder, OperationState &result, Value *input,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(ShapeNOp op) {
-  const uint64_t n_attr = op.N().getZExtValue();
+  const size_t num_tensors = op.N();
 
-  if (op.getNumOperands() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " operand(s), got "
+  if (op.getNumOperands() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " operand(s), got "
                             << op.getNumOperands() << " operand(s)";
 
-  if (op.getNumResults() != n_attr)
-    return op.emitOpError() << "requires " << n_attr << " result(s), got "
+  if (op.getNumResults() != num_tensors)
+    return op.emitOpError() << "requires " << num_tensors << " result(s), got "
                             << op.getNumResults() << " result(s)";
 
-  for (auto i : llvm::seq<uint64_t>(0, n_attr)) {
+  for (auto i : llvm::seq<uint64_t>(0, num_tensors)) {
     auto verification = VerifyShapeOperandAndResult(
         op, op.getOperand(i)->getType(), op.getResult(i)->getType(), i);
     if (failed(verification)) return verification;
