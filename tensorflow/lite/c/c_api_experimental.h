@@ -12,11 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_EXPERIMENTAL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_EXPERIMENTAL_H_
+#ifndef TENSORFLOW_LITE_C_C_API_EXPERIMENTAL_H_
+#define TENSORFLOW_LITE_C_C_API_EXPERIMENTAL_H_
 
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/experimental/c/c_api.h"
+#include "tensorflow/lite/c/c_api.h"
 
 #ifdef __cplusplus
 extern "C" {

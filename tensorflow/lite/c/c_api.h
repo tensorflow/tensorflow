@@ -12,28 +12,59 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_H_
+#ifndef TENSORFLOW_LITE_C_C_API_H_
+#define TENSORFLOW_LITE_C_C_API_H_
 
 #include <stdarg.h>
 #include <stdint.h>
 
-// Eventually the various C APIs defined in context.h will be migrated into
-// the appropriate /c/c_api*.h header. For now, we pull in existing definitions
-// for convenience.
-#include "c_api_types.h"
+#include "common.h"
 
 // --------------------------------------------------------------------------
-// Experimental C API for TensorFlowLite.
-//
-// The API leans towards simplicity and uniformity instead of convenience, as
-// most usage will be by language-specific wrappers.
-//
-// Conventions:
-// * We use the prefix TfLite for everything in the API.
-// * size_t is used to represent byte sizes of objects that are
-//   materialized in the address space of the calling process.
-// * int is used as an index into arrays.
+/// C API for TensorFlow Lite.
+///
+/// The API leans towards simplicity and uniformity instead of convenience, as
+/// most usage will be by language-specific wrappers. It provides largely the
+/// same set of functionality as that of the C++ TensorFlow Lite `Interpreter`
+/// API, but is useful for shared libraries where having a stable ABI boundary
+/// is important.
+///
+/// Conventions:
+/// * We use the prefix TfLite for everything in the API.
+/// * size_t is used to represent byte sizes of objects that are
+///   materialized in the address space of the calling process.
+/// * int is used as an index into arrays.
+///
+/// Usage:
+/// <pre><code>
+/// // Create the model and interpreter options.
+/// TfLiteModel* model = TfLiteModelCreateFromFile("/path/to/model.tflite");
+/// TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();
+/// TfLiteInterpreterOptionsSetNumThreads(options, 2);
+///
+/// // Create the interpreter.
+/// TfLiteInterpreter* interpreter = TfLiteInterpreterCreate(model, options);
+///
+/// // Allocate tensors and populate the input tensor data.
+/// TfLiteInterpreterAllocateTensors(interpreter);
+/// TfLiteTensor* input_tensor =
+///     TfLiteInterpreterGetInputTensor(interpreter, 0);
+/// TfLiteTensorCopyFromBuffer(input_tensor, input.data(),
+///                            input.size() * sizeof(float));
+///
+/// // Execute inference.
+/// TfLiteInterpreterInvoke(interpreter);
+///
+/// // Extract the output tensor data.
+/// TfLiteTensor* output_tensor =
+//      TfLiteInterpreterGetInputTensor(interpreter, 0);
+/// TfLiteTensorCopyToBuffer(output_tensor, output.data(),
+///                          output.size() * sizeof(float));
+///
+/// // Dispose of the model and interpreter objects.
+/// TfLiteInterpreterDelete(interpreter);
+/// TfLiteInterpreterOptionsDelete(options);
+/// TfLiteModelDelete(model);
 
 #ifdef SWIG
 #define TFL_CAPI_EXPORT
@@ -235,4 +266,4 @@ TFL_CAPI_EXPORT extern TfLiteStatus TfLiteTensorCopyToBuffer(
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_H_
+#endif  // TENSORFLOW_LITE_C_C_API_H_

@@ -12,16 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_INTERNAL_H_
-#define TENSORFLOW_LITE_EXPERIMENTAL_C_C_API_INTERNAL_H_
+#ifndef TENSORFLOW_LITE_C_C_API_INTERNAL_H_
+#define TENSORFLOW_LITE_C_C_API_INTERNAL_H_
 
-#include "tensorflow/lite/experimental/c/c_api.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
 
 // Internal structures used by the C API. These are likely to change and should
-// not be depended on.
+// not be depended on directly by any C API clients.
 //
 // NOTE: This header does not follow C conventions and does not define a C API.
 // It is effectively an (internal) implementation detail of the C API.
