@@ -128,9 +128,9 @@ struct Dims {
 
 class RuntimeShape {
  public:
-  // Shapes with dimensions up to 4 are stored directly in the structure, while
+  // Shapes with dimensions up to 5 are stored directly in the structure, while
   // larger shapes are separately allocated.
-  static constexpr int kMaxSmallSize = 4;
+  static constexpr int kMaxSmallSize = 5;
 
   RuntimeShape& operator=(RuntimeShape const&) = delete;
 
@@ -209,6 +209,8 @@ class RuntimeShape {
   }
   // The caller must ensure that the shape is no bigger than 4-D.
   inline const int32* DimsDataUpTo4D() const { return dims_; }
+  // The caller must ensure that the shape is no bigger than 5-D.
+  inline const int32* DimsDataUpTo5D() const { return dims_; }
 
   inline void Resize(int dimensions_count) {
     if (size_ > kMaxSmallSize) {
@@ -384,6 +386,17 @@ inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3) {
   TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
   TFLITE_DCHECK(i3 >= 0 && i3 < dims_data[3]);
   return ((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3;
+}
+
+inline int Offset(const RuntimeShape& shape, int i0, int i1, int i2, int i3, int i4) {
+  TFLITE_DCHECK_EQ(shape.DimensionsCount(), 5);
+  const int* dims_data = reinterpret_cast<const int*>(shape.DimsDataUpTo5D());
+  TFLITE_DCHECK(i0 >= 0 && i0 < dims_data[0]);
+  TFLITE_DCHECK(i1 >= 0 && i1 < dims_data[1]);
+  TFLITE_DCHECK(i2 >= 0 && i2 < dims_data[2]);
+  TFLITE_DCHECK(i3 >= 0 && i3 < dims_data[3]);
+  TFLITE_DCHECK(i4 >= 0 && i4 < dims_data[4]);
+  return (((i0 * dims_data[1] + i1) * dims_data[2] + i2) * dims_data[3] + i3) * dims_data[4] + i4;
 }
 
 inline int Offset(const Dims<4>& dims, int i0, int i1, int i2, int i3) {
@@ -951,9 +964,9 @@ struct PackParams {
 
 struct PadParams {
   int8 left_padding_count;
-  int32 left_padding[4];
+  int32 left_padding[5];
   int8 right_padding_count;
-  int32 right_padding[4];
+  int32 right_padding[5];
   ResizingCategory resizing_category;
 };
 

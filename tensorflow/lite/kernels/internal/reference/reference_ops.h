@@ -2160,60 +2160,67 @@ inline void PadImpl(const tflite::PadParams& op_params,
                     const RuntimeShape& input_shape, const T* input_data,
                     const P* pad_value_ptr, const RuntimeShape& output_shape,
                     T* output_data) {
+  TFLITE_DCHECK_LE(op_params.left_padding_count, 5);
+  TFLITE_DCHECK_LE(op_params.right_padding_count, 5);
   const RuntimeShape ext_input_shape =
-      RuntimeShape::ExtendedShape(4, input_shape);
+      RuntimeShape::ExtendedShape(5, input_shape);
   const RuntimeShape ext_output_shape =
-      RuntimeShape::ExtendedShape(4, output_shape);
-  TFLITE_DCHECK_LE(op_params.left_padding_count, 4);
-  TFLITE_DCHECK_LE(op_params.right_padding_count, 4);
+      RuntimeShape::ExtendedShape(5, output_shape);
 
-  // Runtime calls are currently fixed at 4 dimensions. Copy inputs so
-  // we can pad them to 4 dims (yes, we are "padding the padding").
-  std::vector<int> left_padding_copy(4, 0);
+  // Runtime calls are currently fixed at 5 dimensions. Copy inputs so
+  // we can pad them to 5 dims (yes, we are "padding the padding").
+  std::vector<int> left_padding_copy(5, 0);
   for (int i = 0; i < op_params.left_padding_count; ++i) {
-    left_padding_copy[i + 4 - op_params.left_padding_count] =
+    left_padding_copy[i + 5 - op_params.left_padding_count] =
         op_params.left_padding[i];
   }
-  std::vector<int> right_padding_copy(4, 0);
+  std::vector<int> right_padding_copy(5, 0);
   for (int i = 0; i < op_params.right_padding_count; ++i) {
-    right_padding_copy[i + 4 - op_params.right_padding_count] =
+    right_padding_copy[i + 5 - op_params.right_padding_count] =
         op_params.right_padding[i];
   }
 
   const int output_batch = ext_output_shape.Dims(0);
-  const int output_height = ext_output_shape.Dims(1);
-  const int output_width = ext_output_shape.Dims(2);
-  const int output_depth = ext_output_shape.Dims(3);
+  const int output_depth = ext_output_shape.Dims(1);
+  const int output_height = ext_output_shape.Dims(2);
+  const int output_width = ext_output_shape.Dims(3);
+  const int output_channel = ext_output_shape.Dims(4);
 
   const int left_b_padding = left_padding_copy[0];
-  const int left_h_padding = left_padding_copy[1];
-  const int left_w_padding = left_padding_copy[2];
-  const int left_d_padding = left_padding_copy[3];
+  const int left_d_padding = left_padding_copy[1];
+  const int left_h_padding = left_padding_copy[2];
+  const int left_w_padding = left_padding_copy[3];
+  const int left_c_padding = left_padding_copy[4];
 
   const int right_b_padding = right_padding_copy[0];
-  const int right_h_padding = right_padding_copy[1];
-  const int right_w_padding = right_padding_copy[2];
-  const int right_d_padding = right_padding_copy[3];
+  const int right_d_padding = right_padding_copy[1];
+  const int right_h_padding = right_padding_copy[2];
+  const int right_w_padding = right_padding_copy[3];
+  const int right_c_padding = right_padding_copy[4];
 
   const T pad_value = *pad_value_ptr;
 
   const T* in_ptr = input_data;
   T* out_ptr = output_data;
   for (int out_b = 0; out_b < output_batch; ++out_b) {
-    for (int out_h = 0; out_h < output_height; ++out_h) {
-      for (int out_w = 0; out_w < output_width; ++out_w) {
-        for (int out_d = 0; out_d < output_depth; ++out_d) {
-          if (out_b < left_b_padding ||
-              out_b >= output_batch - right_b_padding ||
-              out_h < left_h_padding ||
-              out_h >= output_height - right_h_padding ||
-              out_w < left_w_padding ||
-              out_w >= output_width - right_w_padding ||
-              out_d < left_d_padding ||
-              out_d >= output_depth - right_d_padding) {
-            *out_ptr++ = pad_value;
-          } else {
-            *out_ptr++ = *in_ptr++;
+    for (int out_d = 0; out_d < output_depth; ++out_d) {
+      for (int out_h = 0; out_h < output_height; ++out_h) {
+        for (int out_w = 0; out_w < output_width; ++out_w) {
+          for (int out_c = 0; out_c < output_channel; ++out_c) {
+            if (out_b < left_b_padding ||
+                out_b >= output_batch - right_b_padding ||
+                out_d < left_d_padding ||
+                out_d >= output_depth - right_d_padding ||
+                out_h < left_h_padding ||
+                out_h >= output_height - right_h_padding ||
+                out_w < left_w_padding ||
+                out_w >= output_width - right_w_padding ||
+                out_c < left_c_padding ||
+                out_c >= output_channel - right_c_padding) {
+              *out_ptr++ = pad_value;
+            } else {
+              *out_ptr++ = *in_ptr++;
+            }
           }
         }
       }

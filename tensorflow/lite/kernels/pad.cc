@@ -106,8 +106,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                       op_context.constant_values->type);
   }
 
-  // TODO(nupurgarg): Current implementations rely on the inputs being <= 4D.
-  TF_LITE_ENSURE(context, op_context.dims <= 4);
+  // TODO(guydavid): Current implementations rely on the inputs being <= 5D.
+  TF_LITE_ENSURE(context, op_context.dims <= 5);
 
   // Exit early if paddings is a non-const tensor. Set output tensor to
   // dynamic so output size can be determined in Eval.
@@ -140,8 +140,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   const int32* paddings_data = GetTensorData<int32>(op_context.paddings);
 
   // TODO(nupurgarg): Change kernel implementation to use padding arrays in
-  // forward order (depth, width, height, batch).
-  // Build paddings in order of int[] = {batch, height, width, depth} to match
+  // forward order (channel, width, height, depth, batch).
+  // Build paddings in order of int[] = {batch, depth, height, width, channel} to match
   // kernel implementation of Pad in reference_ops.h and optimized_ops.h.
   for (int idx = op_context.dims - 1; idx >= 0; --idx) {
     before_padding.push_back(paddings_data[idx * 2]);
@@ -149,8 +149,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
 #define TF_LITE_PAD(type, op_name, scalar, pad_value)                     \
-  TF_LITE_ENSURE(context, before_padding.size() <= 4);                    \
-  TF_LITE_ENSURE(context, after_padding.size() <= 4);                     \
+  TF_LITE_ENSURE(context, before_padding.size() <= 5);                    \
+  TF_LITE_ENSURE(context, after_padding.size() <= 5);                     \
   tflite::PadParams op_params;                                            \
   op_params.left_padding_count = before_padding.size();                   \
   op_params.right_padding_count = after_padding.size();                   \

@@ -189,7 +189,7 @@ TEST(PadOpTest, TooManyDimensions) {
       PadOpConstModel({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
                       {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9},
                       {TensorType_FLOAT32}),
-      "dims <= 4");
+      "dims <= 5");
 }
 
 TEST(PadOpTest, UnequalDimensions) {
@@ -426,7 +426,7 @@ TEST(PadV2OpTest, TooManyDimensions) {
   EXPECT_DEATH(f({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
                  {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9}, 0.0,
                  {TensorType_FLOAT32}),
-               "dims <= 4");
+               "dims <= 5");
 }
 
 TEST(PadV2OpTest, UnequalDimensions) {
@@ -515,6 +515,17 @@ TEST(PadV2OpTest, SimpleConstInt32ValuedTest) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
                                                5, 5, 5, 5, 5}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, Simple5DConstFloat32ValuedTest) {
+  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 1, 1, 2, 1}}, {5, 2},
+                             {0, 1, 1, 0, 0, 0, 1, 1, 0, 1}, 5, {TensorType_FLOAT32});
+  m.SetInput({3, 3});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 3, 5, 3,
+                                               5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5,
+                                               5, 5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 2, 1, 4, 2}));
 }
 
 TEST(PadV2OpTest, SimpleDynamicTest) {
