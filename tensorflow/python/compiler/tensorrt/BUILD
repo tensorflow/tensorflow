@@ -169,9 +169,15 @@ cuda_py_test(
         "//tensorflow/python/estimator:estimator",
     ],
     data = [
-        "test/testdata/checkpoint",
-        "test/testdata/model.ckpt-46900.data-00000-of-00001",
-        "test/testdata/model.ckpt-46900.index",
+        "test/testdata/mnist/checkpoint",
+        "test/testdata/mnist/model.ckpt-46900.data-00000-of-00001",
+        "test/testdata/mnist/model.ckpt-46900.index",
+        "test/testdata/mnist/gen_tftrt_model.py",
+        "test/testdata/mnist/tftrt_2.0_saved_model/saved_model.pb",
+        "test/testdata/mnist/tftrt_2.0_saved_model/assets/trt-serialized-engine.TRTEngineOp_0",
+        "test/testdata/mnist/tftrt_2.0_saved_model/variables/variables.data-00000-of-00002",
+        "test/testdata/mnist/tftrt_2.0_saved_model/variables/variables.data-00001-of-00002",
+        "test/testdata/mnist/tftrt_2.0_saved_model/variables/variables.index",
     ],
     tags = [
         "no_cuda_on_cpu_tap",
