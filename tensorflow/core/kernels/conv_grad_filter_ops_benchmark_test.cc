@@ -38,20 +38,21 @@ static Tensor MakeRandomTensor(const TensorShape& shape) {
 
 template <typename T>
 static Graph* Conv2DBackpropFilter(int batch, int height, int width,
-                                   int in_depth, int filter_w, int filter_h,
-                                   int out_depth, TensorFormat data_format) {
+                                   int in_depth, int filter_h, int filter_w,
+                                   int out_depth, int stride_h, int stride_w,
+                                   TensorFormat data_format) {
   auto* graph = new Graph(OpRegistry::Global());
 
   Tensor input_t = data_format == FORMAT_NHWC
                        ? MakeRandomTensor<T>({batch, height, width, in_depth})
                        : MakeRandomTensor<T>({batch, in_depth, height, width});
   Tensor filter_t =
-      MakeRandomTensor<T>({filter_w, filter_h, in_depth, out_depth});
+      MakeRandomTensor<T>({filter_h, filter_w, in_depth, out_depth});
 
   // Compute dimensions for the `out_backprop` tensor.
   Conv2DParameters params;
   params.dilations = {1, 1, 1, 1};
-  params.strides = {1, 1, 1, 1};
+  params.strides = {1, stride_h, stride_w, 1};
   params.padding = Padding::SAME;
   params.data_format = data_format;
 
@@ -83,19 +84,13 @@ static Graph* Conv2DBackpropFilter(int batch, int height, int width,
           .Input(filter_dims)
           .Input(backprop)
           .Attr("T", DataTypeToEnum<T>::value)
-          .Attr("strides", {1, 1, 1, 1})
+          .Attr("strides", {1, stride_h, stride_w, 1})
           .Attr("padding", "SAME")
           .Attr("data_format", ToString(data_format))
           .Finalize(graph, &conv2d));
 
   return graph;
 }
-
-// -------------------------------------------------------------------------- //
-// The following benchmarks are used to compare different data format
-// performance for different data types. They make sense only when CUDA enabled,
-// because on CPU we only support data in NHWC.
-// -------------------------------------------------------------------------- //
 
 // Macro arguments names: --------------------------------------------------- //
 //      T: data type
@@ -107,57 +102,70 @@ static Graph* Conv2DBackpropFilter(int batch, int height, int width,
 //     FC: filter count
 //     FH: filter height
 //     FW: filter width
+//     SH: stride height
+//     SW: stride width
 
-#define BM_NAME(name, type, T, FORMAT, N, H, W, C, FW, FH, FC) \
-  name##_##T##_##FORMAT##_##type##_##N##_##H##_##W##_##C##_##FW##_##FH##_##FC
+#define BM_CONCAT(a, b) a##_##b
 
-#define BM_Conv2DBwdFilterFmt(T, FORMAT, N, H, W, C, FW, FH, FC, type)        \
-  static void BM_NAME(BM_Conv2DBackpropFilter, type, T, FORMAT, N, H, W, C,   \
-                      FW, FH, FC)(int iters) {                                \
-    testing::ItemsProcessed(static_cast<int64>(iters) * (N) * (H) * (W) *     \
-                            (C));                                             \
-    test::Benchmark(#type, Conv2DBackpropFilter<T>(N, H, W, C, FW, FH, FC,    \
-                                                   FORMAT_##FORMAT))          \
-        .Run(iters);                                                          \
-  }                                                                           \
-  BENCHMARK(BM_NAME(BM_Conv2DBackpropFilter, type, T, FORMAT, N, H, W, C, FW, \
-                    FH, FC));
+#define BM_NAME(name, type, T, FORMAT, N, H, W, C, FH, FW, FC, SH, SW) \
+  BM_CONCAT(name##_##T##_##FORMAT##_##type##_in##N##x##H##x##W##x##C,  \
+            f##FH##x##FW##x##FC##_##s##SH##x##SW)
 
-#if GOOGLE_CUDA
+#define BM_Conv2DBwdFilterFmt(T, FORMAT, N, H, W, C, FH, FW, FC, SH, SW, type) \
+  static void BM_NAME(BM_Conv2DBackpropFilter, type, T, FORMAT, N, H, W, C,    \
+                      FH, FW, FC, SH, SW)(int iters) {                         \
+    testing::ItemsProcessed(static_cast<int64>(iters) * (N) * (H) * (W) *      \
+                            (C));                                              \
+    test::Benchmark(#type, Conv2DBackpropFilter<T>(N, H, W, C, FH, FW, FC, SH, \
+                                                   SW, FORMAT_##FORMAT))       \
+        .Run(iters);                                                           \
+  }                                                                            \
+  BENCHMARK(BM_NAME(BM_Conv2DBackpropFilter, type, T, FORMAT, N, H, W, C, FH,  \
+                    FW, FC, SH, SW));
+
+// ResNet50-ish convolutions.
+#define BENCHMARK_DTYPE(FORMAT, BATCH, T, D)                                 \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 64, 1, 1, 64, 1, 1, D);    \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 64, 1, 1, 256, 1, 1, D);   \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 256, 1, 1, 64, 1, 1, D);   \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 64, 3, 3, 64, 1, 1, D);    \
+                                                                             \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 128, 1, 1, 128, 1, 1, D);  \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 128, 1, 1, 512, 1, 1, D);  \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 512, 1, 1, 128, 1, 1, D);  \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 512, 3, 3, 128, 1, 1, D);  \
+                                                                             \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 256, 1, 1, 256, 1, 1, D);  \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 256, 1, 1, 1024, 1, 1, D); \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 1024, 1, 1, 256, 1, 1, D); \
+  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 256, 3, 3, 256, 1, 1, D);
+
 using fp32 = float;
 using fp16 = Eigen::half;
 
-// ResNet50-ish convolutions.
-#define BENCHMARK_DTYPE(FORMAT, BATCH, T)                                \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 64, 1, 1, 64, gpu);    \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 64, 1, 1, 256, gpu);   \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 256, 1, 1, 64, gpu);   \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 56, 56, 64, 3, 3, 64, gpu);    \
-                                                                         \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 128, 1, 1, 128, gpu);  \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 128, 1, 1, 512, gpu);  \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 512, 1, 1, 128, gpu);  \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 28, 28, 512, 3, 3, 128, gpu);  \
-                                                                         \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 256, 1, 1, 256, gpu);  \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 256, 1, 1, 1024, gpu); \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 1024, 1, 1, 256, gpu); \
-  BM_Conv2DBwdFilterFmt(T, FORMAT, BATCH, 14, 14, 256, 3, 3, 256, gpu);
+BENCHMARK_DTYPE(NHWC, 8, fp32, cpu);
+BENCHMARK_DTYPE(NHWC, 16, fp32, cpu);
+BENCHMARK_DTYPE(NHWC, 32, fp32, cpu);
 
-BENCHMARK_DTYPE(NHWC, 32, fp32);
-BENCHMARK_DTYPE(NCHW, 32, fp32);
+#if GOOGLE_CUDA
+// -------------------------------------------------------------------------- //
+// The following benchmarks are used to compare different data format
+// performance for different data types. They make sense only when CUDA enabled,
+// because on CPU we only support data in NHWC.
+// -------------------------------------------------------------------------- //
 
-BENCHMARK_DTYPE(NHWC, 32, fp16);
-BENCHMARK_DTYPE(NCHW, 32, fp16);
+BENCHMARK_DTYPE(NHWC, 32, fp32, gpu);
+BENCHMARK_DTYPE(NCHW, 32, fp32, gpu);
 
-BENCHMARK_DTYPE(NHWC, 64, fp32);
-BENCHMARK_DTYPE(NCHW, 64, fp32);
+BENCHMARK_DTYPE(NHWC, 32, fp16, gpu);
+BENCHMARK_DTYPE(NCHW, 32, fp16, gpu);
 
-BENCHMARK_DTYPE(NHWC, 64, fp16);
-BENCHMARK_DTYPE(NCHW, 64, fp16);
+BENCHMARK_DTYPE(NHWC, 64, fp32, gpu);
+BENCHMARK_DTYPE(NCHW, 64, fp32, gpu);
+
+BENCHMARK_DTYPE(NHWC, 64, fp16, gpu);
+BENCHMARK_DTYPE(NCHW, 64, fp16, gpu);
 
 #endif  // GOOGLE_CUDA
-
-BM_Conv2DBwdFilterFmt(float, NHWC, 8, 32, 32, 128, 1, 1, 128, cpu);
 
 }  // namespace tensorflow
