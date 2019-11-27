@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
