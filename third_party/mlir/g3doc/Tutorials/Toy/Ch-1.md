@@ -145,7 +145,7 @@ Module:
           var: b @test/ast.toy:21:30
           var: c @test/ast.toy:21:33
         ]
-      VarDecl e<> @test/ast.toy:24:3
+      VarDecl f<> @test/ast.toy:24:3
         Call 'multiply_transpose' [ @test/ast.toy:24:11
           Call 'transpose' [ @test/ast.toy:24:30
             var: a @test/ast.toy:24:40
