@@ -49,7 +49,10 @@ bool SetterForXlaAutoJitFlag(const string& value) {
   }
 
   if (value == "fusible") {
-    mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general = 1;
+    mark_for_compilation_flags->xla_auto_jit_flag
+        .optimization_level_single_gpu = 1;
+    mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general =
+        1;
     mark_for_compilation_flags->tf_xla_supported_ops = "FUSIBLE";
     return true;
   }
