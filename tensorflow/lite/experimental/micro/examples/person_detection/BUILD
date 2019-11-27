@@ -55,7 +55,7 @@ cc_library(
     ],
     deps = [
         ":model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -68,7 +68,7 @@ tflite_micro_cc_test(
     deps = [
         ":image_provider",
         ":model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -83,7 +83,7 @@ cc_library(
         "detection_responder.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -113,7 +113,7 @@ cc_binary(
         ":person_detect_model_data",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

@@ -276,9 +276,10 @@ string ReadFromStream(tensorflow::io::BufferedInputStream* stream,
                       TF_Status* status);
 
 %ignore tensorflow::Status::operator=;
-%include "tensorflow/core/lib/core/status.h"
+%include "tensorflow/core/platform/status.h"
 
 %ignoreall
+%unignore tensorflow::io;
 %unignore tensorflow::io::BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::~BufferedInputStream;
 %unignore tensorflow::io::BufferedInputStream::ReadLineAsString;

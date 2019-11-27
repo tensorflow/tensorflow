@@ -27,64 +27,65 @@ limitations under the License.
 // When input is quantized to uint8 via MIN_FIRST, bias needs compensation.
 // The detailed algorithm is illustrated as below:
 //
-// A𝑓32 is the original fp32 activation 2D tensor.
-// Min(A𝑓32) is the minimum scalar value of A𝑓32.
-// Max(A𝑓32) is the maximum scalar value of A𝑓32.
+// Af32 is the original fp32 activation 2D tensor.
+// Min(Af32) is the minimum scalar value of Af32.
+// Max(Af32) is the maximum scalar value of Af32.
 // Qa is the quantization scale for activation.
 // Au8 is the quantized unsigned int8 activation tensor.
-// With SCALE quantization (used for non-negative A𝑓32), Qa and Au8 can be
+// With SCALE quantization (used for non-negative Af32), Qa and Au8 can be
 // calculated as below:
-//    Qa = 255.0 / Max(A𝑓32)
-//    Au8 = round(Qa * A𝑓32).
+//    Qa = 255.0 / Max(Af32)
+//    Au8 = round(Qa * Af32).
 // With MIN_FIRST quantization, Q'a and A'u8 can be calculated as below:
-//    Q'a = 255.0 / (Max(A𝑓32) – Min(A𝑓32))
-//    A'u8 = round(Q'a * (A𝑓32 – Min(A𝑓32) * ones(A𝑓32))),
+//    Q'a = 255.0 / (Max(Af32) - Min(Af32))
+//    A'u8 = round(Q'a * (Af32 - Min(Af32) * ones(Af32))),
 // where, ones(.) is a tensor of all 1s with the same shape of its argument and
 // round(.) rounds a number to its nearest integer.
 //
-// W𝑓32 is the original fp32 2D weight tensor.
-// MaxAbs(W𝑓32) is the maximum absolute scalar value of W𝑓32.
+// Wf32 is the original fp32 2D weight tensor.
+// MaxAbs(Wf32) is the maximum absolute scalar value of Wf32.
 // Qw is the quantization scale of weight.
 // Ws8 is the quantized signed int8 weight tensor.
 // Qw and Ws8 can be calculated as below:
-//    Qw = 127.0 / MaxAbs(W𝑓32)
-//    Ws8 = round(Qw * W𝑓32).
+//    Qw = 127.0 / MaxAbs(Wf32)
+//    Ws8 = round(Qw * Wf32).
 //
-// B𝑓32 is the original fp32 1D bias tensor matching the innermost dim of W𝑓32.
+// Bf32 is the original fp32 1D bias tensor matching the innermost dim of
+// Wf32.
 // With SCALE quantization of activation, the scaled bias, Bs32, is calculated
 // as below:
-//      Bs32 = Qa * Qw * B𝑓32.
+//      Bs32 = Qa * Qw * Bf32.
 // With MIN_FIRST quantization of activation, the scaled bias tensor with
 // compensation, B's32, is calculated as below:
-//      B's32 = Q'a * Qw * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1 * W𝑓32
-//            = Q'a * Qw * B𝑓32 + Q'a * Min(A𝑓32) * 1 * Ws8.
-// where, 1 denotes a row vector matching the outermost dim of W𝑓32.
+//      B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 * Wf32
+//            = Q'a * Qw * Bf32 + Q'a * Min(Af32) * 1 * Ws8.
+// where, 1 denotes a row vector matching the outermost dim of Wf32.
 //
 // The QuantizedMatMulWithBias op calculates 32bit integer output as below:
 //  - with SCALE activation quantizaiton:
 //    Xs32 = Au8 * Ws8 + 1' * Bs32
-//         = Qa * Qw * A𝑓32 * W𝑓32  + Qa * Qw * 1' * B𝑓32
-//         = Qa * Qw * (A𝑓32 * W𝑓32 + 1' * B𝑓32) = Qa * Qw * X𝑓32,
-//    where, 1' denotes a column vector matching the outermost dim of A𝑓32 and
-//    X𝑓32 represents the output of original fp32 MatMul with BiasAdd fusion.
+//         = Qa * Qw * Af32 * Wf32  + Qa * Qw * 1' * Bf32
+//         = Qa * Qw * (Af32 * Wf32 + 1' * Bf32) = Qa * Qw * Xf32,
+//    where, 1' denotes a column vector matching the outermost dim of Af32 and
+//    Xf32 represents the output of original fp32 MatMul with BiasAdd fusion.
 //
 //  - with MIN_FIRST activation quantization:
 //    Xs32 = A'u8 * Ws8 + 1' * B's32
-//         = Q'a * (A𝑓32 - Min(A𝑓32) * ones(A𝑓32)) * Qw * W𝑓32 +
-//           Q'a * Qw * 1' * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1' * 1 * W𝑓32
-//         = Q'a * Qw * (A𝑓32 * W𝑓32 + 1' * B𝑓32)
-//         = Q'a * Qw * X𝑓32.
-//    Note that 1' * 1 = ones(A𝑓32).
+//         = Q'a * (Af32 - Min(Af32) * ones(Af32)) * Qw * Wf32 +
+//           Q'a * Qw * 1' * Bf32 + Q'a * Qw * Min(Af32) * 1' * 1 * Wf32
+//         = Q'a * Qw * (Af32 * Wf32 + 1' * Bf32)
+//         = Q'a * Qw * Xf32.
+//    Note that 1' * 1 = ones(Af32).
 //
 // The QuantizedMatMulWithBiasAndRelu op does the same calculation as above
 // except adding relu function for the 32bit integer output.
 //
 // The QuantizedMatMulWithBiasAndReluAndRequantize op does one more step of
 // requantize calculation based on above. Since the fusion ends with a Relu the
-// activation X𝑓32 at Relu, in the original fp32 graph, is guaranteed to be
+// activation Xf32 at Relu, in the original fp32 graph, is guaranteed to be
 // non-negative. The requantize scale Qr is calculated from offline calibration.
-//    Qr = 255 / Max(X𝑓32)
-//    Xu8 = Qr * X𝑓32.
+//    Qr = 255 / Max(Xf32)
+//    Xu8 = Qr * Xf32.
 //
 // More information of this implementation can be found in
 // https://software.intel.com/en-us/articles/lower-numerical-precision-deep-learning-inference-and-training
@@ -144,6 +145,11 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
       context->CtxFailure(errors::InvalidArgument(
           "Quantization mode must be either MIN_FIRST or SCALED, but received ",
           mode_string));
+    }
+    is_weight_const_ = false;
+    if (context->HasAttr("is_weight_const")) {
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("is_weight_const", &is_weight_const_));
     }
   }
 
@@ -244,13 +250,34 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
         src_data = static_cast<Tinput*>(
             const_cast<Tinput*>(src_tensor.flat<Tinput>().data()));
       }
+
       Tweight* weight_data = nullptr;
       if (weight_md.data.format != matmul_fwd->GetweightMemoryFormat()) {
-        weight.SetUsrMem(weight_md, &weight_tensor);
-        weight.CheckReorderToOpMem(
-            matmul_fwd_pd.get()->weights_primitive_desc());
-        weight_data =
-            static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
+        bool is_weight_cached = false;
+        // For batch size 1, MKL-DNN expects that weight format is OI whereas
+        // TF default format is IO. So in that case convert weight from IO
+        // to OI for the first iteration and cache it to reuse in the
+        // subsequent iterations, if the weight is constant.
+        if (is_weight_const_) {
+          // Check if the weight is already cached or not
+          if (IsWeightCacheEmpty(context)) {
+            // Cache weight if it is not cached.
+            CacheWeight(context, matmul_fwd_pd, weight_data, weight_tensor,
+                        weight, weight_md);
+          }
+          weight_data =
+              GetCachedWeight(context, matmul_fwd->GetweightMemoryFormat());
+          is_weight_cached = (weight_data != nullptr);
+        }
+
+        if (!is_weight_cached) {
+          weight.SetUsrMem(weight_md, &weight_tensor);
+          weight.CheckReorderToOpMem(
+              matmul_fwd_pd.get()->weights_primitive_desc());
+          weight_data =
+              static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
+        }
+
       } else {
         weight_data = static_cast<Tweight*>(
             const_cast<Tweight*>(weight_tensor.flat<Tweight>().data()));
@@ -342,9 +369,9 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
 
   // This function handles bias conversion and compensation for MIN_FIRST and
   // SCALE mode. If input is quantized via MIN_FIRST,
-  //  B's32 = Q'a * Qw * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1 * W𝑓32
+  //  B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 * Wf32
   // If input is quantized via SCALE,
-  //   Bs32 = Qa * Qw * B𝑓32.
+  //   Bs32 = Qa * Qw * Bf32.
   Tbias* GetBiasHandle(
       OpKernelContext* context,
       std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
@@ -365,8 +392,8 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
       std::vector<mkldnn::primitive> net;
       float out_scale;
       // If the bias is float and input quantize is MIN_FIRST, bias has to be
-      // compensated with B's32 = Q'a * Qw * B𝑓32 + Q'a * Qw * Min(A𝑓32) * 1 *
-      // W𝑓32.
+      // compensated with B's32 = Q'a * Qw * Bf32 + Q'a * Qw * Min(Af32) * 1 *
+      // Wf32.
       if (mode_ == QUANTIZE_MODE_MIN_FIRST) {
         int k = weight_tensor.dim_size(0);
         int n = weight_tensor.dim_size(1);
@@ -434,8 +461,87 @@ class MklDnnQuantizedMatMulOp : public MklDnnMatMulOpBase<Toutput> {
 
   // Buffer to save the compensated bias
   float* comp_bias_ = nullptr;
+  // Tensor to save reordered weight
+  mutex mu_;
+  PersistentTensor weight_oi GUARDED_BY(mu_);
+  PersistentTensor weight_oi_md GUARDED_BY(mu_);
 
   int mode_;
+  bool is_weight_const_;
+  // LOCKS_EXCLUDED annotation ensures that the lock (mu_) cannot
+  // be acquired before entering the function, since it is acquired
+  // inside the function.
+  inline bool IsWeightCacheEmpty(OpKernelContext* context) LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
+    return (weight_oi.NumElements() == 0);
+  }
+
+  // Cache the converted weight in a persistent tensor.
+  // Only one thread can execute this method at any given time.
+  void CacheWeight(
+      OpKernelContext* context,
+      const std::shared_ptr<mkldnn::inner_product_forward::primitive_desc>&
+          matmul_fwd_pd,
+      Tweight* weight_data, const Tensor& weight_tensor,
+      MklDnnData<Tweight>& weight, const memory::desc& weight_md)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    const Tensor& weight_t = *weight_oi.AccessTensor(context);
+
+    // If the weights are already cahced, there's nothing to do
+    if (weight_t.NumElements() > 0) {
+      return;
+    }
+
+    // Reorder and cache the weight
+    weight.SetUsrMem(weight_md, &weight_tensor);
+    weight.CheckReorderToOpMem(matmul_fwd_pd.get()->weights_primitive_desc());
+    weight_data = static_cast<Tweight*>(weight.GetOpMem().get_data_handle());
+
+    Tensor* weight_tensor_ptr = nullptr;
+
+    TensorShape weight_tf_shape;
+    weight_tf_shape.AddDim(
+        (matmul_fwd_pd.get()->weights_primitive_desc().get_size() /
+         sizeof(Tweight)));
+
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DataTypeToEnum<Tweight>::value, weight_tf_shape,
+                                &weight_oi, &weight_tensor_ptr));
+
+    void* weight_oi_t_data = weight.GetTensorBuffer(weight_tensor_ptr);
+    size_t weight_size = weight.GetOpMem().get_primitive_desc().get_size();
+    memcpy(weight_oi_t_data, weight_data, weight_size);
+
+    // Cache the memory descriptor
+    Tensor* weight_md_tensor_ptr = nullptr;
+    TensorShape weight_mkl_format;
+
+    weight_mkl_format.AddDim(1);
+
+    OP_REQUIRES_OK(context, context->allocate_persistent(
+                                DT_INT32, weight_mkl_format, &weight_oi_md,
+                                &weight_md_tensor_ptr));
+    weight_md_tensor_ptr->scalar<int32>()() =
+        matmul_fwd_pd.get()->weights_primitive_desc().desc().data.format;
+  }
+
+  Tweight* GetCachedWeight(OpKernelContext* context,
+                           const memory::format& weight_mf)
+      LOCKS_EXCLUDED(mu_) {
+    tf_shared_lock lock(mu_);
+    const Tensor& weight_t = *weight_oi.AccessTensor(context);
+    const Tensor& weight_md_t = *weight_oi_md.AccessTensor(context);
+
+    // Check if the  memory descriptor of the cached weight is same as
+    // weight_mf. If so use the cached memory, else return NULL
+    if ((weight_md_t.scalar<int32>().size() > 0) &&
+        weight_md_t.scalar<int32>()() == weight_mf) {
+      return static_cast<Tweight*>(
+          const_cast<Tweight*>(weight_t.flat<Tweight>().data()));
+    }
+    return nullptr;
+  }
 };
 
 template <typename Device, typename Tinput, typename Tweight, typename Tbias,
@@ -508,6 +614,17 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndReluAndRequantize")
                             .TypeConstraint<quint8>("Toutput"),
                         NoOp);
 
+// Register NoOp kernel for QuantizedMatMulWithBiasAndRequantize
+// to get a python interface. This kernel will be replaced by an MKL kernel
+// during graph-optimization pass.
+REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T1")
+                            .TypeConstraint<qint8>("T2")
+                            .TypeConstraint("Tbias", {DT_QINT32, DT_FLOAT})
+                            .TypeConstraint<quint8>("Toutput"),
+                        NoOp);
+
 // Register a templatized implementation of _MklQuantizedMatMulWithBiasAndRelu.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedMatMulWithBiasAndRelu")
@@ -537,6 +654,27 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<quint8>("Toutput")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklDnnQuantizedMatMulReluOp<CPUDevice, quint8, qint8, float, quint8>);
+
+// Register a templatized implementation of
+// _MklQuantizedMatMulWithBiasAndRequantize.
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedMatMulWithBiasAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T1")
+        .TypeConstraint<qint8>("T2")
+        .TypeConstraint<qint32>("Tbias")
+        .TypeConstraint<quint8>("Toutput")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, qint32, quint8>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedMatMulWithBiasAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T1")
+        .TypeConstraint<qint8>("T2")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("Toutput")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, float, quint8>);
 
 }  // namespace tensorflow
 

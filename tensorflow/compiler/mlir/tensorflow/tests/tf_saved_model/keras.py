@@ -39,8 +39,8 @@ class TestModule(tf.Module):
     super(TestModule, self).__init__()
     self.model = mnist_model()
 
-  # CHECK: func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<1x28x28x1xf32>
-  # CHECK-NEXT: attributes {{.*}} tf_saved_model.exported_names = ["my_predict"]
+  # CHECK: func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<1x28x28x1xf32> {tf_saved_model.index_path = [0]}
+  # CHECK: attributes {{.*}} tf_saved_model.exported_names = ["my_predict"]
   @tf.function(input_signature=[
       tf.TensorSpec([1, 28, 28, 1], tf.float32),
   ])

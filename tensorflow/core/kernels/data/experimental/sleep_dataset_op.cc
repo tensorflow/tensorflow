@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 
 namespace tensorflow {
 namespace data {
@@ -96,16 +97,40 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
+      ~Iterator() override {
+        {
+          mutex_lock l(mu_);
+          cancelled_ = true;
+        }
+        if (deregister_fn_) {
+          deregister_fn_();
+        }
+      }
+
       Status Initialize(IteratorContext* ctx) override {
+        TF_RETURN_IF_ERROR(RegisterCancellationCallback(
+            ctx->cancellation_manager(),
+            [this]() {
+              mutex_lock l(mu_);
+              cancelled_ = true;
+            },
+            &deregister_fn_));
         return dataset()->input_->MakeIterator(ctx, prefix(), &input_impl_);
       }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
+        mutex_lock l(mu_);
         RecordStop(ctx);
-        ctx->env()->SleepForMicroseconds(dataset()->sleep_microseconds_);
+        bool cancelled = mu_.AwaitWithDeadline(
+            Condition(&cancelled_),
+            EnvTime::NowNanos() +
+                dataset()->sleep_microseconds_ * EnvTime::kMicrosToNanos);
         RecordStart(ctx);
+        if (cancelled) {
+          return errors::Cancelled("Operation was cancelled");
+        }
         return input_impl_->GetNext(ctx, out_tensors, end_of_sequence);
       }
 
@@ -125,8 +150,10 @@ class SleepDatasetOp : public UnaryDatasetOpKernel {
         return RestoreInput(ctx, reader, input_impl_);
       }
 
-     private:
-      std::unique_ptr<IteratorBase> input_impl_;
+      mutex mu_;
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      bool cancelled_ GUARDED_BY(mu_) = false;
+      std::function<void()> deregister_fn_;
     };
 
     const DatasetBase* const input_;

@@ -29,6 +29,17 @@ message Operation {
   repeated int64 control_op_ids = 4;
   map<string, AttrValue> attrs = 5;
   string device = 6;
+
+  // Indicates whether the op is a component of a multi-device function.
+  bool is_component_function = 7;
+  // Set when is_component_function is true. It's initially generated
+  // when we create an FunctionLibraryRuntime::Options (negative value) and used
+  // to create Rendezvous for function execution. All components of a
+  // multi-device function should use the same step id to make sure that they
+  // can communicate through Send/Recv ops.
+  int64 func_step_id = 8;
+  // Indicates whether the op is a function.
+  bool is_function = 9;
 }
 
 message QueueItem {
@@ -41,6 +52,7 @@ message QueueItem {
     SendTensorOp send_tensor = 3;
     // Takes a FunctionDef and makes it enqueable on the remote worker.
     RegisterFunctionOp register_function = 4;
+    CleanupFunctionOp cleanup_function = 5;
   }
 }
 
@@ -74,6 +86,14 @@ message CreateContextRequest {
   // that both ends use this ID for selecting a rendezvous to get everything to
   // match.
   fixed64 context_id = 7;
+
+  // The view ID of the context.
+  fixed64 context_view_id = 8;
+
+  // For a multi device function, if false, eagerly copy all remote inputs to
+  // the default function device; if true, lazily copy remote inputs to their
+  // target devices after function instantiation to avoid redundant copies.
+  bool lazy_copy_remote_function_inputs = 9;
 
   reserved 5;
 }
@@ -140,6 +160,7 @@ message KeepAliveResponse {
 
 message CloseContextRequest {
   fixed64 context_id = 1;
+  fixed64 context_view_id = 2;
 }
 
 message CloseContextResponse {}
@@ -150,6 +171,20 @@ message RegisterFunctionOp {
   // If true, it means that function_def is produced by graph partition during
   // multi-device function instantiation.
   bool is_component_function = 2;
+
+  // All necessary FunctionDefs and GradientDefs to expand `function_def`.
+  // When is_component_function is true, `function_def` could be a nested
+  // function, since some nodes in its parent's function body could be
+  // replaced with a new function by the graph optimization passes. No need to
+  // add FunctionDefs here to the function cache in EagerContext since they
+  // won't be executed as KernelAndDevices.
+  FunctionDefLibrary library = 3;
+}
+
+// Cleanup the step state of a multi-device function (e.g. tensors buffered by
+// a `Send` op but not picked up by its corresponding `Recv` op).
+message CleanupFunctionOp {
+  int64 step_id = 1;
 }
 
 message SendTensorOp {

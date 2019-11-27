@@ -38,11 +38,25 @@ struct QuantizationSpecs {
   // DT_HALF and DT_QINT8 inference type.
   bool weight_quantization = false;
 
+  // Whether the quantization passes are triggered for post-training
+  // quantization. If it is true, the model input doesn't require user specified
+  // input ranges.
+  // TODO(fengliuai): The `weight_quantization` is just a special case of
+  // post-training quantization. We need to deprecate the `weight_quantization`.
+  bool post_training_quantization = false;
+
   // The node type when the model is exported. Currently this is limited to
   // DT_FLOAT, DT_HALF, DT_QINT8, and DT_QUINT8. When DT_HALF is used, the
   // `weight_quantization` flag needs to set to true. When DT_QUINT8 is used,
   // the `weight_quantization` flag needs to set to false.
   tensorflow::DataType inference_type = tensorflow::DT_FLOAT;
+
+  // The input and output data type during inference. This flag is only used
+  // when `inference_type` is different from DT_FLOAT. This flag can only be set
+  // to DT_FLOAT or as same as `inference_type`. If this flag is different
+  // from `inference_type`, adaptor ops are inserted as heading and tailing ops
+  // in the result model.
+  tensorflow::DataType inference_input_type = tensorflow::DT_FLOAT;
 
   // Input node ranges. These ranges are stored as the same order of function
   // arguments. They are only used when `weight_quantization` is set to false,
@@ -65,7 +79,7 @@ struct QuantizationSpecs {
   bool RunWeightQuantization() const { return weight_quantization; }
 
   // Whether this inference type represents a signed storage type.
-  bool IsSignedInferneceType() {
+  bool IsSignedInferenceType() {
     switch (inference_type) {
       case tensorflow::DT_QUINT8:
       case tensorflow::DT_QUINT16:

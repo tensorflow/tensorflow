@@ -13,13 +13,10 @@ bazel build -c opt --cxxopt=--std=c++11 \
   //tensorflow/lite/experimental/c:libtensorflowlite_c.so
 ```
 
-and for Android:
+and for Android (replace `android_arm` with `android_arm64` for 64-bit):
 
 ```sh
-bazel build -c opt --cxxopt=--std=c++11 \
-  --crosstool_top=//external:android/crosstool \
-  --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
-  --cpu=armeabi-v7a \
+bazel build -c opt --cxxopt=--std=c++11 --config=android_arm \
   //tensorflow/lite/experimental/c:libtensorflowlite_c.so
 ```
 

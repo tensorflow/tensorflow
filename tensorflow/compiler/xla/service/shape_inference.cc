@@ -928,8 +928,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     absl::Span<const int64> broadcast_dimensions) {
   VLOG(2) << StrFormat(
       "inferring shape for <%s>(%s, %s) with broadcast_dimensions={%s}",
-      HloOpcodeString(opcode), ShapeUtil::HumanString(lhs),
-      ShapeUtil::HumanString(rhs), StrJoin(broadcast_dimensions, ", "));
+      HloOpcodeString(opcode), ShapeUtil::HumanStringWithLayout(lhs),
+      ShapeUtil::HumanStringWithLayout(rhs),
+      StrJoin(broadcast_dimensions, ", "));
+
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
@@ -2354,6 +2356,10 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
   std::vector<bool> is_dynamic(arg.rank());
   for (int64 i = 0; i < arg.dimensions_size(); ++i) {
+    // Slicing 1 out of a dynamic dimension eliminates the dynamic dimension.
+    if (sizes[i] == 1) {
+      continue;
+    }
     is_dynamic[i] = arg.is_dynamic_dimension(i);
   }
 
@@ -2876,7 +2882,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     // Calculate output dynamic reshape dimension.
     int64 output_dynamic_dimension = -1;
 
-    if (operand.dimensions(input_dim) == 1) {
+    if (operand.dimensions(input_dim) == 1 && !new_sizes.empty()) {
       // If dynamic dimension is size 1, it can only be most-major or
       // most-minor.
       if (input_dim == 0) {

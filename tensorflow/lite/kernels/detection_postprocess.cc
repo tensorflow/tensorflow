@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -124,7 +124,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
 }
 
 void Free(TfLiteContext* context, void* buffer) {
-  delete reinterpret_cast<OpData*>(buffer);
+  delete static_cast<OpData*>(buffer);
 }
 
 TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
@@ -139,7 +139,7 @@ TfLiteStatus SetTensorSizes(TfLiteContext* context, TfLiteTensor* tensor,
 }
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  auto* op_data = static_cast<OpData*>(node->user_data);
   // Inputs: box_encodings, scores, anchors
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 3);
   const TfLiteTensor* input_box_encodings =
@@ -719,7 +719,7 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // TODO(chowdhery): Generalize for any batch size
   TF_LITE_ENSURE(context, (kBatchSize == 1));
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  auto* op_data = static_cast<OpData*>(node->user_data);
   // These two functions correspond to two blocks in the Object Detection model.
   // In future, we would like to break the custom op in two blocks, which is
   // currently not feasible because we would like to input quantized inputs

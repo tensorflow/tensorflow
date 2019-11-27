@@ -158,4 +158,6 @@ BENCHMARK_DTYPE(NCHW, 64, fp16);
 
 #endif  // GOOGLE_CUDA
 
+BM_Conv2DBwdFilterFmt(float, NHWC, 8, 32, 32, 128, 1, 1, 128, cpu);
+
 }  // namespace tensorflow

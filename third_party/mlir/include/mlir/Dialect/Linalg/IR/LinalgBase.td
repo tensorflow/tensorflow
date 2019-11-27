@@ -19,14 +19,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef OP_BASE
-#else
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-#ifdef LINALG_BASE
-#else
+#ifndef LINALG_BASE
 #define LINALG_BASE
+
+include "mlir/IR/OpBase.td"
 
 def Linalg_Dialect : Dialect {
   let name = "linalg";

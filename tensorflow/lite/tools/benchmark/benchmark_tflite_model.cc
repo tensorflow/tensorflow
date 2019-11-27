@@ -16,16 +16,29 @@ limitations under the License.
 #include "tensorflow/lite/tools/benchmark/benchmark_tflite_model.h"
 
 #include <cstdarg>
+#include <cstdint>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
+#include <random>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
+#include "absl/base/attributes.h"
+#include "absl/strings/numbers.h"
+#include "tensorflow/lite/tools/benchmark/benchmark_model.h"
+
 #if defined(__ANDROID__)
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #include "tensorflow/lite/nnapi/nnapi_util.h"
+#elif defined(__APPLE__)
+#include "TargetConditionals.h"
+#if TARGET_OS_IPHONE && !TARGET_IPHONE_SIMULATOR
+// Only enable metal delegate when using a real iPhone device.
+#define REAL_IPHONE_DEVICE
+#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
+#endif
 #endif
 
 #include "tensorflow/lite/kernels/register.h"
@@ -42,9 +55,13 @@ limitations under the License.
 #include "profiling/profiler.h"
 #endif
 
-#ifdef TFLITE_CUSTOM_OPS_HEADER
 void RegisterSelectedOps(::tflite::MutableOpResolver* resolver);
-#endif
+
+// Version with Weak linker attribute doing nothing: if someone links this
+// library with another definition of this function (presumably to actually
+// register custom ops), that version will be used instead.
+void ABSL_ATTRIBUTE_WEAK
+RegisterSelectedOps(::tflite::MutableOpResolver* resolver) {}
 
 namespace tflite {
 namespace benchmark {
@@ -60,10 +77,12 @@ constexpr int kOpProfilingEnabledDefault = false;
 // Dumps profiling events if profiling is enabled.
 class ProfilingListener : public BenchmarkListener {
  public:
-  explicit ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
+  ProfilingListener(Interpreter* interpreter, uint32_t max_num_entries)
       : interpreter_(interpreter), profiler_(max_num_entries) {
     TFLITE_BENCHMARK_CHECK(interpreter);
     interpreter_->SetProfiler(&profiler_);
+    profiler_.Reset();
+    profiler_.StartProfiling();
   }
 
   void OnSingleRunStart(RunType run_type) override;
@@ -87,7 +106,13 @@ class GemmlowpProfilingListener : public BenchmarkListener {
 };
 
 void ProfilingListener::OnSingleRunStart(RunType run_type) {
-  if (run_type == REGULAR) {
+  // Note: we have started profiling when this listener is created. In order
+  // not to count events during the WARMUP phase, we need to stop profiling and
+  // process already-recorded profile events when the WARMUP run starts and
+  // restart profiling at the REGULAR run.
+  if (run_type == WARMUP) {
+    OnSingleRunEnd();
+  } else if (run_type == REGULAR) {
     profiler_.Reset();
     profiler_.StartProfiling();
   }
@@ -126,14 +151,6 @@ std::vector<std::string> Split(const std::string& str, const char delim) {
     results.clear();
   }
   return results;
-}
-
-// Fill random integer values between [low, high]
-template <typename T>
-void FillRandomIntValues(T* ptr, int num_elements, int low, int high) {
-  for (int i = 0; i < num_elements; ++i) {
-    *ptr++ = static_cast<T>(rand() % (high - low + 1) + low);
-  }
 }
 
 void FillRandomString(tflite::DynamicBuffer* buffer,
@@ -191,8 +208,8 @@ TfLiteStatus PopulateInputLayerInfo(
   std::vector<std::string> value_ranges = Split(value_ranges_string, ':');
   std::vector<int> tmp_range;
   for (const auto val : value_ranges) {
-    std::vector<std::string> name_range = Split(val, '#');
-    if (name_range.size() != 2) {
+    std::vector<std::string> name_range = Split(val, ',');
+    if (name_range.size() != 3) {
       TFLITE_LOG(FATAL) << "Wrong input value range item specified: " << val;
     }
 
@@ -210,20 +227,18 @@ TfLiteStatus PopulateInputLayerInfo(
         << ") in --input_layer as " << names_string;
 
     // Parse the range value.
-    const std::string& input_range_str = name_range[1];
-    tmp_range.clear();
-    TFLITE_BENCHMARK_CHECK(
-        util::SplitAndParse(input_range_str, ',', &tmp_range))
-        << "Incorrect input value range string specified: " << input_range_str;
-    if (tmp_range.size() != 2 && tmp_range[0] > tmp_range[1]) {
+    int low, high;
+    bool has_low = absl::SimpleAtoi(name_range[1], &low);
+    bool has_high = absl::SimpleAtoi(name_range[2], &high);
+    if (!has_low || !has_high || low > high) {
       TFLITE_LOG(FATAL)
           << "Wrong low and high value of the input value range specified: "
-          << input_range_str;
+          << val;
     }
 
     info->at(layer_info_idx).has_value_range = true;
-    info->at(layer_info_idx).low = tmp_range[0];
-    info->at(layer_info_idx).high = tmp_range[1];
+    info->at(layer_info_idx).low = low;
+    info->at(layer_info_idx).high = high;
   }
 
   return kTfLiteOk;
@@ -257,9 +272,13 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("nnapi_accelerator_name",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_gpu", BenchmarkParam::Create<bool>(false));
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
   default_params.AddParam("gpu_precision_loss_allowed",
                           BenchmarkParam::Create<bool>(true));
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+  default_params.AddParam("gpu_wait_type",
+                          BenchmarkParam::Create<std::string>(""));
 #endif
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
@@ -272,20 +291,12 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   return default_params;
 }
 
-BenchmarkTfLiteModel::BenchmarkTfLiteModel()
-    : BenchmarkTfLiteModel(DefaultParams()) {}
-
 BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
-    : BenchmarkModel(std::move(params)) {}
+    : BenchmarkModel(std::move(params)),
+      random_engine_(std::random_device()()) {}
 
 void BenchmarkTfLiteModel::CleanUp() {
-  if (inputs_data_.empty()) {
-    return;
-  }
   // Free up any pre-allocated tensor data during PrepareInputData.
-  for (int i = 0; i < inputs_data_.size(); ++i) {
-    delete[] inputs_data_[i].data.raw;
-  }
   inputs_data_.clear();
 }
 
@@ -299,11 +310,10 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
     CreateFlag<std::string>("input_layer_shape", &params_, "input layer shape"),
     CreateFlag<std::string>(
         "input_layer_value_range", &params_,
-        "A map-like string representing value range for integer input layers. "
-        "Each item is separated by ':', and the item value is a pair of input "
-        "layer name and integer-only range values (both low and high are "
-        "inclusive), the name and the range is separated by '#', the low/high "
-        "are separated by ',' e.g. input1#1,2:input2#0,254"),
+        "A map-like string representing value range for *integer* input "
+        "layers. Each item is separated by ':', and the item value consists of "
+        "input layer name and integer-only range values (both low and high are "
+        "inclusive) separated by ',', e.g. input1,1,2:input2,0,254"),
     CreateFlag<bool>("use_nnapi", &params_, "use nnapi delegate api"),
     CreateFlag<std::string>(
         "nnapi_execution_preference", &params_,
@@ -314,10 +324,16 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
         "nnapi_accelerator_name", &params_,
         "the name of the nnapi accelerator to use (requires Android Q+)"),
     CreateFlag<bool>("use_gpu", &params_, "use gpu"),
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
     CreateFlag<bool>("gpu_precision_loss_allowed", &params_,
                      "Allow to process computation in lower precision than "
                      "FP32 in GPU. By default, it's enabled."),
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+    CreateFlag<std::string>(
+        "gpu_wait_type", &params_,
+        "GPU wait type. Should be one of the following: passive, active, "
+        "do_not_wait, aggressive"),
 #endif
     CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
     CreateFlag<bool>("require_full_delegation", &params_,
@@ -363,9 +379,13 @@ void BenchmarkTfLiteModel::LogParams() {
   }
 #endif
   TFLITE_LOG(INFO) << "Use gpu : [" << params_.Get<bool>("use_gpu") << "]";
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
   TFLITE_LOG(INFO) << "Allow lower precision in gpu : ["
                    << params_.Get<bool>("gpu_precision_loss_allowed") << "]";
+#endif
+#if defined(REAL_IPHONE_DEVICE)
+  TFLITE_LOG(INFO) << "GPU delegate wait type : ["
+                   << params_.Get<std::string>("gpu_wait_type") << "]";
 #endif
   TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
                    << "]";
@@ -415,7 +435,16 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
   for (int j = 0; j < input_size; ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter_->tensor(i);
-    const auto& input_info = inputs_[j];
+    bool has_value_range = false;
+    int low_range = 0;
+    int high_range = 0;
+    // For tflite files that are benchmarked without input layer parameters
+    // inputs_ is empty.
+    if (!inputs_.empty()) {
+      has_value_range = inputs_[j].has_value_range;
+      low_range = inputs_[j].low;
+      high_range = inputs_[j].high;
+    }
     std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
     int num_elements = 1;
     for (int i = 0; i < sizes.size(); ++i) {
@@ -423,59 +452,53 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     }
     InputTensorData t_data;
     if (t->type == kTfLiteFloat32) {
-      t_data.bytes = sizeof(float) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      std::generate_n(t_data.data.f, num_elements, []() {
-        return static_cast<float>(rand()) / RAND_MAX - 0.5f;
-      });
+      t_data = CreateInputTensorData<float>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
     } else if (t->type == kTfLiteFloat16) {
-      t_data.bytes = sizeof(TfLiteFloat16) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
+// TODO(b/138843274): Remove this preprocessor guard when bug is fixed.
+#if TFLITE_ENABLE_FP16_CPU_BENCHMARKS
 #if __GNUC__ && \
     (__clang__ || __ARM_FP16_FORMAT_IEEE || __ARM_FP16_FORMAT_ALTERNATIVE)
       // __fp16 is available on Clang or when __ARM_FP16_FORMAT_* is defined.
-      std::generate_n(t_data.data.f16, num_elements, []() -> TfLiteFloat16 {
-        __fp16 f16_value = static_cast<float>(rand()) / RAND_MAX - 0.5f;
-        TfLiteFloat16 f16_placeholder_value;
-        memcpy(&f16_placeholder_value, &f16_value, sizeof(TfLiteFloat16));
-        return f16_placeholder_value;
-      });
+      t_data = CreateInputTensorData<__fp16>(
+          num_elements, std::uniform_real_distribution<float>(-0.5f, 0.5f));
 #else
       TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
                         << " of type FLOAT16 on this platform.";
 #endif
+#else
+      // You need to build with -DTFLITE_ENABLE_FP16_CPU_BENCHMARKS=1 using a
+      // compiler that supports __fp16 type. Note: when using Clang and *not*
+      // linking with compiler-rt, a defintion of __gnu_h2f_ieee and
+      // __gnu_f2h_ieee must be supplied.
+      TFLITE_LOG(FATAL) << "Populating the tensor " << t->name
+                        << " of type FLOAT16 is disabled.";
+#endif  // TFLITE_ENABLE_FP16_CPU_BENCHMARKS
     } else if (t->type == kTfLiteInt64) {
-      t_data.bytes = sizeof(int64_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
-      FillRandomIntValues<int64_t>(t_data.data.i64, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      t_data = CreateInputTensorData<int64_t>(
+          num_elements, std::uniform_int_distribution<int64_t>(low, high));
     } else if (t->type == kTfLiteInt32) {
-      // TODO(yunluli): This is currently only used for handling embedding input
-      // for speech models. Generalize if necessary.
-      t_data.bytes = sizeof(int32_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
-      FillRandomIntValues<int32_t>(t_data.data.i32, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      t_data = CreateInputTensorData<int32_t>(
+          num_elements, std::uniform_int_distribution<int32_t>(low, high));
     } else if (t->type == kTfLiteInt16) {
-      t_data.bytes = sizeof(int16_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 99;
-      FillRandomIntValues<int16_t>(t_data.data.i16, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 99;
+      t_data = CreateInputTensorData<int16_t>(
+          num_elements, std::uniform_int_distribution<int16_t>(low, high));
     } else if (t->type == kTfLiteUInt8) {
-      t_data.bytes = sizeof(uint8_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : 0;
-      int high = input_info.has_value_range ? input_info.high : 254;
-      FillRandomIntValues<uint8_t>(t_data.data.uint8, num_elements, low, high);
+      int low = has_value_range ? low_range : 0;
+      int high = has_value_range ? high_range : 254;
+      t_data = CreateInputTensorData<uint8_t>(
+          num_elements, std::uniform_int_distribution<uint8_t>(low, high));
     } else if (t->type == kTfLiteInt8) {
-      t_data.bytes = sizeof(int8_t) * num_elements;
-      t_data.data.raw = new char[t_data.bytes];
-      int low = input_info.has_value_range ? input_info.low : -127;
-      int high = input_info.has_value_range ? input_info.high : 127;
-      FillRandomIntValues<int8_t>(t_data.data.int8, num_elements, low, high);
+      int low = has_value_range ? low_range : -127;
+      int high = has_value_range ? high_range : 127;
+      t_data = CreateInputTensorData<int8_t>(
+          num_elements, std::uniform_int_distribution<int8_t>(low, high));
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {
@@ -483,7 +506,7 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
                         << " of type " << t->type;
       return kTfLiteError;
     }
-    inputs_data_.push_back(t_data);
+    inputs_data_.push_back(std::move(t_data));
   }
   return kTfLiteOk;
 }
@@ -502,7 +525,8 @@ TfLiteStatus BenchmarkTfLiteModel::ResetInputsAndOutputs() {
       });
       buffer.WriteToTensor(t, /*new_shape=*/nullptr);
     } else {
-      std::memcpy(t->data.raw, inputs_data_[j].data.raw, inputs_data_[j].bytes);
+      std::memcpy(t->data.raw, inputs_data_[j].data.get(),
+                  inputs_data_[j].bytes);
     }
   }
 
@@ -517,8 +541,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
   TFLITE_LOG(INFO) << "Loaded model " << graph;
-  model_->error_reporter();
-  TFLITE_LOG(INFO) << "resolved reporter";
 
   auto resolver = GetOpResolver();
 
@@ -593,18 +615,21 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     }
   }
 
-  if (interpreter_->AllocateTensors() != kTfLiteOk) {
-    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
-    return kTfLiteError;
-  }
-
-  // Install profilers if necessary.
+  // Install profilers if necessary but *before* any memory allocations inside
+  // the TFLite interpreter because the installed profiler might profile memory
+  // usage information.
   if (params_.Get<bool>("enable_op_profiling")) {
     profiling_listener_.reset(new ProfilingListener(
         interpreter_.get(),
         params_.Get<int32_t>("max_profiling_buffer_entries")));
     AddListener(profiling_listener_.get());
   }
+
+  if (interpreter_->AllocateTensors() != kTfLiteOk) {
+    TFLITE_LOG(ERROR) << "Failed to allocate tensors!";
+    return kTfLiteError;
+  }
+
 #ifdef GEMMLOWP_PROFILING
   gemmlowp_profiling_listener_.reset(new GemmlowpProfilingListener());
   AddListener(gemmlowp_profiling_listener_.get());
@@ -621,13 +646,40 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
     TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
     gpu_opts.inference_preference =
         TFLITE_GPU_INFERENCE_PREFERENCE_SUSTAINED_SPEED;
-    gpu_opts.is_precision_loss_allowed =
-        params_.Get<bool>("gpu_precision_loss_allowed") ? 1 : 0;
+    if (params_.Get<bool>("gpu_precision_loss_allowed")) {
+      gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
+      gpu_opts.inference_priority2 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+      gpu_opts.inference_priority3 =
+          TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
+    }
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get(), &gpu_opts);
+#elif defined(REAL_IPHONE_DEVICE)
+    TFLGpuDelegateOptions gpu_opts = {0};
+    gpu_opts.allow_precision_loss =
+        params_.Get<bool>("gpu_precision_loss_allowed");
+
+    std::string string_gpu_wait_type =
+        params_.Get<std::string>("gpu_wait_type");
+    if (!string_gpu_wait_type.empty()) {
+      TFLGpuDelegateWaitType wait_type = TFLGpuDelegateWaitTypePassive;
+      if (string_gpu_wait_type == "passive") {
+        wait_type = TFLGpuDelegateWaitTypePassive;
+      } else if (string_gpu_wait_type == "active") {
+        wait_type = TFLGpuDelegateWaitTypeActive;
+      } else if (string_gpu_wait_type == "do_not_wait") {
+        wait_type = TFLGpuDelegateWaitTypeDoNotWait;
+      } else if (string_gpu_wait_type == "aggressive") {
+        wait_type = TFLGpuDelegateWaitTypeAggressive;
+      }
+      gpu_opts.wait_type = wait_type;
+    }
+    Interpreter::TfLiteDelegatePtr delegate(TFLGpuDelegateCreate(&gpu_opts),
+                                            &TFLGpuDelegateDelete);
 #else
-    TFLITE_LOG(WARN) << "The GPU delegate compile options aren't supported to "
-                        "be benchmarked on non-Android platforms.";
+    TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
+                        "to be benchmarked on Android or iOS platforms.";
     Interpreter::TfLiteDelegatePtr delegate =
         evaluation::CreateGPUDelegate(model_.get());
 #endif
@@ -695,11 +747,8 @@ BenchmarkTfLiteModel::TfLiteDelegatePtrMap BenchmarkTfLiteModel::GetDelegates()
 
 std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
     const {
-  tflite::OpResolver* resolver = nullptr;
-  resolver = new tflite::ops::builtin::BuiltinOpResolver();
-#ifdef TFLITE_CUSTOM_OPS_HEADER
-  RegisterSelectedOps(static_cast<tflite::MutableOpResolver*>(resolver));
-#endif
+  auto resolver = new tflite::ops::builtin::BuiltinOpResolver();
+  RegisterSelectedOps(resolver);
   return std::unique_ptr<tflite::OpResolver>(resolver);
 }
 

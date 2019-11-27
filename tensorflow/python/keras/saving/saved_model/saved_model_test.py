@@ -92,7 +92,7 @@ class LayerWithUpdate(keras.layers.Layer):
     return inputs
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@keras_parameterized.run_all_keras_modes
 class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   def _save_model_dir(self, dirname='saved_model'):
@@ -200,7 +200,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
-    self.assertAllEqual(previous_losses, model.losses)
+
+    with previous_losses[0].graph.as_default():
+      # If we try to compare symbolic Tensors in eager mode assertAllEqual will
+      # return False even if they are the same Tensor.
+      self.assertAllEqual(previous_losses, model.losses)
 
     if context.executing_eagerly():
       # Test that eager losses are maintained.
@@ -260,6 +264,11 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
   @keras_parameterized.run_with_all_model_types
   def test_compiled_model(self):
+    # TODO(b/134519980): Issue with model.fit if the model call function uses
+    # a tf.function (Graph mode only).
+    if not context.executing_eagerly():
+      return
+
     input_arr = np.random.random((1, 3))
     target_arr = np.random.random((1, 4))
 
@@ -271,21 +280,18 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     saved_model_dir = self._save_model_dir()
     tf_save.save(model, saved_model_dir)
 
-    # TODO(b/134519980): Issue with model.fit if the model call function uses
-    # a tf.function (Graph mode only).
-    with context.eager_mode():
-      loaded = keras_load.load(saved_model_dir)
-      actual_predict = loaded.predict(input_arr)
-      self.assertAllClose(expected_predict, actual_predict)
+    loaded = keras_load.load(saved_model_dir)
+    actual_predict = loaded.predict(input_arr)
+    self.assertAllClose(expected_predict, actual_predict)
 
-      loss_before = loaded.evaluate(input_arr, target_arr)
-      loaded.fit(input_arr, target_arr)
-      loss_after = loaded.evaluate(input_arr, target_arr)
-      self.assertLess(loss_after, loss_before)
-      predict = loaded.predict(input_arr)
+    loss_before = loaded.evaluate(input_arr, target_arr)
+    loaded.fit(input_arr, target_arr)
+    loss_after = loaded.evaluate(input_arr, target_arr)
+    self.assertLess(loss_after, loss_before)
+    predict = loaded.predict(input_arr)
 
-      ckpt_path = os.path.join(self.get_temp_dir(), 'weights')
-      loaded.save_weights(ckpt_path)
+    ckpt_path = os.path.join(self.get_temp_dir(), 'weights')
+    loaded.save_weights(ckpt_path)
 
     # Ensure that the checkpoint is compatible with the original model.
     model.load_weights(ckpt_path)
@@ -459,6 +465,9 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     model.save(saved_model_dir, save_format='tf')
     load = tf_load.load(saved_model_dir)
 
+    # Ensure that the Keras loader is able to load and build the model.
+    _ = keras_load.load(saved_model_dir)
+
     assert_training_default(load.__call__, False)
     assert_training_default(
         load.layer_with_training_default_none.__call__, False)
@@ -616,6 +625,20 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
   @keras_parameterized.run_with_all_model_types
   def testSaveInStrategyScope(self):
     self._testAddUpdate(mirrored_strategy.MirroredStrategy().scope())
+
+  def testSaveTimeDistributedLayer(self):
+    model = keras.Sequential([
+        keras.layers.TimeDistributed(
+            keras.layers.Dense(1, kernel_regularizer=regularizers.get('l2')),
+            input_shape=(None, 1))])
+    predictions = model.predict_on_batch(array_ops.ones((3, 2, 1)))
+
+    saved_model_dir = self._save_model_dir()
+    model.save(saved_model_dir, save_format='tf')
+
+    loaded = keras_load.load(saved_model_dir)
+    self.assertAllClose(loaded.predict_on_batch(array_ops.ones((3, 2, 1))),
+                        predictions)
 
 
 class TestLayerCallTracing(test.TestCase):

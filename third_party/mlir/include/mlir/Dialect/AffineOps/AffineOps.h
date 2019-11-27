@@ -28,6 +28,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/StandardTypes.h"
+#include "mlir/Transforms/LoopLikeInterface.h"
 
 namespace mlir {
 class AffineBound;
@@ -38,8 +39,9 @@ class FlatAffineConstraints;
 class OpBuilder;
 
 /// A utility function to check if a value is defined at the top level of a
-/// function. A value defined at the top level is always a valid symbol.
-bool isTopLevelSymbol(Value *value);
+/// function. A value of index type defined at the top level is always a valid
+/// symbol.
+bool isTopLevelValue(Value *value);
 
 class AffineOpsDialect : public Dialect {
 public:

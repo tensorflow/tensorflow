@@ -19,9 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import opt_einsum
+import six
 
 from tensorflow.python.client import session
 from tensorflow.python.compat import compat
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -340,7 +343,14 @@ class EinsumTest(test.TestCase):
       self._check('ab...,b->ab...', (2, 3, 1, 1, 5), (3,))
 
   def test_dtypes(self):
-    for dtype in [np.float64, np.float32, np.complex64, np.complex128]:
+    dtypes = []
+    if test.is_built_with_rocm():
+      # This test triggers the BLAS op calls on the GPU
+      # ROCm does not support BLAS operations for complex types
+      dtypes = [np.float64, np.float32]
+    else:
+      dtypes = [np.float64, np.float32, np.complex64, np.complex128]
+    for dtype in dtypes:
       self._check('ij,jk->ik', (2, 2), (2, 2), dtype=dtype)
       self._check('ji,jk->ik', (2, 2), (2, 2), dtype=dtype)
       self._check('ji,kj->ik', (2, 2), (2, 2), dtype=dtype)
@@ -414,6 +424,43 @@ class EinsumTest(test.TestCase):
       for input_str in inputs.split(','):
         input_shapes.append(tuple([dimension_map[c] for c in input_str]))
       self._check(equation, *input_shapes)
+
+  def test_opt_einsum_cached(self):
+    # Checks call_count to opt_einsum which are only reflected in eager mode.
+    if not context.executing_eagerly():
+      return
+
+    input_1 = ('ijk,ijl,ikl->i', (1, 2, 3), (1, 2, 4), (1, 3, 4))
+    input_2 = ('ij,ij,jk,kl->il', (1, 2), (1, 2), (2, 3), (3, 4))
+
+    with test.mock.patch.object(
+        opt_einsum, 'contract_path',
+        wraps=opt_einsum.contract_path) as mock_contract_path:
+
+      # explicitly clear the lru_cache contents for the method
+      #   special_math_ops.get_opt_einsum_contract_path
+      # We need to do this because other tests in this file invoke that method
+      # with the same input args (as input_1 and input_2 above), and if
+      # those tests run before this test, then the call_count for the method
+      # mock_contract_path will not increment.
+      if six.PY3:
+        special_math_ops._get_opt_einsum_contract_path.cache_clear()
+
+      self.assertEqual(mock_contract_path.call_count, 0)
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 1)
+      # The same input results in no extra call if we're caching the
+      # opt_einsum.contract_path call. We only cache in Python3.
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 1 if six.PY3 else 2)
+      # New input results in another call to opt_einsum.
+      self._check(*input_2)
+      self.assertEqual(mock_contract_path.call_count, 2 if six.PY3 else 3)
+      # No more extra calls as the inputs should be cached.
+      self._check(*input_1)
+      self._check(*input_2)
+      self._check(*input_1)
+      self.assertEqual(mock_contract_path.call_count, 2 if six.PY3 else 6)
 
   @test_util.disable_xla('b/131919749')
   def test_long_cases_with_repeated_labels(self):

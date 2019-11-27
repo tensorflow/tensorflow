@@ -118,7 +118,7 @@ class GpuExecutable : public Executable {
   // globals corresponding to constant buffers.  Returns a map mapping buffer
   // allocation indices to GPU pointers.
   StatusOr<const BufferAllocToDeviceMemoryMap*> ResolveConstantGlobals(
-      stream_executor::StreamExecutor* executor);
+      stream_executor::Stream* stream);
 
   // Computes annotations for each thunk and store them in thunk_annotations_.
   void ComputeThunkAnnotations();

@@ -221,12 +221,14 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
     with ops.name_scope(name, values=graph_parents):
       super(LinearOperatorKronecker, self).__init__(
           dtype=dtype,
-          graph_parents=graph_parents,
+          graph_parents=None,
           is_non_singular=is_non_singular,
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
           name=name)
+    # TODO(b/143910018) Remove graph_parents in V3.
+    self._set_graph_parents(graph_parents)
 
   @property
   def operators(self):
@@ -522,7 +524,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   def _to_dense(self):
     product = self.operators[0].to_dense()
     for operator in self.operators[1:]:
-      # Product has shape [B, R1, 1, C1].
+      # Product has shape [B, R1, 1, C1, 1].
       product = product[
           ..., :, array_ops.newaxis, :, array_ops.newaxis]
       # Operator has shape [B, 1, R2, 1, C2].
@@ -539,6 +541,25 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
                 array_ops.shape(product)[-2] * array_ops.shape(product)[-1]]
               ], axis=0))
     product.set_shape(self.shape)
+    return product
+
+  def _eigvals(self):
+    # This will be the kronecker product of all the eigenvalues.
+    # Note: It doesn't matter which kronecker product it is, since every
+    # kronecker product of the same matrices are similar.
+    eigvals = [operator.eigvals() for operator in self.operators]
+    # Now compute the kronecker product
+    product = eigvals[0]
+    for eigval in eigvals[1:]:
+      # Product has shape [B, R1, 1].
+      product = product[..., array_ops.newaxis]
+      # Eigval has shape [B, 1, R2]. Produces shape [B, R1, R2].
+      product *= eigval[..., array_ops.newaxis, :]
+      # Reshape to [B, R1 * R2]
+      product = array_ops.reshape(
+          product,
+          shape=array_ops.concat([array_ops.shape(product)[:-2], [-1]], axis=0))
+    product.set_shape(self.shape[:-1])
     return product
 
   def _assert_non_singular(self):

@@ -51,7 +51,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite:framework",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
 )
 
@@ -70,9 +70,10 @@ cc_library(
         ":c_api_internal",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
+    alwayslink = 1,
 )
 
 cc_library(
@@ -85,6 +86,7 @@ cc_library(
         ":c_api_internal",
         "//tensorflow/lite:kernel_api",
     ],
+    alwayslink = 1,
 )
 
 cc_test(
@@ -97,7 +99,7 @@ cc_test(
     ],
     deps = [
         ":c_api",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

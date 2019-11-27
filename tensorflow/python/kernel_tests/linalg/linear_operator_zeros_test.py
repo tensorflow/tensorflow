@@ -39,7 +39,13 @@ class LinearOperatorZerosTest(
   @staticmethod
   def skip_these_tests():
     return [
-        "cholesky", "log_abs_det", "inverse", "solve", "solve_with_broadcast"]
+        "cholesky",
+        "cond",
+        "inverse",
+        "log_abs_det",
+        "solve",
+        "solve_with_broadcast"
+    ]
 
   @staticmethod
   def operator_shapes_infos():
@@ -195,8 +201,11 @@ class LinearOperatorZerosTest(
 class LinearOperatorZerosNotSquareTest(
     linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
 
-  def operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def operator_and_matrix(
+      self, build_info, dtype, use_placeholder,
+      ensure_self_adjoint_and_pd=False):
     del use_placeholder
+    del ensure_self_adjoint_and_pd
     shape = list(build_info.shape)
 
     batch_shape = shape[:-2]

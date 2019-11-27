@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compat import compat
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -59,10 +58,6 @@ def regex_full_match(input, pattern, name=None):
   Returns:
     bool `Tensor` of the same shape as `input` with match results.
   """
-  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
-  if not compat.forward_compatible(2018, 11, 10):
-    return gen_string_ops.regex_full_match(
-        input=input, pattern=pattern, name=name)
   if isinstance(pattern, util_compat.bytes_or_text_types):
     # When `pattern` is static through the life of the op we can
     # use a version which performs the expensive regex compilation once at
@@ -367,7 +362,7 @@ def reduce_join_v2(  # pylint: disable=missing-docstring
   array([b'abc 123', b'def 456'], dtype=object)
 
   Args:
-    input: A `tf.string` tensor.
+    inputs: A `tf.string` tensor.
     axis: Which axis to join along. The default behavior is to join all
       elements, producing a scalar.
     keepdims: If true, retains reduced dimensions with length 1.
@@ -387,11 +382,7 @@ def reduce_join_v2(  # pylint: disable=missing-docstring
         separator=separator,
         name=name)
 
-
-reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
-    gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
-reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
-                                                  "tf.strings.reduce_join(")
+reduce_join.__doc__ = reduce_join_v2.__doc__
 
 
 # This wrapper provides backwards compatibility for code that predates the

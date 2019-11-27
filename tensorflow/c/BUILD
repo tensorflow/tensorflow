@@ -158,6 +158,7 @@ tf_cuda_library(
             "//tensorflow/core/kernels:logging_ops",
         ],
     }),
+    alwayslink = 1,
 )
 
 tf_cuda_library(
@@ -165,6 +166,9 @@ tf_cuda_library(
     hdrs = [
         "tf_status.h",
         "tf_status_internal.h",
+    ],
+    visibility = [
+        "//tensorflow/c:__subpackages__",
     ],
     deps = select({
         "//tensorflow:android": [
@@ -288,6 +292,15 @@ exports_files(
         "exported_symbols.lds",
     ],
     visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "checkpoint_reader_hdrs",
+    srcs = [
+        "checkpoint_reader.h",
+        "tf_status_helper.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
 )
 
 tf_cuda_library(

@@ -104,7 +104,7 @@ if [[ "$RELEASE_BUILD" == 1 ]]; then
   # Overriding eigen strong inline speeds up the compiling of conv_grad_ops_3d.cc and conv_ops_3d.cc
   # by 20 minutes. See https://github.com/tensorflow/tensorflow/issues/10521
   # Because this hurts the performance of TF, we don't override it in release build.
-  export TF_OVERRIDE_EIGEN_STRONG_INLINE=0
+  export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
 else
   export TF_OVERRIDE_EIGEN_STRONG_INLINE=1
 fi
@@ -119,6 +119,10 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
     EXTRA_PIP_FLAGS="--nightly_flag"
   else
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
+  fi
+else
+  if [[ -v PROJECT_NAME  ]]; then
+    EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME}"
   fi
 fi
 
@@ -154,7 +158,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
 fi
 
 # Running python tests on Windows needs pip package installed
-PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow-*.whl)
+PIP_NAME=$(ls ${PY_TEST_DIR}/tensorflow*.whl)
 reinstall_tensorflow_pip ${PIP_NAME}
 
 # NUMBER_OF_PROCESSORS is predefined on Windows
@@ -162,9 +166,6 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
-# TODO(pcloudy): remove --experimental_windows_native_test_wrapper once
-# native test wrapper is enabled by default.
-# https://github.com/bazelbuild/bazel/issues/6622
 bazel test --announce_rc --config=opt -k --test_output=errors \
   ${EXTRA_TEST_FLAGS} \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \

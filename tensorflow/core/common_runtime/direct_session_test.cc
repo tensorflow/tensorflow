@@ -264,6 +264,76 @@ TEST_F(DirectSessionMinusAXTest,
       absl::StrContains(s.error_message(), "disable_output_partition_graphs"));
 }
 
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithCallables) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  Session::CallableHandle handle;
+  TF_ASSERT_OK(session->MakeCallable(
+      MakeCallableOptions({}, {y_ + ":0"}, {y_neg_}), &handle));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // The callable is usable after finalization.
+  for (int i = 0; i < 2; ++i) {
+    std::vector<Tensor> outputs;
+    TF_ASSERT_OK(session->RunCallable(handle, {}, &outputs, nullptr));
+
+    ASSERT_EQ(1, outputs.size());
+    // The first output should be initialized and have the correct
+    // output.
+    auto mat = outputs[0].matrix<float>();
+    ASSERT_TRUE(outputs[0].IsInitialized());
+    EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+  }
+
+  TF_ASSERT_OK(session->ReleaseCallable(handle));
+
+  // Making a new callable fails because the session has been finalized.
+  Status s =
+      session->MakeCallable(MakeCallableOptions({}, {y_ + ":0"}, {}), &handle);
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "Session has been finalized."));
+}
+
+TEST_F(DirectSessionMinusAXTest, RunSimpleNetwork_FinalizeWithRun) {
+  Initialize({3, 2, -1, 0});
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def_));
+
+  // Request two targets: one fetch output and one non-fetched output.
+  std::vector<Tensor> outputs;
+  TF_ASSERT_OK(session->Run({}, {y_ + ":0"}, {y_neg_}, &outputs));
+
+  ASSERT_EQ(1, outputs.size());
+  // The first output should be initialized and have the correct output.
+  auto mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Finalize the session.
+  TF_ASSERT_OK(session->Finalize());
+
+  // Running the exact same subgraph succeeds after finalization.
+  TF_ASSERT_OK(session->Run({}, {y_ + ":0"}, {y_neg_}, &outputs));
+  ASSERT_EQ(1, outputs.size());
+  mat = outputs[0].matrix<float>();
+  ASSERT_TRUE(outputs[0].IsInitialized());
+  EXPECT_FLOAT_EQ(5.0, mat(0, 0));
+
+  // Running a different subgraph fails because the session has been finalized.
+  Status s = session->Run({}, {y_ + ":0"}, {}, &outputs);
+  EXPECT_TRUE(errors::IsFailedPrecondition(s));
+  EXPECT_TRUE(
+      absl::StrContains(s.error_message(), "Session has been finalized."));
+}
+
 TEST_F(DirectSessionMinusAXTest, TestTensorConnection) {
   Initialize({3, 2, -1, 0});
   auto session = CreateSession();
@@ -2197,7 +2267,7 @@ bool IsCUDATensor(const Tensor& t) {
       cudaPointerGetAttributes(&attributes, t.tensor_data().data());
   if (err == cudaErrorInvalidValue) return false;
   CHECK_EQ(cudaSuccess, err) << cudaGetErrorString(err);
-  return (attributes.memoryType == cudaMemoryTypeDevice);
+  return (attributes.type == cudaMemoryTypeDevice);
 #elif TENSORFLOW_USE_ROCM
   hipPointerAttribute_t attributes;
   hipError_t err = hipPointerGetAttributes(&attributes, t.tensor_data().data());
@@ -2456,8 +2526,9 @@ TEST(DirectSessionTest,
 
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int iters, int num_feeds,
-                              bool use_make_callable) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds, bool use_make_callable,
+                              int inter_op_threads,
+                              bool use_single_threaded_executor) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());
@@ -2491,6 +2562,11 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
   GraphDef gd;
   g.ToGraphDef(&gd);
   SessionOptions opts;
+  opts.config.set_inter_op_parallelism_threads(inter_op_threads);
+  if (use_single_threaded_executor) {
+    opts.config.mutable_experimental()->set_executor_type(
+        "SINGLE_THREADED_EXECUTOR");
+  }
   std::unique_ptr<Session> session(NewSession(opts));
   TF_CHECK_OK(session->Create(gd));
   if (use_make_callable) {
@@ -2534,14 +2610,34 @@ void FeedFetchBenchmarkHelper(int iters, int num_feeds,
 }
 
 void BM_FeedFetch(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ false,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
 }
 void BM_FeedFetchCallable(int iters, int num_feeds) {
-  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true);
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ 0,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThread(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ false);
+}
+void BM_FeedFetchCallableSingleThreadExecutor(int iters, int num_feeds) {
+  FeedFetchBenchmarkHelper(iters, num_feeds, /* use_make_callable */ true,
+                           /* inter_op_threads */ -1,
+                           /* use_single_threaded_executor */ true);
 }
 
 BENCHMARK(BM_FeedFetch)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
 BENCHMARK(BM_FeedFetchCallable)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThread)->Arg(1)->Arg(2)->Arg(5)->Arg(10);
+BENCHMARK(BM_FeedFetchCallableSingleThreadExecutor)
+    ->Arg(1)
+    ->Arg(2)
+    ->Arg(5)
+    ->Arg(10);
 
 }  // namespace
 

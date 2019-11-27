@@ -20,6 +20,13 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
 //===----------------------------------------------------------------------===//
+// Nullary op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(HLO_ConstOp ElementsAttr:$value),
+          (ConstantOp $value)>;
+
+//===----------------------------------------------------------------------===//
 // Binary op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -28,6 +35,11 @@ def IsSameSizePred : CPred<
     "== $1->getType().cast<ShapedType>().getShape()">;
 def IsSameSizeConstraint : Constraint<IsSameSizePred, "inputs are same size">;
 
+
+def : Pat<(HLO_AndOp HLO_PredTensor:$l, HLO_PredTensor:$r,
+                     IsNullAttr:$broadcast_dimensions),
+          (AndOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_FpTensor:$l, HLO_FpTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (AddFOp $l, $r),
@@ -44,7 +56,10 @@ def : Pat<(HLO_DivOp HLO_FpTensor:$l, HLO_FpTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (DivFOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;
-
+def : Pat<(HLO_RemOp HLO_FpTensor:$l, HLO_FpTensor:$r,
+                     IsNullAttr:$broadcast_dimensions),
+          (RemFOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;
 def : Pat<(HLO_AddOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (AddIOp $l, $r),
@@ -60,4 +75,8 @@ def : Pat<(HLO_MulOp HLO_IntTensor:$l, HLO_IntTensor:$r,
 def : Pat<(HLO_DivOp HLO_IntTensor:$l, HLO_IntTensor:$r,
                      IsNullAttr:$broadcast_dimensions),
           (DivISOp $l, $r),
+          [(IsSameSizeConstraint $l, $r)]>;
+def : Pat<(HLO_RemOp HLO_IntTensor:$l, HLO_IntTensor:$r,
+                     IsNullAttr:$broadcast_dimensions),
+          (RemISOp $l, $r),
           [(IsSameSizeConstraint $l, $r)]>;

@@ -330,7 +330,7 @@ REGISTER_OP("Conv2D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("T: {half, bfloat16, float, double, int32}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrStringWithExplicit())
@@ -344,7 +344,7 @@ REGISTER_OP("Conv2DBackpropInput")
     .Input("filter: T")
     .Input("out_backprop: T")
     .Output("output: T")
-    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("T: {half, bfloat16, float, double, int32}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrStringWithExplicit())
@@ -3184,6 +3184,41 @@ REGISTER_OP("QuantizedMatMulWithBiasAndReluAndRequantize")
       return Status::OK();
     });
 
+REGISTER_OP("QuantizedMatMulWithBiasAndRequantize")
+    .Input("a: T1")
+    .Input("b: T2")
+    .Input("bias: Tbias")
+    .Input("min_a: float")
+    .Input("max_a: float")
+    .Input("min_b: float")
+    .Input("max_b: float")
+    .Input("min_freezed_output: float")
+    .Input("max_freezed_output: float")
+    .Output("out: Toutput")
+    .Output("min_out: float")
+    .Output("max_out: float")
+    .Attr("T1: quantizedtype")
+    .Attr("T2: quantizedtype")
+    .Attr("Tbias: {float, qint32}")
+    .Attr("Toutput: quantizedtype = DT_QUINT8")
+    .Attr("transpose_a: bool = false")
+    .Attr("transpose_b: bool = false")
+    .Attr("input_quant_mode: {'MIN_FIRST', 'SCALED'} = 'MIN_FIRST'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::MatMulShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 1, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(4), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(5), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(6), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(7), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
 REGISTER_OP("QuantizedConv2DPerChannel")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
@@ -3266,6 +3301,7 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndRelu")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
@@ -3288,6 +3324,7 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
     .Attr("strides: list(int)")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 }  // namespace tensorflow

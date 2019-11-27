@@ -413,7 +413,7 @@ cuda_py_test(
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:multi_device_iterator_ops",
         "//tensorflow/python/data/ops:iterator_ops",
-        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python/data/experimental/ops:optimization_options",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -441,6 +441,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    tags = ["notsan"],  # b/144706539
 )
 
 tf_py_test(
@@ -555,7 +556,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:testing",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/ops:dataset_ops",
     ],

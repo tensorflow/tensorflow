@@ -21,14 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_BASE
-#else
+#ifndef SPIRV_BASE
 #define SPIRV_BASE
 
-#ifdef OP_BASE
-#else
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // SPIR-V dialect definitions
@@ -117,6 +113,13 @@ def SPV_OC_OpAccessChain            : I32EnumAttrCase<"OpAccessChain", 65>;
 def SPV_OC_OpDecorate               : I32EnumAttrCase<"OpDecorate", 71>;
 def SPV_OC_OpMemberDecorate         : I32EnumAttrCase<"OpMemberDecorate", 72>;
 def SPV_OC_OpCompositeExtract       : I32EnumAttrCase<"OpCompositeExtract", 81>;
+def SPV_OC_OpConvertFToU            : I32EnumAttrCase<"OpConvertFToU", 109>;
+def SPV_OC_OpConvertFToS            : I32EnumAttrCase<"OpConvertFToS", 110>;
+def SPV_OC_OpConvertSToF            : I32EnumAttrCase<"OpConvertSToF", 111>;
+def SPV_OC_OpConvertUToF            : I32EnumAttrCase<"OpConvertUToF", 112>;
+def SPV_OC_OpUConvert               : I32EnumAttrCase<"OpUConvert", 113>;
+def SPV_OC_OpSConvert               : I32EnumAttrCase<"OpSConvert", 114>;
+def SPV_OC_OpFConvert               : I32EnumAttrCase<"OpFConvert", 115>;
 def SPV_OC_OpBitcast                : I32EnumAttrCase<"OpBitcast", 124>;
 def SPV_OC_OpFNegate                : I32EnumAttrCase<"OpFNegate", 127>;
 def SPV_OC_OpIAdd                   : I32EnumAttrCase<"OpIAdd", 128>;
@@ -161,8 +164,21 @@ def SPV_OC_OpFOrdLessThanEqual      : I32EnumAttrCase<"OpFOrdLessThanEqual", 188
 def SPV_OC_OpFUnordLessThanEqual    : I32EnumAttrCase<"OpFUnordLessThanEqual", 189>;
 def SPV_OC_OpFOrdGreaterThanEqual   : I32EnumAttrCase<"OpFOrdGreaterThanEqual", 190>;
 def SPV_OC_OpFUnordGreaterThanEqual : I32EnumAttrCase<"OpFUnordGreaterThanEqual", 191>;
+def SPV_OC_OpShiftRightLogical      : I32EnumAttrCase<"OpShiftRightLogical", 194>;
+def SPV_OC_OpShiftRightArithmetic   : I32EnumAttrCase<"OpShiftRightArithmetic", 195>;
+def SPV_OC_OpShiftLeftLogical       : I32EnumAttrCase<"OpShiftLeftLogical", 196>;
+def SPV_OC_OpBitwiseOr              : I32EnumAttrCase<"OpBitwiseOr", 197>;
+def SPV_OC_OpBitwiseXor             : I32EnumAttrCase<"OpBitwiseXor", 198>;
+def SPV_OC_OpBitwiseAnd             : I32EnumAttrCase<"OpBitwiseAnd", 199>;
+def SPV_OC_OpNot                    : I32EnumAttrCase<"OpNot", 200>;
+def SPV_OC_OpBitFieldInsert         : I32EnumAttrCase<"OpBitFieldInsert", 201>;
+def SPV_OC_OpBitFieldSExtract       : I32EnumAttrCase<"OpBitFieldSExtract", 202>;
+def SPV_OC_OpBitFieldUExtract       : I32EnumAttrCase<"OpBitFieldUExtract", 203>;
+def SPV_OC_OpBitReverse             : I32EnumAttrCase<"OpBitReverse", 204>;
+def SPV_OC_OpBitCount               : I32EnumAttrCase<"OpBitCount", 205>;
 def SPV_OC_OpControlBarrier         : I32EnumAttrCase<"OpControlBarrier", 224>;
 def SPV_OC_OpMemoryBarrier          : I32EnumAttrCase<"OpMemoryBarrier", 225>;
+def SPV_OC_OpPhi                    : I32EnumAttrCase<"OpPhi", 245>;
 def SPV_OC_OpLoopMerge              : I32EnumAttrCase<"OpLoopMerge", 246>;
 def SPV_OC_OpSelectionMerge         : I32EnumAttrCase<"OpSelectionMerge", 247>;
 def SPV_OC_OpLabel                  : I32EnumAttrCase<"OpLabel", 248>;
@@ -170,6 +186,7 @@ def SPV_OC_OpBranch                 : I32EnumAttrCase<"OpBranch", 249>;
 def SPV_OC_OpBranchConditional      : I32EnumAttrCase<"OpBranchConditional", 250>;
 def SPV_OC_OpReturn                 : I32EnumAttrCase<"OpReturn", 253>;
 def SPV_OC_OpReturnValue            : I32EnumAttrCase<"OpReturnValue", 254>;
+def SPV_OC_OpUnreachable            : I32EnumAttrCase<"OpUnreachable", 255>;
 def SPV_OC_OpModuleProcessed        : I32EnumAttrCase<"OpModuleProcessed", 330>;
 
 def SPV_OpcodeAttr :
@@ -187,7 +204,9 @@ def SPV_OpcodeAttr :
       SPV_OC_OpSpecConstantComposite, SPV_OC_OpFunction, SPV_OC_OpFunctionParameter,
       SPV_OC_OpFunctionEnd, SPV_OC_OpFunctionCall, SPV_OC_OpVariable, SPV_OC_OpLoad,
       SPV_OC_OpStore, SPV_OC_OpAccessChain, SPV_OC_OpDecorate,
-      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpBitcast,
+      SPV_OC_OpMemberDecorate, SPV_OC_OpCompositeExtract, SPV_OC_OpConvertFToU,
+      SPV_OC_OpConvertFToS, SPV_OC_OpConvertSToF, SPV_OC_OpConvertUToF,
+      SPV_OC_OpUConvert, SPV_OC_OpSConvert, SPV_OC_OpFConvert, SPV_OC_OpBitcast,
       SPV_OC_OpFNegate, SPV_OC_OpIAdd, SPV_OC_OpFAdd, SPV_OC_OpISub, SPV_OC_OpFSub,
       SPV_OC_OpIMul, SPV_OC_OpFMul, SPV_OC_OpUDiv, SPV_OC_OpSDiv, SPV_OC_OpFDiv,
       SPV_OC_OpUMod, SPV_OC_OpSRem, SPV_OC_OpSMod, SPV_OC_OpFRem, SPV_OC_OpFMod,
@@ -201,10 +220,14 @@ def SPV_OpcodeAttr :
       SPV_OC_OpFOrdGreaterThan, SPV_OC_OpFUnordGreaterThan,
       SPV_OC_OpFOrdLessThanEqual, SPV_OC_OpFUnordLessThanEqual,
       SPV_OC_OpFOrdGreaterThanEqual, SPV_OC_OpFUnordGreaterThanEqual,
-      SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier, SPV_OC_OpLoopMerge,
-      SPV_OC_OpSelectionMerge, SPV_OC_OpLabel, SPV_OC_OpBranch,
-      SPV_OC_OpBranchConditional, SPV_OC_OpReturn, SPV_OC_OpReturnValue,
-      SPV_OC_OpModuleProcessed
+      SPV_OC_OpShiftRightLogical, SPV_OC_OpShiftRightArithmetic,
+      SPV_OC_OpShiftLeftLogical, SPV_OC_OpBitwiseOr, SPV_OC_OpBitwiseXor,
+      SPV_OC_OpBitwiseAnd, SPV_OC_OpNot, SPV_OC_OpBitFieldInsert,
+      SPV_OC_OpBitFieldSExtract, SPV_OC_OpBitFieldUExtract, SPV_OC_OpBitReverse,
+      SPV_OC_OpBitCount, SPV_OC_OpControlBarrier, SPV_OC_OpMemoryBarrier,
+      SPV_OC_OpPhi, SPV_OC_OpLoopMerge, SPV_OC_OpSelectionMerge, SPV_OC_OpLabel,
+      SPV_OC_OpBranch, SPV_OC_OpBranchConditional, SPV_OC_OpReturn,
+      SPV_OC_OpReturnValue, SPV_OC_OpUnreachable, SPV_OC_OpModuleProcessed
       ]> {
     let returnType = "::mlir::spirv::Opcode";
     let convertFromStorage = "static_cast<::mlir::spirv::Opcode>($_self.getInt())";
@@ -262,49 +285,6 @@ class SPV_Optional<Type type> : Variadic<type>;
 def SPV_SelectType : AnyTypeOf<[SPV_Scalar, SPV_Vector, SPV_AnyPtr]>;
 
 //===----------------------------------------------------------------------===//
-// SPIR-V BitEnum definition
-//===----------------------------------------------------------------------===//
-
-// A bit enum case stored with 32-bit IntegerAttr. `val` here is *not* the
-// ordinal number of the bit that is set. It is the 32-bit integer with only
-// one bit set.
-class BitEnumAttrCase<string sym, int val> :
-    EnumAttrCaseInfo<sym, val>,
-    IntegerAttrBase<I32, "case " # sym> {
-  let predicate = CPred<
-    "$_self.cast<IntegerAttr>().getValue().getSExtValue() & " # val # "u">;
-}
-
-// A bit enum stored with 32-bit IntegerAttr.
-//
-// Op attributes of this kind are stored as IntegerAttr. Extra verification will
-// be generated on the integer to make sure only allowed bit are set.
-class BitEnumAttr<string name, string description,
-                  list<BitEnumAttrCase> cases> :
-    EnumAttrInfo<name, cases>, IntegerAttrBase<I32, description> {
-  let predicate = And<[
-    IntegerAttrBase<I32, "">.predicate,
-    // Make sure we don't have unknown bit set.
-    CPred<"!($_self.cast<IntegerAttr>().getValue().getZExtValue() & (~(" #
-          StrJoin<!foreach(case, cases, case.value # "u"), "|">.result #
-          ")))">
-  ]>;
-
-  let underlyingType = "uint32_t";
-
-  // We need to return a string because we may concatenate symbols for multiple
-  // bits together.
-  let symbolToStringFnRetType = "std::string";
-
-  // The string used to separate bit enum cases in strings.
-  string separator = "|";
-
-  // Turn off the autogen with EnumsGen. SPIR-V needs custom logic here and
-  // we will use our own autogen logic.
-  let skipAutoGen = 1;
-}
-
-//===----------------------------------------------------------------------===//
 // SPIR-V extension definitions
 //===----------------------------------------------------------------------===//
 
@@ -346,8 +326,6 @@ def SPV_AddressingModelAttr :
       SPV_AM_Logical, SPV_AM_Physical32, SPV_AM_Physical64,
       SPV_AM_PhysicalStorageBuffer64
     ]> {
-  let returnType = "::mlir::spirv::AddressingModel";
-  let convertFromStorage = "static_cast<::mlir::spirv::AddressingModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -482,8 +460,6 @@ def SPV_BuiltInAttr :
       SPV_BI_HitTNV, SPV_BI_HitKindNV, SPV_BI_IncomingRayFlagsNV,
       SPV_BI_WarpsPerSMNV, SPV_BI_SMCountNV, SPV_BI_WarpIDNV, SPV_BI_SMIDNV
     ]> {
-  let returnType = "::mlir::spirv::BuiltIn";
-  let convertFromStorage = "static_cast<::mlir::spirv::BuiltIn>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -692,8 +668,6 @@ def SPV_CapabilityAttr :
       SPV_C_SubgroupAvcMotionEstimationIntraINTEL,
       SPV_C_SubgroupAvcMotionEstimationChromaINTEL
     ]> {
-  let returnType = "::mlir::spirv::Capability";
-  let convertFromStorage = "static_cast<::mlir::spirv::Capability>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -783,14 +757,12 @@ def SPV_DecorationAttr :
       SPV_D_AliasedPointer, SPV_D_CounterBuffer, SPV_D_UserSemantic,
       SPV_D_UserTypeGOOGLE
     ]> {
-  let returnType = "::mlir::spirv::Decoration";
-  let convertFromStorage = "static_cast<::mlir::spirv::Decoration>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
-def SPV_D_1D          : I32EnumAttrCase<"1D", 0>;
-def SPV_D_2D          : I32EnumAttrCase<"2D", 1>;
-def SPV_D_3D          : I32EnumAttrCase<"3D", 2>;
+def SPV_D_1D          : I32EnumAttrCase<"Dim1D", 0>;
+def SPV_D_2D          : I32EnumAttrCase<"Dim2D", 1>;
+def SPV_D_3D          : I32EnumAttrCase<"Dim3D", 2>;
 def SPV_D_Cube        : I32EnumAttrCase<"Cube", 3>;
 def SPV_D_Rect        : I32EnumAttrCase<"Rect", 4>;
 def SPV_D_Buffer      : I32EnumAttrCase<"Buffer", 5>;
@@ -801,8 +773,6 @@ def SPV_DimAttr :
       SPV_D_1D, SPV_D_2D, SPV_D_3D, SPV_D_Cube, SPV_D_Rect, SPV_D_Buffer,
       SPV_D_SubpassData
     ]> {
-  let returnType = "::mlir::spirv::Dim";
-  let convertFromStorage = "static_cast<::mlir::spirv::Dim>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -886,8 +856,6 @@ def SPV_ExecutionModeAttr :
       SPV_EM_SampleInterlockOrderedEXT, SPV_EM_SampleInterlockUnorderedEXT,
       SPV_EM_ShadingRateInterlockOrderedEXT, SPV_EM_ShadingRateInterlockUnorderedEXT
     ]> {
-  let returnType = "::mlir::spirv::ExecutionMode";
-  let convertFromStorage = "static_cast<::mlir::spirv::ExecutionMode>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -914,8 +882,6 @@ def SPV_ExecutionModelAttr :
       SPV_EM_TaskNV, SPV_EM_MeshNV, SPV_EM_RayGenerationNV, SPV_EM_IntersectionNV,
       SPV_EM_AnyHitNV, SPV_EM_ClosestHitNV, SPV_EM_MissNV, SPV_EM_CallableNV
     ]> {
-  let returnType = "::mlir::spirv::ExecutionModel";
-  let convertFromStorage = "static_cast<::mlir::spirv::ExecutionModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -929,8 +895,6 @@ def SPV_FunctionControlAttr :
     BitEnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
       SPV_FC_None, SPV_FC_Inline, SPV_FC_DontInline, SPV_FC_Pure, SPV_FC_Const
     ]> {
-  let returnType = "::mlir::spirv::FunctionControl";
-  let convertFromStorage = "static_cast<::mlir::spirv::FunctionControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -987,8 +951,6 @@ def SPV_ImageFormatAttr :
       SPV_IF_Rgb10a2ui, SPV_IF_Rg32ui, SPV_IF_Rg16ui, SPV_IF_Rg8ui, SPV_IF_R16ui,
       SPV_IF_R8ui
     ]> {
-  let returnType = "::mlir::spirv::ImageFormat";
-  let convertFromStorage = "static_cast<::mlir::spirv::ImageFormat>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -999,8 +961,6 @@ def SPV_LinkageTypeAttr :
     I32EnumAttr<"LinkageType", "valid SPIR-V LinkageType", [
       SPV_LT_Export, SPV_LT_Import
     ]> {
-  let returnType = "::mlir::spirv::LinkageType";
-  let convertFromStorage = "static_cast<::mlir::spirv::LinkageType>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1021,8 +981,6 @@ def SPV_LoopControlAttr :
       SPV_LC_DependencyLength, SPV_LC_MinIterations, SPV_LC_MaxIterations,
       SPV_LC_IterationMultiple, SPV_LC_PeelCount, SPV_LC_PartialCount
     ]> {
-  let returnType = "::mlir::spirv::LoopControl";
-  let convertFromStorage = "static_cast<::mlir::spirv::LoopControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1040,8 +998,6 @@ def SPV_MemoryAccessAttr :
       SPV_MA_MakePointerAvailable, SPV_MA_MakePointerVisible,
       SPV_MA_NonPrivatePointer
     ]> {
-  let returnType = "::mlir::spirv::MemoryAccess";
-  let convertFromStorage = "static_cast<::mlir::spirv::MemoryAccess>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1054,8 +1010,6 @@ def SPV_MemoryModelAttr :
     I32EnumAttr<"MemoryModel", "valid SPIR-V MemoryModel", [
       SPV_MM_Simple, SPV_MM_GLSL450, SPV_MM_OpenCL, SPV_MM_Vulkan
     ]> {
-  let returnType = "::mlir::spirv::MemoryModel";
-  let convertFromStorage = "static_cast<::mlir::spirv::MemoryModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1083,8 +1037,6 @@ def SPV_MemorySemanticsAttr :
       SPV_MS_AtomicCounterMemory, SPV_MS_ImageMemory, SPV_MS_OutputMemory,
       SPV_MS_MakeAvailable, SPV_MS_MakeVisible, SPV_MS_Volatile
     ]> {
-  let returnType = "::mlir::spirv::MemorySemantics";
-  let convertFromStorage = "static_cast<::mlir::spirv::MemorySemantics>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1100,8 +1052,6 @@ def SPV_ScopeAttr :
       SPV_S_CrossDevice, SPV_S_Device, SPV_S_Workgroup, SPV_S_Subgroup,
       SPV_S_Invocation, SPV_S_QueueFamily
     ]> {
-  let returnType = "::mlir::spirv::Scope";
-  let convertFromStorage = "static_cast<::mlir::spirv::Scope>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1113,8 +1063,6 @@ def SPV_SelectionControlAttr :
     BitEnumAttr<"SelectionControl", "valid SPIR-V SelectionControl", [
       SPV_SC_None, SPV_SC_Flatten, SPV_SC_DontFlatten
     ]> {
-  let returnType = "::mlir::spirv::SelectionControl";
-  let convertFromStorage = "static_cast<::mlir::spirv::SelectionControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1148,8 +1096,6 @@ def SPV_StorageClassAttr :
       SPV_SC_RayPayloadNV, SPV_SC_HitAttributeNV, SPV_SC_IncomingRayPayloadNV,
       SPV_SC_ShaderRecordBufferNV, SPV_SC_PhysicalStorageBuffer
     ]> {
-  let returnType = "::mlir::spirv::StorageClass";
-  let convertFromStorage = "static_cast<::mlir::spirv::StorageClass>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 

@@ -41,8 +41,9 @@ class MapAndBatchDatasetParams : public DatasetParams {
         type_arguments_(std::move(type_arguments)),
         preserve_cardinality_(preserve_cardinality) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
@@ -81,7 +82,9 @@ class MapAndBatchDatasetParams : public DatasetParams {
 
   std::vector<FunctionDef> func_lib() const override { return func_lib_; }
 
-  string op_name() const override { return MapAndBatchDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return MapAndBatchDatasetOp::kDatasetType;
+  }
 
  private:
   std::vector<Tensor> other_arguments_;
@@ -94,7 +97,7 @@ class MapAndBatchDatasetParams : public DatasetParams {
   bool preserve_cardinality_;
 };
 
-class MapAndBatchDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class MapAndBatchDatasetOpTest : public DatasetOpsTestBase {};
 
 FunctionDefHelper::AttrValueWrapper MapFunc(const string& func_name,
                                             const DataType& dtype) {

@@ -1,5 +1,6 @@
 # Settings for Blue Pill platforms.
 ifeq ($(TARGET), bluepill)
+  export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m3
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
@@ -39,7 +40,7 @@ ifeq ($(TARGET), bluepill)
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
-    -T $(MAKEFILE_DIR)/downloads/stm32_bare_lib/stm32_linker_layout.lds \
+    -T $(MAKEFILE_DIR)/targets/bluepill/bluepill.lds \
     -Wl,-Map=$(MAKEFILE_DIR)/gen/$(TARGET).map,--cref \
     -Wl,--gc-sections
   BUILD_TYPE := micro

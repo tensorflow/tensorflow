@@ -29,10 +29,6 @@ from tensorflow.python.keras.utils import all_utils as utils
 keras_preprocessing.set_keras_submodules(backend=backend, utils=utils)
 
 
-from tensorflow.python.keras.preprocessing import image
-from tensorflow.python.keras.preprocessing import sequence
-from tensorflow.python.keras.preprocessing import text
-
 del absolute_import
 del division
 del print_function

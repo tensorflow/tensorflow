@@ -66,7 +66,6 @@ android_binary(
     srcs = glob([
         "src/**/*.java",
     ]),
-    aapt_version = "aapt2",
     # Package assets from assets dir as well as all model targets. Remove undesired models
     # (and corresponding Activities in source) to reduce APK size.
     assets = [

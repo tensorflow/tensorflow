@@ -26,6 +26,7 @@ from __future__ import print_function
 
 
 from tensorflow.python.keras.layers import AbstractRNNCell
+from tensorflow.python.keras.layers import LSTMCell
 from tensorflow.python.ops import rnn_cell_wrapper_impl
 from tensorflow.python.util.tf_export import tf_export
 
@@ -96,6 +97,10 @@ class DropoutWrapper(rnn_cell_wrapper_impl.DropoutWrapperBase,
 
   def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
     super(DropoutWrapper, self).__init__(*args, **kwargs)
+    if isinstance(self.cell, LSTMCell):
+      raise ValueError("keras LSTM cell does not work with DropoutWrapper. "
+                       "Please use LSTMCell(dropout=x, recurrent_dropout=y) "
+                       "instead.")
 
   __init__.__doc__ = rnn_cell_wrapper_impl.DropoutWrapperBase.__init__.__doc__
 

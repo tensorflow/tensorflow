@@ -34,10 +34,10 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/local_client.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
 #include "tensorflow/compiler/xla/python/types.h"
-#include "tensorflow/compiler/xla/python/xrt.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,6 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace xla {
 
@@ -133,6 +134,10 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
 }  // namespace
 
 PYBIND11_MODULE(xla_extension, m) {
+  if (!InitializeNumpyAPIForTypes()) {
+    throw std::runtime_error("Unable to initialize Numpy API");
+  }
+
   // Types
   py::enum_<PrimitiveType>(m, "PrimitiveType")
       .value("PRIMITIVE_TYPE_INVALID", PRIMITIVE_TYPE_INVALID)
@@ -154,6 +159,8 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("TUPLE", TUPLE)
       .value("OPAQUE_TYPE", OPAQUE_TYPE)
       .value("TOKEN", TOKEN);
+
+  m.def("bfloat16_dtype", Bfloat16Dtype);
 
   // Shapes
   py::class_<Shape> shape_class(m, "Shape");
@@ -311,6 +318,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_property_readonly("host_id", &Device::host_id,
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
+      .def_property_readonly("platform", &Device::platform_name)
       .def("__str__", &Device::DebugString);
 
   py::class_<CpuDevice, Device, std::shared_ptr<CpuDevice>>(m, "CpuDevice")
@@ -384,6 +392,12 @@ PYBIND11_MODULE(xla_extension, m) {
              std::shared_ptr<Device> device)
               -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
             CHECK(device != nullptr);
+            auto iter = client->id_to_device().find(device->id());
+            if (iter->second != device) {
+              return InvalidArgument(
+                  "Cannot copy value to device '%s' with '%s' backend",
+                  device->DebugString(), client->platform_name());
+            }
             GlobalPyRefManager()->CollectGarbage();
             TF_ASSIGN_OR_RETURN(PythonBufferTree tree,
                                 GetPythonBufferTree(argument));
@@ -429,8 +443,15 @@ PYBIND11_MODULE(xla_extension, m) {
       .def_static("make_tuple",
                   [](const std::vector<PyLocalBuffer*> buffers,
                      std::shared_ptr<PyLocalClient> client,
-                     std::shared_ptr<Device> device) {
+                     std::shared_ptr<Device> device)
+                      -> StatusOr<std::unique_ptr<PyLocalBuffer>> {
                     CHECK(device != nullptr);
+                    auto iter = client->id_to_device().find(device->id());
+                    if (iter->second != device) {
+                      return InvalidArgument(
+                          "Cannot make tuple on device '%s' with '%s' backend",
+                          device->DebugString(), client->platform_name());
+                    }
                     return PyLocalBuffer::MakeTuple(
                         buffers, client, device->local_device_ordinal());
                   })
@@ -582,7 +603,9 @@ PYBIND11_MODULE(xla_extension, m) {
           },
           py::arg("root") = absl::nullopt)
       .def("IsConstant", &XlaBuilder::IsConstant)
-      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata);
+      .def("SetOpMetadata", &XlaBuilder::SetOpMetadata)
+      .def("SetSharding", &XlaBuilder::SetSharding)
+      .def("ClearSharding", &XlaBuilder::ClearSharding);
 
   // ops submodule, containing free functions that add operators to an
   // XlaBuilder.
@@ -592,7 +615,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("AllReduce",
           static_cast<XlaOp (*)(
               XlaOp, const XlaComputation&, absl::Span<const ReplicaGroup>,
-              const absl::optional<ChannelHandle>&)>(&CrossReplicaSum));
+              const absl::optional<ChannelHandle>&)>(&AllReduce));
   ops.def("AllToAll", &AllToAll);
   ops.def("CollectivePermute", &CollectivePermute);
   ops.def("CreateToken", &CreateToken);
@@ -654,6 +677,7 @@ PYBIND11_MODULE(xla_extension, m) {
   ops.def("Iota",
           static_cast<XlaOp (*)(XlaBuilder*, PrimitiveType, int64)>(&Iota));
   ops.def("Map", &Map);
+  ops.def("NextAfter", &NextAfter);
   ops.def("OutfeedWithToken", &OutfeedWithToken, py::arg("operand"),
           py::arg("token"), py::arg("shape_with_layout"),
           py::arg("outfeed_config") = "");
@@ -817,10 +841,14 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("HIGH", PrecisionConfig::HIGH)
       .value("HIGHEST", PrecisionConfig::HIGHEST);
 
+  py::enum_<OpSharding::Type>(m, "OpSharding_Type")
+      .value("REPLICATED", OpSharding::REPLICATED)
+      .value("MAXIMAL", OpSharding::MAXIMAL)
+      .value("TUPLE", OpSharding::TUPLE)
+      .value("OTHER", OpSharding::OTHER);
+
   // TODO(phawkins): improve bindings for these types.
   py::class_<ChannelHandle>(m, "ChannelHandle");
-
-  tensorflow::AddXrtSubmodule(&m);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

@@ -157,6 +157,7 @@ def _model_loss(model,
             weights = mask
           else:
             # Update dimensions of weights to match with mask if possible.
+            weights = math_ops.cast(weights, outs[i].dtype)
             mask, _, weights = (
                 tf_losses_utils.squeeze_or_expand_dimensions(
                     mask, sample_weight=weights))
@@ -238,9 +239,8 @@ def _process_single_batch(model,
   Raises:
       ValueError: If the model has no loss to optimize.
   """
-  with backend.eager_learning_phase_scope(1 if training else 0):
-    current_trainable_state = model._get_trainable_state()
-    model._set_trainable_state(model._compiled_trainable_state)
+  with backend.eager_learning_phase_scope(1 if training else 0), \
+      training_utils.RespectCompiledTrainableState(model):
     with GradientTape() as tape:
       outs, total_loss, output_losses, masks = (
           _model_loss(
@@ -274,7 +274,6 @@ def _process_single_batch(model,
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
                         'compiling the model.')
-    model._set_trainable_state(current_trainable_state)
     return outs, total_loss, output_losses, masks
 
 

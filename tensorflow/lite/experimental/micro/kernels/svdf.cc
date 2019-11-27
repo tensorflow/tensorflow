@@ -16,7 +16,7 @@ limitations under the License.
 #include <math.h>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/kernels/activation_utils.h"
 #include "tensorflow/lite/experimental/micro/micro_utils.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -204,17 +204,8 @@ inline void EvalHybridSVDF(
   // Initialize the pointer to input.
   const float* input_ptr_batch = GetTensorData<float>(input);
 
-  int8_t* quantized_input_ptr_batch;
-  const int8_t* weights_feature_ptr;
-  if (weights_feature->type == kTfLiteUInt8) {
-    quantized_input_ptr_batch =
-        reinterpret_cast<int8_t*>(GetTensorData<uint8_t>(input_quantized));
-    weights_feature_ptr = reinterpret_cast<const int8_t*>(
-        GetTensorData<uint8_t>(weights_feature));
-  } else {
-    quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
-    weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
-  }
+  int8_t* quantized_input_ptr_batch = GetTensorData<int8_t>(input_quantized);
+  const int8_t* weights_feature_ptr = GetTensorData<int8_t>(weights_feature);
 
   // Initialize the pointer to storage for scaling factors.
   float* scaling_factors_ptr = GetTensorData<float>(scaling_factors);
@@ -399,6 +390,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                                 scratch_input_quantized->type == kTfLiteInt8);
     TF_LITE_ENSURE_EQ(context, scratch_input_quantized->dims->data[0],
                       batch_size);
+    TF_LITE_ENSURE_EQ(context, scratch_input_quantized->dims->data[1],
+                      input_size);
 
     // Validate Scaling Factors Scratch Tensor:
     TF_LITE_ENSURE_EQ(context, scratch_scaling_factors->type, kTfLiteFloat32);
@@ -420,14 +413,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // the input values from the Weights Time tensor to the float weights time
     // scratch tensor.
     // TODO(kreeger): Consider doing this at model conversion time?
-    const int8_t* weights_time_ptr;
-    if (weights_time->type == kTfLiteUInt8) {
-      weights_time_ptr =
-          reinterpret_cast<const int8_t*>(GetTensorData<uint8_t>(weights_time));
-    } else {
-      weights_time_ptr = GetTensorData<int8_t>(weights_time);
-    }
-    SymmetricDequantize(weights_time_ptr,
+    SymmetricDequantize(GetTensorData<int8_t>(weights_time),
                         NumElements(scratch_float_weights_time),
                         weights_time->params.scale,
                         GetTensorData<float>(scratch_float_weights_time));
@@ -456,7 +442,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
+  const auto* params = reinterpret_cast<TfLiteSVDFParams*>(node->builtin_data);
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const TfLiteTensor* weights_feature =

@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -28,29 +28,29 @@ inline int NumDimensions(const TfLiteTensor* t) { return t->dims->size; }
 inline int SizeOfDimension(const TfLiteTensor* t, int dim) {
   return t->dims->data[dim];
 }
-inline const TfLiteTensor* GetInput(TfLiteContext* context, TfLiteNode* node,
-                                    int index) {
+inline const TfLiteTensor* GetInput(TfLiteContext* context,
+                                    const TfLiteNode* node, int index) {
   return &context
               ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
 }
-inline TfLiteTensor* GetVariableInput(TfLiteContext* context, TfLiteNode* node,
-                                      int index) {
+inline TfLiteTensor* GetVariableInput(TfLiteContext* context,
+                                      const TfLiteNode* node, int index) {
   TfLiteTensor* tensor =
       &context->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];
   return (tensor->is_variable) ? tensor : nullptr;
 }
-inline TfLiteTensor* GetOutput(TfLiteContext* context, TfLiteNode* node,
+inline TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
                                int index) {
   return &context
               ->tensors[flatbuffers::EndianScalar(node->outputs->data[index])];
 }
-inline TfLiteTensor* GetTemporary(TfLiteContext* context, TfLiteNode* node,
-                                  int index) {
+inline TfLiteTensor* GetTemporary(TfLiteContext* context,
+                                  const TfLiteNode* node, int index) {
   return &context->tensors[flatbuffers::EndianScalar(
       node->temporaries->data[index])];
 }
 inline const TfLiteTensor* GetIntermediates(TfLiteContext* context,
-                                            TfLiteNode* node, int index) {
+                                            const TfLiteNode* node, int index) {
   return &context->tensors[node->intermediates->data[index]];
 }
 inline int NumInputs(const TfLiteNode* node) { return node->inputs->size; }
@@ -74,7 +74,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  const bool use_tensor = node->inputs->data[index] != kOptionalTensor;
+  const bool use_tensor = node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
     return &context
                 ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];

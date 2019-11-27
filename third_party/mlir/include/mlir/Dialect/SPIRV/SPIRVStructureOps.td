@@ -21,14 +21,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifdef SPIRV_STRUCTURE_OPS
-#else
+#ifndef SPIRV_STRUCTURE_OPS
 #define SPIRV_STRUCTURE_OPS
 
-#ifdef SPIRV_BASE
-#else
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   let summary = "Get the address of a global variable.";
@@ -57,7 +53,7 @@ def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$variable
+    FlatSymbolRefAttr:$variable
   );
 
   let results = (outs
@@ -176,7 +172,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 
   let arguments = (ins
     SPV_ExecutionModelAttr:$execution_model,
-    SymbolRefAttr:$fn,
+    FlatSymbolRefAttr:$fn,
     SymbolRefArrayAttr:$interface
   );
 
@@ -191,7 +187,7 @@ def SPV_EntryPointOp : SPV_Op<"EntryPoint", [InModuleScope]> {
 }
 
 
-def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
+def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
   let summary = [{
     Allocate an object in memory at module scope. The object is
     referenced using a symbol name.
@@ -239,7 +235,7 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
   let arguments = (ins
     TypeAttr:$type,
     StrAttr:$sym_name,
-    OptionalAttr<SymbolRefAttr>:$initializer
+    OptionalAttr<FlatSymbolRefAttr>:$initializer
   );
 
   let builders = [
@@ -247,7 +243,10 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
       "TypeAttr type, ArrayRef<NamedAttribute> namedAttrs", [{
       state.addAttribute("type", type);
       state.addAttributes(namedAttrs);
-    }]>
+    }]>,
+    OpBuilder<[{Builder *builder, OperationState &state,
+                Type type, StringRef name, unsigned descriptorSet,
+                unsigned binding}]>
   ];
 
   let results = (outs);
@@ -264,7 +263,8 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope]> {
 }
 
 def SPV_ModuleOp : SPV_Op<"module",
-                          [SingleBlockImplicitTerminator<"ModuleEndOp">,
+                          [IsolatedFromAbove,
+                           SingleBlockImplicitTerminator<"ModuleEndOp">,
                            NativeOpTrait<"SymbolTable">]> {
   let summary = "The top-level op that defines a SPIR-V module";
 
@@ -395,7 +395,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   }];
 
   let arguments = (ins
-    SymbolRefAttr:$spec_const
+    FlatSymbolRefAttr:$spec_const
   );
 
   let results = (outs
@@ -407,7 +407,7 @@ def SPV_ReferenceOfOp : SPV_Op<"_reference_of", [NoSideEffect]> {
   let autogenSerialization = 0;
 }
 
-def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
+def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope, Symbol]> {
   let summary = "The op that declares a SPIR-V specialization constant";
 
   let description = [{
@@ -425,14 +425,18 @@ def SPV_SpecConstantOp : SPV_Op<"specConstant", [InModuleScope]> {
 
     ``` {.ebnf}
     spv-spec-constant-op ::= `spv.specConstant` symbol-ref-id
+                             `spec_id(` integer `)`
                              `=` attribute-value (`:` spirv-type)?
     ```
+
+    where `spec_id` specifies the SPIR-V SpecId decoration associated with
+    the op.
 
     For example:
 
     ```
     spv.specConstant @spec_const1 = true
-    spv.specConstant @spec_const2 = 42 : i32
+    spv.specConstant @spec_const2 spec_id(5) = 42 : i32
     ```
 
     TODO(antiagainst): support composite spec constants with another op

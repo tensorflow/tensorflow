@@ -68,7 +68,7 @@ cc_library(
         "accelerometer_handler.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -80,7 +80,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":accelerometer_handler",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -121,7 +121,7 @@ cc_library(
         "output_handler.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -133,7 +133,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":output_handler",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -152,14 +152,14 @@ cc_binary(
         "-Wsign-compare",
     ],
     deps = [
+        ":accelerometer_handler",
+        ":constants",
+        ":gesture_predictor",
+        ":magic_wand_model_data",
+        ":output_handler",
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite/experimental/micro:micro_framework",
-        "//tensorflow/lite/experimental/micro/examples/magic_wand:accelerometer_handler",
-        "//tensorflow/lite/experimental/micro/examples/magic_wand:constants",
-        "//tensorflow/lite/experimental/micro/examples/magic_wand:gesture_predictor",
-        "//tensorflow/lite/experimental/micro/examples/magic_wand:magic_wand_model_data",
-        "//tensorflow/lite/experimental/micro/examples/magic_wand:output_handler",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

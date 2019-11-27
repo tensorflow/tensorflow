@@ -281,7 +281,7 @@ static void EmitBuiltinOptionsToAttributes(const RecordKeeper &record_keeper,
       continue;
     }
 
-    os << formatv("  if(const auto *op = op_union.As{0}()) {\n", option_name);
+    os << formatv("  if(const auto *op = op_union.As{0}()) {{\n", option_name);
 
     // We only care about options that are in arguments
     auto *arg_values = def->getValueAsDag("arguments");

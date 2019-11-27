@@ -399,6 +399,12 @@ class LinearOperatorIdentity(BaseLinearOperatorIdentity):
       new_diag = 1 + mat_diag
       return array_ops.matrix_set_diag(mat, new_diag)
 
+  def _eigvals(self):
+    return self._ones_diag()
+
+  def _cond(self):
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
+
   def _check_num_rows_possibly_add_asserts(self):
     """Static check of init arg `num_rows`, possibly add asserts."""
     # Possibly add asserts.
@@ -723,6 +729,17 @@ class LinearOperatorScaledIdentity(BaseLinearOperatorIdentity):
       new_diag = multiplier_vector + mat_diag
 
       return array_ops.matrix_set_diag(mat, new_diag)
+
+  def _eigvals(self):
+    return self._ones_diag() * self.multiplier[..., array_ops.newaxis]
+
+  def _cond(self):
+    # Condition number for a scalar time identity matrix is one, except when the
+    # scalar is zero.
+    return array_ops.where_v2(
+        math_ops.equal(self._multiplier, 0.),
+        math_ops.cast(np.nan, dtype=self.dtype),
+        math_ops.cast(1., dtype=self.dtype))
 
   @property
   def multiplier(self):

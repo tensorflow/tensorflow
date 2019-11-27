@@ -42,6 +42,10 @@ public:
   explicit AttrConstraint(const llvm::Record *record);
 
   static bool classof(const Constraint *c) { return c->getKind() == CK_Attr; }
+
+  // Returns true if this constraint is a subclass of the given `className`
+  // class defined in TableGen.
+  bool isSubClassOf(StringRef className) const;
 };
 
 // Wrapper class providing helper methods for accessing MLIR Attribute defined
@@ -151,8 +155,8 @@ public:
   explicit EnumAttr(const llvm::Record &record);
   explicit EnumAttr(const llvm::DefInit *init);
 
-  // Returns whether skipping auto-generation is requested.
-  bool skipAutoGen() const;
+  // Returns true if this is a bit enum attribute.
+  bool isBitEnum() const;
 
   // Returns the enum class name.
   StringRef getEnumClassName() const;

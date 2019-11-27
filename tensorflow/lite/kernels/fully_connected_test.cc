@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite FULLY_CONNECTED op.
 
+#include "tensorflow/lite/kernels/fully_connected.h"
+
 #include <iomanip>
 #include <random>
 #include <vector>
@@ -28,17 +30,6 @@ limitations under the License.
 #include "tensorflow/lite/model.h"
 
 namespace tflite {
-
-namespace ops {
-namespace builtin {
-
-TfLiteRegistration* Register_FULLY_CONNECTED_REF();
-TfLiteRegistration* Register_FULLY_CONNECTED_GENERIC_OPT();
-TfLiteRegistration* Register_FULLY_CONNECTED_PIE();
-
-}  // namespace builtin
-}  // namespace ops
-
 namespace {
 
 using ::testing::ElementsAre;
@@ -180,8 +171,8 @@ class BaseFullyConnectedOpModel : public SingleOpModel {
     std::vector<std::vector<int>> inputs = {GetShape(input_),
                                             GetShape(weights_)};
     if (add_bias_for_quantized) {
-      inputs.push_back((bias_ == kOptionalTensor) ? std::vector<int>()
-                                                  : GetShape(bias_));
+      inputs.push_back((bias_ == kTfLiteOptionalTensor) ? std::vector<int>()
+                                                        : GetShape(bias_));
     }
     BuildInterpreter(inputs);
   }

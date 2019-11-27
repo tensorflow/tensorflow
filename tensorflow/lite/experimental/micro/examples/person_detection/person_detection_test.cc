@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/model_settings.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/no_person_image_data.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/person_detect_model_data.h"
 #include "tensorflow/lite/experimental/micro/examples/person_detection/person_image_data.h"
+#include "tensorflow/lite/experimental/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
 #include "tensorflow/lite/experimental/micro/micro_mutable_op_resolver.h"
@@ -25,18 +26,8 @@ limitations under the License.
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/version.h"
 
-namespace tflite {
-namespace ops {
-namespace micro {
-TfLiteRegistration* Register_DEPTHWISE_CONV_2D();
-TfLiteRegistration* Register_CONV_2D();
-TfLiteRegistration* Register_AVERAGE_POOL_2D();
-}  // namespace micro
-}  // namespace ops
-}  // namespace tflite
-
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 70 * 1024;
+constexpr int tensor_arena_size = 73 * 1024;
 uint8_t tensor_arena[tensor_arena_size];
 
 TF_LITE_MICRO_TESTS_BEGIN

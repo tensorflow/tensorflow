@@ -56,11 +56,11 @@ limitations under the License.
 #include "tensorflow/core/graph/types.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #if GOOGLE_CUDA
+#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/platform/cuda.h"
 #elif TENSORFLOW_USE_ROCM
 #include "tensorflow/core/platform/rocm.h"
@@ -68,8 +68,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/stream_executor.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/scoped_annotation.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
@@ -618,7 +618,7 @@ Status BaseGPUDevice::MaybeCopyTensorToGPU(
       done(s);
     };
 
-    tracing::ScopedAnnotation annotation("MakeTensorFromProto");
+    profiler::ScopedAnnotation annotation("MakeTensorFromProto");
     device_context_->CopyCPUTensorToDevice(
         &from, this, copy, std::move(wrapped_done),
         !timestamped_allocator_ /*sync_dst_compute*/);
@@ -1075,6 +1075,15 @@ Status BaseGPUDeviceFactory::CreateDevices(
       return errors::Internal("hipSetDevice() on GPU:", original_device,
                               " failed. Status: ", hipGetErrorString(err));
     }
+#endif
+
+#if GOOGLE_CUDA
+    // Log the version of CUDA and cuDNN
+    int cuda_major_version = CUDART_VERSION / 1000;
+    int cuda_minor_version = (CUDART_VERSION / 10) % 10;
+    VLOG(1) << "TensorFlow compiled with CUDA " << cuda_major_version << "."
+            << cuda_minor_version << " and cuDNN " << CUDNN_MAJOR << "."
+            << CUDNN_MINOR << "." << CUDNN_PATCHLEVEL;
 #endif
   }
 
@@ -1544,10 +1553,17 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       cc_minor = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description->name() << " major: " << cc_major
-              << " minor: " << cc_minor
-              << " memoryClockRate(GHz): " << description->clock_rate_ghz()
-              << "\npciBusID: " << description->pci_bus_id();
+              << "\npciBusID: " << description->pci_bus_id()
+              << " name: " << description->name()
+              << " computeCapability: " << cc_major << "." << cc_minor
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+              << " coreCount: " << description->core_count()
+              << " deviceMemorySize: "
+              << strings::HumanReadableNumBytes(
+                     description->device_memory_size())
+              << " deviceMemoryBandwidth: "
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #elif TENSORFLOW_USE_ROCM
     int isa_version;
     if (!description->rocm_amdgpu_isa_version(&isa_version)) {
@@ -1555,10 +1571,17 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
       isa_version = 0;
     }
     LOG(INFO) << "Found device " << i << " with properties: "
-              << "\nname: " << description->name() << "\nAMDGPU ISA: gfx"
-              << isa_version << "\nmemoryClockRate (GHz) "
-              << description->clock_rate_ghz() << "\npciBusID "
-              << description->pci_bus_id();
+              << "\npciBusID: " << description->pci_bus_id()
+              << " name: " << description->name()
+              << "     ROCm AMD GPU ISA: gfx" << isa_version
+              << "\ncoreClock: " << description->clock_rate_ghz() << "GHz"
+              << " coreCount: " << description->core_count()
+              << " deviceMemorySize: "
+              << strings::HumanReadableNumBytes(
+                     description->device_memory_size())
+              << " deviceMemoryBandwidth: "
+              << strings::HumanReadableNumBytes(description->memory_bandwidth())
+              << "/s";
 #endif
   }
 

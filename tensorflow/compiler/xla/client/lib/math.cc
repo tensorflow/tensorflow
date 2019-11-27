@@ -21,6 +21,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/loops.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -495,6 +497,30 @@ XlaOp Lgamma(XlaOp input) {
     // computations in F32.
     return DoWithUpcastToF32(input, {BF16, F16}, do_it);
   });
+}
+
+// Computes an approximation of the lbeta function which is equivalent to
+// log(abs(Beta(a, b))) but avoids overflow by computing it with lgamma.
+static XlaOp Lbeta(XlaOp a, XlaOp b) {
+  // Beta(a, b) can be computed using Gamma as per
+  // http://dlmf.nist.gov/5.12.E1 as follows:
+  //   Beta(a, b) = (Gamma(a) * Gamma(b)) / Gamma(a + b)
+  //
+  // To avoid overflow, we compute in the log domain.
+  //
+  // As per http://dlmf.nist.gov/4.8.E2 we can transform:
+  //   Log(a * b)
+  // into:
+  //   Log(a) + Log(b)
+  //
+  // Likewise, per https://dlmf.nist.gov/4.8.E4, we can turn:
+  //   Log(a - b)
+  // into:
+  //   Log(a) - Log(b)
+  //
+  // This means that we can compute Log(Beta(a, b)) by:
+  //   Log(Gamma(a)) + Log(Gamma(b)) - Log(Gamma(a + b))
+  return Lgamma(a) + Lgamma(b) - Lgamma(a + b);
 }
 
 // Compute the Digamma function using Lanczos' approximation from "A Precision
@@ -1034,6 +1060,214 @@ XlaOp BesselI1e(XlaOp x) {
     // (not surprising!), so upcast to f32 in this case.
     return DoWithUpcastToF32(x, {BF16, F16},
                              [](XlaOp x) { return I1eImpl32(x); });
+  });
+}
+
+// I J Thompson and A R Barnett. 1986. Coulomb and Bessel functions of complex
+// arguments and order. J. Comput. Phys. 64, 2 (June 1986), 490-509.
+// DOI=http://dx.doi.org/10.1016/0021-9991(86)90046-X
+static XlaOp LentzThompsonBarnettAlgorithm(
+    int64 num_iterations, double small, double threshold,
+    const ForEachIndexBodyFunction& nth_partial_numerator,
+    const ForEachIndexBodyFunction& nth_partial_denominator,
+    absl::Span<const XlaOp> inputs, absl::string_view name) {
+  auto& b = *inputs.front().builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RET_CHECK(num_iterations < INT32_MAX);
+
+    enum {
+      // Position in the evaluation.
+      kIterationIdx,
+      // Whether or not we have reached the desired tolerance.
+      kValuesUnconvergedIdx,
+      // Ratio between nth canonical numerator and the nth-1 canonical
+      // numerator.
+      kCIdx,
+      // Ratio between nth-1 canonical denominator and the nth canonical
+      // denominator.
+      kDIdx,
+      // Computed approximant in the evaluation.
+      kHIdx,
+      // Inputs follow all of the other state.
+      kFirstInputIdx,
+    };
+    auto while_cond_fn = [num_iterations](
+                             absl::Span<const XlaOp> values,
+                             XlaBuilder* cond_builder) -> StatusOr<XlaOp> {
+      auto iteration = values[kIterationIdx];
+      auto iterations_remain_cond =
+          Lt(iteration, ScalarLike(iteration, num_iterations));
+      auto values_unconverged_cond = values[kValuesUnconvergedIdx];
+      return And(iterations_remain_cond, values_unconverged_cond);
+    };
+
+    auto while_body_fn =
+        [small, threshold, &nth_partial_numerator, &nth_partial_denominator](
+            absl::Span<const XlaOp> values,
+            XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
+      XlaOp iteration = values[kIterationIdx];
+
+      TF_ASSIGN_OR_RETURN(
+          std::vector<XlaOp> partial_numerator,
+          nth_partial_numerator(iteration, values.subspan(kFirstInputIdx),
+                                body_builder));
+      TF_RET_CHECK(partial_numerator.size() == 1);
+
+      TF_ASSIGN_OR_RETURN(
+          std::vector<XlaOp> partial_denominator,
+          nth_partial_denominator(iteration, values.subspan(kFirstInputIdx),
+                                  body_builder));
+      TF_RET_CHECK(partial_denominator.size() == 1);
+
+      auto c = partial_denominator[0] + partial_numerator[0] / values[kCIdx];
+      auto small_constant = FullLike(c, small);
+      c = Select(Lt(Abs(c), small_constant), small_constant, c);
+
+      auto d = partial_denominator[0] + partial_numerator[0] * values[kDIdx];
+      d = Select(Lt(Abs(d), small_constant), small_constant, d);
+
+      d = Reciprocal(d);
+
+      auto delta = c * d;
+      auto h = values[kHIdx] * delta;
+
+      std::vector<XlaOp> updated_values(values.size());
+      updated_values[kIterationIdx] = Add(iteration, ScalarLike(iteration, 1));
+      updated_values[kCIdx] = c;
+      updated_values[kDIdx] = d;
+      updated_values[kHIdx] = h;
+      std::copy(values.begin() + kFirstInputIdx, values.end(),
+                updated_values.begin() + kFirstInputIdx);
+
+      // If any values are greater than the tolerance, we have not converged.
+      auto tolerance_comparison =
+          Ge(Abs(Sub(delta, FullLike(delta, 1.0))), FullLike(delta, threshold));
+      updated_values[kValuesUnconvergedIdx] =
+          ReduceAll(tolerance_comparison, ConstantR0<bool>(body_builder, false),
+                    CreateScalarOrComputation(PRED, body_builder));
+      return updated_values;
+    };
+
+    TF_ASSIGN_OR_RETURN(std::vector<XlaOp> partial_denominator,
+                        nth_partial_denominator(Zero(&b, U32), inputs, &b));
+    TF_RET_CHECK(partial_denominator.size() == 1);
+    auto h = partial_denominator[0];
+    auto small_constant = FullLike(h, small);
+    h = Select(Lt(Abs(h), small_constant), small_constant, h);
+
+    std::vector<XlaOp> values(kFirstInputIdx + inputs.size());
+    values[kIterationIdx] = One(&b, U32);
+    values[kValuesUnconvergedIdx] = ConstantR0<bool>(&b, true);
+    values[kCIdx] = h;
+    values[kDIdx] = FullLike(h, 0.0);
+    values[kHIdx] = h;
+    std::copy(inputs.begin(), inputs.end(), values.begin() + kFirstInputIdx);
+    TF_ASSIGN_OR_RETURN(values, WhileLoopHelper(while_cond_fn, while_body_fn,
+                                                values, name, &b));
+    return values[kHIdx];
+  });
+}
+
+XlaOp RegularizedIncompleteBeta(XlaOp a, XlaOp b, XlaOp x) {
+  auto& builder = *x.builder();
+  return builder.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, builder.GetShape(a));
+
+    // The partial numerator for the incomplete beta function is given
+    // here: http://dlmf.nist.gov/8.17.E23 Note that there is a special
+    // case: the partial numerator for the first iteration is one.
+    auto NthPartialBetaincNumerator =
+        [&shape](XlaOp iteration, absl::Span<const XlaOp> inputs,
+                 XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+      auto a = inputs[0];
+      auto b = inputs[1];
+      auto x = inputs[2];
+      auto iteration_bcast = Broadcast(iteration, shape.dimensions());
+      auto iteration_is_even =
+          Eq(iteration_bcast % FullLike(iteration_bcast, 2),
+             FullLike(iteration_bcast, 0));
+      auto iteration_is_one = Eq(iteration_bcast, FullLike(iteration_bcast, 1));
+      auto iteration_minus_one = iteration_bcast - FullLike(iteration_bcast, 1);
+      auto m = iteration_minus_one / FullLike(iteration_minus_one, 2);
+      m = ConvertElementType(m, shape.element_type());
+      auto one = FullLike(a, 1.0);
+      auto two = FullLike(a, 2.0);
+      // Partial numerator terms.
+      auto even_numerator =
+          -(a + m) * (a + b + m) * x / ((a + two * m) * (a + two * m + one));
+      auto odd_numerator =
+          m * (b - m) * x / ((a + two * m - one) * (a + two * m));
+      auto one_numerator = ScalarLike(x, 1.0);
+      auto numerator = Select(iteration_is_even, even_numerator, odd_numerator);
+      return std::vector<XlaOp>{
+          Select(iteration_is_one, one_numerator, numerator)};
+    };
+
+    auto NthPartialBetaincDenominator =
+        [&shape](XlaOp iteration, absl::Span<const XlaOp> inputs,
+                 XlaBuilder* builder) -> StatusOr<std::vector<XlaOp>> {
+      auto x = inputs[2];
+      auto iteration_bcast = Broadcast(iteration, shape.dimensions());
+      return std::vector<XlaOp>{
+          Select(Eq(iteration_bcast, ScalarLike(iteration_bcast, 0)),
+                 ScalarLike(x, 0.0), ScalarLike(x, 1.0))};
+    };
+
+    // Determine if the inputs are out of range.
+    auto result_is_nan =
+        Or(Or(Or(Le(a, ScalarLike(a, 0.0)), Le(b, ScalarLike(b, 0.0))),
+              Lt(x, ScalarLike(x, 0.0))),
+           Gt(x, ScalarLike(x, 1.0)));
+
+    // The continued fraction will converge rapidly when x < (a+1)/(a+b+2)
+    // as per: http://dlmf.nist.gov/8.17.E23
+    //
+    // Otherwise, we can rewrite using the symmetry relation as per:
+    // http://dlmf.nist.gov/8.17.E4
+    auto converges_rapidly =
+        Lt(x, (a + FullLike(a, 1.0)) / (a + b + FullLike(b, 2.0)));
+    auto a_orig = a;
+    a = Select(converges_rapidly, a, b);
+    b = Select(converges_rapidly, b, a_orig);
+    x = Select(converges_rapidly, x, Sub(FullLike(x, 1.0), x));
+
+    XlaOp continued_fraction;
+
+    // Thresholds and iteration counts taken from Cephes.
+    if (shape.element_type() == F32) {
+      continued_fraction = LentzThompsonBarnettAlgorithm(
+          /*num_iterations=*/200,
+          /*small=*/std::numeric_limits<float>::epsilon() / 2.0f,
+          /*threshold=*/std::numeric_limits<float>::epsilon() / 2.0f,
+          /*nth_partial_numerator=*/NthPartialBetaincNumerator,
+          /*nth_partial_denominator=*/NthPartialBetaincDenominator, {a, b, x},
+          "Betainc");
+    } else {
+      TF_RET_CHECK(shape.element_type() == F64);
+      continued_fraction = LentzThompsonBarnettAlgorithm(
+          /*num_iterations=*/600,
+          /*small=*/std::numeric_limits<double>::epsilon() / 2.0f,
+          /*threshold=*/std::numeric_limits<double>::epsilon() / 2.0f,
+          /*nth_partial_numerator=*/NthPartialBetaincNumerator,
+          /*nth_partial_denominator=*/NthPartialBetaincDenominator, {a, b, x},
+          "Betainc");
+    }
+
+    // We want to compute the regularized complete beta function so we need to
+    // combine the continued fraction with a few more terms as well as dividing
+    // it by Beta(a, b). To avoid overflow, we compute in the log domain.
+    // See http://dlmf.nist.gov/8.17.E22 for an easier to read version of this
+    // formula.
+    auto lbeta = Lbeta(a, b);
+    auto result =
+        continued_fraction * Exp(Log(x) * a + Log1p(-x) * b - lbeta) / a;
+    result =
+        Select(result_is_nan, NanValue(&builder, shape.element_type()), result);
+
+    // We have an additional fixup to do if we are taking advantage of the
+    // symmetry relation.
+    return Select(converges_rapidly, result,
+                  Sub(FullLike(result, 1.0), result));
   });
 }
 

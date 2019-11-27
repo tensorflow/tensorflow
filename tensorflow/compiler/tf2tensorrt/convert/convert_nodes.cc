@@ -1183,6 +1183,12 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
+  LOG(INFO) << "Linked TensorRT version: " << NV_TENSORRT_MAJOR << "."
+            << NV_TENSORRT_MINOR << "." << NV_TENSORRT_PATCH;
+  const int loaded_version = getInferLibVersion();
+  LOG(INFO) << "Loaded TensorRT version: " << loaded_version / 1000 << "."
+            << (loaded_version / 100) % 10 << "." << loaded_version % 100;
+
   plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
     LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
@@ -2828,9 +2834,6 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
 
   // Asymmetric padding on Deconv not supported for now
   if (is_conv3d_backprop_input && attrs.get<string>("padding") == "SAME") {
-    const int tensor_c_idx = c_index - 1;
-    const int num_groups = (group == 0) ? tensor_dim.d[tensor_c_idx] : group;
-
     TRT_ShapedWeights weights =
         params->weight_store->GetTempWeights(weights_drsck);
 
@@ -2862,8 +2865,8 @@ Status ConvertConv3DHelper(OpConverterParams* params, int group,
     }
   }
 
-  if (params->validation_only)
-    return Status::OK();  // Finished validation checks
+  // Finished validation checks
+  if (params->validation_only) return Status::OK();
 
   // Transpose to NCDHW (NCDHW is required for IConvLayer).
   const bool need_transpose = is_ndhwc;
@@ -5385,7 +5388,7 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
 
   return Status::OK();
 }
-#endif  // CombinedNonMaxSuppression
+#endif  // IS_TRT_VERSION_GE(5, 1, 0, 0)
 
 #if IS_TRT_VERSION_GE(6, 0, 0, 0)
 Status ConvertResize(OpConverterParams* params) {

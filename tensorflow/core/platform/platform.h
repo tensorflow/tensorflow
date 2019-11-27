@@ -63,10 +63,4 @@ limitations under the License.
 #define PLATFORM_IS_X86
 #endif
 
-// A temporary hack for the sake of TensorFlow Data Validation, which uses the
-// same version of RE2 that TensorFlow uses and so needs some way to know when
-// to use absl::string_view rather than re2::StringPiece. This will be removed
-// in a future release of TensorFlow.
-#define PLATFORM_RE2_STRINGPIECE_IS_NOW_ABSL_STRING_VIEW
-
 #endif  // TENSORFLOW_PLATFORM_PLATFORM_DEFINE_H_

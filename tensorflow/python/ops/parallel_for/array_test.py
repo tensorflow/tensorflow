@@ -33,6 +33,15 @@ from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
 
 
+# LINT.IfChange
+matrix_diag_v3_forward_compat_date = (2019, 12, 6)
+# LINT.ThenChange(
+#   //tensorflow/compiler/tests/matrix_diag_ops_test.py,
+#   //tensorflow/python/kernel_tests/diag_op_test.py,
+#   //tensorflow/python/ops/array_ops.py
+# )
+
+
 @test_util.run_all_in_graph_and_eager_modes
 class ArrayTest(PForTestCase):
 
@@ -47,7 +56,16 @@ class ArrayTest(PForTestCase):
         axes = [0] if y is x_i else [0, 2, -1]
         for axis in axes:
           outputs.append(array_ops.gather(y, 2, axis=axis))
-          outputs.append(array_ops.gather(y, i, axis=axis))
+          outputs.append(array_ops.gather(y,
+                                          math_ops.cast(2, dtypes.int64),
+                                          axis=axis))
+          outputs.append(array_ops.gather(y,
+                                          2,
+                                          axis=math_ops.cast(
+                                              axis, dtypes.int64)))
+          outputs.append(array_ops.gather(y,
+                                          math_ops.cast(i, dtypes.int64),
+                                          axis=axis))
           outputs.append(array_ops.gather(y, [i], axis=axis))
           outputs.append(array_ops.gather(y, [i, 2], axis=axis))
           outputs.append(array_ops.gather(y, [[2, i], [i, 1]], axis=axis))
@@ -327,8 +345,9 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       diagonal = array_ops.gather(x, i)
-      if compat.forward_compatible(2019, 10, 31):
-        return array_ops.matrix_diag(diagonal, k=(0, 1), num_rows=4, num_cols=5)
+      if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
+        return array_ops.matrix_diag(
+            diagonal, k=(0, 1), num_rows=4, num_cols=5, align="RIGHT_LEFT")
       return array_ops.matrix_diag(diagonal)
 
     self._test_loop_fn(loop_fn, 3)
@@ -338,8 +357,9 @@ class ArrayTest(PForTestCase):
 
     def loop_fn(i):
       input = array_ops.gather(x, i)  # pylint: disable=redefined-builtin
-      if compat.forward_compatible(2019, 10, 31):
-        return array_ops.matrix_diag_part(input, k=(-2, 0), padding_value=3)
+      if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
+        return array_ops.matrix_diag_part(
+            input, k=(-2, 0), padding_value=3, align="RIGHT_LEFT")
       return array_ops.matrix_diag_part(input)
 
     self._test_loop_fn(loop_fn, 3)
@@ -347,8 +367,7 @@ class ArrayTest(PForTestCase):
   def test_matrix_set_diag(self):
     matrices = random_ops.random_uniform([3, 4, 4])
     diags = random_ops.random_uniform([3, 4])
-    if compat.forward_compatible(2019, 10, 31):
-      bands = random_ops.random_uniform([3, 3, 4])
+    bands = random_ops.random_uniform([3, 3, 4])
 
     def loop_fn(i):
       matrix_i = array_ops.gather(matrices, i)
@@ -356,16 +375,20 @@ class ArrayTest(PForTestCase):
       results = [
           array_ops.matrix_set_diag(matrix_i, diag_i),
           array_ops.matrix_set_diag(matrices[0, ...], diag_i),
-          array_ops.matrix_set_diag(matrix_i, diags[0, ...])
+          array_ops.matrix_set_diag(matrix_i, diags[0, ...]),
       ]
-      if compat.forward_compatible(2019, 10, 31):
+
+      if compat.forward_compatible(*matrix_diag_v3_forward_compat_date):
         k = (-1, 1)
         band_i = array_ops.gather(bands, i)
-        results.extend([
-            array_ops.matrix_set_diag(matrix_i, band_i, k=k),
-            array_ops.matrix_set_diag(matrices[0, ...], band_i, k=k),
-            array_ops.matrix_set_diag(matrix_i, bands[0, ...], k=k)
-        ])
+        for align in ["RIGHT_LEFT", "LEFT_RIGHT"]:
+          results.extend([
+              array_ops.matrix_set_diag(matrix_i, band_i, k=k, align=align),
+              array_ops.matrix_set_diag(
+                  matrices[0, ...], band_i, k=k, align=align),
+              array_ops.matrix_set_diag(
+                  matrix_i, bands[0, ...], k=k, align=align)
+          ])
       return results
 
     self._test_loop_fn(loop_fn, 3)

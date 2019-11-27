@@ -1,6 +1,7 @@
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
+    "tf_cc_test_mkl",
     "tf_copts",
     "tf_cuda_library",
 )
@@ -53,6 +54,7 @@ tf_cuda_library(
     deps = [
         ":eager_executor",
         ":kernel_and_device",
+        ":process_function_library_runtime",
         "//tensorflow/core/distributed_runtime/eager:remote_tensor_handle",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker_env",
@@ -92,8 +94,10 @@ tf_cuda_library(
         ":attr_builder",
         ":context",
         ":eager_executor",
+        ":kernel_and_device",
         ":tensor_handle",
         "//tensorflow/core:framework",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
@@ -213,6 +217,7 @@ KERNEL_AND_DEVICE_DEPS = [
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
     "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/core/profiler/lib:scoped_annotation",
     "//tensorflow/core/grappler/optimizers:meta_optimizer",
 ]
 
@@ -227,8 +232,11 @@ tf_cuda_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":attr_builder",
+        ":process_function_library_runtime",
         "@farmhash_archive//:farmhash",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ] + select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -291,12 +299,16 @@ tf_cc_test(
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:matmul_op",
         "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/types:optional",
     ],
 )
 
 cc_library(
     name = "execute",
-    srcs = ["execute.cc"],
+    srcs = [
+        "execute.cc",
+        "execute_node.cc",
+    ],
     hdrs = [
         "execute.h",
         "execute_node.h",
@@ -309,8 +321,11 @@ cc_library(
         ":eager_operation",
         ":kernel_and_device",
         ":tensor_handle",
+        ":process_function_library_runtime",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
+        "@com_google_absl//absl/memory",
         "//tensorflow/core/profiler/lib:traceme",
     ] + select({
         "//tensorflow:android": [
@@ -341,6 +356,22 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:mkl_graph_util",
+    ],
+    alwayslink = 1,
+)
+
+tf_cc_test_mkl(
+    name = "mkl_eager_op_rewrite_test",
+    srcs = ["mkl_eager_op_rewrite_test.cc"],
+    tags = [
+        "nomac",
+    ],
+    deps = [
+        ":execute",
+        ":mkl_eager_op_rewrite",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

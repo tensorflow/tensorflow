@@ -2240,10 +2240,10 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     const std::set<string> foldable_transpose_ops =
-        !is_complex ? std::set<string>{"ConjugateTranspose", "Transpose"}
-                    : (node->op() == "BatchMatMul"
-                           ? std::set<string>{"ConjugateTranspose"}
-                           : std::set<string>{"Transpose"});
+        !is_complex
+            ? std::set<string>{"ConjugateTranspose", "Transpose"}
+            : (IsAnyBatchMatMul(*node) ? std::set<string>{"ConjugateTranspose"}
+                                       : std::set<string>{"Transpose"});
 
     const bool a_is_foldable = foldable_transpose_ops.count(a->op()) > 0 &&
                                IsInnerMatrixTransposeNode(*a, ctx().node_map);
@@ -2254,8 +2254,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     NodeDef* new_op = AddCopyNode(optimized_node_name, node);
 
     if (a_is_foldable) {
-      const string attr_a =
-          node->op() == "BatchMatMul" ? "adj_x" : "transpose_a";
+      const string attr_a = IsAnyBatchMatMul(*node) ? "adj_x" : "transpose_a";
       FlipBooleanAttr(attr_a, new_op);
       new_op->set_input(0, a->input(0));
       ctx().node_map->UpdateInput(new_op->name(), a->name(), a->input(0));
@@ -2264,8 +2263,7 @@ class FoldTransposeIntoMatMul : public ArithmeticOptimizerStage {
     }
 
     if (b_is_foldable) {
-      const string attr_b =
-          node->op() == "BatchMatMul" ? "adj_y" : "transpose_b";
+      const string attr_b = IsAnyBatchMatMul(*node) ? "adj_y" : "transpose_b";
       FlipBooleanAttr(attr_b, new_op);
       new_op->set_input(1, b->input(0));
       ctx().node_map->UpdateInput(new_op->name(), b->name(), b->input(0));

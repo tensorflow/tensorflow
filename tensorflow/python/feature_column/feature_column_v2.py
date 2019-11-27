@@ -1909,7 +1909,15 @@ def indicator_column(categorical_column):
 
   Returns:
     An `IndicatorColumn`.
+
+  Raises:
+    ValueError: If `categorical_column` is not CategoricalColumn type.
   """
+  if not isinstance(categorical_column,
+                    (CategoricalColumn, fc_old._CategoricalColumn)):  # pylint: disable=protected-access
+    raise ValueError(
+        'Unsupported input type. Input must be a CategoricalColumn. '
+        'Given: {}'.format(categorical_column))
   return IndicatorColumn(categorical_column)
 
 
@@ -3979,9 +3987,10 @@ class WeightedCategoricalColumn(
     """Applies weights to tensor generated from `categorical_column`'."""
     weight_tensor = transformation_cache.get(self.weight_feature_key,
                                              state_manager)
-    weight_tensor = self._transform_weight_tensor(weight_tensor)
-    return (transformation_cache.get(self.categorical_column, state_manager),
-            weight_tensor)
+    sparse_weight_tensor = self._transform_weight_tensor(weight_tensor)
+    sparse_categorical_tensor = _to_sparse_input_and_drop_ignore_values(
+        transformation_cache.get(self.categorical_column, state_manager))
+    return (sparse_categorical_tensor, sparse_weight_tensor)
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
                           _FEATURE_COLUMN_DEPRECATION)

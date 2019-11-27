@@ -28,18 +28,18 @@ class TestModule(tf.Module):
 
   # Check that we get shapes annotated on function arguments.
   #
+  # Besides checking the shape on the function input argument, this test also
+  # checks that the shape on the input argument is propagated to the return
+  # value.
   # We eventually want to move the shape inference to a pass separate from
-  # the initial import, in which case this test doesn't make much sense and
-  # will be superceded by MLIR->MLIR shape inference tests.
+  # the initial import, in which case that aspect of this test doesn't make much
+  # sense and will be superceded by MLIR->MLIR shape inference tests.
   #
-  # CHECK: func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<f32>, %arg1: tensor<f32>) -> tensor<f32>
-  # CHECK-NEXT: tf_saved_model.exported_names = ["some_function"]
-  @tf.function(input_signature=[
-      tf.TensorSpec([], tf.float32),
-      tf.TensorSpec([], tf.float32)
-  ])
-  def some_function(self, x, y):
-    return x + y
+  # CHECK:      func {{@[a-zA-Z_0-9]+}}(%arg0: tensor<f32> {{.*}}) -> (tensor<f32> {{.*}})
+  # CHECK-SAME: attributes {{.*}} tf_saved_model.exported_names = ["some_function"]
+  @tf.function(input_signature=[tf.TensorSpec([], tf.float32)])
+  def some_function(self, x):
+    return x
 
 
 if __name__ == '__main__':

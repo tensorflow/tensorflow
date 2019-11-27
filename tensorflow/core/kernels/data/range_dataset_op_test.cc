@@ -20,7 +20,7 @@ namespace tensorflow {
 namespace data {
 namespace {
 
-class RangeDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class RangeDatasetOpTest : public DatasetOpsTestBase {};
 
 RangeDatasetParams PositiveStepRangeDatasetParams() {
   return RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3);

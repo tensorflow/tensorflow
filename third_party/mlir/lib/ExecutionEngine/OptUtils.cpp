@@ -84,7 +84,7 @@ static void populatePassManagers(llvm::legacy::PassManager &modulePM,
 
   if (targetMachine) {
     // Add pass to initialize TTI for this specific target. Otherwise, TTI will
-    // be initialized to NoTTIImpl by defaul.
+    // be initialized to NoTTIImpl by default.
     modulePM.add(createTargetTransformInfoWrapperPass(
         targetMachine->getTargetIRAnalysis()));
     funcPM.add(createTargetTransformInfoWrapperPass(

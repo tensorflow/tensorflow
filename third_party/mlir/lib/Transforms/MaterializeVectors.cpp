@@ -146,8 +146,8 @@ using llvm::dbgs;
 using llvm::SetVector;
 
 using namespace mlir;
-using vector::VectorTransferReadOp;
-using vector::VectorTransferWriteOp;
+using vector::TransferReadOp;
+using vector::TransferWriteOp;
 
 using functional::makePtrDynCaster;
 using functional::map;
@@ -181,7 +181,7 @@ struct MaterializationState {
   SmallVector<int64_t, 8> hwVectorSize;
   VectorType superVectorType;
   VectorType hwVectorType;
-  SmallVector<unsigned, 8> hwVectorInstance;
+  SmallVector<int64_t, 8> hwVectorInstance;
   DenseMap<Value *, Value *> *substitutionsMap;
 };
 
@@ -206,24 +206,24 @@ struct MaterializeVectorsPass : public FunctionPass<MaterializeVectorsPass> {
 /// returns the distance, in number of elements, between a slice in a dimension
 /// and the next slice in the same dimension.
 ///   e.g. shape[3, 4, 5] -> strides[20, 5, 1]
-static SmallVector<unsigned, 8> makeStrides(ArrayRef<unsigned> shape) {
-  SmallVector<unsigned, 8> tmp;
+static SmallVector<int64_t, 8> makeStrides(ArrayRef<int64_t> shape) {
+  SmallVector<int64_t, 8> tmp;
   tmp.reserve(shape.size());
-  unsigned running = 1;
+  int64_t running = 1;
   for (auto rit = shape.rbegin(), reit = shape.rend(); rit != reit; ++rit) {
     assert(*rit > 0 && "size must be greater than 0 along all dimensions of "
                        "shape");
     tmp.push_back(running);
     running *= *rit;
   }
-  return SmallVector<unsigned, 8>(tmp.rbegin(), tmp.rend());
+  return SmallVector<int64_t, 8>(tmp.rbegin(), tmp.rend());
 }
 
 /// Given a shape with sizes greater than 0 along all dimensions, returns the
 /// delinearized components of linearIndex along shape.
-static SmallVector<unsigned, 8> delinearize(unsigned linearIndex,
-                                            ArrayRef<unsigned> shape) {
-  SmallVector<unsigned, 8> res;
+static SmallVector<int64_t, 8> delinearize(int64_t linearIndex,
+                                           ArrayRef<int64_t> shape) {
+  SmallVector<int64_t, 8> res;
   res.reserve(shape.size());
   auto strides = makeStrides(shape);
   for (unsigned idx = 0; idx < strides.size(); ++idx) {
@@ -333,7 +333,7 @@ static Value *substitute(Value *v, VectorType hwVectorType,
 /// vectorization trait at the op level directly.
 static SmallVector<mlir::Value *, 8>
 reindexAffineIndices(OpBuilder b, VectorType hwVectorType,
-                     ArrayRef<unsigned> hwVectorInstance,
+                     ArrayRef<int64_t> hwVectorInstance,
                      ArrayRef<Value *> memrefIndices) {
   auto vectorShape = hwVectorType.getShape();
   assert(hwVectorInstance.size() >= vectorShape.size());
@@ -408,9 +408,9 @@ materializeAttributes(Operation *opInst, VectorType hwVectorType) {
 static Operation *instantiate(OpBuilder b, Operation *opInst,
                               VectorType hwVectorType,
                               DenseMap<Value *, Value *> *substitutionsMap) {
-  assert(!isa<VectorTransferReadOp>(opInst) &&
+  assert(!isa<TransferReadOp>(opInst) &&
          "Should call the function specialized for VectorTransferReadOp");
-  assert(!isa<VectorTransferWriteOp>(opInst) &&
+  assert(!isa<TransferWriteOp>(opInst) &&
          "Should call the function specialized for VectorTransferWriteOp");
   if (opInst->getNumRegions() != 0)
     return nullptr;
@@ -443,10 +443,9 @@ static Operation *instantiate(OpBuilder b, Operation *opInst,
 template <typename VectorTransferOpTy>
 static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
                                          VectorType hwVectorType) {
-  static_assert(
-      std::is_same<VectorTransferOpTy, VectorTransferReadOp>::value ||
-          std::is_same<VectorTransferOpTy, VectorTransferWriteOp>::value,
-      "Must be called on a VectorTransferOp");
+  static_assert(std::is_same<VectorTransferOpTy, TransferReadOp>::value ||
+                    std::is_same<VectorTransferOpTy, TransferWriteOp>::value,
+                "Must be called on a VectorTransferOp");
   auto superVectorType = transfer.getVectorType();
   auto optionalRatio = shapeRatio(superVectorType, hwVectorType);
   assert(optionalRatio &&
@@ -465,7 +464,7 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
         ++dim;
       },
       superVectorType.getShape(), *optionalRatio);
-  auto permutationMap = transfer.getPermutationMap();
+  auto permutationMap = transfer.permutation_map();
   LLVM_DEBUG(permutationMap.print(dbgs() << "\npermutationMap: "));
   if (keep.empty()) {
     return permutationMap;
@@ -481,21 +480,21 @@ static AffineMap projectedPermutationMap(VectorTransferOpTy transfer,
 /// `hwVectorType` int the covering of the super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
+static Operation *instantiate(OpBuilder b, TransferReadOp read,
                               VectorType hwVectorType,
-                              ArrayRef<unsigned> hwVectorInstance,
+                              ArrayRef<int64_t> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), read.getIndices());
+      map(makePtrDynCaster<Value>(), read.indices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
   auto map = projectedPermutationMap(read, hwVectorType);
   if (!map) {
     return nullptr;
   }
-  auto cloned = b.create<VectorTransferReadOp>(read.getLoc(), hwVectorType,
-                                               read.getMemRef(), affineIndices,
-                                               map, read.getPaddingValue());
+  auto cloned = b.create<TransferReadOp>(
+      read.getLoc(), hwVectorType, read.memref(), affineIndices,
+      AffineMapAttr::get(map), read.padding());
   return cloned.getOperation();
 }
 
@@ -505,19 +504,19 @@ static Operation *instantiate(OpBuilder b, VectorTransferReadOp read,
 /// `hwVectorType` int the covering of th3e super-vector type. For a more
 /// detailed description of the problem, see the description of
 /// reindexAffineIndices.
-static Operation *instantiate(OpBuilder b, VectorTransferWriteOp write,
+static Operation *instantiate(OpBuilder b, TransferWriteOp write,
                               VectorType hwVectorType,
-                              ArrayRef<unsigned> hwVectorInstance,
+                              ArrayRef<int64_t> hwVectorInstance,
                               DenseMap<Value *, Value *> *substitutionsMap) {
   SmallVector<Value *, 8> indices =
-      map(makePtrDynCaster<Value>(), write.getIndices());
+      map(makePtrDynCaster<Value>(), write.indices());
   auto affineIndices =
       reindexAffineIndices(b, hwVectorType, hwVectorInstance, indices);
-  auto cloned = b.create<VectorTransferWriteOp>(
+  auto cloned = b.create<TransferWriteOp>(
       write.getLoc(),
-      substitute(write.getVector(), hwVectorType, substitutionsMap),
-      write.getMemRef(), affineIndices,
-      projectedPermutationMap(write, hwVectorType));
+      substitute(write.vector(), hwVectorType, substitutionsMap),
+      write.memref(), affineIndices,
+      AffineMapAttr::get(projectedPermutationMap(write, hwVectorType)));
   return cloned.getOperation();
 }
 
@@ -556,12 +555,12 @@ static bool instantiateMaterialization(Operation *op,
   if (op->getNumRegions() != 0)
     return op->emitError("NYI path Op with region"), true;
 
-  if (auto write = dyn_cast<VectorTransferWriteOp>(op)) {
+  if (auto write = dyn_cast<TransferWriteOp>(op)) {
     auto *clone = instantiate(b, write, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     return clone == nullptr;
   }
-  if (auto read = dyn_cast<VectorTransferReadOp>(op)) {
+  if (auto read = dyn_cast<TransferReadOp>(op)) {
     auto *clone = instantiate(b, read, state->hwVectorType,
                               state->hwVectorInstance, state->substitutionsMap);
     if (!clone) {
@@ -679,7 +678,7 @@ static bool materialize(FuncOp f, const SetVector<Operation *> &terminators,
       continue;
     }
 
-    auto terminator = cast<VectorTransferWriteOp>(term);
+    auto terminator = cast<TransferWriteOp>(term);
     LLVM_DEBUG(dbgs() << "\nFrom terminator:" << *term);
 
     // Get the transitive use-defs starting from terminator, limited to the
@@ -749,7 +748,7 @@ void MaterializeVectorsPass::runOnFunction() {
   // Capture terminators; i.e. vector.transfer_write ops involving a strict
   // super-vector of subVectorType.
   auto filter = [subVectorType](Operation &op) {
-    if (!isa<VectorTransferWriteOp>(op)) {
+    if (!isa<TransferWriteOp>(op)) {
       return false;
     }
     return matcher::operatesOnSuperVectorsOf(op, subVectorType);

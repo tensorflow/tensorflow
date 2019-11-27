@@ -17,12 +17,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import itertools
 import types
 
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+
+# pylint:disable=g-inconsistent-quotes
+training_lib = LazyLoader(
+    "training_lib", globals(),
+    "tensorflow.python.keras.engine.training")
+# pylint:enable=g-inconsistent-quotes
 
 
 def use_wrapped_call(layer, call_fn, default_training_value=None,
@@ -41,9 +51,11 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     function that calls call_fn and returns the outputs. Losses returned by
     call_fn are added to the layer losses.
   """
-  expects_training_arg = layer._expects_training_arg   # pylint: disable=protected-access
-  if hasattr(call_fn, 'original_call'):
+  expects_training_arg = layer_uses_training_bool(layer)
+  if hasattr(call_fn, 'original_call'):  # call_fn is a LayerCall object
     original_call = call_fn.original_call
+    # In Python 3, callable objects are not compatible with inspect.getargspec
+    call_fn = call_fn.__call__
   else:
     original_call = call_fn
   fn, arg_spec = maybe_add_training_arg(
@@ -67,6 +79,38 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     return types.MethodType(decorated, layer)
   else:
     return decorated
+
+
+def layer_uses_training_bool(layer):
+  """Returns whether this layer or any of its children uses the training arg."""
+  if layer._expects_training_arg:  # pylint: disable=protected-access
+    return True
+  visited = {layer}
+  to_visit = list_all_layers(layer)
+  while to_visit:
+    layer = to_visit.pop()
+    if layer in visited:
+      continue
+    if layer._expects_training_arg:  # pylint: disable=protected-access
+      return True
+    visited.add(layer)
+    to_visit.extend(list_all_layers(layer))
+  return False
+
+
+def list_all_layers(obj):
+  if isinstance(obj, training_lib.Model):
+    return obj.layers
+  else:
+    return list(
+        trackable_layer_utils.filter_empty_layer_containers(obj._layers))  # pylint: disable=protected-access
+
+
+def list_all_layers_and_sublayers(obj):
+  s = set([obj])
+  s.update(itertools.chain.from_iterable(
+      list_all_layers_and_sublayers(layer) for layer in list_all_layers(obj)))
+  return s
 
 
 def maybe_add_training_arg(

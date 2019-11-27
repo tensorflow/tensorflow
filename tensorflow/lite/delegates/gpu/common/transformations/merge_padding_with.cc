@@ -55,7 +55,8 @@ class MergePaddingWith2DOperation : public SequenceTransformation {
     if (pad_attr.type != PaddingContentType::ZEROS) {
       return {TransformStatus::DECLINED, "Only Zero padding is supported."};
     }
-    if (pad_attr.appended.c != 0 || pad_attr.prepended.c != 0) {
+    if (pad_attr.appended.c != 0 || pad_attr.prepended.c != 0 ||
+        pad_attr.appended.b != 0 || pad_attr.prepended.b != 0) {
       return {TransformStatus::DECLINED,
               "Pad has non-zero padding on non HW axis."};
     }
@@ -126,8 +127,8 @@ class MergePaddingWithAddOperation : public NodeTransformation {
     if (pad_attr.type != PaddingContentType::ZEROS) {
       return {TransformStatus::DECLINED, "Only Zero padding is supported."};
     }
-    if (pad_attr.prepended != HWC(0, 0, 0) || pad_attr.appended.h != 0 ||
-        pad_attr.appended.w != 0) {
+    if (pad_attr.prepended != BHWC(0, 0, 0, 0) || pad_attr.appended.h != 0 ||
+        pad_attr.appended.w != 0 || pad_attr.appended.b != 0) {
       return {TransformStatus::DECLINED,
               "Pad has padding not only in appended channels axis."};
     }

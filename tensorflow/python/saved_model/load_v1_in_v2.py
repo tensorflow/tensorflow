@@ -44,7 +44,7 @@ class _Initializer(tracking.CapturableResource):
   original SavedModel's initialization procedure.
 
   Created when `tf.saved_model.load` loads a TF 1.x-style SavedModel with an
-  initialization op. This object holds a function which runs the
+  initialization op. This object holds a function that runs the
   initialization. It does not require any manual user intervention;
   `tf.saved_model.save` will see this object and automatically add it to the
   exported SavedModel, and `tf.saved_model.load` runs the initialization

@@ -62,7 +62,8 @@ class _ArgTemplateBuilder(object):
 
   def _consume_args(self):
     if self._arg_accumulator:
-      self._argspec.append(gast.Tuple(elts=self._arg_accumulator, ctx=None))
+      self._argspec.append(
+          gast.Tuple(elts=self._arg_accumulator, ctx=gast.Load()))
       self._arg_accumulator = []
 
   def add_arg(self, a):
@@ -84,7 +85,7 @@ class _ArgTemplateBuilder(object):
       for i in range(1, len(self._argspec)):
         result = gast.BinOp(result, gast.Add(), self._argspec[i])
       return result
-    return gast.Tuple([], None)
+    return gast.Tuple([], gast.Load())
 
 
 class CallTreeTransformer(converter.Base):
@@ -120,11 +121,12 @@ class CallTreeTransformer(converter.Base):
       # already set to be applied.
       node.decorator_list = []
     else:
+      # TODO(mdan): Fix the tests so that we can always add this decorator.
       # Inner functions are converted already, so we insert a decorator to
       # prevent double conversion. Double conversion would work too, but this
       # saves the overhead.
       node.decorator_list.append(
-          parser.parse_expression('ag__.do_not_convert_internal'))
+          parser.parse_expression('ag__.autograph_artifact'))
 
     if node.returns:
       node.returns = self.visit(node.returns)

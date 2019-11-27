@@ -124,11 +124,11 @@ std::vector<ComputeTaskDescriptorPtr> Padding(int id, ValueId input_id,
              output_dimension.h,
              output_dimension.c,
              IntegralDivideRoundUp(output_dimension.c, 4),
-             // int3 prepended padding + alignment to int4
+             // int4 prepended padding
              attr.prepended.w,
              attr.prepended.h,
              attr.prepended.c,
-             0,
+             attr.prepended.b,
          };
          return GetByteBuffer(uniform_params);
        }},

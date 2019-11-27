@@ -19,7 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 
-from tensorflow.python.data.experimental.ops import optimization
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import test_util
@@ -68,7 +68,7 @@ class MapFusionTest(test_base.DatasetTestBase, parameterized.TestCase):
   @parameterized.named_parameters(*_map_fusion_test_cases())
   def testMapFusion(self, functions):
     dataset = dataset_ops.Dataset.range(5).apply(
-        optimization.assert_next(["Map", "MemoryCacheImpl"]))
+        testing.assert_next(["Map", "MemoryCacheImpl"]))
     for function in functions:
       dataset = dataset.map(function)
 

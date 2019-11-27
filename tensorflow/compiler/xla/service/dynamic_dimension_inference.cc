@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/dynamic_dimension_inference.h"
 
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -84,6 +85,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
   Status HandleElementwiseUnary(HloInstruction* hlo) override;
 
   Status HandleElementwiseBinary(HloInstruction* hlo) override;
+
+  Status HandleClamp(HloInstruction* hlo) override;
 
   Status HandleWhile(HloInstruction* hlo) override;
 
@@ -179,7 +182,8 @@ Status DynamicDimensionInferenceVisitor::HandleCustomCall(HloInstruction* hlo) {
       hlo, [&](HloInstruction* operand, ShapeIndex index, int64 dimension,
                int64 operand_index, HloInstruction* dynamic_size,
                DimensionConstraint constraint) {
-        if (hlo->custom_call_target() != "Unpad") {
+        if (hlo->custom_call_target() != "Unpad" ||
+            absl::StartsWith(hlo->custom_call_target(), "Resize")) {
           return Unimplemented(
               "CustomCall is not supported to have a dynamic dimension");
         }
@@ -508,6 +512,10 @@ Status DynamicDimensionInferenceVisitor::HandleSelect(HloInstruction* hlo) {
 
 Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
     HloInstruction* hlo) {
+  return PassThroughDynamicDimension(hlo);
+}
+
+Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
 }
 
@@ -911,6 +919,10 @@ Status DynamicDimensionInferenceVisitor::HandleSlice(HloInstruction* hlo) {
             hlo->slice_strides(dimension) != 1 ||
             hlo->slice_limits(dimension) !=
                 operand->shape().dimensions(dimension)) {
+          // Slicing a single element out eliminates the dynamic dimension.
+          if (hlo->shape().dimensions(dimension) == 1) {
+            return Status::OK();
+          }
           return Unimplemented(
               "Dynamic dimension propagation on Slice where it doesn't slice "
               "out an entire dimension is not supported %s",
@@ -1189,6 +1201,8 @@ Status DynamicDimensionInferenceVisitor::HandleWhile(HloInstruction* hlo) {
   TF_RETURN_IF_ERROR(DynamicDimensionInferenceVisitor::Run(
       hlo->while_condition(), binding_for_while, parent_));
 
+  // Set the replacement while loop as visited to avoid visiting it again.
+  SetVisited(*hlo);
   return Status::OK();
 }
 

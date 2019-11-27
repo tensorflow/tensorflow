@@ -31,10 +31,10 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras import applications
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import optimizer_v2
+from tensorflow.python.keras.applications import mobilenet_v2
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import gradient_checker_v2
@@ -514,7 +514,7 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
   def testMobileNetV2Fit(self):
     """Test training Keras MobileNetV2 application works w/ check numerics."""
     check_numerics_callback.enable_check_numerics()
-    model = applications.MobileNetV2(alpha=0.1, weights=None)
+    model = mobilenet_v2.MobileNetV2(alpha=0.1, weights=None)
 
     xs = np.zeros([2] + list(model.input_shape[1:]))
     ys = np.zeros([2] + list(model.output_shape[1:]))
@@ -571,7 +571,6 @@ class CheckNumericsCallbackTest(test_util.TensorFlowTestCase):
     self.assertTrue(np.isnan(batch_mean.squeeze()))
     self.assertTrue(np.isnan(batch_variance.squeeze()))
 
-  # TODO(cais): Tests for Infs and NaNs during distributed execution.
   # TODO(cais): Benchmark the slowdown due to callbacks and inserted nodes.
 
 if __name__ == "__main__":

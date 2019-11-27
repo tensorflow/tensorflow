@@ -49,13 +49,14 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
         CreateTensor<tstring>(TensorShape({}), {ToString(compression_type_)})};
   }
 
-  Status GetInputNames(std::vector<string>* input_placeholder) const override {
-    *input_placeholder = {FixedLengthRecordDatasetOp::kFileNames,
-                          FixedLengthRecordDatasetOp::kHeaderBytes,
-                          FixedLengthRecordDatasetOp::kRecordBytes,
-                          FixedLengthRecordDatasetOp::kFooterBytes,
-                          FixedLengthRecordDatasetOp::kBufferSize,
-                          FixedLengthRecordDatasetOp::kCompressionType};
+  Status GetInputNames(std::vector<string>* input_names) const override {
+    input_names->clear();
+    *input_names = {FixedLengthRecordDatasetOp::kFileNames,
+                    FixedLengthRecordDatasetOp::kHeaderBytes,
+                    FixedLengthRecordDatasetOp::kRecordBytes,
+                    FixedLengthRecordDatasetOp::kFooterBytes,
+                    FixedLengthRecordDatasetOp::kBufferSize,
+                    FixedLengthRecordDatasetOp::kCompressionType};
     return Status::OK();
   }
 
@@ -64,7 +65,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override {
+  string dataset_type() const override {
     return FixedLengthRecordDatasetOp::kDatasetType;
   }
 
@@ -77,7 +78,7 @@ class FixedLengthRecordDatasetParams : public DatasetParams {
   CompressionType compression_type_;
 };
 
-class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class FixedLengthRecordDatasetOpTest : public DatasetOpsTestBase {};
 
 Status CreateTestFiles(const std::vector<tstring>& filenames,
                        const std::vector<string>& contents,

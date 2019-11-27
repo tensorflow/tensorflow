@@ -156,7 +156,7 @@ struct TerminatorLowering : public OpRewritePattern<TerminatorOp> {
 
   PatternMatchResult matchAndRewrite(TerminatorOp op,
                                      PatternRewriter &rewriter) const override {
-    rewriter.replaceOp(op, {});
+    rewriter.eraseOp(op);
     return matchSuccess();
   }
 };
@@ -205,13 +205,13 @@ ForLowering::matchAndRewrite(ForOp forOp, PatternRewriter &rewriter) const {
   // With the body block done, we can fill in the condition block.
   rewriter.setInsertionPointToEnd(conditionBlock);
   auto comparison =
-      rewriter.create<CmpIOp>(loc, CmpIPredicate::SLT, iv, upperBound);
+      rewriter.create<CmpIOp>(loc, CmpIPredicate::slt, iv, upperBound);
 
   rewriter.create<CondBranchOp>(loc, comparison, firstBodyBlock,
                                 ArrayRef<Value *>(), endBlock,
                                 ArrayRef<Value *>());
   // Ok, we're done!
-  rewriter.replaceOp(forOp, {});
+  rewriter.eraseOp(forOp);
   return matchSuccess();
 }
 
@@ -252,7 +252,7 @@ IfLowering::matchAndRewrite(IfOp ifOp, PatternRewriter &rewriter) const {
                                 /*falseArgs=*/ArrayRef<Value *>());
 
   // Ok, we're done!
-  rewriter.replaceOp(ifOp, {});
+  rewriter.eraseOp(ifOp);
   return matchSuccess();
 }
 

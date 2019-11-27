@@ -26,6 +26,7 @@ py_library(
         "ast_util.py",
         "cfg.py",
         "compiler.py",
+        "error_utils.py",
         "errors.py",
         "inspect_utils.py",
         "origin_info.py",
@@ -94,8 +95,8 @@ py_test(
 )
 
 py_test(
-    name = "errors_test",
-    srcs = ["errors_test.py"],
+    name = "error_utils_test",
+    srcs = ["error_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     deps = [

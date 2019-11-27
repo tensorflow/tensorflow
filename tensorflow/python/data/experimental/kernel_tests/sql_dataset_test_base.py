@@ -47,6 +47,7 @@ class SqlDatasetTestBase(test_base.DatasetTestBase):
     c.execute("DROP TABLE IF EXISTS students")
     c.execute("DROP TABLE IF EXISTS people")
     c.execute("DROP TABLE IF EXISTS townspeople")
+    c.execute("DROP TABLE IF EXISTS data")
     c.execute(
         "CREATE TABLE IF NOT EXISTS students (id INTEGER NOT NULL PRIMARY KEY, "
         "first_name VARCHAR(100), last_name VARCHAR(100), motto VARCHAR(100), "
@@ -86,5 +87,7 @@ class SqlDatasetTestBase(test_base.DatasetTestBase):
          ("John", "Adams", -19.95,
           1331241321342132321324589798264627463827647382647382643874.0,
           9007199254740992.0)])
+    c.execute("CREATE TABLE IF NOT EXISTS data (col1 INTEGER)")
+    c.executemany("INSERT INTO DATA VALUES (?)", [(0,), (1,), (2,)])
     conn.commit()
     conn.close()

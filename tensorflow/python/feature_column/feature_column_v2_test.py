@@ -492,6 +492,12 @@ class NumericColumnTest(test.TestCase):
     self.assertEqual(price, new_col)
     self.assertEqual(new_col.shape, (1,))
 
+    # Also test round trip through feature column serialization utils.
+    new_col = serialization.deserialize_feature_column(
+        serialization.serialize_feature_column(price),
+        custom_objects={'_increment_two': _increment_two})
+    self.assertEqual(price, new_col)
+
 
 class BucketizedColumnTest(test.TestCase):
 
@@ -5313,6 +5319,10 @@ class IndicatorColumnTest(test.TestCase):
     self.assertEqual(indicator_b.name, 'b_indicator')
     self.assertEqual(indicator_b.variable_shape, [1, 100])
     self.assertFalse(indicator_b._is_v2_column)
+
+  def test_not_categorical_input(self):
+    with self.assertRaisesRegexp(ValueError, 'Unsupported input type.'):
+      fc.indicator_column('aaa')
 
   def test_1D_shape_succeeds(self):
     animal = fc.indicator_column(

@@ -36,13 +36,9 @@ Location Value::getLoc() {
 
 /// Return the Region in which this Value is defined.
 Region *Value::getParentRegion() {
-  switch (getKind()) {
-  case Value::Kind::BlockArgument:
-    return cast<BlockArgument>(this)->getOwner()->getParent();
-  case Value::Kind::OpResult:
-    return getDefiningOp()->getParentRegion();
-  }
-  llvm_unreachable("Unknown Value Kind");
+  if (auto *op = getDefiningOp())
+    return op->getParentRegion();
+  return cast<BlockArgument>(this)->getOwner()->getParent();
 }
 
 //===----------------------------------------------------------------------===//

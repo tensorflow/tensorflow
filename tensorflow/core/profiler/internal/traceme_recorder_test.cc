@@ -15,11 +15,12 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/traceme_recorder.h"
 
 #include <atomic>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "absl/synchronization/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/notification.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -68,8 +69,8 @@ TEST(RecorderTest, Multithreaded) {
   constexpr static int kNumThreads = 4;
 
   // Start several threads writing events.
-  absl::Notification start;
-  absl::Notification stop;
+  tensorflow::Notification start;
+  tensorflow::Notification stop;
   thread::ThreadPool pool(Env::Default(), "testpool", kNumThreads);
   std::atomic<int> thread_count = {0};
   for (int i = 0; i < kNumThreads; i++) {

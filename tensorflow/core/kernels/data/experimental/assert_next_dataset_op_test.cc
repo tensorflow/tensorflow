@@ -33,8 +33,9 @@ class AssertNextDatasetParams : public DatasetParams {
                       std::move(node_name)),
         transformations_(transformations) {
     input_dataset_params_.push_back(absl::make_unique<T>(input_dataset_params));
-    iterator_prefix_ = name_utils::IteratorPrefix(
-        input_dataset_params.op_name(), input_dataset_params.iterator_prefix());
+    iterator_prefix_ =
+        name_utils::IteratorPrefix(input_dataset_params.dataset_type(),
+                                   input_dataset_params.iterator_prefix());
   }
 
   std::vector<Tensor> GetInputTensors() const override {
@@ -56,13 +57,15 @@ class AssertNextDatasetParams : public DatasetParams {
     return Status::OK();
   }
 
-  string op_name() const override { return AssertNextDatasetOp::kDatasetType; }
+  string dataset_type() const override {
+    return AssertNextDatasetOp::kDatasetType;
+  }
 
  private:
   std::vector<tstring> transformations_;
 };
 
-class AssertNextDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class AssertNextDatasetOpTest : public DatasetOpsTestBase {};
 
 AssertNextDatasetParams AssertNextDatasetParams1() {
   TakeDatasetParams take_dataset_params =

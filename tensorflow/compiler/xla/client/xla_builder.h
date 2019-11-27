@@ -276,6 +276,9 @@ class XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(XlaOp op) const;
 
+  // Returns the shape of the given op.
+  StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
+
   // Returns the (inferred) result for the current computation's shape. This
   // assumes the root instruction is the last added instruction.
   StatusOr<ProgramShape> GetProgramShape() const;
@@ -508,7 +511,7 @@ class XlaBuilder {
   XlaOp CrossReplicaSum(XlaOp operand,
                         absl::Span<const ReplicaGroup> replica_groups = {});
 
-  XlaOp CrossReplicaSum(
+  XlaOp AllReduce(
       XlaOp operand, const XlaComputation& computation,
       absl::Span<const ReplicaGroup> replica_groups = {},
       const absl::optional<ChannelHandle>& channel_id = absl::nullopt);
@@ -703,6 +706,10 @@ class XlaBuilder {
   // The instructions of this computation.
   std::vector<HloInstructionProto> instructions_;
 
+  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // objects from protos and to support the GetShapePtr() API.
+  std::vector<std::unique_ptr<Shape>> instruction_shapes_;
+
   // Dynamic parameter configuration of this computation.
   DynamicParameterBinding dynamic_parameter_binding_;
 
@@ -749,6 +756,8 @@ class XlaBuilder {
   friend XlaOp BroadcastInDim(
       XlaOp operand, const absl::Span<const int64> out_dim_size,
       const absl::Span<const int64> broadcast_dimensions);
+
+  friend XlaOp Copy(XlaOp operand);
 
   friend XlaOp Pad(XlaOp operand, XlaOp padding_value,
                    const PaddingConfig& padding_config);
@@ -911,9 +920,9 @@ class XlaBuilder {
       absl::Span<const std::pair<int64, int64>> padding);
   friend XlaOp CrossReplicaSum(XlaOp operand,
                                absl::Span<const ReplicaGroup> replica_groups);
-  friend XlaOp CrossReplicaSum(XlaOp operand, const XlaComputation& computation,
-                               absl::Span<const ReplicaGroup> replica_groups,
-                               const absl::optional<ChannelHandle>& channel_id);
+  friend XlaOp AllReduce(XlaOp operand, const XlaComputation& computation,
+                         absl::Span<const ReplicaGroup> replica_groups,
+                         const absl::optional<ChannelHandle>& channel_id);
   friend XlaOp AllToAll(XlaOp operand, int64 split_dimension,
                         int64 concat_dimension, int64 split_count,
                         const std::vector<ReplicaGroup>& replica_groups);
@@ -1192,6 +1201,24 @@ XlaOp Broadcast(XlaOp operand, absl::Span<const int64> broadcast_sizes);
 //    {2 , 2}}
 XlaOp BroadcastInDim(XlaOp operand, const absl::Span<const int64> out_dim_size,
                      const absl::Span<const int64> broadcast_dimensions);
+
+// Copies the input operand to the output. This operation is for internal
+// purpose and is only used by the compiler for optimization purposes or to
+// ensure correctness. The XLA client should never have to generate this
+// instruction.
+//
+// Copy has two potential use cases:
+//
+// * Create a copy of the operand with a new layout.
+//
+// * Create a copy of the operand in a separately allocated buffer. This is
+//   necessary for some backends if the operand is a parameter or constant and
+//   the operand is returned within a tuple. In this case, the lifetime of the
+//   operand buffer must be the same as the lifetime of the output result.
+//   However, the lifetimes of parameters and constants are managed separately
+//   from the lifetime of the output result. Creating a separate copy of the
+//   parameter or constant buffer resolves this issue.
+XlaOp Copy(XlaOp operand);
 
 // Enqueues a pad operation onto the computation that pads the given value on
 // the edges as well as between the elements of the input. padding_config
@@ -1637,11 +1664,9 @@ XlaOp CrossReplicaSum(XlaOp operand,
 // means, replica 0 and 2 are in subgroup 0, replica 1 and 3 are in subgroup 1.
 //
 // - `channel_id`: for Allreduce nodes from different modules, if they have the
-// same channel_id, they will be 'Allreduce'd. If empty, Allreduce will not be
+// same channel_id, they will be 'AllReduce'd. If empty, AllReduce will not be
 // applied cross modules.
-//
-// TODO(b/117564385): Rename this to AllReduce when it's ready to use.
-XlaOp CrossReplicaSum(
+XlaOp AllReduce(
     XlaOp operand, const XlaComputation& computation,
     absl::Span<const ReplicaGroup> replica_groups = {},
     const absl::optional<ChannelHandle>& channel_id = absl::nullopt);

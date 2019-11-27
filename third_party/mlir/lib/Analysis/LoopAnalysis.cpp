@@ -77,7 +77,7 @@ void mlir::buildTripCountMapAndOperands(
   SmallVector<AffineExpr, 4> lbSplatExpr(ubValueMap.getNumResults(),
                                          lbMap.getResult(0));
   auto lbMapSplat =
-      b.getAffineMap(lbMap.getNumDims(), lbMap.getNumSymbols(), lbSplatExpr);
+      AffineMap::get(lbMap.getNumDims(), lbMap.getNumSymbols(), lbSplatExpr);
   AffineValueMap lbSplatValueMap(lbMapSplat, lbOperands);
 
   AffineValueMap tripCountValueMap;
@@ -274,8 +274,7 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
 }
 
 static bool isVectorTransferReadOrWrite(Operation &op) {
-  return isa<vector::VectorTransferReadOp>(op) ||
-         isa<vector::VectorTransferWriteOp>(op);
+  return isa<vector::TransferReadOp>(op) || isa<vector::TransferWriteOp>(op);
 }
 
 using VectorizableOpFun = std::function<bool(AffineForOp, Operation &)>;
@@ -375,9 +374,9 @@ bool mlir::isInstwiseShiftValid(AffineForOp forOp, ArrayRef<uint64_t> shifts) {
       for (auto *user : result->getUsers()) {
         // If an ancestor operation doesn't lie in the block of forOp,
         // there is no shift to check.
-        if (auto *ancInst = forBody->findAncestorInstInBlock(*user)) {
-          assert(forBodyShift.count(ancInst) > 0 && "ancestor expected in map");
-          if (shift != forBodyShift[ancInst])
+        if (auto *ancOp = forBody->findAncestorOpInBlock(*user)) {
+          assert(forBodyShift.count(ancOp) > 0 && "ancestor expected in map");
+          if (shift != forBodyShift[ancOp])
             return false;
         }
       }
