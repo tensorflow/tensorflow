@@ -826,6 +826,57 @@ class ConvertSoftmaxOp : public OpRewritePattern<OpTy> {
   }
 };
 
+// Converts Size to HLO ops, computing the size of a ranked input tensor.
+// TODO(b/145253252): Update this to not require ranked input tensor shapes.
+//
+// The main logic of this pattern is to calculate the size by multiplying every
+// dimension of the input tensor's shape together.
+//
+// For example, the following source IR:
+//
+//   %size = "tf.Size"(%input) : (tensor<2x?x8xf32>) -> tensor<i32>
+//
+// will be converted into:
+//
+//   %const = xla_hlo.constant dense<1> : tensor<i32>
+//   %dim_0 = "xla_hlo.get_dimension_size"(%input) {dimension = 0 : i32} :
+//                                         (tensor<2x?x8xf32>) -> tensor<i32>
+//   %prod_0 = xla_hlo.mul %const, %dim_0 : tensor<i32>
+//   %dim_1 = "xla_hlo.get_dimension_size"(%input) {dimension = 1 : i32} :
+//                                         (tensor<2x?x8xf32>) -> tensor<i32>
+//   %prod_1 = xla_hlo.mul %prod_0, %dim_1 : tensor<i32>
+//   %dim_2 = "xla_hlo.get_dimension_size"(%input) {dimension = 2 : i32} :
+//                                         (tensor<2x?x8xf32>) -> tensor<i32>
+//   %size = xla_hlo.mul %prod_1, %dim_2 : tensor<i32>
+class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::SizeOp op,
+                                     PatternRewriter &rewriter) const override {
+    Value *input = op.input();
+    auto input_ty = input->getType().dyn_cast<RankedTensorType>();
+    if (!input_ty) return Pattern::matchFailure();
+
+    const int64_t rank = input_ty.getRank();
+    auto result_type = op.getResult()->getType();
+    Operation *size =
+        GetScalarOfType(result_type.cast<TensorType>().getElementType(),
+                        op.getLoc(), 1, &rewriter);
+    for (int64_t i = 0; i < rank; ++i) {
+      auto dim = rewriter.create<xla_hlo::GetDimensionSizeOp>(
+          op.getLoc(), result_type, input,
+          rewriter.getIntegerAttr(rewriter.getIntegerType(32), i));
+      size = rewriter.create<xla_hlo::MulOp>(
+          op.getLoc(), size->getResult(0), dim.getResult(),
+          /*DenseIntElementsAttr=*/DenseIntElementsAttr());
+    }
+    rewriter.replaceOp(op, size->getResult(0));
+
+    return Pattern::matchSuccess();
+  }
+};
+
 // Converts the tf.Split op into a series of HLO slice ops when the tensor to be
 // split has fuly static shape and the dimension to split is a constant.
 //
@@ -1829,6 +1880,7 @@ LogicalResult mlir::xla_hlo::legalizeTF(Operation *op,
   patterns.insert<mlir::xla::ConvertArgMaxOp, mlir::xla::ConvertBF16FloorDivOp,
                   mlir::xla::ConvertConv2D, mlir::xla::ConvertMaxPoolOp,
                   mlir::xla::ConvertRangeOp, mlir::xla::ConvertSigmoidOp,
+                  mlir::xla::ConvertSizeOp,
                   mlir::xla::ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
                   mlir::xla::ConvertSoftmaxOp<TF::SoftmaxOp, false>,
                   mlir::xla::ConvertSplitOp, mlir::xla::ConvertStridedSliceOp,

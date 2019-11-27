@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <type_traits>
@@ -1410,6 +1411,22 @@ LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
 // TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
 // static input shapes. Replacing output values corresponding to static input
 // types may enable optimizations in users of the values.
+
+//===----------------------------------------------------------------------===//
+// SizeOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// * Input type, if is a ranked tensor, has at most INT32_MAX dimensions.
+//
+static LogicalResult Verify(SizeOp op) {
+  if (!HasRankAtMost(op.input(), std::numeric_limits<int32_t>::max()))
+    return op.emitOpError(
+        "requires ranked input tensor to be of rank INT32_MAX or less");
+
+  return success();
+}
 
 //===----------------------------------------------------------------------===//
 // SliceOp

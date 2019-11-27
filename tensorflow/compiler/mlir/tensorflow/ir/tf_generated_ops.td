@@ -4716,6 +4716,37 @@ Given an input tensor, this function computes sine of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SizeOp : TF_Op<"Size", [NoSideEffect]> {
+  let summary = "Returns the size of a tensor.";
+
+  let description = [{
+This operation returns an integer representing the number of elements in
+`input`.
+
+For example:
+
+```
+# 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+size(t) ==> 12
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_SliceOp : TF_Op<"Slice", [NoSideEffect]> {
   let summary = "Return a slice from 'input'.";
 

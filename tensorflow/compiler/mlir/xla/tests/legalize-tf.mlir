@@ -1803,6 +1803,53 @@ func @cross_replica_sum(%input: tensor<10xf32>) -> tensor<10xf32> {
 }
 
 //===----------------------------------------------------------------------===//
+// tf.Size legalization
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: @size_rank_one_i32
+func @size_rank_one_i32(%input: tensor<f32>) -> (tensor<i32>) {
+  // CHECK: %[[CONST:.*]] = xla_hlo.constant dense<1>
+  // CHECK-SAME: tensor<i32>
+  %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<i32>
+  // CHECK: return %[[CONST]]
+  return %size : tensor<i32>
+}
+
+// CHECK-LABEL: @size_rank_one_i64
+func @size_rank_one_i64(%input: tensor<f32>) -> (tensor<i64>) {
+  // CHECK: %[[CONST:.*]] = xla_hlo.constant dense<1>
+  // CHECK-SAME: tensor<i64>
+  %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT64"} : (tensor<f32>) -> tensor<i64>
+  // CHECK: return %[[CONST]]
+  return %size : tensor<i64>
+}
+
+// CHECK-LABEL: @size_ranked
+// CHECK-SAME: (%[[INPUT:.*]]: tensor<2x?x8xf32>)
+func @size_ranked(%input: tensor<2x?x8xf32>) -> (tensor<i32>) {
+  // CHECK: %[[CONST:.*]] = xla_hlo.constant dense<1>
+  // CHECK: %[[DIM_0:.*]] = "xla_hlo.get_dimension_size"(%[[INPUT]])
+  // CHECK-SAME: dimension = 0
+  // CHECK: %[[MUL_0:.*]] = xla_hlo.mul %[[CONST]], %[[DIM_0]]
+  // CHECK: %[[DIM_1:.*]] = "xla_hlo.get_dimension_size"(%[[INPUT]])
+  // CHECK-SAME: dimension = 1
+  // CHECK: %[[MUL_1:.*]] = xla_hlo.mul %[[MUL_0]], %[[DIM_1]]
+  // CHECK: %[[DIM_2:.*]] = "xla_hlo.get_dimension_size"(%[[INPUT]])
+  // CHECK-SAME: dimension = 2
+  // CHECK: %[[MUL_2:.*]] = xla_hlo.mul %[[MUL_1]], %[[DIM_2]]
+  %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<2x?x8xf32>) -> tensor<i32>
+  // CHECK: return %[[MUL_2]]
+  return %size : tensor<i32>
+}
+
+// CHECK-LABEL: @size_unranked
+func @size_unranked(%input: tensor<*xf32>) -> (tensor<i32>) {
+  // CHECK: tf.Size
+  %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<*xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+}
+
+//===----------------------------------------------------------------------===//
 // tf.Split legalization
 //===----------------------------------------------------------------------===//
 
