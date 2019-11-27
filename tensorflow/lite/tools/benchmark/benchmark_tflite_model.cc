@@ -541,8 +541,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
     return kTfLiteError;
   }
   TFLITE_LOG(INFO) << "Loaded model " << graph;
-  model_->error_reporter();
-  TFLITE_LOG(INFO) << "resolved reporter";
 
   auto resolver = GetOpResolver();
 
