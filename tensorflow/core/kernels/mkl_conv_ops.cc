@@ -24,8 +24,8 @@ limitations under the License.
 #include <map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -570,17 +570,15 @@ class MklConvOp : public OpKernel {
       OP_REQUIRES(context, dilations_.size() == 5,
                   errors::InvalidArgument("Dilation rates field must "
                                           "specify 5 dimensions"));
-      OP_REQUIRES(context,
-                  (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
-                   GetTensorDim(dilations_, data_format_, 'C') == 1),
+      OP_REQUIRES(context, (GetTensorDim(dilations_, data_format_, 'N') == 1 &&
+                            GetTensorDim(dilations_, data_format_, 'C') == 1),
                   errors::InvalidArgument(
                       "Current implementation does not yet support "
                       "dilations rates in the batch and depth dimensions."));
       OP_REQUIRES(
-          context,
-          (GetTensorDim(dilations_, data_format_, '0') > 0 &&
-           GetTensorDim(dilations_, data_format_, '1') > 0 &&
-           GetTensorDim(dilations_, data_format_, '2') > 0),
+          context, (GetTensorDim(dilations_, data_format_, '0') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '1') > 0 &&
+                    GetTensorDim(dilations_, data_format_, '2') > 0),
           errors::InvalidArgument("Dilated rates should be larger than 0."));
     }
   }
@@ -1350,7 +1348,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"Relu6"}) {
       this->set_fuse_activation(true, ALGORITHM::eltwise_bounded_relu, 6.0);
     } else if (fused_ops == std::vector<string>{"Elu"}) {
-      this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_relu);
@@ -1365,7 +1363,7 @@ class MklFusedConvOp
                       "Fused Conv2D must have one extra argument: bias."));
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
-      this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
@@ -1395,7 +1393,7 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Add", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
-      this->set_fuse_activation(true, ALGORITHM::eltwise_elu);
+      this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
       OP_REQUIRES(
           context, num_args == 2,
           errors::InvalidArgument(
