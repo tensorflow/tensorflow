@@ -24,16 +24,17 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import multi_device_iterator_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
 class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @test_util.run_v1_only("b/121264236")
+  # TODO(b/121264236)
+  @combinations.generate(
+      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
   def testPrefetchWithSlackOption(self):
     """Determines slack_period based on num devices attached to iterator."""
     dataset = dataset_ops.Dataset.range(10)
@@ -60,6 +61,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
         self.evaluate(elem_on_1)
         self.evaluate(elem_on_2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testPrefetchWithSlackOptionWithoutIterator(self):
     """Defaults to slack period of 1 without iterator."""
     dataset = dataset_ops.Dataset.range(10)
@@ -72,6 +74,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
                   dataset.options()._static_optimization_configs())
     self.assertDatasetProduces(dataset, range(10))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testWithPassthroughDataset(self):
     """Should still work with a passthrough dataset after prefetch()."""
     dataset = dataset_ops.Dataset.range(10)
@@ -82,6 +85,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, range(1, 11))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testErrorWithoutPrefetch(self):
     """The rewrite fails if there is no prefetch() in the pipeline."""
     dataset = dataset_ops.Dataset.range(10)
@@ -92,6 +96,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
       get_next = self.getNext(dataset)
       self.evaluate(get_next())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testErrorWithInvalidDataset(self):
     """With a nested dataset op after prefetch, the rewrite should fail."""
     dataset = dataset_ops.Dataset.range(10)
