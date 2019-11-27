@@ -1,7 +1,7 @@
 # Release 1.3.0
 
 ## Major Features and Improvements
-* Added canned estimators to Tensorflow library. List of added estimators:
+* Added canned estimators to TensorFlow library. List of added estimators:
   * `DNNClassifier`
   * `DNNRegressor`
   * `LinearClassifier`
