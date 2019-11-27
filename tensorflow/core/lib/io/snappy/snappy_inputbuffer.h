@@ -119,6 +119,9 @@ class SnappyInputBuffer : public InputStreamInterface {
   // Number of unread bytes bytes available at `next_out_` in `output_buffer_`.
   size_t avail_out_ = 0;
 
+  // Number of *uncompressed* bytes that have been read from this stream.
+  int64 bytes_read_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(SnappyInputBuffer);
 };
 
