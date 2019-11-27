@@ -672,7 +672,7 @@ class OpKernelContext {
 
     // Mechanism used by this op kernel invocation to communicate with
     // computations running on other devices.
-    Rendezvous* rendezvous = nullptr;
+    RendezvousInterface* rendezvous = nullptr;
     const std::function<Status(const int64, const DeviceMgr*, Rendezvous** r)>*
         create_rendezvous;
 
@@ -1100,7 +1100,7 @@ class OpKernelContext {
   //
   // An op kernel communicates with outside environment through
   // Rendezvous Send() and Recv().
-  Rendezvous* rendezvous() const { return params_->rendezvous; }
+  RendezvousInterface* rendezvous() const { return params_->rendezvous; }
   Status create_rendezvous(const int64 step_id, const DeviceMgr* device_mgr,
                            Rendezvous** r) const {
     return (*params_->create_rendezvous)(step_id, device_mgr, r);

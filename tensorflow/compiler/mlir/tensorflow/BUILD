@@ -308,7 +308,7 @@ cc_library(
         ":mlir_roundtrip_flags",
         ":tensorflow",
         ":tensorflow_passes",
-        "//tensorflow/cc/saved_model:loader_lite",
+        "//tensorflow/cc/saved_model:bundle_v2",
         "//tensorflow/compiler/jit:shape_inference_helpers",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow",

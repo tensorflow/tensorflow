@@ -20,6 +20,7 @@ limitations under the License.
 
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops_base.td"
+include "tensorflow/compiler/mlir/xla/ir/hlo_utils.td"
 
 def HLO_Dialect : Dialect {
   let name = "xla_hlo";
@@ -364,6 +365,29 @@ def HLO_WhileOp: HLO_Op<"while", [NoSideEffect, SameOperandsAndResultType]> {
   let results = (outs HLO_TensorOrTuple);
 
   // TODO(b/129422361): WhileOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+}
+
+// Represents a unique identifier for each Send/Recv instruction pair or
+// optionally for collective instructions (AllReduce, CollectivePermute,
+// AllToAll). Non-positive channel_id handle is equivalent to no channel id.
+def ChannelHandle : StructAttr<"ChannelHandle", HLO_Dialect, [
+                StructFieldAttr<"handle", I64Attr>,
+                StructFieldAttr<"type", I64Attr>]> {
+  let description = "two 64-bit integers 'handle' and 'type'";
+}
+
+def HLO_AllReduceOp : HLO_Op<"all_reduce",
+    [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_AllReduceOp {
+
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    I64ElementsAttr:$replica_groups,
+    OptionalAttr<ChannelHandle>:$channel_id
+  );
+  let regions = (region SizedRegion<1>:$computation);
+  let results = (outs HLO_Tensor);
+
   let hasCustomHLOConverter = 1;
 }
 
@@ -752,6 +776,31 @@ def HLO_ReshapeOp: HLO_Op<"reshape",
 
   let results = (outs HLO_Tensor);
   let hasFolder = 1;
+
+  let hasCustomHLOConverter = 1;
+}
+
+def ScatterDimensionNumbers : StructAttr<"ScatterDimensionNumbers", HLO_Dialect,
+      [StructFieldAttr<"update_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"inserted_window_dims", I64ElementsAttr>,
+      StructFieldAttr<"scatter_dims_to_operand_dims", I64ElementsAttr>,
+      StructFieldAttr<"index_vector_dim", I64Attr>]> {
+  let description = "Structure of dimension information for scatter";
+}
+
+def HLO_ScatterOp: HLO_Op<"scatter", [NoSideEffect]>, BASE_HLO_ScatterOp {
+  let arguments = (ins
+    HLO_Tensor:$operand,
+    HLO_Tensor:$scatter_indices,
+    HLO_Tensor:$updates,
+    ScatterDimensionNumbers:$scatter_dimension_numbers,
+    DefaultValuedAttr<BoolAttr, "false">:$indices_are_sorted,
+    DefaultValuedAttr<BoolAttr, "false">:$unique_indices
+  );
+
+  let regions = (region SizedRegion<1>:$update_computation);
+
+  let results = (outs HLO_Tensor);
 
   let hasCustomHLOConverter = 1;
 }

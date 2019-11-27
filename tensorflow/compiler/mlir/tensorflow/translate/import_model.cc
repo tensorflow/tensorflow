@@ -1815,7 +1815,7 @@ class SavedModelImporter : public ImporterBase {
   // Main entry point: converts all functions in the given meta graph to an MLIR
   // Module.
   static StatusOr<mlir::OwningModuleRef> Convert(
-      const SavedModelBundle& saved_model, mlir::MLIRContext* context,
+      SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
       absl::Span<std::string> exported_names, bool add_default_attributes);
 
  private:
@@ -2015,29 +2015,45 @@ llvm::StringRef ObjectNames::SaveString(const std::string& s) const {
   return llvm::StringRef(*saved_strings_.insert(s).first);
 }
 
-StatusOr<Tensor> GetTensorFromSession(Session* session, std::string name) {
-  std::vector<Tensor> outputs;
-  TF_RETURN_IF_ERROR(session->Run(/*inputs=*/{}, /*output_tensor_names=*/{name},
-                                  /*target_node_names=*/{}, &outputs));
-  return outputs[0];
-}
-
-// Variable ops return resource types, but we want to read their contents.
-// We need to find a "ReadVariableOp" that reads a given variable to get out a
-// tensor value. These seem to always be present in the GraphDef's main graph.
-// TODO(silvasean): Find a better way to do this.
-StatusOr<Tensor> ReadVariableFromSession(const SavedModelBundle& saved_model,
-                                         std::string variable_name) {
-  const GraphDef& graph_def = saved_model.meta_graph_def.graph_def();
-  // TODO(silvasean): Don't do linear search.
-  for (const NodeDef& node : graph_def.node()) {
-    if (node.op() == "ReadVariableOp" && node.input_size() == 1 &&
-        node.input(0) == variable_name) {
-      return GetTensorFromSession(saved_model.session.get(), node.name());
+// Extracts a TensorProto for a Const op from a GraphDef, given an op_name.
+// Returns nullptr on not found or other mismatch.
+// This returns a pointer to the actual node within the graph_def so as to
+// avoid expensive copies.
+const TensorProto* ExtractConstTensorFromGraph(const GraphDef& graph_def,
+                                               const std::string& op_name) {
+  const NodeDef* match_node = nullptr;
+  for (const auto& node : graph_def.node()) {
+    if (node.name() == op_name) {
+      match_node = &node;
     }
   }
-  return errors::InvalidArgument("Could not find ReadVariableOp reading '",
-                                 variable_name, "'");
+
+  if (!match_node) {
+    return nullptr;
+  }
+
+  auto value_it = match_node->attr().find("value");
+  if (value_it == match_node->attr().end()) {
+    return nullptr;
+  }
+
+  if (!value_it->second.has_tensor()) {
+    return nullptr;
+  }
+
+  return &value_it->second.tensor();
+}
+
+const TrackableObjectGraph::TrackableObject::SerializedTensor*
+FindSerializedTensorInTrackable(
+    const TrackableObjectGraph::TrackableObject& trackable_object,
+    StringPiece name) {
+  for (const auto& maybe_serialized_tensor : trackable_object.attributes()) {
+    if (maybe_serialized_tensor.name() == name) {
+      return &maybe_serialized_tensor;
+    }
+  }
+  return nullptr;
 }
 
 Status DiagnoseMultipleConcreteFunctions(const SavedObjectGraph& object_graph,
@@ -2237,9 +2253,22 @@ Status CreateSavedModelIR(
     const ObjectNames& object_names, mlir::ModuleOp module,
     const SavedObjectGraph& object_graph,
     const std::unordered_map<std::string, std::string>& tf_name_to_mlir_name,
-    const SavedModelBundle& saved_model) {
+    SavedModelV2Bundle* saved_model) {
   mlir::OpBuilder builder(module.getBodyRegion());
   mlir::SymbolTable symbol_table(module);
+
+  // Create a side data-structure, indexed by the object_graph node_id to
+  // a TrackableObject that is restorable.
+  absl::flat_hash_map<int, const TrackableObjectGraph::TrackableObject*>
+      restored_objects;
+  TF_RETURN_IF_ERROR(saved_model->VisitObjectsToRestore(
+      [&](int saved_node_id,
+          const TrackableObjectGraph::TrackableObject& trackable_object) {
+        restored_objects.insert(
+            std::make_pair(saved_node_id, &trackable_object));
+        return Status::OK();
+      }));
+
   for (int node_id = 0; node_id < object_graph.nodes_size(); node_id++) {
     const SavedObject& object = object_graph.nodes(node_id);
     // For correctness, we cannot import functions that don't have exported
@@ -2339,8 +2368,27 @@ Status CreateSavedModelIR(
       }
     } else if (object.kind_case() == SavedObject::kVariable) {
       const SavedVariable& variable = object.variable();
-      TF_ASSIGN_OR_RETURN(
-          Tensor value, ReadVariableFromSession(saved_model, variable.name()));
+      // Find the trackable in the side data structure.
+      auto variable_trackable_it = restored_objects.find(node_id);
+      if (variable_trackable_it == restored_objects.end()) {
+        return errors::FailedPrecondition("Could not restore saved variable: ",
+                                          variable.name());
+      }
+      const auto* serialized_tensor_attr = FindSerializedTensorInTrackable(
+          *variable_trackable_it->second, "VARIABLE_VALUE");
+      if (!serialized_tensor_attr) {
+        return errors::FailedPrecondition(
+            "Could not find serialized tensor for saved variable: ",
+            variable.name());
+      }
+      const auto& checkpoint_key = serialized_tensor_attr->checkpoint_key();
+
+      // Load it from the reader.
+      Tensor value;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          saved_model->variable_reader()->Lookup(checkpoint_key, &value),
+          "Could not read checkpoint key from variables bundle: ",
+          checkpoint_key);
       TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
       // A variable can have a partially known type, such as tensor<?x27x?xf32>,
       // even if the initializer is a specific static shape.
@@ -2358,10 +2406,15 @@ Status CreateSavedModelIR(
           builder.getStrArrayAttr(object_names.GetExportedNames(node_id)));
     } else if (object.kind_case() == SavedObject::kConstant) {
       const SavedConstant& constant = object.constant();
-      TF_ASSIGN_OR_RETURN(Tensor value,
-                          GetTensorFromSession(saved_model.session.get(),
-                                               constant.operation()));
-      TF_ASSIGN_OR_RETURN(auto value_attr, ConvertTensor(value, &builder));
+      const TensorProto* value = ExtractConstTensorFromGraph(
+          saved_model->meta_graph_def().graph_def(), constant.operation());
+      if (!value) {
+        return errors::FailedPrecondition(
+            "Unable to find const node referenced in object graph: ",
+            constant.operation());
+      }
+      TF_ASSIGN_OR_RETURN(auto value_attr,
+                          ConvertTensorProto(*value, &builder));
       auto op = builder.create<mlir::tf_saved_model::GlobalTensorOp>(
           builder.getUnknownLoc(),
           builder.getStringAttr(object_names.GetSymbolTableName(node_id)),
@@ -2379,18 +2432,18 @@ Status CreateSavedModelIR(
 }
 
 StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
-    const SavedModelBundle& saved_model, mlir::MLIRContext* context,
+    SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, bool add_default_attributes) {
   GraphDebugInfo dummy_debug_info;
   const GraphDebugInfo& debug_info =
-      saved_model.debug_info ? *saved_model.debug_info : dummy_debug_info;
+      saved_model->debug_info() ? *saved_model->debug_info() : dummy_debug_info;
 
   GraphImportConfig specs;
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;
 
-  const auto& graphdef = saved_model.meta_graph_def.graph_def();
+  const auto& graphdef = saved_model->meta_graph_def().graph_def();
   GraphConstructorOptions options;
   options.allow_internal_ops = true;
   options.add_default_attributes = add_default_attributes;
@@ -2413,11 +2466,11 @@ StatusOr<mlir::OwningModuleRef> SavedModelImporter::Convert(
     TF_RETURN_IF_ERROR(importer.ConvertLibFunction(fn_name));
   }
 
-  if (!saved_model.meta_graph_def.has_object_graph_def()) {
+  if (!saved_model->meta_graph_def().has_object_graph_def()) {
     return errors::InvalidArgument(
         "SavedModel does not have an object graph. Please use TF2.");
   }
-  auto& object_graph = saved_model.meta_graph_def.object_graph_def();
+  auto& object_graph = saved_model->meta_graph_def().object_graph_def();
   ObjectNames object_names(object_graph, exported_names);
 
   // Clean up a couple func's that always seem to be present when importing a
@@ -2484,7 +2537,7 @@ StatusOr<mlir::OwningModuleRef> ConvertGraphToMlir(
 }
 
 StatusOr<mlir::OwningModuleRef> ConvertSavedModelToMlir(
-    const SavedModelBundle& saved_model, mlir::MLIRContext* context,
+    SavedModelV2Bundle* saved_model, mlir::MLIRContext* context,
     absl::Span<std::string> exported_names, bool add_default_attributes) {
   return SavedModelImporter::Convert(saved_model, context, exported_names,
                                      add_default_attributes);

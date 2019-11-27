@@ -57,7 +57,7 @@ cc_library(
     ],
     deps = [
         ":micro_model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/microfrontend/lib:frontend",
     ],
@@ -84,7 +84,7 @@ tflite_micro_cc_test(
         ":micro_features_generator",
         ":micro_features_generator_test_data",
         ":micro_model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech:audio_sample_test_data",
         "//tensorflow/lite/experimental/micro/testing:micro_test",

@@ -614,6 +614,17 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndReluAndRequantize")
                             .TypeConstraint<quint8>("Toutput"),
                         NoOp);
 
+// Register NoOp kernel for QuantizedMatMulWithBiasAndRequantize
+// to get a python interface. This kernel will be replaced by an MKL kernel
+// during graph-optimization pass.
+REGISTER_KERNEL_BUILDER(Name("QuantizedMatMulWithBiasAndRequantize")
+                            .Device(DEVICE_CPU)
+                            .TypeConstraint<quint8>("T1")
+                            .TypeConstraint<qint8>("T2")
+                            .TypeConstraint("Tbias", {DT_QINT32, DT_FLOAT})
+                            .TypeConstraint<quint8>("Toutput"),
+                        NoOp);
+
 // Register a templatized implementation of _MklQuantizedMatMulWithBiasAndRelu.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedMatMulWithBiasAndRelu")
@@ -643,6 +654,27 @@ REGISTER_KERNEL_BUILDER(
         .TypeConstraint<quint8>("Toutput")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklDnnQuantizedMatMulReluOp<CPUDevice, quint8, qint8, float, quint8>);
+
+// Register a templatized implementation of
+// _MklQuantizedMatMulWithBiasAndRequantize.
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedMatMulWithBiasAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T1")
+        .TypeConstraint<qint8>("T2")
+        .TypeConstraint<qint32>("Tbias")
+        .TypeConstraint<quint8>("Toutput")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, qint32, quint8>);
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedMatMulWithBiasAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("T1")
+        .TypeConstraint<qint8>("T2")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("Toutput")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklDnnQuantizedMatMulOp<CPUDevice, quint8, qint8, float, quint8>);
 
 }  // namespace tensorflow
 

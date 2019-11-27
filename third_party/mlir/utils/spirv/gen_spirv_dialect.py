@@ -200,9 +200,6 @@ def gen_operand_kind_enum_attr(operand_kind):
   enum_attr = 'def SPV_{name}Attr :\n    '\
       '{category}EnumAttr<"{name}", "valid SPIR-V {name}", [\n{cases}\n'\
       '    ]> {{\n'\
-      '  let returnType = "::mlir::spirv::{name}";\n'\
-      '  let convertFromStorage = '\
-            '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
       '  let cppNamespace = "::mlir::spirv";\n}}'.format(
           name=kind_name, category=kind_category, cases=case_names)
   return kind_name, case_defs + '\n\n' + enum_attr
@@ -240,9 +237,6 @@ def gen_opcode(instructions):
               '    I32EnumAttr<"{name}", "valid SPIR-V instructions", [\n'\
               '{lst}\n'\
               '      ]> {{\n'\
-              '    let returnType = "::mlir::spirv::{name}";\n'\
-              '    let convertFromStorage = '\
-              '"static_cast<::mlir::spirv::{name}>($_self.getInt())";\n'\
               '    let cppNamespace = "::mlir::spirv";\n}}'.format(
                   name='Opcode', lst=opcode_list)
   return opcode_str + '\n\n' + enum_attr

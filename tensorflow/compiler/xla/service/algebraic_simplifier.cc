@@ -550,6 +550,47 @@ Status AlgebraicSimplifierVisitor::HandleAdd(HloInstruction* add) {
                                           sum_of_constants));
   }
 
+  // Convert add with fullshape into add with partial shape when a
+  // portion of add is effective:
+  //             zero (fullshape)   rhs (partialshape)
+  // .           |                  |
+  // . lhs .    dynamic_update_slice (fullshape)
+  // . |         |
+  // Add (fullshape)
+  //
+  // to:
+  //              lhs
+  //              |
+  //             dynamic_slice (partialshape)   rhs (partialshape)
+  // .           |                      |
+  // . lhs .    add (partial_shape)+----+
+  // . |         |
+  // dynamic_update_slice (fullshape)
+  //
+  // This is pattern is discovered in control flow V2 gradient update.
+  if (Match(add,
+            m::Add(m::Op(&lhs),
+                   m::Op(&rhs)
+                       .WithOpcode(HloOpcode::kDynamicUpdateSlice)
+                       .WithOperand(
+                           0, m::Broadcast(m::ConstantEffectiveScalar(0)))))) {
+    const Shape& partial_shape = rhs->operand(1)->shape();
+    auto sliced_lhs =
+        computation_->AddInstruction(HloInstruction::CreateDynamicSlice(
+            partial_shape, lhs, absl::MakeSpan(rhs->operands()).subspan(2),
+            partial_shape.dimensions()));
+
+    auto add_partial = computation_->AddInstruction(
+        HloInstruction::CreateBinary(rhs->operand(1)->shape(), HloOpcode::kAdd,
+                                     sliced_lhs, rhs->mutable_operand(1)));
+
+    auto dynamic_update_slice_full = HloInstruction::CreateDynamicUpdateSlice(
+        lhs->shape(), lhs, add_partial,
+        absl::MakeSpan(rhs->operands()).subspan(2));
+
+    return ReplaceWithNewInstruction(add, std::move(dynamic_update_slice_full));
+  }
+
   // A*C + B*C => (A+B)*C
   //
   //  - If A, B, and C are integers, do this unconditionally. Proof of

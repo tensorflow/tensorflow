@@ -32,6 +32,8 @@
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/SymbolTable.h"
 
+#include "TestOpEnums.h.inc"
+
 namespace mlir {
 
 class TestDialect : public Dialect {

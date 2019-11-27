@@ -483,6 +483,7 @@ cc_library(
         ":IR",
         ":Support",
         ":VectorOpsIncGen",
+        "@llvm//:support",
     ],
 )
 
@@ -1023,6 +1024,26 @@ gentbl(
 )
 
 gentbl(
+    name = "SPIRVLoweringStructGen",
+    tbl_outs = [
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVLowering.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVLowering.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVLowering.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+        ":StdOpsTdFiles",
+    ],
+)
+
+gentbl(
     name = "SPIRVOpUtilsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -1083,28 +1104,14 @@ cc_library(
 )
 
 cc_library(
-    name = "SPIRVTransforms",
-    srcs = [
-        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
-    ],
-    hdrs = [
-        "include/mlir/Dialect/SPIRV/Passes.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":Pass",
-        ":SPIRVDialect",
-        ":Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "SPIRVLowering",
     srcs = [
         "lib/Dialect/SPIRV/SPIRVLowering.cpp",
+        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
+        "lib/Dialect/SPIRV/Transforms/LowerABIAttributesPass.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/SPIRV/Passes.h",
         "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
     ],
     includes = [
@@ -1112,7 +1119,10 @@ cc_library(
     ],
     deps = [
         ":IR",
+        ":Pass",
         ":SPIRVDialect",
+        ":SPIRVLoweringStructGen",
+        ":StandardOps",
         ":Support",
         ":Transforms",
         "@llvm//:support",
@@ -1652,7 +1662,6 @@ cc_library(
         ":Pass",
         ":QuantizerTransforms",
         ":SPIRVDialectRegistration",
-        ":SPIRVTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
@@ -2203,8 +2212,8 @@ cc_library(
         "lib/Dialect/Linalg/IR/LinalgOps.cpp",
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
+        "lib/Dialect/Linalg/Transforms/LinalgToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
-        "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/Promotion.cpp",
         "lib/Dialect/Linalg/Transforms/Tiling.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",

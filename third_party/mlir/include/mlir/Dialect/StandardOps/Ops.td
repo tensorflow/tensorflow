@@ -831,6 +831,16 @@ def MemRefCastOp : CastOp<"memref_cast"> {
        %2 = memref_cast %1 : memref<?x?xf32> to memref<4x4xf32>
     Erase static shape information, replacing it with dynamic information.
        %3 = memref_cast %1 : memref<4xf32> to memref<?xf32>
+
+    The same holds true for offsets and strides.
+
+    Assert that the input dynamic shape matches the destination static stride.
+       %4 = memref_cast %1 : memref<12x4xf32, offset:?, strides: [?, ?]> to
+                             memref<12x4xf32, offset:5, strides: [4, 1]>
+    Erase static offset and stride information, replacing it with
+    dynamic information.
+       %5 = memref_cast %1 : memref<12x4xf32, offset:5, strides: [4, 1]> to
+                             memref<12x4xf32, offset:?, strides: [?, ?]>
   }];
 
   let arguments = (ins AnyMemRef:$source);

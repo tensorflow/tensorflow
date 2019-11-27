@@ -8,7 +8,7 @@ load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "if_cuda_or_rocm")
 load(
-    "//tensorflow/core/platform:default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
@@ -31,7 +31,6 @@ cc_library(
     copts = tf_copts(),
     deps = if_cuda([
         "@local_config_nccl//:nccl",
-        "//tensorflow/core/profiler/lib:traceme",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
         "//tensorflow/core:gpu_runtime",

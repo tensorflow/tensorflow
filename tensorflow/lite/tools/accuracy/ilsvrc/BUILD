@@ -22,7 +22,7 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools/accuracy/ilsvrc/default:custom_delegates",
         "//tensorflow/lite/tools/evaluation:utils",
@@ -41,7 +41,7 @@ cc_binary(
     deps = [
         ":imagenet_model_evaluator",
         "//tensorflow/core:tflite_portable_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/profiling:time",
         "//tensorflow/lite/tools:command_line_flags",
         "//tensorflow/lite/tools/accuracy:csv_writer",

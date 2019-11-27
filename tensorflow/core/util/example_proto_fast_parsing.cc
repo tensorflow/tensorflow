@@ -1078,7 +1078,7 @@ void CopySparseBufferToTensor(DataType dtype, size_t offset, SparseBuffer* src,
     }
     case DT_STRING: {
       std::move(src->bytes_list.begin(), src->bytes_list.end(),
-                dst->flat<string>().data() + offset);
+                dst->flat<tstring>().data() + offset);
       break;
     }
     default:

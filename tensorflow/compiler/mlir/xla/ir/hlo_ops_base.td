@@ -465,6 +465,16 @@ class BASE_HLO_XorOp {
   }];
 }
 
+class BASE_HLO_AllReduceOp {
+  string summary = "AllReduce operator";
+
+  string description = [{
+    Performs a custom reduction across replicas.
+
+    See https://www.tensorflow.org/xla/operation_semantics#allreduce.
+  }];
+}
+
 class BASE_HLO_ReduceOp {
   string summary = "Reduce operator";
 
@@ -781,6 +791,18 @@ class BASE_HLO_ReshapeOp {
     Reshapes the dimensions of `operand` into a new configuration.
 
     See https://www.tensorflow.org/xla/operation_semantics#reshape.
+  }];
+}
+
+class BASE_HLO_ScatterOp {
+  string summary = "Scatter operator";
+
+  string description = [{
+    Generates a result which is the value of the input array `operand`,
+    with several slices (at indices specified by `scatter_indices`)
+    updated with the values in `updates` using `update_computation`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#scatter.
   }];
 }
 

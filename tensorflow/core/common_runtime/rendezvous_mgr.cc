@@ -33,31 +33,16 @@ limitations under the License.
 namespace tensorflow {
 
 IntraProcessRendezvous::IntraProcessRendezvous(const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr), local_(NewLocalRendezvous()) {}
+    : device_mgr_(device_mgr) {}
 
-IntraProcessRendezvous::~IntraProcessRendezvous() { local_->Unref(); }
+IntraProcessRendezvous::~IntraProcessRendezvous() {}
 
-Status IntraProcessRendezvous::Send(const ParsedKey& parsed,
+Status IntraProcessRendezvous::Send(const ParsedKey& key,
                                     const Rendezvous::Args& args,
                                     const Tensor& val, const bool is_dead) {
-  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << parsed.FullKey();
-  {
-    mutex_lock l(mu_);
-    if (!status_.ok()) return status_;
-  }
-
+  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << key.FullKey();
   // Buffers "val" and "device_context" in local_.
-  return local_->Send(parsed, args, val, is_dead);
-}
-
-Status IntraProcessRendezvous::ParseKey(const string& key, bool is_src,
-                                        Rendezvous::ParsedKey* parsed) {
-  {
-    mutex_lock l(mu_);
-    if (!status_.ok()) return status_;
-  }
-  TF_RETURN_IF_ERROR(Rendezvous::ParseKey(key, parsed));
-  return Status::OK();
+  return local_.Send(key, args, val, is_dead);
 }
 
 void IntraProcessRendezvous::SameWorkerRecvDone(
@@ -131,16 +116,16 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
       out, 0 /*dev_to_dev_stream_index*/, std::move(done), sync_dst_compute);
 }
 
-void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
-                                       const Rendezvous::Args& recv_args,
+void IntraProcessRendezvous::RecvAsync(const ParsedKey& key,
+                                       const Rendezvous::Args& args,
                                        DoneCallback done) {
-  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << parsed.FullKey();
+  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << key.FullKey();
 
   MEMDEBUG_CACHE_OP("RecvAsync");
   // Recv the tensor from local_.
-  local_->RecvAsync(
-      parsed, recv_args,
-      [this, parsed, done = std::move(done)](
+  local_.RecvAsync(
+      key, args,
+      [this, key, done = std::move(done)](
           const Status& status, const Rendezvous::Args& send_args,
           const Rendezvous::Args& recv_args, const Tensor& in,
           bool is_dead) mutable {
@@ -156,7 +141,7 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
         };
 
         if (status.ok() && in.IsInitialized()) {
-          SameWorkerRecvDone(parsed, send_args, recv_args, in, out,
+          SameWorkerRecvDone(key, send_args, recv_args, in, out,
                              std::move(final_callback));
         } else {
           final_callback(status);
@@ -166,7 +151,7 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& parsed,
 
 void IntraProcessRendezvous::StartAbort(const Status& s) {
   CHECK(!s.ok());
-  local_->StartAbort(s);
+  local_.StartAbort(s);
 }
 
 }  // end namespace tensorflow

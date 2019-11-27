@@ -4,7 +4,7 @@ load(
     "if_cuda_is_configured",
 )
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_py_proto_library")
@@ -626,6 +626,7 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow:device_util",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:session_options",
         "@llvm//:support",
     ],
     alwayslink = 1,

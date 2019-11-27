@@ -174,11 +174,7 @@ def ICmpPredicate : I64EnumAttr<
     [ICmpPredicateEQ, ICmpPredicateNE, ICmpPredicateSLT, ICmpPredicateSLE,
      ICmpPredicateSGT, ICmpPredicateSGE, ICmpPredicateULT, ICmpPredicateULE,
      ICmpPredicateUGT, ICmpPredicateUGE]> {
-  let cppNamespace = "mlir::LLVM";
-
-  let returnType = "ICmpPredicate";
-  let convertFromStorage =
-      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
+  let cppNamespace = "::mlir::LLVM";
 }
 
 // Other integer operations.
@@ -225,11 +221,7 @@ def FCmpPredicate : I64EnumAttr<
      FCmpPredicateUEQ, FCmpPredicateUGT, FCmpPredicateUGE, FCmpPredicateULT,
      FCmpPredicateULE, FCmpPredicateUNE, FCmpPredicateUNO, FCmpPredicateTRUE
     ]> {
-  let cppNamespace = "mlir::LLVM";
-
-  let returnType = "FCmpPredicate";
-  let convertFromStorage =
-      "static_cast<" # returnType # ">($_self.getValue().getZExtValue())";
+  let cppNamespace = "::mlir::LLVM";
 }
 
 // Other integer operations.

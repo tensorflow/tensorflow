@@ -95,7 +95,7 @@ class ShuffleDatasetParams : public DatasetParams {
   bool reshuffle_each_iteration_;
 };
 
-class ShuffleDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class ShuffleDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: test shuffle_dataset with reshuffle_each_iteration = false.
 ShuffleDatasetParams ShuffleDatasetParams1() {

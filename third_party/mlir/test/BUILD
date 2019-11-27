@@ -45,6 +45,14 @@ gentbl(
             "lib/TestDialect/TestOps.cpp.inc",
         ),
         (
+            "-gen-enum-decls",
+            "lib/TestDialect/TestOpEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "lib/TestDialect/TestOpEnums.cpp.inc",
+        ),
+        (
             "-gen-rewriters",
             "lib/TestDialect/TestPatterns.inc",
         ),
@@ -75,6 +83,7 @@ cc_library(
     ],
     deps = [
         ":TestOpsIncGen",
+        "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",

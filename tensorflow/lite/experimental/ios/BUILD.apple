@@ -76,6 +76,10 @@ cc_library(
 # Used for building TensorFlowLiteC framework.
 build_test(
     name = "framework_build_test",
+    tags = [
+        "nomsan",  # b/145205324
+        "notsan",  # b/145205324
+    ],
     targets = [
         ":TensorFlowLiteC_framework",
         ":TensorFlowLiteCWithSelectTfOps_framework",

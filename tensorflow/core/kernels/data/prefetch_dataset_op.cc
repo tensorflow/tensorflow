@@ -332,8 +332,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
             (num_elements() + 1) % dataset()->slack_period_ == 0) {
           // TODO(rachelim): Consider doing something more sophisticated
           // to decide how long to sleep for; e.g. using a kalman filter.
-          int64 slack_us =
-              Env::Default()->NowMicros() - buffer_.front().created_us;
+          int64 slack_us = EnvTime::NowMicros() - buffer_.front().created_us;
           // Every slack_period_-th element, update the most recent slack time,
           // measured by the duration between when the element is prefetched
           // and when it is consumed. We add kSleepFactor * slack_us_ to the
@@ -426,7 +425,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         {
           mutex_lock l(*mu_);
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
-          buffer_element.created_us = ctx->env()->NowMicros();
+          buffer_element.created_us = EnvTime::NowMicros();
           buffer_.push_back(std::move(buffer_element));
           cond_var_->notify_all();
         }

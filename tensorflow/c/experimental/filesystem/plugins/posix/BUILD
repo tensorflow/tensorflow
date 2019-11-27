@@ -25,8 +25,8 @@ cc_library(
         "posix_filesystem_helper.h",
         "copy_file.h",
     ] + select({
-        "//tensorflow:android": ["copy_file_portable.cc"],
-        "//conditions:default": ["copy_file_linux.cc"],
+        "//tensorflow:linux_x86_64": ["copy_file_linux.cc"],
+        "//conditions:default": ["copy_file_portable.cc"],
     }),
     deps = [
         "//tensorflow/c:tf_status",

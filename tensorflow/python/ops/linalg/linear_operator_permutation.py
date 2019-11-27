@@ -242,6 +242,10 @@ class LinearOperatorPermutation(linear_operator.LinearOperator):
         math_ops.range(0, self._domain_dimension_tensor(perm)),
         perm), self.dtype)
 
+  def _cond(self):
+    # Permutation matrices are rotations which have condition number 1.
+    return array_ops.ones(self.batch_shape_tensor(), dtype=self.dtype)
+
   @property
   def perm(self):
     return self._perm

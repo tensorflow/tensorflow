@@ -1391,19 +1391,16 @@ void DimOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 OpFoldResult DivISOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "binary operation takes two operands");
 
-  auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
-  auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
-  if (!lhs || !rhs)
-    return {};
-
-  // Don't fold if it requires division by zero.
-  if (rhs.getValue().isNullValue())
-    return {};
-
-  // Don't fold if it would overflow.
-  bool overflow;
-  auto result = lhs.getValue().sdiv_ov(rhs.getValue(), overflow);
-  return overflow ? IntegerAttr() : IntegerAttr::get(lhs.getType(), result);
+  // Don't fold if it would overflow or if it requires a division by zero.
+  bool overflowOrDiv0 = false;
+  auto result = constFoldBinaryOp<IntegerAttr>(operands, [&](APInt a, APInt b) {
+    if (overflowOrDiv0 || !b) {
+      overflowOrDiv0 = true;
+      return a;
+    }
+    return a.sdiv_ov(b, overflowOrDiv0);
+  });
+  return overflowOrDiv0 ? Attribute() : result;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1413,17 +1410,16 @@ OpFoldResult DivISOp::fold(ArrayRef<Attribute> operands) {
 OpFoldResult DivIUOp::fold(ArrayRef<Attribute> operands) {
   assert(operands.size() == 2 && "binary operation takes two operands");
 
-  auto lhs = operands.front().dyn_cast_or_null<IntegerAttr>();
-  auto rhs = operands.back().dyn_cast_or_null<IntegerAttr>();
-  if (!lhs || !rhs)
-    return {};
-
-  // Don't fold if it requires division by zero.
-  auto rhsValue = rhs.getValue();
-  if (rhsValue.isNullValue())
-    return {};
-
-  return IntegerAttr::get(lhs.getType(), lhs.getValue().udiv(rhsValue));
+  // Don't fold if it would require a division by zero.
+  bool div0 = false;
+  auto result = constFoldBinaryOp<IntegerAttr>(operands, [&](APInt a, APInt b) {
+    if (div0 || !b) {
+      div0 = true;
+      return a;
+    }
+    return a.udiv(b);
+  });
+  return div0 ? Attribute() : result;
 }
 
 // ---------------------------------------------------------------------------
@@ -1777,8 +1773,28 @@ bool MemRefCastOp::areCastCompatible(Type a, Type b) {
     return false;
   if (aT.getElementType() != bT.getElementType())
     return false;
-  if (aT.getAffineMaps() != bT.getAffineMaps())
-    return false;
+  if (aT.getAffineMaps() != bT.getAffineMaps()) {
+    int64_t aOffset, bOffset;
+    SmallVector<int64_t, 4> aStrides, bStrides;
+    if (failed(getStridesAndOffset(aT, aStrides, aOffset)) ||
+        failed(getStridesAndOffset(bT, bStrides, bOffset)) ||
+        aStrides.size() != bStrides.size())
+      return false;
+
+    // Strides along a dimension/offset are compatible if the value in the
+    // source memref is static and the value in the target memref is the
+    // same. They are also compatible if either one is dynamic (see description
+    // of MemRefCastOp for details).
+    auto checkCompatible = [](int64_t a, int64_t b) {
+      return (a == MemRefType::getDynamicStrideOrOffset() ||
+              b == MemRefType::getDynamicStrideOrOffset() || a == b);
+    };
+    if (!checkCompatible(aOffset, bOffset))
+      return false;
+    for (auto aStride : enumerate(aStrides))
+      if (!checkCompatible(aStride.value(), bStrides[aStride.index()]))
+        return false;
+  }
   if (aT.getMemorySpace() != bT.getMemorySpace())
     return false;
 

@@ -205,8 +205,7 @@ Status RefineShapes(absl::Span<TensorShape> arg_shapes, mlir::ModuleOp module) {
 
 Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    xla::XlaComputation* xla_computation,
-                                   bool use_tuple_args,
-                                   bool always_return_tuple) {
+                                   bool use_tuple_args, bool return_tuple) {
   mlir::PassManager tf2xla(module_op.getContext());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::xla_hlo::createLegalizeTFPass());
@@ -228,8 +227,8 @@ Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
     tensorflow::DumpMlirOpToFile("mlir_compile_legalize_hlo", module_op);
 
   xla::HloProto hlo_proto;
-  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(
-      module_op, &hlo_proto, use_tuple_args, always_return_tuple));
+  TF_RETURN_IF_ERROR(mlir::ConvertMlirHloToHlo(module_op, &hlo_proto,
+                                               use_tuple_args, return_tuple));
   *xla_computation = xla::XlaComputation(hlo_proto.hlo_module());
   return Status::OK();
 }
@@ -258,7 +257,7 @@ Status CompileSerializedMlirToXlaHlo(
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
       module_op, compilation_result->computation.get(), /*use_tuple_args=*/true,
-      /*always_return_tuple=*/false));
+      /*return_tuple=*/true));
 
   // Construct mapping from XlaComputation's arg to input edges of execute
   // node.

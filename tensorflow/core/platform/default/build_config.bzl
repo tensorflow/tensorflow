@@ -2,7 +2,7 @@
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
 load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows")
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
@@ -165,13 +165,14 @@ def cc_proto_library(
       **kargs: other keyword arguments that are passed to cc_library.
     """
 
+    wkt_deps = ["@com_google_protobuf//:cc_wkt_protos"]
+    all_protolib_deps = protolib_deps + wkt_deps
+
     includes = []
     if include != None:
         includes = [include]
     if protolib_name == None:
         protolib_name = name
-    if not protolib_deps:
-        protolib_deps = deps
 
     if internal_bootstrap_hack:
         # For pre-checked-in generated files, we add the internal_bootstrap_hack
@@ -182,7 +183,7 @@ def cc_proto_library(
             includes = includes,
             protoc = protoc,
             visibility = ["//visibility:public"],
-            deps = [s + "_genproto" for s in protolib_deps],
+            deps = [s + "_genproto" for s in all_protolib_deps],
         )
 
         # An empty cc_library to make rule dependency consistent.
@@ -214,7 +215,7 @@ def cc_proto_library(
         plugin_options = plugin_options,
         protoc = protoc,
         visibility = ["//visibility:public"],
-        deps = [s + "_genproto" for s in protolib_deps],
+        deps = [s + "_genproto" for s in all_protolib_deps],
     )
 
     if use_grpc_plugin:
@@ -223,12 +224,22 @@ def cc_proto_library(
             "//conditions:default": ["//external:grpc_lib"],
         })
 
+    impl_name = name + "_impl"
+    header_only_name = name + "_headers_only"
+    header_only_deps = tf_deps(protolib_deps, "_cc_headers_only")
+
     if make_default_target_header_only:
-        header_only_name = name
-        impl_name = name + "_impl"
+        native.alias(
+            name = name,
+            actual = header_only_name,
+            visibility = kargs["visibility"],
+        )
     else:
-        header_only_name = name + "_headers_only"
-        impl_name = name
+        native.alias(
+            name = name,
+            actual = impl_name,
+            visibility = kargs["visibility"],
+        )
 
     native.cc_library(
         name = impl_name,
@@ -241,7 +252,9 @@ def cc_proto_library(
     )
     native.cc_library(
         name = header_only_name,
-        deps = ["@com_google_protobuf//:protobuf_headers"] + if_static([impl_name]),
+        deps = [
+            "@com_google_protobuf//:protobuf_headers",
+        ] + header_only_deps + if_static([impl_name]),
         hdrs = gen_hdrs,
         **kargs
     )
@@ -385,6 +398,14 @@ def tf_proto_library_cc(
             testonly = testonly,
             visibility = visibility,
         )
+
+        native.alias(
+            name = cc_name + "_headers_only",
+            actual = cc_name,
+            testonly = testonly,
+            visibility = visibility,
+        )
+
         native.cc_library(
             name = cc_name,
             deps = cc_deps + ["@com_google_protobuf//:protobuf_headers"] + if_static([name + "_cc_impl"]),
@@ -418,7 +439,7 @@ def tf_proto_library_cc(
         use_grpc_namespace = use_grpc_namespace,
         visibility = visibility,
         deps = cc_deps + ["@com_google_protobuf//:cc_wkt_protos"],
-        protolib_deps = protolib_deps + ["@com_google_protobuf//:cc_wkt_protos"],
+        protolib_deps = protolib_deps,
     )
 
 def tf_proto_library_py(
@@ -477,6 +498,7 @@ def tf_proto_library(
         cc_libs = [],
         cc_api_version = 2,
         cc_grpc_version = None,
+        use_grpc_namespace = False,
         j2objc_api_version = 1,
         js_codegen = "jspb",
         make_default_target_header_only = False,
@@ -489,6 +511,7 @@ def tf_proto_library(
         testonly = testonly,
         srcs = srcs,
         cc_grpc_version = cc_grpc_version,
+        use_grpc_namespace = use_grpc_namespace,
         cc_libs = cc_libs,
         make_default_target_header_only = make_default_target_header_only,
         protodeps = protodeps,

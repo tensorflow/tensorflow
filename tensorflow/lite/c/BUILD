@@ -4,11 +4,11 @@ package(
 )
 
 cc_library(
-    name = "c_api_internal",
-    srcs = ["c_api_internal.c"],
+    name = "common",
+    srcs = ["common.c"],
     hdrs = [
         "builtin_op_data.h",
-        "c_api_internal.h",
+        "common.h",
     ],
     visibility = [
         "//tensorflow/lite:__subpackages__",
@@ -16,15 +16,15 @@ cc_library(
 )
 
 # For use with library targets that can't use relative paths.
-exports_files(["c_api_internal.h"])
+exports_files(["common.h"])
 
 # Test the C extension API code.
 cc_test(
-    name = "c_api_internal_test",
+    name = "common_test",
     size = "small",
-    srcs = ["c_api_internal_test.cc"],
+    srcs = ["common_test.cc"],
     deps = [
-        ":c_api_internal",
+        ":common",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -35,7 +35,7 @@ cc_test(
     srcs = ["builtin_op_data_test.cc"],
     copts = ["-Wno-unused-variable"],
     deps = [
-        ":c_api_internal",
+        ":common",
         "@com_google_googletest//:gtest",
     ],
 )

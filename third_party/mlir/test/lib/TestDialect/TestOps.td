@@ -413,6 +413,30 @@ def TestBranchOp : TEST_Op<"br", [Terminator]> {
   let arguments = (ins Variadic<AnyType>:$operands);
 }
 
+def AttrSizedOperandOp : TEST_Op<"attr_sized_operands",
+                                 [AttrSizedOperandSegments]> {
+  let arguments = (ins
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d,
+    I32ElementsAttr:$operand_segment_sizes
+  );
+}
+
+def AttrSizedResultOp : TEST_Op<"attr_sized_results",
+                                [AttrSizedResultSegments]> {
+  let arguments = (ins
+    I32ElementsAttr:$result_segment_sizes
+  );
+  let results = (outs
+    Variadic<I32>:$a,
+    Variadic<I32>:$b,
+    I32:$c,
+    Variadic<I32>:$d
+  );
+}
+
 //===----------------------------------------------------------------------===//
 // Test Patterns
 //===----------------------------------------------------------------------===//
@@ -694,7 +718,7 @@ def MultiResultOpKind5: I64EnumAttrCase<"kind5", 5>;
 def MultiResultOpKind6: I64EnumAttrCase<"kind6", 6>;
 
 def MultiResultOpEnum: I64EnumAttr<
-  "Multi-result op kinds", "", [
+  "MultiResultOpEnum", "Multi-result op kinds", [
     MultiResultOpKind1, MultiResultOpKind2, MultiResultOpKind3,
     MultiResultOpKind4, MultiResultOpKind5, MultiResultOpKind6
   ]>;

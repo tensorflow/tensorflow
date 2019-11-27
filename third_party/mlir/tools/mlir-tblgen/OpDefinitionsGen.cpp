@@ -40,18 +40,18 @@ static const char *const tblgenNamePrefix = "tblgen_";
 static const char *const generatedArgName = "tblgen_arg";
 static const char *const builderOpState = "tblgen_state";
 
-// The logic to calculate the dynamic value range for an static operand/result
+// The logic to calculate the actual value range for a declared operand/result
 // of an op with variadic operands/results. Note that this logic is not for
 // general use; it assumes all variadic operands/results must have the same
 // number of values.
 //
-// {0}: The list of whether each static operand/result is variadic.
+// {0}: The list of whether each declared operand/result is variadic.
 // {1}: The total number of non-variadic operands/results.
 // {2}: The total number of variadic operands/results.
-// {3}: The total number of dynamic values.
-// {4}: The begin iterator of the dynamic values.
-// {5}: "operand" or "result"
-const char *valueRangeCalcCode = R"(
+// {3}: The total number of actual values.
+// {4}: The begin iterator of the actual values.
+// {5}: "operand" or "result".
+const char *sameVariadicSizeValueRangeCalcCode = R"(
   bool isVariadic[] = {{{0}};
   int prevVariadicCount = 0;
   for (unsigned i = 0; i < index; ++i)
@@ -68,6 +68,22 @@ const char *valueRangeCalcCode = R"(
   int size = isVariadic[index] ? variadicSize : 1;
 
   return {{std::next({4}, offset), std::next({4}, offset + size)};
+)";
+
+// The logic to calculate the actual value range for a declared operand/result
+// of an op with variadic operands/results. Note that this logic is assumes
+// the op has an attribute specifying the size of each operand/result segment
+// (variadic or not).
+//
+// {0}: The name of the attribute specifying the segment sizes.
+// {1}: The begin iterator of the actual values.
+const char *attrSizedSegmentValueRangeCalcCode = R"(
+  auto sizeAttr = getAttrOfType<DenseIntElementsAttr>("{0}");
+  unsigned start = 0;
+  for (unsigned i = 0; i < index; ++i)
+    start += (*(sizeAttr.begin() + i)).getZExtValue();
+  unsigned end = start + (*(sizeAttr.begin() + index)).getZExtValue();
+  return {{std::next({1}, start), std::next({1}, end)};
 )";
 
 static const char *const opCommentHeader = R"(
@@ -239,6 +255,10 @@ class OpClass : public Class {
 public:
   explicit OpClass(StringRef name, StringRef extraClassDeclaration = "");
 
+  // Sets whether this OpClass should generate the using directive for its
+  // associate operand adaptor class.
+  void setHasOperandAdaptorClass(bool has);
+
   // Adds an op trait.
   void addTrait(Twine trait);
 
@@ -249,6 +269,7 @@ public:
 private:
   StringRef extraClassDeclaration;
   SmallVector<std::string, 4> traits;
+  bool hasOperandAdaptor;
 };
 } // end anonymous namespace
 
@@ -401,7 +422,10 @@ void Class::writeDefTo(raw_ostream &os) const {
 }
 
 OpClass::OpClass(StringRef name, StringRef extraClassDeclaration)
-    : Class(name), extraClassDeclaration(extraClassDeclaration) {}
+    : Class(name), extraClassDeclaration(extraClassDeclaration),
+      hasOperandAdaptor(true) {}
+
+void OpClass::setHasOperandAdaptorClass(bool has) { hasOperandAdaptor = has; }
 
 // Adds the given trait to this op.
 void OpClass::addTrait(Twine trait) { traits.push_back(trait.str()); }
@@ -412,7 +436,8 @@ void OpClass::writeDeclTo(raw_ostream &os) const {
     os << ", " << trait;
   os << "> {\npublic:\n";
   os << "  using Op::Op;\n";
-  os << "  using OperandAdaptor = " << className << "OperandAdaptor;\n";
+  if (hasOperandAdaptor)
+    os << "  using OperandAdaptor = " << className << "OperandAdaptor;\n";
 
   bool hasPrivateMethod = false;
   for (const auto &method : methods) {
@@ -667,10 +692,25 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
   const int numVariadicOperands = op.getNumVariadicOperands();
   const int numNormalOperands = numOperands - numVariadicOperands;
 
-  if (numVariadicOperands > 1 &&
-      !op.hasTrait("OpTrait::SameVariadicOperandSize")) {
+  const auto *sameVariadicSize =
+      op.getTrait("OpTrait::SameVariadicOperandSize");
+  const auto *attrSizedOperands =
+      op.getTrait("OpTrait::AttrSizedOperandSegments");
+
+  if (numVariadicOperands > 1 && !sameVariadicSize && !attrSizedOperands) {
     PrintFatalError(op.getLoc(), "op has multiple variadic operands but no "
                                  "specification over their sizes");
+  }
+
+  if (numVariadicOperands < 2 && attrSizedOperands) {
+    PrintFatalError(op.getLoc(), "op must have at least two variadic operands "
+                                 "to use 'AttrSizedOperandSegments' trait");
+  }
+
+  if (attrSizedOperands && sameVariadicSize) {
+    PrintFatalError(op.getLoc(),
+                    "op cannot have both 'AttrSizedOperandSegments' and "
+                    "'SameVariadicOperandSize' traits");
   }
 
   // First emit a "sink" getter method upon which we layer all nicer named
@@ -681,6 +721,9 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
     // We still need to match the return type, which is a range.
     m.body() << "  return {std::next(" << rangeBeginCall
              << ", index), std::next(" << rangeBeginCall << ", index + 1)};";
+  } else if (attrSizedOperands) {
+    m.body() << formatv(attrSizedSegmentValueRangeCalcCode,
+                        "operand_segment_sizes", rangeBeginCall);
   } else {
     // Because the op can have arbitrarily interleaved variadic and non-variadic
     // operands, we need to embed a list in the "sink" getter method for
@@ -692,9 +735,9 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
     }
     std::string isVariadicList = llvm::join(isVariadic, ", ");
 
-    m.body() << formatv(valueRangeCalcCode, isVariadicList, numNormalOperands,
-                        numVariadicOperands, rangeSizeCall, rangeBeginCall,
-                        "operand");
+    m.body() << formatv(sameVariadicSizeValueRangeCalcCode, isVariadicList,
+                        numNormalOperands, numVariadicOperands, rangeSizeCall,
+                        rangeBeginCall, "operand");
   }
 
   // Then we emit nicer named getter methods by redirecting to the "sink" getter
@@ -716,6 +759,9 @@ static void generateNamedOperandGetters(const Operator &op, Class &opClass,
 }
 
 void OpEmitter::genNamedOperandGetters() {
+  if (op.getTrait("OpTrait::AttrSizedOperandSegments"))
+    opClass.setHasOperandAdaptorClass(false);
+
   generateNamedOperandGetters(
       op, opClass, /*rangeType=*/"Operation::operand_range",
       /*rangeBeginCall=*/"getOperation()->operand_begin()",
@@ -731,10 +777,24 @@ void OpEmitter::genNamedResultGetters() {
   // If we have more than one variadic results, we need more complicated logic
   // to calculate the value range for each result.
 
-  if (numVariadicResults > 1 &&
-      !op.hasTrait("OpTrait::SameVariadicResultSize")) {
+  const auto *sameVariadicSize = op.getTrait("OpTrait::SameVariadicResultSize");
+  const auto *attrSizedResults =
+      op.getTrait("OpTrait::AttrSizedResultSegments");
+
+  if (numVariadicResults > 1 && !sameVariadicSize && !attrSizedResults) {
     PrintFatalError(op.getLoc(), "op has multiple variadic results but no "
                                  "specification over their sizes");
+  }
+
+  if (numVariadicResults < 2 && attrSizedResults) {
+    PrintFatalError(op.getLoc(), "op must have at least two variadic results "
+                                 "to use 'AttrSizedResultSegments' trait");
+  }
+
+  if (attrSizedResults && sameVariadicSize) {
+    PrintFatalError(op.getLoc(),
+                    "op cannot have both 'AttrSizedResultSegments' and "
+                    "'SameVariadicResultSize' traits");
   }
 
   auto &m = opClass.newMethod("Operation::result_range", "getODSResults",
@@ -743,6 +803,10 @@ void OpEmitter::genNamedResultGetters() {
   if (numVariadicResults == 0) {
     m.body() << "  return {std::next(getOperation()->result_begin(), index), "
                 "std::next(getOperation()->result_begin(), index + 1)};";
+  } else if (attrSizedResults) {
+    m.body() << formatv(attrSizedSegmentValueRangeCalcCode,
+                        "result_segment_sizes",
+                        "getOperation()->result_begin()");
   } else {
     llvm::SmallVector<StringRef, 4> isVariadic;
     isVariadic.reserve(numResults);
@@ -751,8 +815,9 @@ void OpEmitter::genNamedResultGetters() {
     }
     std::string isVariadicList = llvm::join(isVariadic, ", ");
 
-    m.body() << formatv(valueRangeCalcCode, isVariadicList, numNormalResults,
-                        numVariadicResults, "getOperation()->getNumResults()",
+    m.body() << formatv(sameVariadicSizeValueRangeCalcCode, isVariadicList,
+                        numNormalResults, numVariadicResults,
+                        "getOperation()->getNumResults()",
                         "getOperation()->result_begin()", "result");
   }
 
@@ -952,11 +1017,11 @@ void OpEmitter::genBuilder() {
   //    use the first operand or attribute's type as all result types
   // to facilitate different call patterns.
   if (op.getNumVariadicResults() == 0) {
-    if (op.hasTrait("OpTrait::SameOperandsAndResultType")) {
+    if (op.getTrait("OpTrait::SameOperandsAndResultType")) {
       genUseOperandAsResultTypeSeparateParamBuilder();
       genUseOperandAsResultTypeCollectiveParamBuilder();
     }
-    if (op.hasTrait("OpTrait::FirstAttrDerivedResultType"))
+    if (op.getTrait("OpTrait::FirstAttrDerivedResultType"))
       genUseAttrAsResultTypeBuilder();
   }
 }
@@ -1243,17 +1308,37 @@ void OpEmitter::genVerifier() {
     body << "  }\n";
   }
 
-  genOperandResultVerifier(body, op.getOperands(), "operand");
-  genOperandResultVerifier(body, op.getResults(), "result");
+  const char *code = R"(
+  auto sizeAttr = getAttrOfType<DenseIntElementsAttr>("{0}");
+  auto numElements = sizeAttr.getType().cast<ShapedType>().getNumElements();
+  if (numElements != {1}) {{
+    return emitOpError("'{0}' attribute for specifiying {2} segments "
+                       "must have {1} elements");
+  }
+  )";
 
   for (auto &trait : op.getTraits()) {
-    if (auto t = dyn_cast<tblgen::PredOpTrait>(&trait)) {
+    if (auto *t = dyn_cast<tblgen::PredOpTrait>(&trait)) {
       body << tgfmt("  if (!($0)) {\n    "
                     "return emitOpError(\"failed to verify that $1\");\n  }\n",
                     &verifyCtx, tgfmt(t->getPredTemplate(), &verifyCtx),
                     t->getDescription());
+    } else if (auto *t = dyn_cast<tblgen::NativeOpTrait>(&trait)) {
+      if (t->getTrait() == "OpTrait::AttrSizedOperandSegments") {
+        body << formatv(code, "operand_segment_sizes", op.getNumOperands(),
+                        "operand");
+      } else if (t->getTrait() == "OpTrait::AttrSizedResultSegments") {
+        body << formatv(code, "result_segment_sizes", op.getNumResults(),
+                        "result");
+      }
     }
   }
+
+  // These should happen after we verified the traits because
+  // getODSOperands()/getODSResults() may depend on traits (e.g.,
+  // AttrSizedOperandSegments/AttrSizedResultSegments).
+  genOperandResultVerifier(body, op.getOperands(), "operand");
+  genOperandResultVerifier(body, op.getResults(), "result");
 
   genRegionVerifier(body);
 
@@ -1405,7 +1490,7 @@ void OpEmitter::genOpAsmInterface() {
   // TODO: We could also add a flag to allow operations to opt in to this
   // generation, even if they only have a single operation.
   int numResults = op.getNumResults();
-  if (numResults <= 1 || op.hasTrait("OpAsmOpInterface::Trait"))
+  if (numResults <= 1 || op.getTrait("OpAsmOpInterface::Trait"))
     return;
 
   SmallVector<StringRef, 4> resultNames(numResults);
@@ -1484,13 +1569,19 @@ static void emitOpClasses(const std::vector<Record *> &defs, raw_ostream &os,
   }
   for (auto *def : defs) {
     Operator op(*def);
+    const auto *attrSizedOperands =
+        op.getTrait("OpTrait::AttrSizedOperandSegments");
     if (emitDecl) {
       os << formatv(opCommentHeader, op.getQualCppClassName(), "declarations");
-      OpOperandAdaptorEmitter::emitDecl(op, os);
+      // We cannot generate the operand adaptor class if operand getters depend
+      // on an attribute.
+      if (!attrSizedOperands)
+        OpOperandAdaptorEmitter::emitDecl(op, os);
       OpEmitter::emitDecl(op, os);
     } else {
       os << formatv(opCommentHeader, op.getQualCppClassName(), "definitions");
-      OpOperandAdaptorEmitter::emitDef(op, os);
+      if (!attrSizedOperands)
+        OpOperandAdaptorEmitter::emitDef(op, os);
       OpEmitter::emitDef(op, os);
     }
   }

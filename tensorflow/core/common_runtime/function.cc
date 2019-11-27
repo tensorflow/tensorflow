@@ -1017,7 +1017,7 @@ void FunctionLibraryRuntimeImpl::RunRemote(const Options& opts, Handle handle,
                                            Item* item, DoneCallback done) {
   string target_device = parent_->GetDeviceName(handle);
   string source_device = opts.source_device;
-  Rendezvous* rendezvous = opts.rendezvous;
+  RendezvousInterface* rendezvous = opts.rendezvous;
   DeviceContext* device_context;
   Status s = parent_->GetDeviceContext(target_device, &device_context);
   if (!s.ok()) {

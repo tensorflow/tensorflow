@@ -21,6 +21,9 @@ from __future__ import print_function
 from tensorflow.python.util.tf_export import tf_export
 
 
+_VALID_DEVICE_TYPES = {"CPU", "GPU", "TPU"}
+
+
 # ==============================================================================
 # == Global Implementation Details =============================================
 # ==============================================================================
@@ -325,8 +328,7 @@ class DeviceSpecV2(object):
           replica = y[1]
         elif ly == 2 and y[0] == "task":
           task = y[1]
-        elif ((ly == 1 or ly == 2) and
-              ((y[0].upper() == "GPU") or (y[0].upper() == "CPU"))):
+        elif ((ly == 1 or ly == 2) and (y[0].upper() in _VALID_DEVICE_TYPES)):
           if device_type is not None:
             raise ValueError("Cannot specify multiple device types: %s" % spec)
           device_type = y[0].upper()
