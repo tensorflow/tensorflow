@@ -26,6 +26,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
@@ -1516,6 +1517,35 @@ static LogicalResult verify(spirv::GlobalVariableOp varOp) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.IAdd
+//===----------------------------------------------------------------------===//
+
+OpFoldResult spirv::IAddOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "spv.IAdd expects two operands");
+  // lhs + 0 = lhs
+  if (matchPattern(operand2(), m_Zero()))
+    return operand1();
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// spv.IMul
+//===----------------------------------------------------------------------===//
+
+OpFoldResult spirv::IMulOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "spv.IMul expects two operands");
+  // lhs * 0 == 0
+  if (matchPattern(operand2(), m_Zero()))
+    return operand2();
+  // lhs * 1 = lhs
+  if (matchPattern(operand2(), m_One()))
+    return operand1();
+
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//
