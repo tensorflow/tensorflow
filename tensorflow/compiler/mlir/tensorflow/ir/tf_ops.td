@@ -28,14 +28,7 @@ limitations under the License.
 #define TF_OPS
 
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_generated_ops.td"
-
-#ifndef MLIR_CALLINTERFACES
 include "mlir/Analysis/CallInterfaces.td"
-#endif // MLIR_CALLINTERFACES
-
-// A derived attribute that returns the shape of the first result type.
-def TF_DerivedResultShapeAttr : DerivedAttr<"ShapedType",
-  "return (*getOperation()->result_type_begin()).cast<ShapedType>();">;
 
 class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   let results = (outs
@@ -403,5 +396,36 @@ This operation holds the metadata common to operations of a `tpu.replicate()` co
   );
 
   let results = (outs);
+}
+
+def TF_VarHandleOp : TF_Op<"VarHandleOp", []> {
+  let summary = "Creates a handle to a Variable resource from its name.";
+
+  let description = [{
+container: the container this variable is placed in.
+shared_name: the name by which this variable is referred to.
+dtype and shape: attributes representing the data type and shape held in the
+  variable.
+
+Example:
+    resource_variable_ops.var_handle_op(
+          dtype=dtypes.int32, shape=[8, 16], container="foo", shared_name="bar")
+  returns a handle for a variable with name "bar" in container "foo", and the
+  variable holds a tensor of shape [8, 16] and dtype int32.
+  }];
+
+  let arguments = (ins
+    DefaultValuedAttr<StrAttr, "">:$container,
+    DefaultValuedAttr<StrAttr, "">:$shared_name
+  );
+
+  let results = (outs
+    TF_ResourceTensor:$resource
+  );
+
+  TF_DerivedOperandOrResultHandleTypeAttr dtype =
+    TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
+  TF_DerivedOperandOrResultHandleShapeAttr shape =
+    TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
 }
 #endif // TF_OPS

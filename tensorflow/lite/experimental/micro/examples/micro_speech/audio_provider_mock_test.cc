@@ -13,17 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
-
 #include <limits>
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
-#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
-#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
-
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/no_1000ms_sample_data.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/yes_1000ms_sample_data.h"
+#include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 TF_LITE_MICRO_TESTS_BEGIN
 

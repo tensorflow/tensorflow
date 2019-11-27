@@ -1,3 +1,7 @@
+set(LLVM_TARGET_DEFINITIONS SPIRVCanonicalization.td)
+mlir_tablegen(SPIRVCanonicalization.inc -gen-rewriters)
+add_public_tablegen_target(MLIRSPIRVCanonicalizationIncGen)
+
 add_llvm_library(MLIRSPIRV
   DialectRegistration.cpp
   LayoutUtils.cpp
@@ -11,8 +15,10 @@ add_llvm_library(MLIRSPIRV
   )
 
 add_dependencies(MLIRSPIRV
-  MLIRSPIRVOpsIncGen
+  MLIRSPIRVCanonicalizationIncGen
   MLIRSPIRVEnumsIncGen
+  MLIRSPIRVLoweringStructGen
+  MLIRSPIRVOpsIncGen
   MLIRSPIRVOpUtilsGen)
 
 target_link_libraries(MLIRSPIRV

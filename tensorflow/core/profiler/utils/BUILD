@@ -36,6 +36,7 @@ cc_library(
     deps = [
         ":math_utils",
         ":tf_op_utils",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/core/profiler/protobuf:op_metrics_proto_cc",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",

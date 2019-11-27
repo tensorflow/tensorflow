@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
 #include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 

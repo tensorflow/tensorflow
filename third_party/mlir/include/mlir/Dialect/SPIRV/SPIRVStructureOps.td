@@ -24,9 +24,7 @@
 #ifndef SPIRV_STRUCTURE_OPS
 #define SPIRV_STRUCTURE_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 def SPV_AddressOfOp : SPV_Op<"_address_of", [InFunctionScope, NoSideEffect]> {
   let summary = "Get the address of a global variable.";
@@ -245,7 +243,10 @@ def SPV_GlobalVariableOp : SPV_Op<"globalVariable", [InModuleScope, Symbol]> {
       "TypeAttr type, ArrayRef<NamedAttribute> namedAttrs", [{
       state.addAttribute("type", type);
       state.addAttributes(namedAttrs);
-    }]>
+    }]>,
+    OpBuilder<[{Builder *builder, OperationState &state,
+                Type type, StringRef name, unsigned descriptorSet,
+                unsigned binding}]>
   ];
 
   let results = (outs);

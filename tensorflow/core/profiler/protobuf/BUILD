@@ -1,4 +1,4 @@
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_proto_library")
+load("//tensorflow/core/platform:build_config.bzl", "tf_proto_library")
 
 package(
     default_visibility = ["//tensorflow/core/profiler:internal"],
@@ -47,6 +47,13 @@ tf_proto_library(
 tf_proto_library(
     name = "tf_stats_proto",
     srcs = ["tf_stats.proto"],
+    cc_api_version = 2,
+    visibility = [":friends"],
+)
+
+tf_proto_library(
+    name = "hardware_types_proto",
+    srcs = ["hardware_types.proto"],
     cc_api_version = 2,
     visibility = [":friends"],
 )

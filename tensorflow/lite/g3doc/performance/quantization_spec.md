@@ -149,7 +149,7 @@ CONV_2D
   Input 2 (Bias):
     data_type  : int32
     range      : [int32_min, int32_max]
-    granularity: per-axis (dim = 0)
+    granularity: per-axis
     restriction: (scale, zero_point) = (input0_scale * input1_scale[...], 0)
   Output 0:
     data_type  : int8
@@ -169,7 +169,7 @@ DEPTHWISE_CONV_2D
   Input 2 (Bias):
     data_type  : int32
     range      : [int32_min, int32_max]
-    granularity: per-axis (dim = 3)
+    granularity: per-axis
     restriction: (scale, zero_point) = (input0_scale * input1_scale[...], 0)
   Output 0:
     data_type  : int8

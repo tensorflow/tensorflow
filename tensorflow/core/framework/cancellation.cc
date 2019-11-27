@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/cancellation.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 
@@ -27,15 +28,32 @@ CancellationManager::CancellationManager()
       is_cancelled_(false),
       next_cancellation_token_(0) {}
 
+CancellationManager::CancellationManager(CancellationManager* parent)
+    : is_cancelling_(false),
+      is_cancelled_(false),
+      next_cancellation_token_(0),
+      parent_(parent),
+      parent_token_(parent->get_cancellation_token()) {
+  bool registered = parent->RegisterCallback(parent_token_,
+                                             [this]() { this->StartCancel(); });
+  if (!registered) {
+    is_cancelled_ = true;
+  }
+}
+
 void CancellationManager::StartCancel() {
   gtl::FlatMap<CancellationToken, CancelCallback> callbacks_to_run;
+  Notification* cancelled_notification = nullptr;
   {
     mutex_lock l(mu_);
     if (is_cancelled_.load(std::memory_order_relaxed) || is_cancelling_) {
       return;
     }
     is_cancelling_ = true;
-    std::swap(callbacks_, callbacks_to_run);
+    if (state_) {
+      std::swap(state_->callbacks, callbacks_to_run);
+      cancelled_notification = &state_->cancelled_notification;
+    }
   }
   // We call these callbacks without holding mu_, so that concurrent
   // calls to DeregisterCallback, which can happen asynchronously, do
@@ -50,7 +68,9 @@ void CancellationManager::StartCancel() {
     is_cancelling_ = false;
     is_cancelled_.store(true, std::memory_order_release);
   }
-  cancelled_notification_.Notify();
+  if (cancelled_notification) {
+    cancelled_notification->Notify();
+  }
 }
 
 bool CancellationManager::RegisterCallback(CancellationToken token,
@@ -59,7 +79,10 @@ bool CancellationManager::RegisterCallback(CancellationToken token,
   mutex_lock l(mu_);
   bool should_register = !is_cancelled_ && !is_cancelling_;
   if (should_register) {
-    std::swap(callbacks_[token], callback);
+    if (!state_) {
+      state_ = absl::make_unique<State>();
+    }
+    std::swap(state_->callbacks[token], callback);
   }
   return should_register;
 }
@@ -70,15 +93,21 @@ bool CancellationManager::DeregisterCallback(CancellationToken token) {
     mu_.unlock();
     return false;
   } else if (is_cancelling_) {
+    Notification* cancelled_notification =
+        state_ ? &state_->cancelled_notification : nullptr;
     mu_.unlock();
     // Wait for all of the cancellation callbacks to be called. This
     // wait ensures that the caller of DeregisterCallback does not
     // return immediately and free objects that may be used in the
     // execution of any currently pending callbacks in StartCancel.
-    cancelled_notification_.WaitForNotification();
+    if (cancelled_notification) {
+      cancelled_notification->WaitForNotification();
+    }
     return false;
   } else {
-    callbacks_.erase(token);
+    if (state_) {
+      state_->callbacks.erase(token);
+    }
     mu_.unlock();
     return true;
   }
@@ -89,13 +118,18 @@ bool CancellationManager::TryDeregisterCallback(CancellationToken token) {
   if (is_cancelled_ || is_cancelling_) {
     return false;
   } else {
-    callbacks_.erase(token);
+    if (state_) {
+      state_->callbacks.erase(token);
+    }
     return true;
   }
 }
 
 CancellationManager::~CancellationManager() {
-  if (!callbacks_.empty()) {
+  if (parent_) {
+    parent_->DeregisterCallback(parent_token_);
+  }
+  if (state_) {
     StartCancel();
   }
 }

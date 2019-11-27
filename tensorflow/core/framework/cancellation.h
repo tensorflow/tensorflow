@@ -51,6 +51,13 @@ class CancellationManager {
   static const CancellationToken kInvalidToken;
 
   CancellationManager();
+
+  // Constructs a new CancellationManager that is a "child" of `*parent`.
+  //
+  // If `*parent` is cancelled, `*this` will be cancelled. `*parent` must
+  // outlive the created CancellationManager.
+  explicit CancellationManager(CancellationManager* parent);
+
   ~CancellationManager();
 
   // Run all callbacks associated with this manager.
@@ -137,13 +144,20 @@ class CancellationManager {
   bool TryDeregisterCallback(CancellationToken token);
 
  private:
+  struct State {
+    Notification cancelled_notification;
+    gtl::FlatMap<CancellationToken, CancelCallback> callbacks;
+  };
+
   bool is_cancelling_;
   std::atomic_bool is_cancelled_;
+  std::atomic<CancellationToken> next_cancellation_token_;
+
+  CancellationManager* const parent_ = nullptr;  // Not owned.
+  const CancellationToken parent_token_ = kInvalidToken;
 
   mutex mu_;
-  Notification cancelled_notification_;
-  std::atomic<CancellationToken> next_cancellation_token_;
-  gtl::FlatMap<CancellationToken, CancelCallback> callbacks_ GUARDED_BY(mu_);
+  std::unique_ptr<State> state_ GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

@@ -29,6 +29,17 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow:optimized"): ["-O3"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
+        ],
     })
 
     return copts

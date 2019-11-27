@@ -254,10 +254,7 @@ static Value *unrollSingleResultOpMatchingType(PatternRewriter &builder,
 // Patterns with this benefit just forwards arguments to clean up fake fork and
 // fake joins. It is a nicer and more direct cleanup when we can use it so it
 // kicks in with higher precedence.
-static constexpr int64_t kMatchingFakeForkFakeJoinBenefit = 2;
-// Patterns with this benefit extract subvectors with ExtractElementOp and join
-// them to allow creating subvectors.
-static constexpr int64_t kFakeForkFromBlockArgBenefit = 1;
+static constexpr int64_t kMatchingFakeForkFakeJoinBenefit = 1;
 
 namespace mlir {
 namespace vector {
@@ -310,12 +307,17 @@ struct ConvertMatchingFakeForkFakeJoinOp : public RewritePattern {
 struct ConvertFakeForkFromBlockArgsOp : public RewritePattern {
   ConvertFakeForkFromBlockArgsOp(MLIRContext *context)
       // low-benefit to kick-in late
-      : RewritePattern(kFakeForkOp, kFakeForkFromBlockArgBenefit, context) {}
+      : RewritePattern(kFakeForkOp, 0, context) {}
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
     if (op->getNumOperands() != 1)
       return matchFailure();
+
+    if (op->use_empty()) {
+      rewriter.eraseOp(op);
+      return matchSuccess();
+    }
 
     auto *blockArg = op->getOperand(0);
     if (!isa<BlockArgument>(blockArg))
@@ -355,11 +357,68 @@ struct ConvertFakeForkFromBlockArgsOp : public RewritePattern {
                           leadingSize, unrollFactors);
       extractedVectors.push_back(
           rewriter
-              .create<vector::VectorStridedSliceOp>(op->getLoc(), blockArg,
-                                                    offsets, sizes, strides)
+              .create<vector::StridedSliceOp>(op->getLoc(), blockArg, offsets,
+                                              sizes, strides)
               .getResult());
     }
     rewriter.replaceOp(op, extractedVectors);
+    return matchSuccess();
+  }
+};
+
+static Value *makeSplatZero(Location loc, PatternRewriter &rewriter,
+                            VectorType vt) {
+  auto t = vt.getElementType();
+  Value *f = nullptr;
+  if (t.isBF16() || t.isF16())
+    f = rewriter.create<ConstantOp>(loc, t, rewriter.getF16FloatAttr(0.0f))
+            .getResult();
+  else if (t.isF32())
+    f = rewriter.create<ConstantOp>(loc, t, rewriter.getF32FloatAttr(0.0f))
+            .getResult();
+  else if (t.isF64())
+    f = rewriter.create<ConstantOp>(loc, t, rewriter.getF64FloatAttr(0.0f))
+            .getResult();
+  if (f)
+    return rewriter.create<SplatOp>(loc, vt, f).getResult();
+  llvm_unreachable("Unsupported type in `makeSplatZero`");
+}
+
+// Rewrites a fakeJoin, whose (unique) operand is a blockArgument, into multiple
+// vector.strided_slice ops.
+struct ConvertFakeJoinOp : public RewritePattern {
+  ConvertFakeJoinOp(MLIRContext *context)
+      // low-benefit to kick-in late
+      : RewritePattern(kFakeJoinOp, 0, context) {}
+
+  PatternMatchResult matchAndRewrite(Operation *op,
+                                     PatternRewriter &rewriter) const override {
+    if (op->getNumResults() != 1)
+      return matchFailure();
+
+    if (op->use_empty()) {
+      rewriter.eraseOp(op);
+      return matchSuccess();
+    }
+
+    auto resultVectorType = op->getResult(0)->getType().cast<VectorType>();
+    auto loc = op->getLoc();
+    auto *res = makeSplatZero(loc, rewriter, resultVectorType);
+
+    auto unrollFactorsStorage = extractUnrollFactors(op);
+    ArrayRef<int64_t> unrollFactors{unrollFactorsStorage};
+    auto linearizationBasis = computeStrides(unrollFactors);
+    auto nUnrolled = computeMaxLinearIndex(unrollFactors);
+    SmallVector<int64_t, 4> strides(unrollFactors.size(), 1);
+    for (unsigned idx = 0; idx < nUnrolled; ++idx) {
+      auto offsets = delinearize(idx, linearizationBasis);
+      offsets = zipMap([](int64_t v1, int64_t v2) { return v1 * v2; }, offsets,
+                       unrollFactors);
+      res = rewriter.create<vector::InsertStridedSliceOp>(
+          loc, op->getOperand(idx), res, offsets, strides);
+    }
+
+    rewriter.replaceOp(op, res);
     return matchSuccess();
   }
 };
@@ -380,6 +439,8 @@ template <typename OpNameTrait> struct DCEPattern : public RewritePattern {
 
   PatternMatchResult matchAndRewrite(Operation *op,
                                      PatternRewriter &rewriter) const override {
+    assert(op->getName().getStringRef() == kFakeForkOp ||
+           op->getName().getStringRef() == kFakeJoinOp);
     if (!op->use_empty())
       return matchFailure();
     rewriter.eraseOp(op);
@@ -391,7 +452,8 @@ void mlir::populateVectorToVectorConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns,
     ArrayRef<int64_t> coarseVectorShape, ArrayRef<int64_t> fineVectorShape) {
   vector::populateWithGenerated(context, &patterns);
-  patterns
-      .insert<ConvertMatchingFakeForkFakeJoinOp, ConvertFakeForkFromBlockArgsOp,
-              DCEPattern<FakeForkTrait>, DCEPattern<FakeJoinTrait>>(context);
+  patterns.insert<ConvertMatchingFakeForkFakeJoinOp,
+                  ConvertFakeForkFromBlockArgsOp, ConvertFakeJoinOp,
+                  DCEPattern<FakeForkTrait>, DCEPattern<FakeJoinTrait>>(
+      context);
 }

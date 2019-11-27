@@ -621,6 +621,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:test_ops",
     ],
 )
 

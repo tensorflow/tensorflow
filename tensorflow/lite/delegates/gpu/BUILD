@@ -40,7 +40,7 @@ cc_library(
         "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
@@ -79,7 +79,7 @@ objc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/gpu/common:convert",
         "//tensorflow/lite/delegates/gpu/common:model",
         "//tensorflow/lite/delegates/gpu/common:model_builder",
@@ -198,7 +198,7 @@ cc_library(
     deps = [
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:minimal_logging",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates/gpu:api",
         "//tensorflow/lite/delegates/gpu/cl:api",
         "//tensorflow/lite/delegates/gpu/cl:opencl_wrapper",

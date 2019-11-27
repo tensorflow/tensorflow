@@ -17,7 +17,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
 )

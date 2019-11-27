@@ -20,14 +20,6 @@ include "mlir/Dialect/StandardOps/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
-def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
-def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
-
-def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
-
-class ConstantSplat<string value> : NativeCodeCall<
-    "getSplat($_builder, $0, " # value # ")">;
-
 //===----------------------------------------------------------------------===//
 // BatchNorm op patterns.
 //===----------------------------------------------------------------------===//
@@ -64,10 +56,6 @@ def : Pat<(TF_BiasAddOp AnyStaticShapeTensor:$input, $bias, $data_format),
 //===----------------------------------------------------------------------===//
 // Binary op patterns.
 //===----------------------------------------------------------------------===//
-
-// Get the broadcast dimensions attribute from the binary operands.
-def BinBroadcastDimensions : NativeCodeCall<
-    "getBroadcastDimensionsAttr($_builder, $0, $1)">;
 
 // Check that two values can be broadcasted together
 def AreBroadcastCompatible : Constraint<CPred<"AreBroadcastCompatible($0, $1)">,
@@ -268,10 +256,10 @@ def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
 //===----------------------------------------------------------------------===//
 
 def ZeroPaddingAttr : NativeCodeCall <
-  "DenseElementsAttr::get("
-    "RankedTensorType::get($0.getType().getShape()[0], getElementTypeOrSelf($0.getType())), "
-    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})"
-    ".cast<DenseIntElementsAttr>()">;
+  "DenseIntElementsAttr::get("
+    "RankedTensorType::get($0.getType().getShape()[0],"
+    "                      getElementTypeOrSelf($0.getType())), "
+    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})">;
 
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
   "SliceDenseIntElementsAttrColumn2D("
@@ -380,6 +368,7 @@ foreach Mapping = [
                    [TF_ExpOp, HLO_ExpOp],
                    [TF_FloorOp, HLO_FloorOp],
                    [TF_ImagOp, HLO_ImagOp],
+                   [TF_IsFiniteOp, HLO_IsFiniteOp],
                    [TF_LogOp, HLO_LogOp],
                    [TF_NegOp, HLO_NegOp],
                    [TF_RealOp, HLO_RealOp],

@@ -7,9 +7,9 @@
 #
 #   The libraries in this package are not allowed to have ANY dependencies
 #   to any TensorFlow code outside this package.
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_lib_hdrs",
     "tf_additional_lib_srcs",
     "tf_additional_monitoring_srcs",
@@ -180,6 +180,19 @@ cc_library(
 )
 
 cc_library(
+    name = "errors",
+    hdrs = ["errors.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":status",
+        ":str_util",
+        ":strcat",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
     name = "file_statistics",
     hdrs = ["file_statistics.h"],
     deps = [":types"],
@@ -199,16 +212,6 @@ cc_library(
     hdrs = ["gif.h"],
     deps = [
         "@gif",
-    ],
-)
-
-cc_library(
-    name = "grpc_services",
-    hdrs = ["grpc_services.h"],
-    deps = [
-        ":platform",
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
     ],
 )
 
@@ -374,6 +377,23 @@ cc_library(
 )
 
 cc_library(
+    name = "raw_coding",
+    hdrs = ["raw_coding.h"],
+    deps = [
+        ":byte_order",
+        ":types",
+    ],
+)
+
+cc_library(
+    name = "refcount",
+    hdrs = ["refcount.h"],
+    deps = [
+        ":logging",
+    ],
+)
+
+cc_library(
     name = "regexp",
     hdrs = ["regexp.h"],
     deps = [
@@ -411,6 +431,16 @@ cc_library(
 )
 
 cc_library(
+    name = "setround",
+    srcs = ["setround.cc"],
+    hdrs = ["setround.h"],
+    deps = [
+        ":logging",
+        ":macros",
+    ],
+)
+
+cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
     deps = [
@@ -436,12 +466,21 @@ cc_library(
 )
 
 cc_library(
-    name = "setround",
-    srcs = ["setround.cc"],
-    hdrs = ["setround.h"],
+    name = "status",
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
     deps = [
         ":logging",
         ":macros",
+        ":mutex",
+        ":stacktrace",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "//tensorflow/core:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -788,6 +827,7 @@ filegroup(
             "protobuf_util.cc",
             "scanner.cc",
             "setround.cc",
+            "status.cc",
             "strcat.cc",
             "stringprintf.cc",
             "str_util.cc",
@@ -834,7 +874,10 @@ exports_files(
 
 bzl_library(
     name = "build_config_root_bzl",
-    srcs = ["default/build_config_root.bzl"],
+    srcs = [
+        "build_config_root.bzl",
+        "default/build_config_root.bzl",
+    ],
 )
 
 bzl_library(

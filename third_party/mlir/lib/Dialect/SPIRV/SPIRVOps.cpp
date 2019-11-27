@@ -378,6 +378,12 @@ static inline bool isMergeBlock(Block &block) {
 }
 
 //===----------------------------------------------------------------------===//
+// TableGen'erated canonicalizers
+//===----------------------------------------------------------------------===//
+
+#include "SPIRVCanonicalization.inc"
+
+//===----------------------------------------------------------------------===//
 // Common parsers and printers
 //===----------------------------------------------------------------------===//
 
@@ -770,30 +776,6 @@ static LogicalResult verify(spirv::BitcastOp bitcastOp) {
   }
   return success();
 }
-
-namespace {
-
-/// Converts chained `spirv::BitcastOp` operations into one
-/// `spirv::BitcastOp` operation.
-struct ConvertChainedBitcast : public OpRewritePattern<spirv::BitcastOp> {
-  using OpRewritePattern<spirv::BitcastOp>::OpRewritePattern;
-
-  PatternMatchResult matchAndRewrite(spirv::BitcastOp bitcastOp,
-                                     PatternRewriter &rewriter) const override {
-    auto parentBitcastOp = dyn_cast_or_null<spirv::BitcastOp>(
-        bitcastOp.operand()->getDefiningOp());
-
-    if (!parentBitcastOp) {
-      return matchFailure();
-    }
-
-    rewriter.replaceOpWithNewOp<spirv::BitcastOp>(
-        /*valuesToRemoveIfDead=*/{parentBitcastOp.result()}, bitcastOp,
-        bitcastOp.result()->getType(), parentBitcastOp.operand());
-    return matchSuccess();
-  }
-};
-} // end anonymous namespace
 
 void spirv::BitcastOp::getCanonicalizationPatterns(
     OwningRewritePatternList &results, MLIRContext *context) {
@@ -1439,6 +1421,19 @@ Operation::operand_range spirv::FunctionCallOp::getArgOperands() {
 // spv.globalVariable
 //===----------------------------------------------------------------------===//
 
+void spirv::GlobalVariableOp::build(Builder *builder, OperationState &state,
+                                    Type type, StringRef name,
+                                    unsigned descriptorSet, unsigned binding) {
+  build(builder, state, TypeAttr::get(type), builder->getStringAttr(name),
+        nullptr);
+  state.addAttribute(
+      spirv::SPIRVDialect::getAttributeName(spirv::Decoration::DescriptorSet),
+      builder->getI32IntegerAttr(descriptorSet));
+  state.addAttribute(
+      spirv::SPIRVDialect::getAttributeName(spirv::Decoration::Binding),
+      builder->getI32IntegerAttr(binding));
+}
+
 static ParseResult parseGlobalVariableOp(OpAsmParser &parser,
                                          OperationState &state) {
   // Parse variable name.
@@ -1581,6 +1576,17 @@ static LogicalResult verify(spirv::LoadOp loadOp) {
     return failure();
   }
   return verifyMemoryAccessAttribute(loadOp);
+}
+
+//===----------------------------------------------------------------------===//
+// spv.LogicalNot
+//===----------------------------------------------------------------------===//
+
+void spirv::LogicalNotOp::getCanonicalizationPatterns(
+    OwningRewritePatternList &results, MLIRContext *context) {
+  results.insert<ConvertLogicalNotOfIEqual, ConvertLogicalNotOfINotEqual,
+                 ConvertLogicalNotOfLogicalEqual,
+                 ConvertLogicalNotOfLogicalNotEqual>(context);
 }
 
 //===----------------------------------------------------------------------===//

@@ -167,4 +167,36 @@ TEST(Cancellation, TryDeregisterDuringCancel) {
   delete manager;
 }
 
+TEST(Cancellation, Parent_CancelManyChildren) {
+  CancellationManager parent;
+  std::vector<std::unique_ptr<CancellationManager>> children;
+  for (size_t i = 0; i < 5; ++i) {
+    children.push_back(absl::make_unique<CancellationManager>(&parent));
+    EXPECT_FALSE(children.back()->IsCancelled());
+  }
+  parent.StartCancel();
+  for (auto& child : children) {
+    EXPECT_TRUE(child->IsCancelled());
+  }
+}
+
+TEST(Cancellation, Parent_NotCancelled) {
+  CancellationManager parent;
+  {
+    CancellationManager child(&parent);
+    child.StartCancel();
+    EXPECT_TRUE(child.IsCancelled());
+  }
+  EXPECT_FALSE(parent.IsCancelled());
+}
+
+TEST(Cancellation, Parent_AlreadyCancelled) {
+  CancellationManager parent;
+  parent.StartCancel();
+  EXPECT_TRUE(parent.IsCancelled());
+
+  CancellationManager child(&parent);
+  EXPECT_TRUE(child.IsCancelled());
+}
+
 }  // namespace tensorflow

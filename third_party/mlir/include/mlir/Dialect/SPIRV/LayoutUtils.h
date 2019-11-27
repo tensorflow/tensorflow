@@ -56,10 +56,10 @@ class VulkanLayoutUtils {
 public:
   using Size = uint64_t;
 
-  /// Returns a new type with layout info. Assigns the type size in bytes to the
-  /// `size`. Assigns the type alignment in bytes to the `alignment`.
-  static Type decorateType(spirv::StructType structType, Size &size,
-                           Size &alignment);
+  /// Returns a new StructType with layout info. Assigns the type size in bytes
+  /// to the `size`. Assigns the type alignment in bytes to the `alignment`.
+  static spirv::StructType decorateType(spirv::StructType structType,
+                                        Size &size, Size &alignment);
   /// Checks whether a type is legal in terms of Vulkan layout info
   /// decoration. A type is dynamically illegal if it's a composite type in the
   /// StorageBuffer, PhysicalStorageBuffer, Uniform, and PushConstant Storage

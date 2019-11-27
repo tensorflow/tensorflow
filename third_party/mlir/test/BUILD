@@ -18,6 +18,21 @@ cc_library(
 )
 
 gentbl(
+    name = "TestTransformPatternsIncGen",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/DeclarativeTransforms/TestLinalgTransformPatterns.h.inc",
+        ),
+    ],
+    tblgen = "@local_config_mlir//:mlir-tblgen",
+    td_file = "lib/DeclarativeTransforms/TestLinalgTransformPatterns.td",
+    td_srcs = [
+        "@local_config_mlir//:LinalgTransformPatternsTdFiles",
+    ],
+)
+
+gentbl(
     name = "TestOpsIncGen",
     strip_include_prefix = "lib/TestDialect",
     tbl_outs = [
@@ -30,6 +45,14 @@ gentbl(
             "lib/TestDialect/TestOps.cpp.inc",
         ),
         (
+            "-gen-enum-decls",
+            "lib/TestDialect/TestOpEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "lib/TestDialect/TestOpEnums.cpp.inc",
+        ),
+        (
             "-gen-rewriters",
             "lib/TestDialect/TestPatterns.inc",
         ),
@@ -37,7 +60,7 @@ gentbl(
     tblgen = "@local_config_mlir//:mlir-tblgen",
     td_file = "lib/TestDialect/TestOps.td",
     td_srcs = [
-        "@local_config_mlir//:include/mlir/IR/OpBase.td",
+        "@local_config_mlir//:OpBaseTdFiles",
         "@local_config_mlir//:include/mlir/IR/OpAsmInterface.td",
         "@local_config_mlir//:include/mlir/Analysis/CallInterfaces.td",
         "@local_config_mlir//:include/mlir/Analysis/InferTypeOpInterface.td",
@@ -54,9 +77,13 @@ cc_library(
     hdrs = [
         "lib/TestDialect/TestDialect.h",
     ],
-    includes = ["lib/TestDialect"],
+    includes = [
+        "lib/DeclarativeTransforms",
+        "lib/TestDialect",
+    ],
     deps = [
         ":TestOpsIncGen",
+        "@llvm//:support",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:Dialect",
         "@local_config_mlir//:IR",
@@ -102,6 +129,7 @@ cc_library(
         "lib/Transforms/TestCallGraph.cpp",
         "lib/Transforms/TestConstantFold.cpp",
         "lib/Transforms/TestInlining.cpp",
+        "lib/Transforms/TestLinalgTransforms.cpp",
         "lib/Transforms/TestLoopFusion.cpp",
         "lib/Transforms/TestLoopMapping.cpp",
         "lib/Transforms/TestLoopParametricTiling.cpp",
@@ -114,11 +142,13 @@ cc_library(
     includes = ["lib/TestDialect"],
     deps = [
         ":TestDialect",
+        ":TestTransformPatternsIncGen",
         "@llvm//:support",
         "@local_config_mlir//:AffineOps",
         "@local_config_mlir//:Analysis",
         "@local_config_mlir//:EDSC",
         "@local_config_mlir//:IR",
+        "@local_config_mlir//:Linalg",
         "@local_config_mlir//:LoopOps",
         "@local_config_mlir//:Pass",
         "@local_config_mlir//:StandardOps",

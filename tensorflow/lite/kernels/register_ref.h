@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_REGISTER_REF_H_
 #define TENSORFLOW_LITE_KERNELS_REGISTER_REF_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 

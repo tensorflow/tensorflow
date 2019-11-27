@@ -17,11 +17,11 @@ func @multiple_return(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32
 
 // CHECK-LABEL: func @multiple_return
 // CHECK:   %[[GRAPH:.*]]:2 = tf_executor.graph {
-// CHECK:     %[[ADD1:.*]]:2 = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
-// CHECK:     %[[ADD2:.*]]:2 = tf_executor.island(%[[ADD1]]#1) wraps "tf.Add"(%[[ADD1]]#0, %arg1)
-// CHECK:     tf_executor.fetch %[[ADD1]]#0, %[[ADD2]]#0 :
+// CHECK:     %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+// CHECK:     %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island(%[[ADD1_control]]) wraps "tf.Add"(%[[ADD1]], %arg1)
+// CHECK:     tf_executor.fetch %[[ADD1]], %[[ADD2]] :
 // CHECK:   }
-// CHECK:   return %[[GRAPH]]#0, %[[GRAPH]]#1
+// CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
 // CHECK: }
 
 func @multiple_islands(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<*xi32>) {
@@ -48,13 +48,13 @@ func @multiple_islands(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi3
 
 // CHECK-LABEL: func @multiple_islands
 // CHECK:  %[[GRAPH:.*]]:2 = tf_executor.graph {
-// CHECK:    %[[ADD1:.*]]:2 = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
-// CHECK:    %[[ADD2:.*]]:2 = tf_executor.island(%[[ADD1]]#1) wraps "tf.Add"(%[[ADD1]]#0, %arg1)
-// CHECK:    %[[SUB1:.*]]:2 = tf_executor.island(%[[ADD2]]#1) wraps "tf.Sub"(%arg0, %arg1)
-// CHECK:    %[[MUL:.*]]:2 = tf_executor.island(%[[SUB1]]#1) wraps "tf.Mul"(%[[SUB1]]#0, %arg1)
-// CHECK:    %[[SUB2:.*]]:2 = tf_executor.island(%[[ADD2]]#1, %[[MUL]]#1) wraps "tf.Sub"(%[[ADD1]]#0, %[[SUB1]]#0)
-// CHECK:    %[[PRINT:.*]]:2 = tf_executor.island(%[[SUB2]]#1) wraps "tf.Print"(%[[SUB2]]#0) {message = "sub result"}
-// CHECK:    tf_executor.fetch %[[ADD2]]#0, %[[MUL]]#0, %[[PRINT]]#1 :
+// CHECK:    %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+// CHECK:    %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island(%[[ADD1_control]]) wraps "tf.Add"(%[[ADD1]], %arg1)
+// CHECK:    %[[SUB1:.*]], %[[SUB1_control:.*]] = tf_executor.island(%[[ADD2_control]]) wraps "tf.Sub"(%arg0, %arg1)
+// CHECK:    %[[MUL:.*]], %[[MUL_control:.*]] = tf_executor.island(%[[SUB1_control]]) wraps "tf.Mul"(%[[SUB1]], %arg1)
+// CHECK:    %[[SUB2:.*]], %[[SUB2_control:.*]] = tf_executor.island(%[[ADD2_control]], %[[MUL_control]]) wraps "tf.Sub"(%[[ADD1]], %[[SUB1]])
+// CHECK:    %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island(%[[SUB2_control]]) wraps "tf.Print"(%[[SUB2]]) {message = "sub result"}
+// CHECK:    tf_executor.fetch %[[ADD2]], %[[MUL]], %[[PRINT_control]] :
 // CHECK:  }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
 
@@ -73,10 +73,10 @@ func @dangling_print(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>
 
 // CHECK-LABEL:  func @dangling_print
 // CHECK:  %[[GRAPH:.*]]:2 = tf_executor.graph {
-// CHECK:    %[[ADD1:.*]]:2 = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
-// CHECK:    %[[ADD2:.*]]:2 = tf_executor.island(%[[ADD1]]#1) wraps "tf.Add"(%1#0, %arg1)
-// CHECK:    %[[PRINT:.*]]:2 = tf_executor.island(%[[ADD2]]#1) wraps "tf.Print"(%2#0) {message = "add result"}
-// CHECK:    tf_executor.fetch %[[ADD1]]#0, %[[ADD2]]#0, %[[PRINT]]#1 :
+// CHECK:    %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+// CHECK:    %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island(%[[ADD1_control]]) wraps "tf.Add"(%[[ADD1_control:.*]], %arg1)
+// CHECK:    %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island(%[[ADD2_control]]) wraps "tf.Print"(%[[ADD2_control:.*]]) {message = "add result"}
+// CHECK:    tf_executor.fetch %[[ADD1]], %[[ADD2]], %[[PRINT_control]] :
 // CHECK:  }
 // CHECK:  return %[[GRAPH]]#0, %[[GRAPH]]#1
 
@@ -102,14 +102,14 @@ func @switch_and_merge(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi3
 
 // CHECK-LABEL:  func @switch_and_merge(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> (tensor<*xi32>, tensor<i32>) {
 // CHECK: %[[GRAPH:.*]]:2 = tf_executor.graph {
-// CHECK:   %[[ADD1:.*]]:2 = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
-// CHECK:   %[[LESS:.*]]:2 = tf_executor.island(%[[ADD1]]#1) wraps "tf.Less"(%arg1, %arg1)
-// CHECK:   %[[PRINT1:.*]]:2 = tf_executor.island(%[[LESS]]#1) wraps "tf.Print"(%[[ADD1]]#0) {message = "add result 1"}
-// CHECK:   %[[SWITCH:.*]]:3 = tf_executor.Switch %[[ADD1]]#0, %[[LESS]]#0, %[[PRINT1]]#1
-// CHECK:   %[[ADD2:.*]]:2 = tf_executor.island wraps "tf.Add"(%[[SWITCH]]#0, %arg1)
-// CHECK:   %[[PRINT2:.*]]:2 = tf_executor.island(%[[ADD2]]#1) wraps "tf.Print"(%[[ADD2]]#0) {message = "add result 2"}
-// CHECK:   %[[MERGE:.*]]:3 = tf_executor.Merge %[[ADD2]]#0, %[[SWITCH]]#1, %[[PRINT2]]#1
-// CHECK:   tf_executor.fetch %[[MERGE]]#0, %[[MERGE]]#1
+// CHECK:   %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg1)
+// CHECK:   %[[LESS:.*]], %[[LESS_control:.*]] = tf_executor.island(%[[ADD1_control]]) wraps "tf.Less"(%arg1, %arg1)
+// CHECK:   %[[PRINT1:.*]], %[[PRINT1_control:.*]] = tf_executor.island(%[[LESS_control]]) wraps "tf.Print"(%[[ADD1]]) {message = "add result 1"}
+// CHECK:   %[[SWITCH_false:.*]], %[[SWITCH_true:.*]], {{.*}} = tf_executor.Switch %[[ADD1]], %[[LESS]], %[[PRINT1_control]]
+// CHECK:   %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island wraps "tf.Add"(%[[SWITCH_false]], %arg1)
+// CHECK:   %[[PRINT2:.*]], %[[PRINT2_control:.*]] = tf_executor.island(%[[ADD2_control]]) wraps "tf.Print"(%[[ADD2]]) {message = "add result 2"}
+// CHECK:   %[[MERGE:.*]], %[[MERGE_index:.*]], %{{.*}} = tf_executor.Merge %[[ADD2]], %[[SWITCH_true]], %[[PRINT2_control]]
+// CHECK:   tf_executor.fetch %[[MERGE]], %[[MERGE_index]]
 // CHECK: }
 // CHECK: return %[[GRAPH]]#0, %[[GRAPH]]#1
 
@@ -128,10 +128,10 @@ func @control_flow_plumbing(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> tensor<
 
 // CHECK-LABEL: func @control_flow_plumbing
 // CHECK: %[[GRAPH:.*]] = tf_executor.graph {
-// CHECK:   %[[PRINT:.*]]:2 = tf_executor.island wraps "tf.Print"(%arg0) {message = "Random Print"}
-// CHECK:   %[[ADD1:.*]]:2 = tf_executor.island(%[[PRINT]]#1) wraps "tf.Add"(%arg0, %arg1)
-// CHECK:   %[[ADD2:.*]]:2 = tf_executor.island(%[[ADD1]]#1) wraps "tf.Add"(%2#0, %arg1)
-// CHECK:   tf_executor.fetch %[[ADD2]]#0 : tensor<*xi32>
+// CHECK:   %[[PRINT:.*]], %[[PRINT_control:.*]] = tf_executor.island wraps "tf.Print"(%arg0) {message = "Random Print"}
+// CHECK:   %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island(%[[PRINT_control]]) wraps "tf.Add"(%arg0, %arg1)
+// CHECK:   %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island(%[[ADD1_control]]) wraps "tf.Add"(%[[ADD1]], %arg1)
+// CHECK:   tf_executor.fetch %[[ADD2]] : tensor<*xi32>
 // CHECK: }
 // CHECK: return %[[GRAPH]] : tensor<*xi32>
 
@@ -149,7 +149,7 @@ func @fetching_arg(%arg0: tensor<*xi32>) {
 
 // CHECK-LABEL: func @fetching_arg
 // CHECK: tf_executor.graph {
-// CHECK:   %[[ADD1:.*]]:2 = tf_executor.island wraps "tf.Add"(%arg0, %arg0)
-// CHECK:   %[[ADD2:.*]]:2 = tf_executor.island(%[[ADD1]]#1) wraps "tf.Add"(%[[ADD1]]#0, %arg0)
-// CHECK:   tf_executor.fetch %[[ADD2]]#1 : !tf_executor.control
+// CHECK:   %[[ADD1:.*]], %[[ADD1_control:.*]] = tf_executor.island wraps "tf.Add"(%arg0, %arg0)
+// CHECK:   %[[ADD2:.*]], %[[ADD2_control:.*]] = tf_executor.island(%[[ADD1_control]]) wraps "tf.Add"(%[[ADD1]], %arg0)
+// CHECK:   tf_executor.fetch %[[ADD2_control]] : !tf_executor.control
 // CHECK: }

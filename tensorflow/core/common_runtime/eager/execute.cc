@@ -330,32 +330,6 @@ inline tensorflow::Fprint128 FingerprintCat128(const tensorflow::Fprint128& a,
   return {x, tensorflow::FingerprintCat64(a.high64, x)};
 }
 
-bool IsMultiDevice(const FunctionDef* fdef) {
-  if (fdef == nullptr) {
-    // Primitive op.
-    return false;
-  }
-
-  // Run all functions as multi-device.
-  return true;
-
-  // We can eliminate some overhead by running simple functions using regular
-  // CallOp kernel. However, it is tricky to figure out which functions should
-  // be run using CallOp. Also, currently CallOp runs neither optimization
-  // passes (needed for TPU/XLA) nor grappler.
-  // Here are some cases where a function should be run in multi-device mode:
-  //  - Function takes at least two resources on different devices.
-  //  - Function takes a resource on deviceA and a body op explicitly placed
-  //  on deviceB.
-  //  - Function has a colocation constraint.
-  //  - Function has an explicit device annotation (which might not be using
-  //    full canonical device name) different from op_device. Note that false
-  //    positives are ok.
-  //  - Function has a node or a (node) attribute that can potentially make
-  //    the function multi-device after a rewrite pass (e.g. various XLA/TPU
-  //    special nodes and attributes)
-}
-
 Status GetDeviceForInput(const EagerContext* ctx, TensorHandle* tensor_handle,
                          Device** result) {
   Device* cpu_device = ctx->HostCPU();
@@ -486,13 +460,25 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
 
   Fprint128 cache_key = op->MutableAttrs()->CacheKey(op->GetDeviceName());
 
-  bool is_multi_device_function =
-      IsMultiDevice(ctx->FindFunctionDef(op->Name()));
-
   std::vector<Device*> input_dev_ptrs;
   std::unordered_map<int, DtypeAndPartialTensorShape>
       input_resource_variable_dtypes_and_shapes;
-  if (is_multi_device_function) {
+  // We can eliminate some overhead by running simple functions using regular
+  // CallOp kernel. However, it is tricky to figure out which functions should
+  // be run using CallOp. Also, currently CallOp runs neither optimization
+  // passes (needed for TPU/XLA) nor grappler.
+  // Here are some cases where a function should be run in multi-device mode:
+  //  - Function takes at least two resources on different devices.
+  //  - Function takes a resource on deviceA and a body op explicitly placed
+  //  on deviceB.
+  //  - Function has a colocation constraint.
+  //  - Function has an explicit device annotation (which might not be using
+  //    full canonical device name) different from op_device. Note that false
+  //    positives are ok.
+  //  - Function has a node or a (node) attribute that can potentially make
+  //    the function multi-device after a rewrite pass (e.g. various XLA/TPU
+  //    special nodes and attributes)
+  if (op->is_function()) {
     profiler::TraceMe activity("EagerCopyToDeviceAndAddCacheKey",
                                profiler::TraceMeLevel::kInfo);
     input_dev_ptrs.reserve(op->Inputs().size());
@@ -549,15 +535,20 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   if (kernel == nullptr) {
     DVLOG(2) << "Creating new kernel for " << op->Name() << " on device "
              << DeviceNameOrUnspecified(op->Device());
-    bool compile_with_xla;
-    TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
-    if (compile_with_xla) {
-      // Note that it is not ideal, but currently correct, to set this
-      // attribute after computing the kernel cache key above.
-      // Note: If the attribute is already set to true, this is a noop.
-      op->MutableAttrs()->Set(kXlaCompileAttr, true);
+    bool run_function_with_flr = false;
+    bool compile_with_xla = false;
+    if (op->is_function()) {
+      bool compile_with_xla;
+      TF_RETURN_IF_ERROR(ShouldCompileWithXLA(op, ctx, &compile_with_xla));
+      if (compile_with_xla) {
+        // Note that it is not ideal, but currently correct, to set this
+        // attribute after computing the kernel cache key above.
+        // Note: If the attribute is already set to true, this is a noop.
+        op->MutableAttrs()->Set(kXlaCompileAttr, true);
+      } else {
+        run_function_with_flr = true;
+      }
     }
-    bool run_function_with_flr = is_multi_device_function && !compile_with_xla;
 
     const NodeDef& ndef = op->MutableAttrs()->BuildNodeDef();
     if (device == nullptr) {
@@ -659,15 +650,24 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
         output_dtypes[i], ctx, &retvals[i]));
   }
 
-  std::unique_ptr<EagerNode> node(new ExecuteNode(
-      ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
-      graph_collector, output_dtypes, op->GetCancellationManager(),
-      executor.Async(), {retvals, num_outputs}));
-  // Note that for async mode, execution order will make sure that all
-  // input handles are ready before executing them.
-  // TODO(b/137118203): Consider executing "cheap" kernels inline for
-  // performance.
-  Status s = executor.AddOrExecute(std::move(node));
+  Status s;
+  if (executor.Async()) {
+    auto node = absl::make_unique<ExecuteNode>(
+        ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
+        graph_collector, output_dtypes, op->GetCancellationManager(),
+        executor.Async(), absl::Span<TensorHandle*>(retvals, num_outputs));
+    // For async mode, execution order will make sure that all
+    // input handles are ready before executing them.
+    // TODO(b/137118203): Consider executing "cheap" kernels inline for
+    // performance.
+    s = executor.AddOrExecute(std::move(node));
+  } else {
+    ExecuteNode node(ctx, op->Inputs(), op->remote_func_params(),
+                     std::move(kernel), graph_collector, output_dtypes,
+                     op->GetCancellationManager(), executor.Async(),
+                     {retvals, num_outputs});
+    s = executor.SyncExecute(&node);
+  }
   // Since the operation failed, we need to Unref any outputs that were
   // allocated.
   if (!s.ok()) {
@@ -1100,9 +1100,8 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                               EagerExecutor* executor, Device* dstd,
                               TensorHandle** result) {
   TF_RETURN_IF_ERROR(executor->status());
-  Device* resource_device = (h->dtype == DT_RESOURCE) ? dstd : nullptr;
   TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-      ctx->CanonicalDevice(dstd), dstd, resource_device, h->dtype, ctx,
+      ctx->CanonicalDevice(dstd), dstd, h->resource_device(), h->dtype, ctx,
       result));
 
   // Note that `h` may not be currently ready. However execution order will

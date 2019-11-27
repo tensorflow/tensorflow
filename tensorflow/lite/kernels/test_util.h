@@ -183,7 +183,7 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
-  // Add a null input tensor (optional input) and return kOptionalTensor.
+  // Add a null input tensor (optional input) and return kTfLiteOptionalTensor.
   int AddNullInput();
 
   // Add a TensorType output tensor and return its index.

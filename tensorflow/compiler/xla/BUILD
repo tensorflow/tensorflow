@@ -1,6 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "tf_cc_test")
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
     "tf_proto_library_py",
 )

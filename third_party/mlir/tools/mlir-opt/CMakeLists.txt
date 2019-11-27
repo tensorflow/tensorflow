@@ -16,10 +16,12 @@ add_llvm_library(MLIRMlirOptLib
 target_link_libraries(MLIRMlirOptLib ${LIB_LIBS})
 
 set(LIBS
+  MLIRAnalysis
   MLIRAffineOps
   MLIRAffineToStandard
   MLIRLoopsToGPU
-  MLIRAnalysis
+  MLIRLinalgToLLVM
+  
   MLIRLoopToStandard
   MLIREDSC
   MLIRFxpMathOps

@@ -2,8 +2,8 @@
 
 load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
-load("//tensorflow/core/platform:default/build_config_root.bzl", "if_static")
-load("//tensorflow/core/platform:default/build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
+load("//tensorflow/core/platform:build_config.bzl", "tf_additional_all_protos", "tf_proto_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -25,6 +25,7 @@ tf_py_test(
         [],
         otherwise = [":libtestexample.so"],
     ),
+    python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
@@ -44,6 +45,7 @@ tf_py_test(
         [],
         otherwise = [":libtestexample.so"],
     ),
+    python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/78026780)
         "no_windows",  # TODO(b/78028010)
@@ -122,6 +124,7 @@ tf_py_test(
         "//tensorflow/python:proto_ops",
         "//tensorflow/python:client_testlib",
     ],
+    python_version = "PY3",
     tags = [
         "no_pip",
     ],

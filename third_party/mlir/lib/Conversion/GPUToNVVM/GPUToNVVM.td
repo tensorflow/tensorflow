@@ -22,13 +22,8 @@
 #ifndef MLIR_CONVERSION_GPUTONVVM_TD
 #define MLIR_CONVERSION_GPUTONVVM_TD
 
-#ifndef GPU_OPS
 include "mlir/Dialect/GPU/GPUOps.td"
-#endif // GPU_OPS
-
-#ifndef NVVMIR_OPS
 include "mlir/Dialect/LLVMIR/NVVMOps.td"
-#endif // NVVMIR_OPS
 
 def : Pat<(GPU_BarrierOp), (NVVM_Barrier0Op)>;
 

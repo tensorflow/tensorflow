@@ -58,7 +58,11 @@ and the following optional parameters:
     benchmark tool will not correctly use NNAPI.
 *   `use_gpu`: `bool` (default=false) \
     Whether to use the [GPU accelerator delegate](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/delegates/gpu).
-    This option is currently only available on Android devices.
+    This option is currently only available on Android and iOS devices.
+*   `gpu_wait_type`: `str` (default="") \
+    Which GPU wait_type option to use, when using GPU delegate on iOS. Should be
+    one of the following: passive, active, do_not_wait, aggressive. When left
+    blank, passive mode is used by default.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 

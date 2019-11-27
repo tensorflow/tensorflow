@@ -265,13 +265,14 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
             reader_buffer_size=10))
     self.assertDatasetProduces(dataset2, expected, assert_items_equal=True)
 
+  # Not testing Snappy here because Snappy reads currently require a lot of
+  # memory.
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
           combinations.times(
               combinations.combine(compression=[
-                  snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP,
-                  snapshot.COMPRESSION_SNAPPY
+                  snapshot.COMPRESSION_NONE, snapshot.COMPRESSION_GZIP
               ]),
               combinations.combine(threads=2, size=[1, 2]) +
               combinations.combine(threads=8, size=[1, 4, 8]))))

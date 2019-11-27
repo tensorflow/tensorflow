@@ -60,7 +60,14 @@ enum SnapshotMode { READER = 0, WRITER = 1, PASSTHROUGH = 2 };
 // Defaults to 10 GiB per shard.
 const int64 kDefaultShardSizeBytes = 10LL * 1024 * 1024 * 1024;
 
-const int64 kSnappyBufferSizeBytes = 256 << 10;  // 256 KB
+const int64 kSnappyWriterInputBufferSizeBytes = 16 << 20;   // 16 MiB
+const int64 kSnappyWriterOutputBufferSizeBytes = 16 << 20;  // 16 MiB
+
+// The reader input buffer size is deliberately large because the input reader
+// will throw an error if the compressed block length cannot fit in the input
+// buffer.
+const int64 kSnappyReaderInputBufferSizeBytes = 1 << 30;    // 1 GiB
+const int64 kSnappyReaderOutputBufferSizeBytes = 16 << 20;  // 16 MiB
 
 const size_t kHeaderSize = sizeof(uint64);
 
@@ -70,7 +77,9 @@ constexpr char kSnapshotWriterWorkerPool[] = "snapshot_writer_worker_pool";
 constexpr char kSeparator[] = "::";
 constexpr char kBookkeeping[] = "Bookkeeping";
 constexpr char kSnapshotReadElements[] = "snapshot_read_elements";
+constexpr char kSnapshotReadThroughput[] = "snapshot_read_throughput";
 constexpr char kSnapshotWrittenElements[] = "snapshot_written_elements";
+constexpr char kSnapshotWriteThroughput[] = "snapshot_write_throughput";
 
 class SnapshotWriter {
  public:
@@ -99,8 +108,8 @@ class SnapshotWriter {
       dest_is_owned_ = true;
     } else if (compression_type == io::compression::kSnappy) {
       io::SnappyOutputBuffer* snappy_output_buffer = new io::SnappyOutputBuffer(
-          dest, /*input_buffer_bytes=*/kSnappyBufferSizeBytes,
-          /*output_buffer_bytes=*/kSnappyBufferSizeBytes);
+          dest, /*input_buffer_bytes=*/kSnappyWriterInputBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyWriterOutputBufferSizeBytes);
       dest_ = snappy_output_buffer;
       dest_is_owned_ = true;
     }
@@ -182,8 +191,8 @@ class SnapshotReader {
           zlib_options.output_buffer_size, zlib_options, true));
     } else if (compression_type_ == io::compression::kSnappy) {
       input_stream_ = absl::make_unique<io::SnappyInputBuffer>(
-          file_, /*input_buffer_bytes=*/kSnappyBufferSizeBytes,
-          /*output_buffer_bytes=*/kSnappyBufferSizeBytes);
+          file_, /*input_buffer_bytes=*/kSnappyReaderInputBufferSizeBytes,
+          /*output_buffer_bytes=*/kSnappyReaderOutputBufferSizeBytes);
     }
 #endif  // IS_SLIM_BUILD
   }
@@ -296,7 +305,7 @@ Status DetermineOpState(const Status& file_status,
   }
 
   if (metadata.creation_timestamp() >=
-      (static_cast<int64>(Env::Default()->NowMicros()) -
+      (static_cast<int64>(EnvTime::NowMicros()) -
        pending_snapshot_expiry_seconds * 1000000)) {
     // Someone else is already writing and time has not expired.
     *mode = PASSTHROUGH;
@@ -667,7 +676,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
             stats_aggregator->AddScalar(
                 absl::StrCat(dataset()->node_name(), kSeparator,
                              kSnapshotReadElements),
-                static_cast<float>(num_elements_read_), num_elements());
+                static_cast<float>(num_elements_read_), elements_produced_);
           }
 
           if (!buffer_.empty()) {
@@ -689,11 +698,18 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
                 absl::Duration d = end - start;
                 time_spent_micros_ += absl::ToInt64Microseconds(d);
                 kbytes_read_ += static_cast<double>(num_bytes) / 1024.0;
+                float read_throughput =
+                    (kbytes_read_ / 1024.0) / (time_spent_micros_ / 1000000.0);
+                if (stats_aggregator) {
+                  stats_aggregator->AddScalar(
+                      absl::StrCat(dataset()->node_name(), kSeparator,
+                                   kSnapshotReadThroughput),
+                      read_throughput, elements_produced_);
+                }
                 elements_produced_++;
                 if (elements_produced_ % 10000 == 0) {
-                  LOG(INFO) << "Current read throughput (MBPS): "
-                            << ((kbytes_read_ / 1024.0) /
-                                (time_spent_micros_ / 1000000.0));
+                  LOG(INFO)
+                      << "Current read throughput (MBPS): " << read_throughput;
                 }
               }
             }
@@ -878,7 +894,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
           TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(run_dir_));
 
           experimental::SnapshotMetadataRecord metadata;
-          metadata.set_creation_timestamp(Env::Default()->NowMicros());
+          metadata.set_creation_timestamp(EnvTime::NowMicros());
           metadata.set_graph_hash(dataset()->graph_hash_);
           metadata.set_run_id(run_id_);
           metadata.set_finalized(false);
@@ -938,23 +954,32 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
               num_bytes += out_tensor.TotalBytes();
             }
 
-            absl::Time end = absl::Now();
-            absl::Duration d = end - start;
-            time_spent_micros_ += absl::ToInt64Microseconds(d);
-            bytes_produced_ += num_bytes;
-            elements_produced_++;
-
-            if (elements_produced_ % 10000 == 0) {
-              LOG(INFO) << "Current write throughput (MBPS): "
-                        << (bytes_produced_ * 1000000.0) /
-                               (time_spent_micros_ * 1024.0 * 1024.0);
-            }
             const auto& stats_aggregator = ctx->stats_aggregator();
             if (stats_aggregator) {
               stats_aggregator->AddScalar(
                   absl::StrCat(dataset()->node_name(), kSeparator,
                                kSnapshotWrittenElements),
-                  static_cast<float>(num_elements_written_), num_elements());
+                  static_cast<float>(num_elements_written_),
+                  elements_produced_);
+            }
+
+            absl::Time end = absl::Now();
+            absl::Duration d = end - start;
+            time_spent_micros_ += absl::ToInt64Microseconds(d);
+            bytes_produced_ += num_bytes;
+            float write_throughput = (bytes_produced_ * 1000000.0) /
+                                     (time_spent_micros_ * 1024.0 * 1024.0);
+            if (stats_aggregator) {
+              stats_aggregator->AddScalar(
+                  absl::StrCat(dataset()->node_name(), kSeparator,
+                               kSnapshotWriteThroughput),
+                  write_throughput, elements_produced_);
+            }
+
+            elements_produced_++;
+            if (elements_produced_ % 10000 == 0) {
+              LOG(INFO) << "Current write throughput (MBPS): "
+                        << write_throughput;
             }
           }
           return Status::OK();

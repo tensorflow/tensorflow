@@ -29,3 +29,16 @@ index 2fb26050..c2744d5b 100644
      visibility = ["//visibility:public"],
  )
  
+diff --git a/protobuf.bzl b/protobuf.bzl
+index e0653321f..4ac23594b 100644
+--- a/protobuf.bzl
++++ b/protobuf.bzl
+@@ -85,6 +85,8 @@ def _proto_gen_impl(ctx):
+     for dep in ctx.attr.deps:
+         import_flags += dep.proto.import_flags
+         deps += dep.proto.deps
++    import_flags = depset(import_flags).to_list()
++    deps = depset(deps).to_list()
+ 
+     if not ctx.attr.gen_cc and not ctx.attr.gen_py and not ctx.executable.plugin:
+         return struct(

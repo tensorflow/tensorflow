@@ -27,9 +27,7 @@ limitations under the License.
 //
 // Ops in this file are sorted alphabetically.
 
-#ifndef TF_OP_BASE
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_base.td"
-#endif // TF_OP_BASE
 
 def TF_AbsOp : TF_Op<"Abs", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the absolute value of a tensor.";
@@ -2197,6 +2195,33 @@ for dtype in dtype_list:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
   let hasCanonicalizer = 1;
+}
+
+def TF_IsFiniteOp : TF_Op<"IsFinite", [NoSideEffect, SameOperandsAndResultShape]> {
+  let summary = "Returns which elements of x are finite.";
+
+  let description = [{
+@compatibility(numpy)
+Equivalent to np.isfinite
+@end_compatibility
+
+Example:
+
+```python
+x = tf.constant([5.0, 4.8, 6.8, np.inf, np.nan])
+tf.math.is_finite(x) ==> [True, True, True, False, False]
+```
+  }];
+
+  let arguments = (ins
+    TF_FpTensor:$x
+  );
+
+  let results = (outs
+    I1Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_L2LossOp : TF_Op<"L2Loss", [NoSideEffect]> {
@@ -4691,6 +4716,37 @@ Given an input tensor, this function computes sine of every
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_SizeOp : TF_Op<"Size", [NoSideEffect]> {
+  let summary = "Returns the size of a tensor.";
+
+  let description = [{
+This operation returns an integer representing the number of elements in
+`input`.
+
+For example:
+
+```
+# 't' is [[[1, 1,, 1], [2, 2, 2]], [[3, 3, 3], [4, 4, 4]]]]
+size(t) ==> 12
+```
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    TF_I32OrI64Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedResultTypeAttr out_type = TF_DerivedResultTypeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 def TF_SliceOp : TF_Op<"Slice", [NoSideEffect]> {
   let summary = "Return a slice from 'input'.";
 
@@ -4996,6 +5052,8 @@ def TF_SplitOp : TF_Op<"Split", [NoSideEffect]> {
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedResultSizeAttr num_split = TF_DerivedResultSizeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_SplitVOp : TF_Op<"SplitV", [NoSideEffect]> {

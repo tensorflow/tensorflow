@@ -20,7 +20,7 @@ limitations under the License.
 
 #include "flatbuffers/flatbuffers.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
@@ -74,7 +74,7 @@ inline int64_t NumElements(const TfLiteTensor* t) {
 inline const TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
                                                   const TfLiteNode* node,
                                                   int index) {
-  const bool use_tensor = node->inputs->data[index] != kOptionalTensor;
+  const bool use_tensor = node->inputs->data[index] != kTfLiteOptionalTensor;
   if (use_tensor) {
     return &context
                 ->tensors[flatbuffers::EndianScalar(node->inputs->data[index])];

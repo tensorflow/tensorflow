@@ -218,6 +218,10 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
 
   Status HandleCopy(HloInstruction* copy) override;
 
+  Status HandleCopyStart(HloInstruction* copy_start) override;
+
+  Status HandleCopyDone(HloInstruction* copy_done) override;
+
   Status HandleConditional(HloInstruction* conditional) override;
 
   Status HandleCall(HloInstruction* call) override;

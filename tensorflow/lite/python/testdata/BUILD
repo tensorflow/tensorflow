@@ -60,7 +60,7 @@ cc_library(
     srcs = ["test_delegate.cc"],
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
     ],
     alwayslink = 1,
 )

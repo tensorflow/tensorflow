@@ -2833,6 +2833,10 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
   }
   member_method {
+    name: "QuantizedMatMulWithBiasAndRequantize"
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'input_quant_mode\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'quint8\'>\", \'False\', \'False\', \'MIN_FIRST\', \'None\'], "
+  }
+  member_method {
     name: "QuantizedMaxPool"
     argspec: "args=[\'input\', \'min_input\', \'max_input\', \'ksize\', \'strides\', \'padding\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

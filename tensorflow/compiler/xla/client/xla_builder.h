@@ -276,6 +276,9 @@ class XlaBuilder {
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(XlaOp op) const;
 
+  // Returns the shape of the given op.
+  StatusOr<const Shape*> GetShapePtr(XlaOp op) const;
+
   // Returns the (inferred) result for the current computation's shape. This
   // assumes the root instruction is the last added instruction.
   StatusOr<ProgramShape> GetProgramShape() const;
@@ -702,6 +705,10 @@ class XlaBuilder {
 
   // The instructions of this computation.
   std::vector<HloInstructionProto> instructions_;
+
+  // An cache for the HloInstructionProto shapes, to avoid recreating Shape
+  // objects from protos and to support the GetShapePtr() API.
+  std::vector<std::unique_ptr<Shape>> instruction_shapes_;
 
   // Dynamic parameter configuration of this computation.
   DynamicParameterBinding dynamic_parameter_binding_;

@@ -370,6 +370,12 @@ inline void BatchVectorBatchVectorDotProduct(const T* vector1, const T* vector2,
   }
 }
 
+// Same as above but input is 16bit and output is 32bit.
+void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                      const int16_t* vector2, int v_size,
+                                      int n_batch, int32_t* result,
+                                      int result_stride);
+
 // Cwise product of a vector and a batch-vector.
 void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
                                    const float* batch_vector, int n_batch,
@@ -433,6 +439,10 @@ void VectorShiftLeft(T* vector, int v_size, const T& shift_value) {
 // reduction_size: number of consecutive elements from input vector which are
 // added to get one element of output.
 void ReductionSumVector(const float* input_vector, float* output_vector,
+                        int output_size, int reduction_size);
+
+// Same as above but input/output is 32 bit integer.
+void ReductionSumVector(const int32_t* input_vector, int32_t* output_vector,
                         int output_size, int reduction_size);
 
 // Layer norm for each batch.

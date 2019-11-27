@@ -18,20 +18,17 @@ limitations under the License.
 #include "Arduino.h"
 #include "tensorflow/lite/experimental/micro/examples/hello_world/constants.h"
 
-// The pin of the Arduino's built-in LED
-int led = LED_BUILTIN;
-
-// Track whether the function has run at least once
-bool initialized = false;
-
-// Animates a dot across the screen to represent the current x and y values
+// Adjusts brightness of an LED to represent the current y value
 void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
                   float y_value) {
+  // Track whether the function has run at least once
+  static bool is_initialized = false;
+
   // Do this only once
-  if (!initialized) {
+  if (!is_initialized) {
     // Set the LED pin to output
-    pinMode(led, OUTPUT);
-    initialized = true;
+    pinMode(LED_BUILTIN, OUTPUT);
+    is_initialized = true;
   }
 
   // Calculate the brightness of the LED such that y=-1 is fully off
@@ -40,7 +37,7 @@ void HandleOutput(tflite::ErrorReporter* error_reporter, float x_value,
 
   // Set the brightness of the LED. If the specified pin does not support PWM,
   // this will result in the LED being on when y > 127, off otherwise.
-  analogWrite(led, brightness);
+  analogWrite(LED_BUILTIN, brightness);
 
   // Log the current brightness value for display in the Arduino plotter
   error_reporter->Report("%d\n", brightness);

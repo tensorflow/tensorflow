@@ -35,8 +35,7 @@ static DenseIntElementsAttr GetI64ElementsAttr(ArrayRef<int64_t> values,
                                                Builder *builder) {
   RankedTensorType ty = RankedTensorType::get(
       {static_cast<int64_t>(values.size())}, builder->getIntegerType(64));
-  return DenseElementsAttr::get<int64_t>(ty, values)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, values);
 }
 
 // Returns a 1-d i64 elements attribute populated with numbers from start to
@@ -50,8 +49,7 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   std::iota(vals.begin(), vals.end(), start);
 
   TensorType ty = RankedTensorType::get({size}, builder->getIntegerType(64));
-  return DenseIntElementsAttr::get<int64_t>(ty, vals)
-      .cast<DenseIntElementsAttr>();
+  return DenseIntElementsAttr::get(ty, vals);
 }
 
 // Returns int or float DenseElementsAttr with scalar shape with the given
@@ -59,8 +57,17 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
-    APFloat value(float_ty.getFloatSemantics(), raw_value);
-    return DenseElementsAttr::get(scalar_ty, value);
+    const auto &float_semantics = float_ty.getFloatSemantics();
+    Builder builder(ty.getContext());
+    if (&float_semantics == &APFloat::IEEEsingle())
+      return DenseElementsAttr::get(scalar_ty,
+                                    builder.getF32FloatAttr(raw_value));
+    if (&float_semantics == &APFloat::IEEEdouble())
+      return DenseElementsAttr::get(scalar_ty,
+                                    builder.getF64FloatAttr(raw_value));
+
+    assert(false && "unhandled IEEE float kind");
+    return {};
   }
 
   auto int_ty = ty.cast<IntegerType>();

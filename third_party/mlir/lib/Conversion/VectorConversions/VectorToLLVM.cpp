@@ -53,15 +53,15 @@ class VectorExtractElementOpConversion : public LLVMOpLowering {
 public:
   explicit VectorExtractElementOpConversion(MLIRContext *context,
                                             LLVMTypeConverter &typeConverter)
-      : LLVMOpLowering(vector::VectorExtractElementOp::getOperationName(),
-                       context, typeConverter) {}
+      : LLVMOpLowering(vector::ExtractElementOp::getOperationName(), context,
+                       typeConverter) {}
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    auto adaptor = vector::VectorExtractElementOpOperandAdaptor(operands);
-    auto extractOp = cast<vector::VectorExtractElementOp>(op);
+    auto adaptor = vector::ExtractElementOpOperandAdaptor(operands);
+    auto extractOp = cast<vector::ExtractElementOp>(op);
     auto vectorType = extractOp.vector()->getType().cast<VectorType>();
     auto resultType = extractOp.getResult()->getType();
     auto llvmResultType = lowering.convertType(resultType);
@@ -107,21 +107,21 @@ class VectorOuterProductOpConversion : public LLVMOpLowering {
 public:
   explicit VectorOuterProductOpConversion(MLIRContext *context,
                                           LLVMTypeConverter &typeConverter)
-      : LLVMOpLowering(vector::VectorOuterProductOp::getOperationName(),
-                       context, typeConverter) {}
+      : LLVMOpLowering(vector::OuterProductOp::getOperationName(), context,
+                       typeConverter) {}
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    auto adaptor = vector::VectorOuterProductOpOperandAdaptor(operands);
+    auto adaptor = vector::OuterProductOpOperandAdaptor(operands);
     auto *ctx = op->getContext();
     auto vLHS = adaptor.lhs()->getType().cast<LLVM::LLVMType>();
     auto vRHS = adaptor.rhs()->getType().cast<LLVM::LLVMType>();
     auto rankLHS = vLHS.getUnderlyingType()->getVectorNumElements();
     auto rankRHS = vRHS.getUnderlyingType()->getVectorNumElements();
     auto llvmArrayOfVectType = lowering.convertType(
-        cast<vector::VectorOuterProductOp>(op).getResult()->getType());
+        cast<vector::OuterProductOp>(op).getResult()->getType());
     Value *desc = rewriter.create<LLVM::UndefOp>(loc, llvmArrayOfVectType);
     Value *a = adaptor.lhs(), *b = adaptor.rhs();
     Value *acc = adaptor.acc().empty() ? nullptr : adaptor.acc().front();
@@ -159,14 +159,14 @@ class VectorTypeCastOpConversion : public LLVMOpLowering {
 public:
   explicit VectorTypeCastOpConversion(MLIRContext *context,
                                       LLVMTypeConverter &typeConverter)
-      : LLVMOpLowering(vector::VectorTypeCastOp::getOperationName(), context,
+      : LLVMOpLowering(vector::TypeCastOp::getOperationName(), context,
                        typeConverter) {}
 
   PatternMatchResult
   matchAndRewrite(Operation *op, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
-    vector::VectorTypeCastOp castOp = cast<vector::VectorTypeCastOp>(op);
+    vector::TypeCastOp castOp = cast<vector::TypeCastOp>(op);
     MemRefType sourceMemRefType =
         castOp.getOperand()->getType().cast<MemRefType>();
     MemRefType targetMemRefType =

@@ -7,7 +7,7 @@ load(
     "tf_gen_op_wrapper_py",
 )
 load(
-    "//tensorflow/core/platform:default/build_config.bzl",
+    "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
     "tf_proto_library_py",
 )

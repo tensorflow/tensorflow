@@ -84,9 +84,6 @@ struct OperatorProperty {
 
   // Force output to reuse the same scale and zero point of input.
   bool restrict_same_input_output_scale = false;
-  // In the case of multiple inputs, requantize all inputs to have
-  // the same scale and zero point.
-  bool restrict_multiple_inputs_scale = false;
 
   // Use same min of min and max of max for each group.
   // Incompatable with restrict_same_input_output_scale and restricted_value.

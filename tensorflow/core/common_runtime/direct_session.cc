@@ -620,8 +620,6 @@ Status DirectSession::RunInternal(
   args.collective_executor =
       (run_state.collective_executor ? run_state.collective_executor->get()
                                      : nullptr);
-  CancellationManager step_cancellation_manager;
-  args.cancellation_manager = &step_cancellation_manager;
   args.session_state = &session_state_;
   args.session_handle = session_handle_;
   args.tensor_store = &run_state.tensor_store;
@@ -657,15 +655,11 @@ Status DirectSession::RunInternal(
 
   // Register this step with session's cancellation manager, so that
   // `Session::Close()` will cancel the step.
-  const CancellationToken cancellation_token =
-      cancellation_manager_->get_cancellation_token();
-  const bool already_cancelled = !cancellation_manager_->RegisterCallback(
-      cancellation_token, [&step_cancellation_manager]() {
-        step_cancellation_manager.StartCancel();
-      });
-  if (already_cancelled) {
+  CancellationManager step_cancellation_manager(cancellation_manager_);
+  if (step_cancellation_manager.IsCancelled()) {
     return errors::Cancelled("Run call was cancelled");
   }
+  args.cancellation_manager = &step_cancellation_manager;
 
   Status run_status;
 
@@ -723,9 +717,7 @@ Status DirectSession::RunInternal(
     }
   }
 
-  if (!cancellation_manager_->DeregisterCallback(cancellation_token)) {
-    // The step has been cancelled: make sure we don't attempt to receive the
-    // outputs as this would make it block forever.
+  if (step_cancellation_manager.IsCancelled()) {
     run_status.Update(errors::Cancelled("Run call was cancelled"));
   }
 

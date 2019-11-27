@@ -105,8 +105,8 @@ void HandleSliceToElement(Tensor* parent, Tensor* element, int64 index,
 }
 
 template <>
-void HandleSliceToElement<string>(Tensor* parent, Tensor* element, int64 index,
-                                  bool can_move) {
+void HandleSliceToElement<tstring>(Tensor* parent, Tensor* element, int64 index,
+                                   bool can_move) {
   auto parent_as_matrix = parent->flat_outer_dims<tstring>();
   auto element_flat = element->flat<tstring>();
   if (can_move) {

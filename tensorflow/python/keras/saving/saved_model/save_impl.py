@@ -176,7 +176,7 @@ def wrap_layer_functions(layer, serialization_cache):
   fns = {'call_and_return_conditional_losses': call_fn_with_losses,
          '__call__': call_fn}
 
-  if layer.activity_regularizer is not None:
+  if layer._activity_regularizer is not None:  # pylint: disable=protected-access
     fns['activity_regularizer_fn'] = _wrap_activity_regularizer(layer)
     fns['call_and_return_all_conditional_losses'] = (
         call_collection.add_function(
@@ -260,11 +260,11 @@ def _replace_child_layer_functions(layer, serialization_cache):
       continue
     original_fns[child_layer] = {
         'call': child_layer.call,
-        'activity_regularizer': child_layer.activity_regularizer
+        'activity_regularizer': child_layer._activity_regularizer
     }
     with trackable.no_automatic_dependency_tracking_scope(child_layer):
       try:
-        child_layer.activity_regularizer = layer_fns.get(
+        child_layer._activity_regularizer = layer_fns.get(
             'activity_regularizer_fn')
       except AttributeError:
         # Some layers have an unsettable activity regularizer.
@@ -282,7 +282,7 @@ def _restore_child_layer_functions(original_fns):
     with trackable.no_automatic_dependency_tracking_scope(child_layer):
       child_layer.call = fns['call']
       try:
-        child_layer.activity_regularizer = fns['activity_regularizer']
+        child_layer._activity_regularizer = fns['activity_regularizer']  # pylint: disable=protected-access
       except AttributeError:
         pass
 
@@ -291,7 +291,7 @@ def _restore_child_layer_functions(original_fns):
 def _reset_layer_losses(parent_layer):
   """Resets losses of layer and its sublayers, and returns original losses."""
   losses_dict = {}
-  for layer in utils.list_all_layers(parent_layer) + [parent_layer]:
+  for layer in utils.list_all_layers_and_sublayers(parent_layer):
     losses_dict[layer] = {'losses': layer._losses[:],
                           'eager_losses': layer._eager_losses[:]}
     with trackable.no_automatic_dependency_tracking_scope(layer):
@@ -594,12 +594,14 @@ def _wrap_unconditional_loss(loss_fn, index):
 
 def _wrap_activity_regularizer(layer):
   """Wraps the activity regularizer."""
-  if isinstance(layer.activity_regularizer, def_function.Function):
-    return layer.activity_regularizer
+  # pylint: disable=protected-access
+  if isinstance(layer._activity_regularizer, def_function.Function):
+    return layer._activity_regularizer
   return def_function.Function(
-      layer.activity_regularizer,
+      layer._activity_regularizer,
       '{}_activity_regularizer'.format(layer.name),
       input_signature=[tensor_spec.TensorSpec(None, layer.dtype or K.floatx())])
+  # pylint: enable=protected-access
 
 
 def _get_layer_call_method(layer):

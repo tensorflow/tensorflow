@@ -20,9 +20,9 @@ func @controls_per_replica() {
 
 // CHECK: %[[CT_0:[0-9]*]] = tf_executor.ControlTrigger
 // CHECK: %[[CT_1:[0-9]*]] = tf_executor.ControlTrigger
-// CHECK: %[[ISLAND_0:[0-9]*]] = tf_executor.island(%[[CT_0]], %[[CT_1]])
-// CHECK: %[[ISLAND_1:[0-9]*]] = tf_executor.island(%[[CT_0]], %[[CT_1]])
-// CHECK: %[[ISLAND_2:[0-9]*]] = tf_executor.island(%[[ISLAND_0]], %[[ISLAND_1]])
+// CHECK: %[[ISLAND_0:[a-z_0-9]*]] = tf_executor.island(%[[CT_0]], %[[CT_1]])
+// CHECK: %[[ISLAND_1:[a-z_0-9]*]] = tf_executor.island(%[[CT_0]], %[[CT_1]])
+// CHECK: %[[ISLAND_2:[a-z_0-9]*]] = tf_executor.island(%[[ISLAND_0]], %[[ISLAND_1]])
 
 
 // Tests devices are not set if no devices were defined in replicate.
@@ -117,18 +117,18 @@ func @unused_replica_control(%arg0: tensor<i1>, %arg1: tensor<i1>) {
 }
 
 // CHECK:      %[[CT:[0-9]*]] = tf_executor.ControlTrigger
-// CHECK:      %[[ISLAND_0:[0-9]*]]:3 = tf_executor.island(%[[CT]])
+// CHECK:      %[[ISLAND_0:[a-z_0-9]*]]:2, %{{.*}} = tf_executor.island(%[[CT]])
 // CHECK:        %[[OP_A_0:[0-9]*]] = "tf.opA"(%[[ARG_0]])
 // CHECK-SAME:   device = "/CPU:0"
 // CHECK:        %[[OP_B_0:[0-9]*]] = "tf.opB"(%[[OP_A_0]])
 // CHECK-SAME:   device = "/CPU:0"
 // CHECK:        tf_executor.yield %[[OP_A_0]], %[[OP_B_0]]
-// CHECK:      %[[ISLAND_1:[0-9]*]]:3 = tf_executor.island(%[[CT]])
+// CHECK:      %[[ISLAND_1:[a-z_0-9]*]]:2, %[[ISLAND_1_control:[a-z_0-9]*]] = tf_executor.island(%[[CT]])
 // CHECK:        %[[OP_A_1:[0-9]*]] = "tf.opA"(%[[ARG_1]])
 // CHECK-SAME:   device = "/GPU:1"
 // CHECK:        %[[OP_B_1:[0-9]*]] = "tf.opB"(%[[OP_A_1]])
 // CHECK-SAME:   device = "/GPU:1"
 // CHECK:        tf_executor.yield %[[OP_A_1]], %[[OP_B_1]]
-// CHECK:      %[[ISLAND_2:[0-9]*]]:2 = tf_executor.island(%[[ISLAND_1]]#2)
+// CHECK:      %[[ISLAND_2:.*]], %[[ISLAND_2_control:.*]] = tf_executor.island(%[[ISLAND_1_control]])
 // CHECK:        tf_executor.yield %[[ISLAND_0]]#0
-// CHECK:      tf_executor.fetch %[[ISLAND_2]]#0
+// CHECK:      tf_executor.fetch %[[ISLAND_2]]

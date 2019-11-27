@@ -341,13 +341,17 @@ ElementsAttr Quantize(Attribute real_value, Type tensor_type);
 // Returns the quantized type for an element attribute. The quantization
 // parameters in this type is based on the min and max element of the
 // attribute. When the elements in the `attr` are not in floating-point, or
-// the value range isn't straddling zero, an empty type is returned.
-Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, unsigned num_bits,
-                                      bool is_sign, bool narrow_range);
+// the value range isn't straddling zero, an empty type is returned. The min/max
+// are ajusted to be symmetric if `symmetric` flag is set to True. And
+// `symmetric` can only be set to true when it is signed and narrow_range.
+Type GetUniformQuantizedTypeForWeight(ElementsAttr attr, bool symmetric,
+                                      unsigned num_bits, bool is_sign,
+                                      bool narrow_range);
 
 // Returns the per channel quantized type for an element attribute.
 // `quant_dim` defines the quantization axis. The channel min/max are ajusted
-// to by symmetric if `symmetric` flag is set to True.
+// to be symmetric if `symmetric` flag is set to True. And `symmetric` can only
+// be set to true when it is signed and narrow_range.
 Type GetUniformQuantizedPerAxisTypeForWeight(ElementsAttr attr, int quant_dim,
                                              bool symmetric, unsigned num_bits,
                                              bool is_sign, bool narrow_range);

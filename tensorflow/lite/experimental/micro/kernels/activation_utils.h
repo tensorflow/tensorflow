@@ -40,7 +40,7 @@ inline float ActivationValFloat(TfLiteFusedActivation act, float a) {
     case kTfLiteActTanh:
       return (expf(a) - expf(-a)) / (expf(a) + expf(-a));
     case kTfLiteActSignBit:
-      return signbit(a);
+      return std::signbit(a);
     case kTfLiteActSigmoid:
       return 1.f / (1.f + expf(-a));
     default:

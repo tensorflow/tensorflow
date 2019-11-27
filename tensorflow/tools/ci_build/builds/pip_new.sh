@@ -659,13 +659,13 @@ if [[ "$BUILD_BOTH_GPU_PACKAGES" -eq "1" ]] || [[ "$BUILD_BOTH_CPU_PACKAGES" -eq
     if ! [[ ${OS_TYPE} == "ubuntu" ]]; then
       die "ERROR: pip_new.sh only support building both GPU wheels on ubuntu."
     fi
-    "Building the other GPU pip package."
+    echo "Building the other GPU pip package."
     PROJECT_SUFFIX="gpu"
   else
     if ! [[ ${OS_TYPE} == "macos" ]]; then
       die "ERROR: pip_new.sh only support building both CPU wheels on macos."
     fi
-    "Building the other CPU pip package."
+    echo "Building the other CPU pip package."
     PROJECT_SUFFIX="cpu"
   fi
 

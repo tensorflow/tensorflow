@@ -31,12 +31,11 @@ namespace tensorflow {
 //
 // use_tuple_args: when this is true, always create a tuple argument for the
 //   entry computation.
-// always_return_tuple: when this is true, always create a tuple result for the
+// return_tuple: when this is true, always create a tuple result for the
 //   entry computation.
 Status ConvertMLIRToXlaComputation(mlir::ModuleOp module_op,
                                    xla::XlaComputation* xla_computation,
-                                   bool use_tuple_args,
-                                   bool always_return_tuple);
+                                   bool use_tuple_args, bool return_tuple);
 
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.

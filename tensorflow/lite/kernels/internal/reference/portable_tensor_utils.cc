@@ -527,6 +527,30 @@ float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
   return result;
 }
 
+namespace {
+inline int32_t VectorVectorDotProduct(const int16_t* vector1,
+                                      const int16_t* vector2, int v_size) {
+  int32_t result = 0;
+  for (int v = 0; v < v_size; v++) {
+    result += *vector1++ * *vector2++;
+  }
+  return result;
+}
+}  // namespace
+
+void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                              const int16_t* vector2,
+                                              int v_size, int n_batch,
+                                              int32_t* result,
+                                              int result_stride) {
+  for (int b = 0; b < n_batch; b++) {
+    *result = VectorVectorDotProduct(vector1, vector2, v_size);
+    vector1 += v_size;
+    vector2 += v_size;
+    result += result_stride;
+  }
+}
+
 void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
                                                 const float* vector2,
                                                 int v_size, float* result) {
@@ -614,6 +638,17 @@ void PortableClipVector(const float* vector, int v_size, float abs_limit,
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size) {
   const float* input_vector_ptr = input_vector;
+  for (int o = 0; o < output_size; o++) {
+    for (int r = 0; r < reduction_size; r++) {
+      output_vector[o] += *input_vector_ptr++;
+    }
+  }
+}
+
+void PortableReductionSumVector(const int32_t* input_vector,
+                                int32_t* output_vector, int output_size,
+                                int reduction_size) {
+  const int32_t* input_vector_ptr = input_vector;
   for (int o = 0; o < output_size; o++) {
     for (int r = 0; r < reduction_size; r++) {
       output_vector[o] += *input_vector_ptr++;

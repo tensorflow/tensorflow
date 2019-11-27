@@ -22,9 +22,7 @@
 #ifndef AFFINE_OPS_BASE
 #define AFFINE_OPS_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 // Attributes containing affine maps.
 def AffineMapAttr : Attr<

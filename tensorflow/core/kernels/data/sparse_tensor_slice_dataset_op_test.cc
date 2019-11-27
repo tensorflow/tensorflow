@@ -63,7 +63,7 @@ class SparseTensorSliceDatasetParams : public DatasetParams {
   DataType tvalues_;
 };
 
-class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBase {};
 
 SparseTensorSliceDatasetParams TwoDimsSparseTensorSliceDatasetParams() {
   return SparseTensorSliceDatasetParams(

@@ -19,7 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/interpreter.h"
@@ -89,7 +89,7 @@ int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
 }
 
 int SingleOpModel::AddNullInput() {
-  int id = kOptionalTensor;
+  int id = kTfLiteOptionalTensor;
   inputs_.push_back(id);
   return id;
 }
@@ -160,7 +160,7 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   for (size_t i = 0; i < input_shapes.size(); ++i) {
     const int input_idx = interpreter_->inputs()[i];
-    if (input_idx == kOptionalTensor) continue;
+    if (input_idx == kTfLiteOptionalTensor) continue;
     const auto& shape = input_shapes[i];
     if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);

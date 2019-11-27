@@ -23,9 +23,7 @@
 #ifndef SPIRV_LOGICAL_OPS
 #define SPIRV_LOGICAL_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 class SPV_LogicalBinaryOp<string mnemonic, Type operandsType,
                     list<OpTrait> traits = []> :
@@ -599,6 +597,8 @@ def SPV_LogicalNotOp : SPV_LogicalUnaryOp<"LogicalNot", SPV_Bool, []> {
     %2 = spv.LogicalNot %0 : vector<4xi1>
     ```
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 // -----

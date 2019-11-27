@@ -29,7 +29,7 @@ limitations under the License.
 #include "third_party/eigen3/Eigen/Core"
 #include "fixedpoint/fixedpoint.h"
 #include "profiling/instrumentation.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/add.h"
@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/reference/binary_function.h"
 #include "tensorflow/lite/kernels/internal/reference/ceil.h"
 #include "tensorflow/lite/kernels/internal/reference/comparisons.h"
+#include "tensorflow/lite/kernels/internal/reference/concatenation.h"
 #include "tensorflow/lite/kernels/internal/reference/conv.h"
 #include "tensorflow/lite/kernels/internal/reference/dequantize.h"
 #include "tensorflow/lite/kernels/internal/reference/floor.h"
@@ -987,123 +988,6 @@ inline void Sub16(const ArithmeticParams& params,
       const int16 clamped_output = std::min(
           output_activation_max, std::max(output_activation_min, raw_output));
       output_data[i] = clamped_output;
-    }
-  }
-}
-
-template <typename Scalar>
-inline void Concatenation(const ConcatenationParams& params,
-                          const RuntimeShape* const* input_shapes,
-                          const Scalar* const* input_data,
-                          const RuntimeShape& output_shape,
-                          Scalar* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Concatenation");
-  int axis = params.axis;
-  int inputs_count = params.inputs_count;
-  const int concat_dimensions = output_shape.DimensionsCount();
-  TFLITE_DCHECK_LT(axis, concat_dimensions);
-
-  int64_t concat_size = 0;
-  for (int i = 0; i < inputs_count; i++) {
-    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
-    for (int j = 0; j < concat_dimensions; j++) {
-      if (j != axis) {
-        MatchingDim(*input_shapes[i], j, output_shape, j);
-      }
-    }
-    concat_size += input_shapes[i]->Dims(axis);
-  }
-  TFLITE_DCHECK_EQ(concat_size, output_shape.Dims(axis));
-  int64_t outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= output_shape.Dims(i);
-  }
-  // For all input arrays,
-  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
-  int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < concat_dimensions; ++i) {
-    base_inner_size *= output_shape.Dims(i);
-  }
-
-  std::vector<int> copy_sizes;
-  std::vector<Scalar*> input_ptrs;
-  for (int i = 0; i < inputs_count; ++i) {
-    copy_sizes.push_back(input_shapes[i]->Dims(axis) * base_inner_size);
-    input_ptrs.push_back(const_cast<Scalar*>(input_data[i]));
-  }
-  Scalar* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      memcpy(output_ptr, input_ptrs[i], copy_sizes[i] * sizeof(Scalar));
-      output_ptr += copy_sizes[i];
-      input_ptrs[i] += copy_sizes[i];
-    }
-  }
-}
-
-// TODO(prabhumk): This is the same as the optimized implementation.
-// TODO(prabhumk): The quantized implementation of concatentation isn't fully
-// quantized as it takes scale as a floating point value. This should be fixed
-// when optimizng this routine further.
-inline void ConcatenationWithScaling(const ConcatenationParams& params,
-                                     const RuntimeShape* const* input_shapes,
-                                     const uint8* const* input_data,
-                                     const RuntimeShape& output_shape,
-                                     uint8* output_data) {
-  gemmlowp::ScopedProfilingLabel label("ConcatenationWithScaling/Uint8");
-  int axis = params.axis;
-  const int32* input_zeropoint = params.input_zeropoint;
-  const float* input_scale = params.input_scale;
-  int inputs_count = params.inputs_count;
-  const int32 output_zeropoint = params.output_zeropoint;
-  const float output_scale = params.output_scale;
-
-  const int concat_dimensions = output_shape.DimensionsCount();
-  TFLITE_DCHECK_LT(axis, concat_dimensions);
-
-  int64_t concat_size = 0;
-  for (int i = 0; i < inputs_count; i++) {
-    TFLITE_DCHECK_EQ(input_shapes[i]->DimensionsCount(), concat_dimensions);
-    for (int j = 0; j < concat_dimensions; j++) {
-      if (j != axis) {
-        MatchingDim(*input_shapes[i], j, output_shape, j);
-      }
-    }
-    concat_size += input_shapes[i]->Dims(axis);
-  }
-  TFLITE_DCHECK_EQ(concat_size, output_shape.Dims(axis));
-  int64_t outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= output_shape.Dims(i);
-  }
-  // For all input arrays,
-  // FlatSize() = outer_size * Dims(axis) * base_inner_size;
-  int64_t base_inner_size = 1;
-  for (int i = axis + 1; i < concat_dimensions; ++i) {
-    base_inner_size *= output_shape.Dims(i);
-  }
-
-  const float inverse_output_scale = 1.f / output_scale;
-  uint8* output_ptr = output_data;
-  for (int k = 0; k < outer_size; k++) {
-    for (int i = 0; i < inputs_count; ++i) {
-      const int copy_size = input_shapes[i]->Dims(axis) * base_inner_size;
-      const uint8* input_ptr = input_data[i] + k * copy_size;
-      if (input_zeropoint[i] == output_zeropoint &&
-          input_scale[i] == output_scale) {
-        memcpy(output_ptr, input_ptr, copy_size);
-      } else {
-        const float scale = input_scale[i] * inverse_output_scale;
-        const float bias = -input_zeropoint[i] * scale;
-        for (int j = 0; j < copy_size; ++j) {
-          const int32_t value =
-              static_cast<int32_t>(std::round(input_ptr[j] * scale + bias)) +
-              output_zeropoint;
-          output_ptr[j] =
-              static_cast<uint8_t>(std::max(std::min(255, value), 0));
-        }
-      }
-      output_ptr += copy_size;
     }
   }
 }
@@ -2721,31 +2605,29 @@ inline void Mean(const tflite::MeanParams& op_params,
   TFLITE_CHECK_EQ(output_height, 1);
   TFLITE_CHECK_EQ(output_width, 1);
 
-  const bool ordinary_mean =
-      (input_zero_point == output_zero_point && input_scale == output_scale);
-  float scale, bias;
-  if (!ordinary_mean) {
-    scale = input_scale / output_scale;
-    bias = -input_zero_point * scale + 0.5;
-  }
+  constexpr int32_t kMinValue = std::numeric_limits<uint8_t>::min();
+  constexpr int32_t kMaxValue = std::numeric_limits<uint8_t>::max();
+
+  int32 bias =
+      output_zero_point -
+      static_cast<int32>(input_zero_point * input_scale / output_scale);
+  float real_scale = input_scale / (num_elements_in_axis * output_scale);
+
+  int32 multiplier, shift;
+  QuantizeMultiplier(real_scale, &multiplier, &shift);
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
-      float temp_value = 0;
+      int acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
-          temp_value +=
-              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+          acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
         }
       }
-      temp_value = temp_value / num_elements_in_axis;
-      if (ordinary_mean) {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(std::round(temp_value));
-      } else {
-        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
-            static_cast<uint8_t>(std::round(temp_value * scale + bias)) +
-            output_zero_point;
-      }
+      MultiplyByQuantizedMultiplier(acc, multiplier, shift);
+      acc += bias;
+      acc = std::min(std::max(acc, kMinValue), kMaxValue);
+      output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+          static_cast<uint8_t>(acc);
     }
   }
 }

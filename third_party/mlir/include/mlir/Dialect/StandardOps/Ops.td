@@ -22,12 +22,8 @@
 #ifndef STANDARD_OPS
 #define STANDARD_OPS
 
-#ifndef OP_BASE
-include "mlir/IR/OpBase.td"
-#endif // OP_BASE
-
-include "mlir/IR/OpAsmInterface.td"
 include "mlir/Analysis/CallInterfaces.td"
+include "mlir/IR/OpAsmInterface.td"
 
 def Std_Dialect : Dialect {
   let name = "std";
@@ -208,6 +204,9 @@ def AllocOp : Std_Op<"alloc"> {
     operand_range getSymbolicOperands() {
       return {operand_begin() + getType().getNumDynamicDims(), operand_end()};
     }
+
+    /// Returns the dynamic sizes for this alloc operation if specified.
+    operand_range getDynamicSizes() { return getOperands(); }
   }];
 
   let hasCanonicalizer = 1;
@@ -832,6 +831,16 @@ def MemRefCastOp : CastOp<"memref_cast"> {
        %2 = memref_cast %1 : memref<?x?xf32> to memref<4x4xf32>
     Erase static shape information, replacing it with dynamic information.
        %3 = memref_cast %1 : memref<4xf32> to memref<?xf32>
+
+    The same holds true for offsets and strides.
+
+    Assert that the input dynamic shape matches the destination static stride.
+       %4 = memref_cast %1 : memref<12x4xf32, offset:?, strides: [?, ?]> to
+                             memref<12x4xf32, offset:5, strides: [4, 1]>
+    Erase static offset and stride information, replacing it with
+    dynamic information.
+       %5 = memref_cast %1 : memref<12x4xf32, offset:5, strides: [4, 1]> to
+                             memref<12x4xf32, offset:?, strides: [?, ?]>
   }];
 
   let arguments = (ins AnyMemRef:$source);
