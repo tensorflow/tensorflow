@@ -180,6 +180,27 @@ func @or_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
   return %0: tensor<?xi1>
 }
 
+// CHECK-LABEL: func @bitwise_or
+func @bitwise_or(%arg0: tensor<4xi32>, %arg1: tensor<4xi32>) -> tensor<4xi32> {
+  // CHECK-NEXT: xla_hlo.or
+  %0 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<4xi32>, tensor<4xi32>) -> tensor<4xi32>
+  return %0: tensor<4xi32>
+}
+
+// CHECK-LABEL: func @bitwise_or_broadcast
+func @bitwise_or_broadcast(%arg0: tensor<1xi8>, %arg1: tensor<1x4xi8>) -> tensor<1x4xi8> {
+  // CHECK-NEXT: xla_hlo.or
+  %0 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<1xi8>, tensor<1x4xi8>) -> tensor<1x4xi8>
+  return %0: tensor<1x4xi8>
+}
+
+// CHECK-LABEL: func @bitwise_or_dynamic
+func @bitwise_or_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi32> {
+  // CHECK-NEXT: xla_hlo.or
+  %0 = "tf.BitwiseOr"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi32>
+  return %0: tensor<?xi32>
+}
+
 // CHECK-LABEL: func @pow
 func @pow(%arg0: tensor<2xf32>) -> tensor<2xf32> {
   // CHECK-NEXT:  xla_hlo.pow
