@@ -150,7 +150,7 @@ class CancellationManager {
 
     // If this CancellationManager has any children, this member points to the
     // head of a doubly-linked list of its children.
-    CancellationManager* first_child;  // Not owned.
+    CancellationManager* first_child = nullptr;  // Not owned.
   };
 
   bool RegisterChild(CancellationManager* child);
