@@ -817,8 +817,9 @@ RangeDatasetParams::RangeDatasetParams(
       stop_(stop),
       step_(step) {}
 
-RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step)
-    : DatasetParams({DT_INT64}, {PartialTensorShape({})}, "range_dataset"),
+RangeDatasetParams::RangeDatasetParams(int64 start, int64 stop, int64 step, 
+                                       DataTypeVector output_dtypes)
+    : DatasetParams(std::move(output_dtypes), {PartialTensorShape({})}, "range_dataset"),
       start_(start),
       stop_(stop),
       step_(step) {}

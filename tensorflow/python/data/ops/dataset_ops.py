@@ -880,7 +880,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     return id_dataset.flat_map(flat_map_fn)
 
   @staticmethod
-  def range(*args):
+  def range(*args, output_types=dtypes.int64):
     """Creates a `Dataset` of a step-separated range of values.
 
     >>> list(Dataset.range(5).as_numpy_iterator())
@@ -908,7 +908,7 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
     Raises:
       ValueError: if len(args) == 0.
     """
-    return RangeDataset(*args)
+    return RangeDataset(*args, output_types=output_types)
 
   @staticmethod
   def zip(datasets):
@@ -2238,8 +2238,8 @@ class DatasetV1(DatasetV2):
 
   @staticmethod
   @functools.wraps(DatasetV2.range)
-  def range(*args):
-    return DatasetV1Adapter(DatasetV2.range(*args))
+  def range(*args, output_types=dtypes.int64):
+    return DatasetV1Adapter(DatasetV2.range(*args, output_types))
 
   @staticmethod
   @functools.wraps(DatasetV2.zip)
@@ -3345,10 +3345,10 @@ class RepeatDataset(UnaryUnchangedStructureDataset):
 class RangeDataset(DatasetSource):
   """A `Dataset` of a step separated range of values."""
 
-  def __init__(self, *args):
+  def __init__(self, *args, output_types=dtypes.int64):
     """See `Dataset.range()` for details."""
     self._parse_args(*args)
-    self._structure = tensor_spec.TensorSpec([], dtypes.int64)
+    self._structure = tensor_spec.TensorSpec([], output_types)
     variant_tensor = gen_dataset_ops.range_dataset(
         start=self._start,
         stop=self._stop,

@@ -23,15 +23,23 @@ namespace {
 class RangeDatasetOpTest : public DatasetOpsTestBase {};
 
 RangeDatasetParams PositiveStepRangeDatasetParams() {
-  return RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3);
+  return RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3,
+                            /*output_dtypes=*/{DT_INT64});
 }
 
 RangeDatasetParams NegativeStepRangeDatasetParams() {
-  return RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/-3);
+  return RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/-3, 
+                            /*output_dtypes=*/{DT_INT64});
 }
 
 RangeDatasetParams ZeroStepRangeDatasetParams() {
-  return RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/0);
+  return RangeDatasetParams(/*start=*/10, /*stop=*/0, /*step=*/0,
+                            /*output_dtypes=*/{DT_INT64});
+}
+
+RangeDatasetParams PositiveStepRangeInt32DatasetParams() {
+  return RangeDatasetParams(/*start=*/0, /*stop=*/10, /*step=*/3, 
+                            /*output_dtypes=*/{DT_INT32});
 }
 
 std::vector<GetNextTestCase<RangeDatasetParams>> GetNextTestCases() {
@@ -65,6 +73,12 @@ TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT64}));
 }
 
+TEST_F(RangeDatasetOpTest, DatasetOutputDtypesInt32) {
+  auto range_dataset_params = PositiveStepRangeInt32DatasetParams();
+  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(CheckDatasetOutputDtypes({DT_INT32}));
+}
+
 TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
   TF_ASSERT_OK(Initialize(range_dataset_params));
@@ -85,6 +99,12 @@ TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
   auto range_dataset_params = PositiveStepRangeDatasetParams();
   TF_ASSERT_OK(Initialize(range_dataset_params));
   TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT64}));
+}
+
+TEST_F(RangeDatasetOpTest, IteratorOutputDtypesInt32) {
+  auto range_dataset_params = PositiveStepRangeInt32DatasetParams();
+  TF_ASSERT_OK(Initialize(range_dataset_params));
+  TF_ASSERT_OK(CheckIteratorOutputDtypes({DT_INT32}));
 }
 
 TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {

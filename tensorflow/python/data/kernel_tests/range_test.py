@@ -21,6 +21,7 @@ from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
 
@@ -66,6 +67,13 @@ class RangeTest(test_base.DatasetTestBase):
     start, stop, step = 10, 2, -1
     dataset = dataset_ops.Dataset.range(start, stop, step)
     self.assertDatasetProduces(dataset, expected_output=range(10, 2, -1))
+
+  def testOutputType(self):
+    expected_types = dtypes.int32
+    dataset = dataset_ops.Dataset.range(5, expected_types)
+    self.assertDatasetProduces(dataset, expected_output=range(5))
+    self.assertEqual(expected_types,
+                     dataset_ops.get_legacy_output_types(dataset))
 
 
 if __name__ == "__main__":

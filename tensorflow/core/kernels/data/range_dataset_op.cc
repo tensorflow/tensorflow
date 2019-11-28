@@ -36,11 +36,12 @@ constexpr char kNext[] = "next";
 
 class RangeDatasetOp::Dataset : public DatasetBase {
  public:
-  Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step)
+  Dataset(OpKernelContext* ctx, int64 start, int64 stop, int64 step, DataTypeVector output_dtypes)
       : DatasetBase(DatasetContext(ctx)),
         start_(start),
         stop_(stop),
-        step_(step) {}
+        step_(step),
+        output_dtypes_(output_dtypes) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
@@ -49,8 +50,7 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   }
 
   const DataTypeVector& output_dtypes() const override {
-    static DataTypeVector* dtypes = new DataTypeVector({DT_INT64});
-    return *dtypes;
+    return output_dtypes_;
   }
 
   const std::vector<PartialTensorShape>& output_shapes() const override {
@@ -140,10 +140,13 @@ class RangeDatasetOp::Dataset : public DatasetBase {
   const int64 start_;
   const int64 stop_;
   const int64 step_;
+  const DataTypeVector output_dtypes_;
 };
 
 RangeDatasetOp::RangeDatasetOp(OpKernelConstruction* ctx)
-    : DatasetOpKernel(ctx) {}
+    : DatasetOpKernel(ctx) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr(kOutputTypes, &output_types_));
+    }
 
 void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   int64 start;
@@ -157,7 +160,7 @@ void RangeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
   OP_REQUIRES(ctx, step != 0,
               errors::InvalidArgument("step must be a non-zero integer."));
 
-  *output = new Dataset(ctx, start, stop, step);
+  *output = new Dataset(ctx, start, stop, step, output_types_);
 }
 
 namespace {

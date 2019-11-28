@@ -170,7 +170,8 @@ class RangeDatasetParams : public DatasetParams {
                      std::vector<PartialTensorShape> output_shapes,
                      string node_name);
 
-  RangeDatasetParams(int64 start, int64 stop, int64 step);
+  RangeDatasetParams(int64 start, int64 stop, int64 step,
+                     DataTypeVector output_dtypes);
 
   std::vector<Tensor> GetInputTensors() const override;
 
