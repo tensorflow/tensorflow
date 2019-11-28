@@ -87,10 +87,10 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
         out[i] = (output[i] - s->input_mean) / s->input_std;
         break;
       case kTfLiteInt8:
-        out[i] = output[i] - 128;
+        out[i] = static_cast<int8_t>(output[i] - 128);
         break;
       case kTfLiteUInt8:
-        out[i] = output[i];
+        out[i] = static_cast<uint8_t>(output[i]);
         break;
       default:
         break;

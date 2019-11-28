@@ -24,15 +24,15 @@ namespace label_image {
 template <class T>
 void get_top_n(T* prediction, int prediction_size, size_t num_results,
                float threshold, std::vector<std::pair<float, int>>* top_results,
-               bool input_floating);
+               TfLiteType input_type);
 
 // explicit instantiation so that we can use them otherwhere
 template void get_top_n<float>(float*, int, size_t, float,
-                               std::vector<std::pair<float, int>>*, int);
+                               std::vector<std::pair<float, int>>*, TfLiteType);
 template void get_top_n<int8_t>(int8_t*, int, size_t, float,
-                                std::vector<std::pair<float, int>>*, int);
+                                std::vector<std::pair<float, int>>*, TfLiteType);
 template void get_top_n<uint8_t>(uint8_t*, int, size_t, float,
-                                 std::vector<std::pair<float, int>>*, int);
+                                 std::vector<std::pair<float, int>>*, TfLiteType);
 
 }  // namespace label_image
 }  // namespace tflite

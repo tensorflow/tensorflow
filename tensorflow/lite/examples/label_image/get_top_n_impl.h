@@ -30,7 +30,7 @@ extern bool input_floating;
 template <class T>
 void get_top_n(T* prediction, int prediction_size, size_t num_results,
                float threshold, std::vector<std::pair<float, int>>* top_results,
-               int input_type) {
+               TfLiteType input_type) {
   // Will contain top N results in ascending order.
   std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>,
                       std::greater<std::pair<float, int>>>
