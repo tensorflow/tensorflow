@@ -19,7 +19,6 @@ limitations under the License.
 #include <stdint.h>
 
 #include <GLES3/gl31.h>
-#include "absl/base/macros.h"
 #include "tensorflow/lite/c/common.h"
 
 #ifdef SWIG
@@ -39,15 +38,6 @@ limitations under the License.
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
-
-// WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
-//
-// GPU delegate declared in this file is OBSOLETE and replaced with the delegate
-// declared in delegate.h. New delegate combines all GL, CL and soon
-// Vulkan-based implementations in one.
-// Please migrate before end of 2019.
-//
-// WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING WARNING
 
 // LINT.IfChange
 enum TfLiteGlObjectType {
@@ -119,7 +109,6 @@ TFL_CAPI_EXPORT TfLiteGpuDelegateOptions TfLiteGpuDelegateOptionsDefault();
 //   .preferred_gl_object_type = TFLITE_GL_OBJECT_TYPE_FASTEST,
 //   .dynamic_batch_enabled = false,
 // },
-ABSL_DEPRECATED("Use TfLiteGpuDelegateV2Create defined in delegate.h instead.")
 TFL_CAPI_EXPORT TfLiteDelegate* TfLiteGpuDelegateCreate(
     const TfLiteGpuDelegateOptions* options);
 
