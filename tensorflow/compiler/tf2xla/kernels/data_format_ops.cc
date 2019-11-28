@@ -143,6 +143,11 @@ class DataFormatVecPermuteOp : public XlaOpKernel {
 REGISTER_XLA_OP(
     Name("DataFormatVecPermute").TypeConstraint("T", {DT_INT32, DT_INT64}),
     DataFormatVecPermuteOp);
+REGISTER_XLA_OP(
+    Name("DataFormatVecPermute")
+        .Label("host")
+        .TypeConstraint("T", {DT_INT32, DT_INT64}),
+    DataFormatVecPermuteOp);
 
 }  // namespace
 }  // namespace tensorflow

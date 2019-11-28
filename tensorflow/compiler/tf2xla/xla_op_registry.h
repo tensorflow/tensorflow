@@ -270,6 +270,8 @@ class XlaOpRegistry {
     // operands and not their values.
     bool is_metadata_op = false;
 
+    string label;
+
     // Factory used to build OpKernels that perform symbolic execution.
     Factory factory;
   };
@@ -349,6 +351,9 @@ class XlaOpRegistrationBuilder {
   // Mark this op as a "metadata" op, one that only looks at the shapes of its
   // operands and not their values.
   XlaOpRegistrationBuilder& IsMetadataOp();
+
+  // Specifies a particular value for the "_kernel" attr.  
+  XlaOpRegistrationBuilder& Label(absl::string_view label);
 
   std::unique_ptr<XlaOpRegistry::OpRegistration> Build(
       XlaOpRegistry::Factory factory);

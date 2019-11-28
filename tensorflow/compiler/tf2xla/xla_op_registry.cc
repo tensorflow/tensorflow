@@ -61,6 +61,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
 /* static */ bool XlaOpRegistry::IsCompatible(const OpRegistration& x,
                                               const OpRegistration& y) {
   if (x.name != y.name) return true;
+  if (x.label != y.label) return true;
   // The registrations refer to the same Op: ensures they are compatible and
   // are restricted to different device whitelists.
   if (x.compilation_only != y.compilation_only) {
@@ -256,6 +257,7 @@ void XlaOpRegistry::RegisterCompilationKernels() {
         std::unique_ptr<KernelDef> kdef(new KernelDef);
         kdef->set_op(op_registration->name);
         kdef->set_device_type(backend.first);
+        kdef->set_label(op_registration->label);
 
         // Constrain each type attribute to the intersection of:
         // a) the types supported by the backend, and
@@ -536,6 +538,12 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstantInput(
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::IsMetadataOp() {
   registration_->is_metadata_op = true;
+  return *this;
+}
+
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Label(
+    absl::string_view label) {
+  registration_->label = string(label);
   return *this;
 }
 
