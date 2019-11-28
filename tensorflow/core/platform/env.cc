@@ -21,9 +21,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/platform.h"
 #include "tensorflow/core/platform/protobuf.h"

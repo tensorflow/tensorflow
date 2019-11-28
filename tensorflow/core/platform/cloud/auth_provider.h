@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/status.h"
 
 namespace tensorflow {

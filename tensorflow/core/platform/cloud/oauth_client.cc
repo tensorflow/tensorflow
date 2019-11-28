@@ -22,14 +22,15 @@ limitations under the License.
 #include <sys/types.h>
 #endif
 #include <fstream>
+
 #include <openssl/bio.h>
 #include <openssl/evp.h>
 #include <openssl/pem.h>
 #include <openssl/rsa.h>
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/base64.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {
 

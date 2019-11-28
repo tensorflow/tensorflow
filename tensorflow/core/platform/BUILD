@@ -369,10 +369,10 @@ cc_library(
     name = "protobuf_internal",
     hdrs = ["protobuf_internal.h"],
     deps = [
+        ":errors",
         ":platform",
         ":protobuf",
         ":types",
-        "//tensorflow/core/lib/core:errors",
     ] + if_static(["@com_google_protobuf//:protobuf"]),
 )
 
