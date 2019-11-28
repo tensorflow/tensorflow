@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cmath>
 
+#include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 
@@ -429,9 +430,10 @@ inline void ApplyRelu6ToVector(const float* __restrict__ vector, int v_size,
 // Apply tanh to elements of a vector
 inline void ApplyTanhToVector(const float* __restrict__ vector, int v_size,
                               float* __restrict__ result) {
-  for (int v = 0; v < v_size; v++) {
-    result[v] = std::tanh(vector[v]);
-  }
+  using VectorMap = Eigen::Map<Eigen::Vector<float, Eigen::Dynamic>>;
+  VectorMap input_map(const_cast<float* __restrict__>(vector), v_size);
+  VectorMap output_map(result, v_size);
+  output_map.array() = input_map.array().tanh();
 }
 
 // Apply signbit to elements of a vector
@@ -445,9 +447,10 @@ inline void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
 // Apply sigmoid to elements of a vector.
 inline void ApplySigmoidToVector(const float* __restrict__ vector, int v_size,
                                  float* __restrict__ result) {
-  for (int v = 0; v < v_size; v++) {
-    result[v] = 1.0f / (1.0f + std::exp(-vector[v]));
-  }
+  using VectorMap = Eigen::Map<Eigen::Vector<float, Eigen::Dynamic>>;
+  VectorMap input_map(const_cast<float* __restrict__>(vector), v_size);
+  VectorMap output_map(result, v_size);
+  output_map.array() = input_map.array().logistic();
 }
 
 // Apply appropriate activation function to elements of a vector.
