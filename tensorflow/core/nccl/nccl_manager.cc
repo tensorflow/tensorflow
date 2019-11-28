@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/cuda.h"
 #elif TENSORFLOW_USE_ROCM
