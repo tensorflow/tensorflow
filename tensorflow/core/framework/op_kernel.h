@@ -726,8 +726,8 @@ class OpKernelContext {
     const int* forward_from_array = nullptr;
 
     // For tracking actively running deferred ops.
-    std::function<void()> inc_num_deferred_ops_function = []() {};
-    std::function<void()> dec_num_deferred_ops_function = []() {};
+    std::function<void()> inc_num_deferred_ops_function;
+    std::function<void()> dec_num_deferred_ops_function;
   };
 
   // params must outlive the OpKernelContext.
@@ -1271,10 +1271,14 @@ class OpKernelContext {
   // functions. It then must call these two functions in pairs, before and after
   // device execution, respectively.
   TF_MUST_USE_RESULT std::function<void()> inc_num_deferred_ops_function() {
-    return params_->inc_num_deferred_ops_function;
+    return params_->inc_num_deferred_ops_function
+               ? params_->inc_num_deferred_ops_function
+               : []() {};
   }
   TF_MUST_USE_RESULT std::function<void()> dec_num_deferred_ops_function() {
-    return params_->dec_num_deferred_ops_function;
+    return params_->dec_num_deferred_ops_function
+               ? params_->dec_num_deferred_ops_function
+               : []() {};
   }
 
   Allocator* get_allocator(AllocatorAttributes attr);
