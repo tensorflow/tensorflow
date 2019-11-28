@@ -15,12 +15,17 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_MEMORY_PLANNER_H_
 #define TENSORFLOW_LITE_MEMORY_PLANNER_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 
 namespace tflite {
 
 // A MemoryPlanner is responsible for planning and executing a number of
 // memory-related operations that are necessary in TF Lite.
+//
+// TODO(b/127354079): Remove the constrain below when the issue is fixed.
+// WARNING: MemoryPlanner's behavior must be deterministic. If the first N
+// nodes are unchanged, it must produce exactly the same allocation plan for
+// the first N nodes.
 class MemoryPlanner {
  public:
   virtual ~MemoryPlanner() {}
@@ -38,6 +43,24 @@ class MemoryPlanner {
   // have changed. All planned allocations remain, but can't be used until
   // ExecuteAllocations() is called.
   virtual TfLiteStatus ResetAllocations() = 0;
+
+  // NOTE: The following two methods modify the data pointers for all tensors on
+  // the non-persistent arena (inputs, outputs, intermediates). If the user has
+  // manually set the pointers for any of these, they would need to be set
+  // again.
+
+  // This releases memory allocated for non-persistent tensors.
+  // It does NOT clear the allocation plan, but the memory can't be used
+  // until AcquireNonPersistentMemory() is called.
+  // It is safe to call Reset/PlanAllocations after this method, without calling
+  // ReleaseTemporaryAllocations in case tensor sizes change.
+  virtual TfLiteStatus ReleaseNonPersistentMemory() = 0;
+
+  // Allocates the necessary memory to contain non-persistent tensors.
+  virtual TfLiteStatus AcquireNonPersistentMemory() = 0;
+
+  // Returns true if the non-persistent memory is available.
+  virtual bool HasNonPersistentMemory() = 0;
 };
 
 }  // namespace tflite

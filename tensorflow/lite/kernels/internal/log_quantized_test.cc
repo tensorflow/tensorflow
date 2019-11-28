@@ -29,7 +29,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
-#include "tensorflow/lite/string.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -142,8 +142,9 @@ void RunSingleTest(const std::vector<int32>& test_input,
   }
   {
     std::ostringstream label;
-    label << check_label << " / reference vs float-gen / InputIntegerBits="
-          << InputIntegerBits << ", OutputIntegerBits=" << OutputIntegerBits;
+    label << check_label
+          << " / reference vs float-gen / InputIntegerBits=" << InputIntegerBits
+          << ", OutputIntegerBits=" << OutputIntegerBits;
     CheckOutputData(quantized_output, float_gen_output, test_input, label.str(),
                     InputIntegerBits, OutputIntegerBits, tolerance);
   }
@@ -189,7 +190,7 @@ void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
     INPUT_CASE(29);
     default:
       ASSERT_LE(input_integer_bits, 30)
-                << "Input integer bits not handled: " << input_integer_bits;
+          << "Input integer bits not handled: " << input_integer_bits;
   }
 #undef INPUT_CASE
 }
@@ -234,7 +235,7 @@ void RunSingleTest(const std::vector<int32>& test_input, int input_integer_bits,
     OUTPUT_CASE(29);
     default:
       ASSERT_LE(input_integer_bits, 30)
-                << "Input integer bits not handled: " << input_integer_bits;
+          << "Input integer bits not handled: " << input_integer_bits;
   }
 #undef OUTPUT_CASE
 }

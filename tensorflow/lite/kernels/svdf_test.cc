@@ -455,11 +455,142 @@ TEST_F(SVDFOpTest, BlackBoxTestHybridRank2Int8) {
                 /*tolerance=*/0.00625109);
 }
 
+// Test case for full integer quantization of SVDF.
+class IntegerSVDFOpModel : public SingleOpModel {
+ public:
+  IntegerSVDFOpModel(int batches, int units, int input_size, int memory_size,
+                     int rank)
+      : batches_(batches),
+        units_(units),
+        input_size_(input_size),
+        memory_size_(memory_size),
+        rank_(rank) {
+    const int num_filters = units * rank;
+    input_ = AddInput({TensorType_INT8, {batches, input_size}, -1, 1});
+    weights_feature_ =
+        AddInput({TensorType_INT8, {num_filters, input_size}, -0.5, 0.5});
+    weights_time_ =
+        AddInput({TensorType_INT16, {num_filters, memory_size}, -1, 1});
+    bias_ = AddInput({TensorType_INT32, {units}, -512, 512});
+    activation_state_ = AddInput(
+        {TensorType_INT16, {batches, memory_size * num_filters}, -16, 16},
+        /*is_variable=*/true);
+    output_ = AddOutput({TensorType_INT8, {batches, units}, -0.5, 0.5});
+    SetBuiltinOp(
+        BuiltinOperator_SVDF, BuiltinOptions_SVDFOptions,
+        CreateSVDFOptions(builder_, rank, ActivationFunctionType_RELU).Union());
+    BuildInterpreter({
+        {batches, input_size},                // input tensor
+        {num_filters, input_size},            // weights_feature tensor
+        {num_filters, memory_size},           // weights_time tensor
+        {units},                              // bias tensor
+        {batches, memory_size * num_filters}  // activation_state tensor
+    });
+  }
+
+  // Populates the weights_feature tensor.
+  void SetWeightsFeature(const std::vector<float>& f) {
+    QuantizeAndPopulate<int8_t>(weights_feature_, f);
+  }
+
+  // Populates the weights_time tensor.
+  void SetWeightsTime(const std::vector<float>& f) {
+    QuantizeAndPopulate<int16_t>(weights_time_, f);
+  }
+
+  void SetBias(const std::vector<float>& f) {
+    QuantizeAndPopulate<int32_t>(bias_, f);
+  }
+
+  // Populates the input tensor.
+  void SetInput(const std::vector<float>& f) {
+    QuantizeAndPopulate<int8_t>(input_, f);
+  }
+
+  // Extracts the output tensor from the SVDF op.
+  std::vector<int8_t> GetOutput() { return ExtractVector<int8_t>(output_); }
+
+ protected:
+  int input_;
+  int weights_feature_;
+  int weights_time_;
+  int bias_;
+  int activation_state_;
+  int output_;
+
+  int batches_;
+  int units_;
+  int input_size_;
+  int memory_size_;
+  int rank_;
+};
+
+TEST_F(SVDFOpTest, BlackBoxTestInteger) {
+  IntegerSVDFOpModel svdf(/*batches=*/2, /*units=*/4, /*input_size=*/3,
+                          /*memory_size=*/10, /*rank=*/1);
+  svdf.SetWeightsFeature({-0.31930989, -0.36118156, 0.0079667, 0.37613347,
+                          0.22197971, 0.12416199, 0.27901134, 0.27557442,
+                          0.3905206, -0.36137494, -0.06634006, -0.10640851});
+
+  svdf.SetWeightsTime(
+      {-0.31930989, 0.37613347,  0.27901134,  -0.36137494, -0.36118156,
+       0.22197971,  0.27557442,  -0.06634006, 0.0079667,   0.12416199,
+
+       0.3905206,   -0.10640851, -0.0976817,  0.15294972,  0.39635518,
+       -0.02702999, 0.39296314,  0.15785322,  0.21931258,  0.31053296,
+
+       -0.36916667, 0.38031587,  -0.21580373, 0.27072677,  0.23622236,
+       0.34936687,  0.18174365,  0.35907319,  -0.17493086, 0.324846,
+
+       -0.10781813, 0.27201805,  0.14324132,  -0.23681851, -0.27115166,
+       -0.01580888, -0.14943552, 0.15465137,  0.09784451,  -0.0337657});
+
+  svdf.SetBias({-0.0976817, 0.15294972, 0.39635518, -0.02702999});
+
+  const std::vector<std::vector<float>> input_sequnces = {
+      {0.49837467, 0.19278903, 0.26584083, 0.17660543, 0.52949083, -0.77931279},
+      {0.12609188, -0.46347019, -0.89598465, 0.35867718, 0.36897406,
+       0.73463392},
+      {0.14278367, -1.64410412, -0.75222826, -0.57290924, 0.12729003,
+       0.7567004},
+      {0.49837467, 0.19278903, 0.26584083, 0.17660543, 0.52949083, -0.77931279},
+      {0.12609188, -0.46347019, -0.89598465, 0.35867718, 0.36897406,
+       0.73463392},
+      {0.14278367, -1.64410412, -0.75222826, -0.57290924, 0.12729003,
+       0.7567004},
+      {0.49837467, 0.19278903, 0.26584083, 0.17660543, 0.52949083, -0.77931279},
+      {0.12609188, -0.46347019, -0.89598465, 0.35867718, 0.36897406,
+       0.73463392},
+      {0.14278367, -1.64410412, -0.75222826, -0.57290924, 0.12729003,
+       0.7567004},
+      {0.49837467, 0.19278903, 0.26584083, 0.17660543, 0.52949083, -0.77931279},
+      {0.12609188, -0.46347019, -0.89598465, 0.35867718, 0.36897406,
+       0.73463392},
+      {0.14278367, -1.64410412, -0.75222826, -0.57290924, 0.12729003,
+       0.7567004}};
+
+  const std::vector<std::vector<int8_t>> expected_output = {
+      {-9, 24, 31, 1, -10, 10, -3, 0},
+      {2, 4, -44, -7, -10, 32, 52, 1},
+      {12, -17, 9, -8, 7, 16, -11, -8},
+      {-26, 29, 28, 16, -23, 26, 30, -6},
+      {-8, -25, -86, -5, -44, 59, 81, 15},
+      {62, -16, -37, 3, 27, 14, 34, -10},
+      {1, 24, -25, 23, 31, 61, 67, 11},
+      {-64, -65, -128, -25, -53, 59, 127, 20},
+      {20, -29, -20, -15, -28, 0, 8, -27},
+      {54, 61, -67, 38, 38, 64, 115, 0},
+      {-44, -75, -128, -20, -19, 93, 101, 35},
+      {-5, -56, 30, -18, -40, -9, -8, -31},
+  };
+
+  for (int sequence_index = 0; sequence_index < 12; ++sequence_index) {
+    svdf.SetInput(input_sequnces[sequence_index]);
+    svdf.Invoke();
+    const std::vector<int8_t> res = svdf.GetOutput();
+    EXPECT_THAT(res, ElementsAreArray(expected_output[sequence_index]));
+  }
+}
+
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

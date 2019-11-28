@@ -37,6 +37,7 @@ namespace {
 
 constexpr char CpuDevice[] = "/device:CPU:0";
 constexpr char GpuDevice[] = "/device:GPU:0";
+constexpr char TpuDevice[] = "/device:TPU_REPLICATED_CORE";
 
 class ImplementationSelectorTest : public GrapplerTest {};
 
@@ -87,6 +88,44 @@ TEST_F(ImplementationSelectorTest, SwapImplementation) {
   for (const NodeDef& node : output.node()) {
     if (node.name() == "y1") {
       // Make sure the implementation has been swapped to use the GPU version.
+      EXPECT_EQ("XAddX", node.op());
+    } else if (node.name() == "y2") {
+      // Make sure the implementation is not changed.
+      EXPECT_EQ("XTimesTwo", node.op());
+    }
+  }
+}
+
+TEST_F(ImplementationSelectorTest, SwapImplementationTpu) {
+  using test::function::NDef;
+  auto cpu_def = test::function::XTimesTwo();
+  auto* func_attr = cpu_def.mutable_attr();
+  (*func_attr)["api_implements"].set_s("times_two");
+  (*func_attr)["api_preferred_device"].set_s("CPU");
+
+  auto tpu_def = test::function::XAddX();
+  auto* func2_attr = tpu_def.mutable_attr();
+  (*func2_attr)["api_implements"].set_s("times_two");
+  (*func2_attr)["api_preferred_device"].set_s("TPU_REPLICATED_CORE");
+
+  ImplementationSelector optimizer;
+  GraphDef output;
+  GrapplerItem item;
+  item.graph = test::function::GDef(
+      {NDef("x", "Placeholder", {}, {{"dtype", DT_FLOAT}}, TpuDevice),
+       NDef("y1", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, TpuDevice),
+       NDef("z1", "Identity", {"y1"}, {{"T", DT_FLOAT}}, TpuDevice),
+       NDef("y2", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}}, CpuDevice),
+       NDef("z2", "Identity", {"y2"}, {{"T", DT_FLOAT}}, CpuDevice)},
+      // FunctionLib
+      {cpu_def, tpu_def});
+
+  TF_EXPECT_OK(optimizer.Optimize(nullptr, item, &output));
+
+  EXPECT_EQ(output.node_size(), 5);
+  for (const NodeDef& node : output.node()) {
+    if (node.name() == "y1") {
+      // Make sure the implementation has been swapped to use the TPU version.
       EXPECT_EQ("XAddX", node.op());
     } else if (node.name() == "y2") {
       // Make sure the implementation is not changed.

@@ -1,10 +1,10 @@
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "py_test")
-load("//tensorflow:tensorflow.bzl", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_py_test")
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 py_library(
     name = "profiler",
@@ -37,8 +37,8 @@ py_library(
         ":option_builder",
         ":tfprof_logger",
         "//tensorflow/core/profiler:protos_all_py",
+        "//tensorflow/python:_pywrap_tfprof",
         "//tensorflow/python:errors",
-        "//tensorflow/python:pywrap_tensorflow",
         "@six_archive//:six",
     ],
 )
@@ -57,8 +57,10 @@ cuda_py_test(
         "//tensorflow/python:platform",
         "//tensorflow/python:variables",
     ],
+    python_version = "PY3",
     tags = [
         "no_pip",
+        "notap",
         "oss_serial",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
@@ -76,6 +78,7 @@ cuda_py_test(
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python:variables",
     ],
+    python_version = "PY3",
     tags = ["no_pip"],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
@@ -107,6 +110,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    python_version = "PY3",
 )
 
 py_library(
@@ -131,7 +135,11 @@ cuda_py_test(
         "//tensorflow/python/profiler/internal:model_analyzer_testlib",
         "//tensorflow/python:variables",
     ],
-    tags = ["no_pip"],
+    python_version = "PY3",
+    tags = [
+        "no_gpu",  # b/136036359
+        "no_pip",
+    ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
@@ -147,6 +155,7 @@ py_test(
     size = "small",
     srcs = ["pprof_profiler_test.py"],
     main = "pprof_profiler_test.py",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = ["no_pip"],  # TODO(annarev): get it working with pip.
     deps = [
@@ -157,5 +166,25 @@ py_test(
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:math_ops",
         "@com_google_pprof//:pprof_proto_py",
+    ],
+)
+
+py_library(
+    name = "traceme",
+    srcs = ["traceme.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/profiler/internal:_pywrap_traceme",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "scoped_annotation",
+    srcs = ["scoped_annotation.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python/profiler/internal:_pywrap_scoped_annotation",
+        "@six_archive//:six",
     ],
 )

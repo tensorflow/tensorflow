@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_SPEECH_AUDIO_PROVIDER_H_
 #define TENSORFLOW_LITE_EXPERIMENTAL_MICRO_EXAMPLES_MICRO_SPEECH_AUDIO_PROVIDER_H_
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 
 // This is an abstraction around an audio source like a microphone, and is
@@ -36,7 +36,7 @@ TfLiteStatus GetAudioSamples(tflite::ErrorReporter* error_reporter,
 // Returns the time that audio data was last captured in milliseconds. There's
 // no contract about what time zero represents, the accuracy, or the granularity
 // of the result. Subsequent calls will generally not return a lower value, but
-// even that's not guaranteed if there's an overflow  wraparound.
+// even that's not guaranteed if there's an overflow wraparound.
 // The reference implementation of this function just returns a constantly
 // incrementing value for each call, since it would need a non-portable platform
 // call to access time information. For real applications, you'll need to write

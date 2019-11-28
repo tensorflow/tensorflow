@@ -66,7 +66,7 @@ def watch_variable(tape, variable):
   if context:
     variables = [strategy.extended.value_container(variable)]
   else:
-    variables = strategy.unwrap(variable)
+    variables = strategy.experimental_local_results(variable)
   for var in variables:
     pywrap_tensorflow.TFE_Py_TapeWatchVariable(tape._tape, var)  # pylint: disable=protected-access
 
@@ -82,7 +82,7 @@ def variable_accessed(variable):
   if context:
     variables = [strategy.extended.value_container(variable)]
   else:
-    variables = strategy.unwrap(variable)
+    variables = strategy.experimental_local_results(variable)
   for var in variables:
     pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
 
@@ -104,35 +104,79 @@ def variables_accessed(variables):
   else:
     for variable in variables:
       if variable.trainable:
-        accessed.extend(strategy.unwrap(variable))
+        accessed.extend(strategy.experimental_local_results(variable))
 
   for var in accessed:
     pywrap_tensorflow.TFE_Py_TapeVariableAccessed(var)
 
 
 def pop_tape(tape):
-  """Pops the top tape in the stack, if any."""
+  """Pops the given tape in the stack."""
   pywrap_tensorflow.TFE_Py_TapeSetRemove(tape._tape)  # pylint: disable=protected-access
 
 
 @contextlib.contextmanager
 def stop_recording():
+  """Stop all gradient recording (backprop and forwardprop)."""
+  is_stopped = pywrap_tensorflow.TFE_Py_TapeSetIsStopped()
   try:
-    pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
+    if not is_stopped:
+      pywrap_tensorflow.TFE_Py_TapeSetStopOnThread()
     yield
   finally:
-    pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
+    if not is_stopped:
+      pywrap_tensorflow.TFE_Py_TapeSetRestartOnThread()
 
 
-def should_record(tensors):
-  """Returns true if any tape in the stack watches any of these tensors."""
-  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecord(tensors)
+def should_record_backprop(tensors):
+  """Returns true if any tape in the stack watches any of these tensors.
+
+  Only takes GradientTapes into account, not forward accumulators.
+
+  Args:
+    tensors: Tensors to check, typically inputs to an operation.
+
+  Returns:
+    Boolean, whether any tape watches any of `tensors`.
+  """
+  return pywrap_tensorflow.TFE_Py_TapeSetShouldRecordBackprop(tensors)
 
 
-def record_operation(op_type, output_tensors, input_tensors, backward_function):
+def record_operation(op_type, output_tensors, input_tensors, backward_function,
+                     forward_function=None):
   """Records the operation on all tapes in the stack."""
   pywrap_tensorflow.TFE_Py_TapeSetRecordOperation(
+      op_type, output_tensors, input_tensors, backward_function,
+      forward_function)
+
+
+def record_operation_backprop_only(op_type, output_tensors, input_tensors,
+                                   backward_function):
+  """Records the operation on all backward tapes in the stack."""
+  pywrap_tensorflow.TFE_Py_TapeSetRecordOperationBackprop(
       op_type, output_tensors, input_tensors, backward_function)
+
+
+def record_operation_forwardprop_only(op_type, output_tensors, input_tensors,
+                                      backward_function,
+                                      forwardprop_output_indices):
+  """Records the operation on all forward accumulators in the stack.
+
+  Args:
+    op_type: a string for the operation type, used in the backprop code
+    output_tensors: a list of Python Tensor objects output by the operation
+    input_tensors: a list of input Tensors to the recorded operation
+    backward_function: the function to be called to, given the gradients of the
+      output tensors, produce the gradients of the input tensors. This function
+      is automatically transposed to produce output gradients given input
+      gradients.
+    forwardprop_output_indices: indicates any output_tensors which contain JVPs.
+      Typically these will have come from TFE_Py_PackForwardGradients. May be
+      None or an empty sequence if there are no JVP outputs from the operation.
+  """
+  pywrap_tensorflow.TFE_Py_TapeSetRecordOperationForwardprop(
+      op_type, output_tensors, input_tensors, backward_function,
+      forwardprop_output_indices)
 
 
 def delete_trace(tensor_id):

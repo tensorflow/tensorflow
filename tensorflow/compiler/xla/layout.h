@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/span.h"
-
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -28,7 +28,7 @@ limitations under the License.
 namespace xla {
 
 // Describes a tile used in tiling-based layout. Refer to
-// g3doc/third_party/tensorflow/compiler/xla/g3doc/layout_with_tiling.md for
+// g3doc/third_party/tensorflow/compiler/xla/g3doc/tiled_layout.md for
 // details.
 class Tile {
  public:
@@ -53,7 +53,7 @@ class Tile {
   int64 dimension(int i) const { return dimensions_.at(i); }
 
   // Returns the dimensions of the tile.
-  const std::vector<int64>& dimensions() const { return dimensions_; }
+  absl::Span<const int64> dimensions() const { return dimensions_; }
 
   Tile& add_dimensions(int64 value) {
     dimensions_.push_back(value);
@@ -69,9 +69,14 @@ class Tile {
   // combined with the next minor dimension before tiling is applied.
   static constexpr int64 kCombineDimension = std::numeric_limits<int64>::min();
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Tile& t) {
+    return H::combine(std::move(h), t.dimensions_);
+  }
+
  private:
   // The bounds of the tile.
-  std::vector<int64> dimensions_;
+  absl::InlinedVector<int64, 2> dimensions_;
 };
 
 class Layout {
@@ -86,11 +91,12 @@ class Layout {
   // Constructs a dense tiled layout with the given minor-to-major order and
   // tiles.
   Layout(absl::Span<const int64> minor_to_major, absl::Span<const Tile> tiles,
-         int64 element_size_in_bits = 0)
+         int64 element_size_in_bits = 0, int64 memory_space = 0)
       : format_(DENSE),
         minor_to_major_(minor_to_major.begin(), minor_to_major.end()),
         tiles_(tiles.begin(), tiles.end()),
-        element_size_in_bits_(element_size_in_bits) {}
+        element_size_in_bits_(element_size_in_bits),
+        memory_space_(memory_space) {}
 
   // Construct a shape from a LayoutProto.
   static Layout CreateFromProto(const LayoutProto& proto);
@@ -127,9 +133,22 @@ class Layout {
       return *this;
     }
 
+    Equal& MinorToMajorOnly() {
+      ignore_tiles_ = true;
+      ignore_element_size_ = true;
+      ignore_memory_space_ = true;
+      return *this;
+    }
+
+    Equal& IgnoreMemorySpace() {
+      ignore_memory_space_ = true;
+      return *this;
+    }
+
    private:
     bool ignore_tiles_ = false;
     bool ignore_element_size_ = false;
+    bool ignore_memory_space_ = false;
   };
 
   bool operator==(const Layout& other) const;
@@ -164,8 +183,10 @@ class Layout {
     minor_to_major_.clear();
     return *this;
   }
-  const std::vector<int64>& minor_to_major() const { return minor_to_major_; }
-  std::vector<int64>* mutable_minor_to_major() { return &minor_to_major_; }
+  absl::Span<const int64> minor_to_major() const { return minor_to_major_; }
+  absl::InlinedVector<int64, 6>* mutable_minor_to_major() {
+    return &minor_to_major_;
+  }
 
   // Methods for accessing the tile field.
   int tiles_size() const { return tiles_.size(); }
@@ -179,8 +200,8 @@ class Layout {
     tiles_.clear();
     return *this;
   }
-  const std::vector<Tile>& tiles() const { return tiles_; }
-  std::vector<Tile>* mutable_tiles() { return &tiles_; }
+  absl::Span<const Tile> tiles() const { return tiles_; }
+  absl::InlinedVector<Tile, 2>* mutable_tiles() { return &tiles_; }
 
   // Methods for accessing the int64 fields.
   int64 max_sparse_elements() const { return max_sparse_elements_; }
@@ -193,6 +214,12 @@ class Layout {
     element_size_in_bits_ = value;
     return *this;
   }
+  static constexpr int64 kDefaultMemorySpace = 0;
+  int64 memory_space() const { return memory_space_; }
+  Layout& set_memory_space(int64 value) {
+    memory_space_ = value;
+    return *this;
+  }
 
   void Swap(Layout* other) {
     using std::swap;
@@ -200,19 +227,33 @@ class Layout {
   }
 
   void Clear() {
+    *this = Layout();
     format_ = INVALID_FORMAT;
-    minor_to_major_.clear();
-    max_sparse_elements_ = 0;
-    element_size_in_bits_ = 0;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const Layout& l) {
+    return H::combine(std::move(h), l.format_, l.minor_to_major_,
+                      l.max_sparse_elements_, l.tiles_,
+                      l.element_size_in_bits_);
   }
 
  private:
   // The format of this layout.
   Format format_ = INVALID_FORMAT;
 
-  // Sequence of dimension numbers, from minor (fastest varying index) to major
-  // (slowest varying index).
-  std::vector<int64> minor_to_major_;
+  // A map from physical dimension numbers to logical dimension numbers.
+  // The first element is the most minor physical dimension (fastest varying
+  // index) and the last the most major (slowest varying index). The contents of
+  // the vector are the indices of the *logical* dimensions in the shape.
+  //
+  // For example, in shape f32[8,100,100,3]{3,0,2,1}, the logical dimensions
+  // are [8,100,100,3] and minor_to_major_ is {3,0,2,1}.
+  // So, the most minor physical dimension is [8,100,100,3][3], which is size 3.
+  // The second most minor is [8,100,100,3][0], which is size 8.
+  // The third most minor is [8,100,100,3][2], which is size 100.
+  // And the major dim is [8,100,100,3][1], which is size 100.
+  absl::InlinedVector<int64, 6> minor_to_major_;
 
   // The maximum number of elements that can be stored for SPARSE formats.  This
   // can be used to determine the maximum size in bytes of arrays stored in
@@ -220,10 +261,13 @@ class Layout {
   int64 max_sparse_elements_ = 0;
 
   // The tiles used in tiling-based layout.
-  std::vector<Tile> tiles_;
+  absl::InlinedVector<Tile, 2> tiles_;
 
   // The number of bits used to store an individual array element.
   int64 element_size_in_bits_ = 0;
+
+  // The assigned memory space.
+  int64 memory_space_ = 0;
 };
 
 std::ostream& operator<<(std::ostream& out, const Tile& Tile);

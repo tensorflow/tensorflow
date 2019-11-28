@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -80,6 +81,9 @@ enum FilterTensorFormat {
   // FORMAT_OIHW often improves performance on GPUs.
   FORMAT_OIHW = 1,
 
+  // FORMAT_OHWI used by cuDNN for NHWC convolutions.
+  FORMAT_OHWI = 2,
+
   // OIHW_VECT_I is the most performant tensor format for cudnn6's quantized
   // int8 convolution and fused convolution. It is analogous to the NCHW_VECT_C
   // data format. It is laid out in the same order as OIHW, except that the size
@@ -88,7 +92,7 @@ enum FilterTensorFormat {
   // int32. Thus an OIHW format filter with dimensions [O, I, H, W] would have
   // dimensions [O, I/4, H, W, 4] in OIHW_VECT_I format.
   // A pre-condition of this format is that I must be a multiple of 4.
-  FORMAT_OIHW_VECT_I = 2,
+  FORMAT_OIHW_VECT_I = 3,
 };
 
 // Parse tensor format from the given string.
@@ -120,6 +124,9 @@ inline int GetTensorSpatialDims(int num_dims, TensorFormat format) {
       // Note: the VECT_W is not counted as an independent spatial dim here,
       // since it just a component of the width dimension.
       return num_dims - 3;  // Exclude N,C,VectDim.
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
   }
 }
 
@@ -144,6 +151,9 @@ inline int GetTensorDimsFromSpatialDims(int num_spatial_dims,
     case FORMAT_NCHW_VECT_C:
     case FORMAT_NHWC_VECT_W:
       return num_spatial_dims + 3;  // Include N,C,VectDim.
+    default:
+      LOG(FATAL) << "Unknown format " << format;
+      return -1;  // Avoid compiler warning about missing return value
   }
 }
 
@@ -438,7 +448,9 @@ T GetFilterDim(gtl::ArraySlice<T> dimension_attribute,
                                           filter_tensor_format) == 3)
                   ? GetFilterDimIndex<3>(filter_tensor_format, dimension)
                   : GetFilterDimIndex<2>(filter_tensor_format, dimension);
-  CHECK(index >= 0 && index < dimension_attribute.size())
+  using size_type = typename gtl::ArraySlice<T>::size_type;
+  CHECK(index >= 0 &&
+        static_cast<size_type>(index) < dimension_attribute.size())
       << "Invalid index from the dimension: " << index << ", "
       << filter_tensor_format << ", " << dimension;
   return dimension_attribute[index];

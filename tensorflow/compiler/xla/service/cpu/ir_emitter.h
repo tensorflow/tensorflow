@@ -181,7 +181,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
   Status HandleAddDependency(HloInstruction* add_dependency) override;
+  Status HandleReplicaId(HloInstruction* hlo) override;
   Status HandleRng(HloInstruction* rng) override;
+  Status HandleRngGetAndUpdateState(HloInstruction* rng_state) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -194,6 +196,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   }
 
  private:
+  Status HandleAllReduceSingleReplica(HloInstruction* crs);
+  Status HandleAllReduceMultipleReplica(HloInstruction* crs);
+
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
 
@@ -520,16 +525,28 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     // The last read cycle counter in the program.
     llvm::Value* last_read_cycle_end_ = nullptr;
 
-    // An alloca used to hold the output of the aux value returned by the rdtscp
-    // intrinsic.
-    llvm::Value* aux_i8ptr_ = nullptr;
-
     // Maps HLOs to the value the cycle counter contained right before the HLO
     // began to execute.
     std::unordered_map<const HloInstruction*, llvm::Value*> cycle_starts_;
   };
 
   ProfilingState profiling_state_;
+
+  class TracingState {
+   public:
+    TracingState() : enabled_(false) {}
+    void set_enabled(bool value) { enabled_ = value; }
+    void EmitTracingStart(llvm::IRBuilder<>* b, HloInstruction* hlo,
+                          llvm::Value* run_options);
+    void EmitTracingEnd(llvm::IRBuilder<>* b, HloInstruction* hlo,
+                        llvm::Value* run_options);
+
+   private:
+    bool enabled_;
+    // Maps from HLO to the activity id returned by xprof::TraceMe.
+    std::unordered_map<const HloInstruction*, llvm::Value*> activity_ids_;
+  };
+  TracingState tracing_state_;
 
   // Given a load instruction and a shape or buffer size, annotate the load's
   // result with the alignment required by the shape or size.

@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import shutil
 import tempfile
 
 import numpy as np
@@ -32,6 +31,7 @@ from tensorflow.python.debug.lib import source_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -54,8 +54,12 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     ops.reset_default_graph()
 
   def testGuessedBaseDirIsProbablyCorrect(self):
-    self.assertEqual("tensorflow",
-                     os.path.basename(source_utils._TENSORFLOW_BASEDIR))
+    # In the non-pip world, code resides in "tensorflow/"
+    # In the pip world, after virtual pip, code resides in "tensorflow_core/"
+    # So, we have to check both of them
+    self.assertIn(
+        os.path.basename(source_utils._TENSORFLOW_BASEDIR),
+        ["tensorflow", "tensorflow_core"])
 
   def testUnitTestFileReturnsFalse(self):
     self.assertFalse(
@@ -70,6 +74,20 @@ class GuessIsTensorFlowLibraryTest(test_util.TensorFlowTestCase):
     x = constant_op.constant(42.0, name="x")
     self.assertTrue(
         source_utils.guess_is_tensorflow_py_library(x.op.traceback[-1][0]))
+
+  def testDebuggerExampleFilePathReturnsFalse(self):
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/debug_mnist.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v1/example_v1.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v2/example_v2.py")))
+    self.assertFalse(
+        source_utils.guess_is_tensorflow_py_library(os.path.normpath(
+            "site-packages/tensorflow/python/debug/examples/v3/example_v3.py")))
 
   def testNonPythonFileRaisesException(self):
     with self.assertRaisesRegexp(ValueError, r"is not a Python source file"):
@@ -129,7 +147,7 @@ class SourceHelperTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     ops.reset_default_graph()
 
   def testAnnotateWholeValidSourceFileGivesCorrectResult(self):
@@ -252,7 +270,7 @@ class ListSourceAgainstDumpTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
     if os.path.isdir(self.dump_root):
-      shutil.rmtree(self.dump_root)
+      file_io.delete_recursively(self.dump_root)
     ops.reset_default_graph()
 
   def testGenerateSourceList(self):

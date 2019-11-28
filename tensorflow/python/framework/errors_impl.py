@@ -22,13 +22,13 @@ import traceback
 import warnings
 
 from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.python import _pywrap_py_exception_registry
 from tensorflow.python import pywrap_tensorflow as c_api
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util import tf_stack
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -36,14 +36,20 @@ def _compact_stack_trace(op):
   """Returns a traceback for `op` with common file prefixes stripped."""
   compact_traces = []
   common_prefix = error_interpolation.traceback_files_common_prefix([[op]])
-  for frame in op.traceback:
-    frame = list(frame)
-    filename = frame[tf_stack.TB_FILENAME]
+  # TODO(slebedev): switch to .filename etc once 2.X support is dropped.
+  for filename, lineno, name, line in op.traceback:
     if filename.startswith(common_prefix):
       filename = filename[len(common_prefix):]
-      frame[tf_stack.TB_FILENAME] = filename
-    compact_traces.append(tuple(frame))
+    compact_traces.append((filename, lineno, name, line))
   return compact_traces
+
+
+class InaccessibleTensorError(ValueError):
+  pass
+
+
+class OperatorNotAllowedInGraphError(TypeError):
+  pass
 
 
 @tf_export("errors.OpError", v1=["errors.OpError", "OpError"])
@@ -228,7 +234,7 @@ class UnknownError(OpError):
 
   An example of where this error may be returned is if a Status value
   received from another address space belongs to an error-space that
-  is not known to this address space. Also errors raised by APIs that
+  is not known to this address space. Also, errors raised by APIs that
   do not return enough error information may be converted to this
   error.
 
@@ -244,7 +250,7 @@ class UnknownError(OpError):
 class InvalidArgumentError(OpError):
   """Raised when an operation receives an invalid argument.
 
-  This may occur, for example, if an operation is receives an input
+  This may occur, for example, if an operation receives an input
   tensor that has an invalid value or shape. For example, the
   `tf.matmul` op will raise this
   error if it receives an input that is not a matrix, and the
@@ -420,7 +426,7 @@ class UnimplementedError(OpError):
 
   Some operations may raise this error when passed otherwise-valid
   arguments that it does not currently support. For example, running
-  the `tf.nn.max_pool` operation
+  the `tf.nn.max_pool2d` operation
   would raise this error if pooling was requested on the batch dimension,
   because this is not yet supported.
 
@@ -498,18 +504,18 @@ _CODE_TO_EXCEPTION_CLASS = {
     DATA_LOSS: DataLossError,
 }
 
-c_api.PyExceptionRegistry_Init(_CODE_TO_EXCEPTION_CLASS)
+_pywrap_py_exception_registry.PyExceptionRegistry_Init(_CODE_TO_EXCEPTION_CLASS)
 
 _EXCEPTION_CLASS_TO_CODE = {
     class_: code for code, class_ in _CODE_TO_EXCEPTION_CLASS.items()}
 
 
-@tf_export("errors.exception_type_from_error_code")
+@tf_export(v1=["errors.exception_type_from_error_code"])
 def exception_type_from_error_code(error_code):
   return _CODE_TO_EXCEPTION_CLASS[error_code]
 
 
-@tf_export("errors.error_code_from_exception_type")
+@tf_export(v1=["errors.error_code_from_exception_type"])
 def error_code_from_exception_type(cls):
   try:
     return _EXCEPTION_CLASS_TO_CODE[cls]
@@ -531,7 +537,7 @@ def _make_specific_exception(node_def, op, message, error_code):
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
 # TODO(b/77295559): expand use of TF_Status* SWIG typemap and deprecate this.
-@tf_export("errors.raise_exception_on_not_ok_status")  # pylint: disable=invalid-name
+@tf_export(v1=["errors.raise_exception_on_not_ok_status"])  # pylint: disable=invalid-name
 class raise_exception_on_not_ok_status(object):
   """Context manager to check for C API status."""
 

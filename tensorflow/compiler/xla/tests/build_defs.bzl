@@ -1,20 +1,21 @@
 """Build rules for XLA testing."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_is_configured")
+load("@local_config_rocm//rocm:build_defs.bzl", "rocm_is_configured")
 load("//tensorflow/compiler/xla/tests:plugin.bzl", "plugins")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load(
-    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
 
 all_backends = ["cpu", "gpu"] + plugins.keys()
 
 def filter_backends(backends):
-    """Removes "gpu" from a backend list if CUDA is not enabled.
+    """Removes "gpu" from a backend list if CUDA or ROCm is not enabled.
 
     This allows us to simply hardcode lists including "gpu" here and in the
-    BUILD file, without causing failures when CUDA isn't enabled.'
+    BUILD file, without causing failures when CUDA or ROCm isn't enabled.'
 
     Args:
       backends: A list of backends to filter.
@@ -22,7 +23,7 @@ def filter_backends(backends):
     Returns:
       The filtered list of backends.
     """
-    if cuda_is_configured():
+    if cuda_is_configured() or rocm_is_configured():
         return backends
     else:
         return [backend for backend in backends if backend != "gpu"]
@@ -128,7 +129,7 @@ def xla_test(
         srcs = srcs,
         copts = copts,
         testonly = True,
-        deps = deps + ["//tensorflow/compiler/xla/tests:test_macros_header"],
+        deps = deps,
     )
 
     for backend in filter_backends(backends):
@@ -265,6 +266,8 @@ def generate_backend_test_macros(backends = []):
                 "-DXLA_DISABLED_MANIFEST=\\\"%s\\\"" % manifest,
             ],
             deps = [
+                "@com_google_absl//absl/container:flat_hash_map",
+                "@com_google_absl//absl/strings",
                 "//tensorflow/compiler/xla:types",
                 "//tensorflow/core:lib",
                 "//tensorflow/core:regexp_internal",

@@ -21,7 +21,7 @@ import timeit
 import numpy as np
 
 from tensorflow.python.client import session
-from tensorflow.python.data.experimental.ops import sleep
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.platform import test
@@ -40,19 +40,19 @@ class MetaBenchmark(test.Benchmark):
     options.experimental_optimization.apply_default_optimizations = False
     return dataset_ops.Dataset.range(10000**2).with_options(options)
 
-  def benchmarkFastDatasetWithOnlyCppIterations(self):
+  def benchmark_fast_dataset_with_only_cpp_iterations(self):
     dataset = self.setup_fast_dataset()
     self.run_benchmark_with_only_cpp_iterations(dataset)
 
-  def benchmarkFastDatasetWithSessionRun(self):
+  def benchmark_fast_dataset_with_session_run(self):
     dataset = self.setup_fast_dataset()
     self.run_benchmark_with_session_run(dataset)
 
-  def benchmarkFastDatasetWithSessionCallable(self):
+  def benchmark_fast_dataset_with_session_callable(self):
     dataset = self.setup_fast_dataset()
     self.run_benchmark_with_session_run(dataset, make_callable=True)
 
-  def benchmarkFastDatasetInEager(self):
+  def benchmark_fast_dataset_in_eager(self):
     with context.eager_mode():
       dataset = self.setup_fast_dataset()
       self.run_benchmark_in_eager(dataset)
@@ -61,21 +61,21 @@ class MetaBenchmark(test.Benchmark):
     dataset = self.setup_fast_dataset()
     self.iters = 1000
     # sleep for 1e-3s per iteration
-    return dataset.apply(sleep.sleep(1000))
+    return dataset.apply(testing.sleep(1000))
 
-  def benchmarkSlowDatasetWithOnlyCppIterations(self):
+  def benchmark_slow_dataset_with_only_cpp_iterations(self):
     dataset = self.setup_slow_dataset()
     self.run_benchmark_with_only_cpp_iterations(dataset)
 
-  def benchmarkSlowDatasetWithSessionRun(self):
+  def benchmark_slow_dataset_with_session_run(self):
     dataset = self.setup_slow_dataset()
     self.run_benchmark_with_session_run(dataset)
 
-  def benchmarkSlowDatasetWithSessionCallable(self):
+  def benchmark_slow_dataset_with_session_callable(self):
     dataset = self.setup_slow_dataset()
     self.run_benchmark_with_session_run(dataset, make_callable=True)
 
-  def benchmarkSlowDatasetInEager(self):
+  def benchmark_slow_dataset_in_eager(self):
     with context.eager_mode():
       dataset = self.setup_slow_dataset()
       self.run_benchmark_in_eager(dataset)

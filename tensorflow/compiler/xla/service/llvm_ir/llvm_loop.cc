@@ -18,6 +18,7 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/algorithm/container.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Function.h"
@@ -261,11 +262,13 @@ std::vector<llvm::Value*> ForLoopNest::EmitOperandArrayLoopNest(
   // 'dimension_to_skip' dimension.
   std::vector<int64> dimensions;
   const Shape& shape = operand_array.GetShape();
+  // Initially get the dimensions in minor to major order, then reverse them.
   for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
     if (dimension != dimension_to_skip) {
       dimensions.push_back(dimension);
     }
   }
+  absl::c_reverse(dimensions);
 
   // Create loop nest with one for-loop for each dimension of the
   // output.

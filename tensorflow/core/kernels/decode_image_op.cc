@@ -16,6 +16,8 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 
 #include <memory>
+
+#include "absl/strings/escaping.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -41,9 +43,9 @@ enum FileFormat {
 // Classify the contents of a file based on starting bytes (the magic number).
 FileFormat ClassifyFileFormat(StringPiece data) {
   // The 4th byte of JPEG is '\xe0' or '\xe1', so check just the first three
-  if (str_util::StartsWith(data, "\xff\xd8\xff")) return kJpgFormat;
-  if (str_util::StartsWith(data, "\x89PNG\r\n\x1a\n")) return kPngFormat;
-  if (str_util::StartsWith(data, "\x47\x49\x46\x38")) return kGifFormat;
+  if (absl::StartsWith(data, "\xff\xd8\xff")) return kJpgFormat;
+  if (absl::StartsWith(data, "\x89PNG\r\n\x1a\n")) return kPngFormat;
+  if (absl::StartsWith(data, "\x47\x49\x46\x38")) return kGifFormat;
   return kUnknownFormat;
 }
 
@@ -58,13 +60,16 @@ string FileFormatString(FileFormat magic, StringPiece data) {
     default: {
       if (data.empty()) return "empty file";
       return strings::StrCat("unknown format starting with '",
-                             str_util::CEscape(data.substr(0, 16)), "'");
+                             absl::CEscape(data.substr(0, 16)), "'");
     }
   }
 }
 
 // Decode an image (either jpeg, png, or gif).  We use a single op so that
 // users don't have to care about which format they have.
+// TODO(b/141645641): Separate concerns here: constructors uses name to
+// determine type of parsing, compute uses file magic to parse and these might
+// not match.
 class DecodeImageOp : public OpKernel {
  public:
   explicit DecodeImageOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -152,7 +157,7 @@ class DecodeImageOp : public OpKernel {
                                         contents.shape().DebugString()));
 
     // Determine format
-    const StringPiece input = contents.scalar<string>()();
+    const StringPiece input = contents.scalar<tstring>()();
     const auto magic = ClassifyFileFormat(input);
     OP_REQUIRES(
         context,

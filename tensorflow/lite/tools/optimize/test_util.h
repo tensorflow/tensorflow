@@ -49,9 +49,36 @@ extern const char* kModelWithSharedWeights;
 // Test model with Add followed by a reshape. Model has 2 inputs for add.
 extern const char* kMultiInputAddWithReshape;
 
+// Test gather operation with quantized input.
+extern const char* kQuantizedWithGather;
+
 // Test model with a tf.constant input to tf.add. Model has 2 inputs one
 // constant and other placeholder.
 extern const char* kConstInputAddModel;
+
+// A float test model with concat that has [0, 5] and [0, 10] for inputs and [0,
+// 10] as output.
+extern const char* kFloatConcatMax5Max10Max10;
+
+// Test model with a custom op.
+extern const char* kModelWithCustomOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithArgMaxOp;
+
+// Test model with a argmax op.
+extern const char* kModelWithFCOp;
+
+// Test model with mixed quantizable and un-quantizable ops.
+// reshape->custom->custom->squeeze.
+extern const char* kModelMixed;
+
+// Test model with split op.
+extern const char* kModelSplit;
+
+// Test model with LSTM op.
+extern const char* kLstmCalibrated;
+extern const char* kLstmQuantized;
 
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {

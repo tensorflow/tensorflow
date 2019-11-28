@@ -16,12 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSOLVER_REWRITER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUSOLVER_REWRITER_H_
 
-#include "tensorflow/compiler/xla/service/device_memory_allocator.h"
 #include "tensorflow/compiler/xla/service/gpu/cusolver_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
+#include "tensorflow/stream_executor/device_memory_allocator.h"
 
 namespace xla {
 namespace gpu {
@@ -29,17 +29,13 @@ namespace gpu {
 // Rewrites Cholesky calls into CustomCall HLOs that call into cuSolver.
 class CusolverRewriter : public HloModulePass {
  public:
-  CusolverRewriter(se::StreamExecutor* stream_exec,
-                   DeviceMemoryAllocator* allocator);
+  CusolverRewriter();
   absl::string_view name() const override { return "cusolver-rewriter"; }
 
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
   StatusOr<bool> RunOnComputation(HloComputation* computation);
-
-  se::StreamExecutor* stream_exec_;   // never null
-  DeviceMemoryAllocator* allocator_;  // may be null
 };
 
 }  // namespace gpu

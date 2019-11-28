@@ -18,6 +18,7 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
@@ -45,15 +46,18 @@ namespace {
 //   n = a.shape[-2]
 //   l = np.zeros_like(a)
 //   for j in xrange(n):
-//     row = l[..., j, :j]
-//     row_t = np.swapaxes(row, -1, -2)
-//     l[..., j, j] = np.sqrt(a[..., j, j] - np.dot(row, row_t))
-//     l[..., j+1:, j] = (a[..., j+1:, j] - np.dot(l[..., j+1:, :j], row_t)) /
-//                       l[..., j, j]
+//     mask = np.zeros_like(a)
+//     mask[i, k] == 1 when i >= k and k == j
+//     l_square = np.dot(l, l_t)
+//     temp = a - l_square
+//     l[..., j, j] = temp(j, j)
+//     l = temp / l[..., j, j) * mask + l
 //   return l
-XlaOp CholeskyUnblocked(XlaOp a, PrecisionConfig::Precision precision) {
+// Returns a (result, error) pair.
+std::pair<XlaOp, XlaOp> CholeskyUnblocked(
+    XlaOp a, PrecisionConfig::Precision precision) {
   XlaBuilder* builder = a.builder();
-  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+  auto result = [&]() -> StatusOr<std::pair<XlaOp, XlaOp>> {
     TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
     const int n_dims = a_shape.rank();
     const int64 n = ShapeUtil::GetDimension(a_shape, -1);
@@ -61,6 +65,11 @@ XlaOp CholeskyUnblocked(XlaOp a, PrecisionConfig::Precision precision) {
                           .subspan(
                               /*pos=*/0,
                               /*len=*/n_dims - 2);
+
+    auto matrix_dims = AsInt64Slice(a_shape.dimensions())
+                           .subspan(
+                               /*pos=*/0,
+                               /*len=*/n_dims);
 
     XlaOp l = ZerosLike(a);
 
@@ -70,69 +79,49 @@ XlaOp CholeskyUnblocked(XlaOp a, PrecisionConfig::Precision precision) {
             XlaBuilder* body_builder) -> StatusOr<std::vector<XlaOp>> {
       std::vector<int64> row_shape_dims(major_dims.begin(), major_dims.end());
       std::vector<int64> col_shape_dims(major_dims.begin(), major_dims.end());
-      row_shape_dims.push_back(1);
-      row_shape_dims.push_back(n);
-      auto mask_zeros_row =
-          Zeros(body_builder,
-                ShapeUtil::MakeShape(a_shape.element_type(), row_shape_dims));
-
-      col_shape_dims.push_back(n);
-      col_shape_dims.push_back(1);
-      auto mask_zeros_col =
-          Zeros(body_builder,
-                ShapeUtil::MakeShape(a_shape.element_type(), col_shape_dims));
-
-      auto mask_range_row =
-          Iota(body_builder, ShapeUtil::MakeShape(S32, row_shape_dims),
-               /*iota_dimension=*/n_dims - 1);
-      auto mask_range_col =
-          Iota(body_builder, ShapeUtil::MakeShape(S32, col_shape_dims),
-               /*iota_dimension=*/n_dims - 2);
       auto body_a = loop_vars[0];
       auto body_l = loop_vars[1];
+      auto seen_error = loop_vars[2];
+      auto iota_row = Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims),
+                           n_dims - 1);
+      auto iota_col = Iota(body_builder, ShapeUtil::MakeShape(S32, matrix_dims),
+                           n_dims - 2);
 
-      // row = l[..., i, :i]
-      // select the whole i-th row, then mask out all columns past i-1
-      auto zero = ConstantR0<int32>(body_builder, 0);
-      auto l_i = DynamicSliceInMinorDims(body_l, {i, zero}, {1, n});
-      auto row = Select(Ge(mask_range_row, i), mask_zeros_row, l_i);
-      // a[..., i, i]
-      auto a_ii = DynamicSliceInMinorDims(body_a, {i, i}, {1, 1});
-      // np.dot(row, np.swapaxes(row, -1, -2))
-      auto diag_dot = BatchDot(row, TransposeInMinorDims(row), precision);
-      // l[..., i, i] = np.sqrt(a[..., i, i] - np.dot(row,
-      //                                              np.swapaxes(row, -1, -2)))
-      auto l_ii = Sqrt(a_ii - diag_dot);
+      auto mask_pred = Ge(iota_col, iota_row);
+      mask_pred = And(mask_pred, Eq(iota_row, i));
+      auto mask_zeros =
+          Zeros(body_builder,
+                ShapeUtil::MakeShape(a_shape.element_type(), matrix_dims));
+      // L * L.T, This matrix has of a lot of multiplying with zero
+      // (namely, L[:, j:] = 0) and redudant computation, but it is faster
+      // than slice.
+      auto l_square = BatchDot(body_l, false, body_l, true, precision);
 
-      // a[..., i+1:, i]
-      // select the whole i-th column, then mask out all rows above i+1
-      auto a_0i = DynamicSliceInMinorDims(body_a, {i}, {1});
-      auto a_ip1i = Select(Le(mask_range_col, i), mask_zeros_col, a_0i);
+      // A - L*L.T
+      l_square = body_a - l_square;
+      auto l_ii = DynamicSliceInMinorDims(l_square, {i, i}, {1, 1});
+      l_ii = Sqrt(l_ii);
+      // L = (A - L*L.T) / l_ii * mask + L
+      body_l = Select(mask_pred, l_square / l_ii, mask_zeros) + body_l;
 
-      // l[..., i+1:, i] = (a[..., i+1:, i] - np.dot(l[..., i+1:, :i], r.T)) /
-      //                   l[..., i, i]
-      // The columns in [i, n] are zeroed out in `row`, so we just have to
-      // zero out rows above i+1 after the BatchDot. np.dot(l[..., :, :i],
-      // r.T)
-      auto dot = BatchDot(body_l, TransposeInMinorDims(row), precision);
-      // np.dot(l[..., i+1:, :i], r.T)
-      auto dot_ip1 = Select(Le(mask_range_col, i), mask_zeros_col, dot);
+      seen_error =
+          Or(seen_error, Any(Or(Le(l_ii, ZerosLike(l_ii)), IsNan(l_ii))));
 
-      body_l =
-          DynamicUpdateSliceInMinorDims(body_l, (a_ip1i - dot_ip1) / l_ii, {i});
-      // Assign the diagonal after the rest of the column because otherwise the
-      // column assign will wrap around and overwrite the diagonal assign.
-      body_l = DynamicUpdateSliceInMinorDims(body_l, l_ii, {i, i});
-
-      return std::vector<XlaOp>{body_a, body_l};
+      return std::vector<XlaOp>{body_a, body_l, seen_error};
     };
 
     TF_ASSIGN_OR_RETURN(
         auto cholesky_while,
-        ForEachIndex(n, S32, body_fn, {a, l}, "unblocked", builder));
+        ForEachIndex(n, S32, body_fn, {a, l, ConstantR0<bool>(builder, false)},
+                     "unblocked", builder));
 
-    return cholesky_while[1];
-  });
+    return std::make_pair(cholesky_while[1], cholesky_while[2]);
+  }();
+  if (!result.ok()) {
+    XlaOp error = builder->ReportError(result.status());
+    return {error, error};
+  }
+  return result.ValueOrDie();
 }
 
 XlaOp BuildCholesky(XlaOp a, int64 block_size,
@@ -170,6 +159,7 @@ XlaOp BuildCholesky(XlaOp a, int64 block_size,
     // Haidar, Azzam, et al. "High-performance Cholesky factorization for
     // GPU-only execution." Proceedings of General Purpose GPUs. ACM, 2017.
     XlaOp l = ZerosLike(a);
+    XlaOp seen_error = ConstantR0<bool>(builder, false);
     for (int64 i = 0; i < n; i += block_size) {
       int64 k = std::min(block_size, n - i);
       if (i > 0) {
@@ -178,14 +168,17 @@ XlaOp BuildCholesky(XlaOp a, int64 block_size,
         // a[i:, i:i+k] -= np.dot(l[i:, :i], np.transpose(l[i:i+k, :i]))
         auto lhs = SliceInMinorDims(l, {i, 0}, {n, i});
         auto rhs = SliceInMinorDims(l, {i, 0}, {i + k, i});
-        auto delta = BatchDot(lhs, TransposeInMinorDims(rhs), precision);
+        auto delta = BatchDot(lhs, false, rhs, true, precision);
         auto before = SliceInMinorDims(a, {i, i}, {n, i + k});
         a = UpdateSliceInMinorDims(a, before - delta, {i, i});
       }
 
       // l[i:i+k, i:i+k] = cholesky_unblocked(a[i:i+k, i:i+k])
       auto x = SliceInMinorDims(a, {i, i}, {i + k, i + k});
-      auto factorized = CholeskyUnblocked(x, precision);
+      XlaOp factorized;
+      XlaOp factorized_error;
+      std::tie(factorized, factorized_error) = CholeskyUnblocked(x, precision);
+      seen_error = Or(seen_error, factorized_error);
       l = UpdateSliceInMinorDims(l, factorized, {i, i});
 
       if (i + k < n) {
@@ -201,7 +194,8 @@ XlaOp BuildCholesky(XlaOp a, int64 block_size,
         l = UpdateSliceInMinorDims(l, update, {i + k, i});
       }
     }
-    return l;
+    return Select(seen_error,
+                  FullLike(l, std::numeric_limits<float>::quiet_NaN()), l);
   });
 }
 

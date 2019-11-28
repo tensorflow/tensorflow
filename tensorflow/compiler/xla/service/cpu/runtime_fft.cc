@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_fft_impl.h"
+#include "tensorflow/compiler/xla/service/cpu/runtime_lightweight_check.h"
 #include "tensorflow/core/platform/dynamic_annotations.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -31,6 +32,7 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_EigenFft(
     int64 fft_length2) {
   const xla::ExecutableRunOptions* run_options =
       static_cast<const xla::ExecutableRunOptions*>(run_options_ptr);
+  XLA_LIGHTWEIGHT_CHECK(run_options->intra_op_thread_pool() != nullptr);
   tensorflow::xla::EigenFftImpl(*run_options->intra_op_thread_pool(), out,
                                 operand, fft_type, fft_rank, input_batch,
                                 fft_length0, fft_length1, fft_length2);

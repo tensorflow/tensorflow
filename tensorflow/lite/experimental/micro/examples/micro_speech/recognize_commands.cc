@@ -124,8 +124,8 @@ TfLiteStatus RecognizeCommands::ProcessLatestResults(
     time_since_last_top = current_time_ms - previous_top_label_time_;
   }
   if ((current_top_score > detection_threshold_) &&
-      (current_top_label != previous_top_label_) &&
-      (time_since_last_top > suppression_ms_)) {
+      ((current_top_label != previous_top_label_) ||
+       (time_since_last_top > suppression_ms_))) {
     previous_top_label_ = current_top_label;
     previous_top_label_time_ = current_time_ms;
     *is_new_command = true;

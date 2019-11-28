@@ -48,6 +48,7 @@ class AllocatorFactory {
 // framework.  This definition allows us to access the one method we need.
 class ProcessStateInterface {
  public:
+  virtual ~ProcessStateInterface() {}
   virtual Allocator* GetCPUAllocator(int numa_node) = 0;
 };
 

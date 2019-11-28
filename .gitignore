@@ -20,15 +20,8 @@ tensorflow/contrib/cmake/_build/
 [Bb]uild/
 /tensorflow/core/util/version_info.cc
 /tensorflow/python/framework/fast_tensor_util.cpp
-Pods
-Podfile.lock
-*.pbxproj
-*.xcworkspacedata
-/tensorflow/lite/tools/make/downloads/**
 /tensorflow/lite/gen/**
-/tensorflow/lite/examples/ios/simple/data/*.txt
-/tensorflow/lite/examples/ios/simple/data/*.tflite
-xcuserdata/**
+/tensorflow/lite/tools/make/downloads/**
 /api_init_files_list.txt
 /estimator_api_init_files_list.txt
 *.whl
@@ -39,3 +32,14 @@ xcuserdata/**
 *.iml
 local.properties
 gradleBuild
+
+# iOS
+*.pbxproj
+*.xcworkspace
+/*.podspec
+/tensorflow/lite/**/[ios|objc|swift]*/BUILD
+/tensorflow/lite/examples/ios/simple/data/*.tflite
+/tensorflow/lite/examples/ios/simple/data/*.txt
+Podfile.lock
+Pods
+xcuserdata

@@ -19,6 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/inlined_vector.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/layout.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -56,7 +57,7 @@ class Shape {
   bool IsArray() const { return primitive_util::IsArrayType(element_type()); }
   bool IsTuple() const { return element_type() == TUPLE; }
   bool IsToken() const { return element_type() == TOKEN; }
-  bool IsOpaque() const { return element_type() == OPAQUE; }
+  bool IsOpaque() const { return element_type() == OPAQUE_TYPE; }
 
   // Returns true if no array dimension in the shape is dynamically sized. Tuple
   // shapes are traversed recursively.
@@ -72,8 +73,12 @@ class Shape {
     dynamic_dimensions_[dimension] = is_dynamic;
   }
 
-  const std::vector<bool>& dynamic_dimensions() const {
+  absl::Span<const bool> dynamic_dimensions() const {
     return dynamic_dimensions_;
+  }
+
+  absl::Span<bool> mutable_dynamic_dimensions() {
+    return absl::MakeSpan(dynamic_dimensions_);
   }
 
   // Add dimension_upper_bound().
@@ -104,7 +109,7 @@ class Shape {
     dimensions_.clear();
     dynamic_dimensions_.clear();
   }
-  const std::vector<int64>& dimensions() const { return dimensions_; }
+  absl::Span<const int64> dimensions() const { return dimensions_; }
   absl::Span<int64> mutable_dimensions() { return absl::MakeSpan(dimensions_); }
 
   // Methods for accessing the tuple subshapes. This field only non-empty for
@@ -125,6 +130,19 @@ class Shape {
   const Layout& layout() const { return layout_; }
   Layout* mutable_layout() { return &layout_; }
   void clear_layout() { layout_.Clear(); }
+
+  // Recursively clear dynamic dimension of a shape.
+  void clear_dynamic_dimensions() {
+    if (!IsTuple()) {
+      for (int64 i = 0; i < dynamic_dimensions_.size(); ++i) {
+        dynamic_dimensions_[i] = false;
+      }
+      return;
+    }
+    for (auto& subshape : tuple_shapes_) {
+      subshape.clear_dynamic_dimensions();
+    }
+  }
 
   void Swap(Shape* other) {
     using std::swap;
@@ -169,6 +187,16 @@ class Shape {
       ignore_element_size_in_layout_ = true;
       return *this;
     }
+    Equal& IgnoreMemorySpaceInLayout() {
+      ignore_memory_space_in_layout_ = true;
+      return *this;
+    }
+    Equal& MinorToMajorOnlyInLayout() {
+      ignore_tiles_in_layout_ = true;
+      ignore_element_size_in_layout_ = true;
+      ignore_memory_space_in_layout_ = true;
+      return *this;
+    }
     Equal& IgnoreElementType() {
       ignore_element_type_ = true;
       return *this;
@@ -186,6 +214,7 @@ class Shape {
     bool ignore_layout_ = false;
     bool ignore_tiles_in_layout_ = false;
     bool ignore_element_size_in_layout_ = false;
+    bool ignore_memory_space_in_layout_ = false;
     bool ignore_element_type_ = false;
     bool ignore_fp_precision_ = false;
     bool ignore_dynamic_dimension_ = false;
@@ -195,6 +224,12 @@ class Shape {
   bool operator==(const Shape& other) const { return Equal()(*this, other); }
   bool operator!=(const Shape& other) const { return !(*this == other); }
 
+  template <typename H>
+  friend H AbslHashValue(H h, const Shape& s) {
+    return H::combine(std::move(h), s.element_type_, s.dimensions_,
+                      s.dynamic_dimensions_, s.tuple_shapes_, s.layout_);
+  }
+
  private:
   // The element type of this shape (tuple, array, etc).
   PrimitiveType element_type_ = PRIMITIVE_TYPE_INVALID;
@@ -202,11 +237,11 @@ class Shape {
   // The array bounds of the dimensions. This is nonempty only for array
   // shapes. For a dynamically-sized dimension, the respective value in this
   // vector is an inclusive upper limit of the array bound.
-  std::vector<int64> dimensions_;
+  absl::InlinedVector<int64, 6> dimensions_;
 
   // This vector is the same size as 'dimensions_' and indicates whether the
   // respective dimension is dynamically sized.
-  std::vector<bool> dynamic_dimensions_;
+  absl::InlinedVector<bool, 6> dynamic_dimensions_;
 
   // The tuple element subshapes. This is nonempty only for tuple shapes.
   std::vector<Shape> tuple_shapes_;

@@ -12,10 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
-#define TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
+#ifndef TENSORFLOW_CORE_KERNELS_GPU_DEVICE_ARRAY_H_
+#define TENSORFLOW_CORE_KERNELS_GPU_DEVICE_ARRAY_H_
 
-#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
+    (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -117,4 +118,4 @@ class GpuDeviceArrayOnHost {
 
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-#endif  // TENSORFLOW_CORE_KERNELS_CUDA_DEVICE_ARRAY_H_
+#endif  // TENSORFLOW_CORE_KERNELS_GPU_DEVICE_ARRAY_H_

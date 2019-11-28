@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 
 #include <unistd.h>
+
 #include <algorithm>
 #include <atomic>
 #include <deque>
@@ -61,9 +62,6 @@ using absl::StrAppend;
 using absl::StrCat;
 using absl::StrFormat;
 using absl::StrJoin;
-using tensorflow::Env;
-using tensorflow::WriteStringToFile;
-using tensorflow::io::JoinPath;
 
 // Used to indicate how we should treat a given HLOInstruction in the graph.
 // should we treat it like normal, hide it, and so on?
@@ -120,7 +118,7 @@ class NodeFilter {
 // We arbitrarily set this as the boundary between "large" and "small"
 // instructions.
 bool IsSmall(const HloInstruction* instr) {
-  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE_TYPE) ||
       ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
     return true;
   }
@@ -211,6 +209,12 @@ string NodeColorAttributes(ColorScheme color) {
 // graphviz HTML-like string.
 string HtmlLikeStringSanitize(absl::string_view s) {
   return absl::StrReplaceAll(s, {{"<", "&lt;"}, {">", "&gt;"}});
+}
+
+bool IsFusedBroadcastOfConstantEffectiveScalar(const HloInstruction* instr) {
+  namespace m = match;
+  return instr->parent()->IsFusionComputation() &&
+         Match(instr, m::Broadcast(m::ConstantEffectiveScalar()));
 }
 
 // Tries to generates a human-readable one-word description of the given
@@ -681,9 +685,11 @@ string HloDotDumper::DumpComputation(const HloComputation* comp) {
 string HloDotDumper::DumpRootTag() {
   const HloInstruction* from = GetNodeForEdge(computation_->root_instruction());
 
-  // We didn't display constants as separate nodes; so if the root is a
-  // constant, we don't add root tag or edge for it.
-  if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
+  // We didn't display constants or broadcasts of effective scalars within
+  // fusions as separate nodes; so if the root is a constant/broadcast of
+  // scalar, we don't add root tag or edge for it.
+  if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant ||
+      IsFusedBroadcastOfConstantEffectiveScalar(from)) {
     return "";
   }
 
@@ -757,9 +763,10 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
 }
 
 string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
-  // We don't display constants as separate nodes; they're merged into their
-  // users.
-  if (instr->opcode() == HloOpcode::kConstant) {
+  // We don't display constants or broadcasts of effective scalar constants
+  // within fusions as separate nodes; they're merged into their users.
+  if (instr->opcode() == HloOpcode::kConstant ||
+      IsFusedBroadcastOfConstantEffectiveScalar(instr)) {
     return "";
   }
   // Skip this node if it's merged into its users.
@@ -813,9 +820,11 @@ string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
 
 string HloDotDumper::GetInstructionNodeInlinedOperands(
     const HloInstruction* instr) {
-  auto stringify_constant = [](const HloConstantInstruction* constant) {
-    const auto& shape = constant->shape();
-
+  // The constant's shape is a parameter because, in the case of a broadcasted
+  // scalar constant, we want to show the broadcasted shape, not the constant's
+  // scalar shape.
+  auto stringify_constant = [](const HloConstantInstruction* constant,
+                               const Shape& shape) {
     // If the shape has a dimension of size zero, print it as e.g.
     // "{} (f32[42, 0, 10])".  The alternative, calling Literal::ToString(),
     // enumerates all of its empty dimensions (e.g.  "{ { {}, {} }, ..."), which
@@ -824,19 +833,19 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
       return StrFormat("{} (%s)", ShapeUtil::HumanString(constant->shape()));
     }
 
-    // Print the literal value of constants with <= K elements.
+    // Print the literal value of constants with <= K elements.  Note that we
+    // use `constant->shape()` rather than `shape`, because if `constant` is a
+    // scalar that's broadcasted into `shape`, we want to print the constant.
     optional<int64> elem_count;
     if (shape.IsArray()) {
-      elem_count = 1;
-      for (int64 dim : shape.dimensions()) {
-        *elem_count *= dim;
-      }
+      elem_count = ShapeUtil::ElementsIn(constant->shape());
     }
     // Allow HloDotDumper to print HloInstruction reconstructed from HloProto
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return constant->literal().ToString();
+      return StrFormat("%s %s", shape.ToString(),
+                       constant->literal().ToStringWithoutShape());
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
@@ -846,17 +855,20 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     } else {
       constant_name = StrCat("constant ", constant->name());
     }
-    return StrFormat("%s %s", constant_name,
-                     ShapeUtil::HumanString(constant->shape()));
+    return StrFormat("%s %s", constant_name, ShapeUtil::HumanString(shape));
   };
 
   std::vector<string> lines;
   for (int64 i = 0; i < instr->operand_count(); ++i) {
     const HloInstruction* operand = instr->operand(i);
-    const auto* constant_operand = DynCast<HloConstantInstruction>(operand);
     optional<string> operand_str;
-    if (constant_operand != nullptr) {
-      operand_str = stringify_constant(constant_operand);
+    if (const auto* constant_operand =
+            DynCast<HloConstantInstruction>(operand)) {
+      operand_str =
+          stringify_constant(constant_operand, constant_operand->shape());
+    } else if (IsFusedBroadcastOfConstantEffectiveScalar(operand)) {
+      operand_str = stringify_constant(
+          Cast<HloConstantInstruction>(operand->operand(0)), operand->shape());
     } else if (ShouldMergeIntoUsers(operand)) {
       // Special case: If the operand is a parameter to a fusion node and it
       // always has a constant value, display it like a regular constant.
@@ -866,7 +878,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
       if (operand->opcode() == HloOpcode::kParameter) {
         if (const HloConstantInstruction* constant =
                 TryGetFusionParameterConstant(operand)) {
-          operand_str = stringify_constant(constant);
+          operand_str = stringify_constant(constant, constant->shape());
         } else {
           operand_str = StrFormat("Parameter %d", operand->parameter_number());
         }
@@ -954,6 +966,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
+    case HloOpcode::kRngGetAndUpdateState:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
@@ -1013,6 +1026,8 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kScatter:
       // Do not de-emphasize Scatter, since it involves significant work.
     case HloOpcode::kCopy:
+    case HloOpcode::kCopyStart:
+    case HloOpcode::kCopyDone:
       // Emphasize copy nodes, which are either physical transposes (and thus
       // significant), or copies of read-only buffers (and thus dead weight).
       return kGreen;
@@ -1037,12 +1052,14 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
     case HloOpcode::kGetDimensionSize:
+    case HloOpcode::kSetDimensionSize:
       return kGray;
     case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
+    case HloOpcode::kPartitionId:
     case HloOpcode::kRecv:
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
@@ -1178,6 +1195,7 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     from = GetNodeForEdge(from);
 
     if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant ||
+        IsFusedBroadcastOfConstantEffectiveScalar(from) ||
         ShouldMergeIntoUsers(from)) {
       return;
     }

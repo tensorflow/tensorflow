@@ -1,13 +1,14 @@
 # Description:
 #   TensorFlow Lite microcontroller example.
 
-package(default_visibility = ["//visibility:public"])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
+)
+
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -105,7 +106,7 @@ cc_library(
     ],
     deps = [
         ":simple_model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -120,7 +121,7 @@ tflite_micro_cc_test(
         ":simple_features_generator_reference",
         ":simple_features_generator_test_data",
         ":simple_model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -136,7 +137,7 @@ cc_library(
     ],
     deps = [
         ":simple_model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -151,7 +152,7 @@ tflite_micro_cc_test(
         ":simple_features_generator_fixed",
         ":simple_features_generator_test_data",
         ":simple_model_settings",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -166,7 +167,7 @@ cc_library(
         "audio_provider.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
@@ -182,7 +183,7 @@ cc_library(
     ],
     deps = [
         ":audio_large_sample_test_data",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
@@ -195,7 +196,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":audio_provider",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -210,7 +211,7 @@ tflite_micro_cc_test(
     deps = [
         ":audio_large_sample_test_data",
         ":audio_provider_mock",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -227,7 +228,7 @@ cc_library(
     ],
     deps = [
         ":audio_provider",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_features_generator",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
@@ -242,7 +243,7 @@ tflite_micro_cc_test(
     deps = [
         ":audio_provider",
         ":feature_provider",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
@@ -259,7 +260,7 @@ cc_library(
     ],
     deps = [
         ":audio_provider_mock",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_features_generator",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
@@ -273,7 +274,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":feature_provider_mock",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_features_test_data",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
@@ -290,7 +291,7 @@ cc_library(
         "recognize_commands.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
     ],
@@ -306,7 +307,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":recognize_commands",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -321,7 +322,7 @@ cc_library(
         "command_responder.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )
@@ -333,7 +334,7 @@ tflite_micro_cc_test(
     ],
     deps = [
         ":command_responder",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
@@ -343,6 +344,8 @@ cc_binary(
     name = "micro_speech",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     deps = [
         ":audio_provider",
@@ -353,7 +356,7 @@ cc_binary(
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )
@@ -362,6 +365,8 @@ cc_binary(
     name = "micro_speech_mock",
     srcs = [
         "main.cc",
+        "main_functions.cc",
+        "main_functions.h",
     ],
     deps = [
         ":audio_provider_mock",
@@ -372,7 +377,7 @@ cc_binary(
         "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:micro_model_settings",
         "//tensorflow/lite/experimental/micro/examples/micro_speech/micro_features:tiny_conv_micro_features_model_data",
-        "//tensorflow/lite/experimental/micro/kernels:all_ops_resolver",
+        "//tensorflow/lite/experimental/micro/kernels:micro_ops",
         "//tensorflow/lite/schema:schema_fbs",
     ],
 )

@@ -1,6 +1,7 @@
 syntax = "proto3";
 
 package tensorflow.boosted_trees;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "BoostedTreesProtos";
 option java_multiple_files = true;
@@ -29,9 +30,6 @@ message NodeMetadata {
 // Leaves can either hold dense or sparse information.
 message Leaf {
   oneof leaf {
-    // See third_party/tensorflow/contrib/decision_trees/
-    // proto/generic_tree_model.proto
-    // for a description of how vector and sparse_vector might be used.
     Vector vector = 1;
     SparseVector sparse_vector = 2;
   }
@@ -47,6 +45,18 @@ message SparseVector {
   repeated float value = 2;
 }
 
+enum SplitTypeWithDefault {
+  INEQUALITY_DEFAULT_LEFT = 0;
+  INEQUALITY_DEFAULT_RIGHT = 1;
+  EQUALITY_DEFAULT_RIGHT = 3;
+}
+
+enum DefaultDirection {
+  // Left is the default direction.
+  DEFAULT_LEFT = 0;
+  DEFAULT_RIGHT = 1;
+}
+
 message BucketizedSplit {
   // Float feature column and split threshold describing
   // the rule feature <= threshold.
@@ -55,11 +65,6 @@ message BucketizedSplit {
   // If feature column is multivalent, this holds the index of the dimension
   // for the split. Defaults to 0.
   int32 dimension_id = 5;
-  enum DefaultDirection {
-    // Left is the default direction.
-    DEFAULT_LEFT = 0;
-    DEFAULT_RIGHT = 1;
-  }
   // default direction for missing values.
   DefaultDirection default_direction = 6;
 
@@ -74,6 +79,9 @@ message CategoricalSplit {
   // value.
   int32 feature_id = 1;
   int32 value = 2;
+  // If feature column is multivalent, this holds the index of the dimension
+  // for the split. Defaults to 0.
+  int32 dimension_id = 5;
 
   // Node children indexing into a contiguous
   // vector of nodes starting from the root.
@@ -126,7 +134,7 @@ message TreeMetadata {
 
   message PostPruneNodeUpdate {
     int32 new_node_id = 1;
-    float logit_change = 2;
+    repeated float logit_change = 2;
   }
 }
 

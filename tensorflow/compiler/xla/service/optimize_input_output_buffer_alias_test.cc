@@ -37,12 +37,7 @@ class OptimizeInputOutputBufferAliasTest : public HloTestBase {
     r3f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6});
     r4f32_ = ShapeUtil::MakeShape(F32, {4, 5, 6, 7});
 
-    auto size_func = [](const Shape& shape) {
-      return ShapeUtil::ByteSizeOf(shape);
-    };
-
-    optimize_pass_ =
-        absl::make_unique<OptimizeInputOutputBufferAlias>(size_func);
+    optimize_pass_ = absl::make_unique<OptimizeInputOutputBufferAlias>();
   }
 
   // Returns the number of output indices that aliases with the input.

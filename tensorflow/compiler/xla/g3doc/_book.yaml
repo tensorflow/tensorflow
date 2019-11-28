@@ -11,16 +11,16 @@ upper_tabs:
   lower_tabs:
     # Subsite tabs
     other:
-    - name: Guide & Tutorials
+    - name: Overview
       contents:
-      - title: XLA overview
-        path: /xla/overview
+      - title: Overview
+        path: /xla
+      - title: XLA architecture
+        path: /xla/architecture
       - title: Broadcasting semantics
         path: /xla/broadcasting
       - title: Developing a new backend for XLA
         path: /xla/developing_new_backend
-      - title: Using JIT compilation
-        path: /xla/jit
       - title: Operation semantics
         path: /xla/operation_semantics
       - title: Shapes and layout
@@ -29,7 +29,11 @@ upper_tabs:
         path: /xla/tiled_layout
       - title: Using AOT compilation
         path: /xla/tfcompile
+      - title: Writing custom calls
+        path: /xla/custom_call
       - heading: Tutorials
+      - title: XLA autoclustering
+        path: /xla/tutorials/autoclustering_xla
       - title: XLA compile API
         path: /xla/tutorials/xla_compile
         status: experimental

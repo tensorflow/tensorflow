@@ -137,7 +137,7 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
     const Shape& output_shape, const Shape& input_shape,
     llvm::IRBuilder<>* builder) const {
   CHECK_EQ(multidim_.size(), output_shape.rank());
-  std::vector<std::pair<int64, int64>> common_factors =
+  const auto common_factors =
       CommonFactors(AsInt64Slice(input_shape.dimensions()),
                     AsInt64Slice(output_shape.dimensions()));
   std::vector<llvm::Value*> source_multidim_index(
@@ -341,6 +341,7 @@ llvm::Value* IrArray::EmitArrayElementAddress(const IrArray::Index& index,
     return base_ptr_;
   }
   CHECK_EQ(index.size(), shape_.rank());
+  CHECK(index.ShapeIsCompatible(shape_));
 
   if (use_linear_index && index.LinearValidOnShape(shape_)) {
     llvm::Module* module = b->GetInsertBlock()->getParent()->getParent();

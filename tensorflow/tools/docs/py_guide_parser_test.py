@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +21,8 @@ from __future__ import print_function
 
 import os
 
+import six
+
 from tensorflow.python.platform import test
 from tensorflow.tools.docs import py_guide_parser
 
@@ -38,7 +41,7 @@ class TestPyGuideParser(py_guide_parser.PyGuideParser):
 
   def process_in_blockquote(self, line_number, line):
     self.calls.append((line_number, 'b', line))
-    self.replace_line(line_number, line + ' BQ')
+    self.replace_line(line_number, six.ensure_str(line) + ' BQ')
 
   def process_line(self, line_number, line):
     self.calls.append((line_number, 'l', line))

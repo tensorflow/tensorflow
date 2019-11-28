@@ -43,11 +43,11 @@ def partition_or_replicate_on_host(tensor, dims):
     The ops inside this function are placed on the host side.
 
   Args:
-    tensor: The input tensor which will be partioned or replicated.
+    tensor: The input tensor which will be partitioned or replicated.
     dims: A list of integer describes how to partition the input tensor.
 
   Returns:
-    An iterator of `Tensor`s or a list of partioned tensors.
+    An iterator of `Tensor`s or a list of partitioned tensors.
   """
   if dims is None:
     return itertools.repeat(tensor)
@@ -78,13 +78,15 @@ def partition_or_replicate_on_host(tensor, dims):
                 x, num_or_size_splits=num_or_size_splits, axis=axis))
       output = new_output
     else:
-      output = [array_ops.split(x, dim, axis=axis) for x in output]
+      output = [array_ops.split(x, int(dim), axis=axis) for x in output]
     output = nest.flatten(output)
   return output
 
 
 def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
   """Tags appropriate XLA sharding attribute to the dequeued tensor.
+
+  The sharding attribute of the dequeued tensor will be a tuple.
 
   Args:
     tensor: The dequeued tensor on TPU.
@@ -94,12 +96,15 @@ def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
     The same tensor with the xla_sharding attribute.
   """
   if dims is None:
-    return xla_sharding.replicate(tensor)
+    return xla_sharding.replicate(tensor, assign_tuple_sharding=True)
   elif np.prod(dims) == 1:
-    return xla_sharding.assign_device(tensor, 0)
+    return xla_sharding.assign_device(tensor, 0, assign_tuple_sharding=True)
   else:
     tile_assignment = np.arange(np.prod(dims)).reshape(dims)
-    return xla_sharding.tile(tensor=tensor, tile_assignment=tile_assignment)
+    return xla_sharding.tile(
+        tensor=tensor,
+        tile_assignment=tile_assignment,
+        assign_tuple_sharding=True)
 
 
 def tag_sharding_attribute_for_dequeued_tensors(dequeues, dims):
@@ -789,10 +794,10 @@ class _PartitionedInfeedQueue(InfeedQueue):
     return tag_sharding_attribute_for_dequeued_tensors(
         values, self._input_partition_dims)
 
-  def generate_enqueue_ops(self, per_host_sharded_inputs):
+  def generate_enqueue_ops(self, sharded_inputs):
     """Generates the host-side Ops to enqueue the partitioned inputs.
 
-    per_host_sharded_inputs is a list, one for each replica, of lists of
+    sharded_inputs is a list, one for each replica, of lists of
     Tensors. sharded_inputs[i] is the tuple of Tensors to use to feed
     replica i.
     sharded_inputs[i][j] is partitioned by self._input_partition_dims[j].
@@ -807,7 +812,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
     [0, 1, 2, 3, 4, 5, 6, 7] respectively.
 
     Args:
-      per_host_sharded_inputs: a list of lists of Tensors. The length of the
+      sharded_inputs: a list of lists of Tensors. The length of the
         outer list determines the number of shards. Each inner list indicates
         the types and shapes of the tuples in the corresponding shard.
 
@@ -826,44 +831,55 @@ class _PartitionedInfeedQueue(InfeedQueue):
         frozen configuration; or if the types of the elements of sharded_inputs
         don't form a consistent unsharded tuple.
     """
-    self.set_configuration_from_sharded_input_tensors(per_host_sharded_inputs)
-    number_of_replicas_per_host = len(per_host_sharded_inputs)
-    number_of_tuple_elements = len(per_host_sharded_inputs[0])
+    self.set_configuration_from_sharded_input_tensors(sharded_inputs)
+    number_of_replicas = len(sharded_inputs)
+    number_of_tuple_elements = len(sharded_inputs[0])
 
     assert len(self._input_partition_dims) == number_of_tuple_elements
-    per_host_enqueue_ops = []
+    enqueue_ops = []
 
-    for replica_index in range(number_of_replicas_per_host):
-      flattened_inputs = per_host_sharded_inputs[replica_index]
+    for replica_index in range(number_of_replicas):
+      flattened_inputs = sharded_inputs[replica_index]
       inputs_part_dims_flat = nest.flatten_up_to(flattened_inputs,
                                                  self._input_partition_dims)
       inputs_parted_iters = [
           iter(self._check_dims_and_partition_or_replicate_on_host(x, dims))
-          for x, dims in zip(per_host_sharded_inputs[replica_index],
+          for x, dims in zip(sharded_inputs[replica_index],
                              inputs_part_dims_flat)
       ]
 
+      # Find the replica_id of the host's logical core 0.
+      # The self._host_id is guaranteed to contain the logical core 0,
+      # even when num_cores_per_replica > num_cores_per_host -- the function
+      # caller makes sure that this host_id will must be receiving data (calls
+      # input_fn).
+      replica_id = self._device_assignment.lookup_replicas(
+          task_id=self._host_id, logical_core=0)[replica_index]
       for logical_core in xrange(self._device_assignment.num_cores_per_replica):
         # Places different partitions to different logic cores.
-        replica_id = self._device_assignment.lookup_replicas(
-            self._host_id, logical_core)[replica_index]
-        ordinal = self._device_assignment.tpu_ordinal(
+        # Since there can be multiple hosts per replica, we need to find
+        # the actual host (device) of this logical core.
+        device = self._device_assignment.host_device(
             replica=replica_id, logical_core=logical_core)
-        infeed_inputs = []
-        for it in inputs_parted_iters:
-          input_for_device = next(it, None)
-          if input_for_device is not None:
-            infeed_inputs.append(input_for_device)
 
-        if infeed_inputs:
-          per_host_enqueue_ops.append(
-              tpu_ops.infeed_enqueue_tuple(
-                  inputs=infeed_inputs,
-                  shapes=[x.shape for x in infeed_inputs],
-                  name="enqueue/replica_{0}/input_{1}".format(
-                      replica_index, logical_core),
-                  device_ordinal=ordinal))
-    return per_host_enqueue_ops
+        with ops.device(device):
+          ordinal = self._device_assignment.tpu_ordinal(
+              replica=replica_id, logical_core=logical_core)
+          infeed_inputs = []
+          for it in inputs_parted_iters:
+            input_for_device = next(it, None)
+            if input_for_device is not None:
+              infeed_inputs.append(input_for_device)
+
+          if infeed_inputs:
+            enqueue_ops.append(
+                tpu_ops.infeed_enqueue_tuple(
+                    inputs=infeed_inputs,
+                    shapes=[x.shape for x in infeed_inputs],
+                    name="enqueue/replica_{0}/input_{1}".format(
+                        replica_index, logical_core),
+                    device_ordinal=ordinal))
+    return enqueue_ops
 
   def _check_input_partition_dims(self, tensor, dims):
     """Checks that input partition dims are valid for the `Tensor`.
@@ -892,7 +908,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
 
     if dims.prod() != self._device_assignment.num_cores_per_replica:
       raise ValueError(
-          "The product of each input parition dim should equal to "
+          "The product of each input partition dim should equal to "
           "num_cores_per_replica. (dim = {}, num_cores_per_replica "
           "= {})".format(dims, self._device_assignment.num_cores_per_replica))
     if dims.shape[0] != tensor.shape.ndims:
@@ -909,11 +925,11 @@ class _PartitionedInfeedQueue(InfeedQueue):
       The ops inside this function are placed on the host side.
 
     Args:
-      tensor: The input tensor which will be partioned or replicated.
+      tensor: The input tensor which will be partitioned or replicated.
       dims: A list of integer describes how to partition the input tensor.
 
     Returns:
-      An iterator of `Tensor`s or a list of partioned tensors.
+      An iterator of `Tensor`s or a list of partitioned tensors.
     """
     self._check_input_partition_dims(tensor, dims)
     return partition_or_replicate_on_host(tensor, dims)

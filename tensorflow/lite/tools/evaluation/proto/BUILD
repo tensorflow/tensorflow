@@ -13,16 +13,17 @@
 # limitations under the License.
 # ==============================================================================
 
-licenses(["notice"])  # Apache 2.0
-
-package(default_visibility = ["//visibility:public"])
-
 load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_proto_library_cc",
+    "//tensorflow/core/platform:build_config.bzl",
+    "tf_proto_library_py",
 )
 
-tf_proto_library_cc(
+package(
+    default_visibility = ["//visibility:public"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+proto_library(
     name = "evaluation_stages_proto",
     srcs = [
         "evaluation_stages.proto",
@@ -30,11 +31,39 @@ tf_proto_library_cc(
     visibility = ["//visibility:public"],
 )
 
-tf_proto_library_cc(
+cc_proto_library(
+    name = "evaluation_stages_cc_proto",
+    deps = ["evaluation_stages_proto"],
+)
+
+java_proto_library(
+    name = "evaluation_stages_java_proto",
+    deps = ["evaluation_stages_proto"],
+)
+
+tf_proto_library_py(
+    name = "evaluation_stages",  # bzl adds _py
+    srcs = [
+        "evaluation_stages.proto",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+proto_library(
     name = "evaluation_config_proto",
     srcs = [
         "evaluation_config.proto",
     ],
-    protodeps = [":evaluation_stages_proto"],
     visibility = ["//visibility:public"],
+    deps = [":evaluation_stages_proto"],
+)
+
+cc_proto_library(
+    name = "evaluation_config_cc_proto",
+    deps = ["evaluation_config_proto"],
+)
+
+java_proto_library(
+    name = "evaluation_config_java_proto",
+    deps = ["evaluation_config_proto"],
 )

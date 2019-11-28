@@ -14,16 +14,22 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/encapsulate_util.h"
+
 #include <algorithm>
 #include <iterator>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/strings/str_cat.h"
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
+#include "tensorflow/stream_executor/lib/statusor.h"
+
+using stream_executor::port::StatusOr;
 
 namespace tensorflow {
 
@@ -309,6 +315,10 @@ const char kOutsideCompilationOriginalNodeAttrName[] =
 const char kOutsideCompilationSrcOutputAttrName[] = "_xla_oc_to_oc_src_output";
 const char kXlaControlDependenciesWithinXlaClusterAttrName[] =
     "_xla_control_dependencies_within_xla_cluster";
+const char kXlaIsLiftedArgAttrName[] = "_xla_is_lifted_arg";
+const char kXlaLiftedArgOutsideCompilationAttrName[] = "_xla_lifted_arg_oc";
+const char kXlaOutsideCompilationInputsAttrName[] = "_xla_oc_inputs";
+const char kXlaIsPlaceholderForArg[] = "_xla_is_placeholder_for_arg";
 
 Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
   // Perform shape inference.
@@ -331,6 +341,43 @@ Status PerformStaticShapeInferenceBeforeEncapsulation(Graph* g) {
   }
 
   return Status::OK();
+}
+
+StatusOr<std::unique_ptr<absl::flat_hash_map<string, std::vector<string>>>>
+OutsideCompilationClusterDependencies(
+    const Graph* g, const string& outside_compilation_attr_name) {
+  auto cluster_deps = absl::make_unique<
+      absl::flat_hash_map<string, absl::flat_hash_set<string>>>();
+
+  for (const Edge* e : g->edges()) {
+    auto src_outside_compilation =
+        GetStringAttr(*e->src(), outside_compilation_attr_name);
+    auto dst_outside_compilation =
+        GetStringAttr(*e->dst(), outside_compilation_attr_name);
+
+    if (src_outside_compilation && dst_outside_compilation &&
+        *src_outside_compilation != *dst_outside_compilation) {
+      auto dst_deps_it = cluster_deps->find(*dst_outside_compilation);
+      if (dst_deps_it == cluster_deps->end()) {
+        cluster_deps->insert(std::make_pair(
+            *dst_outside_compilation,
+            absl::flat_hash_set<string>({*src_outside_compilation})));
+      } else {
+        dst_deps_it->second.insert(*src_outside_compilation);
+      }
+    }
+  }
+
+  auto cluster_deps_ordered =
+      absl::make_unique<absl::flat_hash_map<string, std::vector<string>>>();
+
+  for (auto it = cluster_deps->begin(); it != cluster_deps->end(); it++) {
+    std::vector<string> ordered_deps(it->second.begin(), it->second.end());
+    std::sort(ordered_deps.begin(), ordered_deps.end());
+    cluster_deps_ordered->insert(std::make_pair(it->first, ordered_deps));
+  }
+
+  return std::move(cluster_deps_ordered);
 }
 
 Status PreprocessEdgesBetweenOutsideCompilations(

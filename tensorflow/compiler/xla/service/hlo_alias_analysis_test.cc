@@ -48,7 +48,7 @@ class HloAliasAnalysisTest : public HloTestBase {
   // reference to the generated analysis stored in analysis_.
   HloAliasAnalysis& RunAnalysis() {
     analysis_ = HloAliasAnalysis::Run(module_.get(),
-                                      /*fusion_can_share_buffer=*/nullptr)
+                                      /*can_share_buffer=*/nullptr)
                     .ConsumeValueOrDie();
     return *analysis_;
   }
@@ -1008,8 +1008,8 @@ TEST_F(HloAliasAnalysisTest, Bitcast) {
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kBitcast, constant));
+  auto bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(scalar_shape_, constant));
 
   module_->AddEntryComputation(builder.Build());
   SCOPED_TRACE(module_->ToString());
@@ -1022,14 +1022,62 @@ TEST_F(HloAliasAnalysisTest, Bitcast) {
             analysis.GetUniqueBufferAt(bitcast));
 }
 
+TEST_F(HloAliasAnalysisTest, MergeBuffers) {
+  // Bitcasting a value should not produce a new buffer.
+  Shape elem_shape = ShapeUtil::MakeShape(F32, {8});
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, elem_shape, "param"));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(elem_shape, HloOpcode::kNegate, param0));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(elem_shape, HloOpcode::kNegate, negate));
+
+  module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  EXPECT_EQ(analysis.buffers().size(), 3);
+  analysis.MergeBuffers(analysis.buffers()[0], analysis.buffers()[1]);
+  EXPECT_EQ(analysis.buffers().size(), 2);
+  analysis.MergeBuffers(analysis.buffers()[0], analysis.buffers()[1]);
+  EXPECT_EQ(analysis.buffers().size(), 1);
+  analysis.BufferLivesOut(analysis.buffers()[0]);
+}
+
+TEST_F(HloAliasAnalysisTest, MergeBuffersReverse) {
+  // Bitcasting a value should not produce a new buffer.
+  Shape elem_shape = ShapeUtil::MakeShape(F32, {8});
+  auto builder = HloComputation::Builder(TestName());
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, elem_shape, "param"));
+  auto negate = builder.AddInstruction(
+      HloInstruction::CreateUnary(elem_shape, HloOpcode::kNegate, param0));
+  builder.AddInstruction(
+      HloInstruction::CreateUnary(elem_shape, HloOpcode::kNegate, negate));
+
+  module_->AddEntryComputation(builder.Build());
+  SCOPED_TRACE(module_->ToString());
+
+  HloAliasAnalysis& analysis = RunAnalysis();
+
+  EXPECT_EQ(analysis.buffers().size(), 3);
+  analysis.MergeBuffers(analysis.buffers()[2], analysis.buffers()[1]);
+  EXPECT_EQ(analysis.buffers().size(), 2);
+  analysis.MergeBuffers(analysis.buffers()[1], analysis.buffers()[0]);
+  EXPECT_EQ(analysis.buffers().size(), 1);
+  analysis.BufferLivesOut(analysis.buffers()[0]);
+}
+
 TEST_F(HloAliasAnalysisTest, BitcastInterference) {
   // A bitcast value simultaneously live with its operand should not cause
   // interference.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
-      scalar_shape_, HloOpcode::kBitcast, constant));
+  auto bitcast = builder.AddInstruction(
+      HloInstruction::CreateBitcast(scalar_shape_, constant));
   builder.AddInstruction(HloInstruction::CreateTuple({constant, bitcast}));
 
   module_->AddEntryComputation(builder.Build());

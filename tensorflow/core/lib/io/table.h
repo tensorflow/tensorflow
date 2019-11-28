@@ -17,16 +17,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_LIB_IO_TABLE_H_
 
 #include <stdint.h>
+
 #include "tensorflow/core/lib/io/iterator.h"
 
 namespace tensorflow {
+
 class RandomAccessFile;
 
 namespace table {
 
-class Block;
-class BlockHandle;
-class Footer;
 struct Options;
 
 // A Table is a sorted map from strings to strings.  Tables are

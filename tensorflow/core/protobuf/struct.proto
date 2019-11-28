@@ -1,9 +1,9 @@
 syntax = "proto3";
 
+package tensorflow;
+
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
-
-package tensorflow;
 
 // `StructuredValue` represents a dynamically typed value representing various
 // data structures that are inspired by Python data structures typically used in
@@ -56,6 +56,8 @@ message StructuredValue {
     tensorflow.DataType tensor_dtype_value = 32;
     // Represents a value for tf.TensorSpec.
     TensorSpecProto tensor_spec_value = 33;
+    // Represents a value for tf.TypeSpec.
+    TypeSpecProto type_spec_value = 34;
 
     // Represents a list of `Value`.
     ListValue list_value = 51;
@@ -104,4 +106,30 @@ message TensorSpecProto {
   string name = 1;
   tensorflow.TensorShapeProto shape = 2;
   tensorflow.DataType dtype = 3;
-};
+}
+
+// Represents a tf.TypeSpec
+message TypeSpecProto {
+  enum TypeSpecClass {
+    UNKNOWN = 0;
+    SPARSE_TENSOR_SPEC = 1;   // tf.SparseTensorSpec
+    INDEXED_SLICES_SPEC = 2;  // tf.IndexedSlicesSpec
+    RAGGED_TENSOR_SPEC = 3;   // tf.RaggedTensorSpec
+    TENSOR_ARRAY_SPEC = 4;    // tf.TensorArraySpec
+    DATA_DATASET_SPEC = 5;    // tf.data.DatasetSpec
+    DATA_ITERATOR_SPEC = 6;   // IteratorSpec from data/ops/iterator_ops.py
+    OPTIONAL_SPEC = 7;        // tf.OptionalSpec
+    PER_REPLICA_SPEC = 8;     // PerReplicaSpec from distribute/values.py
+    VARIABLE_SPEC = 9;        // tf.VariableSpec
+  }
+  TypeSpecClass type_spec_class = 1;
+
+  // The value returned by TypeSpec._serialize().
+  StructuredValue type_state = 2;
+
+  // This is currently redundant with the type_spec_class enum, and is only
+  // used for error reporting.  In particular, if you use an older binary to
+  // load a newer model, and the model uses a TypeSpecClass that the older
+  // binary doesn't support, then this lets us display a useful error message.
+  string type_spec_class_name = 3;
+}

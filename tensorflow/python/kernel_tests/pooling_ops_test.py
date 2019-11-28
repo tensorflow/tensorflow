@@ -206,10 +206,12 @@ class PoolingTest(test.TestCase):
 
     self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                         data_format, dtypes.float32, expected, use_gpu, v2)
-    self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
-                        data_format, dtypes.float64, expected, use_gpu, v2)
+    if not test.is_built_with_rocm():
+      # double datatype is not supported for pooling ops on the ROCm platform
+      self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
+                          data_format, dtypes.float64, expected, use_gpu, v2)
 
-    if not use_gpu or test_util.CudaSupportsHalfMatMulAndConv():
+    if not use_gpu or test_util.GpuSupportsHalfMatMulAndConv():
       self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                           data_format, dtypes.float16, expected, use_gpu, v2)
 
@@ -764,7 +766,10 @@ class PoolingTest(test.TestCase):
   # The following are tests that verify that the CPU and GPU implementations
   # produce the same results.
   def _CompareMaxPoolingFwd(self, input_shape, ksize, strides, padding):
-    for dtype in np.float64, np.float32, np.float16:
+    # double datatype is currently not supported for pooling ops
+    # on the ROCm platform
+    for dtype in [np.float32, np.float16] \
+        + [np.float64] if not test.is_built_with_rocm() else []:
       tensor_input = np.random.rand(*input_shape).astype(dtype)
       with self.cached_session(use_gpu=True):
         t = constant_op.constant(tensor_input, shape=input_shape)
@@ -778,7 +783,10 @@ class PoolingTest(test.TestCase):
 
   def _CompareMaxPoolingBk(self, input_shape, output_shape, ksize, strides,
                            padding):
-    for dtype in np.float64, np.float32, np.float16:
+    # double datatype is currently not supported for pooling ops
+    # on the ROCm platform
+    for dtype in [np.float32, np.float16] \
+        + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
@@ -808,7 +816,10 @@ class PoolingTest(test.TestCase):
 
   def _CompareMaxPoolingGradBk(self, input_shape, output_shape, ksize, strides,
                                padding):
-    for dtype in np.float64, np.float32, np.float16:
+    # double datatype is currently not supported for pooling ops
+    # on the ROCm platform
+    for dtype in [np.float32, np.float16] \
+        + [np.float64] if not test.is_built_with_rocm() else []:
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
@@ -1014,7 +1025,7 @@ class PoolingTest(test.TestCase):
           output_sizes,
           x_init_value=x_init_value,
           delta=1e-2)
-    tf_logging.info("%s gradient error = " % func_name, err)
+    tf_logging.info("%s gradient error = %.4f" % (func_name, err))
     self.assertLess(err, err_tolerance)
 
   def _ConstructAndTestSecondGradient(self,
@@ -1091,7 +1102,7 @@ class PoolingTest(test.TestCase):
           input_sizes,
           x_init_value=x_init_value,
           delta=1e-2)
-    tf_logging.info("%s second-order gradient error = " % func_name, err)
+    tf_logging.info("%s second-order gradient error = %.4f" % (func_name, err))
     self.assertLess(err, err_tolerance)
 
   def _testMaxPoolGradValidPadding1_1(self, data_format, use_gpu):
@@ -1412,7 +1423,7 @@ class PoolingTest(test.TestCase):
             use_gpu=use_gpu,
             v2=v2)
 
-  @test_util.disable_xla("b/123923733")  # NaNs handled differently
+  @test_util.no_xla_auto_jit("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_1(self):
     input_data = [float("nan")] * 16
     output_backprop = [11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 19.0, 20.0, 21.0]
@@ -1437,6 +1448,13 @@ class PoolingTest(test.TestCase):
           v2=v2)
 
     if not test.is_gpu_available():
+      return
+
+    # The functionality associated with TF_ENABLE_NANPROP is currently
+    # not supported on the ROCm platform, so skip this part of the test
+    # NANs in input lead to non-deterministic results, and hence skipping
+    # the remaining tests altogeher on the ROCm platform
+    if test.is_built_with_rocm():
       return
 
     # Test the GPU implementation that uses cudnn for now.
@@ -1487,7 +1505,7 @@ class PoolingTest(test.TestCase):
     else:
       del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
-  @test_util.disable_xla("b/123923733")  # NaNs handled differently
+  @test_util.no_xla_auto_jit("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_2(self):
     input_data = [float("nan")] * 16
     output_backprop = [
@@ -1517,6 +1535,13 @@ class PoolingTest(test.TestCase):
           v2=v2)
 
     if not test.is_gpu_available():
+      return
+
+    # The functionality associated with TF_ENABLE_NANPROP is currently
+    # not supported on the ROCm platform, so skip this part of the test
+    # NANs in input lead to non-deterministic results, and hence skipping
+    # the remaining tests altogeher on the ROCm platform
+    if test.is_built_with_rocm():
       return
 
     # Test the GPU implementation that uses cudnn for now.

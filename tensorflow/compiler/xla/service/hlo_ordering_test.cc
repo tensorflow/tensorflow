@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_schedule.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -247,6 +246,11 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(constant),
       dataflow->GetValueDefinedAt(xla_while), *dataflow));
+  // Value defined as init of while interferes with instructions in the
+  // condition other than the parameter.
+  EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(constant),
+      dataflow->GetValueDefinedAt(convert), *dataflow));
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
                                     dataflow->GetValueDefinedAt(xla_while),
                                     *dataflow));
@@ -261,8 +265,10 @@ TEST_F(HloOrderingTest, ValuesInWhileComputations) {
   EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(negate),
                                      dataflow->GetValueDefinedAt(xla_while),
                                      *dataflow));
-
-  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(convert),
+  EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
+                                    dataflow->GetValueDefinedAt(xla_while),
+                                    *dataflow));
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(constant),
                                        dataflow->GetValueDefinedAt(xla_while)));
   EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
       dataflow->GetValueDefinedAt(convert),
@@ -331,7 +337,7 @@ ENTRY while.v11 {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   DependencyHloOrdering ordering(module.get());
   ordering.ToString();  // Shouldn't crash.
 }
@@ -368,7 +374,7 @@ ENTRY root {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          ParseHloString(module_str));
+                          ParseAndReturnVerifiedModule(module_str));
   TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
                           HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
   DependencyHloOrdering ordering(module.get());
@@ -493,6 +499,37 @@ TEST_F(HloOrderingTest,
 
   EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(root),
                                     dataflow->GetValueDefinedAt(dead),
+                                    *dataflow));
+}
+
+TEST_F(HloOrderingTest, InterferenceWithOuterRoot) {
+  absl::string_view hlo_string = R"(
+HloModule InterferenceWithOuterRoot, is_scheduled=true
+
+Emmbedded (embedded_param: f32[4096,4096]) -> f32[4096,4096] {
+  embedded_param = f32[4096,4096]{1,0} parameter(0)
+  multiply = f32[4096,4096]{1,0} multiply(embedded_param, embedded_param)
+  ROOT log = f32[4096,4096]{1,0} log(multiply)
+}
+
+ENTRY InterferenceWithOuterRoot {
+  param = f32[4096,4096]{1,0} parameter(0)
+  ROOT add = f32[4096,4096]{1,0} add(param, param)
+  call = f32[4096,4096]{1,0} call(param), to_apply=Emmbedded
+}
+
+)";
+  HloModuleConfig hlo_config;
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string, hlo_config));
+  TF_ASSERT_OK_AND_ASSIGN(auto dataflow,
+                          HloDataflowAnalysis::Run(*module, /*ssa_form=*/true));
+  DependencyHloOrdering ordering(module.get());
+  auto multiply = FindInstruction(module.get(), "multiply");
+  auto add = FindInstruction(module.get(), "add");
+
+  EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(multiply),
+                                    dataflow->GetValueDefinedAt(add),
                                     *dataflow));
 }
 

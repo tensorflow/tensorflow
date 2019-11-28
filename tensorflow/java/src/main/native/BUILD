@@ -4,17 +4,12 @@
 
 package(default_visibility = [
     "//tensorflow/java:__pkg__",
-    # TODO(ashankar): Temporary hack for the Java API and
-    # //third_party/tensorflow/contrib/android:android_tensorflow_inference_jni
-    # to co-exist in a single shared library. However, the hope is that
-    # //third_party/tensorflow/contrib/android:android_tensorflow_jni can be
-    # removed once the Java API provides feature parity with it.
-    "//tensorflow/contrib/android:__pkg__",
+    "//tensorflow/tools/android/inference_interface:__pkg__",
 ])
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library", "tf_copts")
+load("//tensorflow:tensorflow.bzl", "tf_copts", "tf_cuda_library")
 
 tf_cuda_library(
     name = "native",
@@ -39,6 +34,7 @@ tf_cuda_library(
         ],
         "//conditions:default": [
             "//tensorflow/c:c_api",
+            "//tensorflow/c/eager:c_api",
             "//tensorflow/core:all_kernels",
             "//tensorflow/core:direct_session",
             "//tensorflow/core:ops",

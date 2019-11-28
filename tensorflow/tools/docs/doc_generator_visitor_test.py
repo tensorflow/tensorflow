@@ -1,3 +1,4 @@
+# Lint as: python2, python3
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,6 +21,8 @@ from __future__ import print_function
 
 import types
 
+import six
+
 from tensorflow.python.platform import googletest
 from tensorflow.tools.docs import doc_generator_visitor
 from tensorflow.tools.docs import generate_lib
@@ -29,9 +32,9 @@ class NoDunderVisitor(doc_generator_visitor.DocGeneratorVisitor):
 
   def __call__(self, parent_name, parent, children):
     """Drop all the dunder methods to make testing easier."""
-    children = [
-        (name, obj) for (name, obj) in children if not name.startswith('_')
-    ]
+    children = [(name, obj)
+                for (name, obj) in children
+                if not six.ensure_str(name).startswith('_')]
     super(NoDunderVisitor, self).__call__(parent_name, parent, children)
 
 

@@ -32,6 +32,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/types/span.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
@@ -163,7 +164,6 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
     case WireFormatLite::TYPE_UINT64:
       return InitDefaultValue(dtype, field_desc->default_value_uint64(),
                               result);
-    case WireFormatLite::TYPE_ENUM:
     case WireFormatLite::TYPE_INT32:
     case WireFormatLite::TYPE_SINT32:
     case WireFormatLite::TYPE_SFIXED32:
@@ -174,6 +174,9 @@ Status InitDefaultValueFromFieldDescriptor(DataType dtype,
                               result);
     case WireFormatLite::TYPE_BOOL:
       return InitDefaultValue(dtype, field_desc->default_value_bool(), result);
+    case WireFormatLite::TYPE_ENUM:
+      return InitDefaultValue(dtype, field_desc->default_value_enum()->number(),
+                              result);
     case WireFormatLite::TYPE_BYTES:
     case WireFormatLite::TYPE_STRING:
       // Manipulating default string values as C-style pointers should be OK
@@ -552,7 +555,7 @@ class DenseCollector {
       case DataType::DT_INT64:
         return FillDefault<int64>(default_value_.value.v_int64);
       case DataType::DT_STRING:
-        return FillDefault<string>(default_value_.value.v_string);
+        return FillDefault<tstring>(default_value_.value.v_string);
       case DataType::DT_UINT8:
         return FillDefault<uint8>(default_value_.value.v_uint8);
       case DataType::DT_UINT32:
@@ -738,24 +741,24 @@ class DecodeProtoOp : public OpKernel {
 
     // This is used to allocate binary bufs if used. It serves only to define
     // memory ownership.
-    std::vector<string> tmp_binary_bufs(message_count);
+    std::vector<tstring> tmp_binary_bufs(message_count);
 
     // These are the actual buffers to use, which may be in tmp_binary_bufs
     // or may be pointers into the buf_tensor. Either way they are not owned
     // here.
-    std::vector<const string*> bufs;
+    std::vector<const tstring*> bufs;
 
     if (is_binary_ && !sanitize_) {
       // Fast path.
       for (int mi = 0; mi < message_count; ++mi) {
-        const string* buf = &buf_tensor.flat<string>()(mi);
+        const tstring* buf = &buf_tensor.flat<tstring>()(mi);
         bufs.push_back(buf);
       }
     } else {
       // We will have to allocate a copy, either to convert from text to binary
       // or to sanitize a binary proto.
       for (int mi = 0; mi < message_count; ++mi) {
-        ReserializeMessage(ctx, buf_tensor.flat<string>()(mi),
+        ReserializeMessage(ctx, buf_tensor.flat<tstring>()(mi),
                            &tmp_binary_bufs[mi]);
         if (!ctx->status().ok()) {
           return;
@@ -807,8 +810,8 @@ class DecodeProtoOp : public OpKernel {
 
  private:
   // Copy a serialized message to binary, e.g. to handle text proto inputs.
-  void ReserializeMessage(OpKernelContext* ctx, const string& buf,
-                          string* binary_buf) {
+  void ReserializeMessage(OpKernelContext* ctx, const tstring& buf,
+                          tstring* binary_buf) {
     // Handle text protos by translating them to binary.
     std::unique_ptr<Message> message(message_prototype_->New());
     OP_REQUIRES(ctx, message, errors::DataLoss("Initializing message failed"));
@@ -823,12 +826,12 @@ class DecodeProtoOp : public OpKernel {
                   errors::DataLoss("Unable to parse text protobuf"));
     }
 
-    OP_REQUIRES(ctx, message->SerializeToString(binary_buf),
+    OP_REQUIRES(ctx, SerializeToTString(*message, binary_buf),
                 errors::DataLoss("Unable to reserialize text proto as binary"));
   }
 
   // Count the number of occurrences of each requested field in a message batch.
-  void CountFields(OpKernelContext* ctx, int message_index, const string& buf,
+  void CountFields(OpKernelContext* ctx, int message_index, const tstring& buf,
                    Tensor* sizes_tensor, std::vector<int32>* max_sizes) {
     int field_count = fields_.size();
 
@@ -842,7 +845,7 @@ class DecodeProtoOp : public OpKernel {
       counters.emplace_back(&field_sizes[i]);
     }
 
-    Status st = Collect(&input, &counters);
+    Status st = Collect(&input, absl::MakeSpan(counters));
     if (st.ok() && !input.ConsumedEntireMessage()) {
       st = errors::DataLoss("CountFields: Failed to consume entire buffer");
     }
@@ -875,7 +878,7 @@ class DecodeProtoOp : public OpKernel {
 
   // Parse fields from a serialized message into preallocated tensors.
   void AccumulateFields(OpKernelContext* ctx,
-                        const std::vector<const string*>& bufs,
+                        const std::vector<const tstring*>& bufs,
                         std::vector<Tensor*> outputs) {
     struct TensorInfo {
       explicit TensorInfo(Tensor* tensor) {
@@ -895,8 +898,8 @@ class DecodeProtoOp : public OpKernel {
           data = tensor->bit_casted_shaped<uint8, 1>(flatshape).data();
         } else {
           // DataTypeSize() returns 0 for string types.
-          stride = last_dim_size * sizeof(string);
-          data = reinterpret_cast<uint8*>(tensor->flat<string>().data());
+          stride = last_dim_size * sizeof(tstring);
+          data = reinterpret_cast<uint8*>(tensor->flat<tstring>().data());
         }
       }
 
@@ -915,7 +918,7 @@ class DecodeProtoOp : public OpKernel {
     }
 
     for (int message_index = 0; message_index < bufs.size(); ++message_index) {
-      const string& buf = *bufs[message_index];
+      const tstring& buf = *bufs[message_index];
 
       std::vector<DenseCollector> collectors;
       collectors.reserve(field_count);
@@ -931,7 +934,7 @@ class DecodeProtoOp : public OpKernel {
       // Fill in output tensors from the wire.
       CodedInputStream input(reinterpret_cast<const uint8*>(buf.c_str()),
                              buf.size());
-      Status st = Collect(&input, &collectors);
+      Status st = Collect(&input, absl::MakeSpan(collectors));
       if (st.ok() && !input.ConsumedEntireMessage()) {
         st = errors::DataLoss(
             "AccumulateFields: Failed to consume entire buffer");
@@ -953,89 +956,73 @@ class DecodeProtoOp : public OpKernel {
     }
   }
 
-  // Look up the FieldDescriptor for a particular field number.
-  bool LookupField(int field_number, int* field_index) {
-    // Look up the FieldDescriptor using linear search.
-    //
-    // TODO(nix): this could be sped up with binary search, but we are
-    // already way off the fastpath at this point. If you see a hotspot
-    // here, somebody is sending you very inefficient protos.
-    for (int fi = fields_.size() - 1; fi >= 0; fi--) {
-      if (field_number == fields_[fi]->number) {
-        *field_index = fi;
-        return true;
-      }
-    }
-    return false;
-  }
-
   // Traverses a serialized protobuf, dispatching values to the collectors.
   template <class CollectorClass>
   Status Collect(CodedInputStream* input,
-                 std::vector<CollectorClass>* collectors) {
-    int last_good_field_index = -1;
-    bool fields_disordered = false;
-    int prev_field_number = -1;
-    int field_number = -1;
-    int last_good_field_number = -1;
-    int next_good_field_number = fields_[0]->number;
+                 absl::Span<CollectorClass> collectors) {
+    // At the beginning of each loop, the last field number that was seen,
+    // regardless of whether it was collected or not, or -1 if no field has
+    // been seen before.
+    int last_seen_field_number = -1;
+    // The FieldInfo that is expected to be used next.
+    // It was either used to collect the last seen field number, or if the
+    // last seen field number was not in fields_, it is the next FieldInfo after
+    // the last seen field number. At the beginning it is the first FieldInfo.
+    auto expected_field_info_iter = fields_.begin();
 
     // The 'tag' variable should always be treated as tainted.
     for (uint32 tag = input->ReadTag();
          tag != 0 && WireFormatLite::GetTagWireType(tag) !=
                          WireFormatLite::WIRETYPE_END_GROUP;
-         tag = input->ReadTag(), prev_field_number = field_number) {
-      field_number = WireFormatLite::GetTagFieldNumber(tag);
-      const FieldInfo* field = nullptr;
+         tag = input->ReadTag()) {
+      DCHECK(expected_field_info_iter == fields_.begin() ||
+             last_seen_field_number >
+                 (*(expected_field_info_iter - 1))->number);
+      DCHECK(expected_field_info_iter == fields_.end() ||
+             last_seen_field_number <= (*expected_field_info_iter)->number);
 
-      // This takes advantage of the sorted field numbers in most serialized
-      // protos: it tries the next expected field first rather than doing
-      // a lookup by field number.
-      //
-      // TODO(nix): haberman@ suggests a hybrid approach with a lookup table
-      // for small field numbers and a hash table for larger ones. This would
-      // be a simpler approach that should offer comparable speed in most
-      // cases.
-      if (field_number == last_good_field_number) {
-        field = fields_[last_good_field_index].get();
-      } else {
-        if (field_number < prev_field_number) {
-          fields_disordered = true;
-        }
+      // The field wire number.
+      const int field_number = WireFormatLite::GetTagFieldNumber(tag);
+      // The field info associated with the field wire number.
+      const FieldInfo* field_info = nullptr;
 
-        // If fields are out of order, fall back to slow lookup.
-        if (fields_disordered) {
-          int field_index;
-          if (LookupField(field_number, &field_index)) {
-            field = fields_[field_index].get();
-            last_good_field_index = field_index;
-          }
-        } else {
-          // If we see a field that is past the next field we want, it was
-          // empty. Look for the one after that. Repeat until we run out of
-          // fields that we care about.
-          while (field_number >= next_good_field_number) {
-            if (field_number == next_good_field_number) {
-              last_good_field_number = field_number;
-              field = fields_[last_good_field_index + 1].get();
-            }
-
-            // Start looking for the field after the current one.
-            ++last_good_field_index;
-            if (last_good_field_index < fields_.size() - 1) {
-              next_good_field_number =
-                  fields_[last_good_field_index + 1]->number;
-            } else {
-              // Saw something past the last field we care about. Continue
-              // parsing the message just in case there are disordered fields
-              // later, but any remaining ordered fields will have no effect.
-              next_good_field_number = INT_MAX;
-            }
-          }
-        }
+      // fields_ are ordered by their field numbers. If the field numbers
+      // on wire are also ordered (which is a convention), then we can
+      // monotonically increment `expected_field_info_iter` as the field
+      // numbers on wire get larger. If we detect any out-of-order
+      // field number, we reset `expected_field_info_iter`, and expect that
+      // future wire numbers are ordered. This algorithm is quadratic in the
+      // worst case where field numbers on wire are in descending order, however
+      // it works well in the case where two serialized protobufs are
+      // concatenated together.
+      if (field_number < last_seen_field_number) {
+        expected_field_info_iter = fields_.begin();
       }
 
-      if (!field) {
+      // Advance expected_field_info_iter until
+      // field_number <= expected_field_number.
+      for (; expected_field_info_iter != fields_.end();
+           ++expected_field_info_iter) {
+        DCHECK(expected_field_info_iter == fields_.begin() ||
+               field_number > (*(expected_field_info_iter - 1))->number);
+        const FieldInfo* expected_field_info = expected_field_info_iter->get();
+        if (field_number <= expected_field_info->number) {
+          if (field_number == expected_field_info->number) {
+            field_info = expected_field_info;
+          }
+          break;
+        }
+      }
+      last_seen_field_number = field_number;
+      if (!field_info) {
+        // This DCHECK verifies that if we skip a field, we didn't want it.
+        // In particular, field_builders is empty or the field_number is either:
+        // before fields_.begin().number or  after (fields_.end() - 1).number or
+        // in-between expected_field_info_iter and expected_field_info_iter - 1.
+        DCHECK(fields_.empty() || (field_number < (*fields_.begin())->number) ||
+               (field_number > (*(fields_.end() - 1))->number) ||
+               (((*(expected_field_info_iter - 1))->number < field_number) &&
+                (field_number < (*(expected_field_info_iter))->number)));
         // Unknown and unrequested fields are skipped.
         if (!WireFormatLite::SkipField(input, tag)) {
           return errors::DataLoss("Failed skipping unrequested field");
@@ -1043,11 +1030,9 @@ class DecodeProtoOp : public OpKernel {
         continue;
       }
 
-      Status st = CollectField(*field, WireFormatLite::GetTagWireType(tag),
-                               input, &(*collectors)[last_good_field_index]);
-      if (!st.ok()) {
-        return st;
-      }
+      TF_RETURN_IF_ERROR(CollectField(
+          *field_info, WireFormatLite::GetTagWireType(tag), input,
+          &collectors[expected_field_info_iter - fields_.begin()]));
     }
     return Status::OK();
   }

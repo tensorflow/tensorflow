@@ -33,6 +33,7 @@ limitations under the License.
 namespace tensorflow {
 
 class Allocator;
+class GPUBFCAllocator;
 class PoolAllocator;
 class SharedCounter;
 
@@ -82,6 +83,11 @@ class GPUProcessState {
   // current system environment.  Otherwise returns nullptr.
   virtual Allocator* GetGPUAllocator(const GPUOptions& options,
                                      TfGpuId tf_gpu_id, size_t total_bytes);
+
+  int NumGPUAllocators() {
+    mutex_lock l(mu_);
+    return gpu_allocators_.size();
+  }
 
   virtual Allocator* GetGpuHostAllocator(int numa_node);
 
@@ -137,6 +143,7 @@ class GPUProcessState {
   struct AllocatorParts {
     std::unique_ptr<Allocator> allocator;
     std::unique_ptr<SharedCounter> counter;
+    GPUBFCAllocator* bfc_allocator;
     SubAllocator* sub_allocator;  // owned by allocator
     std::unique_ptr<Allocator> recording_allocator;
   };

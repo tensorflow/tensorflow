@@ -16,7 +16,7 @@ limitations under the License.
 /* This file is a modification of the Tensorflow Micro Lite file preprocessor.cc
  */
 
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/CMSIS/sin_1k.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/testing/micro_test.h"

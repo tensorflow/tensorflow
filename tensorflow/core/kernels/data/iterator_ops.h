@@ -18,15 +18,92 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/unbounded_thread_pool.h"
 #include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
 namespace data {
 
-class IteratorResource;
+class IteratorResource : public ResourceBase {
+ public:
+  IteratorResource(Env* env, const DataTypeVector& output_dtypes,
+                   const std::vector<PartialTensorShape>& output_shapes,
+                   const int /*unused: graph_def_version*/,
+                   std::unique_ptr<DeviceMgr> device_mgr,
+                   std::unique_ptr<FunctionLibraryDefinition> flib_def,
+                   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                   FunctionLibraryRuntime* flr)
+      : unbounded_thread_pool_(env, "tf_data_iterator_resource"),
+        device_mgr_(std::move(device_mgr)),
+        iterator_state_(std::make_shared<State>(std::move(flib_def),
+                                                std::move(pflr), flr,
+                                                /*iterator=*/nullptr)),
+        output_dtypes_(output_dtypes),
+        output_shapes_(output_shapes) {
+    VLOG(2) << "constructor";
+  }
+
+  ~IteratorResource() override { VLOG(2) << "destructor"; }
+
+  Status GetNext(OpKernelContext* ctx, std::vector<Tensor>* out_tensors,
+                 bool* end_of_sequence);
+
+  Status Save(SerializationContext* ctx, IteratorStateWriter* writer);
+
+  Status Restore(OpKernelContext* ctx, IteratorStateReader* reader);
+
+  Status SetIteratorFromDataset(OpKernelContext* ctx, DatasetBase* dataset);
+
+  string DebugString() const override { return "Iterator resource"; }
+
+  const DataTypeVector& output_dtypes() const { return output_dtypes_; }
+
+  const std::vector<PartialTensorShape>& output_shapes() const {
+    return output_shapes_;
+  }
+
+ private:
+  // TODO(aaudibert): convert to a class for better encapsulation.
+  struct State {
+    State(std::shared_ptr<FunctionLibraryDefinition> flib_def,
+          std::shared_ptr<ProcessFunctionLibraryRuntime> pflr,
+          FunctionLibraryRuntime* flr,
+          std::unique_ptr<DatasetBaseIterator> iterator)
+        : flib_def(flib_def),
+          flr(flr),
+          pflr(pflr),
+          function_handle_cache(absl::make_unique<FunctionHandleCache>(flr)),
+          iterator(std::move(iterator)) {}
+
+    ~State() { cancellation_manager.StartCancel(); }
+
+    // Downcasts the given `IteratorBase` to a `DatasetBaseIterator`, and uses
+    // it to set the `iterator` field.
+    void DowncastAndSetIterator(std::unique_ptr<IteratorBase> it) {
+      iterator.reset(static_cast<DatasetBaseIterator*>(it.release()));
+    }
+
+    std::shared_ptr<FunctionLibraryDefinition> flib_def;
+    FunctionLibraryRuntime* flr = nullptr;  // not owned.
+    std::shared_ptr<ProcessFunctionLibraryRuntime> pflr;
+    std::unique_ptr<FunctionHandleCache> function_handle_cache;
+    ResourceMgr resource_mgr;
+    CancellationManager cancellation_manager;
+    std::unique_ptr<DatasetBaseIterator> iterator;
+  };
+
+  UnboundedThreadPool unbounded_thread_pool_;
+  mutex mu_;
+  const std::unique_ptr<DeviceMgr> device_mgr_ GUARDED_BY(mu_);
+  std::shared_ptr<State> iterator_state_ GUARDED_BY(mu_);
+  const DataTypeVector output_dtypes_;
+  const std::vector<PartialTensorShape> output_shapes_;
+};
 
 class IteratorHandleOp : public OpKernel {
  public:
@@ -79,30 +156,34 @@ class IteratorHandleOp : public OpKernel {
 // not hold a reference to these handles. The latter is important for eager
 // execution, since OpKernel instances generally live as long as the program
 // running them.
-class AnonymousIteratorHandleOp : public OpKernel {
+class AnonymousIteratorHandleOp : public AnonymousResourceOp<IteratorResource> {
  public:
   explicit AnonymousIteratorHandleOp(OpKernelConstruction* context);
 
-  void Compute(OpKernelContext* context) override;
-
  private:
-  // Coordinates Iterator unique name creation across AnonymousIteratorHandleOp
-  // instances.
-  static mutex static_resource_lookup_mutex_;
-  // current_id_ is just a hint for creating unique names. If it turns out
-  // there's a collision (e.g. because another AnonymousIteratorHandleOp
-  // instance is generating handles) we'll just skip that id.
-  static int64 current_id_ GUARDED_BY(static_resource_lookup_mutex_);
+  string name() override;
+
+  Status CreateResource(OpKernelContext* ctx,
+                        std::unique_ptr<FunctionLibraryDefinition> flib_def,
+                        std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
+                        FunctionLibraryRuntime* lib,
+                        IteratorResource** resource) override;
+
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
 };
 
-class MakeIteratorOp : public OpKernel {
+class MakeIteratorOp : public AsyncOpKernel {
  public:
-  explicit MakeIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit MakeIteratorOp(OpKernelConstruction* ctx)
+      : AsyncOpKernel(ctx),
+        background_worker_(ctx->env(), "tf_data_make_iterator") {}
 
-  void Compute(OpKernelContext* ctx) override;
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+
+ private:
+  BackgroundWorker background_worker_;
 };
 
 class IteratorGetNextOp : public AsyncOpKernel {
@@ -115,6 +196,13 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
  private:
   BackgroundWorker background_worker_;
+};
+
+class DeleteIteratorOp : public OpKernel {
+ public:
+  explicit DeleteIteratorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override;
 };
 
 class IteratorGetNextAsOptionalOp : public AsyncOpKernel {

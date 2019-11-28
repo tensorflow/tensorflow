@@ -23,6 +23,8 @@ import traceback
 
 import six  # pylint: disable=unused-import
 
+
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import tf_decorator
@@ -34,15 +36,29 @@ class _TFShouldUseHelper(object):
 
   When it is deleted it will emit a warning or error if its `sate` method
   has not been called by time of deletion, and Tensorflow is not executing
-  eagerly outside of functions.
+  eagerly or inside a tf.function (which use autodeps and resolve the
+  main issues this wrapper warns about).
   """
 
-  def __init__(self, type_, repr_, stack_frame, fatal_error_if_unsated):
+  def __init__(self, type_, repr_, stack_frame, error_in_function,
+               warn_in_eager):
     self._type = type_
     self._repr = repr_
     self._stack_frame = stack_frame
-    self._fatal_error_if_unsated = fatal_error_if_unsated
-    self._sated = False
+    self._error_in_function = error_in_function
+    if context.executing_eagerly():
+      # If warn_in_eager, sated == False.  Otherwise true.
+      self._sated = not warn_in_eager
+    elif ops.get_default_graph()._building_function:  # pylint: disable=protected-access
+      if error_in_function:
+        self._sated = False
+        ops.add_exit_callback_to_default_func_graph(
+            lambda: self._check_sated(raise_error=True))
+      else:
+        self._sated = True
+    else:
+      # TF1 graph building mode
+      self._sated = False
 
   def sate(self):
     self._sated = True
@@ -51,60 +67,69 @@ class _TFShouldUseHelper(object):
     self._stack_frame = None
     self._logging_module = None
 
-  def __del__(self):
-    if ops.executing_eagerly_outside_functions():
-      return
+  def _check_sated(self, raise_error):
+    """Check if the object has been sated."""
     if self._sated:
       return
-    if self._fatal_error_if_unsated:
-      logger = tf_logging.fatal
-    else:
-      logger = tf_logging.error
     creation_stack = ''.join(
-        [line.rstrip() for line in traceback.format_stack(self._stack_frame)])
-    logger(
-        '==================================\n'
-        'Object was never used (type %s):\n%s\nIf you want to mark it as '
-        'used call its "mark_used()" method.\nIt was originally created '
-        'here:\n%s\n'
-        '==================================' %
-        (self._type, self._repr, creation_stack))
+        [line.rstrip()
+         for line in traceback.format_stack(self._stack_frame, limit=5)])
+    if raise_error:
+      try:
+        raise RuntimeError(
+            'Object was never used (type {}): {}.  If you want to mark it as '
+            'used call its "mark_used()" method.  It was originally created '
+            'here:\n{}'.format(self._type, self._repr, creation_stack))
+      finally:
+        self.sate()
+    else:
+      tf_logging.error(
+          '==================================\n'
+          'Object was never used (type {}):\n{}\nIf you want to mark it as '
+          'used call its "mark_used()" method.\nIt was originally created '
+          'here:\n{}\n'
+          '=================================='
+          .format(self._type, self._repr, creation_stack))
+
+  def __del__(self):
+    self._check_sated(raise_error=False)
 
 
-def _new__init__(self, true_value, tf_should_use_helper):
+def _new__init__(self, wrapped_value, tf_should_use_helper):
   # pylint: disable=protected-access
   self._tf_should_use_helper = tf_should_use_helper
-  self._true_value = true_value
+  self._tf_should_use_wrapped_value = wrapped_value
 
 
 def _new__setattr__(self, key, value):
-  if key in ('_tf_should_use_helper', '_true_value'):
+  if key in ('_tf_should_use_helper', '_tf_should_use_wrapped_value'):
     return object.__setattr__(self, key, value)
   return setattr(
-      object.__getattribute__(self, '_true_value'),
+      object.__getattribute__(self, '_tf_should_use_wrapped_value'),
       key, value)
 
 
 def _new__getattribute__(self, key):
-  if key not in ('_tf_should_use_helper', '_true_value'):
+  if key not in ('_tf_should_use_helper', '_tf_should_use_wrapped_value'):
     object.__getattribute__(self, '_tf_should_use_helper').sate()
   if key in ('_tf_should_use_helper', 'mark_used', '__setatt__'):
     return object.__getattribute__(self, key)
-  return getattr(object.__getattribute__(self, '_true_value'), key)
+  return getattr(
+      object.__getattribute__(self, '_tf_should_use_wrapped_value'), key)
 
 
 def _new_mark_used(self, *args, **kwargs):
   object.__getattribute__(self, '_tf_should_use_helper').sate()
   try:
     mu = object.__getattribute__(
-        object.__getattribute__(self, '_true_value'),
+        object.__getattribute__(self, '_tf_should_use_wrapped_value'),
         'mark_used')
     return mu(*args, **kwargs)
   except AttributeError:
     pass
 
 
-_WRAPPERS = dict()
+_WRAPPERS = {}
 
 
 def _get_wrapper(x, tf_should_use_helper):
@@ -136,19 +161,29 @@ def _get_wrapper(x, tf_should_use_helper):
   return copy_tx(x, tf_should_use_helper)
 
 
-def _add_should_use_warning(x, fatal_error=False):
+def _add_should_use_warning(x, error_in_function=False, warn_in_eager=False):
   """Wraps object x so that if it is never used, a warning is logged.
 
   Args:
     x: Python object.
-    fatal_error: Python bool.  If `True`, tf.logging.fatal is raised
-      if the returned value is never used.
+    error_in_function: Python bool.  If `True`, a `RuntimeError` is raised
+      if the returned value is never used when created during `tf.function`
+      tracing.
+    warn_in_eager: Python bool. If `True` raise warning if in Eager mode as well
+      as graph mode.
 
   Returns:
     An instance of `TFShouldUseWarningWrapper` which subclasses `type(x)`
     and is a very shallow wrapper for `x` which logs access into `x`.
   """
-  if x is None or x == []:  # pylint: disable=g-explicit-bool-comparison
+  if x is None or (isinstance(x, list) and not x):
+    return x
+
+  if context.executing_eagerly() and not warn_in_eager:
+    return x
+
+  if ops.get_default_graph()._building_function and not error_in_function:  # pylint: disable=protected-access
+    # We don't currently log warnings in tf.function calls, so just skip it.
     return x
 
   # Extract the current frame for later use by traceback printing.
@@ -161,21 +196,25 @@ def _add_should_use_warning(x, fatal_error=False):
       type_=type(x),
       repr_=repr(x),
       stack_frame=stack_frame,
-      fatal_error_if_unsated=fatal_error)
+      error_in_function=error_in_function,
+      warn_in_eager=warn_in_eager)
 
   return _get_wrapper(x, tf_should_use_helper)
 
 
-def should_use_result(fn):
+def should_use_result(fn=None, warn_in_eager=False, error_in_function=False):
   """Function wrapper that ensures the function's output is used.
 
-  If the output is not used, a `tf.logging.error` is logged.
+  If the output is not used, a `logging.error` is logged.  If
+  `error_in_function` is set, then a `RuntimeError` will be raised at the
+  end of function tracing if the output is not used by that point.
 
   An output is marked as used if any of its attributes are read, modified, or
   updated.  Examples when the output is a `Tensor` include:
 
   - Using it in any capacity (e.g. `y = t + 0`, `sess.run(t)`)
   - Accessing a property (e.g. getting `t.name` or `t.op`).
+  - Calling `t.mark_used()`.
 
   Note, certain behaviors cannot be tracked - for these the object may not
   be marked as used.  Examples include:
@@ -185,50 +224,29 @@ def should_use_result(fn):
 
   Args:
     fn: The function to wrap.
+    warn_in_eager: Whether to create warnings in Eager as well.
+    error_in_function: Whether to raise an error when creating a tf.function.
 
   Returns:
     The wrapped function.
   """
-  def wrapped(*args, **kwargs):
-    return _add_should_use_warning(fn(*args, **kwargs))
-  return tf_decorator.make_decorator(
-      fn, wrapped, 'should_use_result',
-      ((fn.__doc__ or '') +
-       ('\n\n  '
-        '**NOTE** The output of this function should be used.  If it is not, '
-        'a warning will be logged.  To mark the output as used, '
-        'call its .mark_used() method.')))
+  def decorated(fn):
+    def wrapped(*args, **kwargs):
+      return _add_should_use_warning(fn(*args, **kwargs),
+                                     warn_in_eager=warn_in_eager,
+                                     error_in_function=error_in_function)
+    return tf_decorator.make_decorator(
+        target=fn,
+        decorator_func=wrapped,
+        decorator_name='should_use_result',
+        decorator_doc=(
+            (fn.__doc__ or '') +
+            ('\n\n  '
+             '**NOTE** The output of this function should be used.  If it is '
+             'not, a warning will be logged or an error may be raised.  '
+             'To mark the output as used, call its .mark_used() method.')))
 
-
-def must_use_result_or_fatal(fn):
-  """Function wrapper that ensures the function's output is used.
-
-  If the output is not used, a `tf.logging.fatal` error is raised.
-
-  An output is marked as used if any of its attributes are read, modified, or
-  updated.  Examples when the output is a `Tensor` include:
-
-  - Using it in any capacity (e.g. `y = t + 0`, `sess.run(t)`)
-  - Accessing a property (e.g. getting `t.name` or `t.op`).
-
-  Note, certain behaviors cannot be tracked - for these the object may not
-  be marked as used.  Examples include:
-
-  - `t != 0`.  In this case, comparison is done on types / ids.
-  - `isinstance(t, tf.Tensor)`.  Similar to above.
-
-  Args:
-    fn: The function to wrap.
-
-  Returns:
-    The wrapped function.
-  """
-  def wrapped(*args, **kwargs):
-    return _add_should_use_warning(fn(*args, **kwargs), fatal_error=True)
-  return tf_decorator.make_decorator(
-      fn, wrapped, 'must_use_result_or_fatal',
-      ((fn.__doc__ or '') +
-       ('\n\n  '
-        '**NOTE** The output of this function must be used.  If it is not, '
-        'a fatal error will be raised.  To mark the output as used, '
-        'call its .mark_used() method.')))
+  if fn is not None:
+    return decorated(fn)
+  else:
+    return decorated

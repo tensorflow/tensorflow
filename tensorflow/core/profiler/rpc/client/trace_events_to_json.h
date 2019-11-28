@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_TRACE_EVENTS_TO_JSON_H_
 
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/core/profiler/trace_events.pb.h"
+#include "tensorflow/core/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
 

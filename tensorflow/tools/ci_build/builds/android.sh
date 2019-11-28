@@ -27,7 +27,10 @@ configure_android_workspace
 
 echo "========== TensorFlow Demo Build Test =========="
 TARGETS=
-TARGETS+=" //tensorflow/examples/android:tensorflow_demo"
+
+# TODO(aselle): Reenable once this stops referencing contrib and back enabled.
+# TARGETS+=" //tensorflow/examples/android:tensorflow_demo"
+
 # Also build the Eager Runtime so it remains compatible with Android for the
 # benefits of clients like TensorFlow Lite. For now it is enough to build only
 # :execute, which what TF Lite needs.
@@ -36,14 +39,9 @@ TARGETS+=" //tensorflow/core/common_runtime/eager:execute"
 # in assets/ dir (see https://github.com/bazelbuild/bazel/issues/2334)
 # TODO(gunan): remove extra flags once sandboxing is enabled for all builds.
 bazel --bazelrc=/dev/null build \
-    --compilation_mode=opt --cxxopt=-std=c++11 --fat_apk_cpu=x86_64 \
+    --compilation_mode=opt --cxxopt=-std=c++1y --fat_apk_cpu=x86_64 \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     --define=grpc_no_ares=true \
     ${TARGETS}
 
-echo "========== Makefile Build Test =========="
-# Test Makefile build just to make sure it still works.
-if [ -z "$NDK_ROOT" ]; then
-   export NDK_ROOT=${ANDROID_NDK_HOME}
-fi
-tensorflow/contrib/makefile/build_all_android.sh
+# TODO(b/122377443): Restore Makefile builds after resolving r18b build issues.

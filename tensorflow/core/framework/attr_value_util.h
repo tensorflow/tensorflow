@@ -87,6 +87,8 @@ void SetAttrValue(gtl::ArraySlice<NameAttrList> value, AttrValue* out);
 
 void SetAttrValue(const AttrValue& value, AttrValue* out);
 
+void MoveAttrValue(std::vector<string>&& value, AttrValue* out);
+
 // Returns true if a and b have the same value.
 bool AreAttrValuesEqual(const AttrValue& a, const AttrValue& b);
 

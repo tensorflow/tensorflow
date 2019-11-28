@@ -28,6 +28,8 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.saving import saveable_object
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import nest
+from tensorflow.python.util import object_identity
 
 
 # Op names which identify variable reads which should be saved.
@@ -50,8 +52,7 @@ def set_cpu0(device_string):
     A device string.
   """
   parsed_device = pydev.DeviceSpec.from_string(device_string)
-  parsed_device.device_type = "CPU"
-  parsed_device.device_index = 0
+  parsed_device = parsed_device.replace(device_type="CPU", device_index=0)
   return parsed_device.to_string()
 
 
@@ -82,7 +83,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
     if isinstance(var, ops.Tensor):
       self.handle_op = var.op.inputs[0]
       tensor = var
-    elif isinstance(var, resource_variable_ops.ResourceVariable):
+    elif resource_variable_ops.is_resource_variable(var):
 
       def _read_variable_closure(v):
         def f():
@@ -101,7 +102,7 @@ class ResourceVariableSaveable(saveable_object.SaveableObject):
           "Saveable is neither a resource variable nor a read operation."
           " Got: %s" % repr(var))
     spec = saveable_object.SaveSpec(tensor, slice_spec, name,
-                                    dtype=var.dtype)
+                                    dtype=var.dtype, device=var.device)
     super(ResourceVariableSaveable, self).__init__(var, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
@@ -147,6 +148,9 @@ def saveable_objects_for_op(op, name):
     slice_name = None
     # pylint: disable=protected-access
     for variable in op:
+      if isinstance(variable, saveable_object.SaveableObject):
+        yield variable
+        continue
       if not isinstance(variable, variables.Variable):
         raise ValueError("Slices must all be Variables: %s" % variable)
       if not variable._save_slice_info:
@@ -180,7 +184,7 @@ def saveable_objects_for_op(op, name):
     # pylint: enable=protected-access
   else:
     # A variable or tensor.
-    if isinstance(op, resource_variable_ops.ResourceVariable):
+    if isinstance(op, resource_variable_ops.BaseResourceVariable):
       # pylint: disable=protected-access
       if op._in_graph_mode:
         variable = op._graph_element
@@ -189,12 +193,11 @@ def saveable_objects_for_op(op, name):
       # pylint: enable=protected-access
       yield ResourceVariableSaveable(variable, "", name)
     else:
-      with ops.init_scope():
-        if context.executing_eagerly():
-          raise ValueError("Can only save/restore ResourceVariables when "
-                           "executing eagerly, got type: %s." % type(op))
+      if context.executing_eagerly():
+        raise ValueError("Can only save/restore ResourceVariables when "
+                         "executing eagerly, got type: %s." % type(op))
 
-      variable = ops.internal_convert_to_tensor(op, as_ref=True)
+      variable = ops.convert_to_tensor(op, as_ref=True)
       if not _tensor_comes_from_variable(variable):
         raise TypeError("names_to_saveables must be a dict mapping string "
                         "names to Tensors/Variables. Not a variable: %s" %
@@ -211,7 +214,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   """Create a dictionary of names to operation lists.
 
   Args:
-    op_list: A list, tuple, or set of Variables or SaveableObjects.
+    op_list: A (nested) list, tuple, or set of Variables or SaveableObjects.
     convert_variable_to_tensor: Whether or not to convert single Variables
       with no slice info into Tensors.
 
@@ -227,6 +230,8 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   if not isinstance(op_list, (list, tuple, set)):
     raise TypeError("Variables to save should be passed in a dict or a "
                     "list: %s" % op_list)
+  # List casting is necessary to support sets.
+  op_list = nest.flatten(list(op_list))
   # When ResourceVariables are converted to Tensors, read ops are added to the
   # graph. Sorting the op_list ensures that the resulting graph is always
   # constructed in a deterministic way:
@@ -234,6 +239,10 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
   names_to_saveables = {}
   # pylint: disable=protected-access
   for var in op_list:
+    resource_or_ref_variable = (
+        isinstance(var, resource_variable_ops.BaseResourceVariable) or
+        isinstance(var, variables.RefVariable))
+
     if isinstance(var, saveable_object.SaveableObject):
       names_to_saveables[var.name] = var
     elif isinstance(var, variables.PartitionedVariable):
@@ -250,8 +259,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
         names_to_saveables[name].append(var)
       else:
         names_to_saveables[name] = [var]
-    elif (isinstance(var, trackable.Trackable)
-          and not isinstance(var, variables.Variable)):
+    elif isinstance(var, trackable.Trackable) and not resource_or_ref_variable:
       trackable_saveables = [
           (factory() if callable(factory) else factory)
           for factory in var._gather_saveables_for_checkpoint().values()]
@@ -262,7 +270,7 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
       # indicating whether they were created in a graph building context. We
       # also get Tensors when graph building, which do not have this property.
       if not getattr(var, "_in_graph_mode", True):
-        if not isinstance(var, resource_variable_ops.ResourceVariable):
+        if not isinstance(var, resource_variable_ops.BaseResourceVariable):
           raise ValueError(
               "Can only save/restore ResourceVariables when eager execution "
               "is enabled, type: %s." % type(var))
@@ -276,10 +284,10 @@ def op_list_to_dict(op_list, convert_variable_to_tensor=True):
               (var._shared_name,))
       else:
         if convert_variable_to_tensor:
-          if isinstance(var, resource_variable_ops.ResourceVariable):
+          if isinstance(var, resource_variable_ops.BaseResourceVariable):
             var = var._graph_element  # pylint: disable=protected-access
           else:
-            var = ops.internal_convert_to_tensor(var, as_ref=True)
+            var = ops.convert_to_tensor(var, as_ref=True)
           if not _tensor_comes_from_variable(var):
             raise TypeError("Variable to save is not a Variable: %s" % var)
         if var.op.type == "ReadVariableOp":
@@ -334,7 +342,7 @@ def validate_and_slice_inputs(names_to_saveables):
     names_to_saveables = op_list_to_dict(names_to_saveables)
 
   saveables = []
-  seen_ops = set()
+  seen_ops = object_identity.ObjectIdentitySet()
   for name, op in sorted(names_to_saveables.items(),
                          # Avoid comparing ops, sort only by name.
                          key=lambda x: x[0]):

@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 syntax = "proto2";
-import "tensorflow/lite/toco/types.proto";
 
 package toco;
+
+import "tensorflow/lite/toco/types.proto";
 
 // Supported I/O file formats. Some formats may be input-only or output-only.
 enum FileFormat {
@@ -24,7 +25,7 @@ enum FileFormat {
   TENSORFLOW_GRAPHDEF = 1;
 
   // Tensorflow's mobile inference model.
-  // third_party/tensorflow/contrib/tflite/schema.fbs
+  // third_party/tensorflow/lite/schema/schema.fbs
   TFLITE = 2;
 
   // GraphViz
@@ -37,7 +38,7 @@ enum FileFormat {
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
 //
-// Next ID to use: 29.
+// Next ID to use: 33.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -205,4 +206,24 @@ message TocoFlags {
   // `force_select_tf_ops` should always be used with `enable_select_tf_ops`.
   // WARNING: Experimental interface, subject to change
   optional bool force_select_tf_ops = 28 [default = false];
+
+  // Boolean indicating whether to convert float32 constant buffers to
+  // float16. This is typically done to reduce model size. Delegates may also
+  // wish to implement kernels on reduced precision floats for performance
+  // gains.
+  optional bool quantize_to_float16 = 29 [default = false];
+
+  // Boolean flag indicating whether the converter should allow models with
+  // dynamic Tensor shape. When set to False, the converter will generate
+  // runtime memory offsets for activation Tensors (with 128 bits alignment)
+  // and error out on models with undetermined Tensor shape. (Default: True)
+  optional bool allow_dynamic_tensors = 30 [default = true];
+
+  // Full filepath of the folder to dump conversion logs. This includes a global
+  // view of the conversion process, and user can choose to submit those logs.
+  optional string conversion_summary_dir = 31;
+
+  // String representing the custom ops OpDefs that are included in the
+  // GraphDef.
+  repeated string custom_opdefs = 32;
 }

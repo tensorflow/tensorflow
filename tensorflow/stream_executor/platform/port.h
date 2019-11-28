@@ -19,7 +19,6 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_PLATFORM_PORT_H_
 
 #include "tensorflow/core/platform/macros.h"
-#include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace stream_executor {
@@ -37,9 +36,6 @@ using tensorflow::uint64;
 #if !defined(PLATFORM_GOOGLE)
 using std::string;
 #endif
-
-using tensorflow::LinkerInitialized;
-using tensorflow::LINKER_INITIALIZED;
 
 #define SE_FALLTHROUGH_INTENDED TF_FALLTHROUGH_INTENDED
 

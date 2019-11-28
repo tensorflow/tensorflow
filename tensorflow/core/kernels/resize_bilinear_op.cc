@@ -230,6 +230,7 @@ struct ResizeBilinear<CPUDevice, T> {
     std::vector<CachedInterpolation> ys(out_height + 1);
     std::vector<CachedInterpolation> xs(out_width + 1);
 
+    // Compute the cached interpolation weights on the x and y dimensions.
     if (half_pixel_centers) {
       compute_interpolation_weights(HalfPixelScaler(), out_height, in_height,
                                     height_scale, ys.data());
@@ -237,7 +238,6 @@ struct ResizeBilinear<CPUDevice, T> {
                                     width_scale, xs.data());
 
     } else {
-      // Compute the cached interpolation weights on the x and y dimensions.
       compute_interpolation_weights(LegacyScaler(), out_height, in_height,
                                     height_scale, ys.data());
       compute_interpolation_weights(LegacyScaler(), out_width, in_width,
@@ -388,7 +388,7 @@ TF_CALL_double(REGISTER_GRAD_KERNEL);
 
 #undef REGISTER_GRAD_KERNEL
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #define REGISTER_KERNEL(T)                            \
   REGISTER_KERNEL_BUILDER(Name("ResizeBilinear")      \
@@ -410,6 +410,6 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GRAD_KERNEL);
 
 #undef REGISTER_GRAD_KERNEL
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 }  // namespace tensorflow

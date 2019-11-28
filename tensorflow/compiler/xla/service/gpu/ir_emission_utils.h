@@ -56,16 +56,21 @@ StatusOr<CudnnConvKind> GetCudnnConvKind(const HloCustomCallInstruction* instr);
 // Converts a CudnnConvKind value to a string.
 string CudnnConvKindToString(CudnnConvKind kind);
 
+// Matrix multiplication before the rewrite.
+//
+// This function should never return "true" on instructions after
+// GemmRewriter pass has finished.
+bool IsMatrixMultiplication(const HloInstruction& dot);
+
+// Matrix multiplication rewritten into a GEMM custom call.
+// All matrix multiplications should be rewritten as such custom calls
+// after a GemmRewriter lowering pass.
+bool IsCublasGemm(const HloInstruction& hlo);
+
 constexpr int64 kWarpSize = 32;
 
-// Returns true if `hlo` will be implemented as a call to BLAS gemm.
-//
-// Precondition: `hlo` is in an "unnested context", meaning, it lives within the
-// entry computation, within the either of a while loop's subcomputations,
-// within any of a conditional's subcomputations, etc., but *does not* live
-// within a reduce subcomputation, a map subcomputation, a fusion
-// subcomputation, etc.  It's OK if `hlo` *is* a fusion.
-bool ImplementedAsGemm(const HloInstruction& hlo);
+// A call to cuBLAS general matrix multiplication API.
+extern const char* const kGemmCallTarget;
 
 // A call to cuDNN for batch normalization is represented as CustomCall HLO with
 // a call target equal to one of these strings.
@@ -108,7 +113,7 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // memory used by cudnn.  Callers shouldn't inspect scratch_memory, as its value
 // is not well-defined.
 //
-// CudnnConvRewriter lowers kConvolution HLOs to these custom calls.
+// GpuConvRewriter lowers kConvolution HLOs to these custom calls.
 // When it does so, it chooses algorithm -1 and 0 bytes of scratch space.  Later
 // on in the pipeline, CudnnConvAlgorithmChooser chooses an explicit
 // algorithm for each conv and sets the amount of scratch space needed.
@@ -148,7 +153,30 @@ extern const char* const kCusolverCholeskyCallTarget;
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
 
-bool IsReductionToVector(const HloInstruction& reduce);
+// Returns true if either the dimensions being reduced or the dimensions being
+// kept are contiguous in the input of the reduce instruction.
+bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce);
+
+struct ReductionDimensions {
+  // Indicates whether the reduction is a row reduction or a column reduction.
+  bool is_row_reduction;
+
+  // Contains the size of the three contiguous components for
+  // the reduction [depth, height, width] (major-to-minor ordering).
+  //
+  // For row reduction, we do: [D, H, W] -> [D, H].
+  // For column reduction, we do: [D, H, W] -> [D, W].
+  std::array<int64, 3> dimensions;
+};
+
+// Given the input shape and dimensions to reduce for a reduction, returns
+// ReductionDimensions.
+//
+// Prerequisite: the reduction instruction passes the check
+// IsReductionFromOrToContiguousDimensions, which guarantees either the
+// dimensions to reduce or the dimensions to keep are consecutive.
+ReductionDimensions GetReductionKindAndContiguousComponents(
+    const Shape& input_shape, absl::Span<const int64> dims_to_reduce);
 
 // Emits call to "vprintf" with given format and arguments.
 llvm::Value* EmitPrintf(absl::string_view fmt,

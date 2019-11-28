@@ -21,12 +21,18 @@ import tensorflow as tf
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 
+_TEST_VERSION = 1
+
 
 class TestUpgrade(test_util.TensorFlowTestCase):
   """Test various APIs that have been changed in 2.0."""
 
+  @classmethod
+  def setUpClass(cls):
+    cls._tf_api_version = 1 if hasattr(tf, 'contrib') else 2
+
   def setUp(self):
-    tf.enable_eager_execution()
+    tf.compat.v1.enable_v2_behavior()
 
   def testRenames(self):
     self.assertAllClose(1.04719755, tf.acos(0.5))
@@ -74,6 +80,14 @@ class TestUpgrade(test_util.TensorFlowTestCase):
     self.assertAllClose(out, 0.40318608)
 
   def testLinearClassifier(self):
+    if _TEST_VERSION == 2 and self._tf_api_version == 1:
+      # Skip if we converted this file to v2 but running with tf v1.
+      # In this case, conversion script adds reference to
+      # tf.keras.losses.Reduction which is not available in v1.
+      self.skipTest(
+          'After converting to 2.0, this test does not work with '
+          'TensorFlow 1.x.')
+      return
     feature_column = tf.feature_column.numeric_column(
         'feature', shape=(1,))
 

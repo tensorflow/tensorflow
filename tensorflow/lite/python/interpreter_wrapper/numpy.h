@@ -50,6 +50,8 @@ limitations under the License.
 
 #include "numpy/arrayobject.h"
 #include "numpy/ufuncobject.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 namespace python {
@@ -57,6 +59,19 @@ namespace python {
 void ImportNumpy();
 
 }  // namespace python
+
+namespace python_utils {
+
+int TfLiteTypeToPyArrayType(TfLiteType tf_lite_type);
+
+TfLiteType TfLiteTypeFromPyType(int py_type);
+
+TfLiteType TfLiteTypeFromPyArray(PyArrayObject* array);
+
+bool FillStringBufferWithPyArray(PyObject* value,
+                                 DynamicBuffer* dynamic_buffer);
+
+}  // namespace python_utils
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_NUMPY_H_

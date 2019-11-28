@@ -48,7 +48,7 @@ struct GItem {
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
-#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -72,10 +72,10 @@ struct GItem {
 
 static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
-    bool ignore_user_placement, TF_Status* out_status) {
+    bool ignore_user_placement, TF_Status* status) {
   if (meta_graph.collection_def().count("train_op") == 0) {
     tensorflow::Set_TF_Status_from_Status(
-        out_status,
+        status,
         tensorflow::errors::InvalidArgument("train_op not specified in the metagraph"));
     return nullptr;
   }
@@ -87,11 +87,11 @@ static GItem TF_NewItem(
       tensorflow::grappler::GrapplerItemFromMetaGraphDef("item", meta_graph, cfg);
   if (!item) {
     tensorflow::Set_TF_Status_from_Status(
-        out_status,
+        status,
         tensorflow::errors::InvalidArgument("Invalid metagraph"));
     return nullptr;
   }
-  tensorflow::Set_TF_Status_from_Status(out_status, tensorflow::Status::OK());
+  tensorflow::Set_TF_Status_from_Status(status, tensorflow::Status::OK());
   return GItem(item.release());
 }
 
@@ -308,7 +308,7 @@ static PyObject* TF_GetColocationGroups(GItem item) {
 // Wrap these functions.
 static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
-    bool ignore_user_placement, TF_Status* out_status);
+    bool ignore_user_placement, TF_Status* status);
 static PyObject* TF_IdentifyImportantOps(GItem item, bool sort_topologically,
                                          TF_Status* status);
 static PyObject* TF_GetOpProperties(GItem item);

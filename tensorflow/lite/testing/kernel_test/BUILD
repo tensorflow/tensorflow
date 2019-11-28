@@ -1,13 +1,14 @@
-package(default_visibility = [
-    "//visibility:public",
-])
-
-licenses(["notice"])  # Apache 2.0
-
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_binary",
     "tf_cc_test",
+)
+
+package(
+    default_visibility = [
+        "//visibility:public",
+    ],
+    licenses = ["notice"],  # Apache 2.0
 )
 
 cc_library(
@@ -15,7 +16,7 @@ cc_library(
     hdrs = ["util.h"],
     deps = [
         ":input_generator",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:split",
         "//tensorflow/lite/testing:tflite_driver",
     ] + select({
@@ -36,9 +37,6 @@ tf_cc_test(
     data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
-    ],
-    tags = [
-        "no_oss",
     ],
     deps = [
         ":util",
@@ -71,23 +69,20 @@ cc_library(
     deps = [
         "//tensorflow/lite:framework",
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:builtin_ops",
         "//tensorflow/lite/testing:join",
         "//tensorflow/lite/testing:split",
     ],
 )
 
-tf_cc_test(
+cc_test(
     name = "input_generator_test",
     size = "small",
     srcs = ["input_generator_test.cc"],
     data = [
         "//tensorflow/lite:testdata/multi_add.bin",
         "//tensorflow/lite:testdata/test_input.csv",
-    ],
-    tags = [
-        "no_oss",
     ],
     deps = [
         ":input_generator",
@@ -101,7 +96,7 @@ cc_library(
     hdrs = ["diff_analyzer.h"],
     deps = [
         "//tensorflow/lite:string",
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/testing:split",
     ],
 )
@@ -112,9 +107,6 @@ tf_cc_test(
     srcs = ["diff_analyzer_test.cc"],
     data = [
         "//tensorflow/lite:testdata/test_input.csv",
-    ],
-    tags = [
-        "no_oss",
     ],
     deps = [
         ":diff_analyzer",

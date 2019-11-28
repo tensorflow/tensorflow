@@ -16,8 +16,25 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_RESOURCE_VARIABLE_OPS_H_
 
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
 
 namespace tensorflow {
+
+class VarHandleOp : public OpKernel {
+ public:
+  explicit VarHandleOp(OpKernelConstruction* c);
+  void Compute(OpKernelContext* ctx) override;
+
+ private:
+  // Same fields as in ResourceHandleOp.
+  string container_;
+  string name_;
+  mutex mutex_;
+  Tensor resource_;
+  std::atomic<bool> initialized_{false};
+
+  DtypeAndPartialTensorShape dtype_and_shape_;
+};
 
 class ReadVariableOp : public OpKernel {
  public:

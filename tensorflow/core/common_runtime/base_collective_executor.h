@@ -58,7 +58,8 @@ class CollectiveAdapter {
 
   // Generate a scalar tensor of same DataType and on the same device
   // as the backing tensor.
-  virtual Tensor Scalar(Allocator* a) const = 0;
+  virtual Tensor Scalar(Allocator* a,
+                        const AllocationAttributes& attr) const = 0;
 
   // Debugging string describing buffer location
   virtual string TBounds(const Tensor& t) const = 0;
@@ -141,6 +142,10 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                                client_locality, done);
   }
 
+  void RunClosure(std::function<void()> closure) override {
+    remote_access_->RunClosure(std::move(closure));
+  }
+
   // If we need to enforce an ordering on any portion of collective
   // implementation, and the ordering is encoded via attribute on the collective
   // op, this function will block until all dependencies for this collective
@@ -149,7 +154,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   // Record that this collective has completed the portion of the implementation
   // that needs to be ordered wrt other collectives, to unblock any of its
   // dependent ops.
-  void Launched(const CollectiveParams& col_params) override;
+  void UnblockDependencies(const CollectiveParams& col_params) override;
 
  protected:
   const int64 step_id_;

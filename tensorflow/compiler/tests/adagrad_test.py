@@ -31,8 +31,8 @@ from tensorflow.python.training import adagrad
 class AdagradOptimizerTest(xla_test.XLATestCase):
 
   def testBasic(self):
-    for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+    for dtype in self.float_types | self.complex_types:
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -59,7 +59,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
 
   def testTensorLearningRate(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -87,7 +87,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
 
   def testSharing(self):
     for dtype in self.float_types:
-      with self.cached_session(), self.test_scope():
+      with self.session(), self.test_scope():
         var0 = resource_variable_ops.ResourceVariable([1.0, 2.0], dtype=dtype)
         var1 = resource_variable_ops.ResourceVariable([3.0, 4.0], dtype=dtype)
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
@@ -101,9 +101,9 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
             zip([grads0, grads1], [var0, var1]))
         self.assertEqual(["accumulator"], ada_opt.get_slot_names())
         slot0 = ada_opt.get_slot(var0, "accumulator")
-        self.assertEquals(slot0.get_shape(), var0.get_shape())
+        self.assertEqual(slot0.get_shape(), var0.get_shape())
         slot1 = ada_opt.get_slot(var1, "accumulator")
-        self.assertEquals(slot1.get_shape(), var1.get_shape())
+        self.assertEqual(slot1.get_shape(), var1.get_shape())
         variables.global_variables_initializer().run()
 
         # Fetch params to validate initial values.

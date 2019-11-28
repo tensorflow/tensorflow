@@ -28,6 +28,10 @@ class QuantizedOpTest : public OpsTestBase {
  protected:
 };
 
+struct ParameterizedQuantizeOpTest : public OpsTestBase,
+                                     public ::testing::WithParamInterface<int> {
+};
+
 TEST_F(QuantizedOpTest, QuantizeV2) {
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
                    .Input(FakeInput(DT_FLOAT))
@@ -51,36 +55,78 @@ TEST_F(QuantizedOpTest, QuantizeV2) {
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
 }
 
-TEST_F(QuantizedOpTest, QuantizeV2Quint8Scaled) {
+// Creates a tensor with the specified dims, using values chosen from data,
+// multiplied by (1 + index) along the axis dimension.
+template <typename T>
+std::vector<T> ScalePerSliceAlongAxis(std::vector<int64> dims, int axis,
+                                      const std::vector<T>& data) {
+  uint32 seed = 123;
+  int64 out_size = 1;
+  for (int dim : dims) {
+    out_size *= dim;
+  }
+  int minor_size = 1;
+  for (int i = axis + 1; i < dims.size(); ++i) {
+    minor_size *= dims[i];
+  }
+  std::vector<T> out(out_size);
+  int num_slices = (axis == -1) ? 1 : dims[axis];
+  for (int out_idx = 0; out_idx < out_size; ++out_idx) {
+    int in_idx = rand_r(&seed) % data.size();
+    T multiplier = ((out_idx / minor_size) % num_slices) + 1;
+    out[out_idx] = data[in_idx] * multiplier;
+  }
+  return out;
+}
+
+TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Quint8Scaled) {
+  const int axis = GetParam();
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<quint8>::v())
                    .Attr("mode", "SCALED")
+                   .Attr("axis", axis)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({8}),
-                           {-255.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.0, 500.0});
-  AddInputFromArray<float>(TensorShape({1}), {-255.0f});
-  AddInputFromArray<float>(TensorShape({1}), {127.0f});
+  const std::vector<int64> dims = {2, 3, 4, 5};
+  int num_slices = (axis == -1) ? 1 : dims[axis];
+
+  // Each channel contains the same 8 values multiplied by (channel + 1).
+  AddInputFromArray<float>(
+      TensorShape(dims),
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-255.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.0, 500.0}));
+  std::vector<float> min_ranges(num_slices), max_ranges(num_slices);
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    min_ranges[slice_idx] = (slice_idx + 1) * -255.0;
+    max_ranges[slice_idx] = (slice_idx + 1) * 127.0;
+  }
+  AddInputFromArray<float>(TensorShape({num_slices}), min_ranges);
+  AddInputFromArray<float>(TensorShape({num_slices}), max_ranges);
   TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_QUINT8, TensorShape({8}));
   // Input values < 0 should map to 0 even though min_range = -255, because
   // we are performing quantization by scaling to quint8.
   // Input value 0.0 should map to 0.
   // The scale factor chosen should be 255 / 127 =  2.00787
   // Output values are clipped to 255.
-  test::FillValues<quint8>(&expected, {0, 0, 2, 3, 4, 129, 255, 255});
+
+  Tensor expected(allocator(), DT_QUINT8, TensorShape(dims));
+  test::FillValues<quint8>(
+      &expected,
+      ScalePerSliceAlongAxis<quint8>(dims, -1, {0, 0, 2, 3, 4, 129, 255, 255}));
+
+  auto output_min = *GetOutput(1);
+  auto output_max = *GetOutput(2);
+
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    EXPECT_EQ(output_min.flat<float>()(slice_idx), 0);
+    EXPECT_EQ(output_max.flat<float>()(slice_idx), 127.0 * (slice_idx + 1));
+  }
+
+  auto output = *GetOutput(0);
   test::ExpectTensorEqual<quint8>(expected, *GetOutput(0));
-
-  Tensor expected_output_min(allocator(), DT_FLOAT, TensorShape({}));
-  test::FillValues<float>(&expected_output_min, {0.0});
-  test::ExpectTensorEqual<float>(expected_output_min, *GetOutput(1));
-
-  Tensor expected_output_max(allocator(), DT_FLOAT, TensorShape({}));
-  test::FillValues<float>(&expected_output_max, {127.0});
-  test::ExpectTensorEqual<float>(expected_output_max, *GetOutput(2));
 }
 
 TEST_F(QuantizedOpTest, QuantizeV2Quint8ScaledSmallInputRange) {
@@ -113,35 +159,109 @@ TEST_F(QuantizedOpTest, QuantizeV2Quint8ScaledSmallInputRange) {
   test::ExpectTensorEqual<float>(expected_output_max, *GetOutput(2));
 }
 
-TEST_F(QuantizedOpTest, QuantizeV2Qint8Scaled) {
+TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Qint8Scaled) {
+  const int axis = GetParam();
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Input(FakeInput(DT_FLOAT))
                    .Attr("T", DataTypeToEnum<qint8>::v())
                    .Attr("mode", "SCALED")
+                   .Attr("narrow_range", false)
+                   .Attr("axis", axis)
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
-  AddInputFromArray<float>(TensorShape({7}),
-                           {-128.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.0});
-  AddInputFromArray<float>(TensorShape({1}), {-128.0f});
-  AddInputFromArray<float>(TensorShape({1}), {100.0f});
+  const std::vector<int64> dims = {2, 3, 4, 5};
+  int num_slices = (axis == -1) ? 1 : dims[axis];
+
+  // Each channel contains the same 7 values multiplied by (channel + 1).
+  AddInputFromArray<float>(
+      TensorShape(dims),
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-128.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.0}));
+  std::vector<float> min_ranges(num_slices), max_ranges(num_slices);
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    min_ranges[slice_idx] = (slice_idx + 1) * -128.0;
+    max_ranges[slice_idx] = (slice_idx + 1) * 100.0;
+  }
+  AddInputFromArray<float>(TensorShape({num_slices}), min_ranges);
+  AddInputFromArray<float>(TensorShape({num_slices}), max_ranges);
   TF_ASSERT_OK(RunOpKernel());
-  Tensor expected(allocator(), DT_QINT8, TensorShape({7}));
+
   // Input element 0.0 should map to 0.
-  // Input element 127.0 maps to 127 instead of 100 because
-  // max(abs(-127), abs(100)) = 127.
-  test::FillValues<qint8>(&expected, {-128, 0, 1, 1, 2, 64, 127});
+  // Input element 127.0 maps to 127 instead of 100.
+  // (i.e. the max_ranges[] values should be ignored because their magnitude is
+  // less than the min_ranges[] values).
+  Tensor expected(allocator(), DT_QINT8, TensorShape(dims));
+  test::FillValues<qint8>(
+      &expected,
+      ScalePerSliceAlongAxis<qint8>(dims, -1, {-128, 0, 1, 1, 2, 64, 127}));
+
+  auto output_min = *GetOutput(1);
+  auto output_max = *GetOutput(2);
+
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    EXPECT_EQ(output_min.flat<float>()(slice_idx), -128.0 * (slice_idx + 1));
+    EXPECT_EQ(output_max.flat<float>()(slice_idx), 127.0 * (slice_idx + 1));
+  }
+
+  auto output = *GetOutput(0);
   test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
-
-  Tensor expected_output_min(allocator(), DT_FLOAT, TensorShape({}));
-  test::FillValues<float>(&expected_output_min, {-128.0});
-  test::ExpectTensorEqual<float>(expected_output_min, *GetOutput(1));
-
-  Tensor expected_output_max(allocator(), DT_FLOAT, TensorShape({}));
-  test::FillValues<float>(&expected_output_max, {127.0});
-  test::ExpectTensorEqual<float>(expected_output_max, *GetOutput(2));
 }
+
+TEST_P(ParameterizedQuantizeOpTest, QuantizeV2Qint8ScaledNarrowRange) {
+  const int axis = GetParam();
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<qint8>::v())
+                   .Attr("mode", "SCALED")
+                   .Attr("narrow_range", true)
+                   .Attr("axis", axis)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  const std::vector<int64> dims = {2, 3, 4, 5};
+  int num_slices = (axis == -1) ? 1 : dims[axis];
+
+  // Each channel contains the same 7 values multiplied by (channel + 1).
+  AddInputFromArray<float>(
+      TensorShape(dims),
+      ScalePerSliceAlongAxis<float>(
+          dims, axis, {-128.0, 0.0, 1.0, 1.25, 1.75, 64.0, 127.0}));
+  std::vector<float> min_ranges(num_slices), max_ranges(num_slices);
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    min_ranges[slice_idx] = (slice_idx + 1) * -128.0;
+    max_ranges[slice_idx] = (slice_idx + 1) * 100.0;
+  }
+  AddInputFromArray<float>(TensorShape({num_slices}), min_ranges);
+  AddInputFromArray<float>(TensorShape({num_slices}), max_ranges);
+  TF_ASSERT_OK(RunOpKernel());
+
+  // Input element 0.0 should map to 0.
+  // Input element 127.0 maps to 127 instead of 100.
+  // (i.e. the max_ranges[] values should be ignored because their magnitude is
+  // less than the min_ranges[] values).
+  Tensor expected(allocator(), DT_QINT8, TensorShape(dims));
+  test::FillValues<qint8>(
+      &expected,
+      ScalePerSliceAlongAxis<qint8>(dims, -1, {-127, 0, 1, 1, 2, 64, 126}));
+
+  auto output_min = *GetOutput(1);
+  auto output_max = *GetOutput(2);
+
+  for (int slice_idx = 0; slice_idx < num_slices; ++slice_idx) {
+    EXPECT_EQ(output_min.flat<float>()(slice_idx), -128.0 * (slice_idx + 1));
+    EXPECT_EQ(output_max.flat<float>()(slice_idx), 128.0 * (slice_idx + 1));
+  }
+
+  auto output = *GetOutput(0);
+  test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
+}
+
+// Instantiate parameterized tests for axis = -1, 1, 3.
+INSTANTIATE_TEST_SUITE_P(All, ParameterizedQuantizeOpTest,
+                         ::testing::Values(-1, 1, 3));
 
 TEST_F(QuantizedOpTest, QuantizeV2Qint8ScaledSmallInputRange) {
   TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
@@ -377,6 +497,34 @@ TEST_F(QuantizedOpTest, Dequantize) {
   Tensor expected(allocator(), DT_FLOAT, TensorShape({6}));
   test::FillValues<float>(&expected, {1.0, 2.0, 4.0, 8.0, 16.0, 255.0});
   test::ExpectTensorNear<float>(expected, *GetOutput(0), 0.5);
+}
+
+TEST_F(QuantizedOpTest, QuantizeV2DisableEnsureMinimumRange) {
+  TF_ASSERT_OK(NodeDefBuilder("quantize_op", "QuantizeV2")
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Input(FakeInput(DT_FLOAT))
+                   .Attr("T", DataTypeToEnum<qint8>::v())
+                   .Attr("mode", "MIN_FIRST")
+                   .Attr("ensure_minimum_range", 0.0f)
+                   .Finalize(node_def()));
+  TF_ASSERT_OK(InitOp());
+  AddInputFromArray<float>(TensorShape({3}), {-0.000001, 0.0, 0.000042});
+  AddInputFromArray<float>(TensorShape({1}), {-0.000128});
+  AddInputFromArray<float>(TensorShape({1}), {0.000127});
+  TF_ASSERT_OK(RunOpKernel());
+  Tensor expected(allocator(), DT_QINT8, TensorShape({3}));
+  test::FillValues<qint8>(&expected, {-1, 0, 42});
+  for (int i = 0; i < 3; ++i) {
+    LOG(INFO) << GetOutput(0)->flat<qint8>()(i);
+  }
+  test::ExpectTensorEqual<qint8>(expected, *GetOutput(0));
+  const float output_min = GetOutput(1)->flat<float>()(0);
+  const float output_max = GetOutput(2)->flat<float>()(0);
+  LOG(INFO) << "output_min = " << output_min;
+  LOG(INFO) << "output_max = " << output_max;
+  EXPECT_NEAR(-0.000128f, output_min, 1e-7f);
+  EXPECT_NEAR(0.000127, output_max, 1e-7f);
 }
 
 }  // end namespace tensorflow

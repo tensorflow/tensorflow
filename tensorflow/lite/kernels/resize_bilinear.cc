@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -40,9 +40,12 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 const TfLiteTensor* input,
                                 const TfLiteTensor* size,
                                 TfLiteTensor* output) {
+  const int32* size_data = GetTensorData<int32>(size);
+  // Sanity check, the up/down sampling size should always be positive.
+  TF_LITE_ENSURE(context, size_data[0] > 0);
+  TF_LITE_ENSURE(context, size_data[1] > 0);
   TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
   output_size->data[0] = input->dims->data[0];
-  const int32* size_data = GetTensorData<int32>(size);
   output_size->data[1] = size_data[0];
   output_size->data[2] = size_data[1];
   output_size->data[3] = input->dims->data[3];

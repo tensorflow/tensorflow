@@ -18,6 +18,22 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
+#include "tensorflow/compiler/xla/shape_util.h"
+#include "tensorflow/compiler/xla/test.h"
+#include "tensorflow/core/platform/regexp.h"
+#include "tensorflow/core/platform/test.h"
+
+// The header files for the tests using mlir_bridge have the _mlir_bridge suffix
+// inherited from the tf_library target names.
+#if defined(ENABLE_MLIR_BRIDGE_TEST)
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmul_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_mlir_bridge.h"
+#include "tensorflow/compiler/aot/tests/test_graph_tfmatmulandadd_with_profiling_mlir_bridge.h"
+#else
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfadd_with_ckpt_saver.h"
@@ -32,12 +48,7 @@ limitations under the License.
 #include "tensorflow/compiler/aot/tests/test_graph_tftop_k.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable.h"
 #include "tensorflow/compiler/aot/tests/test_graph_tfvariable_sequential_updates.h"
-#include "tensorflow/compiler/xla/service/hlo_profile_printer.h"
-#include "tensorflow/compiler/xla/shape_util.h"
-#include "tensorflow/compiler/xla/test.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/platform/regexp.h"
-#include "tensorflow/core/platform/test.h"
+#endif
 
 namespace tensorflow {
 namespace tfcompile {
@@ -83,7 +94,8 @@ TEST(TFCompileTest, Add) {
 // Run tests that use set_argN_data separately, to avoid accidentally re-using
 // non-existent buffers.
 TEST(TFCompileTest, Add_SetArg) {
-  AddComp add(AddComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+  AddComp add(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
 
   int32 arg_x = 10;
   int32 arg_y = 32;
@@ -155,6 +167,8 @@ TEST(TFCompileTest, AddWithCkptSaver) {
   EXPECT_EQ(add_const.result0_data(), add_const.results()[0]);
 }
 
+// TODO(bixia): the following tests failed with MLIR bridge.
+#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Cond) {
   CondComp cond;
   EXPECT_EQ(cond.arg0_data(), cond.arg_data(0));
@@ -219,6 +233,7 @@ TEST(TFCompileTest, Gather) {
     EXPECT_EQ(gather_const.result0_data(), gather.results()[0]);
   }
 }
+#endif
 
 TEST(TFCompileTest, MatMul2) {
   Eigen::ThreadPool tp(2);
@@ -296,7 +311,7 @@ TEST(TFCompileTest, MatMul2_SetArg) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   foo::bar::MatMulComp matmul(
-      foo::bar::MatMulComp::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
   matmul.set_thread_pool(&device);
 
   // Test using the set_argN_data() methods.
@@ -321,7 +336,7 @@ TEST(TFCompileTest, MatMulAndAdd1) {
   Eigen::ThreadPool tp(1);
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
-  MatMulAndAddComp muladd;
+  ::foo::bar::MatMulAndAddComp muladd;
   muladd.set_thread_pool(&device);
   EXPECT_EQ(muladd.arg0_data(), muladd.arg_data(0));
   EXPECT_EQ(muladd.arg1_data(), muladd.arg_data(1));
@@ -344,7 +359,7 @@ TEST(TFCompileTest, MatMulAndAdd1) {
     EXPECT_EQ(muladd.result0_data(), muladd.results()[0]);
     EXPECT_EQ(muladd.result1_data(), muladd.results()[1]);
 
-    const MatMulAndAddComp& muladd_const = muladd;
+    const ::foo::bar::MatMulAndAddComp& muladd_const = muladd;
     EXPECT_EQ(muladd_const.error_msg(), "");
     for (int i = 0; i < 4; ++i) {
       EXPECT_EQ(muladd_const.arg0(i / 2, i % 2), args[i]);
@@ -385,7 +400,7 @@ TEST(TFCompileTest, MatMulAndAdd1) {
     EXPECT_EQ(muladd.result_x_y_sum_data(), muladd.results()[1]);
 
     // Test const methods.
-    const MatMulAndAddComp& muladd_const = muladd;
+    const ::foo::bar::MatMulAndAddComp& muladd_const = muladd;
     EXPECT_EQ(muladd_const.error_msg(), "");
     for (int i = 0; i < 4; ++i) {
       EXPECT_EQ(muladd_const.arg_x(i / 2, i % 2), args[i]);
@@ -408,6 +423,8 @@ TEST(TFCompileTest, MatMulAndAdd1) {
   }
 }
 
+// TODO(bixia): the following tests failed with MLIR bridge.
+#if !defined(ENABLE_MLIR_BRIDGE_TEST)
 TEST(TFCompileTest, Function) {
   // The function is equivalent to an addition
   FunctionComp add_fn;
@@ -502,20 +519,50 @@ TEST(TFCompileTest, VariableSequentialUpdates) {
   Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
 
   // This implements the recursion:
-  // x[0] = 1.0
-  // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
+  // x[0] = 2.0
+  // x[n+1] = x[n] - 0.1*(x[n-1] + y)
   VariableSequentialUpdatesComp fn;
-  float x = 1;
-  fn.set_var_x_data(&x);
+  fn.var_x() = 2;
+  *const_cast<float*>(fn.var_y_data()) = 1;
 
   fn.set_thread_pool(&device);
   // First calculate x[3]
   fn.Run();
-  EXPECT_NEAR(x, 0.458f, 1e-6);
+  EXPECT_NEAR(fn.var_x(), 1.187f, 1e-6);
+
+  const float y = 1;
+  fn.set_var_y_data(&y);
+
+  // Now const_cast<float*>(fn.var_y_data()) is not longer legal since we've set
+  // the buffer to point to a constant location.
 
   // Then calculate x[6]
   fn.Run();
-  EXPECT_NEAR(x, 0.062882f, 1e-6);
+  EXPECT_NEAR(fn.var_x(), 0.594322f, 1e-6);
+}
+
+TEST(TFCompileTest, VariableSequentialUpdatesNoAlloc) {
+  Eigen::ThreadPool tp(1);
+  Eigen::ThreadPoolDevice device(&tp, tp.NumThreads());
+
+  // This implements the recursion:
+  // x[0] = 2.0
+  // x[n+1] = x[n] - 0.1*(x[n-1] + 1.0)
+  VariableSequentialUpdatesComp fn(
+      XlaCompiledCpuFunction::AllocMode::RESULTS_PROFILES_AND_TEMPS_ONLY);
+  float x = 2;
+  float y = 1;
+  fn.set_var_x_data(&x);
+  fn.set_var_y_data(&y);
+
+  fn.set_thread_pool(&device);
+  // First calculate x[3]
+  fn.Run();
+  EXPECT_NEAR(x, 1.187f, 1e-6);
+
+  // Then calculate x[6]
+  fn.Run();
+  EXPECT_NEAR(x, 0.594322f, 1e-6);
 }
 
 TEST(TFCompileTest, AssertEqAndReturnDiff) {
@@ -541,7 +588,7 @@ TEST(TFCompileTest, LookupNameIndex) {
   EXPECT_FALSE(add.HasNameIndices());
 
   // muladd has names defined for all feeds and fetches.
-  MatMulAndAddComp muladd;
+  ::foo::bar::MatMulAndAddComp muladd;
   EXPECT_TRUE(muladd.HasNameIndices());
 
   EXPECT_EQ(muladd.LookupArgIndex("x"), 0);
@@ -570,7 +617,7 @@ TEST(TFCompileTest, ProgramShape) {
   ASSERT_TRUE(add.ProgramShape() == nullptr);
 
   // muladd has the program shape defined.
-  MatMulAndAddComp muladd;
+  ::foo::bar::MatMulAndAddComp muladd;
   const xla::ProgramShapeProto* muladd_shape = muladd.ProgramShape();
   ASSERT_TRUE(muladd_shape != nullptr);
   ASSERT_EQ(muladd_shape->parameters_size(), 2);
@@ -643,6 +690,7 @@ TEST(TFCompileTest, HloProfiling) {
               IsSupersetOf({header, total_cycles_profile_line, dot_profile_line,
                             add_profile_line, tuple_profile_line}));
 }
+#endif
 
 }  // namespace
 }  // namespace tfcompile

@@ -34,7 +34,7 @@ tf_module {
   }
   member_method {
     name: "get_total_loss"
-    argspec: "args=[\'add_regularization_losses\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'total_loss\'], "
+    argspec: "args=[\'add_regularization_losses\', \'name\', \'scope\'], varargs=None, keywords=None, defaults=[\'True\', \'total_loss\', \'None\'], "
   }
   member_method {
     name: "hinge_loss"

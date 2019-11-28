@@ -439,6 +439,33 @@ class MeanReductionTest(BaseReductionTest):
       self._compareAllAxes(np_arr)
 
   @test_util.run_deprecated_v1
+  def testUint8(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeRandom((2,) * rank, dtypes.uint8)
+      self._compareAllAxes(np_arr)
+
+  # This tests the issue reported in b/145030710.
+  @test_util.run_deprecated_v1
+  def testSizeOverflowUint8(self):
+    np_arr = self._makeRandom((2**8,), dtypes.uint8)
+    self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testSizeOverflowInt8(self):
+    np_arr = self._makeRandom((2**7,), dtypes.int8)
+    self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testSizeOverflowUint16(self):
+    np_arr = self._makeRandom((2**16,), dtypes.uint16)
+    self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testSizeOverflowInt16(self):
+    np_arr = self._makeRandom((2**15,), dtypes.int16)
+    self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
@@ -497,11 +524,8 @@ class EuclideanNormReductionTest(BaseReductionTest):
     if isinstance(reduction_axes, list) or isinstance(reduction_axes,
                                                       np.ndarray):
       reduction_axes = tuple(reduction_axes)
-    if reduction_axes is None or reduction_axes != tuple():
-      np_fro = np.sqrt(
-          np.sum(x * np.conj(x), axis=reduction_axes, keepdims=keepdims))
-    else:
-      np_fro = x
+    np_fro = np.sqrt(
+        np.sum(x * np.conj(x), axis=reduction_axes, keepdims=keepdims))
     if np.issubdtype(x.dtype, np.integer):
       np_fro = np.floor(np_fro)
     return np_fro
@@ -521,6 +545,12 @@ class EuclideanNormReductionTest(BaseReductionTest):
         for special_value_y in [-np.inf, np.inf]:
           np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
           self._compareAll(np_arr, None)
+
+  @test_util.run_deprecated_v1
+  def testSingleton(self):
+    for dtype in [np.float32, np.float64]:
+      np_arr = np.array([-1.]).astype(dtype)
+      self._compareAll(np_arr, None)
 
   @test_util.run_deprecated_v1
   def testInt32(self):
@@ -559,6 +589,15 @@ class EuclideanNormReductionTest(BaseReductionTest):
         y = math_ops.reduce_euclidean_norm(x, [0]).eval()
         self.assertEqual(y.shape, (9938,))
         self.assertAllEqual(y, np.zeros(9938))
+
+  @test_util.run_deprecated_v1
+  def testGradient(self):
+    shape = [2, 3, 4, 2]
+    for dtype in [dtypes.float32, dtypes.float64]:
+      # zero value entry will result NaN gradient if reduction doesn't happen.
+      # e.g., `tf.math.reduce_sum([0, 1], axis=[])` so add one to avoid it.
+      x = self._makeIncremental(shape, dtype) + 1.0
+      self._compareGradientAxes(x, rtol=1e-2, atol=1e-2)
 
 
 class ProdReductionTest(BaseReductionTest):

@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """CTC (Connectionist Temporal Classification) Operations."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+from tensorflow.python.eager import context
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -27,6 +28,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_ctc_ops
 from tensorflow.python.ops import inplace_ops
@@ -43,19 +45,17 @@ from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access, invalid-name
 @tf_export(v1=["nn.ctc_loss"])
-def ctc_loss(labels, inputs=None, sequence_length=None,
+def ctc_loss(labels,
+             inputs=None,
+             sequence_length=None,
              preprocess_collapse_repeated=False,
              ctc_merge_repeated=True,
-             ignore_longer_outputs_than_inputs=False, time_major=True,
+             ignore_longer_outputs_than_inputs=False,
+             time_major=True,
              logits=None):
   """Computes the CTC (Connectionist Temporal Classification) Loss.
 
-  This op implements the CTC loss as presented in the article:
-
-  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
-  Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA,
-  pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
+  This op implements the CTC loss as presented in (Graves et al., 2016).
 
   Input requirements:
 
@@ -119,28 +119,24 @@ def ctc_loss(labels, inputs=None, sequence_length=None,
 
   Args:
     labels: An `int32` `SparseTensor`.
-      `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores
-      the id for (batch b, time t).
-      `labels.values[i]` must take on values in `[0, num_labels)`.
-      See `core/ops/ctc_ops.cc` for more details.
+      `labels.indices[i, :] == [b, t]` means `labels.values[i]` stores the id
+        for (batch b, time t). `labels.values[i]` must take on values in `[0,
+        num_labels)`. See `core/ops/ctc_ops.cc` for more details.
     inputs: 3-D `float` `Tensor`.
-      If time_major == False, this will be a `Tensor` shaped:
-        `[batch_size, max_time, num_classes]`.
+      If time_major == False, this will be a `Tensor` shaped: `[batch_size,
+        max_time, num_classes]`.
       If time_major == True (default), this will be a `Tensor` shaped:
-        `[max_time, batch_size, num_classes]`.
-      The logits.
-    sequence_length: 1-D `int32` vector, size `[batch_size]`.
-      The sequence lengths.
-    preprocess_collapse_repeated: Boolean.  Default: False.
-      If True, repeated labels are collapsed prior to the CTC calculation.
+        `[max_time, batch_size, num_classes]`. The logits.
+    sequence_length: 1-D `int32` vector, size `[batch_size]`. The sequence
+      lengths.
+    preprocess_collapse_repeated: Boolean.  Default: False. If True, repeated
+      labels are collapsed prior to the CTC calculation.
     ctc_merge_repeated: Boolean.  Default: True.
-    ignore_longer_outputs_than_inputs: Boolean. Default: False.
-      If True, sequences with longer outputs than inputs will be ignored.
-    time_major: The shape format of the `inputs` Tensors.
-      If True, these `Tensors` must be shaped `[max_time, batch_size,
-      num_classes]`.
-      If False, these `Tensors` must be shaped `[batch_size, max_time,
-      num_classes]`.
+    ignore_longer_outputs_than_inputs: Boolean. Default: False. If True,
+      sequences with longer outputs than inputs will be ignored.
+    time_major: The shape format of the `inputs` Tensors. If True, these
+      `Tensors` must be shaped `[max_time, batch_size, num_classes]`. If False,
+      these `Tensors` must be shaped `[batch_size, max_time, num_classes]`.
       Using `time_major = True` (default) is a bit more efficient because it
       avoids transposes at the beginning of the ctc_loss calculation.  However,
       most TensorFlow data is batch-major, so by this function also accepts
@@ -153,6 +149,12 @@ def ctc_loss(labels, inputs=None, sequence_length=None,
 
   Raises:
     TypeError: if labels is not a `SparseTensor`.
+
+  References:
+      Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
+      with Recurrent Neural Networks:
+        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
   # The second, third, etc output tensors contain the gradients.  We use it in
   # _CTCLossGrad() below.
@@ -160,8 +162,8 @@ def ctc_loss(labels, inputs=None, sequence_length=None,
     raise TypeError("Expected labels (first argument) to be a SparseTensor")
 
   # For internal calculations, we transpose to [time, batch, num_classes]
-  inputs = deprecation.deprecated_argument_lookup(
-      "logits", logits, "inputs", inputs)
+  inputs = deprecation.deprecated_argument_lookup("logits", logits, "inputs",
+                                                  inputs)
   if not time_major:
     inputs = array_ops.transpose(inputs, [1, 0, 2])  # (B,T,N) => (T,B,N)
 
@@ -196,7 +198,8 @@ def _CTCLossGrad(op, grad_loss, _):
   # so we make sure we prevent silently incorrect results by raising
   # an error if the second derivative is requested via prevent_gradient.
   grad_without_gradient = array_ops.prevent_gradient(
-      op.outputs[1], message="Currently there is no way to take the second "
+      op.outputs[1],
+      message="Currently there is no way to take the second "
       " derivative of ctc_loss due to the fused implementation's interaction "
       " with tf.gradients()")
   # Return gradient for inputs and None for
@@ -221,10 +224,10 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
     * `A B B B B` if `merge_repeated=False`.
 
   Args:
-    inputs: 3-D `float` `Tensor` sized
-      `[max_time, batch_size, num_classes]`.  The logits.
-    sequence_length: 1-D `int32` vector containing sequence lengths,
-      having size `[batch_size]`.
+    inputs: 3-D `float` `Tensor` sized `[max_time, batch_size, num_classes]`.
+      The logits.
+    sequence_length: 1-D `int32` vector containing sequence lengths, having size
+      `[batch_size]`.
     merge_repeated: Boolean.  Default: True.
 
   Returns:
@@ -249,13 +252,16 @@ def ctc_greedy_decoder(inputs, sequence_length, merge_repeated=True):
   outputs = gen_ctc_ops.ctc_greedy_decoder(
       inputs, sequence_length, merge_repeated=merge_repeated)
   (decoded_ix, decoded_val, decoded_shape, log_probabilities) = outputs
-  return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val, decoded_shape)],
-          log_probabilities)
+  return ([sparse_tensor.SparseTensor(decoded_ix, decoded_val,
+                                      decoded_shape)], log_probabilities)
 
 
 @tf_export(v1=["nn.ctc_beam_search_decoder"])
-def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
-                            top_paths=1, merge_repeated=True):
+def ctc_beam_search_decoder(inputs,
+                            sequence_length,
+                            beam_width=100,
+                            top_paths=1,
+                            merge_repeated=True):
   """Performs beam search decoding on the logits given in input.
 
   **Note** The `ctc_greedy_decoder` is a special case of the
@@ -271,10 +277,10 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
     * `A B B B` if `merge_repeated = False`.
 
   Args:
-    inputs: 3-D `float` `Tensor`, size
-      `[max_time x batch_size x num_classes]`.  The logits.
-    sequence_length: 1-D `int32` vector containing sequence lengths,
-      having size `[batch_size]`.
+    inputs: 3-D `float` `Tensor`, size `[max_time x batch_size x num_classes]`.
+      The logits.
+    sequence_length: 1-D `int32` vector containing sequence lengths, having size
+      `[batch_size]`.
     beam_width: An int scalar >= 0 (beam search beam width).
     top_paths: An int scalar >= 0, <= beam_width (controls output size).
     merge_repeated: Boolean.  Default: True.
@@ -300,17 +306,22 @@ def ctc_beam_search_decoder(inputs, sequence_length, beam_width=100,
 
   decoded_ixs, decoded_vals, decoded_shapes, log_probabilities = (
       gen_ctc_ops.ctc_beam_search_decoder(
-          inputs, sequence_length, beam_width=beam_width, top_paths=top_paths,
+          inputs,
+          sequence_length,
+          beam_width=beam_width,
+          top_paths=top_paths,
           merge_repeated=merge_repeated))
 
-  return (
-      [sparse_tensor.SparseTensor(ix, val, shape) for (ix, val, shape)
-       in zip(decoded_ixs, decoded_vals, decoded_shapes)],
-      log_probabilities)
+  return ([
+      sparse_tensor.SparseTensor(ix, val, shape)
+      for (ix, val, shape) in zip(decoded_ixs, decoded_vals, decoded_shapes)
+  ], log_probabilities)
 
 
 @tf_export("nn.ctc_beam_search_decoder", v1=["nn.ctc_beam_search_decoder_v2"])
-def ctc_beam_search_decoder_v2(inputs, sequence_length, beam_width=100,
+def ctc_beam_search_decoder_v2(inputs,
+                               sequence_length,
+                               beam_width=100,
                                top_paths=1):
   """Performs beam search decoding on the logits given in input.
 
@@ -319,10 +330,10 @@ def ctc_beam_search_decoder_v2(inputs, sequence_length, beam_width=100,
   that decoder is faster for this special case).
 
   Args:
-    inputs: 3-D `float` `Tensor`, size
-      `[max_time, batch_size, num_classes]`.  The logits.
-    sequence_length: 1-D `int32` vector containing sequence lengths,
-      having size `[batch_size]`.
+    inputs: 3-D `float` `Tensor`, size `[max_time, batch_size, num_classes]`.
+      The logits.
+    sequence_length: 1-D `int32` vector containing sequence lengths, having size
+      `[batch_size]`.
     beam_width: An int scalar >= 0 (beam search beam width).
     top_paths: An int scalar >= 0, <= beam_width (controls output size).
 
@@ -347,9 +358,12 @@ def ctc_beam_search_decoder_v2(inputs, sequence_length, beam_width=100,
 
   # Note, merge_repeated is an invalid optimization that is removed from the
   # public API: it returns low probability paths.
-  return ctc_beam_search_decoder(inputs, sequence_length=sequence_length,
-                                 beam_width=beam_width, top_paths=top_paths,
-                                 merge_repeated=False)
+  return ctc_beam_search_decoder(
+      inputs,
+      sequence_length=sequence_length,
+      beam_width=beam_width,
+      top_paths=top_paths,
+      merge_repeated=False)
 
 
 ops.NotDifferentiable("CTCGreedyDecoder")
@@ -388,8 +402,8 @@ def _ctc_state_trans(label_seq):
     label_to_blank = array_ops.stack([blank_states, label_states], 1)
 
     # Scatter transitions that don't depend on sequence.
-    indices = array_ops.concat(
-        [start_to_label, blank_to_label, label_to_blank], 0)
+    indices = array_ops.concat([start_to_label, blank_to_label, label_to_blank],
+                               0)
     values = array_ops.ones([_get_dim(indices, 0)])
     trans = array_ops.scatter_nd(
         indices, values, shape=[num_states, num_states])
@@ -398,8 +412,8 @@ def _ctc_state_trans(label_seq):
     # Label to label transitions. Disallow transitions between repeated labels
     # with no blank state in between.
     batch_idx = array_ops.zeros_like(label_states[2:])
-    indices = array_ops.stack(
-        [batch_idx, label_states[2:], label_states[1:-1]], 1)
+    indices = array_ops.stack([batch_idx, label_states[2:], label_states[1:-1]],
+                              1)
     indices = array_ops.tile(
         array_ops.expand_dims(indices, 0), [batch_size, 1, 1])
     batch_idx = array_ops.expand_dims(math_ops.range(batch_size), 1) * [1, 0, 0]
@@ -431,14 +445,14 @@ def ctc_state_log_probs(seq_lengths, max_seq_length):
   num_duration_states = 2
   num_states = num_duration_states * num_label_states
   log_0 = math_ops.cast(
-      math_ops.log(math_ops.cast(0, dtypes.float64) + 1e-307),
-      dtypes.float32)
+      math_ops.log(math_ops.cast(0, dtypes.float64) + 1e-307), dtypes.float32)
 
   initial_state_log_probs = array_ops.one_hot(
       indices=array_ops.zeros([batch_size], dtype=dtypes.int32),
       depth=num_states,
       on_value=0.0,
-      off_value=log_0, axis=1)
+      off_value=log_0,
+      axis=1)
 
   label_final_state_mask = array_ops.one_hot(
       seq_lengths, depth=num_label_states, axis=0)
@@ -446,8 +460,8 @@ def ctc_state_log_probs(seq_lengths, max_seq_length):
       [num_duration_states, 1, batch_size])
   final_state_mask = duration_final_state_mask * label_final_state_mask
   final_state_log_probs = (1.0 - final_state_mask) * log_0
-  final_state_log_probs = array_ops.reshape(
-      final_state_log_probs, [num_states, batch_size])
+  final_state_log_probs = array_ops.reshape(final_state_log_probs,
+                                            [num_states, batch_size])
 
   return initial_state_log_probs, array_ops.transpose(final_state_log_probs)
 
@@ -475,13 +489,14 @@ def _state_to_olabel(labels, num_labels, states):
   label_states = states[:, :, 1:num_label_states]
   blank_states = states[:, :, num_label_states:]
   one_hot = array_ops.one_hot(
-      labels - 1, depth=(num_labels - 1),
-      on_value=0.0, off_value=math_ops.log(0.0))
+      labels - 1,
+      depth=(num_labels - 1),
+      on_value=0.0,
+      off_value=math_ops.log(0.0))
   one_hot = array_ops.expand_dims(one_hot, axis=0)
   label_states = array_ops.expand_dims(label_states, axis=3)
   label_olabels = math_ops.reduce_logsumexp(label_states + one_hot, axis=2)
-  blank_olabels = math_ops.reduce_logsumexp(
-      blank_states, axis=2, keepdims=True)
+  blank_olabels = math_ops.reduce_logsumexp(blank_states, axis=2, keepdims=True)
   return array_ops.concat([blank_olabels, label_olabels], axis=-1)
 
 
@@ -500,8 +515,8 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
   batch_size = states.shape[1]
   num_states = num_label_states - 1
   batch_state_major = array_ops.transpose(mul_reduce, perm=[1, 2, 0])
-  batch_state_major = array_ops.reshape(
-      batch_state_major, [batch_size * num_states, num_frames])
+  batch_state_major = array_ops.reshape(batch_state_major,
+                                        [batch_size * num_states, num_frames])
   batch_offset = math_ops.range(batch_size, dtype=unique_y.dtype) * num_labels
   indices = unique_y + array_ops.expand_dims(batch_offset, axis=-1)
   indices = array_ops.reshape(indices, [-1, 1])
@@ -512,13 +527,11 @@ def _state_to_olabel_unique(labels, num_labels, states, unique):
   scatter = array_ops.reshape(scatter, [batch_size, num_labels, num_frames])
   scatter = array_ops.where(
       math_ops.equal(scatter, 0.0),
-      array_ops.fill(array_ops.shape(scatter), math_ops.log(0.0)),
-      scatter)
+      array_ops.fill(array_ops.shape(scatter), math_ops.log(0.0)), scatter)
   label_olabels = array_ops.transpose(scatter, [2, 0, 1])
   label_olabels = label_olabels[:, :, 1:]
 
-  blank_olabels = math_ops.reduce_logsumexp(
-      blank_states, axis=2, keepdims=True)
+  blank_olabels = math_ops.reduce_logsumexp(blank_states, axis=2, keepdims=True)
 
   return array_ops.concat([blank_olabels, label_olabels], axis=-1)
 
@@ -534,12 +547,12 @@ def ctc_loss_and_grad(logits, labels, label_length, logit_length, unique=None):
   Args:
     logits: tensor of shape [frames, batch_size, num_labels]
     labels: tensor of shape [batch_size, max_label_seq_length]
-    label_length: tensor of shape [batch_size]
-      Length of reference label sequence in labels.
-    logit_length: tensor of shape [batch_size]
-      Length of input sequence in logits.
-    unique: (optional) unique label indices as computed by unique(labels)
-      If supplied, enables an implementation that is faster and more memory
+    label_length: tensor of shape [batch_size] Length of reference label
+      sequence in labels.
+    logit_length: tensor of shape [batch_size] Length of input sequence in
+      logits.
+    unique: (optional) unique label indices as computed by unique(labels) If
+      supplied, enables an implementation that is faster and more memory
       efficient on TPU.
 
   Returns:
@@ -563,8 +576,8 @@ def ctc_loss_and_grad(logits, labels, label_length, logit_length, unique=None):
       sequence_length=logit_length)
 
   if unique:
-    olabel_log_probs = _state_to_olabel_unique(
-        labels, num_labels, fwd_bwd_log_probs, unique)
+    olabel_log_probs = _state_to_olabel_unique(labels, num_labels,
+                                               fwd_bwd_log_probs, unique)
   else:
     olabel_log_probs = _state_to_olabel(labels, num_labels, fwd_bwd_log_probs)
 
@@ -585,53 +598,58 @@ def _ctc_loss_shape(op):
 
 
 @tf_export("nn.ctc_loss", v1=["nn.ctc_loss_v2"])
-def ctc_loss_v2(labels, logits, label_length, logit_length,
-                logits_time_major=True, unique=None,
-                blank_index=None, name=None):
+def ctc_loss_v2(labels,
+                logits,
+                label_length,
+                logit_length,
+                logits_time_major=True,
+                unique=None,
+                blank_index=None,
+                name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in the article:
-
-  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
-  Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA,
-  pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
+  This op implements the CTC loss as presented in (Graves et al., 2016).
 
   Notes:
-      - Same as the "Classic CTC" in TensorFlow 1.x's tf.nn.ctc_loss setting of
-        preprocess_collapse_repeated=False, ctc_merge_repeated=True
-      - Labels may be supplied as either a dense, zero-padded tensor with a
-        vector of label sequence lengths OR as a SparseTensor.
-      - On TPU and GPU:
-          - Only dense padded labels are supported.
-      - On CPU:
-          - Caller may use SparseTensor or dense padded labels but calling with
-            a SparseTensor will be significantly faster.
-      - Default blank label is 0 rather num_classes - 1, unless overridden by
-        blank_index.
+
+  - Same as the "Classic CTC" in TensorFlow 1.x's tf.compat.v1.nn.ctc_loss
+    setting of preprocess_collapse_repeated=False, ctc_merge_repeated=True
+  - Labels may be supplied as either a dense, zero-padded tensor with a
+    vector of label sequence lengths OR as a SparseTensor.
+  - On TPU and GPU: Only dense padded labels are supported.
+  - On CPU: Caller may use SparseTensor or dense padded labels but calling with
+    a SparseTensor will be significantly faster.
+  - Default blank label is 0 rather num_classes - 1, unless overridden by
+    blank_index.
 
   Args:
     labels: tensor of shape [batch_size, max_label_seq_length] or SparseTensor
-    logits: tensor of shape [frames, batch_size, num_labels],
-      if logits_time_major == False, shape is [batch_size, frames, num_labels].
+    logits: tensor of shape [frames, batch_size, num_labels], if
+      logits_time_major == False, shape is [batch_size, frames, num_labels].
     label_length: tensor of shape [batch_size], None if labels is SparseTensor
       Length of reference label sequence in labels.
-    logit_length: tensor of shape [batch_size]
-      Length of input sequence in logits.
-    logits_time_major: (optional) If True (default), logits is shaped
-      [time, batch, logits]. If False, shape is [batch, time, logits]
+    logit_length: tensor of shape [batch_size] Length of input sequence in
+      logits.
+    logits_time_major: (optional) If True (default), logits is shaped [time,
+      batch, logits]. If False, shape is [batch, time, logits]
     unique: (optional) Unique label indices as computed by
-      ctc_unique_labels(labels).  If supplied, enable a faster, memory
-      efficient implementation on TPU.
+      ctc_unique_labels(labels).  If supplied, enable a faster, memory efficient
+      implementation on TPU.
     blank_index: (optional) Set the class index to use for the blank label.
       Negative values will start from num_classes, ie, -1 will reproduce the
-      ctc_loss behavior of using num_classes - 1 for the blank symbol.
-      There is some memory/performance overhead to switching from the default
-      of 0 as an additional shifted copy of the logits may be created.
+      ctc_loss behavior of using num_classes - 1 for the blank symbol. There is
+      some memory/performance overhead to switching from the default of 0 as an
+      additional shifted copy of the logits may be created.
     name: A name for this `Op`. Defaults to "ctc_loss_dense".
 
   Returns:
     loss: tensor of shape [batch_size], negative log probabilities.
+
+  References:
+      Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
+      with Recurrent Neural Networks:
+        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
   """
   if isinstance(labels, sparse_tensor.SparseTensor):
     if blank_index is None:
@@ -644,58 +662,51 @@ def ctc_loss_v2(labels, logits, label_length, logit_length,
     if blank_index != _get_dim(logits, 2) - 1:
       logits = array_ops.concat([
           logits[:, :, :blank_index],
-          logits[:, :, blank_index+1:],
-          logits[:, :, blank_index:blank_index+1],
-      ], axis=2)
+          logits[:, :, blank_index + 1:],
+          logits[:, :, blank_index:blank_index + 1],
+      ],
+                                axis=2)
       labels = sparse_tensor.SparseTensor(
           labels.indices,
-          array_ops.where(labels.values < blank_index,
-                          labels.values,
-                          labels.values - 1),
-          labels.dense_shape)
+          array_ops.where(labels.values < blank_index, labels.values,
+                          labels.values - 1), labels.dense_shape)
 
-    return ctc_loss(labels=labels,
-                    inputs=logits,
-                    sequence_length=logit_length,
-                    time_major=logits_time_major)
+    return ctc_loss(
+        labels=labels,
+        inputs=logits,
+        sequence_length=logit_length,
+        time_major=logits_time_major)
 
   if blank_index is None:
     blank_index = 0
 
-  return ctc_loss_dense(labels=labels,
-                        logits=logits,
-                        label_length=label_length,
-                        logit_length=logit_length,
-                        logits_time_major=logits_time_major,
-                        unique=unique,
-                        blank_index=blank_index,
-                        name=name)
+  return ctc_loss_dense(
+      labels=labels,
+      logits=logits,
+      label_length=label_length,
+      logit_length=logit_length,
+      logits_time_major=logits_time_major,
+      unique=unique,
+      blank_index=blank_index,
+      name=name)
 
 
-def ctc_loss_dense(labels, logits, label_length, logit_length,
-                   logits_time_major=True, unique=None,
-                   blank_index=0, name=None):
+def ctc_loss_dense(labels,
+                   logits,
+                   label_length,
+                   logit_length,
+                   logits_time_major=True,
+                   unique=None,
+                   blank_index=0,
+                   name=None):
   """Computes CTC (Connectionist Temporal Classification) loss.
 
-  This op implements the CTC loss as presented in the article:
-
-  [A. Graves, S. Fernandez, F. Gomez, J. Schmidhuber.
-  Connectionist Temporal Classification: Labeling Unsegmented Sequence Data
-  with Recurrent Neural Networks. ICML 2006, Pittsburgh, USA,
-  pp. 369-376.](http://www.cs.toronto.edu/~graves/icml_2006.pdf)
-
-  Using the batched forward backward algorithm described in:
-
-  [Sim, K. C., Narayanan, A., Bagby, T., Sainath, T. N., & Bacchiani, M.
-  Improving the efficiency of forward-backward algorithm using batched
-    computation in TensorFlow.
-  Automatic Speech Recognition and Understanding Workshop (ASRU),
-    2017 IEEE (pp. 258-264).
-  ](https://ieeexplore.ieee.org/iel7/8260578/8268903/08268944.pdf)
+  This op implements the CTC loss as presented in (Graves et al., 2016),
+  using the batched forward backward algorithm described in (Sim et al., 2017).
 
   Notes:
-    Significant differences from tf.nn.ctc_loss:
-      Supports GPU and TPU (tf.nn.ctc_loss supports CPU only):
+    Significant differences from tf.compat.v1.nn.ctc_loss:
+      Supports GPU and TPU (tf.compat.v1.nn.ctc_loss supports CPU only):
         For batched operations, GPU and TPU are significantly faster than using
         ctc_loss on CPU.
         This implementation runs on CPU, but significantly slower than ctc_loss.
@@ -714,25 +725,35 @@ def ctc_loss_dense(labels, logits, label_length, logit_length,
 
   Args:
     labels: tensor of shape [batch_size, max_label_seq_length]
-    logits: tensor of shape [frames, batch_size, num_labels],
-      if logits_time_major == False, shape is [batch_size, frames, num_labels].
-    label_length: tensor of shape [batch_size]
-      Length of reference label sequence in labels.
-    logit_length: tensor of shape [batch_size]
-      Length of input sequence in logits.
-    logits_time_major: (optional) If True (default), logits is shaped
-      [time, batch, logits]. If False, shape is [batch, time, logits]
-    unique: (optional) Unique label indices as computed by unique(labels).
-      If supplied, enable a faster, memory efficient implementation on TPU.
+    logits: tensor of shape [frames, batch_size, num_labels], if
+      logits_time_major == False, shape is [batch_size, frames, num_labels].
+    label_length: tensor of shape [batch_size] Length of reference label
+      sequence in labels.
+    logit_length: tensor of shape [batch_size] Length of input sequence in
+      logits.
+    logits_time_major: (optional) If True (default), logits is shaped [time,
+      batch, logits]. If False, shape is [batch, time, logits]
+    unique: (optional) Unique label indices as computed by unique(labels). If
+      supplied, enable a faster, memory efficient implementation on TPU.
     blank_index: (optional) Set the class index to use for the blank label.
       Negative values will start from num_classes, ie, -1 will reproduce the
-      ctc_loss behavior of using num_classes - 1 for the blank symbol.
-      There is some memory/performance overhead to switching from the default
-      of 0 as an additional shifted copy of the logits may be created.
+      ctc_loss behavior of using num_classes - 1 for the blank symbol. There is
+      some memory/performance overhead to switching from the default of 0 as an
+      additional shifted copy of the logits may be created.
     name: A name for this `Op`. Defaults to "ctc_loss_dense".
 
   Returns:
     loss: tensor of shape [batch_size], negative log probabilities.
+
+  References:
+      Connectionist Temporal Classification - Labeling Unsegmented Sequence Data
+      with Recurrent Neural Networks:
+        [Graves et al., 2016](https://dl.acm.org/citation.cfm?id=1143891)
+        ([pdf](http://www.cs.toronto.edu/~graves/icml_2006.pdf))
+      Improving the efficiency of forward-backward algorithm using batched
+      computation in TensorFlow:
+        [Sim et al., 2017](https://ieeexplore.ieee.org/document/8268944)
+        ([pdf](http://bacchiani.net/resume/papers/ASRU2017.pdf))
   """
 
   with ops.name_scope(name, "ctc_loss_dense",
@@ -749,10 +770,11 @@ def ctc_loss_dense(labels, logits, label_length, logit_length,
       if blank_index < 0:
         blank_index += _get_dim(logits, 2)
       logits = array_ops.concat([
-          logits[:, :, blank_index:blank_index+1],
+          logits[:, :, blank_index:blank_index + 1],
           logits[:, :, :blank_index],
-          logits[:, :, blank_index+1:],
-      ], axis=2)
+          logits[:, :, blank_index + 1:],
+      ],
+                                axis=2)
       labels = array_ops.where(labels < blank_index, labels + 1, labels)
 
     args = [logits, labels, label_length, logit_length]
@@ -761,10 +783,7 @@ def ctc_loss_dense(labels, logits, label_length, logit_length,
       unique_y, unique_idx = unique
       args.extend([unique_y, unique_idx])
 
-    # TODO(tombagby): Update to tfe.defun
-    @function.Defun(*[x.dtype for x in args],
-                    python_grad_func=_ctc_loss_grad,
-                    shape_func=_ctc_loss_shape)
+    @custom_gradient.custom_gradient
     def compute_ctc_loss(logits_t, labels_t, label_length_t, logit_length_t,
                          *unique_t):
       """Compute CTC loss."""
@@ -779,9 +798,15 @@ def ctc_loss_dense(labels, logits, label_length, logit_length,
           logit_length=logit_length_t)
       if unique_t:
         kwargs["unique"] = unique_t
-      return ctc_loss_and_grad(**kwargs)
+      result = ctc_loss_and_grad(**kwargs)
+      def grad(grad_loss):
+        grad = [array_ops.reshape(grad_loss, [1, -1, 1]) * result[1]]
+        grad += [None] * (len(args) - len(grad))
+        return grad
 
-    return compute_ctc_loss(*args)[0]
+      return result[0], grad
+
+    return compute_ctc_loss(*args)
 
 
 @tf_export("nn.collapse_repeated")
@@ -789,29 +814,30 @@ def collapse_repeated(labels, seq_length, name=None):
   """Merge repeated labels into single labels.
 
   Args:
-    labels: Tensor of shape (batch, max value in seq_length)
-    seq_length: Tensor of shape (batch), sequence length of each batch element.
+    labels: Tensor of shape [batch, max value in seq_length]
+    seq_length: Tensor of shape [batch], sequence length of each batch element.
     name: A name for this `Op`. Defaults to "collapse_repeated_labels".
 
   Returns:
-    tuple of Tensor of shape (batch, max_seq_length) with repeated labels
-    collapsed and padded to max_seq_length, eg:
-        [[A, A, B, B, A],
-         [A, B, C, D, E]] => [[A, B, A, 0, 0],
-                              [A, B, C, D, E]]
-    and int tensor of shape [batch] with new sequence lengths.
+    A tuple `(collapsed_labels, new_seq_length)` where
+
+    collapsed_labels: Tensor of shape [batch, max_seq_length] with repeated
+    labels collapsed and padded to max_seq_length, eg:
+    `[[A, A, B, B, A], [A, B, C, D, E]] => [[A, B, A, 0, 0], [A, B, C, D, E]]`
+
+    new_seq_length: int tensor of shape [batch] with new sequence lengths.
   """
 
-  with ops.name_scope(name, "collapse_repeated_labels",
-                      [labels, seq_length]):
+  with ops.name_scope(name, "collapse_repeated_labels", [labels, seq_length]):
     labels = ops.convert_to_tensor(labels, name="labels")
     seq_length = ops.convert_to_tensor(seq_length, name="seq_length")
 
     # Mask labels that don't equal previous label.
-    label_mask = array_ops.concat(
-        [array_ops.ones_like(labels[:, :1], dtypes.bool),
-         math_ops.not_equal(labels[:, 1:], labels[:, :-1])],
-        axis=1)
+    label_mask = array_ops.concat([
+        array_ops.ones_like(labels[:, :1], dtypes.bool),
+        math_ops.not_equal(labels[:, 1:], labels[:, :-1])
+    ],
+                                  axis=1)
 
     # Filter labels that aren't in the original sequence.
     maxlen = _get_dim(labels, 1)
@@ -851,8 +877,7 @@ def dense_labels_to_sparse(dense, length):
 
   Args:
     dense: tensor of shape [batch, max_length]
-    length: int tensor of shape [batch]
-      The length of each sequence in dense.
+    length: int tensor of shape [batch] The length of each sequence in dense.
 
   Returns:
     tf.SparseTensor with values only for the valid elements of sequences.
@@ -867,7 +892,8 @@ def dense_labels_to_sparse(dense, length):
       array_ops.boolean_mask(flat_indices, flat_mask), 1)
   values = array_ops.boolean_mask(flat_values, flat_mask)
   sparse = sparse_tensor.SparseTensor(
-      indices=indices, values=math_ops.cast(values, dtypes.int32),
+      indices=indices,
+      values=math_ops.cast(values, dtypes.int32),
       dense_shape=array_ops.shape(flat_values, out_type=dtypes.int64))
   reshaped = sparse_ops.sparse_reshape(sparse, array_ops.shape(dense))
   max_length = math_ops.reduce_max(length)
@@ -876,14 +902,15 @@ def dense_labels_to_sparse(dense, length):
       values=reshaped.values,
       dense_shape=[
           math_ops.cast(reshaped.dense_shape[0], dtypes.int64),
-          math_ops.cast(max_length, dtypes.int64)])
+          math_ops.cast(max_length, dtypes.int64)
+      ])
 
 
 @tf_export("nn.ctc_unique_labels")
 def ctc_unique_labels(labels, name=None):
-  """Get unique labels and indices for batched labels for tf.nn.ctc_loss.
+  """Get unique labels and indices for batched labels for `tf.nn.ctc_loss`.
 
-  For use with tf.nn.ctc_loss_v2 optional argument `unique`: This op can be
+  For use with `tf.nn.ctc_loss` optional argument `unique`: This op can be
   used to preprocess labels in input pipeline to for better speed/memory use
   computing the ctc loss on TPU.
 
@@ -904,25 +931,24 @@ def ctc_unique_labels(labels, name=None):
 
   with ops.name_scope(name, "ctc_unique_labels", [labels]):
     labels = ops.convert_to_tensor(labels, name="labels")
+
     def _unique(x):
       u = array_ops.unique(x)
-      y = array_ops.pad(
-          u.y, [[0, _get_dim(u.idx, 0) - _get_dim(u.y, 0)]])
+      y = array_ops.pad(u.y, [[0, _get_dim(u.idx, 0) - _get_dim(u.y, 0)]])
       y = math_ops.cast(y, dtypes.int64)
       return [y, u.idx]
-    return map_fn.map_fn(
-        _unique, labels, dtype=[dtypes.int64, dtypes.int32])
+
+    return map_fn.map_fn(_unique, labels, dtype=[dtypes.int64, dtypes.int32])
 
 
 def _sum_states(idx, states):
   """Take logsumexp for each unique state out of all label states.
 
   Args:
-    idx: tensor of shape [batch, label_length]
-      For each sequence, indices into a set of unique labels as computed by
-      calling unique.
-    states: tensor of shape [frames, batch, label_length]
-      Log probabilities for each label state.
+    idx: tensor of shape [batch, label_length] For each sequence, indices into a
+      set of unique labels as computed by calling unique.
+    states: tensor of shape [frames, batch, label_length] Log probabilities for
+      each label state.
 
   Returns:
     tensor of shape [frames, batch_size, label_length], log probabilites summed
@@ -934,7 +960,10 @@ def _sum_states(idx, states):
     num_states = _get_dim(states, 2)
     states = array_ops.expand_dims(states, axis=2)
     one_hot = array_ops.one_hot(
-        idx, depth=num_states, on_value=0.0, off_value=math_ops.log(0.0),
+        idx,
+        depth=num_states,
+        on_value=0.0,
+        off_value=math_ops.log(0.0),
         axis=1)
     return math_ops.reduce_logsumexp(states + one_hot, axis=-1)
 
@@ -945,8 +974,8 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
   """Forward-backward algorithm computed in log domain.
 
   Args:
-    state_trans_log_probs: tensor of shape [states, states] or
-      if different transition matrix per batch [batch_size, states, states]
+    state_trans_log_probs: tensor of shape [states, states] or if different
+      transition matrix per batch [batch_size, states, states]
     initial_state_log_probs: tensor of shape [batch_size, states]
     final_state_log_probs: tensor of shape [batch_size, states]
     observed_log_probs: tensor of shape [frames, batch_size, states]
@@ -982,8 +1011,8 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
     state_log_prob -= log_prob_sum
     return state_log_prob
 
-  fwd = _scan(_forward, observed_log_probs, initial_state_log_probs,
-              inclusive=True)
+  fwd = _scan(
+      _forward, observed_log_probs, initial_state_log_probs, inclusive=True)
 
   def _backward(accs, elems):
     """Calculate log probs and cumulative sum masked for sequence length."""
@@ -1009,9 +1038,11 @@ def _forward_backward_log(state_trans_log_probs, initial_state_log_probs,
   mask = array_ops.sequence_mask(sequence_length, maxlen, dtypes.float32)
   mask = array_ops.transpose(mask, perm=[1, 0])
 
-  bwd, cum_log_sum = _scan(_backward, (observed_log_probs, mask),
-                           (final_state_log_probs, zero_log_sum),
-                           reverse=True, inclusive=True)
+  bwd, cum_log_sum = _scan(
+      _backward, (observed_log_probs, mask),
+      (final_state_log_probs, zero_log_sum),
+      reverse=True,
+      inclusive=True)
 
   fwd_bwd_log_probs = fwd[1:] + bwd[1:]
   fwd_bwd_log_probs_sum = math_ops.reduce_logsumexp(
@@ -1045,9 +1076,9 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       scan(lambda a, e: a + (e[0] * e[1]), (elems1, elems2), 0.0)
 
   Args:
-    fn: callable, fn(accumulators, element) return new accumulator values.
-      The (possibly nested) sequence of accumulators is the same as `initial`
-      and the return value must have the same structure.
+    fn: callable, fn(accumulators, element) return new accumulator values. The
+      (possibly nested) sequence of accumulators is the same as `initial` and
+      the return value must have the same structure.
     elems: A (possibly nested) tensor which will be unpacked along the first
       dimension. The resulting slices will be the second argument to fn. The
       first dimension of all nested input tensors must be the same.
@@ -1055,8 +1086,8 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       values for the accumulators.
     reverse: (optional) True enables scan and output elems in reverse order.
     inclusive: (optional) True includes the initial accumulator values in the
-      output. Length of output will be len(elem sequence) + 1. Not meaningful
-      if final_only is True.
+      output. Length of output will be len(elem sequence) + 1. Not meaningful if
+      final_only is True.
     final_only: (optional) When True, return only the final accumulated values,
       not the concatenation of accumulated values for each input.
 
@@ -1080,14 +1111,12 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
     loop_dtypes = [dtypes.int32, dtypes.int32] + accum_dtypes + accum_dtypes
 
   # TODO(tombagby): Update to tfe.defun
-  @function.Defun(*loop_dtypes)
   def cond(i, num_elems, *args):
     del args
     return i >= 0 if reverse else i < num_elems
 
   # The loop *args are [output tensors] + [accumulator tensors] which must
   # be paired. Each output corresponds to one accumulator.
-  @function.Defun(*loop_dtypes)
   def body(i, num_elems, *args):
     """Loop body."""
     i.set_shape([])
@@ -1102,13 +1131,16 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       new_out = []
     else:
       update_i = i + 1 if inclusive and not reverse else i
-      new_out = [inplace_ops.alias_inplace_update(x, update_i, y)
-                 for x, y in zip(out, flat_accum)]
+      new_out = [
+          inplace_ops.alias_inplace_update(x, update_i, y)
+          for x, y in zip(out, flat_accum)
+      ]
     i = i - 1 if reverse else i + 1
     return [i, num_elems] + new_out + flat_accum
 
-  init_i = (array_ops.shape(flat_elems[0])[0] - 1 if reverse
-            else constant_op.constant(0, dtype=dtypes.int32))
+  init_i = (
+      array_ops.shape(flat_elems[0])[0] -
+      1 if reverse else constant_op.constant(0, dtype=dtypes.int32))
   outputs = []
   if not final_only:
     num_outputs = array_ops.shape(flat_elems[0])[0] + (1 if inclusive else 0)
@@ -1117,8 +1149,8 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
           [[num_outputs], array_ops.shape(initial_accum)], 0)
       out = inplace_ops.empty(out_shape, dtype=initial_accum.dtype, init=True)
       if inclusive:
-        out = inplace_ops.alias_inplace_add(
-            out, init_i + (1 if reverse else 0), initial_accum)
+        out = inplace_ops.alias_inplace_add(out, init_i + (1 if reverse else 0),
+                                            initial_accum)
       outputs.append(out)
   loop_in = [init_i, num_elems] + outputs + flat_initial
   hostmem = [
@@ -1126,8 +1158,15 @@ def _scan(fn, elems, initial, reverse=False, inclusive=False, final_only=False):
       if x.dtype.base_dtype in (dtypes.int32, dtypes.int64)
   ]
 
-  # TODO(tombagby): Update to while_v2.
-  loop_results = functional_ops.While(loop_in, cond, body, hostmem=hostmem)
+  if context.executing_eagerly():
+    loop_results = loop_in
+    while cond(*loop_results):
+      loop_results = body(*loop_results)
+  else:
+    # TODO(tombagby): Update to while_v2.
+    cond = function.Defun(*loop_dtypes)(cond)
+    body = function.Defun(*loop_dtypes)(body)
+    loop_results = functional_ops.While(loop_in, cond, body, hostmem=hostmem)
   out = loop_results[2:num_accums + 2]
   return pack(out)
 

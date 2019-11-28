@@ -12,22 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Logical operators, including comparison and bool operators."""
+"""Logical boolean operators: not, and, or."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import operator
-
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
-
-
-# Note: the implementations in this file are split into very small-grained
-# functions in preparation for the factoring out the more generic pyct library.
-# At that time, the py_* and tf_* functions will reside in different libraries.
 
 
 def not_(a):
@@ -105,30 +98,3 @@ def _py_equal(a, b):
 def not_eq(a, b):
   """Functional form of "not-equal"."""
   return not_(eq(a, b))
-
-
-# Default implementation for the rest.
-
-is_ = operator.is_
-is_not = operator.is_not
-
-
-def in_(a, b):
-  """Functional form of "in"."""
-  # TODO(mdan): in and not_in should probably be convertible for some types.
-  return a in b
-
-
-def not_in(a, b):
-  """Functional form of "not-in"."""
-  return a not in b
-
-gt = operator.gt
-gt_e = operator.ge
-lt = operator.lt
-lt_e = operator.le
-
-
-u_add = operator.pos
-u_sub = operator.neg
-invert = operator.invert

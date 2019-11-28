@@ -19,7 +19,7 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "cuda/include/cuda_runtime_api.h"
+#include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
 
@@ -57,16 +57,6 @@ void* Align(uint64_t alignment, uint64_t size, void*& ptr, uint64_t& space) {
 
 namespace tensorflow {
 namespace tensorrt {
-
-void* TRTCudaAllocator::allocate(uint64_t size, uint64_t alignment,
-                                 uint32_t flags) {
-  assert((alignment & (alignment - 1)) == 0);  // zero or a power of 2.
-  void* memory;
-  cudaMalloc(&memory, size);
-  return memory;
-}
-
-void TRTCudaAllocator::free(void* memory) { cudaFree(memory); }
 
 void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
                                    uint32_t flags) {

@@ -208,6 +208,54 @@ Status SvdShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// Inputs: [...,1,M], [...,1,M], [...,1,M],[...,M,N].
+// Output is [...,M,N].
+Status TridiagonalMatMulShapeFn(InferenceContext* c) {
+  ShapeHandle superdiag;
+  ShapeHandle maindiag;
+  ShapeHandle subdiag;
+  ShapeHandle rhs;
+
+  // Check that rank is at least 2.
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &superdiag));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &maindiag));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(2), 2, &subdiag));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(3), 2, &rhs));
+
+  // Extract batch dimensions and check they are the same.
+  ShapeHandle superdiag_batch_shape;
+  ShapeHandle maindiag_batch_shape;
+  ShapeHandle subdiag_batch_shape;
+  ShapeHandle rhs_batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(superdiag, 0, -2, &superdiag_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(maindiag, 0, -2, &maindiag_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(subdiag, 0, -2, &subdiag_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &rhs_batch_shape));
+  TF_RETURN_IF_ERROR(c->Merge(superdiag, maindiag, &superdiag));
+  TF_RETURN_IF_ERROR(
+      c->Merge(maindiag_batch_shape, rhs_batch_shape, &rhs_batch_shape));
+  TF_RETURN_IF_ERROR(
+      c->Merge(subdiag_batch_shape, rhs_batch_shape, &rhs_batch_shape));
+
+  // Check that diagonals have the same shape.
+  TF_RETURN_IF_ERROR(c->Merge(superdiag, maindiag, &maindiag));
+  TF_RETURN_IF_ERROR(c->Merge(subdiag, maindiag, &maindiag));
+
+  // Check that size of tri-diagonal matrix is the same as height of matrix on
+  // the right.
+  DimensionHandle m_lhs = c->Dim(maindiag, -1);
+  DimensionHandle m_rhs = c->Dim(rhs, -2);
+  TF_RETURN_IF_ERROR(c->Merge(m_lhs, m_rhs, &m_lhs));
+
+  // Check that next-to-last dimension of diagonals is 1.
+  DimensionHandle unused;
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(maindiag, -2), 1, &unused));
+
+  // The output shape is the same as rhs shape.
+  c->set_output(0, rhs);
+  return Status::OK();
+}
+
 // The first input is [...,3,M] and second input is [...,M,K].
 // Output is [...,M,K].
 Status TridiagonalSolveShapeFn(InferenceContext* c) {
@@ -335,6 +383,15 @@ REGISTER_OP("SelfAdjointEig")
       return Status::OK();
     });
 
+REGISTER_OP("Eig")
+    .Input("input: T")
+    .Output("e: Tout")
+    .Output("v: Tout")
+    .Attr("compute_v: bool = True")
+    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("Tout: {complex64, complex128}")
+    .SetShapeFn(SelfAdjointEigV2ShapeFn);
+
 REGISTER_OP("SelfAdjointEigV2")
     .Input("input: T")
     .Output("e: T")
@@ -409,12 +466,30 @@ REGISTER_OP("Svd")
     .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(SvdShapeFn);
 
+REGISTER_OP("TridiagonalMatMul")
+    .Input("superdiag: T")
+    .Input("maindiag: T")
+    .Input("subdiag: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(TridiagonalMatMulShapeFn);
+
 REGISTER_OP("TridiagonalSolve")
     .Input("diagonals: T")
     .Input("rhs: T")
     .Output("output: T")
+    .Attr("partial_pivoting: bool = True")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(TridiagonalSolveShapeFn);
+
+REGISTER_OP("Einsum")
+    .Input("inputs: N * T")
+    .Output("output: T")
+    .Attr("equation: string")
+    .Attr("N: int >= 1")
+    .Attr("T: type")
+    .SetShapeFn(shape_inference::EinsumShape);
 
 // Deprecated op registrations:
 

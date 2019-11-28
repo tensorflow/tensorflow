@@ -221,7 +221,7 @@ class SparseReduceOp : public OpKernel {
       Op::template Run<T>(ctx, reduced_val, g.template values<T>());
       const int64 idx = CoordinatesToFlatIndex(g.group(), output_strides);
       out_flat(idx) = reduced_val();
-      VLOG(2) << "coords: " << str_util::Join(g.group(), ",")
+      VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
               << "; idx: " << idx << "; group " << Op::Name() << ": "
               << reduced_val();
     }
@@ -309,7 +309,7 @@ class SparseReduceSparseOp : public OpKernel {
       }
       out_flat(i) = reduced_val();
       i++;
-      VLOG(2) << "coords: " << str_util::Join(g.group(), ",")
+      VLOG(2) << "coords: " << absl::StrJoin(g.group(), ",")
               << "; group " << Op::Name() << ": "
               << reduced_val();
     }

@@ -19,8 +19,10 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
@@ -126,6 +128,14 @@ class BroadcastToTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(v_tf.eval(), v_np)
         # check shape inference when shape input is constant
         self.assertAllEqual(shape, v_np.shape)
+
+  def testBroadcastToBadOutputShape(self):
+    with context.eager_mode():
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   "Unable to broadcast tensor of shape"):
+        self.evaluate(
+            array_ops.broadcast_to(
+                constant_op.constant([0, 1]), constant_op.constant([2, 1])))
 
   @test_util.run_deprecated_v1
   def testGradientForScalar(self):

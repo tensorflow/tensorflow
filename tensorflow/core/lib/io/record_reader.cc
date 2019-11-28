@@ -31,7 +31,7 @@ namespace io {
 RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
     const string& compression_type) {
   RecordReaderOptions options;
-  if (compression_type == "ZLIB") {
+  if (compression_type == compression::kZlib) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
 #if defined(IS_SLIM_BUILD)
     LOG(ERROR) << "Compression is not supported but compression_type is set."
@@ -84,7 +84,7 @@ RecordReader::RecordReader(RandomAccessFile* file,
 //
 // offset corresponds to the user-provided value to ReadRecord()
 // and is used only in error messages.
-Status RecordReader::ReadChecksummed(uint64 offset, size_t n, string* result) {
+Status RecordReader::ReadChecksummed(uint64 offset, size_t n, tstring* result) {
   if (n >= SIZE_MAX - sizeof(uint32)) {
     return errors::DataLoss("record size too large");
   }
@@ -125,7 +125,7 @@ Status RecordReader::GetMetadata(Metadata* md) {
     // loop should be guaranteed to either return after reaching EOF
     // or encountering an error.
     uint64 offset = 0;
-    string record;
+    tstring record;
     while (true) {
       // Read header, containing size of data.
       Status s = ReadChecksummed(offset, sizeof(uint64), &record);
@@ -161,7 +161,7 @@ Status RecordReader::GetMetadata(Metadata* md) {
   return Status::OK();
 }
 
-Status RecordReader::ReadRecord(uint64* offset, string* record) {
+Status RecordReader::ReadRecord(uint64* offset, tstring* record) {
   // Position the input stream.
   int64 curr_pos = input_stream_->Tell();
   int64 desired_pos = static_cast<int64>(*offset);

@@ -14,9 +14,23 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/util.h"
 
+#include <complex>
 #include <cstring>
 
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+
 namespace tflite {
+namespace {
+
+TfLiteStatus UnresolvedOpInvoke(TfLiteContext* context, TfLiteNode* node) {
+  context->ReportError(context,
+                       "Encountered an unresolved custom op. Did you miss "
+                       "a custom op or delegate?");
+  return kTfLiteError;
+}
+
+}  // namespace
 
 bool IsFlexOp(const char* custom_name) {
   return custom_name && strncmp(custom_name, kFlexCustomCodePrefix,
@@ -24,7 +38,8 @@ bool IsFlexOp(const char* custom_name) {
 }
 
 TfLiteIntArray* ConvertVectorToTfLiteIntArray(const std::vector<int>& input) {
-  return ConvertArrayToTfLiteIntArray(input.size(), input.data());
+  return ConvertArrayToTfLiteIntArray(static_cast<int>(input.size()),
+                                      input.data());
 }
 
 TfLiteIntArray* ConvertArrayToTfLiteIntArray(const int rank, const int* dims) {
@@ -53,6 +68,65 @@ size_t CombineHashes(std::initializer_list<size_t> hashes) {
              (hash + 0x9e3779b97f4a7800ULL + (result << 10) + (result >> 4));
   }
   return result;
+}
+
+TfLiteStatus GetSizeOfType(TfLiteContext* context, const TfLiteType type,
+                           size_t* bytes) {
+  // TODO(levp): remove the default case so that new types produce compilation
+  // error.
+  switch (type) {
+    case kTfLiteFloat32:
+      *bytes = sizeof(float);
+      break;
+    case kTfLiteInt32:
+      *bytes = sizeof(int);
+      break;
+    case kTfLiteUInt8:
+      *bytes = sizeof(uint8_t);
+      break;
+    case kTfLiteInt64:
+      *bytes = sizeof(int64_t);
+      break;
+    case kTfLiteBool:
+      *bytes = sizeof(bool);
+      break;
+    case kTfLiteComplex64:
+      *bytes = sizeof(std::complex<float>);
+      break;
+    case kTfLiteInt16:
+      *bytes = sizeof(int16_t);
+      break;
+    case kTfLiteInt8:
+      *bytes = sizeof(int8_t);
+      break;
+    case kTfLiteFloat16:
+      *bytes = sizeof(TfLiteFloat16);
+      break;
+    default:
+      context->ReportError(
+          context,
+          "Type %d is unsupported. Only float32, int8, int16, int32, int64, "
+          "uint8, bool, complex64 supported currently.",
+          type);
+      return kTfLiteError;
+  }
+  return kTfLiteOk;
+}
+
+TfLiteRegistration CreateUnresolvedCustomOp(const char* custom_op_name) {
+  return TfLiteRegistration{nullptr,
+                            nullptr,
+                            nullptr,
+                            /*invoke*/ &UnresolvedOpInvoke,
+                            nullptr,
+                            BuiltinOperator_CUSTOM,
+                            custom_op_name,
+                            1};
+}
+
+bool IsUnresolvedCustomOp(const TfLiteRegistration& registration) {
+  return registration.builtin_code == tflite::BuiltinOperator_CUSTOM &&
+         registration.invoke == &UnresolvedOpInvoke;
 }
 
 }  // namespace tflite

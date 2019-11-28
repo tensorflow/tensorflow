@@ -16,8 +16,14 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/map_and_filter_fusion.h"
 
 #include "absl/container/flat_hash_set.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/mutable_graph_view.h"
@@ -27,7 +33,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/kernels/function_ops.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -76,19 +84,80 @@ NodeDef MakeFusedNode(const NodeDef& map_node,
   return fused_node;
 }
 
-NodeDef MakeFilterByLastComponentNode(const NodeDef& fused_map_node,
-                                      const NodeDef& filter_node,
-                                      MutableGraphView* graph) {
-  NodeDef filter_by_component;
-  graph_utils::SetUniqueGraphNodeName("FilterByLastComponent", graph->graph(),
-                                      &filter_by_component);
-  filter_by_component.set_op("FilterByLastComponentDataset");
-  filter_by_component.add_input(fused_map_node.name());
+NodeDef MakeFilterNode(const NodeDef& fused_map,
+                       const FunctionDef& fused_map_func,
+                       MutableGraphView* graph, FunctionDefLibrary* library) {
+  NodeDef filter_node;
+  graph_utils::SetUniqueGraphNodeName("FilterByLast", graph->graph(),
+                                      &filter_node);
+  filter_node.set_op("FilterDataset");
+  filter_node.add_input(fused_map.name());
 
   for (auto key : {"output_shapes", "output_types"}) {
-    (*filter_by_component.mutable_attr())[key] = filter_node.attr().at(key);
+    graph_utils::CopyAttribute(key, fused_map, &filter_node);
   }
-  return filter_by_component;
+
+  AddNodeAttr("Targuments", std::vector<DataType>({}), &filter_node);
+
+  OpDef fused_sig = fused_map_func.signature();
+  FunctionDef* func = library->add_function();
+  OpDef* sig = func->mutable_signature();
+  sig->set_name("GetLast");
+  for (const auto& arg : fused_sig.output_arg()) {
+    *(sig->add_input_arg()) = arg;
+  }
+  OpDef::ArgDef* arg = sig->add_output_arg();
+  arg->set_name("predicate_result");
+  arg->set_description("predicate result computed in the fused map");
+  arg->set_type(DT_BOOL);
+  sig->set_description("returns the last argument");
+  (*func->mutable_ret())["predicate_result"] = strings::StrCat(
+      fused_sig.output_arg(fused_sig.output_arg_size() - 1).name(), ":0");
+
+  (*filter_node.mutable_attr())["predicate"] =
+      FunctionDefHelper::FunctionRef(func->signature().name()).proto;
+  return filter_node;
+}
+
+NodeDef MakeMapNode(const NodeDef& updated_filter, const NodeDef& original_map,
+                    const FunctionDef& fused_map_func, MutableGraphView* graph,
+                    FunctionDefLibrary* library) {
+  NodeDef map_node;
+  graph_utils::SetUniqueGraphNodeName("DropLast", graph->graph(), &map_node);
+  // We use MapDataset even if the original map was ParallelMap. Non-parallel
+  // map is more performant for simple short-circuit functions like (x, y) -> x.
+  map_node.set_op("MapDataset");
+  map_node.add_input(updated_filter.name());
+
+  for (auto key : {"output_shapes", "output_types"}) {
+    graph_utils::CopyAttribute(key, original_map, &map_node);
+  }
+
+  AddNodeAttr("Targuments", std::vector<DataType>({}), &map_node);
+
+  for (auto key : {"use_inter_op_parallelism", "preserve_cardinality"}) {
+    if (gtl::FindOrNull(original_map.attr(), key)) {
+      graph_utils::CopyAttribute(key, original_map, &map_node);
+    }
+  }
+
+  OpDef fused_sig = fused_map_func.signature();
+  FunctionDef* func = library->add_function();
+  OpDef* sig = func->mutable_signature();
+  sig->set_name("DropLast");
+  for (const auto& o : fused_sig.output_arg()) {
+    *(sig->add_input_arg()) = o;
+  }
+  for (int i = 0; i < fused_sig.output_arg_size() - 1; ++i) {
+    auto arg_i = fused_sig.output_arg(i);
+    *(sig->add_output_arg()) = arg_i;
+    (*func->mutable_ret())[arg_i.name()] = strings::StrCat(arg_i.name(), ":0");
+  }
+  sig->set_description("drops the last argument");
+
+  (*map_node.mutable_attr())["f"] =
+      FunctionDefHelper::FunctionRef(func->signature().name()).proto;
+  return map_node;
 }
 
 }  // namespace
@@ -155,11 +224,15 @@ Status MapAndFilterFusion::OptimizeAndCollectStats(Cluster* cluster,
     const auto* fused_maps =
         graph.AddNode(MakeFusedNode(*map_node, *fused_function, &graph));
 
-    const auto* filter_by_component = graph.AddNode(
-        MakeFilterByLastComponentNode(*fused_maps, *filter_node, &graph));
+    const auto* new_filter_node = graph.AddNode(MakeFilterNode(
+        *fused_maps, *fused_function, &graph, output->mutable_library()));
+
+    const auto* new_map_node =
+        graph.AddNode(MakeMapNode(*new_filter_node, *map_node, *fused_function,
+                                  &graph, output->mutable_library()));
 
     TF_RETURN_IF_ERROR(
-        graph.UpdateFanouts(filter_node->name(), filter_by_component->name()));
+        graph.UpdateFanouts(filter_node->name(), new_map_node->name()));
     TF_RETURN_IF_ERROR(function_library.AddFunctionDef(*fused_function));
 
     // TODO(prazek): we could also remove functions from library if they are not

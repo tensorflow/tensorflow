@@ -21,16 +21,45 @@ limitations under the License.
 namespace tensorflow {
 class MarkForCompilationPassTestHelper {
  public:
+  struct Options {
+    bool enable_global_jit;
+    bool disable_deadness_analysis;
+    bool enable_cluster_scoping;
+
+    Options()
+        : enable_global_jit(true),
+          disable_deadness_analysis(true),
+          enable_cluster_scoping(true) {}
+
+    Options WithNoGlobalJit() {
+      Options copy = *this;
+      copy.enable_global_jit = false;
+      return copy;
+    }
+
+    Options WithDeadnessAnalysis() {
+      Options copy = *this;
+      copy.disable_deadness_analysis = false;
+      return copy;
+    }
+
+    Options WithNoClusterScoping() {
+      Options copy = *this;
+      copy.enable_cluster_scoping = false;
+      return copy;
+    }
+  };
+
   // Runs the MarkForCompilation pass on `graph` after assigning all nodes in
   // `graph` to the CPU device.  To make testing easier, ignores device
-  // registration, _XlaCompile attributes and input deadness.
+  // registration and  _XlaCompile attributes.
   static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
                                    FunctionLibraryDefinition* flib_def,
-                                   bool enable_global_jit = true);
+                                   Options options = Options());
 
   // Like `MarkForCompilation` but creates `flib_def` from the op registry.
   static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
-                                   bool enable_global_jit = true);
+                                   Options options = Options());
 };
 }  // namespace tensorflow
 

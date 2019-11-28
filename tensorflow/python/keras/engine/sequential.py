@@ -23,12 +23,17 @@ import copy
 
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.saving.saved_model import model_serialization
+from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -95,7 +100,7 @@ class Sequential(training.Model):
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, layers=None, name=None):
-    super(Sequential, self).__init__(name=name)
+    super(Sequential, self).__init__(name=name, autocast=False)
     self.supports_masking = True
     self._build_input_shape = None
     self._compute_output_and_mask_jointly = True
@@ -104,6 +109,9 @@ class Sequential(training.Model):
 
     # Add to the model any layers passed to the constructor.
     if layers:
+      if not isinstance(layers, (list, tuple)):
+        layers = [layers]
+      tf_utils.assert_no_legacy_layers(layers)
       for layer in layers:
         self.add(layer)
 
@@ -120,6 +128,7 @@ class Sequential(training.Model):
     return layers[:]
 
   @property
+  @trackable_layer_utils.cache_recursive_attribute('dynamic')
   def dynamic(self):
     return any(layer.dynamic for layer in self.layers)
 
@@ -150,6 +159,13 @@ class Sequential(training.Model):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
                       'Found: ' + str(layer))
+
+    tf_utils.assert_no_legacy_layers([layer])
+
+    # This allows the added layer to broadcast mutations to the current
+    # layer, which is necessary to ensure cache correctness.
+    layer._attribute_sentinel.add_parent(self._attribute_sentinel)
+
     self.built = False
     set_inputs = False
     if not self._layers:
@@ -185,21 +201,29 @@ class Sequential(training.Model):
       # If the model is being built continuously on top of an input layer:
       # refresh its output.
       output_tensor = layer(self.outputs[0])
-      if isinstance(output_tensor, list):
+      if len(nest.flatten(output_tensor)) != 1:
         raise TypeError('All layers in a Sequential model '
                         'should have a single output tensor. '
                         'For multi-output layers, '
                         'use the functional API.')
       self.outputs = [output_tensor]
+
+    if self.outputs:
+      # True if set_inputs or self._is_graph_network or if adding a layer
+      # to an already built deferred seq model.
+      self.built = True
+
     if set_inputs or self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
-      self.built = True
     else:
       self._layers.append(layer)
     if self._layers:
       self._track_layers(self._layers)
 
     self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
+    # Different Model types add to `._layers` in different ways, so for safety
+    # we do a cache invalidation to make sure the changes are reflected.
+    self._attribute_sentinel.invalidate_all()
 
   @trackable.no_automatic_dependency_tracking
   def pop(self):
@@ -213,6 +237,7 @@ class Sequential(training.Model):
 
     layer = self._layers.pop()
     self._layer_call_argspecs.pop(layer)
+    self._attribute_sentinel.invalidate_all()
     if not self.layers:
       self.outputs = None
       self.inputs = None
@@ -223,7 +248,7 @@ class Sequential(training.Model):
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
       self.built = True
 
-  @base_layer.default
+  @base_layer_utils.default
   def build(self, input_shape=None):
     if self._is_graph_network:
       self._init_graph_network(self.inputs, self.outputs, name=self.name)
@@ -316,17 +341,18 @@ class Sequential(training.Model):
     else:
       return (proba > 0.5).astype('int32')
 
-  def save(self, filepath, overwrite=True, include_optimizer=True):
-    from tensorflow.python.keras.models import save_model  # pylint: disable=g-import-not-at-top
-    save_model(self, filepath, overwrite, include_optimizer)
-
   def get_config(self):
     layer_configs = []
     for layer in self.layers:
-      layer_configs.append({
-          'class_name': layer.__class__.__name__,
-          'config': layer.get_config()
-      })
+      layer_configs.append(generic_utils.serialize_keras_object(layer))
+    # When constructed using an `InputLayer` the first non-input layer may not
+    # have the shape information to reconstruct `Sequential` as a graph network.
+    if (self._is_graph_network and layer_configs and
+        'batch_input_shape' not in layer_configs[0]['config'] and
+        isinstance(self._layers[0], input_layer.InputLayer)):
+      batch_input_shape = self._layers[0]._batch_input_shape
+      layer_configs[0]['config']['batch_input_shape'] = batch_input_shape
+
     config = {
         'name': self.name,
         'layers': copy.deepcopy(layer_configs)
@@ -352,9 +378,6 @@ class Sequential(training.Model):
       model.add(layer)
     if not model.inputs and build_input_shape:
       model.build(build_input_shape)
-    if not model._is_graph_network:
-      # Still needs to be built when passed input data.
-      model.built = False
     return model
 
   @property
@@ -362,3 +385,7 @@ class Sequential(training.Model):
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @property
+  def _trackable_saved_model_saver(self):
+    return model_serialization.SequentialSavedModelSaver(self)

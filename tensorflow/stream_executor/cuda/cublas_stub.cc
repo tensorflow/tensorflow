@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "cuda/include/cublas.h"
-#include "cuda/include/cuda.h"
+#include "third_party/gpus/cuda/include/cublas.h"
+#include "third_party/gpus/cuda/include/cuda.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 
@@ -60,6 +60,8 @@ typedef enum {} cublasMath_t;
 // Parameter constness changed in cuBLAS 9.2
 #if CUDA_VERSION < 9020
 #include "tensorflow/stream_executor/cuda/cublas_9_0.inc"
-#else
+#elif CUDA_VERSION < 10010
 #include "tensorflow/stream_executor/cuda/cublas_10_0.inc"
+#else
+#include "tensorflow/stream_executor/cuda/cublas_10_1.inc"
 #endif

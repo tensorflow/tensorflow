@@ -49,6 +49,9 @@ class StridedSliceOpModel : public SingleOpModel {
   void SetInput(std::initializer_list<input_type> data) {
     PopulateTensor<input_type>(input_, data);
   }
+  void SetInput(const std::vector<input_type> data) {
+    PopulateTensor<input_type>(input_, data);
+  }
   void SetBegin(std::initializer_list<int32_t> data) {
     PopulateTensor<int32_t>(begin_, data);
   }
@@ -96,6 +99,21 @@ TEST(StridedSliceOpTest, In1D) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({2, 3}));
+}
+
+TEST(StridedSliceOpTest, In1D_Int32End) {
+  StridedSliceOpModel<> m({32768}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
+  std::vector<float> values;
+  for (int i = 0; i < 32768; i++) {
+    values.push_back(i);
+  }
+  m.SetInput(values);
+  m.SetBegin({0});
+  m.SetEnd({32768});
+  m.SetStrides({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({32768}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(values));
 }
 
 TEST(StridedSliceOpTest, In1D_EmptyOutput) {
@@ -567,8 +585,8 @@ TEST(StridedSliceOpTest, RunTwice) {
 }
 
 TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1Uint8) {
-  StridedSliceOpModel<uint8_t, TensorType_UINT8> m({2, 3, 2}, {3}, {3}, {3}, 0, 0,
-                                                 0, 0, 1);
+  StridedSliceOpModel<uint8_t, TensorType_UINT8> m({2, 3, 2}, {3}, {3}, {3}, 0,
+                                                   0, 0, 0, 1);
   m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12});
   m.SetBegin({0, 0, 0});
   m.SetEnd({1, 3, 2});
@@ -591,9 +609,3 @@ TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8) {
 }
 }  // namespace
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

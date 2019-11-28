@@ -209,11 +209,9 @@ TEST_F(WhileLoopSimplifierTest, LoopWithRecvNotSimplified) {
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }
 
-// The limitation on not being able to simplify loops that contain infeeds (and
-// other non-removable instructions) isn't fundamental -- it just stems from the
-// fact that our infrastructure sees simplifying such a loop as tantamount to
-// removing the non-removable instruction.
-TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
+// We can simplify loops whose bodies contain infeed or other side-effecting
+// instructions other than send/recv.
+TEST_F(WhileLoopSimplifierTest, LoopWithInfeedSimplified) {
   auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
   HloComputation* computation = m->entry_computation();
   auto* while_op = computation->root_instruction();
@@ -221,6 +219,22 @@ TEST_F(WhileLoopSimplifierTest, LoopWithInfeedNotSimplified) {
   auto* while_body = while_op->while_body();
   auto token = while_body->AddInstruction(HloInstruction::CreateToken());
   while_body->AddInstruction(HloInstruction::CreateInfeed(
+      ShapeUtil::MakeShape(F32, {1}), token, "config"));
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(), op::Tuple());
+}
+
+// We don't simplify trip-count-1 loops whose *conditions* contain infeed or
+// other side-effecting instructions, because simplifying such a loop always
+// removes its condition!
+TEST_F(WhileLoopSimplifierTest, LoopWithInfeedInCondNotSimplified) {
+  auto m = MakeModuleWithSimpleLoop(/*num_iters=*/1);
+  HloComputation* computation = m->entry_computation();
+  auto* while_op = computation->root_instruction();
+  ASSERT_EQ(while_op->opcode(), HloOpcode::kWhile);
+  auto* while_cond = while_op->while_condition();
+  auto token = while_cond->AddInstruction(HloInstruction::CreateToken());
+  while_cond->AddInstruction(HloInstruction::CreateInfeed(
       ShapeUtil::MakeShape(F32, {1}), token, "config"));
   EXPECT_FALSE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
 }
@@ -429,6 +443,47 @@ TEST_F(WhileLoopSimplifierTest, RemoveUnusedLoopOperands) {
   EXPECT_THAT(new_while_op->while_condition()->root_instruction(),
               op::Eq(op::Constant(),
                      op::GetTupleElement(op::Parameter(0), /*tuple_index=*/1)));
+}
+
+// Check that we can remove unused loop operands even if the loop contains a
+// side-effecting instruction.
+TEST_F(WhileLoopSimplifierTest,
+       RemoveUnusedLoopOperandsDespiteSideEffectingOps) {
+  const string hlo_string = R"(
+  HloModule RemoveUnusedOperands
+  body {
+    loop_var = (s32[]) parameter(0)
+    gte0 = s32[] get-tuple-element(loop_var), index=0
+    token0 = token[] after-all()
+    unused = ((s32[], pred[]), token[]) infeed(token0)
+    ROOT tuple = (s32[]) tuple(gte0)
+  }
+  cond {
+    loop_var = (s32[]) parameter(0)
+    ROOT constant = pred[] constant(true)
+  }
+  ENTRY RemoveUnusedOperands {
+    x = s32[] parameter(0)
+    tuple.1 = (s32[]) tuple(s32[] x)
+    ROOT while = (s32[]) while((s32[]) tuple.1),
+      condition=cond, body=body
+  }
+  )";
+
+  auto m = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  EXPECT_TRUE(WhileLoopSimplifier().Run(m.get()).ValueOrDie());
+
+  // The original while instruction is still left in the module as a dead
+  // instruction, find a while instruction with a different name as the new
+  // while instruction.
+  const auto& instrs = m->entry_computation()->instructions();
+  HloInstruction* new_while_op =
+      *absl::c_find_if(instrs, [&](const HloInstruction* instr) {
+        return (instr->opcode() == HloOpcode::kWhile &&
+                instr->name() != "while");
+      });
+  EXPECT_TRUE(ShapeUtil::IsEmptyTuple(new_while_op->shape()))
+      << new_while_op->shape().ToString();
 }
 
 TEST_F(WhileLoopSimplifierTest, LoopWithNonTupleBodyShapeNotSimplified) {

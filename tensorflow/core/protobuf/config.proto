@@ -1,16 +1,18 @@
 syntax = "proto3";
 
 package tensorflow;
+
 option cc_enable_arenas = true;
 option java_outer_classname = "ConfigProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.framework";
-// add go_package externally with copybara
+
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf";
 import "tensorflow/core/framework/cost_graph.proto";
 import "tensorflow/core/framework/graph.proto";
 import "tensorflow/core/framework/step_stats.proto";
-import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/cluster.proto";
+import "tensorflow/core/protobuf/debug.proto";
 import "tensorflow/core/protobuf/rewriter_config.proto";
 
 message GPUOptions {
@@ -163,16 +165,33 @@ message GPUOptions {
     // is really not subject to pending use.
     bool timestamped_allocator = 5;
 
-    // If > 0 limit the number of pending kernels on any compute
-    // stream to this number.
-    int32 pending_cap = 6;
+    // reserved id: 6
+
+    // Parameters for GPUKernelTracker.  By default no kernel tracking is done.
+    // Note that timestamped_allocator is only effective if some tracking is
+    // specified.
+    //
+    // If kernel_tracker_max_interval = n > 0, then a tracking event
+    // is inserted after every n kernels without an event.
+    int32 kernel_tracker_max_interval = 7;
+    // If kernel_tracker_max_bytes = n > 0, then a tracking event is
+    // inserted after every series of kernels allocating a sum of
+    // memory >= n.  If one kernel allocates b * n bytes, then one
+    // event will be inserted after it, but it will count as b against
+    // the pending limit.
+    int32 kernel_tracker_max_bytes = 8;
+    // If kernel_tracker_max_pending > 0 then no more than this many
+    // tracking events can be outstanding at a time.  An attempt to
+    // launch an additional kernel will stall until an event
+    // completes.
+    int32 kernel_tracker_max_pending = 9;
   }
 
   // Everything inside experimental is subject to change and is not subject
   // to API stability guarantees in
   // https://www.tensorflow.org/guide/version_compat.
   Experimental experimental = 9;
-};
+}
 
 // Options passed to the graph optimizer
 message OptimizerOptions {
@@ -267,7 +286,7 @@ message GraphOptions {
   // Not currently configurable via the public Python API (i.e. there is no API
   // stability guarantee if you import RewriterConfig explicitly).
   RewriterConfig rewrite_options = 10;
-};
+}
 
 message ThreadPoolOptionProto {
   // The number of threads in the pool.
@@ -292,7 +311,7 @@ message ThreadPoolOptionProto {
   //   value as is specified on this call.
   // - threadpools created this way are never garbage collected.
   string global_name = 2;
-};
+}
 
 message RPCOptions {
   // If true, always use RPC to contact the session target.
@@ -308,7 +327,33 @@ message RPCOptions {
   // If compression_algorithm is set, the compression level to be used.
   // From 0 (no compression), up to 3.
   int32 compression_level = 3;
-};
+
+  // Setting cache_rpc_response to true will enable sender side caching of
+  // response for RecvTensorAsync and RecvBufAsync to allow receiver to retry
+  // requests . This is only necessary when the network fabric is experiencing a
+  // significant error rate.  Without it we'll fail a step on an network error,
+  // while with it we'll be able to complete long steps (like complex
+  // initializations) in the face of some network errors during RecvTensor.
+  bool cache_rpc_response = 4;
+
+  // Disables TCP connection sharing when opening a new RPC channel.
+  bool disable_session_connection_sharing = 5;
+}
+
+// Metadata about the session.
+//
+// This can be used by the runtime and the Ops for debugging, monitoring, etc.
+//
+// The (name, version) tuple is expected to be a unique identifier for
+// sessions within the same process.
+//
+// NOTE: This is currently used and propagated only by the direct session.
+message SessionMetadata {
+  string name = 1;
+
+  // The version is optional. If set, needs to be >= 0.
+  int64 version = 2;
+}
 
 // Session configuration parameters.
 // The system picks appropriate values for fields that are not set.
@@ -328,6 +373,7 @@ message ConfigProto {
   // inter_op_parallelism_threads available in each process.
   //
   // 0 means the system picks an appropriate number.
+  // Negative means all operations are performed in caller's thread.
   //
   // Note that the first Session created in the process sets the
   // number of threads for all future sessions unless use_per_session_threads is
@@ -406,7 +452,8 @@ message ConfigProto {
   ClusterDef cluster_def = 14;
 
   // If true, any resources such as Variables used in the session will not be
-  // shared with other sessions.
+  // shared with other sessions. However, when clusterspec propagation is
+  // enabled, this field is ignored and sessions are always isolated.
   bool isolate_session_state = 15;
 
   // Everything inside Experimental is subject to change and is not subject
@@ -443,12 +490,89 @@ message ConfigProto {
     // If true, use NCCL for CollectiveOps.  This feature is highly
     // experimental.
     bool collective_nccl = 7;
+
+    // In the following, session state means the value of a variable, elements
+    // in a hash table, or any other resource, accessible by worker sessions
+    // held by a TF server.
+    //
+    // When ClusterSpec propagation is enabled, the value of
+    // isolate_session_state is ignored when deciding whether to share session
+    // states in a TF server (for backwards compatibility reasons).
+    // - If share_session_state_in_clusterspec_propagation is true, the session
+    // states are shared.
+    // - If share_session_state_in_clusterspec_propagation is false, session
+    // states are isolated.
+    //
+    // When clusterspec propagation is not used, the value of
+    // share_session_state_in_clusterspec_propagation is ignored when deciding
+    // whether to share session states in a TF server.
+    // - If isolate_session_state is true, session states are isolated.
+    // - If isolate_session_state is false, session states are shared.
+    //
+    // TODO(b/129330037): Add a single API that consistently treats
+    // isolate_session_state and ClusterSpec propagation.
+    bool share_session_state_in_clusterspec_propagation = 8;
+
+    // If using a direct session, disable spinning while waiting for work in
+    // the thread pool. This may result in higher latency for completing ops,
+    // but in the case where there is a lot of spinning may result in lower
+    // CPU usage.
+    bool disable_thread_spinning = 9;
+
+    // When true, WorkerSessions are created with device attributes from the
+    // full cluster.
+    // This is helpful when a worker wants to partition a graph
+    // (for example during a PartitionedCallOp).
+    bool share_cluster_devices_in_session = 10;
+
+    // Metadata about the session.
+    //
+    // If set, this can be used by the runtime and the Ops for debugging,
+    // monitoring, etc.
+    //
+    // NOTE: This is currently used and propagated only by the direct session.
+    SessionMetadata session_metadata = 11;
+
+    // If true, the session may treat the graph as being static for optimization
+    // purposes.
+    //
+    // If this option is set to true when a session is created, the full
+    // GraphDef must be passed in a single call to Session::Create(), and
+    // Session::Extend() may not be supported.
+    bool optimize_for_static_graph = 12;
+
+    // Whether to enable the MLIR-based TF->XLA bridge.
+    //
+    // This is a replacement to the existing bridge, and not ready for
+    // production usage yet.
+    // If this option is set to true when a session is created, MLIR is used to
+    // perform the set of graph transformations to put the graph in a form that
+    // can be executed with delegation of some computations to an accelerator.
+    // This builds on the model of XLA where a subset of the graph is
+    // encapsulated and attached to a "compile" operation, whose result is fed
+    // to an "execute" operation. The kernel for these operations is responsible
+    // to lower the encapsulated graph to a particular device.
+    bool enable_mlir_bridge = 13;
+
+    // If true, the session will not store an additional copy of the graph for
+    // each subgraph.
+    //
+    // If this option is set to true when a session is created, the
+    // `RunOptions.output_partition_graphs` options must not be set.
+    bool disable_output_partition_graphs = 14;
+
+    // Minimum number of batches run through the XLA graph before XLA fusion
+    // autotuner is enabled. Default value of zero disables the autotuner.
+    //
+    // The XLA fusion autotuner can improve performance by executing a heuristic
+    // search on the compiler parameters.
+    int64 xla_fusion_autotuner_thresh = 15;
   };
 
   Experimental experimental = 16;
 
   // Next: 17
-};
+}
 
 // Options for a single Run() call.
 message RunOptions {

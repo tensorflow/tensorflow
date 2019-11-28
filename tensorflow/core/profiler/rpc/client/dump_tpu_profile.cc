@@ -31,7 +31,7 @@ limitations under the License.
 #undef ERROR
 #include "tensorflow/core/profiler/op_profile.pb.h"
 #include "tensorflow/core/profiler/rpc/client/trace_events_to_json.h"
-#include "tensorflow/core/profiler/trace_events.pb.h"
+#include "tensorflow/core/protobuf/trace_events.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
@@ -46,7 +46,6 @@ using ::tensorflow::protobuf::util::MessageToJsonString;
 using ::tensorflow::str_util::EndsWith;
 using ::tensorflow::strings::StrCat;
 
-constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
 constexpr char kJsonOpProfileFileName[] = "op_profile.json";
 constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kProfilePluginDirectory[] = "plugins/profile/";

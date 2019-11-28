@@ -108,17 +108,14 @@ void SendOp::Compute(OpKernelContext* ctx) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_CPU), SendOp);
-REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_GPU), SendOp);
+REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_DEFAULT), SendOp);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("_Send").Device(DEVICE_SYCL), SendOp);
-REGISTER_KERNEL_BUILDER(
-    Name("_HostSend").Device(DEVICE_SYCL).HostMemory("tensor"), SendOp);
-#endif  // TENSORFLOW_USE_SYCL
+// Public alias. Added for use in Lingvo.
+REGISTER_KERNEL_BUILDER(Name("Send").Device(DEVICE_CPU), SendOp);
+REGISTER_KERNEL_BUILDER(Name("Send").Device(DEVICE_DEFAULT), SendOp);
 
-REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);
 REGISTER_KERNEL_BUILDER(
-    Name("_HostSend").Device(DEVICE_GPU).HostMemory("tensor"), SendOp);
+    Name("_HostSend").Device(DEVICE_DEFAULT).HostMemory("tensor"), SendOp);
 
 RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
   string send_device;
@@ -145,25 +142,21 @@ RecvOp::RecvOp(OpKernelConstruction* ctx) : AsyncOpKernel(ctx) {
 namespace {
 Rendezvous::DoneCallback make_recv_callback(OpKernelContext* ctx,
                                             AsyncOpKernel::DoneCallback done) {
-  using namespace std::placeholders;
-  return std::bind(
-      [ctx](AsyncOpKernel::DoneCallback done,
-            // Begin unbound arguments.
-            const Status& s, const Rendezvous::Args& send_args,
-            const Rendezvous::Args& recv_args, const Tensor& val,
-            bool is_dead) {
-        ctx->SetStatus(s);
-        if (s.ok()) {
-          // 'ctx' allocates the output tensor of the expected type.
-          // The runtime checks whether the tensor received here is
-          // the same type.
-          if (!is_dead) {
-            ctx->set_output(0, val);
-          }
-        }
-        done();
-      },
-      std::move(done), _1, _2, _3, _4, _5);
+  return [ctx, done = std::move(done)](const Status& s,
+                                       const Rendezvous::Args& send_args,
+                                       const Rendezvous::Args& recv_args,
+                                       const Tensor& val, bool is_dead) {
+    ctx->SetStatus(s);
+    if (s.ok()) {
+      // 'ctx' allocates the output tensor of the expected type.
+      // The runtime checks whether the tensor received here is
+      // the same type.
+      if (!is_dead) {
+        ctx->set_output(0, val);
+      }
+    }
+    done();
+  };
 }
 }  // namespace
 
@@ -176,6 +169,12 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   Rendezvous::Args args;
   args.device_context = ctx->op_device_context();
   args.alloc_attrs = ctx->output_alloc_attr(0);
+  if (ctx->is_eager()) {
+    // NOTE(fishx): Only set cancellation_manager in eager mode. Because in
+    // Tensorflow 1.x, session (or graph_mgr) will abort the underlying
+    // rendezvous if it encounters any error.
+    args.cancellation_manager = ctx->cancellation_manager();
+  }
 
   FrameAndIter frame_iter = GetFrameAndIter(ctx, hostmem_sendrecv_);
   if (frame_iter == FrameAndIter(0, 0)) {
@@ -194,19 +193,25 @@ void RecvOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_CPU), RecvOp);
-REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_GPU), RecvOp);
+REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_DEFAULT), RecvOp);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("_Recv").Device(DEVICE_SYCL), RecvOp);
-#endif  // TENSORFLOW_USE_SYCL
+// Public alias. Added for use in Lingvo.
+REGISTER_KERNEL_BUILDER(Name("Recv").Device(DEVICE_CPU), RecvOp);
+REGISTER_KERNEL_BUILDER(Name("Recv").Device(DEVICE_DEFAULT), RecvOp);
 
-REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_CPU), RecvOp);
 REGISTER_KERNEL_BUILDER(
-    Name("_HostRecv").Device(DEVICE_GPU).HostMemory("tensor"), RecvOp);
+    Name("_HostRecv").Device(DEVICE_DEFAULT).HostMemory("tensor"), RecvOp);
 
-#ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(
-    Name("_HostRecv").Device(DEVICE_SYCL).HostMemory("tensor"), RecvOp);
-#endif  // TENSORFLOW_USE_SYCL
+// Environment variable `DISABLE_HOST_SEND_RECV_REGISTRATION` is used to disable
+// hostSend and hostRecv registration on CPU device in the mock environment.
+static bool InitModule() {
+  if (!std::getenv("DISABLE_HOST_SEND_RECV_REGISTRATION")) {
+    REGISTER_KERNEL_BUILDER(Name("_HostRecv").Device(DEVICE_CPU), RecvOp);
+    REGISTER_KERNEL_BUILDER(Name("_HostSend").Device(DEVICE_CPU), SendOp);
+  }
+  return true;
+}
+
+static bool module_initialized = InitModule();
 
 }  // end namespace tensorflow
