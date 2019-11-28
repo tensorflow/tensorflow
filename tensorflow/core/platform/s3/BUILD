@@ -84,6 +84,7 @@ cc_library(
         ":aws_logging",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:str_util",
         "@aws",
     ],
     alwayslink = 1,

@@ -15,6 +15,8 @@ limitations under the License.
 
 // Test for the platform_strings.h header file.
 
+#include "tensorflow/core/platform/platform_strings.h"
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -24,11 +26,10 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/platform_strings.h"
+#include "tensorflow/core/platform/str_util.h"
 
 // Embed the platform strings in this binary.
 TF_PLATFORM_STRINGS()
