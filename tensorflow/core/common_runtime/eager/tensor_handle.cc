@@ -401,7 +401,7 @@ Status TensorHandle::NumElements(int64* num_elements) {
 Status TensorHandle::RemoteAddress(Device* d, int64* op_id,
                                    int32* output_num) const {
   if (d != device_) {
-    tf_shared_lock l(remote_mirrors_mutex_);
+    tf_shared_lock l(mu_);
     auto mirror = remote_mirrors_.find(d);
     if (mirror != remote_mirrors_.end()) {
       *op_id = mirror->second->op_id();
@@ -439,7 +439,7 @@ void TensorHandle::SetRemoteOpIdAndOutputNumToLocalTensorHandle(
 }
 
 bool TensorHandle::HasRemoteMirror(Device* d) {
-  tf_shared_lock l(remote_mirrors_mutex_);
+  tf_shared_lock l(mu_);
   auto mirror = remote_mirrors_.find(d);
   if (mirror != remote_mirrors_.end()) {
     return true;
@@ -454,7 +454,7 @@ bool TensorHandle::HasRemoteMirror(Device* d) {
 }
 
 bool TensorHandle::HasResourceShapeMirror(Device* d) {
-  tf_shared_lock l(resource_shape_mirrors_mutex_);
+  tf_shared_lock l(mu_);
   auto mirror = resource_shape_mirrors_.find(d);
   if (mirror != resource_shape_mirrors_.end()) {
     return true;
@@ -464,7 +464,7 @@ bool TensorHandle::HasResourceShapeMirror(Device* d) {
 
 Status TensorHandle::AddUnshapedRemoteMirror(
     std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d) {
-  mutex_lock l(remote_mirrors_mutex_);
+  mutex_lock l(mu_);
   if (remote_mirrors_.find(d) != remote_mirrors_.end()) {
     return errors::Internal("Attempted to duplicate a remote mirror.");
   }
@@ -480,7 +480,7 @@ Status TensorHandle::AddUnshapedRemoteMirror(
 
 Status TensorHandle::AddResourceShapeMirror(
     std::unique_ptr<UnshapedRemoteTensorHandleData> t, Device* d) {
-  mutex_lock l(resource_shape_mirrors_mutex_);
+  mutex_lock l(mu_);
   auto ret = resource_shape_mirrors_.insert(std::make_pair(d, std::move(t)));
   if (!ret.second) {
     return errors::Internal("Attempted to duplicate a resource shape mirror.");
@@ -491,7 +491,7 @@ Status TensorHandle::AddResourceShapeMirror(
 
 Status TensorHandle::AddRemoteMirror(std::unique_ptr<RemoteTensorHandleData> t,
                                      Device* d) {
-  mutex_lock l(remote_mirrors_mutex_);
+  mutex_lock l(mu_);
   auto ret = remote_mirrors_.insert(std::make_pair(d, std::move(t)));
   if (!ret.second) {
     return errors::Internal("Attempted to duplicate a remote mirror.");
@@ -505,7 +505,7 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape,
   DVLOG(3) << "SetRemoteShape on TensorHandle: " << this << " device: " << d;
 
   if (d != device_) {
-    mutex_lock l(remote_mirrors_mutex_);
+    mutex_lock l(mu_);
     if (remote_mirrors_.find(d) != remote_mirrors_.end()) {
       return errors::Internal(
           "Attempted to set remote shape for existing mirror.");
