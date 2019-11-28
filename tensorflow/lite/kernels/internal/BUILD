@@ -577,7 +577,6 @@ cc_library(
         ":compatibility",
         ":round",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "@gemmlowp",
     ],

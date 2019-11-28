@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_TENSOR_UTILS_H_
 
 #include <algorithm>
+#include <cmath>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
@@ -401,12 +402,76 @@ void VectorBatchVectorAssign(const T* vector, int v_size, int n_batch,
   }
 }
 
-// Apply sigmoid to elements of a vector.
-void ApplySigmoidToVector(const float* vector, int v_size, float* result);
+// Apply Rectified Linear to elements of a vector.
+inline void ApplyReluToVector(const float* __restrict__ vector, int v_size,
+                              float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(0.0f, vector[v]);
+  }
+}
 
-// Apply activation function to elements of a vector.
-void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result);
+// Apply Rectified Linear 1 (cap to [-1;1]) to elements of a vector
+inline void ApplyRelu1ToVector(const float* __restrict__ vector, int v_size,
+                               float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(-1.0f, std::min(vector[v], 1.0f));
+  }
+}
+
+// Apply Rectified Linear 6 (cap to [0;6]) to elements of a vector
+inline void ApplyRelu6ToVector(const float* __restrict__ vector, int v_size,
+                               float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::max(0.0f, std::min(vector[v], 6.0f));
+  }
+}
+
+// Apply tanh to elements of a vector
+inline void ApplyTanhToVector(const float* __restrict__ vector, int v_size,
+                              float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::tanh(vector[v]);
+  }
+}
+
+// Apply signbit to elements of a vector
+inline void ApplySignbitToVector(const float* __restrict__ vector, int v_size,
+                                 float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = std::signbit(vector[v]);
+  }
+}
+
+// Apply sigmoid to elements of a vector.
+inline void ApplySigmoidToVector(const float* __restrict__ vector, int v_size,
+                                 float* __restrict__ result) {
+  for (int v = 0; v < v_size; v++) {
+    result[v] = 1.0f / (1.0f + std::exp(-vector[v]));
+  }
+}
+
+// Apply appropriate activation function to elements of a vector.
+inline void ApplyActivationToVector(const float* __restrict__ vector,
+                                    int v_size,
+                                    TfLiteFusedActivation activation,
+                                    float* __restrict__ result) {
+  switch (activation) {
+    case kTfLiteActNone:
+      return;
+    case kTfLiteActRelu:
+      return ApplyReluToVector(vector, v_size, result);
+    case kTfLiteActRelu1:
+      return ApplyRelu1ToVector(vector, v_size, result);
+    case kTfLiteActRelu6:
+      return ApplyRelu6ToVector(vector, v_size, result);
+    case kTfLiteActTanh:
+      return ApplyTanhToVector(vector, v_size, result);
+    case kTfLiteActSignBit:
+      return ApplySignbitToVector(vector, v_size, result);
+    case kTfLiteActSigmoid:
+      return ApplySigmoidToVector(vector, v_size, result);
+  }
+}
 
 // Compute "1.0f - elements of vector" (used in CIFG).
 void Sub1Vector(const float* vector, int v_size, float* result);

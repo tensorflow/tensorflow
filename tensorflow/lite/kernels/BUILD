@@ -355,17 +355,6 @@ cc_test(
 )
 
 cc_library(
-    name = "activation_functor",
-    hdrs = [
-        "activation_functor.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/c:common",
-    ],
-)
-
-cc_library(
     name = "op_macros",
     hdrs = [
         "op_macros.h",
