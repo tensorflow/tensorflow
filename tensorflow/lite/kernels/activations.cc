@@ -312,7 +312,7 @@ void EvalUsingLookupTableTanh16Bit(struct OpData* data, const TfLiteTensor* inpu
     int32_t input_data = *ptr_input_data;
 
     if (data->input_left_shift == 1) {
-      input_data = gemmlowp::SaturatingRoundingMultiplyByPOT<1>(input_data);
+      input_data <<= 1;
     }
 
     // Scale by 3/4 to expand range [-8,8]->[-10.7,10.7].
