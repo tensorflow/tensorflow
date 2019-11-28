@@ -103,6 +103,7 @@ cc_library(
     }),
     deps = [
         ":nnapi_delegate",
+        "//tensorflow/lite/nnapi:nnapi_handler",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
