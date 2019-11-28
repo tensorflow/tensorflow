@@ -336,6 +336,9 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter &printer,
 // `indices`. Returns a null Attribute if error happens.
 static Attribute extractCompositeElement(Attribute composite,
                                          ArrayRef<unsigned> indices) {
+  // Check that given composite is a constant.
+  if (!composite)
+    return {};
   // Return composite itself if we reach the end of the index chain.
   if (indices.empty())
     return composite;
