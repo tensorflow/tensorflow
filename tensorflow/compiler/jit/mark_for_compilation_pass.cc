@@ -1116,6 +1116,7 @@ const absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
      {"FusedBatchNorm", "FusedBatchNormV2", "FusedBatchNormV3",
       "_FusedBatchNormEx", "FusedBatchNormGrad", "FusedBatchNormGradV2",
       "FusedBatchNormGradV3"}},
+    {"SORT", {"TopKV2"}}, // XLA version much faster then TF version.
     {"SMALL",
      // clang-format off
      {"BroadcastTo", "ExpandDims", "Fill", "Max", "Mean", "NoOp", "Prod",
