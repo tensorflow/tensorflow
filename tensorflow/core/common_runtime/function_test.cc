@@ -1854,8 +1854,8 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;
-  PrivateIntraProcessRendezvous rendezvous(device_mgr_.get());
-  opts.rendezvous = &rendezvous;
+  Rendezvous* rendezvous = new IntraProcessRendezvous(device_mgr_.get());
+  opts.rendezvous = rendezvous;
   opts.source_device = "/device:CPU:1";
   // Run on flr1_, flr2_ and make sure that the device it ran on was cpu:1.
   TF_CHECK_OK(Run(flr1_, handle, opts, {}, {&y}, true));
@@ -1870,6 +1870,7 @@ TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
       y,
       test::AsTensor<tstring>({"/job:localhost/replica:0/task:0/device:CPU:1"},
                               TensorShape({})));
+  rendezvous->Unref();
 }
 
 namespace {

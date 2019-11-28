@@ -191,6 +191,7 @@ class DirectSession : public Session {
   struct RunState {
     mutex mu;
     Status status GUARDED_BY(mu);
+    core::RefCountPtr<IntraProcessRendezvous> rendez = nullptr;
     std::unique_ptr<CollectiveExecutor::Handle> collective_executor;
     std::unique_ptr<StepStatsCollector> collector;
     TensorStore tensor_store;
@@ -207,7 +208,6 @@ class DirectSession : public Session {
     Notification executors_done;
     std::unordered_map<string, bool> pending_inputs;   // true if fed
     std::unordered_map<string, bool> pending_outputs;  // true if fetched
-    core::RefCountPtr<IntraProcessRendezvous> rendez = nullptr;
 
     PartialRunState(const std::vector<string>& pending_input_names,
                     const std::vector<string>& pending_output_names,
@@ -282,7 +282,7 @@ class DirectSession : public Session {
   // tensors are computed.
   ::tensorflow::Status RecvPRunOutputs(
       const std::vector<string>& output_names,
-      const ExecutorsAndKeys* executors_and_keys, PartialRunState* run_state,
+      const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
       std::vector<Tensor>* outputs);
 
   // Check if the specified fetches can be computed from the feeds

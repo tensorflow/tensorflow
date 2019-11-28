@@ -110,6 +110,12 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
     }
   }
 
+  ~ProcessFunctionLibraryRuntimeTest() override {
+    if (rendezvous_ != nullptr) {
+      rendezvous_->Unref();
+    }
+  }
+
   void Init(const std::vector<FunctionDef>& flib,
             const SessionMetadata* session_metadata = nullptr) {
     FunctionDefLibrary proto;
@@ -121,8 +127,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
         device_mgr_.get(), Env::Default(), /*config=*/nullptr,
         TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, nullptr, cluster_flr_.get(),
         nullptr, session_metadata));
-    rendezvous_ =
-        absl::make_unique<PrivateIntraProcessRendezvous>(device_mgr_.get());
+    rendezvous_ = new IntraProcessRendezvous(device_mgr_.get());
   }
 
   Status Instantiate(
@@ -258,7 +263,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
           test::function::FunctionTestSchedClosure(fn);
         };
 
-    opts.rendezvous = rendezvous_.get();
+    opts.rendezvous = rendezvous_;
     opts.runner = &runner;
     Status status;
     Notification done;
@@ -287,7 +292,7 @@ class ProcessFunctionLibraryRuntimeTest : public ::testing::Test {
   std::unique_ptr<FunctionLibraryDefinition> lib_def_;
   std::unique_ptr<TestClusterFLR> cluster_flr_;
   std::unique_ptr<ProcessFunctionLibraryRuntime> proc_flr_;
-  std::unique_ptr<PrivateIntraProcessRendezvous> rendezvous_ = nullptr;
+  IntraProcessRendezvous* rendezvous_ = nullptr;
 };
 
 TEST_F(ProcessFunctionLibraryRuntimeTest, GetFLRNull) {
@@ -339,7 +344,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCall) {
   Init({test::function::XTimesTwo()});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
@@ -354,7 +359,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SingleCallFindDevice) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
@@ -370,7 +375,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceXTimes) {
   auto x = test::AsTensor<float>({1, 2, 3, 4});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
@@ -387,7 +392,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsSameDeviceFindDevice) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:1";
@@ -406,7 +411,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultipleCallsDiffDeviceFindDevice) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   Tensor y;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts_0;
@@ -427,7 +432,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRSerialTest) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:b/replica:0/task:0/device:CPU:0";
@@ -457,7 +462,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, ClusterFLRParallelTest) {
   Init({test::function::FindDevice()});
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:b/replica:0/task:0/device:CPU:0";
@@ -504,7 +509,7 @@ void TestTwoDeviceMult(
     const string& error = "") {
   fixture->Init({test::function::TwoDeviceMult()});
   FunctionLibraryRuntime::Options opts;
-  opts.rendezvous = fixture->rendezvous_.get();
+  opts.rendezvous = fixture->rendezvous_;
   auto x = test::AsTensor<float>({1, 2, 3});
   Tensor y_cpu;
   Tensor y_gpu;
@@ -537,7 +542,7 @@ void TestTwoDeviceInputOutput(
   fixture->Init({test::function::TwoDeviceInputOutput()});
 
   FunctionLibraryRuntime::Options opts;
-  opts.rendezvous = fixture->rendezvous_.get();
+  opts.rendezvous = fixture->rendezvous_;
   Tensor x1 = test::AsTensor<float>({1, 2});
   if (absl::StrContains(inst_opts.input_devices[0], "GPU")) {
     x1 = fixture->CPUToGPU(x1);
@@ -738,7 +743,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, MultiDevice_ResourceOutput_GPU) {
 
   // Run the function taking a resource and outputing it
   FunctionLibraryRuntime::Options opts;
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   Tensor x1 = CPUToGPU(test::AsTensor<float>({1, 2}));
   Tensor x2 = GetResourceHandle("my_gpu_var", mgr->default_container(),
                                 "/job:a/replica:0/task:0/device:GPU:0");
@@ -980,7 +985,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataAbsent) {
   Init({SessionMetadataReaderOpFn()}, /*session_metadata=*/nullptr);
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
@@ -996,7 +1001,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresent) {
   Init({SessionMetadataReaderOpFn()}, &session_metadata);
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";
@@ -1022,7 +1027,7 @@ TEST_F(ProcessFunctionLibraryRuntimeTest, SessionMetadataPresentAfterCloning) {
   TF_ASSERT_OK(flr->Clone(&cloned_lib_def, &cloned_proc_flr, &cloned_flr));
   FunctionLibraryRuntime::Options opts;
   opts.source_device = "/job:a/replica:0/task:0/cpu:0";
-  opts.rendezvous = rendezvous_.get();
+  opts.rendezvous = rendezvous_;
   opts.remote_execution = true;
   FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
   instantiate_opts.target = "/job:a/replica:0/task:0/cpu:0";

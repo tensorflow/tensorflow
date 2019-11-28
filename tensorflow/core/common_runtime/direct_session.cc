@@ -521,8 +521,7 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
-  PrivateIntraProcessRendezvous rendezvous(device_mgr_.get());
-
+  run_state.rendez.reset(new IntraProcessRendezvous(device_mgr_.get()));
 #ifndef __ANDROID__
   // Set up for collectives if ExecutorsAndKeys declares a key.
   if (executors_and_keys->collective_graph_key !=
@@ -617,7 +616,7 @@ Status DirectSession::RunInternal(
   Executor::Args args;
   args.step_id = step_id;
   args.call_frame = call_frame;
-  args.rendezvous = &rendezvous;
+  args.rendezvous = run_state.rendez.get();
   args.collective_executor =
       (run_state.collective_executor ? run_state.collective_executor->get()
                                      : nullptr);
@@ -696,7 +695,7 @@ Status DirectSession::RunInternal(
     // `barrier` will delete itself after the final executor finishes.
     Notification executors_done;
     ExecutorBarrier* barrier =
-        new ExecutorBarrier(num_executors, &rendezvous,
+        new ExecutorBarrier(num_executors, run_state.rendez.get(),
                             [&run_state, &executors_done](const Status& ret) {
                               {
                                 mutex_lock l(run_state.mu);
@@ -1140,7 +1139,7 @@ Status DirectSession::SendPRunInputs(const NamedTensorList& inputs,
 
 Status DirectSession::RecvPRunOutputs(
     const std::vector<string>& output_names,
-    const ExecutorsAndKeys* executors_and_keys, PartialRunState* run_state,
+    const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
     std::vector<Tensor>* outputs) {
   Status s;
   if (!output_names.empty()) {

@@ -166,8 +166,8 @@ class ExecutorBarrier {
   //
   // 'done' is called after the last executor completes, and
   // ExecutorBarrier is deleted.
-  ExecutorBarrier(size_t num, RendezvousInterface* r, StatusCallback done)
-      : rendez_(r), done_cb_(std::move(done)), pending_(num) {}
+  ExecutorBarrier(size_t num, Rendezvous* r, StatusCallback done)
+      : rendez_(r), done_cb_(done), pending_(num) {}
 
   ~ExecutorBarrier() {}
 
@@ -178,7 +178,7 @@ class ExecutorBarrier {
   }
 
  private:
-  RendezvousInterface* rendez_ = nullptr;  // Not owned.
+  Rendezvous* rendez_ = nullptr;
   StatusCallback done_cb_ = nullptr;
 
   mutable mutex mu_;
@@ -186,7 +186,7 @@ class ExecutorBarrier {
   StatusGroup status_group_ GUARDED_BY(mu_);
 
   void WhenDone(const Status& s) {
-    RendezvousInterface* error_rendez = nullptr;
+    Rendezvous* error_rendez = nullptr;
     StatusCallback done = nullptr;
     Status status;
 
@@ -197,6 +197,7 @@ class ExecutorBarrier {
       // Rendezvous object by this thread only.
       if (status_group_.ok() && !s.ok()) {
         error_rendez = rendez_;
+        error_rendez->Ref();
       }
 
       if (!s.ok() && !StatusGroup::IsDerived(s) &&
@@ -218,6 +219,7 @@ class ExecutorBarrier {
     if (error_rendez != nullptr) {
       error_rendez->StartAbort(
           errors::Aborted("Stopping remaining executors."));
+      error_rendez->Unref();
     }
 
     if (done != nullptr) {
