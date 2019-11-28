@@ -176,17 +176,17 @@ struct ScatterNdFunctor<CPUDevice, T, Index, OP, IXDIM> {
 
 #define REGISTER_SCATTER_ND_MATH(type)                           \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::ADD); \
-  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB)
+  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::SUB);
 
 #define REGISTER_SCATTER_ND_MIN_MAX(type)                        \
   REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MAX); \
-  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MIN)  
+  REGISTER_SCATTER_ND_INDEX(type, scatter_nd_op::UpdateOp::MIN);  
   
 
 TF_CALL_ALL_TYPES(REGISTER_SCATTER_ND_UPDATE);
 REGISTER_SCATTER_ND_INDEX(tstring, scatter_nd_op::UpdateOp::ADD);
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
-TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MATH);
+TF_CALL_REAL_NUMBER_TYPES(REGISTER_SCATTER_ND_MIN_MAX);
 TF_CALL_bool(REGISTER_SCATTER_ND_MATH);
 
 #undef REGISTER_SCATTER_ND_MIN_MAX
@@ -270,7 +270,7 @@ struct ScatterNdFunctor<SYCLDevice, T, Index, OP, IXDIM> {
   REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::ADD); \
   REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::SUB); \
   REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MIN); \
-  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MAX)
+  REGISTER_SCATTER_ND_INDEX_SYCL(type, scatter_nd_op::UpdateOp::MAX);
   
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_UPDATE_SYCL);
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SCATTER_ND_MATH_SYCL);
