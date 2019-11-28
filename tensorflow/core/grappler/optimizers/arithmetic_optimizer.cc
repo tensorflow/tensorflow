@@ -1455,7 +1455,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     if (IsInPreserveSet(*node)) return false;
     if (IsConcat(*node) && node->attr().count("N") != 0) {
       const int n = node->attr().at("N").i();
-      return n > 1;
+      return n > 1 && FirstNInputsAreUnique(*node, n);
     } else if ((IsSplit(*node) || IsSplitV(*node)) &&
                node->attr().count("num_split") != 0) {
       const int num_split = node->attr().at("num_split").i();
@@ -1489,6 +1489,17 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   }
 
  private:
+  bool FirstNInputsAreUnique(const NodeDef& node, int n) const {
+    if (n > node.input_size()) return false;
+    absl::flat_hash_set<string> unique_inputs;
+    const int start = node.op() == "Concat" ? 1 : 0;
+    const int end = start + n;
+    for (int i = start; i < end; ++i) {
+      unique_inputs.insert(node.input(i));
+    }
+    return unique_inputs.size() == n;
+  }
+
   // Returns the length of the common unary chain of ops that can be
   // hoisted to the other side of concat or split.
   Status FindCommonUnaryOpChain(const NodeDef& root_node, int* prefix_length,
@@ -1525,7 +1536,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status HoistUnaryOpChain(const int prefix_length, const ChainLinkSet& tails,
                            std::set<string>* ctrl_inputs, NodeDef* root_node) {
     VLOG(3) << "Hoist unary op chain:"
-            << " root=" << root_node->name()
+            << " root=" << root_node->DebugString()
             << " prefix_length=" << prefix_length << " ctrl_inputs=["
             << absl::StrJoin(*ctrl_inputs, ", ") << "]";
 
