@@ -277,7 +277,7 @@ void RemoteCopyNode::StartRecv(StatusCallback done) {
       done(status);
       return;
     }
-    status = captured_state_->dst()->SetTensor(outputs[0]);
+    status = captured_state_->dst()->SetTensor(std::move(outputs[0]));
     done(status);
   } else {
     // Handles captured_state_->dst_ internally.

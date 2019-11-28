@@ -1089,7 +1089,7 @@ Status EagerKernelExecute(
     DCHECK_EQ(ctx->CanonicalDevice(kernel->OutputDevice(i)),
               retvals[i]->device());
 
-    TF_RETURN_IF_ERROR(retvals[i]->SetTensor(outputs[i]));
+    TF_RETURN_IF_ERROR(retvals[i]->SetTensor(std::move(outputs[i])));
   }
   return Status::OK();
 }

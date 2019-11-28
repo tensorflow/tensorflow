@@ -545,7 +545,7 @@ Status TensorHandle::SetRemoteShape(const TensorShape& shape,
 }
 #endif
 
-Status TensorHandle::SetTensor(const tensorflow::Tensor& tensor) {
+Status TensorHandle::SetTensor(tensorflow::Tensor&& tensor) {
   DCHECK(!is_remote_) << "SetTensor is not called on remote handles.";
   DCHECK(!is_ready_notification_.HasBeenNotified())
       << "SetTensor is only called on non-ready handles.";

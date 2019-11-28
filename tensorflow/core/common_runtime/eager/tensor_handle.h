@@ -158,7 +158,7 @@ class TensorHandle : public core::RefCounted {
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
-  Status SetTensor(const tensorflow::Tensor& tensor);
+  Status SetTensor(tensorflow::Tensor&& tensor);
 
   // Poisons this non-ready handle with an error `status`.
   // Poisoning means that the handle will become ready and methods trying
