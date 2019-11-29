@@ -67,9 +67,9 @@ class TensorHandle : public core::RefCounted {
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
                const ResourceHandle& resource_handle, Device* d,
                Device* op_device, EagerContext* ctx);
-  TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t, Device* d,
-               Device* op_device, Device* resource_device, DataType dtype,
-               EagerContext* ctx);
+  TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t, bool async,
+               Device* d, Device* op_device, Device* resource_device,
+               DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
   TensorHandle(std::unique_ptr<RemoteTensorHandleData> t, DataType dtype,
@@ -87,7 +87,7 @@ class TensorHandle : public core::RefCounted {
   static Status CreateLocalHandle(const class Tensor& t, Device* d,
                                   Device* op_device, EagerContext* ctx,
                                   TensorHandle** h);
-  static Status CreateAsyncLocalHandle(Device* d, Device* op_device,
+  static Status CreateEmptyLocalHandle(bool async, Device* d, Device* op_device,
                                        Device* resource_device, DataType dtype,
                                        EagerContext* ctx, TensorHandle** h);
 #if !defined(IS_MOBILE_PLATFORM)
@@ -271,6 +271,7 @@ class TensorHandle : public core::RefCounted {
   // WaitReady() has returned. At that point, is_poisoned_ is immutable.
   Status is_poisoned_;
   const bool is_remote_;
+  const bool is_async_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
   // refers to a remote resource handle, we store data types and shapes for

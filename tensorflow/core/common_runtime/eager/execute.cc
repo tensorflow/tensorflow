@@ -642,8 +642,10 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
     graph_collector = ctx->GetGraphCollector();
   }
 
+  const bool async = executor.Async();
   for (int i = 0; i < num_outputs; ++i) {
-    TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
+    TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
+        async,
         /* d= */ ctx->CanonicalDevice(kernel->OutputDevice(i)),
         /* op_device= */ kernel->device(),
         /* resource_device= */ kernel->OutputResourceDevice(i),
@@ -651,7 +653,7 @@ Status EagerLocalExecute(EagerOperation* op, TensorHandle** retvals,
   }
 
   Status s;
-  if (executor.Async()) {
+  if (async) {
     auto node = absl::make_unique<ExecuteNode>(
         ctx, op->Inputs(), op->remote_func_params(), std::move(kernel),
         graph_collector, output_dtypes, op->GetCancellationManager(),
@@ -1100,9 +1102,9 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                               EagerExecutor* executor, Device* dstd,
                               TensorHandle** result) {
   TF_RETURN_IF_ERROR(executor->status());
-  TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-      ctx->CanonicalDevice(dstd), dstd, h->resource_device(), h->dtype, ctx,
-      result));
+  TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
+      true, ctx->CanonicalDevice(dstd), dstd, h->resource_device(), h->dtype,
+      ctx, result));
 
   // Note that `h` may not be currently ready. However execution order will
   // make sure that `h` is ready before the copy is actually done.
@@ -1150,10 +1152,9 @@ Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
     }
     uint64 recv_op_id = 0;
     if (recver_is_local) {
-      TF_RETURN_IF_ERROR(TensorHandle::CreateAsyncLocalHandle(
-          /* d= */ device,
-          /* op_device= */ device, /*resource_device=*/nullptr, h->dtype, ctx,
-          result));
+      TF_RETURN_IF_ERROR(TensorHandle::CreateEmptyLocalHandle(
+          true, /* d= */ device, /* op_device= */ device,
+          /*resource_device=*/nullptr, h->dtype, ctx, result));
     } else {
       uint64 context_id = ctx->GetContextId();
       string remote_task;
