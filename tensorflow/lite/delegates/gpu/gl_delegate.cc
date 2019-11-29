@@ -24,6 +24,8 @@ limitations under the License.
 
 #include <EGL/egl.h>
 #include <GLES3/gl31.h>
+#undef Status // X11 Status
+
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
