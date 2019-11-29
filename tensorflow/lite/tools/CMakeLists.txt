@@ -182,10 +182,10 @@ target_link_libraries(tensorflow-lite PUBLIC
 )
 
 ## minimal example
-add_executable(tflite-minimal
-  ${TENSORFLOW_LITE_DIR}/examples/minimal/minimal.cc
-)
-target_link_libraries(tflite-minimal tensorflow-lite gl_delegate EGL GLESv2)
+#add_executable(tflite-minimal
+#  ${TENSORFLOW_LITE_DIR}/examples/minimal/minimal.cc
+#)
+#target_link_libraries(tflite-minimal tensorflow-lite gl_delegate EGL GLESv2)
 
 ## GPU delegate
 if(NOT CMAKE_CROSSCOMPILING)
@@ -202,6 +202,7 @@ add_custom_command(
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/compiled_model.fbs
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata.fbs
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/workgroups.fbs
+          ${CMAKE_CURRENT_BINARY_DIR}/make/downloads/flatbuffers/flatc
   COMMAND ${CMAKE_CURRENT_BINARY_DIR}/make/downloads/flatbuffers/flatc
           --cpp --scoped-enums -o ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/
           ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/common.fbs
@@ -211,9 +212,13 @@ add_custom_command(
 )
 
 add_library(gl_delegate
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/api.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/delegate.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl_delegate.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_program.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/request_gpu_info.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/converter.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/custom_registry.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/lstm.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/max_unpooling.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/kernels/conv.cc
@@ -239,6 +244,7 @@ add_library(gl_delegate
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/serialization.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/gl_shader.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/api.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/api2.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/phwc4_to_bhwc.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/converters/bhwc_to_phwc4.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/egl_surface.cc
@@ -267,6 +273,12 @@ add_library(gl_delegate
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/convert.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/data_type.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/gpu_info.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/greedy_by_breadth_assignment.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/greedy_by_size_assignment.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/internal.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/min_cost_flow_assignment.cc
+  ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/memory_management/types.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_builder.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/model_transformer.cc
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/operations.cc
@@ -283,34 +295,6 @@ add_library(gl_delegate
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/common/transformations/fuse_add_to_conv.cc
   # headers
   ${TENSORFLOW_LITE_DIR}/delegates/gpu/gl/metadata_generated.h
-  # abseil
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/base/internal/raw_logging.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/base/internal/throw_delegate.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/numeric/int128.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/types/bad_variant_access.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/types/bad_any_cast.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/ascii.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/charconv.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/escaping.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/match.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/numbers.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/substitute.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/str_cat.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/str_replace.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/str_split.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/string_view.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/charconv_bigint.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/charconv_parse.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/memutil.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/ostringstream.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/pow10_helper.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/utf8.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/arg.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/bind.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/extension.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/float_conversion.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/output.cc
-  ${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl/absl/strings/internal/str_format/parser.cc
 )
 target_include_directories(gl_delegate PUBLIC
   /usr/local/include/
@@ -323,6 +307,8 @@ target_link_libraries(gl_delegate tensorflow-lite)
 
 ## global compile option
 target_compile_options(tensorflow-lite PUBLIC -O3 -DNDEBUG -fPIC -DTFLITE_GPU_DELEGATE_ENABLED)
+
+add_subdirectory(${TENSORFLOW_LITE_DIR}/tools/make/downloads/absl)
 
 ## benchmark
 add_executable(tflite-benchmark
@@ -337,4 +323,8 @@ add_executable(tflite-benchmark
   ${TENSORFLOW_LITE_DIR}/profiling/time.cc
   ${TENSORFLOW_LITE_DIR}/../core/util/stats_calculator.cc
 )
-target_link_libraries(tflite-benchmark tensorflow-lite gl_delegate EGL GLESv2)
+target_link_libraries(tflite-benchmark
+  tensorflow-lite gl_delegate
+  EGL GLESv2
+  absl::strings absl::container absl::hash absl::any absl::str_format absl::flat_hash_set
+)
