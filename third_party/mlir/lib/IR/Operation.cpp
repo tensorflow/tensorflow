@@ -125,17 +125,17 @@ Operation *Operation::create(Location location, OperationName name,
 
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
-  return Operation::create(
-      state.location, state.name, state.types, state.operands,
-      NamedAttributeList(state.attributes).getDictionary(), state.successors,
-      state.regions, state.resizableOperandList);
+  return Operation::create(state.location, state.name, state.types,
+                           state.operands, NamedAttributeList(state.attributes),
+                           state.successors, state.regions,
+                           state.resizableOperandList);
 }
 
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
-                             const NamedAttributeList &attributes,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors,
                              ArrayRef<std::unique_ptr<Region>> regions,
                              bool resizableOperandList) {
@@ -153,7 +153,7 @@ Operation *Operation::create(Location location, OperationName name,
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
-                             const NamedAttributeList &attributes,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
   unsigned numSuccessors = successors.size();
