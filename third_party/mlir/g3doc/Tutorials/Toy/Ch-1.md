@@ -62,7 +62,7 @@ def main() {
   var b<2, 3> = [1, 2, 3, 4, 5, 6];
 
   # transpose() and print() are the only builtin, the following will transpose
-  # b and perform an element-wise multiplication before printing the result.
+  # a and b and perform an element-wise multiplication before printing the result.
   print(transpose(a) * transpose(b));
 }
 ```
