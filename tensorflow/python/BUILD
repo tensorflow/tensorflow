@@ -4055,7 +4055,23 @@ py_library(
 py_library(
     name = "special_math_ops",
     srcs = ["ops/special_math_ops.py"],
-    srcs_version = "PY2AND3",
+    srcs_version = "PY3ONLY",
+    deps = [
+        ":array_ops",
+        ":check_ops",
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":math_ops",
+        ":platform",
+        "//tensorflow/compiler/tf2xla/ops:gen_xla_ops",
+        "@opt_einsum_archive//:opt_einsum",
+    ],
+)
+
+py_library(
+    name = "special_math_ops",
+    srcs = ["ops/special_math_ops.py"],
+    srcs_version = "PY2ONLY",
     deps = [
         ":array_ops",
         ":check_ops",
