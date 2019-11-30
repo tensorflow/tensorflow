@@ -599,13 +599,13 @@ cc_library(
     srcs = ["tensor_coding.cc"],
     hdrs = ["tensor_coding.h"],
     deps = [
+        ":coding",
         ":platform",
         ":protobuf",
         ":refcount",
         ":stringpiece",
         ":strcat",
         ":types",
-        "//tensorflow/core/lib/core:coding",
     ] + tf_additional_tensor_coding_deps(),
 )
 
