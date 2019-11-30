@@ -2270,6 +2270,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",

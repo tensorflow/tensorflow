@@ -216,6 +216,18 @@ cc_library(
 )
 
 cc_library(
+    name = "hash",
+    srcs = ["hash.cc"],
+    hdrs = ["hash.h"],
+    deps = [
+        ":macros",
+        ":raw_coding",
+        ":stringpiece",
+        ":types",
+    ],
+)
+
+cc_library(
     name = "human_readable_json",
     textual_hdrs = ["human_readable_json.h"],
     deps = tf_mobile_aware_deps("human_readable_json_impl"),
@@ -735,6 +747,7 @@ filegroup(
             "**/windows_file_system.cc",
             "abi.cc",
             "cpu_info.cc",
+            "hash.cc",
             "numbers.cc",
             "path.cc",
             "platform_strings.cc",
@@ -846,6 +859,7 @@ filegroup(
             "error.cc",
             "file_system.cc",
             "file_system_helper.cc",
+            "hash.cc",
             "logger.cc",
             "numbers.cc",
             "path.cc",

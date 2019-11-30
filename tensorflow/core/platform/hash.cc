@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/hash/hash.h"
+#include "tensorflow/core/platform/hash.h"
 
-#include "tensorflow/core/lib/core/raw_coding.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/raw_coding.h"
 #include "tensorflow/core/platform/types.h"
 
 #include <string.h>
