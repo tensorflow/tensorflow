@@ -601,11 +601,11 @@ cc_library(
     deps = [
         ":platform",
         ":protobuf",
+        ":refcount",
         ":stringpiece",
         ":strcat",
         ":types",
         "//tensorflow/core/lib/core:coding",
-        "//tensorflow/core/lib/core:refcount",
     ] + tf_additional_tensor_coding_deps(),
 )
 
