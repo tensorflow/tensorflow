@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/random.h"
 
 #include <random>
 #include "tensorflow/core/platform/mutex.h"

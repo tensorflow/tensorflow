@@ -377,6 +377,16 @@ cc_library(
 )
 
 cc_library(
+    name = "random",
+    srcs = ["random.cc"],
+    hdrs = ["random.h"],
+    deps = [
+        ":mutex",
+        ":types",
+    ],
+)
+
+cc_library(
     name = "raw_coding",
     hdrs = ["raw_coding.h"],
     deps = [
@@ -713,6 +723,7 @@ filegroup(
             "numbers.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "random.cc",
             "scanner.cc",
             "strcat.cc",
             "stringprintf.cc",
@@ -824,6 +835,7 @@ filegroup(
             "platform_strings.cc",
             "protobuf.cc",
             "protobuf_util.cc",
+            "random.cc",
             "scanner.cc",
             "setround.cc",
             "status.cc",
