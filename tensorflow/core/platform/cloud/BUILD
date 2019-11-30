@@ -160,6 +160,7 @@ cc_library(
         ":http_request",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringpiece",
         "@curl",
@@ -416,6 +417,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:scanner",
         "@boringssl//:crypto",
     ],
 )
