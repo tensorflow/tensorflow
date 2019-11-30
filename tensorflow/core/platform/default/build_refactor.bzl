@@ -342,6 +342,7 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         "deps": [
             "//tensorflow/core/lib/hash",
             "//tensorflow/core/platform",
+            "//tensorflow/core/platform:hash",
             "//tensorflow/core/platform:logging",
             "//tensorflow/core/platform:macros",
             "//tensorflow/core/platform:strcat",
