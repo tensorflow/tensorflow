@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/path.h"
 
 #include <errno.h>
 #include <fcntl.h>

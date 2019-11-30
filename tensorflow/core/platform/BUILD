@@ -304,6 +304,21 @@ cc_library(
 )
 
 cc_library(
+    name = "path",
+    srcs = ["path.cc"],
+    hdrs = ["path.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+        ":scanner",
+        ":strcat",
+        ":stringpiece",
+        ":types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "platform",
     hdrs = ["platform.h"],
 )
@@ -721,6 +736,7 @@ filegroup(
             "abi.cc",
             "cpu_info.cc",
             "numbers.cc",
+            "path.cc",
             "platform_strings.cc",
             "protobuf.cc",
             "random.cc",
@@ -832,6 +848,7 @@ filegroup(
             "file_system_helper.cc",
             "logger.cc",
             "numbers.cc",
+            "path.cc",
             "platform_strings.cc",
             "protobuf.cc",
             "protobuf_util.cc",
