@@ -2260,6 +2260,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:context",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:cpu_feature_guard",

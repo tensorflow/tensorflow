@@ -53,13 +53,9 @@ cc_library(
 
 cc_library(
     name = "coding",
-    srcs = ["coding.cc"],
     hdrs = ["coding.h"],
     deps = [
-        "//tensorflow/core/lib/core:raw_coding",
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/platform:byte_order",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:coding",
     ],
 )
 
@@ -172,7 +168,6 @@ filegroup(
     srcs = [
         "arena.cc",
         "bitmap.cc",
-        "coding.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

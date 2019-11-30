@@ -89,6 +89,18 @@ cc_library(
 )
 
 cc_library(
+    name = "coding",
+    srcs = ["coding.cc"],
+    hdrs = ["coding.h"],
+    deps = [
+        ":byte_order",
+        ":raw_coding",
+        ":stringpiece",
+        ":types",
+    ],
+)
+
+cc_library(
     name = "context",
     textual_hdrs = ["context.h"],
     # See call to tf_instantiate_platform_libraries() above.
@@ -746,6 +758,7 @@ filegroup(
             "**/unbounded_work_queue.cc",
             "**/windows_file_system.cc",
             "abi.cc",
+            "coding.cc",
             "cpu_info.cc",
             "hash.cc",
             "numbers.cc",
@@ -852,6 +865,7 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",
+            "coding.cc",
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",

@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/platform/coding.h"
 
 #include "tensorflow/core/platform/byte_order.h"
 
