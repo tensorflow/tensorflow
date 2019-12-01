@@ -18,8 +18,8 @@ limitations under the License.
 #include <sys/stat.h>
 
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/null_file_system.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/test.h"

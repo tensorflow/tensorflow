@@ -39,11 +39,9 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "deps": [
             "@local_config_cuda//cuda:cuda_headers",
-            "//tensorflow/core:lib",
-            # TODO(bmzhao): When bazel gains cc_shared_library support, the targets below are
-            # the actual granular targets we should depend on, instead of tf/core:lib.
-            # "//tensorflow/core/platform:logging",
-            # "//tensorflow/core/platform:types",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:path",
+            "//tensorflow/core/platform:types",
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],
@@ -236,12 +234,9 @@ TF_DEFAULT_PLATFORM_LIBRARIES = {
         ],
         "deps": [
             "@local_config_rocm//rocm:rocm_headers",
-            "//tensorflow/core:lib",
-            # TODO(bmzhao): When bazel gains cc_shared_library support, the targets below are
-            # the actual granular targets we should depend on, instead of tf/core:lib.
-            # "//tensorflow/core/lib/io:path",
-            # "//tensorflow/core/platform:logging",
-            # "//tensorflow/core/platform:types",
+            "//tensorflow/core/platform:path",
+            "//tensorflow/core/platform:logging",
+            "//tensorflow/core/platform:types",
         ],
         "visibility": ["//visibility:private"],
         "tags": ["no_oss", "manual"],

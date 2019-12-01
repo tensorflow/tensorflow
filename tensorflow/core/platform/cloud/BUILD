@@ -100,6 +100,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
         "@jsoncpp_git//:jsoncpp",
@@ -135,6 +136,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:stringprintf",
         "@jsoncpp_git//:jsoncpp",
@@ -203,6 +205,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:status",
         "@com_google_absl//absl/strings",
         "@jsoncpp_git//:jsoncpp",
@@ -401,6 +404,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
     ],
 )
 
@@ -419,6 +423,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:scanner",
         "@boringssl//:crypto",
     ],
@@ -440,6 +445,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
     ],
 )
 

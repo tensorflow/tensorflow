@@ -396,6 +396,7 @@ filegroup(
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_statistics.h",
         "//tensorflow/core/platform:file_system.h",
+        "//tensorflow/core/platform:path.h",
     ],
     visibility = ["//visibility:private"],
 )

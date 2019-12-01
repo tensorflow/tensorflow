@@ -84,6 +84,7 @@ cc_library(
         ":aws_logging",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:str_util",
         "@aws",
     ],
@@ -105,6 +106,7 @@ tf_cc_test(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/platform:path",
         "@aws",
     ],
 )
