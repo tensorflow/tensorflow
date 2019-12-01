@@ -37,8 +37,7 @@ cc_library(
     name = "blocking_counter",
     hdrs = ["blocking_counter.h"],
     deps = [
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:blocking_counter",
     ],
 )
 
