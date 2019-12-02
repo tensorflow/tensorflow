@@ -69,7 +69,6 @@ import enum
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import cfg
-from tensorflow.python.autograph.pyct import compiler
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
@@ -329,10 +328,10 @@ class Base(transformer.Base):
     for other_value in arg_values_found[1:]:
       if not ast_util.matches(first_value, other_value):
         qn = anno.getanno(node, anno.Basic.QN)
-        raise ValueError('%s has ambiguous annotations for %s(%s): %s, %s' %
-                         (qn, directive.__name__, arg,
-                          compiler.ast_to_source(other_value).strip(),
-                          compiler.ast_to_source(first_value).strip()))
+        raise ValueError(
+            '%s has ambiguous annotations for %s(%s): %s, %s' %
+            (qn, directive.__name__, arg, parser.unparse(other_value).strip(),
+             parser.unparse(first_value).strip()))
     return first_value
 
   def visit(self, node):

@@ -1012,7 +1012,7 @@ class ApiTest(test.TestCase):
       return x
 
     # Just check that the output is parseable Python code.
-    self.assertIsNotNone(parser.parse_str(api.to_code(test_fn)))
+    self.assertIsNotNone(parser.parse(api.to_code(test_fn)))
 
   def test_to_code_with_wrapped_function(self):
 

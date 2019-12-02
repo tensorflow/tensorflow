@@ -13,7 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for compiler module."""
+"""Tests for loader module."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,15 +23,15 @@ import textwrap
 
 import gast
 
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 
-class CompilerTest(test.TestCase):
+class LoaderTest(test.TestCase):
 
-  def test_parser_compile_identity(self):
+  def test_parse_load_identity(self):
 
     def test_fn(x):
       a = True
@@ -41,37 +41,13 @@ class CompilerTest(test.TestCase):
       return b
 
     node, _ = parser.parse_entity(test_fn, future_features=())
-    module, _, _ = compiler.ast_to_object(node)
+    module, _, _ = loader.load_ast(node)
 
     self.assertEqual(
         textwrap.dedent(tf_inspect.getsource(test_fn)),
         tf_inspect.getsource(module.test_fn))
 
-  def test_ast_to_source(self):
-    node = gast.If(
-        test=gast.Num(1),
-        body=[
-            gast.Assign(
-                targets=[gast.Name('a', gast.Store(), None)],
-                value=gast.Name('b', gast.Load(), None))
-        ],
-        orelse=[
-            gast.Assign(
-                targets=[gast.Name('a', gast.Store(), None)],
-                value=gast.Str('c'))
-        ])
-
-    source = compiler.ast_to_source(node, indentation='  ')
-    self.assertEqual(
-        textwrap.dedent("""
-            # coding=utf-8
-            if 1:
-              a = b
-            else:
-              a = 'c'
-        """).strip(), source.strip())
-
-  def test_ast_to_object(self):
+  def test_load_ast(self):
     node = gast.FunctionDef(
         name='f',
         args=gast.arguments(
@@ -91,7 +67,7 @@ class CompilerTest(test.TestCase):
         decorator_list=[],
         returns=None)
 
-    module, source, _ = compiler.ast_to_object(node)
+    module, source, _ = loader.load_ast(node)
 
     expected_source = """
       # coding=utf-8
@@ -107,14 +83,14 @@ class CompilerTest(test.TestCase):
           textwrap.dedent(expected_source).strip(),
           temp_output.read().strip())
 
-  def test_source_to_entity(self):
+  def test_load_source(self):
     test_source = textwrap.dedent(u"""
       # coding=utf-8
       def f(a):
         '日本語 Δθₜ ← Δθₜ₋₁ + ∇Q(sₜ, aₜ)(rₜ + γₜ₊₁ max Q(⋅))'
         return a + 1
     """)
-    module, _ = compiler.source_to_entity(test_source, delete_on_exit=True)
+    module, _ = loader.load_source(test_source, delete_on_exit=True)
     self.assertEqual(module.f(1), 2)
     self.assertEqual(
         module.f.__doc__, '日本語 Δθₜ ← Δθₜ₋₁ + ∇Q(sₜ, aₜ)(rₜ + γₜ₊₁ max Q(⋅))')
