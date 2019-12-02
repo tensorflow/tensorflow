@@ -72,7 +72,7 @@ Let's break down the anatomy of this MLIR operation:
         are always constant. Here we define a boolean attribute named 'inplace'
         that has a constant value of true.
 
--   `(tensor<2x3xf64) -> tensor<3x2xf64>`
+-   `(tensor<2x3xf64>) -> tensor<3x2xf64>`
 
     *   This refers to the type of the operation in a functional form, spelling
         the types of the arguments in parentheses and the type of the return
