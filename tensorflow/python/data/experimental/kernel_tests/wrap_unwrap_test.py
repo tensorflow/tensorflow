@@ -46,7 +46,7 @@ class WrapDatasetVariantTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   # TODO("b/123901304")
   @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testSkipEagerGPU(self):
     ds = dataset_ops.Dataset.range(100)
     ds_variant = ds._variant_tensor  # pylint: disable=protected-access

@@ -147,8 +147,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_values=expected_output,
         create_iterator_twice=True)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testEmptySerializedWithoutDefaultsShouldFail(self):
     input_features = {
         "st_a":
@@ -182,8 +181,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
         expected_err=(errors_impl.InvalidArgumentError,
                       "Feature: c \\(data type: float\\) is required"))
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testDenseNotMatchingShapeShouldFail(self):
     original = [
         example(features=features({
@@ -741,8 +739,7 @@ class ParseExampleDatasetTest(test_base.DatasetTestBase,
           expected_err=(ValueError,
                         "Cannot reshape a tensor with 0 elements to shape"))
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testSerializedContainingVarLenDense(self):
     aname = "a"
     bname = "b"

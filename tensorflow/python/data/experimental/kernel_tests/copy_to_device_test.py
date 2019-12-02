@@ -40,8 +40,7 @@ from tensorflow.python.util import compat as util_compat
 # TODO(b/117581999): add eager coverage when supported.
 class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -66,8 +65,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceInt32(self):
     host_dataset = dataset_ops.Dataset.from_tensors([0, 1, 2, 3])
     device_dataset = host_dataset.apply(
@@ -91,8 +89,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToSameDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -117,8 +114,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -143,8 +139,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyDictToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -169,8 +164,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyDictToDeviceWithPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -195,8 +189,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopySparseTensorsToDevice(self):
 
     def make_tensor(i):
@@ -229,8 +222,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopySparseTensorsToDeviceWithPrefetch(self):
 
     def make_tensor(i):
@@ -263,8 +255,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -285,8 +276,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuWithPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -307,8 +297,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuWithMap(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -346,8 +335,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuInt32(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -367,8 +355,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuInt32AndPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -388,8 +375,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuStrings(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -409,8 +395,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuStringsAndPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -430,8 +415,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDevicePingPongCPUGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -455,8 +439,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceWithReInit(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -485,8 +468,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceWithReInitAndPrefetch(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -515,8 +497,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuWithReInit(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -540,8 +521,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testCopyToDeviceGpuWithReInitAndPrefetch(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -565,8 +545,7 @@ class CopyToDeviceTest(test_base.DatasetTestBase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1, 2], mode=["graph"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testIteratorGetNextAsOptionalOnGPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")

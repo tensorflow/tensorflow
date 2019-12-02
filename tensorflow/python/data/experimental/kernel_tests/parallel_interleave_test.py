@@ -39,6 +39,7 @@ from tensorflow.python.ops import sparse_ops
 from tensorflow.python.platform import test
 
 
+#TODO(feihugis): refactor this test to be parameterized.
 class ParallelInterleaveTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):

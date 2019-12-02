@@ -53,8 +53,7 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
           for element in expected
       ])
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testSimpleInt(self):
     for dtype in [dtypes.int32, dtypes.int64]:
       self._testSimpleHelper(dtype, [
@@ -67,8 +66,7 @@ class UniqueTest(test_base.DatasetTestBase, parameterized.TestCase):
           ([[1, 1], [1, 1], [2, 2], [3, 3], [1, 1]], [[1, 1], [2, 2], [3, 3]]),
       ])
 
-  @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+  @combinations.generate(test_base.graph_only_combinations())
   def testSimpleString(self):
     self._testSimpleHelper(dtypes.string, [
         ([], []),

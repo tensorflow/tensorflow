@@ -34,7 +34,7 @@ class PrefetchWithSlackTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   # TODO(b/121264236)
   @combinations.generate(
-      combinations.combine(tf_api_version=[1], mode=["graph", "eager"]))
+      combinations.combine(tf_api_version=[1], mode=["graph"]))
   def testPrefetchWithSlackOption(self):
     """Determines slack_period based on num devices attached to iterator."""
     dataset = dataset_ops.Dataset.range(10)
