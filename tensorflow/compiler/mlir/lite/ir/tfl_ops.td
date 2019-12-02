@@ -32,7 +32,7 @@ def TFL_Dialect : Dialect {
     Invariants:
 
     * All values are of Tensor type (in particular, scalars are
-      represented using zero-dimentional tensors);
+      represented using zero-dimensional tensors);
   }];
 
   let cppNamespace = "TFL";
@@ -603,7 +603,7 @@ def TFL_FCWO_Default  : StrEnumAttrCase<"DEFAULT">;
 def TFL_FCWO_Shuffled4x16i8  : StrEnumAttrCase<"SHUFFLED4x16INT8">;
 
 def TFL_FullyConnectedOptionsWeightFormatAttr :
-    StrEnumAttr<"FullyConectedOptionsWeightsFormat",
+    StrEnumAttr<"FullyConnectedOptionsWeightsFormat",
                 "fully connected options weights format", [
       TFL_FCWO_Default, TFL_FCWO_Shuffled4x16i8
     ]>;

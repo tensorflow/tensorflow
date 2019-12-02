@@ -773,7 +773,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   if (lowered_computation_.count(f)) return success();
   if (f.getBlocks().size() != 1) {
-    return f.emitError("only single block Function suppored");
+    return f.emitError("only single block Function supported");
   }
 
   // Create a sub-builder if this is not the main function.

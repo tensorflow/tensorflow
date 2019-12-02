@@ -160,7 +160,7 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
              value.isa<IntegerAttr>()) {
     // All XLA types must be tensor types. In the build() method, we want to
-    // provide more flexiblity by allowing attributes of scalar types. But we
+    // provide more flexibility by allowing attributes of scalar types. But we
     // need to wrap it up with ElementsAttr to construct valid XLA constants.
     type = RankedTensorType::get(/*shape=*/{}, value.getType());
     value = DenseElementsAttr::get(type.cast<TensorType>(), value);

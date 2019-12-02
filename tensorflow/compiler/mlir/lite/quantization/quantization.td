@@ -102,7 +102,7 @@ class AffineOpCoefficient<int dim, int index> : NativeOpTrait<
              StrJoinInt<[dim, index]>.result,
              ">::Impl")>;
 
-// Specify this trait if the op doesn't have quantizable ouput. We shouldn't
+// Specify this trait if the op doesn't have quantizable output. We shouldn't
 // apply quantization on this op.
 def NoQuantizableResult : NativeOpTrait<"quant::NoQuantizableResult">;
 
