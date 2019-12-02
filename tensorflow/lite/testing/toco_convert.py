@@ -146,6 +146,8 @@ def toco_convert(options, graph_def, input_tensors, output_tensors, **kwargs):
       if extra_toco_options.inference_output_type:
         converter.inference_output_type = (
             extra_toco_options.inference_output_type)
+      else:
+        converter.inference_output_type = tf.int8
 
       try:
         tflite_model = converter.convert()
