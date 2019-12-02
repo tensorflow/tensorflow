@@ -1192,10 +1192,10 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
   std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
   // Check that user's provided TF operation really exists.
-  for (auto s = whitelist.begin(); s != whitelist.end(); ++s) {
-    if (!all_ops.contains(string(*s))) {
+  for (auto s: whitelist) {
+    if (!all_ops.contains(string(s))) {
       return errors::InvalidArgument(
-          "The operation '", *s,
+          "The operation '", s,
           "' passed to --tf_xla_ops_to_cluster is not supported by XLA.");
     }
   }
