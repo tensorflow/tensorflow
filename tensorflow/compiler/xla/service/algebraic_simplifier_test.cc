@@ -5850,27 +5850,11 @@ TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
   // Expected transformation: rsqrt(power(gte.2,-2)) -> abs(gte.2)
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kPower), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
   auto computation = m->entry_computation();
   auto root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
-  bool found_power = false;
-  bool found_rsqrt = false;
-  for (HloInstruction* inst : computation->instructions()) {
-    switch (inst->opcode()) {
-      case HloOpcode::kPower: {
-        found_power = true;
-        break;
-      }
-      case HloOpcode::kRsqrt: {
-        found_rsqrt = true;
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  EXPECT_EQ(found_power, false);
-  EXPECT_EQ(found_rsqrt, false);
   EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kAbs);
   EXPECT_EQ(root->operand(2)->operand(0)->opcode(),
             HloOpcode::kGetTupleElement);
@@ -5900,29 +5884,12 @@ TEST_F(AlgebraicSimplifierTest, RsqrtDivide) {
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-
   // Expected transformation: rsqrt(divide(1,gte.2)) -> sqrt(gte.2)
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kDivide), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
   auto computation = m->entry_computation();
   auto root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
-  bool found_divide = false;
-  bool found_rsqrt = false;
-  for (HloInstruction* inst : computation->instructions()) {
-    switch (inst->opcode()) {
-      case HloOpcode::kDivide: {
-        found_divide = true;
-        break;
-      }
-      case HloOpcode::kRsqrt: {
-        found_rsqrt = true;
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  EXPECT_EQ(found_divide, false);
-  EXPECT_EQ(found_rsqrt, false);
   EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kSqrt);
   EXPECT_EQ(root->operand(2)->operand(0)->opcode(),
             HloOpcode::kGetTupleElement);
@@ -5953,39 +5920,12 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
 
   // Expected transformation: multiply(rsqrt(gte.2), rsqrt(gte.2)) -> divide(1,
   // gte.2)
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kMultiply), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
+
   auto computation = m->entry_computation();
   auto root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
-  bool found_multiply = false;
-  bool found_rsqrt = false;
-  bool found_divide = false;
-  bool found_broadcast = false;
-  for (HloInstruction* inst : computation->instructions()) {
-    switch (inst->opcode()) {
-      case HloOpcode::kMultiply: {
-        found_multiply = true;
-        break;
-      }
-      case HloOpcode::kRsqrt: {
-        found_rsqrt = true;
-        break;
-      }
-      case HloOpcode::kDivide: {
-        found_divide = true;
-        break;
-      }
-      case HloOpcode::kBroadcast: {
-        found_broadcast = true;
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  EXPECT_EQ(found_multiply, false);
-  EXPECT_EQ(found_rsqrt, false);
-  EXPECT_EQ(found_divide, true);
-  EXPECT_EQ(found_broadcast, true);
   EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kDivide);
   EXPECT_EQ(root->operand(2)->operand(0)->opcode(), HloOpcode::kBroadcast);
   EXPECT_EQ(root->operand(2)->operand(1)->opcode(),
@@ -6014,40 +5954,12 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt_NegativeTestCase) {
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForward");
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  auto computation = m->entry_computation();
-  auto root = computation->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
-  bool found_multiply = false;
-  bool found_rsqrt = false;
-  bool found_divide = false;
-  bool found_broadcast = false;
-  for (HloInstruction* inst : computation->instructions()) {
-    switch (inst->opcode()) {
-      case HloOpcode::kMultiply: {
-        found_multiply = true;
-        break;
-      }
-      case HloOpcode::kRsqrt: {
-        found_rsqrt = true;
-        break;
-      }
-      case HloOpcode::kDivide: {
-        found_divide = true;
-        break;
-      }
-      case HloOpcode::kBroadcast: {
-        found_broadcast = true;
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  EXPECT_EQ(found_multiply, true);
-  EXPECT_EQ(found_rsqrt, true);
-  EXPECT_EQ(found_divide, false);
-  EXPECT_EQ(found_broadcast, false);
-  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kMultiply);
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kMultiply), nullptr);
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kDivide), nullptr);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kBroadcast), nullptr);
+  EXPECT_EQ(m->entry_computation()->root_instruction()->operand(2)->opcode(),
+            HloOpcode::kMultiply);
 }
 
 TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
@@ -6071,20 +5983,10 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-
   // Verify that the graph build do not have abs node.
-  auto computation = m->entry_computation();
-  auto root = computation->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
-  bool found_abs = false;
-  for (HloInstruction* inst : computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kAbs) {
-      found_abs = true;
-      break;
-    }
-  }
-  EXPECT_EQ(found_abs, false);
-  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kGetTupleElement);
+  EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kAbs), nullptr);
+  EXPECT_EQ(m->entry_computation()->root_instruction()->operand(2)->opcode(),
+            HloOpcode::kGetTupleElement);
 }
 
 TEST_F(AlgebraicSimplifierTest,
@@ -6109,20 +6011,7 @@ TEST_F(AlgebraicSimplifierTest,
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardInference");
   ASSERT_FALSE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-
-  // Verify that the graph build still has abs node.
-  auto computation = m->entry_computation();
-  auto root = computation->root_instruction();
-  EXPECT_EQ(root->opcode(), HloOpcode::kTuple);
-  bool found_abs = false;
-  for (HloInstruction* inst : computation->instructions()) {
-    if (inst->opcode() == HloOpcode::kAbs) {
-      found_abs = true;
-      break;
-    }
-  }
-  EXPECT_EQ(found_abs, true);
-  EXPECT_EQ(root->operand(2)->opcode(), HloOpcode::kAbs);
+  EXPECT_NE(FindInstruction(m.get(), HloOpcode::kAbs), nullptr);
 }
 
 TEST_F(AlgebraicSimplifierTest, AbsEliminationMultiply) {

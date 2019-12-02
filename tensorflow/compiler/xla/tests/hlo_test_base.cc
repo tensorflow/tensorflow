@@ -501,6 +501,19 @@ HloInstruction* HloTestBase::FindInstruction(HloModule* module,
   return nullptr;
 }
 
+HloInstruction* HloTestBase::FindInstruction(HloModule* module,
+                                             HloOpcode opcode) {
+  for (const HloComputation* c : module->computations()) {
+    auto instructions = c->instructions();
+    auto it = absl::c_find_if(
+        instructions, [&](HloInstruction* i) { return i->opcode() == opcode; });
+    if (it != instructions.end()) {
+      return *it;
+    }
+  }
+  return nullptr;
+}
+
 Backend& HloTestBase::backend() { return test_runner_.backend(); }
 
 /* static */
