@@ -149,7 +149,6 @@ class Constant(Initializer):
     of the `value` list, even reshaped, as shown in the two commented lines
     below the `value` list initialization.
 
-  ```python
     >>> import numpy as np
     >>> import tensorflow as tf
 
@@ -160,9 +159,9 @@ class Constant(Initializer):
 
     >>> print('fitting shape:')
     >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
+    ...   x = tf.compat.v1.get_variable('x', shape=[2, 4], initializer=init)
+    ...   x.initializer.run()
+    ...   print(x.eval())
 
     fitting shape:
     [[ 0.  1.  2.  3.]
@@ -170,9 +169,9 @@ class Constant(Initializer):
 
     >>> print('larger shape:')
     >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
-    >>>   x.initializer.run()
-    >>>   print(x.eval())
+    ...   x = tf.compat.v1.get_variable('x', shape=[3, 4], initializer=init)
+    ...   x.initializer.run()
+    ...   print(x.eval())
 
     larger shape:
     [[ 0.  1.  2.  3.]
@@ -181,10 +180,10 @@ class Constant(Initializer):
 
     >>> print('smaller shape:')
     >>> with tf.compat.v1.Session():
-    >>>   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
+    ...   x = tf.compat.v1.get_variable('x', shape=[2, 3], initializer=init)
 
     ValueError: Too many elements provided. Needed at most 6, but received 8
-  ```
+  
   """
 
   def __init__(self, value=0):
