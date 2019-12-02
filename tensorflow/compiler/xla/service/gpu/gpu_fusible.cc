@@ -154,11 +154,9 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // operand shape) and the reduction dimensions need to match.
   auto* instr_1 = get_real_hero(&instr1);
   auto* instr_2 = get_real_hero(&instr2);
-  // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
   if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
       IsReductionFromOrToContiguousDimensions(*instr_2) &&
-      (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
-       instr_1->dimensions() != instr_2->dimensions())) {
+      !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
     return false;
   }
   // The elementwise output shapes must be the same (including layout).
