@@ -818,13 +818,31 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     self.assertEqual(2., self.evaluate(add1(replica_local)))
 
 
-@combinations.generate(
-    combinations.combine(
-        distribution=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-            strategy_combinations.tpu_strategy,
-        ],
-        mode=["graph", "eager"]))
+def mirrored_and_tpu_strategy_combinations():
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.tpu_strategy,
+      ],
+      mode=["graph", "eager"])
+
+
+def strategy_and_run_tf_function_combinations():
+  # Test the combination of different strategies and whether a tf.function
+  # is passed into strategy.experimental_run_v2."""
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+      ],
+      mode=["graph", "eager"],
+      experimental_run_tf_function=[True, False]) + combinations.combine(
+          distribution=[
+              strategy_combinations.tpu_strategy,
+          ],
+          mode=["graph", "eager"],
+          experimental_run_tf_function=[True])
+
+
 class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, v, new):
@@ -842,6 +860,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
     save_path, _ = self._save_return_saver(sess, var)
     return save_path
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalSumOneGraph(self, distribution):
     with self.cached_session() as sess:
       v, replica_local = _make_replica_local(
@@ -862,6 +881,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         saver.restore(sess, save_path)
         self.assertEqual([3.5, 3.5], self.evaluate([v[0], v[1]]))
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveAndRestoreReplicaLocalMeanOneGraph(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       self.skipTest("A GPU is not available for this test in eager mode.")
@@ -978,36 +998,46 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         saver.restore(sess, save_path)
         self.assertEqual([1.75, 1.75], self.evaluate([v[0], v[1]]))
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveReplicaLocalRestoreReplicaLocalMean(self, distribution):
     save_path = self._save_replica_local_mean(distribution)
     self._restore_replica_local_mean(save_path, distribution)
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveReplicaLocalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_replica_local_sum(distribution)
     self._restore_replica_local_sum(save_path, distribution)
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveReplicaLocalMeanRestoreNormal(self, distribution):
     save_path = self._save_replica_local_mean(distribution)
     self._restore_normal(save_path)
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveReplicaLocalSumRestoreNormal(self, distribution):
     save_path = self._save_replica_local_sum(distribution)
     self._restore_normal(save_path)
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveNormalRestoreReplicaLocalMean(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_mean(save_path, distribution)
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_sum(save_path, distribution)
 
-  def testAssign(self, distribution):
+  @combinations.generate(strategy_and_run_tf_function_combinations())
+  def testAssign(self, distribution, experimental_run_tf_function):
+
     def assign(fn, v, update_value, cross_replica):
       update_fn = lambda: getattr(v, fn)(update_value)
       if cross_replica:
         return update_fn()
       else:
+        if experimental_run_tf_function:
+          update_fn = def_function.function(update_fn)
         return distribution.experimental_local_results(
             distribution.experimental_run_v2(update_fn))
     updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
@@ -1033,12 +1063,17 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(self.evaluate(component.read_value()),
                             self.evaluate(array_ops.ones_like(component)))
 
-  def testAssignDtypeConversion(self, distribution):
+  @combinations.generate(strategy_and_run_tf_function_combinations())
+  def testAssignDtypeConversion(self, distribution,
+                                experimental_run_tf_function):
+
     def assign(fn, v, update_value, cross_replica):
       update_fn = lambda: getattr(v, fn)(update_value)
       if cross_replica:
         return update_fn()
       else:
+        if experimental_run_tf_function:
+          update_fn = def_function.function(update_fn)
         return distribution.experimental_local_results(
             distribution.experimental_run_v2(update_fn))
     updates = [("assign", 1), ("assign_add", 1), ("assign_sub", -1)]
@@ -1064,6 +1099,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(self.evaluate(component.read_value()),
                             self.evaluate(array_ops.ones_like(component)))
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testAssignWithAggregationSum(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(
@@ -1076,6 +1112,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
       self.assertAllEqual(self.evaluate(component.read_value()),
                           self.evaluate(array_ops.ones_like(component)))
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testAssignAddSubWithAggregationSum(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(
@@ -1090,7 +1127,9 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         ValueError, "SyncOnReadVariable does not support "):
       self.evaluate(v.assign_sub(1.))
 
-  def testReadValueInReplicaContext(self, distribution):
+  @combinations.generate(strategy_and_run_tf_function_combinations())
+  def testReadValueInReplicaContext(self, distribution,
+                                    experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.NONE,
         variables_lib.VariableAggregation.SUM,
@@ -1104,12 +1143,19 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
-      results = self.evaluate(distribution.experimental_local_results(
-          distribution.experimental_run_v2(v.read_value)))
+      if experimental_run_tf_function:
+        read_var_fn = def_function.function(v.read_value)
+      else:
+        read_var_fn = v.read_value
+      results = self.evaluate(
+          distribution.experimental_local_results(
+              distribution.experimental_run_v2(read_var_fn)))
       for component, value in zip(v._values, results):
         self.assertAllEqual(self.evaluate(component.read_value()), value)
 
-  def testReadValueInCrossReplicaContext(self, distribution):
+  @combinations.generate(strategy_and_run_tf_function_combinations())
+  def testReadValueInCrossReplicaContext(self, distribution,
+                                         experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.SUM,
         variables_lib.VariableAggregation.MEAN,
@@ -1125,10 +1171,15 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
             synchronization=variables_lib.VariableSynchronization.ON_READ,
             aggregation=aggregation)
       self.evaluate(variables_lib.global_variables_initializer())
+
       def assign(v=v):
         ctx = distribution_strategy_context.get_replica_context()
         replica_id = ctx.replica_id_in_sync_group
         return v.assign(math_ops.cast(replica_id, dtypes.float32))
+
+      if experimental_run_tf_function:
+        assign = def_function.function(assign)
+
       self.evaluate(distribution.experimental_local_results(
           distribution.experimental_run_v2(assign)))
       result = self.evaluate(v.read_value())
@@ -1142,6 +1193,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         expected = 0
       self.assertEqual(expected, result, aggregation)
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(
@@ -1153,6 +1205,7 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
         ValueError, "Could not convert from .* VariableAggregation\\.NONE"):
       self.evaluate(v.read_value())
 
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testInitializedToSameValueInsideEagerRun(self, distribution):
     if not context.executing_eagerly(): self.skipTest("eager only")
 

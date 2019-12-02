@@ -36,9 +36,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
+          distribution=strategy_combinations.strategies_minus_tpu,
+          mode=["eager"]))
   def testFullEager(self, distribution):
     dataset = self._get_dataset()
 
