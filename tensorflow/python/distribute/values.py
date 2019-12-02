@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import contextlib
 import weakref
+import six
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -43,54 +44,303 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
 
-def _get_current_replica_id_as_int():
-  """Returns the current replica ID as an integer, or `None`."""
-  replica_context = distribution_strategy_context.get_replica_context()
-  if replica_context:
+def _devices_match(d1, d2):
+  return device_util.canonicalize(d1) == device_util.canonicalize(d2)
+
+
+class DeviceMap(object):
+  """A mapping of replicas & logical device ids to devices."""
+
+  @property
+  def all_devices(self):
+    """Returns a tuple of strings with all devices in this DeviceMap."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  @property
+  def devices_by_replica(self):
+    """Returns a tuple `t` where `t[replica]` is the devices for `replica`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  @property
+  def num_logical_devices(self):
+    """Count of the number of devices each replica may be defined across."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  @property
+  def num_replicas_in_graph(self):
+    """Number of replicas defined in this graph."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def logical_device_from_values(self, values):
+    """Returns the logical device index `values` is on."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def logical_to_actual_devices(self, logical_device_id):
+    """Returns sequence of `num_replicas_in_graph` devices."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def select_for_current_replica(self, values, replica_context):
+    """Select the element of `values` for the current replica."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def replica_for_device(self, device):
+    """Return the replica id containing `device`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def select_for_device(self, values, device):
+    """Select the element of `values` to access from `device`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+  def is_device_in_replica(self, device, replica_id):
+    """Returns whether `device` is a member of replica `replica_id`."""
+    raise NotImplementedError("Required for DeviceMap implementations.")
+
+
+class SingleDeviceMap(DeviceMap):
+  """A device map for 1 non-computation device.
+
+  Use `SingleDeviceMap` when the device does not correspond to some replica of
+  the computation. For computation devices, use `ReplicaDeviceMap` below (even
+  if there is only a single device in the map).
+  """
+
+  def __init__(self, device):
+    """Initialize a `SingleDeviceMap`.
+
+    Args:
+      device: A string device.
+    """
+    assert isinstance(device, six.string_types)
+    self._device = device_util.canonicalize(device)
+    self._devices = (self._device,)
+
+  @property
+  def all_devices(self):
+    return self._devices
+
+  @property
+  def devices_by_replica(self):
+    raise ValueError("SingleDeviceMap not indexed by replicas")
+
+  @property
+  def num_logical_devices(self):
+    return 1
+
+  @property
+  def num_replicas_in_graph(self):
+    return 1
+
+  def logical_device_from_values(self, values):
+    del values
+    return 0
+
+  def logical_to_actual_devices(self, logical_device_id):
+    assert logical_device_id == 0
+    return self._devices
+
+  def select_for_current_replica(self, values, replica_context):
+    assert len(values) == 1
+    del replica_context
+    return values[0]
+
+  def replica_for_device(self, device):
+    raise ValueError("SingleDeviceMap not indexed by replicas")
+
+  def select_for_device(self, values, device):
+    assert len(values) == 1
+    if self._device != device:
+      raise ValueError("Device %s not found in %s (current device %s)" %
+                       (device, self._devices, device_util.current()))
+    return values[0]
+
+  def is_device_in_replica(self, device, replica_id):
+    raise ValueError("SingleDeviceMap not indexed by replicas")
+
+  def __repr__(self):
+    return "%s(%r)" % (self.__class__.__name__, self._device)
+
+
+class ReplicaDeviceMap(DeviceMap):
+  """A device map for 1 device per replica."""
+
+  def __init__(self, devices):
+    """Initialize a `ReplicaDeviceMap`.
+
+    Args:
+      devices: `devices[i]` is the string device for replica `i`.
+    """
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    if len(set(self._devices)) != len(self._devices):
+      raise ValueError("Duplicate devices in %s, after canonicalization: %s" %
+                       (devices, self._devices))
+    self._device_to_replica = {d: r for r, d in enumerate(self._devices)}
+
+  @property
+  def all_devices(self):
+    return self._devices
+
+  @property
+  def devices_by_replica(self):
+    return ((d,) for d in self._devices)
+
+  @property
+  def num_logical_devices(self):
+    return 1
+
+  @property
+  def num_replicas_in_graph(self):
+    return len(self._devices)
+
+  def logical_device_from_values(self, values):
+    del values
+    return 0
+
+  def logical_to_actual_devices(self, logical_device_id):
+    assert logical_device_id == 0
+    return self._devices
+
+  def select_for_current_replica(self, values, replica_context):
+    assert len(values) == len(self._devices)
     replica_id = replica_context.replica_id_in_sync_group
     if not isinstance(replica_id, int):
       replica_id = tensor_util.constant_value(replica_id)
-  else:
-    replica_id = distribute_lib.get_update_replica_id()
-  return replica_id
+    if replica_id is None:
+      replica_id = 0
+    return values[replica_id]
+
+  def replica_for_device(self, device):
+    return self._device_to_replica.get(device)
+
+  def select_for_device(self, values, device):
+    assert len(values) == len(self._devices)
+    replica_id = self._device_to_replica.get(device)
+    if replica_id is None:
+      raise ValueError("Device %s not found in %s (current device %s)" %
+                       (device, self._devices, device_util.current()))
+    return values[replica_id]
+
+  def is_device_in_replica(self, device, replica_id):
+    return _devices_match(device, self._devices[replica_id])
+
+  def __str__(self):
+    return "[%s]" % (", ".join(self._devices))
+
+  def __repr__(self):
+    return "%s([%s])" % (self.__class__.__name__, ", ".join(
+        repr(d) for d in self._devices))
+
+
+LogicalDeviceSpec = collections.namedtuple("LogicalDeviceSpec",
+                                           ("device_map", "logical_device"))
+
+
+class WorkerDeviceMap(DeviceMap):
+  """A device map for one value per worker."""
+
+  def __init__(self, devices, num_replicas_per_worker):
+    """Initialize a `WorkerDeviceMap`.
+
+    Args:
+      devices: `devices[i]` is the string device for worker `i` in in-graph
+        relication case; devices is single-element list for its corresponding
+        worker in between-graph case.
+      num_replicas_per_worker: number of replicas per worker, useful in in-graph
+        replication case.
+    """
+    self._devices = tuple(device_util.canonicalize(d) for d in devices)
+    if len(set(self._devices)) != len(self._devices):
+      raise ValueError("Duplicate devices in %s, after canonicalization: %s" %
+                       (devices, self._devices))
+    self._num_replicas_per_worker = num_replicas_per_worker
+
+  @property
+  def all_devices(self):
+    return self._devices
+
+  @property
+  def devices_by_replica(self):
+    raise ValueError("`WorkerDeviceMap` is not indexed by replicas")
+
+  @property
+  def num_logical_devices(self):
+    return 1
+
+  @property
+  def num_replicas_in_graph(self):
+    return len(self._devices)
+
+  def logical_device_from_values(self, values):
+    del values
+    return 0
+
+  def logical_to_actual_devices(self, logical_device_id):
+    assert logical_device_id == 0
+    return self._devices
+
+  def select_for_current_replica(self, values, replica_context):
+    return values[replica_context.replica_id_in_sync_group //
+                  self._num_replicas_per_worker]
+
+  def replica_for_device(self, device):
+    raise ValueError("`WorkerDeviceMap` not indexed by replicas")
+
+  def select_for_device(self, values, device):
+    # TODO(yuefengz): this should map from any device to the value on its
+    # corresponding worker.
+    return values[self._devices.index(device_util.canonicalize(device))]
+
+  def is_device_in_replica(self, device, replica_id):
+    raise ValueError("WorkerDeviceMap not indexed by replicas")
+
+  def __repr__(self):
+    return "%s(%r, num_replicas_per_worker=%d)" % (
+        self.__class__.__name__, self._devices, self._num_replicas_per_worker)
 
 
 class DistributedValues(object):
   """Holds a map from replica to values. Either PerReplica or Mirrored."""
 
-  def __init__(self, values):
+  def __init__(self, device_map, values, logical_device=None):
+    assert isinstance(device_map, DeviceMap)
+    self._device_map = device_map
     self._values = tuple(values)
+    if logical_device is None:
+      logical_device = device_map.logical_device_from_values(self._values)
+    self._logical_device = logical_device
 
-  def get(self):
+  # TODO(josh11b): Split this into two functions, one with device, one without.
+  def get(self, device=None):
     """Returns the value for the current device or raises a ValueError."""
-    replica_id = _get_current_replica_id_as_int()
-    if replica_id is None:
-      return self._get_cross_replica()
-    else:
-      return self._values[replica_id]
-
-  def _get_cross_replica(self):
-    raise NotImplementedError(
-        "This method should be overridden by sub-classes which support cross-"
-        "replica accesses.")
-
-  def _get_closest(self):
-    """Returns value in same replica or device if possible, else the primary."""
-    replica_id = _get_current_replica_id_as_int()
-    if replica_id is None:
-      # Try to find a value on the current device.
-      current_device = device_util.canonicalize(device_util.current())
-      for value in self._values:
-        if device_util.canonicalize(value.device) == current_device:
-          return value
-      return self.primary
-    else:
-      return self._values[replica_id]
+    if device is None:
+      replica_context = distribution_strategy_context.get_replica_context()
+      if replica_context:
+        return self._device_map.select_for_current_replica(
+            self._values, replica_context)
+      else:
+        update_replica_id = distribute_lib.get_update_replica_id()
+        if update_replica_id is None:
+          return self._get_cross_replica()
+        else:
+          return self._values[update_replica_id]
+    device = device_util.canonicalize(device)
+    return self._device_map.select_for_device(self._values, device)
 
   @property
   def primary(self):
     """Returns a representative component."""
     return self._values[0]
+
+  @property
+  def devices(self):
+    return self._device_map.logical_to_actual_devices(self._logical_device)
+
+  @property
+  def logical_device(self):
+    return self._logical_device
+
+  @property
+  def device_map(self):
+    return self._device_map
 
   # TODO(josh11b): Replace experimental_local_results with this?
   @property
@@ -98,21 +348,21 @@ class DistributedValues(object):
     return self._values
 
   @property
-  def devices(self):
-    return tuple(v.device for v in self._values)
-
-  @property
   def is_tensor_like(self):
     return all(tensor_util.is_tensor(v) for v in self._values)
 
   def __str__(self):
-    debug_str = ",\n".join(
-        "  %d: %s" % (i, v) for i, v in enumerate(self._values))
+    devices = self.devices
+    assert len(self._values) == len(devices)
+    debug_str = ",\n".join("  %d %s: %s" % (i, devices[i], self._values[i])
+                           for i in range(len(devices)))
     return "%s:{\n%s\n}" % (self.__class__.__name__, debug_str)
 
   def __repr__(self):
-    debug_repr = ",\n".join(
-        "  %d: %r" % (i, v) for i, v in enumerate(self._values))
+    devices = self.devices
+    assert len(self._values) == len(devices)
+    debug_repr = ",\n".join("  %d %s: %r" % (i, devices[i], self._values[i])
+                            for i in range(len(devices)))
     return "%s:{\n%s\n}" % (self.__class__.__name__, debug_repr)
 
 
@@ -273,22 +523,28 @@ class PerReplica(DistributedValues, composite_tensor.CompositeTensor):
 
   @property
   def _type_spec(self):
-    return PerReplicaSpec(
-        *(type_spec.type_spec_from_value(v) for v in self._values))
+    value_specs = nest.map_structure(type_spec.type_spec_from_value,
+                                     self._values)
+    return PerReplicaSpec(value_specs, self._device_map, self._logical_device)
 
 
 class PerReplicaSpec(type_spec.TypeSpec):
   """Type specification for a `PerReplica`."""
 
-  __slots__ = ["_value_specs"]
+  __slots__ = ["_value_specs", "_device_map", "_logical_device"]
 
   value_type = property(lambda self: PerReplica)
 
-  def __init__(self, *value_specs):
+  def __init__(self, value_specs, device_map, logical_device):
+    if isinstance(device_map, tuple):
+      device_map = self._deserialize_device_map(device_map)
     self._value_specs = tuple(value_specs)
+    self._device_map = device_map
+    self._logical_device = logical_device
 
   def _serialize(self):
-    return self._value_specs
+    device_map = self._serialize_device_map(self._device_map)
+    return (self._value_specs, device_map, self._logical_device)
 
   @property
   def _component_specs(self):
@@ -303,7 +559,34 @@ class PerReplicaSpec(type_spec.TypeSpec):
     return value._values  # pylint: disable=protected-access
 
   def _from_components(self, tensor_list):
-    return PerReplica(tensor_list)
+    return PerReplica(
+        self._device_map, tensor_list, logical_device=self._logical_device)
+
+  @staticmethod
+  def _serialize_device_map(device_map):
+    if isinstance(device_map, SingleDeviceMap):
+      return ("single", device_map.all_devices[0])
+    elif isinstance(device_map, ReplicaDeviceMap):
+      return ("replica", device_map.all_devices)
+    elif isinstance(device_map, WorkerDeviceMap):
+      return ("worker", device_map.all_devices,
+              device_map.num_replicas_per_worker)
+    else:
+      raise ValueError("PerReplicaSpec does not support device_map type %s" %
+                       type(device_map).__name__)
+
+  @staticmethod
+  def _deserialize_device_map(device_map_info):
+    device_map_type = device_map_info[0]
+    device_map_args = device_map_info[1:]
+    if device_map_type == "single":
+      return SingleDeviceMap(*device_map_args)
+    elif device_map_type == "replica":
+      return ReplicaDeviceMap(*device_map_args)
+    elif device_map_type == "worker":
+      return WorkerDeviceMap(*device_map_args)
+    else:
+      raise ValueError("Unexpected value in state tuple")
 
 
 # Note that unlike PerReplica, Mirrored values inherit from
@@ -313,7 +596,11 @@ class Mirrored(DistributedDelegate):
   """Holds a map from replica to values which are kept in sync."""
 
   def _get_cross_replica(self):
-    return self._get_closest()
+    device = device_util.canonicalize(device_util.current())
+    replica_id = self._device_map.replica_for_device(device)
+    if replica_id is None:
+      return self.primary
+    return self._values[replica_id]
 
   def _as_graph_element(self):
     obj = self.get()
@@ -369,9 +656,10 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
   # TODO(josh11b): Support changing the set of variables if e.g. if new
   # devices are joining or a device is to leave.
 
-  def __init__(self, strategy, values):
+  def __init__(self, strategy, device_map, values, logical_device=None):
     self._distribute_strategy = strategy
-    super(DistributedVariable, self).__init__(values)
+    super(DistributedVariable, self).__init__(
+        device_map, values, logical_device=logical_device)
     self._common_name = self.primary.name.split(":")[0]
     # Use a weakref to make it easy to map from the contained values
     # to the container without introducing a reference cycle.
@@ -421,6 +709,21 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
           tuple(v.initializer for v in self._values))
     return init_op
 
+  def _get_closest(self):
+    """Return member in the same replica if possible, else the primary."""
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context:
+      return self._device_map.select_for_current_replica(
+          self._values, replica_context)
+    update_replica_id = distribute_lib.get_update_replica_id()
+    if update_replica_id is not None:
+      return self._values[update_replica_id]
+    device = device_util.canonicalize(device_util.current())
+    replica_id = self._device_map.replica_for_device(device)
+    if replica_id is None:
+      return self.primary
+    return self._values[replica_id]
+
   def initialized_value(self):
     return self._get_closest().initialized_value()
 
@@ -463,12 +766,14 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable):
 
   @property
   def handle(self):
-    replica_id = _get_current_replica_id_as_int()
-    if replica_id is None:
-      raise ValueError("`handle` is not available outside the replica context"
-                       " or a `tf.distribute.Strategy.update()` call.")
-    else:
-      return self._values[replica_id].handle
+    replica_context = distribution_strategy_context.get_replica_context()
+    if replica_context is None:
+      update_replica_id = distribute_lib.get_update_replica_id()
+      if update_replica_id is None:
+        raise ValueError("`handle` is not available outside the replica context"
+                         " or a `tf.distribute.Strategy.update()` call.")
+      return self._values[update_replica_id].handle
+    return self.get().handle
 
   def eval(self, session=None):
     return self._get_closest().eval(session)
@@ -578,9 +883,9 @@ class TPUVariableMixin(object):
       raise AttributeError(
           "'{}' not accessible within a TPU context.".format(name))
 
-  def get(self):
-    if _enclosing_tpu_context() is None:
-      return super(TPUVariableMixin, self).get()
+  def get(self, device=None):
+    if (_enclosing_tpu_context() is None) or (device is not None):
+      return super(TPUVariableMixin, self).get(device=device)
     else:
       raise NotImplementedError(
           "`TPUVariableMixin.get()` is not supported within a TPU context.")
@@ -612,8 +917,10 @@ class TPUVariableMixin(object):
     if tpu_context is None:
       return self._get_closest().handle
     else:
-      return tpu_context.get_replicated_var_handle(
-          self._handle_id, self._values, self._is_mirrored())
+      return tpu_context.get_replicated_var_handle(self._handle_id,
+                                                   self._values,
+                                                   self._device_map,
+                                                   self._is_mirrored())
 
   @property
   def device(self):
@@ -728,8 +1035,8 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 def create_mirrored_variable(  # pylint: disable=missing-docstring
-    strategy, real_mirrored_creator, mirrored_cls, sync_on_read_cls,
-    *args, **kwargs):
+    strategy, device_map, logical_device, real_mirrored_creator, mirrored_cls,
+    sync_on_read_cls, *args, **kwargs):
   # Figure out what collections this variable should be added to.
   # We'll add the MirroredVariable to those collections instead.
   var_collections = kwargs.pop("collections", None)
@@ -772,9 +1079,17 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
   # was never recorded on the tape instead of having to do this manually
   # here.
   with tape.stop_recording():
-    value_list = real_mirrored_creator(*args, **kwargs)
+    devices = device_map.logical_to_actual_devices(logical_device)
+    value_list = real_mirrored_creator(devices, *args, **kwargs)
+
     var_cls = sync_on_read_cls if is_sync_on_read else mirrored_cls
-    result = var_cls(strategy, value_list, aggregation)
+
+    result = var_cls(
+        strategy,
+        device_map,
+        value_list,
+        aggregation,
+        logical_device=logical_device)
 
   # Add the wrapped variable to the requested collections.
   # The handling of eager mode and the global step matches
@@ -805,8 +1120,14 @@ def create_mirrored_variable(  # pylint: disable=missing-docstring
 class MirroredVariable(DistributedVariable, Mirrored):
   """Holds a map from replica to variables whose values are kept in sync."""
 
-  def __init__(self, strategy, values, aggregation):
-    super(MirroredVariable, self).__init__(strategy, values)
+  def __init__(self,
+               strategy,
+               device_map,
+               values,
+               aggregation,
+               logical_device=None):
+    super(MirroredVariable, self).__init__(
+        strategy, device_map, values, logical_device=logical_device)
     self._aggregation = aggregation
 
   # The arguments to update() are automatically unwrapped so the update()
@@ -866,12 +1187,17 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return self._aggregation
 
   def _get_cross_replica(self):
-    # Return identity, to avoid directly exposing the variable to the user and
-    # allowing it to be modified by mistake.
-    return array_ops.identity(Mirrored._get_cross_replica(self))
+    device = device_util.canonicalize(device_util.current())
+    replica_id = self._device_map.replica_for_device(device)
+    if replica_id is None:
+      return array_ops.identity(self.primary)
+    return array_ops.identity(self._values[replica_id])
 
   def _as_graph_element(self):
-    return self._get_closest()._as_graph_element()  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if distribution_strategy_context.in_cross_replica_context():
+      return self.primary._as_graph_element()
+    return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides Trackable method.
@@ -1018,9 +1344,15 @@ def _assert_replica_context(strategy):
 class SyncOnReadVariable(DistributedVariable):
   """Holds a map from replica to variables whose values are reduced on save."""
 
-  def __init__(self, strategy, values, aggregation):
-    super(SyncOnReadVariable, self).__init__(strategy, values)
+  def __init__(self,
+               strategy,
+               device_map,
+               values,
+               aggregation,
+               logical_device=None):
     self._aggregation = aggregation
+    super(SyncOnReadVariable, self).__init__(
+        strategy, device_map, values, logical_device=logical_device)
 
   def assign_sub(self, *args, **kwargs):
     with _enter_or_assert_strategy(self._distribute_strategy):
@@ -1060,7 +1392,7 @@ class SyncOnReadVariable(DistributedVariable):
         # when saving.
         tensor = args[0]
         if self._aggregation == vs.VariableAggregation.SUM:
-          tensor = math_ops.cast(tensor / len(self._values), self.dtype)
+          tensor = math_ops.cast(tensor / len(self.devices), self.dtype)
         return control_flow_ops.group(
             tuple(_assign_on_device(v.device, v, tensor) for v in self._values))
       else:
@@ -1147,8 +1479,10 @@ class TPUSyncOnReadVariable(TPUVariableMixin, SyncOnReadVariable):
     return False
 
 
-def regroup(values, wrap_class=PerReplica):
+def regroup(device_map, values, wrap_class=PerReplica):
   """Makes a nest per-replica into a nest of PerReplica/Mirrored values."""
+  assert isinstance(device_map, DeviceMap)
+  assert len(values) == device_map.num_replicas_in_graph
   v0 = values[0]
 
   if isinstance(v0, list):
@@ -1157,7 +1491,8 @@ def regroup(values, wrap_class=PerReplica):
       assert len(v) == len(v0), ("len(v) == %d, len(v0) == %d, v: %s, v0: %s" %
                                  (len(v), len(v0), v, v0))
     return [
-        regroup(tuple(v[i] for v in values), wrap_class)
+        regroup(device_map, tuple(v[i]
+                                  for v in values), wrap_class)
         for i in range(len(v0))
     ]
 
@@ -1166,7 +1501,8 @@ def regroup(values, wrap_class=PerReplica):
       assert isinstance(v, tuple)
       assert len(v) == len(v0)
     regrouped_tuple = tuple(
-        regroup(tuple(v[i] for v in values), wrap_class)
+        regroup(device_map, tuple(v[i]
+                                  for v in values), wrap_class)
         for i in range(len(v0)))
     if hasattr(v0, "_fields"):
       # This tuple is in fact a namedtuple! Create a new namedtuple instance
@@ -1183,7 +1519,7 @@ def regroup(values, wrap_class=PerReplica):
       assert set(v.keys()) == v0keys, ("v[0].keys: %s  v[i].keys: %s" %
                                        (v0keys, set(v.keys())))
     return {
-        key: regroup(tuple(v[key] for v in values), wrap_class)
+        key: regroup(device_map, tuple(v[key] for v in values), wrap_class)
         for key in v0keys
     }
 
@@ -1219,14 +1555,20 @@ def regroup(values, wrap_class=PerReplica):
     # pylint: disable=protected-access
     assert not isinstance(v0, MirroredVariable), (
         "ids = %s, values = %s" % ([id(v) for v in values], values))
+    assert device_map.is_device_in_replica(
+        v0.device,
+        0), ("v0.device = %s, device_map = %s" % (v0.device, device_map))
     distributed_container = v0._distributed_container()
     assert distributed_container is not None
-    for v in values[1:]:
+    for r, v in enumerate(values[1:]):
+      assert device_map.is_device_in_replica(
+          v.device, r + 1), ("v.device = %s, r = %d, device_map = %s" %
+                             (v.device, r + 1, device_map))
       assert distributed_container is v._distributed_container()
     return distributed_container
   # pylint: enable=protected-access
 
-  return wrap_class(values)
+  return wrap_class(device_map, values)
 
 
 def select_replica(replica_id, structured):
@@ -1245,8 +1587,8 @@ def select_replica(replica_id, structured):
   return nest.map_structure(_get, structured)
 
 
-def select_replica_mirrored(replica_id, structured):
-  """Specialize a nest of regular & mirrored values for one replica."""
+def select_device_mirrored(device, structured):
+  """Specialize a nest of regular & mirrored values for one device."""
 
   def _get_mirrored(x):
     if isinstance(x, DistributedValues):
@@ -1254,23 +1596,23 @@ def select_replica_mirrored(replica_id, structured):
         raise TypeError(
             "Expected value to be mirrored across replicas: %s in %s." %
             (x, structured))
-      return x.values[replica_id]
+      return x.get(device)
     else:
       return x
 
   return nest.map_structure(_get_mirrored, structured)
 
 
-def update_regroup(extended, updates, group):
+def update_regroup(extended, device_map, updates, group):
   """Regroup for an update, with dependencies to ensure all updates execute."""
   if not group:
-    regrouped = regroup(updates, Mirrored)
+    regrouped = regroup(device_map, updates, Mirrored)
     return nest.map_structure(extended._local_results, regrouped)  # pylint: disable=protected-access
 
-  def _make_grouped_mirrored(values):
+  def _make_grouped_mirrored(device_map, values):
     """Convert per-replica list `values` into Mirrored type with grouping."""
     if len(values) == 1:
-      return Mirrored(values)
+      return Mirrored(device_map, values)
 
     # Make sure we run all updates. Without this, something like
     # session.run(extended.update(...)) may only update one replica.
@@ -1284,14 +1626,17 @@ def update_regroup(extended, updates, group):
 
     # Otherwise we need tensors with the same values as `values`, but
     # that have a dependency on `g`.
+    devices = device_map.logical_to_actual_devices(
+        device_map.logical_device_from_values(values))
+    assert len(values) == len(devices)
     with_dep = []
-    for v in values:
-      with ops.device(v.device), ops.control_dependencies([g]):
+    for v, d in zip(values, devices):
+      with ops.device(d), ops.control_dependencies([g]):
         with_dep.append(array_ops.identity(v))
 
-    return Mirrored(with_dep)
+    return Mirrored(device_map, with_dep)
 
-  return regroup(updates, _make_grouped_mirrored)
+  return regroup(device_map, updates, _make_grouped_mirrored)
 
 
 def value_container(val):

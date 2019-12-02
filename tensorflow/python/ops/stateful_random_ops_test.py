@@ -727,7 +727,9 @@ class StatefulRandomOpsTest(test.TestCase, parameterized.TestCase):
     devices = ["cpu:0", "cpu:1"]
     strat = MirroredStrategy(devices=devices)
     # Use `PerReplica` to specify which `gen` is sent to which replica
-    gens = dist_values.PerReplica([[g] for g in gens])
+    gens = dist_values.PerReplica(
+        device_map=dist_values.ReplicaDeviceMap(devices),
+        values=[[g] for g in gens])
     with strat.scope():
       def f(gen):
         t1 = gen.uniform_full_int(shape=shape, dtype=dtype)

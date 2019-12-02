@@ -201,6 +201,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     self._host_device = device_util.get_host_for_device(self._tpu_devices[0])
 
+    self._device_map = values.ReplicaDeviceMap(self._tpu_devices)
+
     # Preload the data onto the TPUs.
     input_worker_devices = collections.OrderedDict()
     for tpu_device in self._tpu_devices:
@@ -208,7 +210,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       input_worker_devices.setdefault(host_device, [])
       input_worker_devices[host_device].append(tpu_device)
     self._input_workers = input_lib.InputWorkers(
-        tuple(input_worker_devices.items()))
+        self._device_map, tuple(input_worker_devices.items()))
 
     # TODO(sourabhbajaj): Remove this once performance of running one step
     # at a time is comparable to multiple steps.
@@ -393,14 +395,16 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
 
     colocate_with = kwargs.pop("colocate_with", None)
     if colocate_with is None:
-      devices = self._tpu_devices
+      device_map = self._device_map
+      logical_device = 0  # TODO(josh11b): Get logical device from scope here.
     elif isinstance(colocate_with, numpy_dataset.SingleDevice):
       with ops.device(colocate_with.device):
         return next_creator(*args, **kwargs)
     else:
-      devices = colocate_with.devices
+      device_map = colocate_with.device_map
+      logical_device = colocate_with.logical_device
 
-    def _real_mirrored_creator(*args, **kwargs):  # pylint: disable=g-missing-docstring
+    def _real_mirrored_creator(devices, *args, **kwargs):  # pylint: disable=g-missing-docstring
       initial_value = None
       value_list = []
       for i, d in enumerate(devices):
@@ -430,9 +434,9 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       return value_list
 
     return values.create_mirrored_variable(
-        self._container_strategy(), _real_mirrored_creator,
-        values.TPUMirroredVariable, values.TPUSyncOnReadVariable,
-        *args, **kwargs)
+        self._container_strategy(), device_map, logical_device,
+        _real_mirrored_creator, values.TPUMirroredVariable,
+        values.TPUSyncOnReadVariable, *args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations):
     if values._enclosing_tpu_context() is not None:  # pylint: disable=protected-access
@@ -450,7 +454,7 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
       # replicas in which case `value` would be a single value or value could
       # be 0.
       return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, value, destinations, self._num_replicas_in_sync)
+          reduce_op, self._device_map, value, destinations)
 
     # TODO(cjfj): Detect when it is possible to use `cross_replica_sum`.
     # Always performs the reduction on the TPU host.
@@ -486,16 +490,14 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
     # Otherwise, we revert to MirroredStrategy behavior and update each variable
     # directly.
     updates = []
-    for i, v in enumerate(var.values):
+    for i, (d, v) in enumerate(zip(var.devices, var.values)):
       name = "update_%d" % i
-      with ops.device(v.device), \
-           distribute_lib.UpdateContext(i), \
-           ops.name_scope(name):
+      with ops.device(d), distribute_lib.UpdateContext(i), ops.name_scope(name):
         # If args and kwargs are not mirrored, the value is returned as is.
         updates.append(fn(v,
-                          *values.select_replica_mirrored(i, args),
-                          **values.select_replica_mirrored(i, kwargs)))
-    return values.update_regroup(self, updates, group)
+                          *values.select_device_mirrored(d, args),
+                          **values.select_device_mirrored(d, kwargs)))
+    return values.update_regroup(self, self._device_map, updates, group)
 
   def read_var(self, var):
     assert isinstance(var, values.TPUVariableMixin) or isinstance(
@@ -704,7 +706,8 @@ class TPUExtended(distribute_lib.StrategyExtendedV1):
             nest.pack_sequence_as(result[0], nest.flatten(replica_output))
             for replica_output in replicate_outputs
         ]
-      return values.regroup(replicate_outputs)
+      device_map = self._device_map  # pylint: disable=protected-access
+      return values.regroup(device_map, replicate_outputs)
 
     if context.executing_eagerly():
       tpu_function = def_function.function(tpu_function)

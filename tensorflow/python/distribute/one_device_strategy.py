@@ -251,7 +251,9 @@ class OneDeviceExtended(distribute_lib.StrategyExtendedV1):
     suffix_loc = self._device.rfind("/")
     self._input_device = self._device[:suffix_loc] + "/device:CPU:0"
     worker_device_pairs = [(self._input_device, [self._device])]
-    self._input_workers = input_lib.InputWorkers(worker_device_pairs)
+    device_map = values.SingleDeviceMap(self._device)
+    self._input_workers = input_lib.InputWorkers(
+        device_map, worker_device_pairs)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)

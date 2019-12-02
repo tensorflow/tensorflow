@@ -103,7 +103,8 @@ class IndexedSlicesUtilsTest(test.TestCase, parameterized.TestCase):
         constant_op.constant([[1., 2.], [0, 0], [3., 4.]]))
     t1 = math_ops._as_indexed_slices(
         constant_op.constant([[0., 0.], [5, 6], [7., 8.]]))
-    per_replica = value_lib.PerReplica((t0, t1))
+    device_map = value_lib.ReplicaDeviceMap(("/gpu:0", "/cpu:0"))
+    per_replica = value_lib.PerReplica(device_map, (t0, t1))
     self.assertTrue(cross_device_utils.contains_indexed_slices(per_replica))
 
   @combinations.generate(combinations.combine(

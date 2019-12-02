@@ -66,7 +66,7 @@ def _make_per_replica(values, devices, regroup=False):
     with ops.device(d):
       placed_v = array_ops.identity(v)
     index.append(placed_v)
-  return value_lib.regroup(index)
+  return value_lib.regroup(value_lib.ReplicaDeviceMap(devices), index)
 
 
 # pylint: disable=g-doc-args,g-doc-return-or-yield
@@ -82,6 +82,7 @@ def _fake_mirrored(value, devices):
     with ops.device(d):
       values.append(array_ops.identity(value))
   return value_lib.regroup(
+      value_lib.ReplicaDeviceMap(devices),
       values,
       wrap_class=value_lib.Mirrored)
 
@@ -99,6 +100,7 @@ def _make_mirrored_indexed_slices(devices, values, indices, dense_shape):
   values = [_make_indexed_slices(values, indices, dense_shape, d)
             for d in devices]
   return value_lib.regroup(
+      value_lib.ReplicaDeviceMap(devices),
       values,
       wrap_class=value_lib.Mirrored)
 
@@ -125,7 +127,8 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     else:
       if isinstance(left, value_lib.DistributedValues):
         self.assertEqual(set(left.devices), set(right.devices))
-        self._assert_values_equal(left.values, right.values)
+        self._assert_values_equal([left.get(d) for d in sorted(left.devices)],
+                                  [right.get(d) for d in sorted(right.devices)])
       else:
         self.assertEqual(
             device_util.resolve(left.device), device_util.resolve(right.device))
@@ -214,7 +217,8 @@ class CrossDeviceOpsTestBase(test.TestCase, parameterized.TestCase):
     t0 = _make_indexed_slices([[1., 2.]], [1], dense_shape, devices[0])
     t1 = _make_indexed_slices([[3., 4.], [5., 6.]], [1, 3], dense_shape,
                               devices[1])
-    per_replica = value_lib.PerReplica((t0, t1))
+    per_replica = value_lib.PerReplica(
+        value_lib.ReplicaDeviceMap(devices), (t0, t1))
 
     if batch_reduce:
       result = cross_device_ops_instance.batch_reduce(
@@ -335,6 +339,7 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
           cross_device_ops_lib.choose_the_best(devices),
           cross_device_ops_lib.ReductionToOneDevice)
 
+
   @combinations.generate(combinations.combine(
       mode=["graph", "eager"],
       required_gpus=1))
@@ -342,7 +347,8 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     devices = ["/cpu:0", "/gpu:0"]
     t0 = _make_indexed_slices([[1., 2.]], [1], [5, 2], devices[0])
     t1 = _make_indexed_slices([[3., 4.], [5., 6.]], [1, 3], [5, 2], devices[1])
-    per_replica = value_lib.PerReplica((t0, t1))
+    per_replica = value_lib.PerReplica(
+        value_lib.ReplicaDeviceMap(devices), (t0, t1))
     result = cross_device_ops_lib._simple_reduce(
         per_replica, devices[0], math_ops.add_n, reduce_util.ReduceOp.SUM)
 
@@ -642,7 +648,8 @@ class CollectiveAllReduceTest(multi_worker_test_base.MultiWorkerTestBase,
       indexed_slices.append(
           _make_indexed_slices(values[idx], indices[idx], dense_shape, d))
     if as_per_replica:
-      per_replica = value_lib.PerReplica(indexed_slices)
+      per_replica = value_lib.PerReplica(
+          value_lib.ReplicaDeviceMap(devices), indexed_slices)
       return per_replica
     else:
       return indexed_slices
