@@ -1206,7 +1206,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
 
     // ViewOp with dynamic offset and one dynamic size.
     %2 = view %0[%offset_1024][%size0]
-      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)
+      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)>
 
     // ViewOp creating 3D shape where two of the dim sizes are dynamic.
     // *) The dynamic offset specified in the ViewOp is applied to the
@@ -1219,7 +1219,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
     //    shape and dynamic sizes.
     %3 = view %0[%offset_1024][%size0, %size1]
       : memref<2048xi8> to memref<?x?x4xf32,
-        (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * 4 + d2 + s0)
+        (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * 4 + d2 + s0)>
   }];
 
   let arguments = (ins MemRefRankOf<[I8], [1]>:$source,
