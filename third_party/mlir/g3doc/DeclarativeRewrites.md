@@ -144,6 +144,13 @@ Also note that we only need to add `TypeConstraint` or `AttributeConstraint`
 when we need to further limit the match criteria. If all valid cases to the op
 are acceptable, then we can leave the constraint unspecified.
 
+`$_` is a special symbol to mean ignore capturing an argument. For example,
+`def : Pat<(AOp $_, $b), ...>` means only `$b` is interesting to capture and
+will be referenced later in result patterns. It's still possible to place
+additional constraints even if the symbol is not to be captured; for such case,
+you can simply use just the `TypeConstraint` or `AttributeConstraint` without a
+bound symbol, for example, `def : Pat<(AOp $a, F32Attr), ...>`.
+
 #### Matching DAG of operations
 
 To match an DAG of ops, use nested `dag` objects:
