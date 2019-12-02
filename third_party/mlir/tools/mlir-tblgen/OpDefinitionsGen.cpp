@@ -32,6 +32,8 @@
 #include "llvm/TableGen/Record.h"
 #include "llvm/TableGen/TableGenBackend.h"
 
+#define DEBUG_TYPE "mlir-tblgen-opdefgen"
+
 using namespace llvm;
 using namespace mlir;
 using namespace mlir::tblgen;
@@ -111,6 +113,14 @@ static std::string getArgumentName(const Operator &op, int index) {
     return operand.name;
   else
     return formatv("{0}_{1}", generatedArgName, index);
+}
+
+// Returns true if we can use unwrapped value for the given `attr` in builders.
+static bool canUseUnwrappedRawValue(const tblgen::Attribute &attr) {
+  return attr.getReturnType() != attr.getStorageType() &&
+         // We need to wrap the raw value into an attribute in the builder impl
+         // so we need to make sure that the attribute specifies how to do that.
+         !attr.getConstBuilderTemplate().empty();
 }
 
 namespace {
@@ -506,46 +516,66 @@ private:
   void genBuilder();
 
   // Generates the build() method that takes each result-type/operand/attribute
-  // as a stand-alone parameter. This build() method also requires specifying
-  // result types for all results.
-  void genSeparateParamBuilder();
+  // as a stand-alone parameter. Attributes will take wrapped mlir::Attribute
+  // values. The generated build() method also requires specifying result types
+  // for all results.
+  void genSeparateParamWrappedAttrBuilder();
+
+  // Generates the build() method that takes each result-type/operand/attribute
+  // as a stand-alone parameter. Attributes will take raw values without
+  // mlir::Attribute wrapper. The generated build() method also requires
+  // specifying result types for all results.
+  void genSeparateParamUnwrappedAttrBuilder();
 
   // Generates the build() method that takes a single parameter for all the
   // result types and a separate parameter for each operand/attribute.
   void genCollectiveTypeParamBuilder();
 
   // Generates the build() method that takes each operand/attribute as a
-  // stand-alone parameter. This build() method uses first operand's type
-  // as all results' types.
+  // stand-alone parameter. The generated build() method uses first operand's
+  // type as all results' types.
   void genUseOperandAsResultTypeSeparateParamBuilder();
 
   // Generates the build() method that takes all operands/attributes
-  // collectively as one parameter. This build() method uses first operand's
-  // type as all results' types.
+  // collectively as one parameter. The generated build() method uses first
+  // operand's type as all results' types.
   void genUseOperandAsResultTypeCollectiveParamBuilder();
 
   // Generates the build() method that takes each operand/attribute as a
-  // stand-alone parameter. This build() method uses first attribute's type
-  // as all result's types.
+  // stand-alone parameter. The generated build() method uses first attribute's
+  // type as all result's types.
   void genUseAttrAsResultTypeBuilder();
 
   // Generates the build() method that takes all result types collectively as
   // one parameter. Similarly for operands and attributes.
   void genCollectiveParamBuilder();
 
-  enum class TypeParamKind { None, Separate, Collective };
+  // The kind of parameter to generate for result types in builders.
+  enum class TypeParamKind {
+    None,       // No result type in parameter list.
+    Separate,   // A separate parameter for each result type.
+    Collective, // An ArrayRef<Type> for all result types.
+  };
+
+  // The kind of parameter to generate for attributes in builders.
+  enum class AttrParamKind {
+    WrappedAttr,    // A wrapped MLIR Attribute instance.
+    UnwrappedValue, // A raw value without MLIR Attribute wrapper.
+  };
 
   // Builds the parameter list for build() method of this op. This method writes
-  // to `paramList` the comma-separated parameter list. If `includeResultTypes`
-  // is true then `paramList` will also contain the parameters for all results
-  // and `resultTypeNames` will be populated with the parameter name for each
-  // result type.
+  // to `paramList` the comma-separated parameter list and updates
+  // `resultTypeNames` with the names for parameters for specifying result
+  // types. The given `typeParamKind` and `attrParamKind` controls how result
+  // types and attributes are placed in the parameter list.
   void buildParamList(std::string &paramList,
                       SmallVectorImpl<std::string> &resultTypeNames,
-                      TypeParamKind kind);
+                      TypeParamKind typeParamKind,
+                      AttrParamKind attrParamKind = AttrParamKind::WrappedAttr);
 
   // Adds op arguments and regions into operation state for build() methods.
-  void genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body);
+  void genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body,
+                                              bool isRawValueAttr = false);
 
   // Generates canonicalizer declaration for the operation.
   void genCanonicalizerDecls();
@@ -650,18 +680,18 @@ void OpEmitter::genAttrGetters() {
 
     // Return the queried attribute with the correct return type.
     auto attrVal =
-        (attr.hasDefaultValueInitializer() || attr.isOptional())
+        (attr.hasDefaultValue() || attr.isOptional())
             ? formatv("this->getAttr(\"{0}\").dyn_cast_or_null<{1}>()", name,
                       attr.getStorageType())
             : formatv("this->getAttr(\"{0}\").cast<{1}>()", name,
                       attr.getStorageType());
     body << "  auto attr = " << attrVal << ";\n";
-    if (attr.hasDefaultValueInitializer()) {
+    if (attr.hasDefaultValue()) {
       // Returns the default value if not set.
       // TODO: this is inefficient, we are recreating the attribute for every
       // call. This should be set instead.
-      std::string defaultValue = tgfmt(attr.getConstBuilderTemplate(), &fctx,
-                                       attr.getDefaultValueInitializer());
+      std::string defaultValue =
+          tgfmt(attr.getConstBuilderTemplate(), &fctx, attr.getDefaultValue());
       body << "    if (!attr)\n      return "
            << tgfmt(attr.getConvertFromStorageCall(),
                     &fctx.withSelf(defaultValue))
@@ -847,7 +877,7 @@ void OpEmitter::genNamedRegionGetters() {
   }
 }
 
-void OpEmitter::genSeparateParamBuilder() {
+void OpEmitter::genSeparateParamWrappedAttrBuilder() {
   std::string paramList;
   llvm::SmallVector<std::string, 4> resultNames;
   buildParamList(paramList, resultNames, TypeParamKind::Separate);
@@ -856,6 +886,42 @@ void OpEmitter::genSeparateParamBuilder() {
   genCodeForAddingArgAndRegionForBuilder(m.body());
 
   // Push all result types to the operation state
+  for (int i = 0, e = op.getNumResults(); i < e; ++i) {
+    m.body() << "  " << builderOpState << ".addTypes(" << resultNames[i]
+             << ");\n";
+  }
+}
+
+void OpEmitter::genSeparateParamUnwrappedAttrBuilder() {
+  // If this op does not have native attributes at all, return directly to avoid
+  // redefining builders.
+  if (op.getNumNativeAttributes() == 0)
+    return;
+
+  bool canGenerate = false;
+  // We are generating builders that take raw values for attributes. We need to
+  // make sure the native attributes have a meaningful "unwrapped" value type
+  // different from the wrapped mlir::Attribute type to avoid redefining
+  // builders. This checks for the op has at least one such native attribute.
+  for (int i = 0, e = op.getNumNativeAttributes(); i < e; ++i) {
+    NamedAttribute &namedAttr = op.getAttribute(i);
+    if (canUseUnwrappedRawValue(namedAttr.attr)) {
+      canGenerate = true;
+      break;
+    }
+  }
+  if (!canGenerate)
+    return;
+
+  std::string paramList;
+  llvm::SmallVector<std::string, 4> resultNames;
+  buildParamList(paramList, resultNames, TypeParamKind::Separate,
+                 AttrParamKind::UnwrappedValue);
+
+  auto &m = opClass.newMethod("void", "build", paramList, OpMethod::MP_Static);
+  genCodeForAddingArgAndRegionForBuilder(m.body(), /*isRawValueAttr=*/true);
+
+  // Push all result types to the operation state.
   for (int i = 0, e = op.getNumResults(); i < e; ++i) {
     m.body() << "  " << builderOpState << ".addTypes(" << resultNames[i]
              << ");\n";
@@ -1006,7 +1072,8 @@ void OpEmitter::genBuilder() {
   // We generate three builders here:
   // 1. one having a stand-alone parameter for each result type / operand /
   //    attribute, and
-  genSeparateParamBuilder();
+  genSeparateParamWrappedAttrBuilder();
+  genSeparateParamUnwrappedAttrBuilder();
   // 2. one having a stand-alone parameter for each operand / attribute and
   //    an aggregated parameter for all result types, and
   genCollectiveTypeParamBuilder();
@@ -1069,15 +1136,16 @@ void OpEmitter::genCollectiveParamBuilder() {
 
 void OpEmitter::buildParamList(std::string &paramList,
                                SmallVectorImpl<std::string> &resultTypeNames,
-                               TypeParamKind kind) {
+                               TypeParamKind typeParamKind,
+                               AttrParamKind attrParamKind) {
   resultTypeNames.clear();
   auto numResults = op.getNumResults();
   resultTypeNames.reserve(numResults);
 
-  paramList = "Builder *, OperationState &";
+  paramList = "Builder *tblgen_builder, OperationState &";
   paramList.append(builderOpState);
 
-  switch (kind) {
+  switch (typeParamKind) {
   case TypeParamKind::None:
     break;
   case TypeParamKind::Separate: {
@@ -1100,10 +1168,36 @@ void OpEmitter::buildParamList(std::string &paramList,
   } break;
   }
 
+  // Add parameters for all arguments (operands and attributes).
+
   int numOperands = 0;
   int numAttrs = 0;
 
-  // Add parameters for all arguments (operands and attributes).
+  int defaultValuedAttrStartIndex = op.getNumArgs();
+  if (attrParamKind == AttrParamKind::UnwrappedValue) {
+    // Calculate the start index from which we can attach default values in the
+    // builder declaration.
+    for (int i = op.getNumArgs() - 1; i >= 0; --i) {
+      auto *namedAttr = op.getArg(i).dyn_cast<tblgen::NamedAttribute *>();
+      if (!namedAttr || !namedAttr->attr.hasDefaultValue())
+        break;
+
+      if (!canUseUnwrappedRawValue(namedAttr->attr))
+        break;
+
+      // Creating an APInt requires us to provide bitwidth, value, and
+      // signedness, which is complicated compared to others. Similarly
+      // for APFloat.
+      // TODO(b/144412160) Adjust the 'returnType' field of such attributes
+      // to support them.
+      StringRef retType = namedAttr->attr.getReturnType();
+      if (retType == "APInt" || retType == "APFloat")
+        break;
+
+      defaultValuedAttrStartIndex = i;
+    }
+  }
+
   for (int i = 0, e = op.getNumArgs(); i < e; ++i) {
     auto argument = op.getArg(i);
     if (argument.is<tblgen::NamedTypeConstraint *>()) {
@@ -1113,24 +1207,46 @@ void OpEmitter::buildParamList(std::string &paramList,
       paramList.append(getArgumentName(op, numOperands));
       ++numOperands;
     } else {
-      // TODO(antiagainst): Support default initializer for attributes
       const auto &namedAttr = op.getAttribute(numAttrs);
       const auto &attr = namedAttr.attr;
       paramList.append(", ");
+
       if (attr.isOptional())
         paramList.append("/*optional*/");
-      paramList.append(attr.getStorageType());
+
+      switch (attrParamKind) {
+      case AttrParamKind::WrappedAttr:
+        paramList.append(attr.getStorageType());
+        break;
+      case AttrParamKind::UnwrappedValue:
+        if (canUseUnwrappedRawValue(attr)) {
+          paramList.append(attr.getReturnType());
+        } else {
+          paramList.append(attr.getStorageType());
+        }
+        break;
+      }
       paramList.append(" ");
       paramList.append(namedAttr.name);
+
+      // Attach default value if requested and possible.
+      if (attrParamKind == AttrParamKind::UnwrappedValue &&
+          i >= defaultValuedAttrStartIndex) {
+        bool isString = attr.getReturnType() == "StringRef";
+        paramList.append(" = ");
+        if (isString)
+          paramList.append("\"");
+        paramList.append(attr.getDefaultValue());
+        if (isString)
+          paramList.append("\"");
+      }
       ++numAttrs;
     }
   }
-
-  if (numOperands + numAttrs != op.getNumArgs())
-    PrintFatalError("op arguments must be either operands or attributes");
 }
 
-void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
+void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body,
+                                                       bool isRawValueAttr) {
   // Push all operands to the result
   for (int i = 0, e = op.getNumOperands(); i < e; ++i) {
     body << "  " << builderOpState << ".addOperands(" << getArgumentName(op, i)
@@ -1139,13 +1255,25 @@ void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body) {
 
   // Push all attributes to the result
   for (const auto &namedAttr : op.getAttributes()) {
-    if (!namedAttr.attr.isDerivedAttr()) {
-      bool emitNotNullCheck = namedAttr.attr.isOptional();
+    auto &attr = namedAttr.attr;
+    if (!attr.isDerivedAttr()) {
+      bool emitNotNullCheck = attr.isOptional();
       if (emitNotNullCheck) {
         body << formatv("  if ({0}) ", namedAttr.name) << "{\n";
       }
-      body << formatv("  {0}.addAttribute(\"{1}\", {1});\n", builderOpState,
-                      namedAttr.name);
+      if (isRawValueAttr and canUseUnwrappedRawValue(attr)) {
+        // If this is a raw value, then we need to wrap it in an Attribute
+        // instance.
+        FmtContext fctx;
+        fctx.withBuilder("(*tblgen_builder)");
+        std::string value =
+            tgfmt(attr.getConstBuilderTemplate(), &fctx, namedAttr.name);
+        body << formatv("  {0}.addAttribute(\"{1}\", {2});\n", builderOpState,
+                        namedAttr.name, value);
+      } else {
+        body << formatv("  {0}.addAttribute(\"{1}\", {1});\n", builderOpState,
+                        namedAttr.name);
+      }
       if (emitNotNullCheck) {
         body << "  }\n";
       }
@@ -1282,8 +1410,7 @@ void OpEmitter::genVerifier() {
     body << formatv("  auto {0} = this->getAttr(\"{1}\");\n", varName,
                     attrName);
 
-    bool allowMissingAttr =
-        attr.hasDefaultValueInitializer() || attr.isOptional();
+    bool allowMissingAttr = attr.hasDefaultValue() || attr.isOptional();
     if (allowMissingAttr) {
       // If the attribute has a default value, then only verify the predicate if
       // set. This does effectively assume that the default value is valid.

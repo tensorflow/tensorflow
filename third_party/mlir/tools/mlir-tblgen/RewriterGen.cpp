@@ -342,10 +342,10 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int argIndex, int depth,
       attr.getStorageType(), namedAttr->name);
 
   // TODO(antiagainst): This should use getter method to avoid duplication.
-  if (attr.hasDefaultValueInitializer()) {
+  if (attr.hasDefaultValue()) {
     os.indent(indent) << "if (!tblgen_attr) tblgen_attr = "
                       << tgfmt(attr.getConstBuilderTemplate(), &fmtCtx,
-                               attr.getDefaultValueInitializer())
+                               attr.getDefaultValue())
                       << ";\n";
   } else if (attr.isOptional()) {
     // For a missing attribute that is optional according to definition, we
