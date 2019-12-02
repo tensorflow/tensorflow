@@ -505,12 +505,6 @@ string ConvolutionDescriptor::ToShortString() const {
   return desc;
 }
 
-// -- CtcLossDescriptor
-//
-CtcLossDescriptor::CtcLossDescriptor() {}
-
-CtcLossDescriptor::~CtcLossDescriptor() {}
-
 // -- PoolingDescriptor
 
 PoolingDescriptor::PoolingDescriptor(int ndims)

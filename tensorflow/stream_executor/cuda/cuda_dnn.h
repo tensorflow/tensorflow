@@ -567,14 +567,14 @@ class CudnnSupport : public dnn::DnnSupport {
       Stream* stream, dnn::DataType element_type,
       const dnn::RnnStateTensorDescriptor &probs_desc,
       const DeviceMemoryBase probs_data,
-      const absl::Span<const int32> &labels_data,
-      const absl::Span<const int32> &labels_lengths_data,
-      const absl::Span<const int32> &input_lengths_data,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
       DeviceMemoryBase costs_data,
       const dnn::RnnStateTensorDescriptor &grads_desc,
       DeviceMemoryBase grads_data,
       const dnn::CtcLossDescriptor &ctc_loss_desc,
-      ScratchAllocator *workspace_allocator) override;
+      DeviceMemory<uint8> scratch_memory) override;
 
   bool DoTransformTensor(Stream* stream, const dnn::BatchDescriptor& input_desc,
                          dnn::DataType input_type,
@@ -690,14 +690,14 @@ class CudnnSupport : public dnn::DnnSupport {
   port::Status DoCtcLossImpl(
       Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
       const DeviceMemoryBase probs_data,
-      const absl::Span<const int32>& labels_data,
-      const absl::Span<const int32>& labels_lengths_data,
-      const absl::Span<const int32>& input_lengths_data,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
       DeviceMemoryBase costs_data,
       const CudnnRnnStateTensorDescriptor& grads_desc,
       DeviceMemoryBase grads_data,
       const CudnnCtcLossDescriptor& ctc_loss_desc,
-      ScratchAllocator* workspace_allocator);
+      DeviceMemory<uint8> scratch_memory);
 
  private:
   port::Status DoPrepareForConvolution(
@@ -710,6 +710,17 @@ class CudnnSupport : public dnn::DnnSupport {
       const dnn::ConvolutionDescriptor& convolution_descriptor,
       const dnn::AlgorithmConfig& algorithm_config,
       ScratchAllocator* scratch_allocator, dnn::AlgorithmDesc* algorithm_desc,
+      DeviceMemory<uint8>* scratch_memory) override;
+
+  port::Status DoPrepareForCtcLoss(
+      Stream* stream, dnn::DataType element_type,
+      const dnn::CtcLossDescriptor &ctc_loss_desc,
+      const dnn::RnnStateTensorDescriptor &probs_desc,
+      const dnn::RnnStateTensorDescriptor &grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator* scratch_allocator,
       DeviceMemory<uint8>* scratch_memory) override;
 
   SE_DISALLOW_COPY_AND_ASSIGN(CudnnSupport);

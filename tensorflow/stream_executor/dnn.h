@@ -193,8 +193,8 @@ class RnnDescriptor {
 // Describes a CTC loss operation.
 class CtcLossDescriptor {
  public:
-  CtcLossDescriptor();
-  ~CtcLossDescriptor();
+  CtcLossDescriptor() {}
+  ~CtcLossDescriptor() {}
 };
 
 // Specifies the sequence in a RNN model.
@@ -2390,6 +2390,24 @@ class DnnSupport {
     return false;
   }
 
+  template <typename ElementType>
+  port::Status PrepareForCtcLoss(
+      Stream* stream,
+      const CtcLossDescriptor &ctc_loss_desc,
+      const RnnStateTensorDescriptor &probs_desc,
+      DeviceMemory<ElementType> probs_data,
+      const RnnStateTensorDescriptor &grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator *workspace_allocator,
+      DeviceMemory<uint8>* scratch_memory) {
+    return DoPrepareForCtcLoss(
+        stream, ToDataType<ElementType>::value, ctc_loss_desc, probs_desc,
+        grads_desc, labels_data, labels_lengths_data, input_lengths_data,
+        workspace_allocator, scratch_memory);
+  }
+
   // Enqueue a CTC Loss operation onto the stream.
   //
   // Arguments:
@@ -2413,34 +2431,34 @@ class DnnSupport {
   //    afterwards.
   virtual port::Status DoCtcLoss(Stream* stream,
       dnn::DataType element_type,
-      const dnn::RnnStateTensorDescriptor &probs_desc,
+      const RnnStateTensorDescriptor &probs_desc,
       const DeviceMemoryBase probs_data,
-      const absl::Span<const int32> &labels_data,
-      const absl::Span<const int32> &labels_lengths_data,
-      const absl::Span<const int32> &input_lengths_data,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
       DeviceMemoryBase costs_data,
-      const dnn::RnnStateTensorDescriptor &grads_desc,
+      const RnnStateTensorDescriptor &grads_desc,
       DeviceMemoryBase grads_data,
-      const dnn::CtcLossDescriptor &ctc_loss_desc,
-      ScratchAllocator *workspace_allocator) = 0;
+      const CtcLossDescriptor &ctc_loss_desc,
+      DeviceMemory<uint8> scratch_memory) = 0;
 
   template<typename ElementType>
   bool DoCtcLoss(Stream* stream,
                  const dnn::RnnStateTensorDescriptor &probs_desc,
                  const DeviceMemory<ElementType> &probs_data,
-                 const absl::Span<const int32> &labels_data,
-                 const absl::Span<const int32> &labels_lengths_data,
-                 const absl::Span<const int32> &input_lengths_data,
+                 absl::Span<const int> labels_data,
+                 absl::Span<const int> labels_lengths_data,
+                 absl::Span<const int> input_lengths_data,
                  DeviceMemory<ElementType> *costs_data,
                  const dnn::RnnStateTensorDescriptor &grads_desc,
                  DeviceMemory<ElementType> *grads_data,
                  const dnn::CtcLossDescriptor &ctc_loss_desc,
-                 ScratchAllocator *workspace_allocator) {
+                 DeviceMemory<uint8>* scratch_memory) {
     return IsStatusOk(
         DoCtcLoss(stream, ToDataType<ElementType>::value, probs_desc,
                   probs_data, labels_data, labels_lengths_data,
                   input_lengths_data, *costs_data, grads_desc, *grads_data,
-                  ctc_loss_desc, workspace_allocator),
+                  ctc_loss_desc, *scratch_memory),
         false);
   }
 
@@ -2695,6 +2713,20 @@ class DnnSupport {
       ScratchAllocator* scratch_allocator, AlgorithmDesc* algorithm_desc,
       DeviceMemory<uint8>* scratch_memory) {
     *algorithm_desc = {};
+    *scratch_memory = {};
+    return port::Status::OK();
+  }
+
+  virtual port::Status DoPrepareForCtcLoss(
+      Stream* stream, DataType element_type,
+      const CtcLossDescriptor &ctc_loss_desc,
+      const RnnStateTensorDescriptor &probs_desc,
+      const RnnStateTensorDescriptor &grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator* scratch_allocator,
+      DeviceMemory<uint8>* scratch_memory) {
     *scratch_memory = {};
     return port::Status::OK();
   }

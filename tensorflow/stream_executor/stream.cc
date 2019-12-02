@@ -5232,9 +5232,9 @@ Stream &Stream::ThenRnnBackward(
 
 Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
                             const DeviceMemory<float> &probs_data,
-                            const absl::Span<const int32> &labels_data,
-                            const absl::Span<const int32> &labels_lengths_data,
-                            const absl::Span<const int32> &input_lengths_data,
+                            absl::Span<const int> labels_data,
+                            absl::Span<const int> labels_lengths_data,
+                            absl::Span<const int> input_lengths_data,
                             DeviceMemory<float> *costs_data,
                             const dnn::RnnStateTensorDescriptor &grads_desc,
                             DeviceMemory<float> *grads_data,
@@ -5242,10 +5242,19 @@ Stream &Stream::ThenCtcLoss(const dnn::RnnStateTensorDescriptor &probs_desc,
                             ScratchAllocator *workspace_allocator) {
   if (ok()) {
     if (dnn::DnnSupport *dnn = parent_->AsDnn()) {
-      auto status = dnn->DoCtcLoss(
-          this, probs_desc, probs_data, labels_data, labels_lengths_data,
-          input_lengths_data, costs_data, grads_desc, grads_data, ctc_loss_desc,
-          workspace_allocator);
+      DeviceMemory<uint8> scratch_memory;
+      auto status =
+          dnn->PrepareForCtcLoss(
+              this, ctc_loss_desc, probs_desc, probs_data, grads_desc,
+              labels_data, labels_lengths_data, input_lengths_data,
+              workspace_allocator, &scratch_memory)
+          .ok();
+      if (status) {
+        status = dnn->DoCtcLoss(
+            this, probs_desc, probs_data, labels_data, labels_lengths_data,
+            input_lengths_data, costs_data, grads_desc, grads_data,
+            ctc_loss_desc, &scratch_memory);
+      }
       if (!status) {
         SetError();
       }

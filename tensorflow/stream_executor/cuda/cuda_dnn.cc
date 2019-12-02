@@ -1704,38 +1704,6 @@ port::StatusOr<DeviceMemory<uint8>> CreateBatchNormBackwardWorkspace(
   return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
 }
 
-port::StatusOr<DeviceMemory<uint8>> CreateCtcLossWorkspace(
-    Stream* stream, const CudnnHandle& cudnn,
-    const CudnnCtcLossDescriptor& ctc_loss_desc,
-    const CudnnRnnStateTensorDescriptor& probs_desc,
-    const CudnnRnnStateTensorDescriptor& grads_desc,
-    const absl::Span<const int32>& labels_data,
-    const absl::Span<const int32>& labels_lengths_data,
-    const absl::Span<const int32>& input_lengths_data,
-    ScratchAllocator* workspace_allocator) {
-  // Query the workspace size.
-  size_t workspace_size_in_bytes = 0;
-#if CUDNN_VERSION >= 7603
-  RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
-      /*handle=*/cudnn.handle(), /*probsDesc=*/probs_desc.handle(),
-      /*gradientsDesc=*/grads_desc.handle(),
-      /*labels=*/labels_data.data(),
-      /*labelLengths=*/labels_lengths_data.data(),
-      /*inputLengths=*/input_lengths_data.data(),
-      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
-      /*ctcLossDesc=*/ctc_loss_desc.handle(),
-      /*sizeInBytes=*/&workspace_size_in_bytes));
-#else
-  return port::Status(port::error::INVALID_ARGUMENT,
-                      "No supported cudnnGetCTCLossWorkspaceSize when "
-                      "CUDNN_VERSION < 7.6.3");
-#endif
-  // Allocate the workspace.
-  if (workspace_size_in_bytes == 0) {
-    return DeviceMemory<uint8>();
-  }
-  return workspace_allocator->AllocateBytes(workspace_size_in_bytes);
-}
 #endif
 
 }  // namespace
@@ -2052,22 +2020,16 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
 port::Status CudnnSupport::DoCtcLossImpl(
     Stream* stream, const CudnnRnnStateTensorDescriptor& probs_desc,
     const DeviceMemoryBase probs_data,
-    const absl::Span<const int32>& labels_data,
-    const absl::Span<const int32>& labels_lengths_data,
-    const absl::Span<const int32>& input_lengths_data,
+    absl::Span<const int> labels_data,
+    absl::Span<const int> labels_lengths_data,
+    absl::Span<const int> input_lengths_data,
     DeviceMemoryBase costs_data,
     const CudnnRnnStateTensorDescriptor& grads_desc,
     DeviceMemoryBase grads_data,
     const CudnnCtcLossDescriptor& ctc_loss_desc,
-    ScratchAllocator* workspace_allocator) {
+    DeviceMemory<uint8> scratch_memory) {
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  SE_ASSIGN_OR_RETURN(DeviceMemory<uint8> workspace,
-                      CreateCtcLossWorkspace(stream, cudnn, ctc_loss_desc,
-                                             probs_desc, grads_desc,
-                                             labels_data, labels_lengths_data,
-                                             input_lengths_data,
-                                             workspace_allocator));
   int kNumTimestamps = probs_desc.num_layers();
   int kBatchSize = probs_desc.batch_size();
   int kNumLabels = probs_desc.data_size();
@@ -2083,8 +2045,8 @@ port::Status CudnnSupport::DoCtcLossImpl(
           /*gradients=*/grads_data.opaque(),
           /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
           /*ctcLossDesc=*/ctc_loss_desc.handle(),
-          /*workspace=*/workspace.opaque(),
-          /*workSpaceSizeInBytes=*/workspace.size()));
+          /*workspace=*/scratch_memory.opaque(),
+          /*workSpaceSizeInBytes=*/scratch_memory.size()));
 #else
   return port::Status(port::error::INVALID_ARGUMENT,
                       "No supported cudnnCTCLoss when "
@@ -3953,18 +3915,67 @@ bool CudnnSupport::DoFusedConvolve(
       /*report_error=*/!output_profile_result);
 }
 
+port::Status CudnnSupport::DoPrepareForCtcLoss(
+      Stream* stream, dnn::DataType element_type,
+      const dnn::CtcLossDescriptor &ctc_loss_desc,
+      const dnn::RnnStateTensorDescriptor &probs_desc,
+      const dnn::RnnStateTensorDescriptor &grads_desc,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
+      ScratchAllocator* scratch_allocator,
+      DeviceMemory<uint8>* scratch_memory) {
+  auto cudnn = cudnn_->GetHandle(parent_, stream);
+  CudnnCtcLossDescriptor cudnn_ctc_loss_desc(ctc_loss_desc,
+                                             ToCudnnDataType(element_type));
+  const CudnnRnnStateTensorDescriptor& cudnn_probs_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(probs_desc);
+  const CudnnRnnStateTensorDescriptor& cudnn_grads_desc =
+      static_cast<const CudnnRnnStateTensorDescriptor&>(grads_desc);
+  // Query the workspace size.
+  size_t workspace_size_in_bytes = 0;
+#if CUDNN_VERSION >= 7603
+  RETURN_IF_CUDNN_ERROR(cudnnGetCTCLossWorkspaceSize(
+      /*handle=*/cudnn.handle(), /*probsDesc=*/cudnn_probs_desc.handle(),
+      /*gradientsDesc=*/cudnn_grads_desc.handle(),
+      /*labels=*/labels_data.data(),
+      /*labelLengths=*/labels_lengths_data.data(),
+      /*inputLengths=*/input_lengths_data.data(),
+      /*algo=*/CUDNN_CTC_LOSS_ALGO_NON_DETERMINISTIC,
+      /*ctcLossDesc=*/cudnn_ctc_loss_desc.handle(),
+      /*sizeInBytes=*/&workspace_size_in_bytes));
+#else
+  return port::Status(port::error::INVALID_ARGUMENT,
+                      "No supported cudnnGetCTCLossWorkspaceSize when "
+                      "CUDNN_VERSION < 7.6.3");
+#endif
+  // Allocate the workspace.
+  if (workspace_size_in_bytes == 0) {
+    *scratch_memory = DeviceMemory<uint8>();
+    return port::Status::OK();
+  }
+  const auto scratch_or = scratch_allocator->AllocateBytes(
+      workspace_size_in_bytes);
+  if (scratch_or.ok()) {
+    *scratch_memory = scratch_or.ValueOrDie();
+    return port::Status::OK();
+  }
+  return port::InternalError(
+      "Failed to allocate scratch memory for the CuDNN CTC Loss");
+}
+
 port::Status CudnnSupport::DoCtcLoss(
     Stream* stream, dnn::DataType element_type,
     const dnn::RnnStateTensorDescriptor &probs_desc,
     const DeviceMemoryBase probs_data,
-    const absl::Span<const int32> &labels_data,
-    const absl::Span<const int32> &labels_lengths_data,
-    const absl::Span<const int32> &input_lengths_data,
+    absl::Span<const int> labels_data,
+    absl::Span<const int> labels_lengths_data,
+    absl::Span<const int> input_lengths_data,
     DeviceMemoryBase costs_data,
     const dnn::RnnStateTensorDescriptor &grads_desc,
     DeviceMemoryBase grads_data,
     const dnn::CtcLossDescriptor &ctc_loss_desc,
-    ScratchAllocator *workspace_allocator) {
+    DeviceMemory<uint8> scratch_memory) {
   // Current cuDNN CTC Loss only supports the float datatype
   if (CUDNN_VERSION < 7603 || element_type != dnn::DataType::kFloat) {
     return port::Status(port::error::INVALID_ARGUMENT,
@@ -3980,7 +3991,7 @@ port::Status CudnnSupport::DoCtcLoss(
   return DoCtcLossImpl(stream, cudnn_probs_desc, probs_data, labels_data,
              labels_lengths_data, input_lengths_data, costs_data,
              cudnn_grads_desc, grads_data, cudnn_ctc_loss_desc,
-             workspace_allocator);
+             scratch_memory);
 }
 
 bool CudnnSupport::DoTransformTensor(Stream* stream,

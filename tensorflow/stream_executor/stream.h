@@ -1917,9 +1917,9 @@ class Stream {
   Stream &ThenCtcLoss(
       const dnn::RnnStateTensorDescriptor &probs_desc,
       const DeviceMemory<float> &probs_data,
-      const absl::Span<const int32> &labels_data,
-      const absl::Span<const int32> &labels_lengths_data,
-      const absl::Span<const int32> &input_lengths_data,
+      absl::Span<const int> labels_data,
+      absl::Span<const int> labels_lengths_data,
+      absl::Span<const int> input_lengths_data,
       DeviceMemory<float> *costs_data,
       const dnn::RnnStateTensorDescriptor &grads_desc,
       DeviceMemory<float> *grads_data,
