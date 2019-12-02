@@ -63,7 +63,7 @@ class LMDBDatasetParams : public DatasetParams {
   Tensor filenames_;
 };
 
-class LMDBDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class LMDBDatasetOpTest : public DatasetOpsTestBase {};
 
 // Copy our test data file to the current test program's temporary
 // directory, and return the full path to the copied file.
