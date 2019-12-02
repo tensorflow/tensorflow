@@ -1141,13 +1141,13 @@ std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
     } else if (whitelist_table.contains(s)) {
       auto v = whitelist_table.at(s);
       whitelist->insert(v.begin(), v.end());
-    } else if (s.size() > 0) {
+    } else if (!s.empty()) {
       // Should be a user provided TF operation.
       whitelist->insert(string(s));
     }
   }
 
-  if (VLOG_IS_ON(2) && whitelist->size() > 0) {
+  if (VLOG_IS_ON(2) && !whitelist->empty()) {
     std::vector<string> vwhitelist(whitelist->begin(), whitelist->end());
     std::sort(vwhitelist.begin(), vwhitelist.end());
     VLOG(2) << "XLA clustering will only consider the following TF operations: "
