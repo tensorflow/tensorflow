@@ -2032,6 +2032,99 @@ TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
   EXPECT_THAT(while0, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
 }
 
+TEST_P(MemorySpaceAssignmentTest, EvictionsShouldntBeDelayed) {
+  // This test reproduces an eviction scheduling bug where evictions to default
+  // memory can happen later than intended, causing memory corruption. This test
+  // is a variant of MemoryBoundednessBufferIntervalCompare but uses f32[4,3]
+  // tensors instead, so at most two tensors should fit in the alternate memory
+  // space at a given time. We have a number of redundant operations
+  // (tanh_redundant ops) that do not have users. The bug was due to
+  // SimplifyGraph removing dead instructions, and removing them from the
+  // schedule. However, the CopyStart/CopyDone insertion relies on the schedule
+  // indexes, so they could be inserted too late.
+  HloComputation::Builder builder(TestName());
+  Shape shape = ShapeUtil::MakeShape(F32, {4, 3});
+  HloInstruction* p0 =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "p0"));
+  HloInstruction* tanh0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant4 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant5 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* tanh_redundant6 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, p0));
+  HloInstruction* negate0 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, tanh0));
+  HloInstruction* tanh1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, negate0));
+  HloInstruction* negate1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate0));
+  HloInstruction* tanh2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh1));
+  HloInstruction* negate2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate1));
+  HloInstruction* tanh3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kTanh, tanh2));
+  HloInstruction* negate3 = builder.AddInstruction(
+      HloInstruction::CreateUnary(shape, HloOpcode::kNegate, negate2));
+  HloInstruction* tuple = builder.AddInstruction(
+      HloInstruction::CreateTuple({tanh3, negate3, tanh0}));
+
+  auto module = CreateNewVerifiedModule();
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+
+  HloSchedule schedule(module.get());
+  schedule.set_sequence(
+      computation,
+      {p0, tanh0, tanh_redundant0, tanh_redundant1, tanh_redundant2,
+       tanh_redundant3, tanh_redundant4, tanh_redundant5, tanh_redundant6,
+       negate0, tanh1, negate1, tanh2, negate2, tanh3, negate3, tuple});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpaceUsingCostAnalysis(module.get());
+
+  TF_ASSERT_OK_AND_ASSIGN(auto alias_analysis,
+                          HloAliasAnalysis::Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(auto hlo_live_range,
+                          HloLiveRange::Run(module->schedule(), *alias_analysis,
+                                            module->entry_computation()));
+
+  std::vector<int> num_live_buffers_in_alternate_mem(
+      hlo_live_range->flattened_instruction_sequence().size() + 1, 0);
+
+  // Go through each value and for those that are allocated in the alternate
+  // memory space, increment (inclusive) num_live_buffers_in_alternate_mem for
+  // every time step that they are live.
+  for (const HloValue* value : alias_analysis->dataflow_analysis().values()) {
+    const Shape& shape = value->shape();
+    if (!shape.has_layout() ||
+        shape.layout().memory_space() == kDefaultMemorySpace) {
+      continue;
+    }
+
+    HloLiveRange::TimeBound time_bound =
+        hlo_live_range->buffer_live_ranges().at(value);
+    for (int i = time_bound.start; i <= time_bound.end; ++i) {
+      ++num_live_buffers_in_alternate_mem[i];
+    }
+  }
+
+  // The test memory can at most hold two f32[4,3] buffers at a time. If there
+  // is more than that, it means we have memory corruption.
+  for (int i = 0; i < num_live_buffers_in_alternate_mem.size(); ++i) {
+    EXPECT_LE(num_live_buffers_in_alternate_mem[i], 2);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));
