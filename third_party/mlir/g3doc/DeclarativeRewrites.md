@@ -486,7 +486,7 @@ on **naming convention**: a `__N` suffix is added to a symbol to indicate the
 
 #### `__N` suffix
 
-The `__N` sufix is specifying the `N`-th result as a whole (which can be
+The `__N` suffix is specifying the `N`-th result as a whole (which can be
 [variadic](#supporting-variadic-ops)). For example, we can bind a symbol to some
 multi-result op and reference a specific result later:
 
@@ -681,7 +681,7 @@ mlir-tblgen --gen-rewriters -I /path/to/mlir/include /path/to/input/td/file
 
 ### Compilation error: no matching member function for call to 'build'
 
-This is because DRR is failing to call a `build()` mehtod with result type
+This is because DRR is failing to call a `build()` method with result type
 deduction ability. See [building operations](#building-operations) for more
 details.
 
