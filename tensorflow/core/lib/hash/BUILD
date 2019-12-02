@@ -41,13 +41,9 @@ cc_library(
 
 cc_library(
     name = "hash",
-    srcs = ["hash.cc"],
     hdrs = ["hash.h"],
     deps = [
-        "//tensorflow/core/lib/core:raw_coding",
-        "//tensorflow/core/lib/core:stringpiece",
-        "//tensorflow/core/platform:macros",
-        "//tensorflow/core/platform:types",
+        "//tensorflow/core/platform:hash",
     ],
 )
 
@@ -65,7 +61,6 @@ filegroup(
     srcs = [
         "crc32c.cc",
         "crc32c_accelerate.cc",
-        "hash.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -22,9 +22,7 @@
 #ifndef MLIR_LOOPLIKEINTERFACE
 #define MLIR_LOOPLIKEINTERFACE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 def LoopLikeOpInterface : OpInterface<"LoopLikeOpInterface"> {
   let description = [{

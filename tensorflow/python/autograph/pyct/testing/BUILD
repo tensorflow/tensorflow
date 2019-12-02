@@ -44,7 +44,7 @@ py_test(
     name = "codegen_test",
     size = "large",
     srcs = ["codegen_test.py"],
-    python_version = "PY2",
+    python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "manual",

@@ -194,10 +194,10 @@ bool mlir::matcher::operatesOnSuperVectorsOf(Operation &op,
   bool mustDivide = false;
   (void)mustDivide;
   VectorType superVectorType;
-  if (auto read = dyn_cast<vector::VectorTransferReadOp>(op)) {
+  if (auto read = dyn_cast<vector::TransferReadOp>(op)) {
     superVectorType = read.getVectorType();
     mustDivide = true;
-  } else if (auto write = dyn_cast<vector::VectorTransferWriteOp>(op)) {
+  } else if (auto write = dyn_cast<vector::TransferWriteOp>(op)) {
     superVectorType = write.getVectorType();
     mustDivide = true;
   } else if (op.getNumResults() == 0) {

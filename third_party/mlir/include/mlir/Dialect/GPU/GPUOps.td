@@ -22,9 +22,7 @@
 #ifndef GPU_OPS
 #define GPU_OPS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 def GPU_Dialect : Dialect {
   let name = "gpu";

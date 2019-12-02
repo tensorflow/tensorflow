@@ -521,7 +521,6 @@ Status DirectSession::RunInternal(
                             executor_step_count, &debugger_state));
   }
 
-  run_state.rendez.reset(new IntraProcessRendezvous(device_mgr_.get()));
 #ifndef __ANDROID__
   // Set up for collectives if ExecutorsAndKeys declares a key.
   if (executors_and_keys->collective_graph_key !=
@@ -616,12 +615,9 @@ Status DirectSession::RunInternal(
   Executor::Args args;
   args.step_id = step_id;
   args.call_frame = call_frame;
-  args.rendezvous = run_state.rendez.get();
   args.collective_executor =
       (run_state.collective_executor ? run_state.collective_executor->get()
                                      : nullptr);
-  CancellationManager step_cancellation_manager;
-  args.cancellation_manager = &step_cancellation_manager;
   args.session_state = &session_state_;
   args.session_handle = session_handle_;
   args.tensor_store = &run_state.tensor_store;
@@ -657,15 +653,11 @@ Status DirectSession::RunInternal(
 
   // Register this step with session's cancellation manager, so that
   // `Session::Close()` will cancel the step.
-  const CancellationToken cancellation_token =
-      cancellation_manager_->get_cancellation_token();
-  const bool already_cancelled = !cancellation_manager_->RegisterCallback(
-      cancellation_token, [&step_cancellation_manager]() {
-        step_cancellation_manager.StartCancel();
-      });
-  if (already_cancelled) {
+  CancellationManager step_cancellation_manager(cancellation_manager_);
+  if (step_cancellation_manager.IsCancelled()) {
     return errors::Cancelled("Run call was cancelled");
   }
+  args.cancellation_manager = &step_cancellation_manager;
 
   Status run_status;
 
@@ -694,14 +686,21 @@ Status DirectSession::RunInternal(
       };
 
   if (can_execute_synchronously) {
+    PrivateIntraProcessRendezvous rendezvous(device_mgr_.get());
+    args.rendezvous = &rendezvous;
+
     const auto& item = executors_and_keys->items[0];
     set_threadpool_args_for_item(item, &args);
     run_status = item.executor->Run(args);
   } else {
+    core::RefCountPtr<RefCountedIntraProcessRendezvous> rendezvous(
+        new RefCountedIntraProcessRendezvous(device_mgr_.get()));
+    args.rendezvous = rendezvous.get();
+
     // `barrier` will delete itself after the final executor finishes.
     Notification executors_done;
     ExecutorBarrier* barrier =
-        new ExecutorBarrier(num_executors, run_state.rendez.get(),
+        new ExecutorBarrier(num_executors, rendezvous.get(),
                             [&run_state, &executors_done](const Status& ret) {
                               {
                                 mutex_lock l(run_state.mu);
@@ -723,9 +722,7 @@ Status DirectSession::RunInternal(
     }
   }
 
-  if (!cancellation_manager_->DeregisterCallback(cancellation_token)) {
-    // The step has been cancelled: make sure we don't attempt to receive the
-    // outputs as this would make it block forever.
+  if (step_cancellation_manager.IsCancelled()) {
     run_status.Update(errors::Cancelled("Run call was cancelled"));
   }
 
@@ -1147,7 +1144,7 @@ Status DirectSession::SendPRunInputs(const NamedTensorList& inputs,
 
 Status DirectSession::RecvPRunOutputs(
     const std::vector<string>& output_names,
-    const ExecutorsAndKeys* executors_and_keys, RunState* run_state,
+    const ExecutorsAndKeys* executors_and_keys, PartialRunState* run_state,
     std::vector<Tensor>* outputs) {
   Status s;
   if (!output_names.empty()) {

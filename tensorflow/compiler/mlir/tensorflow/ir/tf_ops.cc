@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <limits>
 #include <numeric>
 #include <string>
 #include <type_traits>
@@ -38,6 +39,7 @@ limitations under the License.
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
 #include "mlir/IR/DialectImplementation.h"  // TF:local_config_mlir
 #include "mlir/IR/Function.h"  // TF:local_config_mlir
+#include "mlir/IR/Location.h"  // TF:local_config_mlir
 #include "mlir/IR/MLIRContext.h"  // TF:local_config_mlir
 #include "mlir/IR/Matchers.h"  // TF:local_config_mlir
 #include "mlir/IR/OpImplementation.h"  // TF:local_config_mlir
@@ -109,12 +111,40 @@ static inline bool HasRankAtMost(Value *value, int64_t rank) {
 static bool AreCastCompatible(Type a, Type b) {
   if (TensorCastOp::areCastCompatible(a, b)) return true;
 
+  // Resource types may optionally contain subtypes information that does not
+  // match. Check subtypes compatibility when possible, otherwise treat them as
+  // compatible.
+  auto a_or_element_type = getElementTypeOrSelf(a);
+  auto b_or_element_type = getElementTypeOrSelf(b);
+
+  auto a_kind = a_or_element_type.getKind();
+  auto b_kind = b_or_element_type.getKind();
+
+  if (a_kind == TensorFlowTypes::RESOURCE &&
+      b_kind == TensorFlowTypes::RESOURCE) {
+    auto a_resource_type = a_or_element_type.dyn_cast<ResourceType>();
+    auto b_resource_type = b_or_element_type.dyn_cast<ResourceType>();
+    bool a_has_subtype = !a_resource_type.getSubtypes().empty();
+    bool b_has_subtype = !b_resource_type.getSubtypes().empty();
+
+    if (!a_has_subtype || !b_has_subtype) return true;
+
+    assert(a_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+    assert(b_resource_type.getSubtypes().size() <= 1 &&
+           "Resource type must have at most one subtype");
+
+    return TensorCastOp::areCastCompatible(
+        a_resource_type.getSubtypes().front(),
+        b_resource_type.getSubtypes().front());
+  }
+
   // Variant types may optionally contain subtypes information that need not
   // match.  It is also not possible to compare subtypes for compatibility as
-  // their interpretation depends on the ops operating on them.  So, accept all
+  // their interpretation depends on the ops operating on them. So, accept all
   // pairs of variant types.
-  return getElementTypeOrSelf(a).getKind() == TensorFlowTypes::VARIANT &&
-         getElementTypeOrSelf(b).getKind() == TensorFlowTypes::VARIANT;
+  return a_kind == TensorFlowTypes::VARIANT &&
+         b_kind == TensorFlowTypes::VARIANT;
 }
 
 static bool IsUnknownDimOrRank(int64_t dim_or_rank) {
@@ -483,7 +513,7 @@ void ConstOp::build(Builder *builder, OperationState &result, Attribute value) {
   } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
              value.isa<IntegerAttr>()) {
     // All TensorFlow types must be tensor types. In the build() method,
-    // we want to provide more flexiblity by allowing attributes of scalar
+    // we want to provide more flexibility by allowing attributes of scalar
     // types. But we need to wrap it up with ElementsAttr to construct
     // valid TensorFlow constants.
     type = RankedTensorType::get(/*shape=*/{}, value.getType());
@@ -1383,6 +1413,22 @@ LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
 // types may enable optimizations in users of the values.
 
 //===----------------------------------------------------------------------===//
+// SizeOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// * Input type, if is a ranked tensor, has at most INT32_MAX dimensions.
+//
+static LogicalResult Verify(SizeOp op) {
+  if (!HasRankAtMost(op.input(), std::numeric_limits<int32_t>::max()))
+    return op.emitOpError(
+        "requires ranked input tensor to be of rank INT32_MAX or less");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // SliceOp
 //===----------------------------------------------------------------------===//
 
@@ -1473,6 +1519,49 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
       (broadcasted_ty.hasRank() && broadcasted_ty.getRank() != 2))
     return op.emitOpError(
         "requires features and labels to be broadcast compatible to rank two");
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// SplitOp
+//===----------------------------------------------------------------------===//
+
+static LogicalResult Verify(SplitOp op) {
+  Value *split_dim = op.split_dim();
+  auto split_dim_type = split_dim->getType().dyn_cast<RankedTensorType>();
+  if (!split_dim_type) return success();
+  if (split_dim_type.getRank() != 0)
+    return op.emitOpError("split dimension should be an integer scalar tensor");
+
+  // We can perform further verification if the input tensor to be split has
+  // known rank and the split dimension tensor is a constant.
+
+  auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
+  if (!input_type) return success();
+
+  int64_t input_rank = input_type.getRank();
+  if (input_rank == 0)
+    return op.emitOpError("cannot split scalar input tensor");
+
+  DenseIntElementsAttr split_dim_attr;
+  if (!matchPattern(split_dim, m_Constant(&split_dim_attr))) return success();
+
+  int64_t dim_index = (*split_dim_attr.begin()).getSExtValue();
+
+  if (dim_index + input_rank < 0 || dim_index >= input_rank) {
+    return op.emitOpError("split dimension must be in range [-")
+           << input_rank << ", " << input_rank << ")";
+  }
+
+  if (dim_index < 0) dim_index += input_rank;
+
+  int64_t input_dim_size = input_type.getDimSize(dim_index);
+  if (input_dim_size < 0) return success();
+
+  if (input_dim_size % op.getNumResults() != 0)
+    return op.emitOpError("dimension #")
+           << dim_index << " not divisible by the number of result tensors";
 
   return success();
 }

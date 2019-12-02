@@ -387,8 +387,8 @@ private:
         builder.getNamedAttr("addr_space", builder.getI32IntegerAttr(3));
     auto globalOp = builder.create<LLVM::GlobalOp>(
         loc, arrayType.cast<LLVM::LLVMType>(),
-        /*isConstant=*/false, name, /*value=*/Attribute(),
-        llvm::makeArrayRef(addrSpace));
+        /*isConstant=*/false, LLVM::Linkage::Internal, name,
+        /*value=*/Attribute(), llvm::makeArrayRef(addrSpace));
 
     return rewriter.create<LLVM::AddressOfOp>(loc, globalOp);
   }

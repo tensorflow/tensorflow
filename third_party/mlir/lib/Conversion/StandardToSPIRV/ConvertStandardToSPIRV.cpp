@@ -23,6 +23,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVLowering.h"
 #include "mlir/Dialect/SPIRV/SPIRVOps.h"
 #include "mlir/Dialect/StandardOps/Ops.h"
+#include "mlir/IR/AffineMap.h"
 #include "llvm/ADT/SetVector.h"
 
 using namespace mlir;
@@ -63,7 +64,7 @@ public:
       return matchFailure();
     }
     auto spirvConstType =
-        typeConverter.convertBasicType(constIndexOp.getResult()->getType());
+        typeConverter.convertType(constIndexOp.getResult()->getType());
     auto spirvConstVal =
         rewriter.getIntegerAttr(spirvConstType, constAttr.getInt());
     rewriter.replaceOpWithNewOp<spirv::ConstantOp>(constIndexOp, spirvConstType,
@@ -120,12 +121,37 @@ public:
   matchAndRewrite(StdOp operation, ArrayRef<Value *> operands,
                   ConversionPatternRewriter &rewriter) const override {
     auto resultType =
-        this->typeConverter.convertBasicType(operation.getResult()->getType());
+        this->typeConverter.convertType(operation.getResult()->getType());
     rewriter.template replaceOpWithNewOp<SPIRVOp>(
         operation, resultType, operands, ArrayRef<NamedAttribute>());
     return this->matchSuccess();
   }
 };
+
+// If 'basePtr' is the result of lowering a value of MemRefType, and 'indices'
+// are the indices used to index into the original value (for load/store),
+// perform the equivalent address calculation in SPIR-V.
+spirv::AccessChainOp getElementPtr(OpBuilder &builder, Location loc,
+                                   Value *basePtr, ArrayRef<Value *> indices,
+                                   SPIRVTypeConverter &typeConverter) {
+  // MemRefType is converted to a
+  // spirv::StructType<spirv::ArrayType<spirv:ArrayType...>>>
+  auto ptrType = basePtr->getType().cast<spirv::PointerType>();
+  (void)ptrType;
+  auto structType = ptrType.getPointeeType().cast<spirv::StructType>();
+  (void)structType;
+  assert(structType.getNumElements() == 1);
+  auto indexType = typeConverter.getIndexType(builder.getContext());
+
+  // Need to add a '0' at the beginning of the index list for accessing into the
+  // struct that wraps the nested array types.
+  Value *zero = spirv::ConstantOp::getZero(indexType, loc, &builder);
+  SmallVector<Value *, 4> accessIndices;
+  accessIndices.reserve(1 + indices.size());
+  accessIndices.push_back(zero);
+  accessIndices.append(indices.begin(), indices.end());
+  return builder.create<spirv::AccessChainOp>(loc, basePtr, accessIndices);
+}
 
 /// Convert load -> spv.LoadOp. The operands of the replaced operation are of
 /// IndexType while that of the replacement operation are of type i32. This is
@@ -141,17 +167,11 @@ public:
                   ConversionPatternRewriter &rewriter) const override {
     LoadOpOperandAdaptor loadOperands(operands);
     auto basePtr = loadOperands.memref();
-    auto ptrType = basePtr->getType().dyn_cast<spirv::PointerType>();
-    if (!ptrType) {
-      return matchFailure();
-    }
-    auto loadPtr = rewriter.create<spirv::AccessChainOp>(
-        loadOp.getLoc(), basePtr, loadOperands.indices());
-    auto loadPtrType = loadPtr.getType().cast<spirv::PointerType>();
-    rewriter.replaceOpWithNewOp<spirv::LoadOp>(
-        loadOp, loadPtrType.getPointeeType(), loadPtr,
-        /*memory_access =*/nullptr,
-        /*alignment =*/nullptr);
+    auto loadPtr = getElementPtr(rewriter, loadOp.getLoc(), basePtr,
+                                 loadOperands.indices(), typeConverter);
+    rewriter.replaceOpWithNewOp<spirv::LoadOp>(loadOp, loadPtr,
+                                               /*memory_access =*/nullptr,
+                                               /*alignment =*/nullptr);
     return matchSuccess();
   }
 };
@@ -202,12 +222,8 @@ public:
     StoreOpOperandAdaptor storeOperands(operands);
     auto value = storeOperands.value();
     auto basePtr = storeOperands.memref();
-    auto ptrType = basePtr->getType().dyn_cast<spirv::PointerType>();
-    if (!ptrType) {
-      return matchFailure();
-    }
-    auto storePtr = rewriter.create<spirv::AccessChainOp>(
-        storeOp.getLoc(), basePtr, storeOperands.indices());
+    auto storePtr = getElementPtr(rewriter, storeOp.getLoc(), basePtr,
+                                  storeOperands.indices(), typeConverter);
     rewriter.replaceOpWithNewOp<spirv::StoreOp>(storeOp, storePtr, value,
                                                 /*memory_access =*/nullptr,
                                                 /*alignment =*/nullptr);

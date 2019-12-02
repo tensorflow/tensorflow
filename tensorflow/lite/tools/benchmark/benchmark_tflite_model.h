@@ -19,6 +19,7 @@ limitations under the License.
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -47,8 +48,7 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     int high;
   };
 
-  BenchmarkTfLiteModel();
-  explicit BenchmarkTfLiteModel(BenchmarkParams params);
+  explicit BenchmarkTfLiteModel(BenchmarkParams params = DefaultParams());
   ~BenchmarkTfLiteModel() override;
 
   std::vector<Flag> GetFlags() override;
@@ -80,30 +80,34 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
   struct InputTensorData {
     InputTensorData() : data(nullptr, nullptr) {}
 
-    template <typename T>
-    static InputTensorData Create(int num_elements,
-                                  const std::function<T()>& val_generator) {
-      InputTensorData tmp;
-      tmp.bytes = sizeof(T) * num_elements;
-      T* raw = new T[num_elements];
-      std::generate_n(raw, num_elements, val_generator);
-      // Now initialize the type-erased unique_ptr (with custom deleter) from
-      // 'raw'.
-      tmp.data = std::unique_ptr<void, void (*)(void*)>(
-          static_cast<void*>(raw),
-          [](void* ptr) { delete[] static_cast<T*>(ptr); });
-      return tmp;
-    }
-
     std::unique_ptr<void, void (*)(void*)> data;
     size_t bytes;
   };
+
+  template <typename T, typename Distribution>
+  inline InputTensorData CreateInputTensorData(int num_elements,
+                                               Distribution distribution) {
+    InputTensorData tmp;
+    tmp.bytes = sizeof(T) * num_elements;
+    T* raw = new T[num_elements];
+    std::generate_n(raw, num_elements, [&]() {
+      return static_cast<T>(distribution(random_engine_));
+    });
+    // Now initialize the type-erased unique_ptr (with custom deleter) from
+    // 'raw'.
+    tmp.data = std::unique_ptr<void, void (*)(void*)>(
+        static_cast<void*>(raw),
+        [](void* ptr) { delete[] static_cast<T*>(ptr); });
+    return tmp;
+  }
 
   std::vector<InputLayerInfo> inputs_;
   std::vector<InputTensorData> inputs_data_;
   std::unique_ptr<BenchmarkListener> profiling_listener_;
   std::unique_ptr<BenchmarkListener> gemmlowp_profiling_listener_;
   TfLiteDelegatePtrMap delegates_;
+
+  std::mt19937 random_engine_;
 };
 
 }  // namespace benchmark

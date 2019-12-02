@@ -282,10 +282,9 @@ TfLiteStatus SetInputAndOutputTypes(ModelT* model, const TensorType& input_type,
 }
 
 // Apply constraints to ops if they have any.
-// We have made the restriction that for int8 quantized concat, the inputs and
-// outpus must have the same scale and zero point. The other ones with
-// constraints(averagepool, maxpool, gather, softmax, tanh etc) are handled in
-// QuantizeWeightsAndInput.
+// We have made the restriction that for int8 quantized concat, minimum, and
+// maximum, the inputs and outputs must have the same scale and zero point.
+// The other ones with constraints are handled in QuantizeWeightsAndInput.
 TfLiteStatus ApplyConstraints(ModelT* model,
                               const std::unordered_set<string>& operator_names,
                               ErrorReporter* error_reporter) {
@@ -301,7 +300,6 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       if (!property.quantizable) {
         continue;
       }
-      // Basically only Concat passes this check.
       if (!property.arbitrary_inputs ||
           !property.restrict_same_input_output_scale) {
         continue;
@@ -311,8 +309,7 @@ TfLiteStatus ApplyConstraints(ModelT* model,
       TensorT* output_tensor = subgraph->tensors[op->outputs[0]].get();
       if (!utils::QuantizationParametersExist(output_tensor)) {
         error_reporter->Report(
-            "Unable to get scale or zero point from the tensor at %d, which "
-            "is the output tensor for concat.",
+            "Unable to get scale or zero point from the tensor at %d.",
             op->outputs[0]);
         return kTfLiteError;
       }
@@ -322,8 +319,7 @@ TfLiteStatus ApplyConstraints(ModelT* model,
         TensorT* input_tensor = subgraph->tensors[op->inputs[input_idx]].get();
         if (!utils::QuantizationParametersExist(input_tensor)) {
           error_reporter->Report(
-              "Unable to get scale or zero point from tensor at %d, which is "
-              "an input tensor of concat.",
+              "Unable to get scale or zero point from tensor at %d.",
               op->inputs[input_idx]);
           return kTfLiteError;
         }
@@ -827,7 +823,7 @@ TfLiteStatus QuantizeBiases(ModelT* model,
         continue;
       }
       for (const int bias_idx : property.biases) {
-        if (op->inputs[bias_idx] == -1 /*kOptionalTensor*/) {
+        if (op->inputs[bias_idx] == kTfLiteOptionalTensor) {
           continue;
         }
         if (bias_idx >= op->inputs.size()) {

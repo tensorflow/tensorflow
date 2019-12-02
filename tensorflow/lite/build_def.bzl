@@ -29,6 +29,17 @@ def tflite_copts():
     }) + select({
         clean_dep("//tensorflow:optimized"): ["-O3"],
         "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:android"): [
+            "-ffunction-sections",  # Helps trim binary size.
+            "-fdata-sections",  # Helps trim binary size.
+        ],
+        "//conditions:default": [],
+    }) + select({
+        clean_dep("//tensorflow:windows"): [],
+        "//conditions:default": [
+            "-fno-exceptions",  # Exceptions are unused in TFLite.
+        ],
     })
 
     return copts
@@ -142,6 +153,7 @@ def tflite_cc_shared_object(
         linkstatic = 1,
         deps = [],
         visibility = None,
+        per_os_targets = False,
         tags = None):
     """Builds a shared object for TFLite."""
     tf_cc_shared_object(
@@ -153,6 +165,7 @@ def tflite_cc_shared_object(
         deps = deps,
         visibility = visibility,
         tags = tags,
+        per_os_targets = per_os_targets,
     )
 
 def tf_to_tflite(name, src, options, out):

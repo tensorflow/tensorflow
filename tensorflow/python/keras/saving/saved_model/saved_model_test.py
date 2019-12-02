@@ -629,7 +629,8 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
   def testSaveTimeDistributedLayer(self):
     model = keras.Sequential([
         keras.layers.TimeDistributed(
-            keras.layers.Dense(1), input_shape=(None, 1))])
+            keras.layers.Dense(1, kernel_regularizer=regularizers.get('l2')),
+            input_shape=(None, 1))])
     predictions = model.predict_on_batch(array_ops.ones((3, 2, 1)))
 
     saved_model_dir = self._save_model_dir()

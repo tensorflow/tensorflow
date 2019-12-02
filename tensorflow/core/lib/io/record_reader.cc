@@ -31,7 +31,7 @@ namespace io {
 RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
     const string& compression_type) {
   RecordReaderOptions options;
-  if (compression_type == "ZLIB") {
+  if (compression_type == compression::kZlib) {
     options.compression_type = io::RecordReaderOptions::ZLIB_COMPRESSION;
 #if defined(IS_SLIM_BUILD)
     LOG(ERROR) << "Compression is not supported but compression_type is set."

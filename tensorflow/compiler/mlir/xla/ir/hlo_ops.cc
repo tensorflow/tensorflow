@@ -160,7 +160,7 @@ void ConstOp::build(Builder* builder, OperationState& result, Attribute value) {
   } else if (value.isa<BoolAttr>() || value.isa<FloatAttr>() ||
              value.isa<IntegerAttr>()) {
     // All XLA types must be tensor types. In the build() method, we want to
-    // provide more flexiblity by allowing attributes of scalar types. But we
+    // provide more flexibility by allowing attributes of scalar types. But we
     // need to wrap it up with ElementsAttr to construct valid XLA constants.
     type = RankedTensorType::get(/*shape=*/{}, value.getType());
     value = DenseElementsAttr::get(type.cast<TensorType>(), value);
@@ -241,8 +241,8 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return xla::ConvertElementsAttr(elementsAttr,
-                                    getElementTypeOrSelf(getResult()));
+    return ::xla::ConvertElementsAttr(elementsAttr,
+                                      getElementTypeOrSelf(getResult()));
   }
 
   return {};
@@ -717,7 +717,7 @@ static Type GetBroadcastType(Builder* builder, Type x, Type y,
                              DenseIntElementsAttr broadcast_dimensions) {
   auto x_ranked = x.dyn_cast<RankedTensorType>();
   auto y_ranked = y.dyn_cast<RankedTensorType>();
-  if (!x || !y) {
+  if (!x_ranked || !y_ranked) {
     return UnrankedTensorType::get(element_type);
   }
 

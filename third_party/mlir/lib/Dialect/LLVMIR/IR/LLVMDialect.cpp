@@ -22,6 +22,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
@@ -427,7 +428,8 @@ void LLVM::ExtractElementOp::build(Builder *b, OperationState &result,
 }
 
 static void printExtractElementOp(OpAsmPrinter &p, ExtractElementOp &op) {
-  p << op.getOperationName() << ' ' << *op.vector() << ", " << *op.position();
+  p << op.getOperationName() << ' ' << *op.vector() << "[" << *op.position()
+    << " : " << op.position()->getType() << "]";
   p.printOptionalAttrDict(op.getAttrs());
   p << " : " << op.vector()->getType();
 }
@@ -438,16 +440,14 @@ static ParseResult parseExtractElementOp(OpAsmParser &parser,
                                          OperationState &result) {
   llvm::SMLoc loc;
   OpAsmParser::OperandType vector, position;
-  auto *llvmDialect = parser.getBuilder()
-                          .getContext()
-                          ->getRegisteredDialect<LLVM::LLVMDialect>();
-  Type type, i32Type = LLVMType::getInt32Ty(llvmDialect);
+  Type type, positionType;
   if (parser.getCurrentLocation(&loc) || parser.parseOperand(vector) ||
-      parser.parseComma() || parser.parseOperand(position) ||
+      parser.parseLSquare() || parser.parseOperand(position) ||
+      parser.parseColonType(positionType) || parser.parseRSquare() ||
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(type) ||
       parser.resolveOperand(vector, type, result.operands) ||
-      parser.resolveOperand(position, i32Type, result.operands))
+      parser.resolveOperand(position, positionType, result.operands))
     return failure();
   auto wrappedVectorType = type.dyn_cast<LLVM::LLVMType>();
   if (!wrappedVectorType ||
@@ -555,8 +555,8 @@ static ParseResult parseExtractValueOp(OpAsmParser &parser,
 //===----------------------------------------------------------------------===//
 
 static void printInsertElementOp(OpAsmPrinter &p, InsertElementOp &op) {
-  p << op.getOperationName() << ' ' << *op.vector() << ", " << *op.value()
-    << ", " << *op.position();
+  p << op.getOperationName() << ' ' << *op.value() << ", " << *op.vector()
+    << "[" << *op.position() << " : " << op.position()->getType() << "]";
   p.printOptionalAttrDict(op.getAttrs());
   p << " : " << op.vector()->getType();
 }
@@ -567,13 +567,11 @@ static ParseResult parseInsertElementOp(OpAsmParser &parser,
                                         OperationState &result) {
   llvm::SMLoc loc;
   OpAsmParser::OperandType vector, value, position;
-  auto *llvmDialect = parser.getBuilder()
-                          .getContext()
-                          ->getRegisteredDialect<LLVM::LLVMDialect>();
-  Type vectorType, i32Type = LLVMType::getInt32Ty(llvmDialect);
-  if (parser.getCurrentLocation(&loc) || parser.parseOperand(vector) ||
-      parser.parseComma() || parser.parseOperand(value) ||
-      parser.parseComma() || parser.parseOperand(position) ||
+  Type vectorType, positionType;
+  if (parser.getCurrentLocation(&loc) || parser.parseOperand(value) ||
+      parser.parseComma() || parser.parseOperand(vector) ||
+      parser.parseLSquare() || parser.parseOperand(position) ||
+      parser.parseColonType(positionType) || parser.parseRSquare() ||
       parser.parseOptionalAttrDict(result.attributes) ||
       parser.parseColonType(vectorType))
     return failure();
@@ -589,7 +587,7 @@ static ParseResult parseInsertElementOp(OpAsmParser &parser,
 
   if (parser.resolveOperand(vector, vectorType, result.operands) ||
       parser.resolveOperand(value, valueType, result.operands) ||
-      parser.resolveOperand(position, i32Type, result.operands))
+      parser.resolveOperand(position, positionType, result.operands))
     return failure();
 
   result.addTypes(vectorType);
@@ -865,8 +863,8 @@ static ParseResult parseConstantOp(OpAsmParser &parser,
 //===----------------------------------------------------------------------===//
 
 void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
-                     bool isConstant, StringRef name, Attribute value,
-                     ArrayRef<NamedAttribute> attrs) {
+                     bool isConstant, Linkage linkage, StringRef name,
+                     Attribute value, ArrayRef<NamedAttribute> attrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
   result.addAttribute("type", TypeAttr::get(type));
@@ -874,12 +872,56 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
     result.addAttribute("constant", builder->getUnitAttr());
   if (value)
     result.addAttribute("value", value);
+  result.addAttribute(
+      "linkage", builder->getI64IntegerAttr(static_cast<int64_t>(linkage)));
   result.attributes.append(attrs.begin(), attrs.end());
   result.addRegion();
 }
 
+// Prints the keyword for the linkage type using the printer.
+static void printLinkage(OpAsmPrinter &p, LLVM::Linkage linkage) {
+  switch (linkage) {
+  case LLVM::Linkage::Private:
+    p << "private";
+    return;
+  case LLVM::Linkage::Internal:
+    p << "internal";
+    return;
+  case LLVM::Linkage::AvailableExternally:
+    p << "available_externally";
+    return;
+  case LLVM::Linkage::Linkonce:
+    p << "linkonce";
+    return;
+  case LLVM::Linkage::Weak:
+    p << "weak";
+    return;
+  case LLVM::Linkage::Common:
+    p << "common";
+    return;
+  case LLVM::Linkage::Appending:
+    p << "appending";
+    return;
+  case LLVM::Linkage::ExternWeak:
+    p << "extern_weak";
+    return;
+  case LLVM::Linkage::LinkonceODR:
+    p << "linkonce_odr";
+    return;
+  case LLVM::Linkage::WeakODR:
+    p << "weak_odr";
+    return;
+  case LLVM::Linkage::External:
+    p << "external";
+    return;
+  }
+  llvm_unreachable("unknown linkage type");
+}
+
 static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   p << op.getOperationName() << ' ';
+  printLinkage(p, op.linkage());
+  p << ' ';
   if (op.constant())
     p << "constant ";
   p.printSymbolName(op.sym_name());
@@ -887,8 +929,9 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   if (auto value = op.getValueOrNull())
     p.printAttribute(value);
   p << ')';
-  p.printOptionalAttrDict(op.getAttrs(), {SymbolTable::getSymbolAttrName(),
-                                          "type", "constant", "value"});
+  p.printOptionalAttrDict(op.getAttrs(),
+                          {SymbolTable::getSymbolAttrName(), "type", "constant",
+                           "value", "linkage"});
 
   // Print the trailing type unless it's a string global.
   if (op.getValueOrNull().dyn_cast_or_null<StringAttr>())
@@ -901,12 +944,45 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
     p.printRegion(initializer, /*printEntryBlockArgs=*/false);
 }
 
-// <operation> ::= `llvm.mlir.global` `constant`? `@` identifier
-//                 `(` attribute? `)` attribute-list? (`:` type)? region?
+// Parses one of the keywords provided in the list `keywords` and returns the
+// position of the parsed keyword in the list. If none of the keywords from the
+// list is parsed, returns -1.
+static int parseOptionalKeywordAlternative(OpAsmParser &parser,
+                                           ArrayRef<StringRef> keywords) {
+  for (auto en : llvm::enumerate(keywords)) {
+    if (succeeded(parser.parseOptionalKeyword(en.value())))
+      return en.index();
+  }
+  return -1;
+}
+
+// Parses one of the linkage keywords and, if succeeded, appends the "linkage"
+// integer attribute with the corresponding value to `result`.
+//
+// linkage ::= `private` | `internal` | `available_externally` | `linkonce`
+//           | `weak` | `common` | `appending` | `extern_weak`
+//           | `linkonce_odr` | `weak_odr` | `external
+static ParseResult parseOptionalLinkageKeyword(OpAsmParser &parser,
+                                               OperationState &result) {
+  int index = parseOptionalKeywordAlternative(
+      parser, {"private", "internal", "available_externally", "linkonce",
+               "weak", "common", "appending", "extern_weak", "linkonce_odr",
+               "weak_odr", "external"});
+  if (index == -1)
+    return failure();
+  result.addAttribute("linkage", parser.getBuilder().getI64IntegerAttr(index));
+  return success();
+}
+
+// operation ::= `llvm.mlir.global` linkage `constant`? `@` identifier
+//               `(` attribute? `)` attribute-list? (`:` type)? region?
 //
 // The type can be omitted for string attributes, in which case it will be
 // inferred from the value of the string as [strlen(value) x i8].
 static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
+  if (failed(parseOptionalLinkageKeyword(parser, result)))
+    return parser.emitError(parser.getCurrentLocation(), "expected linkage");
+
   if (succeeded(parser.parseOptionalKeyword("constant")))
     result.addAttribute("constant", parser.getBuilder().getUnitAttr());
 
@@ -1491,6 +1567,7 @@ LLVMType LLVMType::getVoidTy(LLVMDialect *dialect) {
 
 Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
                                       StringRef name, StringRef value,
+                                      LLVM::Linkage linkage,
                                       LLVM::LLVMDialect *llvmDialect) {
   assert(builder.getInsertionBlock() &&
          builder.getInsertionBlock()->getParentOp() &&
@@ -1504,7 +1581,8 @@ Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
   auto type = LLVM::LLVMType::getArrayTy(LLVM::LLVMType::getInt8Ty(llvmDialect),
                                          value.size());
   auto global = moduleBuilder.create<LLVM::GlobalOp>(
-      loc, type, /*isConstant=*/true, name, builder.getStringAttr(value));
+      loc, type, /*isConstant=*/true, linkage, name,
+      builder.getStringAttr(value));
 
   // Get the pointer to the first character in the global string.
   Value *globalPtr = builder.create<LLVM::AddressOfOp>(loc, global);

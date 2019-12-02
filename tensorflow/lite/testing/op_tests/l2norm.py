@@ -30,8 +30,7 @@ def make_l2norm_tests(options):
 
   # Chose a set of parameters
   test_parameters = [{
-      "input_shape": [[5, 7], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3],
-                      [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      "input_shape": [[5, 7], [1, 1, 1, 1], [1, 3, 4, 3], [3, 15, 14, 3]],
       "dim": [0, 1, 2, 3, [2, 3], -2],
       "epsilon": [None, 1e-12, 1e-3],
       "fully_quantize": [False],

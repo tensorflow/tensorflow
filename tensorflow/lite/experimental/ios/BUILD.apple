@@ -1,25 +1,24 @@
 # TensorFlow Lite for iOS
 
+load("@bazel_skylib//rules:build_test.bzl", "build_test")
 load("//tensorflow/lite/experimental/ios:ios.bzl", "TFL_MINIMUM_OS_VERSION")
 load("@build_bazel_rules_apple//apple:ios.bzl", "ios_static_framework")
 
 package(
-    default_visibility = ["//tensorflow/lite/experimental/c:experimental"],
+    default_visibility = ["//tensorflow/lite/c:experimental"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 TFL_LIBRARY_HDRS = [
     "//tensorflow/lite/delegates/gpu:metal_delegate.h",
-    "//tensorflow/lite/experimental/c:c_api.h",
+    "//tensorflow/lite/c:c_api.h",
+    "//tensorflow/lite/c:common.h",
 ]
 
-TFL_FRAMEWORK_HDRS = TFL_LIBRARY_HDRS + [
-    "//tensorflow/lite/experimental/c:c_api_types.h",
-]
-
+# bazel build -c opt --config=ios_fat //tensorflow/lite/experimental/ios:TensorFlowLiteC_framework
 ios_static_framework(
     name = "TensorFlowLiteC_framework",
-    hdrs = TFL_FRAMEWORK_HDRS,
+    hdrs = TFL_LIBRARY_HDRS,
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
@@ -27,9 +26,10 @@ ios_static_framework(
     ],
 )
 
+# bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 //tensorflow/lite/experimental/ios:TensorFlowLiteCWithSelectTfOps_framework
 ios_static_framework(
     name = "TensorFlowLiteCWithSelectTfOps_framework",
-    hdrs = TFL_FRAMEWORK_HDRS,
+    hdrs = TFL_LIBRARY_HDRS,
     bundle_name = "TensorFlowLiteC",
     minimum_os_version = TFL_MINIMUM_OS_VERSION,
     deps = [
@@ -65,7 +65,20 @@ cc_library(
     hdrs = TFL_LIBRARY_HDRS,
     tags = ["nobuilder"],
     deps = [
+        "//tensorflow/lite/c:c_api",
         "//tensorflow/lite/delegates/gpu:metal_delegate",
-        "//tensorflow/lite/experimental/c:c_api",
+    ],
+)
+
+# Used for building TensorFlowLiteC framework.
+build_test(
+    name = "framework_build_test",
+    tags = [
+        "nomsan",  # b/145205324
+        "notsan",  # b/145205324
+    ],
+    targets = [
+        ":TensorFlowLiteC_framework",
+        ":TensorFlowLiteCWithSelectTfOps_framework",
     ],
 )

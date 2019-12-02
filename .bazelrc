@@ -12,6 +12,7 @@
 #     ios:
 #     ios_armv7:
 #     ios_arm64:
+#     ios_i386:
 #     ios_x86_64:
 #     ios_fat:
 #
@@ -101,13 +102,15 @@ build:ios --apple_platform_type=ios
 build:ios --apple_bitcode=embedded --copt=-fembed-bitcode
 build:ios_armv7 --config=ios
 build:ios_armv7 --cpu=ios_armv7
-build:ios_armv7 --cops -Wno-c++11-narrowing
+build:ios_armv7 --copt -Wno-c++11-narrowing
 build:ios_arm64 --config=ios
 build:ios_arm64 --cpu=ios_arm64
+build:ios_i386 --config=ios
+build:ios_i386 --cpu=ios_i386
 build:ios_x86_64 --config=ios
 build:ios_x86_64 --cpu=ios_x86_64
 build:ios_fat --config=ios
-build:ios_fat --ios_multi_cpus=armv7,arm64,x86_64
+build:ios_fat --ios_multi_cpus=armv7,arm64,i386,x86_64
 build:ios_fat --copt -Wno-c++11-narrowing
 
 # Config to use a mostly-static build and disable modular op registration
@@ -209,8 +212,19 @@ build --announce_rc
 # Other build flags.
 build --define=grpc_no_ares=true
 
-# Prevent regression of https://github.com/bazelbuild/bazel/issues/7362
-build --incompatible_remove_legacy_whole_archive
+# See https://github.com/bazelbuild/bazel/issues/7362 for information on what
+# --incompatible_remove_legacy_whole_archive flag does.
+# This flag is set to true in Bazel 1.0 and newer versions. We tried to migrate
+# Tensorflow to the default, however test coverage wasn't enough to catch the
+# errors.
+# There is ongoing work on Bazel team's side to provide support for transitive
+# shared libraries. As part of migrating to transitive shared libraries, we
+# hope to provide a better mechanism for control over symbol exporting, and
+# then tackle this issue again.
+#
+# TODO: Remove this line once TF doesn't depend on Bazel wrapping all library
+# archives in -whole_archive -no_whole_archive.
+build --noincompatible_remove_legacy_whole_archive
 
 # Modular TF build options
 build:dynamic_kernels --define=dynamic_loaded_kernels=true

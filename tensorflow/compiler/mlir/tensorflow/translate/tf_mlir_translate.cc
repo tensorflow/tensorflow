@@ -109,20 +109,16 @@ mlir::OwningModuleRef SavedModelToMlirImport(
     absl::string_view saved_model_dir,
     const std::unordered_set<std::string>& tags,
     absl::Span<std::string> exported_names, mlir::MLIRContext* context) {
-  SessionOptions session_options;
-  RunOptions run_options;
-  tensorflow::SavedModelBundle bundle;
-  auto load_status = LoadSavedModel(
-      session_options, run_options,
-      std::string(saved_model_dir.data(), saved_model_dir.length()), tags,
-      &bundle);
+  tensorflow::SavedModelV2Bundle bundle;
+  auto load_status = tensorflow::SavedModelV2Bundle::Load(
+      std::string(saved_model_dir.data(), saved_model_dir.length()), &bundle);
   if (!load_status.ok()) {
     LOG(ERROR) << "Failed to load saved model '" << saved_model_dir
                << "': " << load_status;
     return nullptr;
   }
 
-  auto module_or = ConvertSavedModelToMlir(bundle, context, exported_names);
+  auto module_or = ConvertSavedModelToMlir(&bundle, context, exported_names);
   if (!module_or.status().ok()) {
     LOG(ERROR) << "SavedModel import failed: " << module_or.status();
     return nullptr;

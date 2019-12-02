@@ -1,7 +1,4 @@
-set(LLVM_TARGET_DEFINITIONS LinalgOps.td)
-mlir_tablegen(LinalgOps.h.inc -gen-op-decls)
-mlir_tablegen(LinalgOps.cpp.inc -gen-op-defs)
-add_public_tablegen_target(MLIRLinalgOpsIncGen)
+add_mlir_dialect(LinalgOps)
 set(LLVM_TARGET_DEFINITIONS LinalgLibraryOps.td)
 mlir_tablegen(LinalgLibraryOps.h.inc -gen-op-decls)
 mlir_tablegen(LinalgLibraryOps.cpp.inc -gen-op-defs)

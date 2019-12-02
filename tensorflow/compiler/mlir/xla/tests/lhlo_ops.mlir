@@ -1,15 +1,5 @@
 // RUN: tf-opt %s -verify-diagnostics -split-input-file
 
-// -----
-
-func @enforce_static_shapes(%arg0: memref<?xf32>, %arg1: memref<?xf32>) -> () {
-  // expected-error@+1{{op operand #0 must be statically shaped memref of floating-point or integer values}}
-  "xla_lhlo.tanh"(%arg0, %arg1) : (memref<?xf32>, memref<?xf32>) -> ()
-  return
-}
-
-// -----
-
 func @enforce_same_shape(%arg0: memref<1xf32>, %arg1: memref<2xf32>) -> () {
   // expected-error@+1{{'xla_lhlo.tanh' op requires all operands to have the same type}}
   "xla_lhlo.tanh"(%arg0, %arg1) : (memref<1xf32>, memref<2xf32>) -> ()

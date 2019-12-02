@@ -18,7 +18,6 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
 
-def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
 
 //===----------------------------------------------------------------------===//
 // DynamicSlice op patterns.

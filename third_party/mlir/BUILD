@@ -24,6 +24,7 @@ package_group(
         "//learning/brain/research/sair/...",
         "//learning/brain/swift/swift_mlir/...",
         "//learning/glassbox/evaluation/compiler/...",
+        "//tensorflow/compiler/mlir/tfrt/...",
         "//tensorflow/core/tfrt_delegate/...",
         "//tensorflow/lite/experimental/tf_runtime/...",
         "//third_party/tf_runtime_google/...",
@@ -78,7 +79,7 @@ cc_library(
         "lib/IR/Diagnostics.cpp",
         "lib/IR/Dialect.cpp",
         "lib/IR/Function.cpp",
-        "lib/IR/FunctionSupport.cpp",
+        "lib/IR/FunctionImplementation.cpp",
         "lib/IR/IntegerSet.cpp",
         "lib/IR/IntegerSetDetail.h",
         "lib/IR/Location.cpp",
@@ -113,6 +114,7 @@ cc_library(
         "include/mlir/IR/DialectImplementation.h",
         "include/mlir/IR/DialectInterface.h",
         "include/mlir/IR/Function.h",
+        "include/mlir/IR/FunctionImplementation.h",
         "include/mlir/IR/FunctionSupport.h",
         "include/mlir/IR/Identifier.h",
         "include/mlir/IR/IntegerSet.h",
@@ -482,6 +484,7 @@ cc_library(
         ":IR",
         ":Support",
         ":VectorOpsIncGen",
+        "@llvm//:support",
     ],
 )
 
@@ -988,6 +991,23 @@ gentbl(
 )
 
 gentbl(
+    name = "SPIRVCanonicalizationIncGen",
+    strip_include_prefix = "lib/Dialect/SPIRV",
+    tbl_outs = [
+        (
+            "-gen-rewriters",
+            "lib/Dialect/SPIRV/SPIRVCanonicalization.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+        "lib/Dialect/SPIRV/SPIRVCanonicalization.td",
+    ],
+)
+
+gentbl(
     name = "StandardToSPIRVGen",
     strip_include_prefix = "lib/Conversion/StandardToSPIRV",
     tbl_outs = [
@@ -998,6 +1018,26 @@ gentbl(
     ],
     tblgen = ":mlir-tblgen",
     td_file = "lib/Conversion/StandardToSPIRV/StandardToSPIRV.td",
+    td_srcs = [
+        ":SPIRVOpsTdFiles",
+        ":StdOpsTdFiles",
+    ],
+)
+
+gentbl(
+    name = "SPIRVLoweringStructGen",
+    tbl_outs = [
+        (
+            "-gen-struct-attr-decls",
+            "include/mlir/Dialect/SPIRV/SPIRVLowering.h.inc",
+        ),
+        (
+            "-gen-struct-attr-defs",
+            "include/mlir/Dialect/SPIRV/SPIRVLowering.cpp.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/SPIRV/SPIRVLowering.td",
     td_srcs = [
         ":SPIRVOpsTdFiles",
         ":StdOpsTdFiles",
@@ -1055,6 +1095,7 @@ cc_library(
     deps = [
         ":IR",
         ":Parser",
+        ":SPIRVCanonicalizationIncGen",
         ":SPIRVOpUtilsIncGen",
         ":SPIRVOpsIncGen",
         ":Support",
@@ -1064,28 +1105,14 @@ cc_library(
 )
 
 cc_library(
-    name = "SPIRVTransforms",
-    srcs = [
-        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
-    ],
-    hdrs = [
-        "include/mlir/Dialect/SPIRV/Passes.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":Pass",
-        ":SPIRVDialect",
-        ":Transforms",
-    ],
-    alwayslink = 1,
-)
-
-cc_library(
     name = "SPIRVLowering",
     srcs = [
         "lib/Dialect/SPIRV/SPIRVLowering.cpp",
+        "lib/Dialect/SPIRV/Transforms/DecorateSPIRVCompositeTypeLayoutPass.cpp",
+        "lib/Dialect/SPIRV/Transforms/LowerABIAttributesPass.cpp",
     ],
     hdrs = [
+        "include/mlir/Dialect/SPIRV/Passes.h",
         "include/mlir/Dialect/SPIRV/SPIRVLowering.h",
     ],
     includes = [
@@ -1093,7 +1120,10 @@ cc_library(
     ],
     deps = [
         ":IR",
+        ":Pass",
         ":SPIRVDialect",
+        ":SPIRVLoweringStructGen",
+        ":StandardOps",
         ":Support",
         ":Transforms",
         "@llvm//:support",
@@ -1627,12 +1657,12 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":LLVMTransforms",
+        ":LinalgToLLVM",
         ":NVVMDialect",
         ":Parser",
         ":Pass",
         ":QuantizerTransforms",
         ":SPIRVDialectRegistration",
-        ":SPIRVTransforms",
         ":StandardToSPIRVConversions",
         ":Support",
         ":Transforms",
@@ -2148,15 +2178,43 @@ gentbl(
 )
 
 cc_library(
+    name = "LinalgToLLVM",
+    srcs = [
+        "lib/Conversion/LinalgToLLVM/LinalgToLLVM.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Conversion/LinalgToLLVM/LinalgToLLVM.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":AffineToStandardTransforms",
+        ":Analysis",
+        ":CFGTransforms",
+        ":EDSC",
+        ":IR",
+        ":LLVMDialect",
+        ":LLVMTransforms",
+        ":Linalg",
+        ":Pass",
+        ":StandardOps",
+        ":Support",
+        ":Transforms",
+        ":VectorConversions",
+        "@llvm//:core",
+        "@llvm//:support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "Linalg",
     srcs = [
         "lib/Dialect/Linalg/Analysis/DependenceAnalysis.cpp",
         "lib/Dialect/Linalg/IR/LinalgOps.cpp",
         "lib/Dialect/Linalg/IR/LinalgTypes.cpp",
         "lib/Dialect/Linalg/Transforms/Fusion.cpp",
+        "lib/Dialect/Linalg/Transforms/LinalgToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/LinalgTransforms.cpp",
-        "lib/Dialect/Linalg/Transforms/LowerToLLVMDialect.cpp",
-        "lib/Dialect/Linalg/Transforms/LowerToLoops.cpp",
         "lib/Dialect/Linalg/Transforms/Promotion.cpp",
         "lib/Dialect/Linalg/Transforms/Tiling.cpp",
         "lib/Dialect/Linalg/Utils/Utils.cpp",
@@ -2191,7 +2249,6 @@ cc_library(
         ":Support",
         ":TransformUtils",
         ":Transforms",
-        ":VectorConversions",
         "@llvm//:core",
         "@llvm//:support",
     ],

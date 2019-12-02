@@ -125,13 +125,26 @@ Operation *Operation::create(Location location, OperationName name,
 
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
-  unsigned numRegions = state.regions.size();
-  Operation *op = create(state.location, state.name, state.types,
-                         state.operands, state.attributes, state.successors,
-                         numRegions, state.resizableOperandList);
+  return Operation::create(state.location, state.name, state.types,
+                           state.operands, NamedAttributeList(state.attributes),
+                           state.successors, state.regions,
+                           state.resizableOperandList);
+}
+
+/// Create a new Operation with the specific fields.
+Operation *Operation::create(Location location, OperationName name,
+                             ArrayRef<Type> resultTypes,
+                             ArrayRef<Value *> operands,
+                             NamedAttributeList attributes,
+                             ArrayRef<Block *> successors,
+                             ArrayRef<std::unique_ptr<Region>> regions,
+                             bool resizableOperandList) {
+  unsigned numRegions = regions.size();
+  Operation *op = create(location, name, resultTypes, operands, attributes,
+                         successors, numRegions, resizableOperandList);
   for (unsigned i = 0; i < numRegions; ++i)
-    if (state.regions[i])
-      op->getRegion(i).takeBody(*state.regions[i]);
+    if (regions[i])
+      op->getRegion(i).takeBody(*regions[i]);
   return op;
 }
 
@@ -140,7 +153,7 @@ Operation *Operation::create(const OperationState &state) {
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
-                             const NamedAttributeList &attributes,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
   unsigned numSuccessors = successors.size();
@@ -955,6 +968,47 @@ LogicalResult OpTrait::impl::verifyResultsAreIntegerLike(Operation *op) {
     if (!getTensorOrVectorElementType(resultType).isIntOrIndex())
       return op->emitOpError() << "requires an integer or index type";
   return success();
+}
+
+static LogicalResult verifyValueSizeAttr(Operation *op, StringRef attrName,
+                                         bool isOperand) {
+  auto sizeAttr = op->getAttrOfType<DenseIntElementsAttr>(attrName);
+  if (!sizeAttr)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  auto sizeAttrType = sizeAttr.getType().dyn_cast<VectorType>();
+  if (!sizeAttrType || sizeAttrType.getRank() != 1)
+    return op->emitOpError("requires 1D vector attribute '") << attrName << "'";
+
+  if (llvm::any_of(sizeAttr.getIntValues(), [](const APInt &element) {
+        return !element.isNonNegative();
+      }))
+    return op->emitOpError("'")
+           << attrName << "' attribute cannot have negative elements";
+
+  size_t totalCount = std::accumulate(
+      sizeAttr.begin(), sizeAttr.end(), 0,
+      [](unsigned all, APInt one) { return all + one.getZExtValue(); });
+
+  if (isOperand && totalCount != op->getNumOperands())
+    return op->emitOpError("operand count (")
+           << op->getNumOperands() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  else if (!isOperand && totalCount != op->getNumResults())
+    return op->emitOpError("result count (")
+           << op->getNumResults() << ") does not match with the total size ("
+           << totalCount << ") specified in attribute '" << attrName << "'";
+  return success();
+}
+
+LogicalResult OpTrait::impl::verifyOperandSizeAttr(Operation *op,
+                                                   StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/true);
+}
+
+LogicalResult OpTrait::impl::verifyResultSizeAttr(Operation *op,
+                                                  StringRef attrName) {
+  return verifyValueSizeAttr(op, attrName, /*isOperand=*/false);
 }
 
 //===----------------------------------------------------------------------===//

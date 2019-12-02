@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/lite/builtin_op_data.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
 #include "tensorflow/lite/delegates/nnapi/quant_lstm_sup.h"
@@ -1361,10 +1361,10 @@ bool NNAPIDelegateKernel::Validate(
     case kTfLiteBuiltinFullyConnected: {
       ExpectMaxOpVersion(version, 4, &val_ctx);
       // TODO(b/132950584): Add support for FullyConnected with no bias.
-      Expect(
-          node->inputs->size == 3 && node->inputs->data[2] != kOptionalTensor,
-          NNAPIValidationFailureType::kMissingRequiredOperand,
-          "FullyConnected with no bias not supported", &val_ctx);
+      Expect(node->inputs->size == 3 &&
+                 node->inputs->data[2] != kTfLiteOptionalTensor,
+             NNAPIValidationFailureType::kMissingRequiredOperand,
+             "FullyConnected with no bias not supported", &val_ctx);
       const auto output_type = context->tensors[node->outputs->data[0]].type;
       Expect(output_type != kTfLiteInt16,
              NNAPIValidationFailureType::kUnsupportedOutputType,
@@ -2254,7 +2254,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         // Add layer normalization tensors if they are provided.
         for (int i = 20; i < 24; ++i) {
           const int input_index = mapping_args.node->inputs->data[i];
-          if (input_index != kOptionalTensor) {
+          if (input_index != kTfLiteOptionalTensor) {
             mapping_args.builder->AddTensorInput(input_index, hybrid_op);
           } else {
             mapping_args.builder->AddVectorFloat32Operand(nullptr, 0);
@@ -2349,7 +2349,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         *nn_op_type = ANEURALNETWORKS_PAD;
       } else {
         const int constant_value_id = mapping_args.node->inputs->data[2];
-        if (constant_value_id == kOptionalTensor) {
+        if (constant_value_id == kTfLiteOptionalTensor) {
           *nn_op_type = ANEURALNETWORKS_PAD;
         } else {
           *nn_op_type = ANEURALNETWORKS_PAD_V2;
@@ -2691,7 +2691,7 @@ TfLiteStatus NNAPIDelegateKernel::Map(
         if (mapping_args.node->inputs->size == 24) {
           for (int i = 20; i < 24; ++i) {
             const auto input_index = mapping_args.node->inputs->data[i];
-            if (input_index != kOptionalTensor) {
+            if (input_index != kTfLiteOptionalTensor) {
               mapping_args.builder->AddTensorInput(input_index, hybrid_op);
             } else {
               mapping_args.builder->AddVectorFloat32Operand(nullptr, 0);
@@ -2873,12 +2873,34 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(params->delegate);
   const char* device_name_ptr = delegate_options.accelerator_name;
-  // user specified an acclelerator to use.
-  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
-      device_name_ptr != nullptr) {
-    nnapi_device_ = GetDeviceHandle(context, device_name_ptr);
-    if (nnapi_device_ == nullptr) {
-      return kTfLiteError;
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12) {
+    if (device_name_ptr != nullptr) {
+      // User specified an accelerator to use.
+      ANeuralNetworksDevice* nnapi_device =
+          GetDeviceHandle(context, device_name_ptr);
+      if (nnapi_device == nullptr) {
+        return kTfLiteError;
+      }
+      nnapi_devices_.push_back(nnapi_device);
+    } else if (delegate_options.disallow_nnapi_cpu) {
+      std::string nnapi_cpu("nnapi-reference");
+      uint32_t num_devices = 0;
+      NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
+
+      for (uint32_t i = 0; i < num_devices; i++) {
+        ANeuralNetworksDevice* device = nullptr;
+        const char* buffer = nullptr;
+        NnApiImplementation()->ANeuralNetworks_getDevice(i, &device);
+        NnApiImplementation()->ANeuralNetworksDevice_getName(device, &buffer);
+        if (nnapi_cpu != buffer) {
+          nnapi_devices_.push_back(device);
+        }
+      }
+      if (nnapi_devices_.empty()) {
+        context->ReportError(
+            context, "NNAPI delegate requested but no accelerators available.");
+        return kTfLiteError;
+      }
     }
   }
 
@@ -2898,12 +2920,13 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
 
   if (!nn_compilation_) {
     ANeuralNetworksCompilation* compilation = nullptr;
-    if (nnapi_device_ != nullptr) {
+    if (!nnapi_devices_.empty()) {
       // Compile for the selected accelerator.
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context,
           nnapi_->ANeuralNetworksCompilation_createForDevices(
-              nn_model_.get(), &nnapi_device_, 1, &compilation),
+              nn_model_.get(), nnapi_devices_.data(), nnapi_devices_.size(),
+              &compilation),
           nnapi_errno);
     } else {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
@@ -2994,7 +3017,7 @@ TfLiteStatus NNAPIDelegateKernel::Invoke(TfLiteContext* context,
 
   size_t input_offset = 0;
   for (auto absolute_input_index : TfLiteIntArrayView(node->inputs)) {
-    if (absolute_input_index == kOptionalTensor) {
+    if (absolute_input_index == kTfLiteOptionalTensor) {
       continue;
     }
     TfLiteTensor* tensor = &context->tensors[absolute_input_index];
@@ -3311,7 +3334,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
           // unidirectional sequence LSTM op in NNAPI.
           continue;
         }
-        if (input_index == kOptionalTensor) {
+        if (input_index == kTfLiteOptionalTensor) {
           TF_LITE_ENSURE_STATUS(builder.AddVectorFloat32Operand(nullptr, 0));
           continue;
         }
@@ -3334,7 +3357,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
            reg->builtin_code == kTfLiteBuiltinPad) &&
           node->inputs->size == 3 && input_pos == 2) {
         const int constant_value_id = node->inputs->data[2];
-        if (constant_value_id == kOptionalTensor) {
+        if (constant_value_id == kTfLiteOptionalTensor) {
           continue;
         }
         const TfLiteTensor constant_value = context->tensors[constant_value_id];
@@ -3374,7 +3397,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(TfLiteContext* context,
         continue;
       }
 
-      if (input_index == kOptionalTensor &&
+      if (input_index == kTfLiteOptionalTensor &&
           (reg->builtin_code == kTfLiteBuiltinLstm ||
            reg->builtin_code == kTfLiteBuiltinSvdf ||
            reg->builtin_code == kTfLiteBuiltinBidirectionalSequenceLstm)) {
@@ -3494,7 +3517,7 @@ TfLiteStatus NNAPIDelegateKernel::BuildGraph(
   // Make the TensorFlow Lite inputs and outputs to ann_indices.
   for (int i : TfLiteIntArrayView(input_tensors)) {
     // Constant tensors are not NNAPI inputs.
-    if (i != kOptionalTensor &&
+    if (i != kTfLiteOptionalTensor &&
         context->tensors[i].allocation_type != kTfLiteMmapRo &&
         // The delegate might not have mapped this input (this can
         // happen if one tensor is split in several ones)
@@ -3587,6 +3610,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
   if (options.model_token) {
     delegate_data_.model_token = options.model_token;
   }
+  delegate_data_.disallow_nnapi_cpu = options.disallow_nnapi_cpu;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -3613,6 +3637,7 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.model_token = delegate_data->model_token.empty()
                             ? nullptr
                             : delegate_data->model_token.c_str();
+  options.disallow_nnapi_cpu = delegate_data->disallow_nnapi_cpu;
   return options;
 }
 

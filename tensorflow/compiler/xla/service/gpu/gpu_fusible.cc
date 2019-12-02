@@ -120,21 +120,21 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // sometimes referred to as "the real hero".
   auto get_real_hero =
       [&](const HloInstruction* instr) -> const HloInstruction* {
-    if (instr->opcode() == HloOpcode::kFusion) {
-      auto fused_expression_root = instr->fused_expression_root();
-      if (instr->IsMultiOutputFusion()) {
-        // If possible, we want to pick a reduction-to-vector operand of the
-        // fusion root, because it has the most constraints.
-        for (const auto* inst : fused_expression_root->operands()) {
-          if (IsReductionFromOrToContiguousDimensions(*inst)) {
-            return inst;
-          }
-        }
-        return fused_expression_root->operands()[0];
-      }
+    if (instr->opcode() != HloOpcode::kFusion) {
+      return instr;
+    }
+    auto fused_expression_root = instr->fused_expression_root();
+    if (!instr->IsMultiOutputFusion()) {
       return fused_expression_root;
     }
-    return instr;
+    // If possible, we want to pick a reduction-to-vector operand of the
+    // fusion root, because it has the most constraints.
+    for (const auto* inst : fused_expression_root->operands()) {
+      if (IsReductionFromOrToContiguousDimensions(*inst)) {
+        return inst;
+      }
+    }
+    return fused_expression_root->operands()[0];
   };
 
   // Multi-output fusion kernels share a common parallel loop. The loop
@@ -154,11 +154,9 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // operand shape) and the reduction dimensions need to match.
   auto* instr_1 = get_real_hero(&instr1);
   auto* instr_2 = get_real_hero(&instr2);
-  // TODO(tjoerg): Relax the shape constraint. The datatype does not matter.
   if (IsReductionFromOrToContiguousDimensions(*instr_1) &&
       IsReductionFromOrToContiguousDimensions(*instr_2) &&
-      (!ShapeUtil::Equal(instr_1->shape(), instr_2->shape()) ||
-       instr_1->dimensions() != instr_2->dimensions())) {
+      !AreFusedReductionOutputsConsistent({instr_1, instr_2}, instr_1)) {
     return false;
   }
   // The elementwise output shapes must be the same (including layout).

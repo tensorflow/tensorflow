@@ -56,7 +56,15 @@ tensorflow::EventsWriter::Close
 [py_func_lib] # py_func
 tensorflow::InitializePyTrampoline
 
-[framework_internal_impl] # op_def_registry
+[framework_internal_impl] # op_def_registry, dtypes
+tensorflow::BaseType
+tensorflow::DataTypeString
+tensorflow::DataTypeIsComplex
+tensorflow::DataTypeIsFloating
+tensorflow::DataTypeIsInteger
+tensorflow::DataTypeIsQuantized
+tensorflow::DataTypeIsUnsigned
+tensorflow::DataTypeSize
 tensorflow::OpRegistry::Global
 tensorflow::OpRegistry::LookUpOpDef
 tensorflow::RemoveNonDeprecationDescriptionsFromOpDef
@@ -72,7 +80,8 @@ tensorflow::DeviceFactory::AddDevices
 tensorflow::SessionOptions::SessionOptions
 tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 
-[protos_all]  # device_lib
+[protos_all]  # device_lib, dtypes
+tensorflow::DataType_IsValid
 tensorflow::ConfigProto::ConfigProto
 tensorflow::ConfigProto::ParseFromString
 tensorflow::DeviceAttributes::SerializeToString

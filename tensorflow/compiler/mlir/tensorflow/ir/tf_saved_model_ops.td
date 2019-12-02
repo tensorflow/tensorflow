@@ -18,9 +18,7 @@ limitations under the License.
 #ifndef SAVED_MODEL_DIALECT
 #define SAVED_MODEL_DIALECT
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // Dialect definition

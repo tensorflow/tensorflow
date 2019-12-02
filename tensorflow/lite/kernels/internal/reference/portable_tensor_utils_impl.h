@@ -93,6 +93,12 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
 float PortableVectorVectorDotProduct(const float* vector1, const float* vector2,
                                      int v_size);
 
+void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
+                                              const int16_t* vector2,
+                                              int v_size, int n_batch,
+                                              int32_t* result,
+                                              int result_stride);
+
 // Cwise product of a vector and a batch-vector.
 void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
                                            const float* batch_vector,
@@ -165,15 +171,6 @@ void PortableVectorBatchVectorAssign(const float* vector, int v_size,
 void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                                   float* batch_vector);
 
-// Apply sigmoid to elements of a vector.
-void PortableApplySigmoidToVector(const float* vector, int v_size,
-                                  float* result);
-
-// Apply activation function to elements of a vector.
-void PortableApplyActivationToVector(const float* vector, int v_size,
-                                     TfLiteFusedActivation activation,
-                                     float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
 
@@ -198,6 +195,10 @@ void PortableVectorShiftLeft(float* vector, int v_size, float shift_value);
 // added to get one element of output.
 void PortableReductionSumVector(const float* input_vector, float* output_vector,
                                 int output_size, int reduction_size);
+
+void PortableReductionSumVector(const int32_t* input_vector,
+                                int32_t* output_vector, int output_size,
+                                int reduction_size);
 
 // Layer norm for each batch.
 void PortableMeanStddevNormalization(const float* input_vector,

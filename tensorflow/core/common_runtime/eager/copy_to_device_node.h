@@ -43,7 +43,7 @@ class CopyToDeviceNode : public EagerNode {
     MEMDEBUG_CACHE_OP(MEMDEBUG_CACHE_VAL ? MEMDEBUG_CACHE_VAL
                                          : "eager::CopyToDeviceNode");
     TF_RETURN_IF_ERROR(src_->CopyToDevice(ctx_, dstd_, &tensor));
-    return dst_->SetTensor(tensor);
+    return dst_->SetTensor(std::move(tensor));
   }
 
   void Abort(Status status) override { dst_->Poison(status); }

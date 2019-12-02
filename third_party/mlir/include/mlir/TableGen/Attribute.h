@@ -81,10 +81,10 @@ public:
   // built upon.
   Attribute getBaseAttr() const;
 
-  // Returns whether this attribute has a default value's initializer.
-  bool hasDefaultValueInitializer() const;
-  // Returns the default value's initializer for this attribute.
-  StringRef getDefaultValueInitializer() const;
+  // Returns whether this attribute has a default value.
+  bool hasDefaultValue() const;
+  // Returns the default value for this attribute.
+  StringRef getDefaultValue() const;
 
   // Returns whether this attribute is optional.
   bool isOptional() const;

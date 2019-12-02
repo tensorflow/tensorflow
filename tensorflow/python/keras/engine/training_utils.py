@@ -1189,6 +1189,52 @@ def get_loss_function(loss):
       reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
 
 
+class RespectCompiledTrainableState(object):
+  """Set and restore trainable state if it has changed since compile.
+
+  The keras API guarantees that the value of each Layer's `trainable` property
+  at `Model.compile` time will be used when training that model. In order to
+  respect this requirement, it may be necessary to set the trainable value of
+  layers to their compile time values before beginning a training endpoint and
+  restore the values before returing from said endpoint. This scope checks if
+  any layer's trainable state has changed since Model compile, and performs this
+  set and un-set bookkeeping.
+
+  However, the trainable state of a layer changes quite infrequently, if ever,
+  for many kinds of workflows. Moreover, updating every layer in a model is an
+  expensive operation. As a result, we will only explicitly set and unset the
+  trainable state of a model if a trainable value has changed since compile.
+  """
+
+  def __init__(self, model):
+    self._model = model
+    self._current_trainable_state = None
+    self._compiled_trainable_state = None
+    self._should_set_trainable = False
+
+  def __enter__(self):
+    self._current_trainable_state = self._model._get_trainable_state()  # pylint: disable=protected-access
+    self._compiled_trainable_state = self._model._compiled_trainable_state  # pylint: disable=protected-access
+
+    # Check to see if any layer's trainable state has changed since `compile`.
+    for layer, trainable in self._compiled_trainable_state.items():
+      if (layer in self._current_trainable_state and
+          trainable != self._current_trainable_state[layer]):
+        self._should_set_trainable = True
+        break
+
+    # If so, restore the model to its compiled state.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._compiled_trainable_state)  # pylint: disable=protected-access
+
+  def __exit__(self, type_arg, value_arg, traceback_arg):
+    # If we set the values to their compiled state in __enter__, we need to
+    # restore the original values before leaving the scope.
+    if self._should_set_trainable:
+      self._model._set_trainable_state(self._current_trainable_state)  # pylint: disable=protected-access
+    return False  # False values do not suppress exceptions
+
+
 def validate_dataset_input(x, y, sample_weight, validation_split=None):
   """Validates user input arguments when a dataset iterator is passed.
 

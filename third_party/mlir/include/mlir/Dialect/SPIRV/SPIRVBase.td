@@ -24,9 +24,7 @@
 #ifndef SPIRV_BASE
 #define SPIRV_BASE
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 //===----------------------------------------------------------------------===//
 // SPIR-V dialect definitions
@@ -328,8 +326,6 @@ def SPV_AddressingModelAttr :
       SPV_AM_Logical, SPV_AM_Physical32, SPV_AM_Physical64,
       SPV_AM_PhysicalStorageBuffer64
     ]> {
-  let returnType = "::mlir::spirv::AddressingModel";
-  let convertFromStorage = "static_cast<::mlir::spirv::AddressingModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -464,8 +460,6 @@ def SPV_BuiltInAttr :
       SPV_BI_HitTNV, SPV_BI_HitKindNV, SPV_BI_IncomingRayFlagsNV,
       SPV_BI_WarpsPerSMNV, SPV_BI_SMCountNV, SPV_BI_WarpIDNV, SPV_BI_SMIDNV
     ]> {
-  let returnType = "::mlir::spirv::BuiltIn";
-  let convertFromStorage = "static_cast<::mlir::spirv::BuiltIn>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -674,8 +668,6 @@ def SPV_CapabilityAttr :
       SPV_C_SubgroupAvcMotionEstimationIntraINTEL,
       SPV_C_SubgroupAvcMotionEstimationChromaINTEL
     ]> {
-  let returnType = "::mlir::spirv::Capability";
-  let convertFromStorage = "static_cast<::mlir::spirv::Capability>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -765,8 +757,6 @@ def SPV_DecorationAttr :
       SPV_D_AliasedPointer, SPV_D_CounterBuffer, SPV_D_UserSemantic,
       SPV_D_UserTypeGOOGLE
     ]> {
-  let returnType = "::mlir::spirv::Decoration";
-  let convertFromStorage = "static_cast<::mlir::spirv::Decoration>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -783,8 +773,6 @@ def SPV_DimAttr :
       SPV_D_1D, SPV_D_2D, SPV_D_3D, SPV_D_Cube, SPV_D_Rect, SPV_D_Buffer,
       SPV_D_SubpassData
     ]> {
-  let returnType = "::mlir::spirv::Dim";
-  let convertFromStorage = "static_cast<::mlir::spirv::Dim>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -868,8 +856,6 @@ def SPV_ExecutionModeAttr :
       SPV_EM_SampleInterlockOrderedEXT, SPV_EM_SampleInterlockUnorderedEXT,
       SPV_EM_ShadingRateInterlockOrderedEXT, SPV_EM_ShadingRateInterlockUnorderedEXT
     ]> {
-  let returnType = "::mlir::spirv::ExecutionMode";
-  let convertFromStorage = "static_cast<::mlir::spirv::ExecutionMode>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -896,8 +882,6 @@ def SPV_ExecutionModelAttr :
       SPV_EM_TaskNV, SPV_EM_MeshNV, SPV_EM_RayGenerationNV, SPV_EM_IntersectionNV,
       SPV_EM_AnyHitNV, SPV_EM_ClosestHitNV, SPV_EM_MissNV, SPV_EM_CallableNV
     ]> {
-  let returnType = "::mlir::spirv::ExecutionModel";
-  let convertFromStorage = "static_cast<::mlir::spirv::ExecutionModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -911,8 +895,6 @@ def SPV_FunctionControlAttr :
     BitEnumAttr<"FunctionControl", "valid SPIR-V FunctionControl", [
       SPV_FC_None, SPV_FC_Inline, SPV_FC_DontInline, SPV_FC_Pure, SPV_FC_Const
     ]> {
-  let returnType = "::mlir::spirv::FunctionControl";
-  let convertFromStorage = "static_cast<::mlir::spirv::FunctionControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -969,8 +951,6 @@ def SPV_ImageFormatAttr :
       SPV_IF_Rgb10a2ui, SPV_IF_Rg32ui, SPV_IF_Rg16ui, SPV_IF_Rg8ui, SPV_IF_R16ui,
       SPV_IF_R8ui
     ]> {
-  let returnType = "::mlir::spirv::ImageFormat";
-  let convertFromStorage = "static_cast<::mlir::spirv::ImageFormat>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -981,8 +961,6 @@ def SPV_LinkageTypeAttr :
     I32EnumAttr<"LinkageType", "valid SPIR-V LinkageType", [
       SPV_LT_Export, SPV_LT_Import
     ]> {
-  let returnType = "::mlir::spirv::LinkageType";
-  let convertFromStorage = "static_cast<::mlir::spirv::LinkageType>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1003,8 +981,6 @@ def SPV_LoopControlAttr :
       SPV_LC_DependencyLength, SPV_LC_MinIterations, SPV_LC_MaxIterations,
       SPV_LC_IterationMultiple, SPV_LC_PeelCount, SPV_LC_PartialCount
     ]> {
-  let returnType = "::mlir::spirv::LoopControl";
-  let convertFromStorage = "static_cast<::mlir::spirv::LoopControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1022,8 +998,6 @@ def SPV_MemoryAccessAttr :
       SPV_MA_MakePointerAvailable, SPV_MA_MakePointerVisible,
       SPV_MA_NonPrivatePointer
     ]> {
-  let returnType = "::mlir::spirv::MemoryAccess";
-  let convertFromStorage = "static_cast<::mlir::spirv::MemoryAccess>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1036,8 +1010,6 @@ def SPV_MemoryModelAttr :
     I32EnumAttr<"MemoryModel", "valid SPIR-V MemoryModel", [
       SPV_MM_Simple, SPV_MM_GLSL450, SPV_MM_OpenCL, SPV_MM_Vulkan
     ]> {
-  let returnType = "::mlir::spirv::MemoryModel";
-  let convertFromStorage = "static_cast<::mlir::spirv::MemoryModel>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1065,8 +1037,6 @@ def SPV_MemorySemanticsAttr :
       SPV_MS_AtomicCounterMemory, SPV_MS_ImageMemory, SPV_MS_OutputMemory,
       SPV_MS_MakeAvailable, SPV_MS_MakeVisible, SPV_MS_Volatile
     ]> {
-  let returnType = "::mlir::spirv::MemorySemantics";
-  let convertFromStorage = "static_cast<::mlir::spirv::MemorySemantics>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1082,8 +1052,6 @@ def SPV_ScopeAttr :
       SPV_S_CrossDevice, SPV_S_Device, SPV_S_Workgroup, SPV_S_Subgroup,
       SPV_S_Invocation, SPV_S_QueueFamily
     ]> {
-  let returnType = "::mlir::spirv::Scope";
-  let convertFromStorage = "static_cast<::mlir::spirv::Scope>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1095,8 +1063,6 @@ def SPV_SelectionControlAttr :
     BitEnumAttr<"SelectionControl", "valid SPIR-V SelectionControl", [
       SPV_SC_None, SPV_SC_Flatten, SPV_SC_DontFlatten
     ]> {
-  let returnType = "::mlir::spirv::SelectionControl";
-  let convertFromStorage = "static_cast<::mlir::spirv::SelectionControl>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 
@@ -1130,8 +1096,6 @@ def SPV_StorageClassAttr :
       SPV_SC_RayPayloadNV, SPV_SC_HitAttributeNV, SPV_SC_IncomingRayPayloadNV,
       SPV_SC_ShaderRecordBufferNV, SPV_SC_PhysicalStorageBuffer
     ]> {
-  let returnType = "::mlir::spirv::StorageClass";
-  let convertFromStorage = "static_cast<::mlir::spirv::StorageClass>($_self.getInt())";
   let cppNamespace = "::mlir::spirv";
 }
 

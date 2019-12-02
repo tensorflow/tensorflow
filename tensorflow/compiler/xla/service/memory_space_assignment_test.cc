@@ -1927,6 +1927,111 @@ TEST_P(MemorySpaceAssignmentTest, MemoryBoundednessBufferIntervalCompare) {
   EXPECT_THAT(tanh4, op::ShapeWithLayout(shape_in_default_mem));
 }
 
+TEST_P(MemorySpaceAssignmentTest, SimpleWhileTupleTest) {
+  Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
+  Shape f32v1 = ShapeUtil::MakeShape(F32, {1});
+  Shape t_s32_f32v1 = ShapeUtil::MakeTupleShape({s32, f32v1});
+  auto module = CreateNewVerifiedModule("SimpleWhile");
+  HloSchedule schedule(module.get());
+
+  // A simple compare-to-limit (x < 4) computation for a While.
+  //
+  // condition:
+  //   const4[s32] -----------------------------------\
+  //                                                   \
+  //   param[(s32,f32[4])] --- get-tuple-element[0] --- less-than
+  //
+  HloComputation* cond_computation;
+  {
+    auto builder = HloComputation::Builder("WhileCond");
+    auto const4 = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(4)));
+    auto param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, t_s32_f32v1, "x"));
+    auto index = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(const4->shape(), param, 0));
+    auto compare = builder.AddInstruction(
+        HloInstruction::CreateCompare(ShapeUtil::MakeShape(PRED, {}), index,
+                                      const4, ComparisonDirection::kLt));
+    cond_computation = module->AddEmbeddedComputation(builder.Build());
+    schedule.set_sequence(cond_computation, {const4, param, index, compare});
+  }
+
+  // Builds a simple body computation for a While.
+  //
+  // body:
+  //   constv[f32[1]] --------------------------------------\
+  //                                                         \
+  //                           /--- get-tuple-elementv[1] --- addv ---\
+  //   param[(s32,f32[1])] ---|                                    tuple
+  //                           \--- get-tuple-elementc[0] --- addc ---/
+  //                                                         /
+  //   const1[s32] -----------------------------------------/
+  //
+  HloComputation* body_computation;
+  {
+    auto builder = HloComputation::Builder("WhileBody");
+    auto const1 = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int>(1)));
+    auto constv = builder.AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR1<float>({1.1f})));
+    auto param = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, t_s32_f32v1, "x"));
+    auto indexc = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(const1->shape(), param, 0));
+    auto addc = builder.AddInstruction(HloInstruction::CreateBinary(
+        indexc->shape(), HloOpcode::kAdd, indexc, const1));
+    auto indexv = builder.AddInstruction(
+        HloInstruction::CreateGetTupleElement(constv->shape(), param, 1));
+    auto addv = builder.AddInstruction(HloInstruction::CreateBinary(
+        constv->shape(), HloOpcode::kAdd, indexv, constv));
+    auto tuple =
+        builder.AddInstruction(HloInstruction::CreateTuple({addc, addv}));
+    body_computation = module->AddEmbeddedComputation(builder.Build());
+    schedule.set_sequence(body_computation, {const1, constv, param, indexc,
+                                             addc, indexv, addv, tuple});
+  }
+
+  // This tests a simple while loop where the parameters are aliased with the
+  // output buffers.
+  auto builder = HloComputation::Builder("SimpleWhile");
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, t_s32_f32v1, "param"));
+  auto gte0 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(s32, param, 0));
+  auto gte1 = builder.AddInstruction(
+      HloInstruction::CreateGetTupleElement(f32v1, param, 1));
+  auto tuple =
+      builder.AddInstruction(HloInstruction::CreateTuple({gte0, gte1}));
+  auto while0 = builder.AddInstruction(HloInstruction::CreateWhile(
+      t_s32_f32v1, cond_computation, body_computation, tuple));
+
+  HloComputation* computation = module->AddEntryComputation(builder.Build());
+  schedule.set_sequence(computation, {param, gte0, gte1, tuple, while0});
+  TF_CHECK_OK(module->set_schedule(schedule));
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/50);
+
+  // Ensure all parameters and while are placed in default memory.
+  Shape shape_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {4, 6},
+      /*minor_to_major=*/{1, 0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
+  Shape s32_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      xla::S32, {},
+      /*minor_to_major=*/{}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
+  Shape f32v1_in_default_mem = ShapeUtil::MakeShapeWithLayout(
+      F32, {1},
+      /*minor_to_major=*/{0}, /*tiles=*/{}, /*element_size_in_bits=*/0,
+      kDefaultMemorySpace);
+  Shape t_s32_f32v1_in_default_mem =
+      ShapeUtil::MakeTupleShape({s32_in_default_mem, f32v1_in_default_mem});
+  EXPECT_THAT(param, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
+  EXPECT_THAT(while0, op::ShapeWithLayout(t_s32_f32v1_in_default_mem));
+}
+
 INSTANTIATE_TEST_SUITE_P(MemorySpaceAssignmentInstantiation,
                          MemorySpaceAssignmentTest,
                          ::testing::Values(false, true));

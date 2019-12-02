@@ -4426,5 +4426,21 @@ TEST_F(HloEvaluatorTest, ZeroSizedIotaWithHugeDimension) {
   EXPECT_THAT(actual_literal.data<float>(), ::testing::IsEmpty());
 }
 
+TEST_F(HloEvaluatorTest, CopyStartCopyDone) {
+  constexpr absl::string_view hlo_text = R"(
+  HloModule test
+  ENTRY CopyStartCopyDone {
+    init = f32[] constant(42.0)
+    copy-start = (f32[]{:S(1)}, u32[]) copy-start(init)
+    ROOT copy-done = f32[] copy-done(copy-start)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(m_, ParseAndReturnVerifiedModule(hlo_text));
+  Literal expected = LiteralUtil::CreateR0<float>(42.0f);
+  TF_ASSERT_OK_AND_ASSIGN(
+      Literal result, HloEvaluator().Evaluate(*m_->entry_computation(), {}));
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 }  // namespace
 }  // namespace xla

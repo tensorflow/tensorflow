@@ -45,9 +45,9 @@ class FileCacheTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.cache_prefix = path.join(self.tmp_dir, "cache")
 
   def tearDown(self):
-    super(FileCacheTest, self).tearDown()
     if self.tmp_dir:
       shutil.rmtree(self.tmp_dir, ignore_errors=True)
+    super(FileCacheTest, self).tearDown()
 
   @combinations.generate(test_base.default_test_combinations())
   def testCacheDatasetPassthrough(self):

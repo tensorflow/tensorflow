@@ -29,6 +29,7 @@
 namespace mlir {
 
 namespace impl {
+
 /// Return the name of the attribute used for function types.
 inline StringRef getTypeAttrName() { return "type"; }
 
@@ -72,42 +73,6 @@ inline ArrayRef<NamedAttribute> getResultAttrs(Operation *op, unsigned index) {
   return resultDict ? resultDict.getValue() : llvm::None;
 }
 
-/// A named class for passing around the variadic flag.
-class VariadicFlag {
-public:
-  explicit VariadicFlag(bool variadic) : variadic(variadic) {}
-  bool isVariadic() const { return variadic; }
-
-private:
-  /// Underlying storage.
-  bool variadic;
-};
-
-/// Callback type for `parseFunctionLikeOp`, the callback should produce the
-/// type that will be associated with a function-like operation from lists of
-/// function arguments and results, VariadicFlag indicates whether the function
-/// should have variadic arguments; in case of error, it may populate the last
-/// argument with a message.
-using FuncTypeBuilder = llvm::function_ref<Type(
-    Builder &, ArrayRef<Type>, ArrayRef<Type>, VariadicFlag, std::string &)>;
-
-/// Parser implementation for function-like operations.  Uses
-/// `funcTypeBuilder` to construct the custom function type given lists of
-/// input and output types.  If `allowVariadic` is set, the parser will accept
-/// trailing ellipsis in the function signature and indicate to the builder
-/// whether the function is variadic.  If the builder returns a null type,
-/// `result` will not contain the `type` attribute.  The caller can then add a
-/// type, report the error or delegate the reporting to the op's verifier.
-ParseResult parseFunctionLikeOp(OpAsmParser &parser, OperationState &result,
-                                bool allowVariadic,
-                                FuncTypeBuilder funcTypeBuilder);
-
-/// Printer implementation for function-like operations.  Accepts lists of
-/// argument and result types to use while printing.
-void printFunctionLikeOp(OpAsmPrinter &p, Operation *op,
-                         ArrayRef<Type> argTypes, bool isVariadic,
-                         ArrayRef<Type> resultTypes);
-
 } // namespace impl
 
 namespace OpTrait {
@@ -117,7 +82,7 @@ namespace OpTrait {
 /// - Ops have a single region with multiple blocks that corresponds to the body
 ///   of the function;
 /// - the absence of a region corresponds to an external function;
-/// - arguments of the first block of the region are treated as function
+/// - leading arguments of the first block of the region are treated as function
 ///   arguments;
 /// - they can have argument attributes that are stored in a dictionary
 ///   attribute on the Op itself.
@@ -137,6 +102,9 @@ namespace OpTrait {
 ///   redefine the `verifyType()` hook that will be called after verifying the
 ///   presence of the `type` attribute and before any call to
 ///   `getNumFuncArguments`/`getNumFuncResults` from the verifier.
+/// - To verify that the body respects op-specific invariants, concrete ops may
+///   redefine the `verifyBody()` hook that will be called after verifying the
+///   function type and the presence of the (potentially empty) body region.
 template <typename ConcreteType>
 class FunctionLike : public OpTrait::TraitBase<ConcreteType, FunctionLike> {
 public:
@@ -177,6 +145,11 @@ public:
 
   Block &back() { return getBody().back(); }
   Block &front() { return getBody().front(); }
+
+  /// Hook for concrete ops to verify the contents of the body. Called as a
+  /// part of trait verification, after type verification and ensuring that a
+  /// region exists.
+  LogicalResult verifyBody();
 
   //===--------------------------------------------------------------------===//
   // Type Attribute Handling
@@ -384,6 +357,23 @@ protected:
   LogicalResult verifyType() { return success(); }
 };
 
+/// Default verifier checks that if the entry block exists, it has the same
+/// number of arguments as the function-like operation.
+template <typename ConcreteType>
+LogicalResult FunctionLike<ConcreteType>::verifyBody() {
+  auto funcOp = cast<ConcreteType>(this->getOperation());
+
+  if (funcOp.isExternal())
+    return success();
+
+  unsigned numArguments = funcOp.getNumArguments();
+  if (funcOp.front().getNumArguments() != numArguments)
+    return funcOp.emitOpError("entry block must have ")
+           << numArguments << " arguments to match function signature";
+
+  return success();
+}
+
 template <typename ConcreteType>
 LogicalResult FunctionLike<ConcreteType>::verifyTrait(Operation *op) {
   MLIRContext *ctx = op->getContext();
@@ -433,17 +423,7 @@ LogicalResult FunctionLike<ConcreteType>::verifyTrait(Operation *op) {
   if (op->getNumRegions() != 1)
     return funcOp.emitOpError("expects one region");
 
-  // Check that if the entry block exists, it has the same number of arguments
-  // as the function-like operation.
-  if (funcOp.isExternal())
-    return success();
-
-  unsigned numArguments = funcOp.getNumArguments();
-  if (funcOp.front().getNumArguments() != numArguments)
-    return funcOp.emitOpError("entry block must have ")
-           << numArguments << " arguments to match function signature";
-
-  return success();
+  return funcOp.verifyBody();
 }
 
 //===----------------------------------------------------------------------===//

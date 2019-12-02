@@ -1,8 +1,5 @@
 # Description:
 #   TensorFlow Lite for Microcontrollers "hello world" example.
-
-package(default_visibility = ["//visibility:public"])
-
 licenses(["notice"])  # Apache 2.0
 
 load(
@@ -45,7 +42,7 @@ cc_library(
         "output_handler.h",
     ],
     deps = [
-        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/c:common",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )

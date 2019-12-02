@@ -22,12 +22,8 @@
 #ifndef LINALG_TRANSFORMS
 #define LINALG_TRANSFORMS
 
-#ifndef LINALG_OPS
 include "mlir/Dialect/Linalg/IR/LinalgOps.td"
-#endif // LINALG_OPS
-#ifndef LINALG_LIBRARY_OPS
 include "mlir/Dialect/Linalg/IR/LinalgLibraryOps.td"
-#endif // LINALG_LIBRARY_OPS
 
 def HasNoLinalgTransformMarker : CPred<[{
   !$0.getAttrOfType<StringAttr>(LinalgTransforms::kLinalgTransformMarker)
@@ -64,6 +60,17 @@ class TileAndFuseLinalgOp<
 class TileLinalgOp<list<int> sizes, string value> : NativeCodeCall<
   "if (failed(tileLinalgOpAndSetMarker($_builder, $0, {" #
   StrJoinInt<sizes>.result # "}, \"" # value # "\")))" #
+  "  return matchFailure();">;
+
+//===----------------------------------------------------------------------===//
+// Linalg to loop patterns.
+//===----------------------------------------------------------------------===//
+class LinalgOpToLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToLoops<" # OpType # ">($_builder, $0))) " #
+  "  return matchFailure();">;
+
+class LinalgOpToAffineLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToAffineLoops<" # OpType # ">($_builder, $0))) " #
   "  return matchFailure();">;
 
 #endif // LINALG_TRANSFORMS

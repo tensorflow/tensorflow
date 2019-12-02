@@ -192,8 +192,13 @@ TfLiteStatus BenchmarkModel::Run() {
                              inference_time_us, init_mem_usage,
                              overall_mem_usage});
 
-  TFLITE_LOG(INFO) << "Init " << init_mem_usage << std::endl
-                   << "Overall " << overall_mem_usage;
+  TFLITE_LOG(INFO)
+      << "Note: as the benchmark tool itself affects memory footprint, the "
+         "following is only APPROXIMATE to the actual memory footprint of the "
+         "model at runtime. Take the information at your discretion.";
+  TFLITE_LOG(INFO) << "Peak memory footprint (MB): init="
+                   << init_mem_usage.max_rss_kb / 1024.0
+                   << " overall=" << overall_mem_usage.max_rss_kb / 1024.0;
 
   return status;
 }

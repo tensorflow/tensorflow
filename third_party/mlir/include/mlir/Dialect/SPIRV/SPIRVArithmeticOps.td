@@ -23,9 +23,7 @@
 #ifndef SPIRV_ARITHMETIC_OPS
 #define SPIRV_ARITHMETIC_OPS
 
-#ifndef SPIRV_BASE
-include "mlir/SPIRV/SPIRVBase.td"
-#endif // SPIRV_BASE
+include "mlir/Dialect/SPIRV/SPIRVBase.td"
 
 class SPV_ArithmeticBinaryOp<string mnemonic, Type type,
                        list<OpTrait> traits = []> :
@@ -294,6 +292,8 @@ def SPV_IAddOp : SPV_ArithmeticBinaryOp<"IAdd", SPV_Integer, [Commutative]> {
 
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 // -----
@@ -330,6 +330,8 @@ def SPV_IMulOp : SPV_ArithmeticBinaryOp<"IMul", SPV_Integer, [Commutative]> {
 
     ```
   }];
+
+  let hasFolder = 1;
 }
 
 // -----

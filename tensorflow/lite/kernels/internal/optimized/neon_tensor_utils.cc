@@ -1970,6 +1970,37 @@ void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result) {
   }
 }
 
+namespace {
+
+#if __aarch64__
+inline bool IsAllZero(const uint32x4_t u32x4) {
+  const uint32_t u32 = vmaxvq_u32(u32x4);
+  return !u32;
+}
+#else
+inline bool IsAllZero(const uint32x4_t u32x4) {
+  const uint32x2_t u32x2 = vqadd_u32(vget_high_u32(u32x4), vget_low_u32(u32x4));
+  const uint64x1_t u64 = vreinterpret_u64_u32(u32x2);
+  return !vget_lane_u64(u64, 0);
+}
+#endif
+
+#ifndef __SSE__
+// With Intel NEON-2-SSE translator library, this is a redefinition..
+inline bool IsAllZero(const int8x16_t v) {
+  return IsAllZero(vreinterpretq_u32_s8(v));
+}
+#endif
+
+inline bool IsAllZero(const float32x4_t v_f32x4) {
+  const float32x4_t zero_f32x4 = vmovq_n_f32(0.0f);
+  // Compare-absolute greater-than, |v| > |0|, equivalently v != 0
+  const uint32x4_t cmp_result = vcagtq_f32(v_f32x4, zero_f32x4);
+  return IsAllZero(cmp_result);
+}
+
+}  // namespace
+
 bool NeonIsZeroVector(const float* vector, int v_size) {
   // If v_size is not divisible by the vector size, then we need to process the
   // final few elements sequentially. postamble_start shows the start index
@@ -1977,15 +2008,10 @@ bool NeonIsZeroVector(const float* vector, int v_size) {
   const int postamble_start =
       RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
 
-  const float32x4_t zero_x4_float = vmovq_n_f32(0.0f);
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-    const float32x4_t i_x4_float = vld1q_f32(vector + v);
-    uint32x4_t cmp_result = vceqq_f32(i_x4_float, zero_x4_float);
-    if (vgetq_lane_u32(cmp_result, 0) == 0) return false;
-    if (vgetq_lane_u32(cmp_result, 1) == 0) return false;
-    if (vgetq_lane_u32(cmp_result, 2) == 0) return false;
-    if (vgetq_lane_u32(cmp_result, 3) == 0) return false;
+    const float32x4_t v_f32x4 = vld1q_f32(vector + v);
+    if (!IsAllZero(v_f32x4)) return false;
   }
   // Postamble loop
   for (; v < v_size; ++v) {
@@ -2001,15 +2027,10 @@ bool NeonIsZeroVector(const int8_t* vector, int v_size) {
   const int postamble_start =
       RoundDownVectors<kInt8ValuesPerNeonVector>(v_size);
 
-  static const int32x4_t zero_x4_int32 = vmovq_n_s32(0);
   int v = 0;
   for (; v < postamble_start; v += kInt8ValuesPerNeonVector) {
-    const int32x4_t i_x4_int32 = vreinterpretq_s32_s8(vld1q_s8(vector + v));
-    const uint32x4_t cmp_result = vceqq_s32(i_x4_int32, zero_x4_int32);
-    if (vgetq_lane_u32(cmp_result, 0) == 0) return false;
-    if (vgetq_lane_u32(cmp_result, 1) == 0) return false;
-    if (vgetq_lane_u32(cmp_result, 2) == 0) return false;
-    if (vgetq_lane_u32(cmp_result, 3) == 0) return false;
+    const int8x16_t v_s8x16 = vld1q_s8(vector + v);
+    if (!IsAllZero(v_s8x16)) return false;
   }
   // Postamble loop
   for (; v < v_size; ++v) {
