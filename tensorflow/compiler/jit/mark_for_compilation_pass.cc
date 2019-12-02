@@ -1119,9 +1119,9 @@ const absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
     {"SORT", {"TopKV2"}}, // XLA version much faster then TF version.
     {"SMALL",
      // clang-format off
-     {"BroadcastTo", "ExpandDims", "Fill", "Max", "Mean", "NoOp", "Prod",
+     {"BroadcastTo", "ExpandDims", "Fill", "NoOp",
       "Range", "Rank", "Reshape", "Shape", "ShapeN", "Size", "Squeeze",
-      "Sum", "Transpose", "ZerosLike", "OnesLike", "BiasAdd" /*PW + Broadcast*/,
+      "Transpose", "ZerosLike", "OnesLike", "BiasAdd" /*PW + Broadcast*/,
       "BroadcastArgs", "BroadcastGradientArgs", "OneHot", "Concat", "ConcatV2",
       "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
       "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
