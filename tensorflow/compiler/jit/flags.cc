@@ -91,6 +91,7 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "Maximum number of operators in an XLA compilation."),
       Flag("tf_xla_supported_ops",
            &mark_for_compilation_flags->tf_xla_supported_ops,
+	   "(experimental) "
            "Limit the operations clustered by XLA to these operations. "
            "If multiple, separate them with commas. Shortcuts: "
            " PW: All point-wise operations."
@@ -103,7 +104,7 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "(LRN, LRNGrad)."
            " BN: TF FusedBatchNorm* operations."
            " FUSIBLE: All TF operations that XLA can fuse (All the above). "
-           "You can also put any TF operation name."),
+           "You can also put any TF operation name, e.g. 'FUSIBLE,Matmul'."),
       Flag("tf_xla_clustering_debug",
            &mark_for_compilation_flags->tf_xla_clustering_debug,
            "Dump graphs during XLA compilation."),
