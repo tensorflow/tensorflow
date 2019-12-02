@@ -18,25 +18,31 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
 from tensorflow.python.data.experimental.ops import threading_options
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-class OptionsTest(test_base.DatasetTestBase):
+class OptionsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsDefault(self):
     ds = dataset_ops.Dataset.range(0)
     self.assertEqual(dataset_ops.Options(), ds.options())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsOnce(self):
     options = dataset_ops.Options()
     ds = dataset_ops.Dataset.range(0).with_options(options).cache()
     self.assertEqual(options, ds.options())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceSame(self):
     options = dataset_ops.Options()
     options.experimental_optimization.autotune = True
@@ -44,6 +50,7 @@ class OptionsTest(test_base.DatasetTestBase):
         options)
     self.assertEqual(options, ds.options())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceDifferent(self):
     options1 = dataset_ops.Options()
     options1.experimental_optimization.autotune = True
@@ -55,6 +62,7 @@ class OptionsTest(test_base.DatasetTestBase):
     # Explicitly check that flag is False since assertFalse allows None
     self.assertIs(ds.options().experimental_deterministic, False)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsTwiceDifferentError(self):
     options1 = dataset_ops.Options()
     options1.experimental_optimization.autotune = True
@@ -64,6 +72,7 @@ class OptionsTest(test_base.DatasetTestBase):
                                  "Cannot merge incompatible values"):
       dataset_ops.Dataset.range(0).with_options(options1).with_options(options2)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsMergeOptionsFromMultipleInputs(self):
     options1 = dataset_ops.Options()
     options1.experimental_optimization.autotune = True
@@ -75,6 +84,7 @@ class OptionsTest(test_base.DatasetTestBase):
     self.assertTrue(ds.options().experimental_optimization.autotune)
     self.assertTrue(ds.options().experimental_deterministic)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testOptionsHaveDefaults(self):
     options1 = dataset_ops.Options()
     options2 = dataset_ops.Options()
@@ -84,12 +94,11 @@ class OptionsTest(test_base.DatasetTestBase):
                      options2.experimental_stats)
     self.assertIsNot(options1.experimental_threading,
                      options2.experimental_threading)
-    self.assertEquals(options1.experimental_optimization,
-                      optimization_options.OptimizationOptions())
-    self.assertEquals(options1.experimental_stats,
-                      stats_options.StatsOptions())
-    self.assertEquals(options1.experimental_threading,
-                      threading_options.ThreadingOptions())
+    self.assertEqual(options1.experimental_optimization,
+                     optimization_options.OptimizationOptions())
+    self.assertEqual(options1.experimental_stats, stats_options.StatsOptions())
+    self.assertEqual(options1.experimental_threading,
+                     threading_options.ThreadingOptions())
 
 
 if __name__ == "__main__":
