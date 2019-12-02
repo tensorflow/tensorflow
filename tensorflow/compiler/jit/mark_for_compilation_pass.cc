@@ -1129,27 +1129,27 @@ const absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
       "Tile", "Transpose", "InvertPermutation", "Unpack"}}};
 // clang-format on
 
-std::unique_ptr<absl::flat_hash_set<string>> GetWhitelist() {
+absl::flat_hash_set<string> GetWhitelist() {
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  auto whitelist = absl::WrapUnique(new absl::flat_hash_set<string>());
+  absl::flat_hash_set<string> whitelist;
 
   for (auto s : absl::StrSplit(flags->tf_xla_ops_to_cluster, ",")) {
     if (s == "FUSIBLE") {
       for (auto pair : whitelist_table) {
-        whitelist->insert(pair.second.begin(), pair.second.end());
+        whitelist.insert(pair.second.begin(), pair.second.end());
       }
     } else if (whitelist_table.contains(s)) {
       auto v = whitelist_table.at(s);
-      whitelist->insert(v.begin(), v.end());
+      whitelist.insert(v.begin(), v.end());
     } else if (!s.empty()) {
       // Should be a user provided TF operation.
-      whitelist->insert(string(s));
+      whitelist.insert(string(s));
     }
   }
 
-  if (VLOG_IS_ON(2) && !whitelist->empty()) {
-    std::vector<string> vwhitelist(whitelist->begin(), whitelist->end());
-    std::sort(vwhitelist.begin(), vwhitelist.end());
+  if (VLOG_IS_ON(2) && !whitelist.empty()) {
+    std::vector<string> vwhitelist(whitelist.begin(), whitelist.end());
+    absl::c_sort(vwhitelist);
     VLOG(2) << "XLA clustering will only consider the following TF operations: "
             << absl::StrJoin(vwhitelist, " ");
   }
@@ -1189,10 +1189,10 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   auto whitelist = GetWhitelist();
 
-  auto vall_ops = XlaOpRegistry::GetAllRegisteredOps();
+  std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
   // Check that user's provided TF operation really exists.
-  for (auto s = whitelist->begin(); s != whitelist->end(); ++s) {
+  for (auto s = whitelist.begin(); s != whitelist.end(); ++s) {
     if (!all_ops.contains(string(*s))) {
       return errors::InvalidArgument(
           "The operation '", *s,
@@ -1237,7 +1237,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    if (whitelist->size() > 0 && !whitelist->contains(node->def().op())) {
+    if (whitelist.size() > 0 && !whitelist.contains(node->def().op())) {
       VLOG(1) << "Rejecting " << node->name()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
