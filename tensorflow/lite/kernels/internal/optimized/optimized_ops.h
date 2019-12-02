@@ -1002,14 +1002,14 @@ inline void MeanImpl(const tflite::MeanParams& op_params,
           vmovn_u32(vreinterpretq_u32_s32(temp_sum.val[3]));
 
       uint16x8_t combined_low =
-          vcombine_s16(narrowed_low_low, narrowed_high_low);
+          vcombine_u16(narrowed_low_low, narrowed_high_low);
       uint16x8_t combined_high =
-          vcombine_s16(narrowed_low_high, narrowed_high_high);
+          vcombine_u16(narrowed_low_high, narrowed_high_high);
 
       uint8x8_t narrowed_low = vmovn_u16(combined_low);
       uint8x8_t narrowed_high = vmovn_u16(combined_high);
 
-      uint8x16_t combined_output = vcombine_s8(narrowed_low, narrowed_high);
+      uint8x16_t combined_output = vcombine_u8(narrowed_low, narrowed_high);
 
       uint8_t* output_data_ptr =
           output_data + Offset(output_shape, out_b, 0, 0, out_d);
