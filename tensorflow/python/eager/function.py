@@ -1224,6 +1224,12 @@ class _TapeGradientFunctions(object):
       processed_args = []
       input_index = 0
       for output_index, arg in enumerate(args):
+        # Convert IndexedSlices to dense tensors. The IndexedSlices optimization
+        # is only really effective when doing tf.gather(variable) as the
+        # adjoint functions for most operations are unlikely to preserve the
+        # sparsity in IndexedSlices.
+        if isinstance(arg, ops.IndexedSlices):
+          arg = ops.convert_to_tensor(arg)
         if output_index in skip_positions:
           continue
         if arg is None:
