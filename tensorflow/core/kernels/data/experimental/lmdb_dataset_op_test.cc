@@ -14,6 +14,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/dataset_test_base.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
 namespace data {
@@ -23,7 +24,7 @@ namespace {
 constexpr char kNodeName[] = "lmdb_dataset";
 constexpr char kIteratorPrefix[] = "Iterator";
 constexpr char kDataFileName[] = "data.mdb";
-constexpr char kDataFileLoc[] = "tensorflow/core/lib/lmdb/testdata";
+constexpr char kDataFileLoc[] = "core/lib/lmdb/testdata";
 
 class LMDBDatasetParams : public DatasetParams {
  public:
@@ -69,7 +70,8 @@ class LMDBDatasetOpTest : public DatasetOpsTestBaseV2 {};
 // This copying is necessary because LMDB creates lock files adjacent
 // to files that it reads.
 string MaybeCopyDataFile() {
-  string src_loc = io::JoinPath(kDataFileLoc, kDataFileName);
+  string src_loc = 
+      io::JoinPath(testing::TensorFlowSrcRoot(), kDataFileLoc, kDataFileName);
   string dest_loc = io::JoinPath(testing::TmpDir(), kDataFileName);
 
   FileSystem* fs;  // Pointer to singleton
