@@ -179,13 +179,6 @@ $(PRJDIR)$(2)/arduino/src/third_party/flatbuffers/include/flatbuffers/base.h: te
         --third_party_headers="$(4)" < $$< | \
         sed -E 's/utility\.h/utility/g' > $$@
 
-$(PRJDIR)$(2)/arduino/src/third_party/kissfft/kiss_fft.h: tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h third_party_downloads
-	@mkdir -p $$(dir $$@)
-	@python tensorflow/lite/micro/tools/make/transform_source.py \
-        --platform=arduino \
-        --third_party_headers="$(4)" < $$< | \
-        sed -E 's@#include <string.h>@//#include <string.h> /* Patched by helper_functions.inc for Arduino compatibility */@g' > $$@
-
 $(PRJDIR)$(2)/arduino/%: tensorflow/lite/micro/tools/make/templates/%
 	@mkdir -p $$(dir $$@)
 	@sed -E 's#\%\{SRCS\}\%#$(3)#g' $$< | \

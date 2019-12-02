@@ -65,6 +65,7 @@ patch_kissfft() {
   sed -i -E "s@#define KISS_FFT_FREE free@#define KISS_FFT_FREE(X) /* Patched. */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   sed -ir -E "s@(fprintf.*\);)@/* \1 */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
   sed -ir -E "s@(exit.*\);)@return; /* \1 */@g" tensorflow/lite/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
+  sed -i -E "s@#include <string.h>@#include <string.h>\n#include <stdint.h> /* Patched. */@" tensorflow/lite/micro/tools/make/downloads/kissfft/kiss_fft.h
   echo "Finished patching kissfft"
 }
 
