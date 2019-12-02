@@ -191,11 +191,7 @@ class RandomCropTest(keras_parameterized.TestCase):
       # TODO(rocm):
       # re-enable this test once ROCm adds support for
       # the StatefulUniformFullInt Op (on the GPU)
-<<<<<<< HEAD
-      self.skipTest("Feature not supported on ROCm")
-=======
       self.skipTest('Feature not supported on ROCm')
->>>>>>> google_upstream/master
     np.random.seed(1337)
     height, width = 3, 4
     height_offset = np.random.randint(low=0, high=3)
@@ -220,11 +216,7 @@ class RandomCropTest(keras_parameterized.TestCase):
       # TODO(rocm):
       # re-enable this test once ROCm adds support for
       # the StatefulUniformFullInt Op (on the GPU)
-<<<<<<< HEAD
-      self.skipTest("Feature not supported on ROCm")
-=======
       self.skipTest('Feature not supported on ROCm')
->>>>>>> google_upstream/master
     with CustomObjectScope({'RandomCrop': image_preprocessing.RandomCrop}):
       self._run_test(expected_height, expected_width)
 
