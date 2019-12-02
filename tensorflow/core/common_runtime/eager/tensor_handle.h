@@ -67,9 +67,9 @@ class TensorHandle : public core::RefCounted {
   TensorHandle(std::unique_ptr<LocalTensorHandleData> t,
                const ResourceHandle& resource_handle, Device* d,
                Device* op_device, EagerContext* ctx);
-  TensorHandle(std::unique_ptr<AsyncLocalTensorHandleData> t, Device* d,
-               Device* op_device, Device* resource_device, DataType dtype,
-               EagerContext* ctx);
+  TensorHandle(std::unique_ptr<EmptyLocalTensorHandleData> t, bool async,
+               Device* d, Device* op_device, Device* resource_device,
+               DataType dtype, EagerContext* ctx);
 
 #if !defined(IS_MOBILE_PLATFORM)
   TensorHandle(std::unique_ptr<RemoteTensorHandleData> t, DataType dtype,
@@ -87,7 +87,7 @@ class TensorHandle : public core::RefCounted {
   static Status CreateLocalHandle(const class Tensor& t, Device* d,
                                   Device* op_device, EagerContext* ctx,
                                   TensorHandle** h);
-  static Status CreateAsyncLocalHandle(Device* d, Device* op_device,
+  static Status CreateEmptyLocalHandle(bool async, Device* d, Device* op_device,
                                        Device* resource_device, DataType dtype,
                                        EagerContext* ctx, TensorHandle** h);
 #if !defined(IS_MOBILE_PLATFORM)
@@ -158,7 +158,7 @@ class TensorHandle : public core::RefCounted {
   // Sets the `tensor` for this async non-ready handle making it ready.
   // This method or Poison must be called exactly once for non-ready async
   // handles to make them ready.
-  Status SetTensor(const tensorflow::Tensor& tensor);
+  Status SetTensor(tensorflow::Tensor&& tensor);
 
   // Poisons this non-ready handle with an error `status`.
   // Poisoning means that the handle will become ready and methods trying
@@ -233,23 +233,23 @@ class TensorHandle : public core::RefCounted {
   tensorflow::Device* const resource_device_;
 
 #if !defined(IS_MOBILE_PLATFORM)
+  mutable mutex mu_;
+
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
-  mutable mutex resource_shape_mirrors_mutex_;
   std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
-      resource_shape_mirrors_ GUARDED_BY(resource_shape_mirrors_mutex_);
+      resource_shape_mirrors_ GUARDED_BY(mu_);
 
-  mutable mutex remote_mirrors_mutex_;
   // TODO(gjn): Unshaped remote mirrors are long expected to be long-lived.
   // Consider replacing the unshaped_remote_mirrors_ map with something more
   // efficient.
   std::map<tensorflow::Device*, std::unique_ptr<UnshapedRemoteTensorHandleData>>
-      unshaped_remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
+      unshaped_remote_mirrors_ GUARDED_BY(mu_);
   // TODO(gjn): Is std::map the most optimal choice here? Perhaps this should be
   // a fixed size map.
   std::map<tensorflow::Device*, std::unique_ptr<RemoteTensorHandleData>>
-      remote_mirrors_ GUARDED_BY(remote_mirrors_mutex_);
+      remote_mirrors_ GUARDED_BY(mu_);
 
   // IDs required when this class is representing a remote tensor handle.
   int64 remote_op_id_;
@@ -271,6 +271,7 @@ class TensorHandle : public core::RefCounted {
   // WaitReady() has returned. At that point, is_poisoned_ is immutable.
   Status is_poisoned_;
   const bool is_remote_;
+  const bool is_async_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
   // refers to a remote resource handle, we store data types and shapes for

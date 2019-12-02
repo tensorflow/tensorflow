@@ -22,7 +22,7 @@ namespace {
 
 constexpr char kNodeName[] = "tensor_slice_dataset";
 
-class TensorSliceDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class TensorSliceDatasetOpTest : public DatasetOpsTestBase {};
 
 TensorSliceDatasetParams PlainTensorSliceDatasetParams() {
   std::vector<Tensor> components = {

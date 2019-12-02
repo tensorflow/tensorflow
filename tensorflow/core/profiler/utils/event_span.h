@@ -30,8 +30,9 @@ namespace profiler {
 // has a higher priority than a smaller number when used in execution-time
 // breakdown.
 enum EventType {
-  // Both host and device are idle.
-  BOTH_IDLE = 0,
+  // No event associated with the time. It could be that the machine was idle or
+  // executing some events which were not traced.
+  UNKNOWN_TIME = 0,
   // Host is computing.
   HOST_COMPUTE = 1,
   // Host is compiling.

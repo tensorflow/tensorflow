@@ -34,7 +34,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/kernels/cuda_solvers.h"
 #include "tensorflow/core/kernels/cuda_sparse.h"
+<<<<<<< HEAD
 #endif
+=======
+#include "tensorflow/stream_executor/cuda/cuda_activation.h"
+>>>>>>> google_upstream/master
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/platform/cuda.h"

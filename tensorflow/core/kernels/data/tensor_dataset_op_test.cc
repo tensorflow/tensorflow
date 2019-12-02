@@ -70,7 +70,7 @@ class TensorDatasetParams : public DatasetParams {
   std::vector<Tensor> components_;
 };
 
-class TensorDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class TensorDatasetOpTest : public DatasetOpsTestBase {};
 
 // Test case 1: test a dataset that represents a single tuple of plain tensors.
 TensorDatasetParams PlainTensorDatasetParams() {

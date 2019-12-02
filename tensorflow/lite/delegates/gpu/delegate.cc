@@ -39,6 +39,8 @@ namespace {
 
 InferencePriority ToPriority(int32_t priority) {
   switch (priority) {
+    case TFLITE_GPU_INFERENCE_PRIORITY_AUTO:
+      return InferencePriority::AUTO;
     case TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION:
       return InferencePriority::MAX_PRECISION;
     case TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY:
@@ -57,14 +59,6 @@ InferenceUsage ToUsage(int32_t usage) {
       return InferenceUsage::SUSTAINED_SPEED;
   }
   return InferenceUsage::UNKNOWN;
-}
-
-int GetPriorityPosition(const TfLiteGpuDelegateOptionsV2& options,
-                        InferencePriority p) {
-  if (ToPriority(options.inference_priority1) == p) return 1;
-  if (ToPriority(options.inference_priority2) == p) return 2;
-  if (ToPriority(options.inference_priority3) == p) return 3;
-  return 4;  // least important
 }
 
 // Forward declarations.
@@ -188,12 +182,8 @@ class Delegate {
       // Users set is_precision_loss_allowed explicitly, thus use it explicitly.
       if (options_.is_precision_loss_allowed == 0) {
         options.priority1 = InferencePriority::MAX_PRECISION;
-        options.priority2 = InferencePriority::MIN_MEMORY_USAGE;
-        options.priority3 = InferencePriority::MIN_LATENCY;
       } else {
         options.priority1 = InferencePriority::MIN_LATENCY;
-        options.priority2 = InferencePriority::MIN_MEMORY_USAGE;
-        options.priority3 = InferencePriority::MAX_PRECISION;
       }
     }
     options.usage = ToUsage(options_.inference_preference);
@@ -312,8 +302,8 @@ TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2Default() {
   options.inference_preference =
       TFLITE_GPU_INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER;
   options.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MAX_PRECISION;
-  options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
-  options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_MEMORY_USAGE;
+  options.inference_priority2 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
+  options.inference_priority3 = TFLITE_GPU_INFERENCE_PRIORITY_AUTO;
   return options;
 }
 

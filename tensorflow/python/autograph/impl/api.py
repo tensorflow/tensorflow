@@ -508,18 +508,11 @@ def converted_call(f,
       else:
         effective_args = args
 
-    elif hasattr(f, '__call__') and hasattr(f, '__class__'):
-      # Callable objects
-      target_entity = f.__call__
+    elif hasattr(f, '__class__') and hasattr(f.__class__, '__call__'):
+      # Callable objects. Dunder methods have special lookup rules, see:
+      # https://docs.python.org/3/reference/datamodel.html#specialnames
+      target_entity = f.__class__.__call__
       effective_args = (f,) + args
-
-    elif tf_inspect.isclass(f):
-      # Constructors
-      # Note: Until we support class constructurs, and enable whole-class
-      # conversion with an experimental flag, this branch is dead code.
-      # TODO(mdan): Consider removing unless there is a compelling use case.
-      target_entity = f
-      effective_args = args
 
     else:
       target_entity = f

@@ -33,9 +33,9 @@ TEST(TensorHandle_ShapeTest, AsyncShape) {
   TensorHandle* sync_th;
   EXPECT_TRUE(TensorHandle::CreateLocalHandle(t, &sync_th).ok());
   TensorHandle* async_th;
-  EXPECT_TRUE(TensorHandle::CreateAsyncLocalHandle(nullptr, nullptr, nullptr,
-                                                   DataType::DT_UINT16, nullptr,
-                                                   &async_th)
+  EXPECT_TRUE(TensorHandle::CreateEmptyLocalHandle(true, nullptr, nullptr,
+                                                   nullptr, DataType::DT_UINT16,
+                                                   nullptr, &async_th)
                   .ok());
 
   EXPECT_TRUE(async_th->CopyInferenceShape(sync_th).ok());

@@ -1287,7 +1287,7 @@ class ExecutorState {
 
   int64 step_id_;
   // Not owned.
-  Rendezvous* rendezvous_;
+  RendezvousInterface* rendezvous_;
   Executor::RendezvousFactory* create_rendezvous_ = nullptr;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;

@@ -54,6 +54,7 @@ py_test(
 )
 
 exports_files([
+    "schema.fbs",
     "schema_v0.fbs",
     "schema_v1.fbs",
     "schema_v2.fbs",

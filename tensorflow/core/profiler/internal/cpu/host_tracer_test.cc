@@ -28,7 +28,6 @@ limitations under the License.
 
 namespace tensorflow {
 namespace profiler {
-namespace cpu {
 
 std::unique_ptr<ProfilerInterface> CreateHostTracer(
     const ProfilerOptions& options);
@@ -169,6 +168,5 @@ TEST(HostTracerTest, CollectsTraceMeEventsAsXSpace) {
 }
 
 }  // namespace
-}  // namespace cpu
 }  // namespace profiler
 }  // namespace tensorflow

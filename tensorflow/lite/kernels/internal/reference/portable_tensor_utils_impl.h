@@ -171,15 +171,6 @@ void PortableVectorBatchVectorAssign(const float* vector, int v_size,
 void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                                   float* batch_vector);
 
-// Apply sigmoid to elements of a vector.
-void PortableApplySigmoidToVector(const float* vector, int v_size,
-                                  float* result);
-
-// Apply activation function to elements of a vector.
-void PortableApplyActivationToVector(const float* vector, int v_size,
-                                     TfLiteFusedActivation activation,
-                                     float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void PortableSub1Vector(const float* vector, int v_size, float* result);
 

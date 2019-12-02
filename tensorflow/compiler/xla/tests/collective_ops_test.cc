@@ -397,7 +397,8 @@ XLA_TEST_F(CollectiveOpsTest, ReplicaId) {
   const char* const kModuleStr = R"(
   HloModule test
   ENTRY test_computation {
-    ROOT id = u32[] replica-id()
+    id = u32[] replica-id()
+    ROOT out = u32[] copy(id)
   }
   )";
   const int64 kNumReplicas = 4;

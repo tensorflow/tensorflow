@@ -17,35 +17,38 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.data.experimental.ops import optimization
+from absl.testing import parameterized
+
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class InjectPrefetchTest(test_base.DatasetTestBase):
+class InjectPrefetchTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _enable_autotune_buffers(self, dataset):
     options = dataset_ops.Options()
     options.experimental_optimization.autotune_buffers = True
     return dataset.with_options(options)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testParallelMap(self):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
-        optimization.assert_next(["ParallelMap", "Prefetch", "FiniteTake"]))
+        testing.assert_next(["ParallelMap", "Prefetch", "FiniteTake"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.take(50)
     dataset = self._enable_autotune_buffers(dataset)
     self.assertDatasetProduces(dataset, range(1, 51))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testMapAndBatch(self):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
-        optimization.assert_next(["MapAndBatch", "Prefetch", "FiniteTake"]))
+        testing.assert_next(["MapAndBatch", "Prefetch", "FiniteTake"]))
     dataset = dataset.map(
         lambda x: x + 1, num_parallel_calls=dataset_ops.AUTOTUNE)
     dataset = dataset.batch(10)
@@ -54,10 +57,11 @@ class InjectPrefetchTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(
         dataset, [list(range(i + 1, i + 11)) for i in range(0, 50, 10)])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testParallelInterleaveV2(self):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
-        optimization.assert_next(
+        testing.assert_next(
             ["ParallelInterleaveV2", "Prefetch", "FiniteTake"]))
     dataset = dataset.interleave(
         lambda x: dataset_ops.Dataset.from_tensors(x + 1),
@@ -66,10 +70,11 @@ class InjectPrefetchTest(test_base.DatasetTestBase):
     dataset = self._enable_autotune_buffers(dataset)
     self.assertDatasetProduces(dataset, range(1, 51))
 
+  @combinations.generate(test_base.default_test_combinations())
   def testChainedParallelDatasets(self):
     dataset = dataset_ops.Dataset.range(100)
     dataset = dataset.apply(
-        optimization.assert_next([
+        testing.assert_next([
             "ParallelMap", "Prefetch", "ParallelInterleaveV2", "Prefetch",
             "MapAndBatch", "Prefetch", "FiniteTake"
         ]))
@@ -85,9 +90,10 @@ class InjectPrefetchTest(test_base.DatasetTestBase):
     dataset = self._enable_autotune_buffers(dataset)
     self.assertDatasetProduces(dataset, [[i] for i in range(3, 53)])
 
+  @combinations.generate(test_base.default_test_combinations())
   def testNoRegularMap(self):
     dataset = dataset_ops.Dataset.range(100)
-    dataset = dataset.apply(optimization.assert_next(["Map", "FiniteTake"]))
+    dataset = dataset.apply(testing.assert_next(["Map", "FiniteTake"]))
     dataset = dataset.map(lambda x: x + 1).take(50)
     dataset = self._enable_autotune_buffers(dataset)
     self.assertDatasetProduces(dataset, range(1, 51))

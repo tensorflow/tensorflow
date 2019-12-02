@@ -11,8 +11,11 @@ load(
 )
 load(
     "//tensorflow:tensorflow.bzl",
+<<<<<<< HEAD
     "if_cuda_or_rocm",
     "if_nccl",
+=======
+>>>>>>> google_upstream/master
     "tf_cc_test",
     "tf_copts",
     "tf_cuda_library",
@@ -27,6 +30,7 @@ load(
     "@local_config_rocm//rocm:build_defs.bzl",
     "if_rocm_is_configured",
 )
+load("//tensorflow:tensorflow.bzl", "if_nccl")
 
 package(
     default_visibility = [":friends"],
@@ -427,7 +431,13 @@ tf_cuda_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
+<<<<<<< HEAD
     ] + if_cuda([
+=======
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
+    ] + if_nccl([
+>>>>>>> google_upstream/master
         "@local_config_nccl//:nccl",
         "//tensorflow/stream_executor/cuda:cuda_activation",
         "//tensorflow/stream_executor/cuda:cuda_gpu_executor",

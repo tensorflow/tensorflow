@@ -39,6 +39,13 @@ FP16ConvMode CudnnConvComputeMode();
 bool DebugCudnnRnn();
 bool DebugCudnnRnnUseTensorOps();
 int64 DebugCudnnRnnAlgo();
+
+// Returns true if the CuDNN depthwise convolution can be used. See cudnn
+// release note 7.6.3.
+// (https://docs.nvidia.com/deeplearning/sdk/cudnn-release-notes/rel_763.html)
+bool IsCudnnSupportedFilterSize(const int32 filter_rows,
+                                const int32 filter_cols, const int32 in_depth,
+                                const int32 out_depth);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_UTIL_USE_CUDNN_H_

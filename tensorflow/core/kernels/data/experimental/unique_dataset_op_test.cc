@@ -52,7 +52,7 @@ class UniqueDatasetParams : public DatasetParams {
   string dataset_type() const override { return UniqueDatasetOp::kDatasetType; }
 };
 
-class UniqueDatasetOpTest : public DatasetOpsTestBaseV2 {};
+class UniqueDatasetOpTest : public DatasetOpsTestBase {};
 
 UniqueDatasetParams NormalCaseParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
@@ -99,7 +99,7 @@ UniqueDatasetParams EmptyInputParams() {
 UniqueDatasetParams StringParams() {
   auto tensor_slice_dataset_params = TensorSliceDatasetParams(
       /*components=*/
-      {CreateTensor<string>(
+      {CreateTensor<tstring>(
           TensorShape{11, 1},
           {"one", "One", "two", "three", "five", "eight", "thirteen",
            "twenty-one", "eight", "eight", "thirty-four"})},
@@ -164,15 +164,15 @@ std::vector<GetNextTestCase<UniqueDatasetParams>> GetNextTestCases() {
            CreateTensors<int64>(TensorShape({1}), {})},
           {/*dataset_params=*/StringParams(),
            /*expected_outputs=*/
-           CreateTensors<string>(TensorShape({1}), {{"one"},
-                                                    {"One"},
-                                                    {"two"},
-                                                    {"three"},
-                                                    {"five"},
-                                                    {"eight"},
-                                                    {"thirteen"},
-                                                    {"twenty-one"},
-                                                    {"thirty-four"}})}};
+           CreateTensors<tstring>(TensorShape({1}), {{"one"},
+                                                     {"One"},
+                                                     {"two"},
+                                                     {"three"},
+                                                     {"five"},
+                                                     {"eight"},
+                                                     {"thirteen"},
+                                                     {"twenty-one"},
+                                                     {"thirty-four"}})}};
 }
 
 ITERATOR_GET_NEXT_TEST_P(UniqueDatasetOpTest, UniqueDatasetParams,
