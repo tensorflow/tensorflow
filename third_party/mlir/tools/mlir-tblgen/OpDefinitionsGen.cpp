@@ -1261,7 +1261,7 @@ void OpEmitter::genCodeForAddingArgAndRegionForBuilder(OpMethodBody &body,
       if (emitNotNullCheck) {
         body << formatv("  if ({0}) ", namedAttr.name) << "{\n";
       }
-      if (isRawValueAttr and canUseUnwrappedRawValue(attr)) {
+      if (isRawValueAttr && canUseUnwrappedRawValue(attr)) {
         // If this is a raw value, then we need to wrap it in an Attribute
         // instance.
         FmtContext fctx;
