@@ -213,9 +213,10 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     else:
       compute_devices = (worker_device,)
 
-    self._device_map = values.ReplicaDeviceMap(compute_devices)
+    self._compute_devices = [
+        device_util.canonicalize(d) for d in compute_devices]
     self._input_workers = input_lib.InputWorkers(
-        self._device_map, [(worker_device, compute_devices)])
+        [(worker_device, compute_devices)])
 
     # In distributed mode, place variables on ps jobs in a round-robin fashion.
     # Note that devices returned from `replica_device_setter` are not
@@ -253,9 +254,9 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     logging.info(
         "Multi-worker ParameterServerStrategy with "
         "cluster_spec = %r, task_type = %r, task_id = %r, "
-        "num_ps_replicas = %r, is_chief = %r, device_map = %r, "
+        "num_ps_replicas = %r, is_chief = %r, compute_devices = %r, "
         "variable_device = %r", cluster_spec.as_dict(), task_type, task_id,
-        num_ps_replicas, self._is_chief, self._device_map,
+        num_ps_replicas, self._is_chief, self._compute_devices,
         self._variable_device)
 
   # TODO(yuefengz): get rid of cluster_resolver argument when contrib's
@@ -279,6 +280,8 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
       compute_devices = device_util.local_devices_from_num_gpus(num_gpus)
 
+    compute_devices = [device_util.canonicalize(d) for d in compute_devices]
+
     if parameter_device is None:
       # If there is only one GPU, put everything on that GPU. Otherwise, place
       # variables on CPU.
@@ -287,11 +290,11 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       else:
         parameter_device = _LOCAL_CPU
 
-    self._device_map = values.ReplicaDeviceMap(compute_devices)
     self._input_workers = input_lib.InputWorkers(
-        self._device_map, [(worker_device, compute_devices)])
+        [(worker_device, compute_devices)])
 
     self._variable_device = parameter_device
+    self._compute_devices = compute_devices
     self._parameter_devices = (parameter_device,)
     self._is_chief = True
     self._cluster_spec = None
@@ -376,8 +379,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
       return tensor
     if not cross_device_ops_lib.check_destinations(destinations):
       # TODO(josh11b): Use current logical device instead of 0 here.
-      destinations = values.LogicalDeviceSpec(
-          device_map=self._device_map, logical_device=0)
+      destinations = self._compute_devices
     return self._cross_device_ops.broadcast(tensor, destinations)
 
   def _allow_variable_partition(self):
@@ -449,7 +451,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
   def _call_for_each_replica(self, fn, args, kwargs):
     # pylint: disable=protected-access
     return mirrored_strategy._call_for_each_replica(
-        self._container_strategy(), self._device_map, fn, args, kwargs)
+        self._container_strategy(), self._compute_devices, fn, args, kwargs)
 
   def _verify_destinations_not_different_worker(self, destinations):
     if not self._cluster_spec:
@@ -468,7 +470,7 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
     if not isinstance(value, values.DistributedValues):
       # pylint: disable=protected-access
       return cross_device_ops_lib.reduce_non_distributed_value(
-          reduce_op, self._device_map, value, destinations)
+          reduce_op, value, destinations, self._num_replicas_in_sync)
     return self._cross_device_ops.reduce(
         reduce_op, value, destinations=destinations)
 
@@ -605,15 +607,15 @@ class ParameterServerStrategyExtended(distribute_lib.StrategyExtendedV1):
 
   @property
   def _num_replicas_in_sync(self):
-    return self._device_map.num_replicas_in_graph
+    return len(self._compute_devices)
 
   @property
   def worker_devices(self):
-    return self._device_map.all_devices
+    return self._compute_devices
 
   @property
   def worker_devices_by_replica(self):
-    return self._device_map.devices_by_replica
+    return [[d] for d in self._compute_devices]
 
   @property
   def parameter_devices(self):

@@ -259,11 +259,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self,
-                                name,
-                                vars_,
-                                device_map=None,
-                                is_mirrored=False):
+  def get_replicated_var_handle(self, name, vars_, is_mirrored=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -272,8 +268,6 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     Args:
       name: The common name of the variable.
       vars_: The replicated TPU variables.
-      device_map: The DeviceMap used to create the variables if it is a
-        TPUMirroredVariable.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
 
@@ -287,15 +281,20 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if handle is not None:
       return handle
 
-    replicated_vars = []
-    if device_assignment is not None and device_map is not None:
-      job_name = pydev.DeviceSpec.from_string(device_map.all_devices[0]).job
+    if device_assignment is not None:
+      job_name = pydev.DeviceSpec.from_string(vars_[0].device).job
+
+      tpu_devices = set()
       for replica_id in range(device_assignment.num_replicas):
-        tpu_device = device_assignment.tpu_device(
-            replica=replica_id, logical_core=0, job=job_name)
-        tpu_device = device_util.canonicalize(tpu_device)
-        replica = device_map.replica_for_device(tpu_device)
-        replicated_vars.append(vars_[replica])
+        for logical_core in range(device_assignment.num_cores_per_replica):
+          tpu_devices.add(
+              device_util.canonicalize(
+                  device_assignment.tpu_device(
+                      replica=replica_id,
+                      logical_core=logical_core,
+                      job=job_name)))
+
+      replicated_vars = [v for v in vars_ if v.device in tpu_devices]
     else:
       replicated_vars = vars_
 

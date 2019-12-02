@@ -138,8 +138,7 @@ class DistributedIteratorTestBase(test.TestCase):
       self.skipTest("unsupported test combination.")
 
     devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    device_map = values.ReplicaDeviceMap(devices)
-    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
 
     if api_type == "wrap_into_iterator":
       iterator = self._wrap_iterator(
@@ -236,9 +235,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
     worker_device_pairs = [("", ["/device:GPU:0", "/device:CPU:0"])]
     dataset_fn = lambda _: dataset_ops.DatasetV1.range(10)
 
-    devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    device_map = values.ReplicaDeviceMap(devices)
-    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
 
     dist_dataset = input_lib.get_distributed_dataset(
         dataset_fn(distribute_lib.InputContext()), input_workers, distribution)
@@ -260,9 +257,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
           ]))
   def testDatasetV2IterError(self, distribution):
     worker_device_pairs = [("", ["/device:CPU:0"])]
-    devices = nest.flatten([ds for _, ds in worker_device_pairs])
-    device_map = values.ReplicaDeviceMap(devices)
-    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+    input_workers = input_lib.InputWorkers(worker_device_pairs)
     dataset_fn = lambda _: dataset_ops.DatasetV2.range(10).batch(2)
 
     dist_dataset = input_lib.get_distributed_dataset(

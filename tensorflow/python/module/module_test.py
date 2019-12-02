@@ -247,13 +247,10 @@ class VariableTrackingTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
   def test_supports_distributed_variables(self):
-    device_map = distributed_values.SingleDeviceMap("/CPU:0")
     mirrored = distributed_values.MirroredVariable(
-        None, device_map, [variables.Variable(1.)],
-        variables.VariableAggregation.SUM)
+        None, [variables.Variable(1.)], variables.VariableAggregation.SUM)
     tpu = distributed_values.TPUMirroredVariable(
         strategy=None,
-        device_map=device_map,
         values=[variables.Variable(42.)],
         aggregation=None)
     aggregating = distributed_values.AggregatingVariable(
