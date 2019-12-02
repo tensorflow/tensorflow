@@ -2189,8 +2189,8 @@ def deserialize_many_sparse(serialized_sparse, dtype, rank=None, name=None):
            v1=["sparse.sparse_dense_matmul", "sparse.matmul",
                "sparse_tensor_dense_matmul"])
 @deprecation.deprecated_endpoints("sparse_tensor_dense_matmul")
-def sparse_tensor_dense_matmul(sp_a,
-                               b,
+def sparse_tensor_dense_matmul(mat_a,
+                               mat_b,
                                adjoint_a=False,
                                adjoint_b=False,
                                name=None):
@@ -2392,46 +2392,38 @@ def sparse_tensor_dense_matmul(sp_a,
       `return A*B`
   """
   # pylint: enable=line-too-long
-  sp_a = _convert_to_sparse_tensor(sp_a)
-  with ops.name_scope(name, "SparseTensorDenseMatMul",
-                      [sp_a.indices, sp_a.values, b]) as name:
-    b = ops.convert_to_tensor(b, name="b")
-    return gen_sparse_ops.sparse_tensor_dense_mat_mul(
-        a_indices=sp_a.indices,
-        a_values=sp_a.values,
-        a_shape=sp_a.dense_shape,
-        b=b,
-        adjoint_a=adjoint_a,
-        adjoint_b=adjoint_b)
 
-tf_export("sparse.dense_sparse_matmul",
-           v1=["sparse.dense_sparse_matmul",
-               "dense_sparse_tensor_matmul"])
-@deprecation.deprecated_endpoints("dense_sparse_tensor_matmul")
-def dense_sparse_tensor_matmul(a,
-                               sp_b,
-                               name=None):
-  """
-  ```
-  This function returns the product between a dense matrix and a
-  SparseTensor. Both are rank 2 tensors.
+  if isinstance(mat_a, sparse_tensor.SparseTensor):
+    mat_a = _convert_to_sparse_tensor(mat_a)
+    with ops.name_scope(name, "SparseTensorDenseMatMul",
+                        [mat_a.indices, mat_a.values, mat_b]) as name:
+      mat_b = ops.convert_to_tensor(mat_b, name="b")
+      return gen_sparse_ops.sparse_tensor_dense_mat_mul(
+          a_indices=mat_a.indices,
+          a_values=mat_a.values,
+          a_shape=mat_a.dense_shape,
+          b=mat_b,
+          adjoint_a=adjoint_a,
+          adjoint_b=adjoint_b)
 
-  Args:
-    dense_a: A dense Matrix, a.
-    sp_b: A SparseTensor, b, of rank 2.
-    name: A name prefix for the returned tensors (optional)
+  elif isinstance(mat_b, sparse_tensor.SparseTensor):
 
-  Returns:
-    A dense matrix (pseudo-code in dense np.matrix notation):
-  """
-  # pylint: enable=line-too-long
-  sp_b = _convert_to_sparse_tensor(sp_b)
-  with ops.name_scope(name, "DenseSparseTensorMatMul",
-                      [a, sp_b.indices, sp_b.values]) as name:
-    a = ops.convert_to_tensor(a, name="a")
-    return array_ops.transpose(sparse_tensor_dense_matmul(sp_b, a,
-                                adjoint_a=True,
-                                adjoint_b=True))
+    if adjoint_a == True and adjoint_b == False:
+      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+                                                            adjoint_a=True,
+                                                            adjoint_b=False))
+    elif adjoint_a == False and adjoint_b == True:
+      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+                                                            adjoint_a=False,
+                                                            adjoint_b=True))
+    elif adjoint_a == False and adjoint_b == False:
+      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+                                                            adjoint_a=True,
+                                                            adjoint_b=True))
+    elif adjoint_a == True and adjoint_b == True:
+      return array_ops.transpose(sparse_tensor_dense_matmul(mat_b, mat_a,
+                                                            adjoint_a=False,
+                                                            adjoint_b=False))
 
 @tf_export("sparse.softmax", v1=["sparse.softmax", "sparse_softmax"])
 @deprecation.deprecated_endpoints("sparse_softmax")
