@@ -53,7 +53,7 @@ bool SetterForXlaAutoJitFlag(const string& value) {
         .optimization_level_single_gpu = 1;
     mark_for_compilation_flags->xla_auto_jit_flag.optimization_level_general =
         1;
-    mark_for_compilation_flags->tf_xla_supported_ops = "FUSIBLE";
+    mark_for_compilation_flags->tf_xla_ops_to_cluster = "FUSIBLE";
     return true;
   }
 
@@ -89,8 +89,8 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
       Flag("tf_xla_max_cluster_size",
            &mark_for_compilation_flags->tf_xla_max_cluster_size,
            "Maximum number of operators in an XLA compilation."),
-      Flag("tf_xla_supported_ops",
-           &mark_for_compilation_flags->tf_xla_supported_ops,
+      Flag("tf_xla_ops_to_cluster",
+           &mark_for_compilation_flags->tf_xla_ops_to_cluster,
 	   "(experimental) "
            "Limit the operations clustered by XLA to these operations. "
            "If multiple, separate them with commas. Shortcuts: "
