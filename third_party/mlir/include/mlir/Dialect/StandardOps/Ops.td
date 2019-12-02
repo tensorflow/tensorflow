@@ -1248,7 +1248,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
-def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
+def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
   let summary = "memref subview operation";
   let description = [{
     The "subview" operation converts a memref type to another memref type
@@ -1356,23 +1356,25 @@ def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
 
   // TODO(b/144779634, ravishankarm) : Use different arguments for
   // offsets, sizes and strides.
-  let arguments = (ins AnyMemRef:$source, I32Attr:$num_offsets,
-                   I32Attr:$num_sizes, I32Attr:$num_strides,
-                   Variadic<Index>:$operands);
+  let arguments = (ins
+    AnyMemRef:$source,
+    Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides,
+    I32ElementsAttr:$operand_segment_sizes
+  );
   let results = (outs AnyMemRef);
 
-  let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *source, "
-    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
-    "ArrayRef<Value *> strides, Type resultType = Type(), "
-    "ArrayRef<NamedAttribute> attrs = {}">,
+  let builders = [
     OpBuilder<
-    "Builder *builder, OperationState &result, Type resultType, Value *source">,
+      "Builder *b, OperationState &result, Value *source, "
+      "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
+      "ArrayRef<Value *> strides, Type resultType = Type(), "
+      "ArrayRef<NamedAttribute> attrs = {}">,
     OpBuilder<
-    "Builder *builder, OperationState &result, Type resultType, Value *source, "
-    "unsigned num_offsets, unsigned num_sizes, unsigned num_strides, "
-    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
-    "ArrayRef<Value *> strides">];
+      "Builder *builder, OperationState &result, "
+      "Type resultType, Value *source">
+  ];
 
   let extraClassDeclaration = [{
     /// Returns the type of the base memref operand.
@@ -1384,28 +1386,16 @@ def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
     /// Returns as integer value the number of offset operands.
-    int64_t getNumOffsets() {
-      return num_offsets().getSExtValue();
-    }
+    int64_t getNumOffsets() { return llvm::size(offsets()); }
 
     /// Returns as integer value the number of size operands.
-    int64_t getNumSizes() {
-      return num_sizes().getSExtValue();
-    }
+    int64_t getNumSizes() { return llvm::size(sizes()); }
 
     /// Returns as integer value the number of stride operands.
-    int64_t getNumStrides() {
-      return num_strides().getSExtValue();
-    }
-
-    /// Returns the dynamic offsets for this subview operation.
-    operand_range getDynamicOffsets();
+    int64_t getNumStrides() { return llvm::size(strides()); }
 
     /// Returns the dynamic sizes for this subview operation if specified.
-    operand_range getDynamicSizes();
-
-    /// Returns the dynamic strides for this subview operation if specified.
-    operand_range getDynamicStrides();
+    operand_range getDynamicSizes() { return sizes(); }
 
     // Auxiliary range data structure and helper function that unpacks the
     // offset, size and stride operands of the SubViewOp into a list of triples.
