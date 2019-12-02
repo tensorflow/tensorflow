@@ -50,10 +50,8 @@ limitations under the License.
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
-}  // namespace mlir
 
-using namespace mlir;
-using namespace mlir::xla_hlo;
+namespace xla_hlo {
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
                                               Attribute value, Type type,
@@ -212,9 +210,9 @@ void AbsOp::build(Builder* builder, OperationState& result, Value* operand) {
     new_type = operand->getType();
   } else if (shaped_type.hasRank()) {
     new_type =
-        mlir::RankedTensorType::get(shaped_type.getShape(), operand->getType());
+        RankedTensorType::get(shaped_type.getShape(), operand->getType());
   } else {
-    new_type = mlir::UnrankedTensorType::get(operand->getType());
+    new_type = UnrankedTensorType::get(operand->getType());
   }
 
   return AbsOp::build(builder, result, new_type, operand);
@@ -241,8 +239,8 @@ OpFoldResult ConvertOp::fold(ArrayRef<Attribute> operands) {
 
   // If the operand is constant, we can do the conversion now.
   if (auto elementsAttr = operands.front().dyn_cast_or_null<ElementsAttr>()) {
-    return ::xla::ConvertElementsAttr(elementsAttr,
-                                      getElementTypeOrSelf(getResult()));
+    return xla::ConvertElementsAttr(elementsAttr,
+                                    getElementTypeOrSelf(getResult()));
   }
 
   return {};
@@ -436,7 +434,7 @@ static LogicalResult Verify(ClampOp op) {
 void ComplexOp::build(Builder* builder, OperationState& state, Value* lhs,
                       Value* rhs) {
   auto type = lhs->getType();
-  auto element_ty = mlir::ComplexType::get(getElementTypeOrSelf(type));
+  auto element_ty = ComplexType::get(getElementTypeOrSelf(type));
   Type result_ty;
   if (auto ranked_type = type.dyn_cast<RankedTensorType>()) {
     result_ty = RankedTensorType::get(ranked_type.getShape(), element_ty);
@@ -990,3 +988,6 @@ XlaHloDialect::XlaHloDialect(MLIRContext* context)
   // Support unknown operations because not all XLA operations are registered.
   // allowUnknownOperations();
 }
+
+}  // namespace xla_hlo
+}  // namespace mlir

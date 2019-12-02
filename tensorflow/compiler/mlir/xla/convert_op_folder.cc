@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 
+namespace mlir {
 namespace xla {
 
 mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
@@ -82,3 +83,4 @@ mlir::ElementsAttr ConvertElementsAttr(const mlir::ElementsAttr& elements,
 }
 
 }  // namespace xla
+}  // namespace mlir

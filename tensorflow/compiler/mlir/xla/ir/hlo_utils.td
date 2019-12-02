@@ -27,11 +27,11 @@ def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
 
 class ConstantSplat<string value> : NativeCodeCall<
-    "getSplat(&$_builder, $0, " # value # ")">;
+    "xla::getSplat(&$_builder, $0, " # value # ")">;
 
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def BinBroadcastDimensions : NativeCodeCall<
-    "getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
+    "xla::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
 
 #endif // HLO_UTILS
