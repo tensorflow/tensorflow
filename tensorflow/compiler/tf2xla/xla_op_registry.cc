@@ -542,8 +542,8 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::IsMetadataOp() {
 }
 
 XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::Label(
-    absl::string_view label) {
-  registration_->label = string(label);
+    std::string label) {
+  registration_->label = label;
   return *this;
 }
 
