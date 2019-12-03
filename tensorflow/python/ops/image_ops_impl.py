@@ -354,6 +354,7 @@ def random_flip_up_down(image, seed=None):
 
   Returns:
     A tensor of the same type and shape as `image`.
+
   Raises:
     ValueError: if the shape of `image` not supported.
   """
@@ -1573,6 +1574,13 @@ def random_brightness(image, max_delta, seed=None):
 
   Returns:
     The brightness-adjusted image(s).
+  
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.random_brightness(x, 1)
+    ```
 
   Raises:
     ValueError: if `max_delta` is negative.
@@ -1601,6 +1609,13 @@ def random_contrast(image, lower, upper, seed=None):
   Returns:
     The contrast-adjusted image(s).
 
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.random_contrast(x, 0, 10)
+    ```
+    
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
   """
@@ -1938,6 +1953,13 @@ def random_hue(image, max_delta, seed=None):
   Returns:
     Adjusted image(s), same shape and DType as `image`.
 
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.random_hue(x, 0.3)
+    ```
+
   Raises:
     ValueError: if `max_delta` is invalid.
   """
@@ -2016,6 +2038,13 @@ def random_jpeg_quality(image, min_jpeg_quality, max_jpeg_quality, seed=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.random_jpeg_quality(x, 25,75)
+    ```
 
   Raises:
     ValueError: if `min_jpeg_quality` or `max_jpeg_quality` is invalid.
@@ -2096,6 +2125,13 @@ def random_saturation(image, lower, upper, seed=None):
 
   Returns:
     Adjusted image(s), same shape and DType as `image`.
+
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    x = tf.random.normal(shape=(256, 256, 3))
+    tf.image.random_saturation(x, 0.5, 1.5)
+    ```
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
