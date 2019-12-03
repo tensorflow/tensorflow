@@ -207,6 +207,9 @@ struct PythonMLIRModule {
   // Creates an affine symbol expression.
   PythonAffineExpr affineSymbolExpr(unsigned position);
 
+  // Creates an affine dimension expression.
+  PythonAffineExpr affineDimExpr(unsigned position);
+
   // Creates a single constant result affine map.
   PythonAffineMap affineConstantMap(int64_t value);
 
@@ -565,6 +568,8 @@ struct PythonAffineExpr {
   operator AffineExpr() const { return affine_expr; }
   operator AffineExpr &() { return affine_expr; }
 
+  AffineExpr get() const { return affine_expr; }
+
   std::string str() const {
     std::string res;
     llvm::raw_string_ostream os(res);
@@ -722,6 +727,10 @@ PythonAffineExpr PythonMLIRModule::affineConstantExpr(int64_t value) {
 
 PythonAffineExpr PythonMLIRModule::affineSymbolExpr(unsigned position) {
   return PythonAffineExpr(getAffineSymbolExpr(position, &mlirContext));
+}
+
+PythonAffineExpr PythonMLIRModule::affineDimExpr(unsigned position) {
+  return PythonAffineExpr(getAffineDimExpr(position, &mlirContext));
 }
 
 PythonAffineMap PythonMLIRModule::affineConstantMap(int64_t value) {
@@ -937,6 +946,8 @@ PYBIND11_MODULE(pybind, m) {
            "Returns an affine constant expression.")
       .def("affine_symbol_expr", &PythonMLIRModule::affineSymbolExpr,
            "Returns an affine symbol expression.")
+      .def("affine_dim_expr", &PythonMLIRModule::affineDimExpr,
+           "Returns an affine dim expression.")
       .def("affine_constant_map", &PythonMLIRModule::affineConstantMap,
            "Returns an affine map with single constant result.")
       .def("affine_map", &PythonMLIRModule::affineMap, "Returns an affine map.",
@@ -1054,6 +1065,58 @@ PYBIND11_MODULE(pybind, m) {
   py::class_<PythonAffineExpr>(m, "AffineExpr",
                                "A wrapper around mlir::AffineExpr")
       .def(py::init<PythonAffineExpr>())
+      .def("__add__",
+           [](PythonAffineExpr lhs, int64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() + rhs);
+           })
+      .def("__add__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() + rhs.get());
+           })
+      .def("__neg__",
+           [](PythonAffineExpr lhs) -> PythonAffineExpr {
+             return PythonAffineExpr(-lhs.get());
+           })
+      .def("__sub__",
+           [](PythonAffineExpr lhs, int64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() - rhs);
+           })
+      .def("__sub__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() - rhs.get());
+           })
+      .def("__mul__",
+           [](PythonAffineExpr lhs, int64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() * rhs);
+           })
+      .def("__mul__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() * rhs.get());
+           })
+      .def("__floordiv__",
+           [](PythonAffineExpr lhs, uint64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().floorDiv(rhs));
+           })
+      .def("__floordiv__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().floorDiv(rhs.get()));
+           })
+      .def("ceildiv",
+           [](PythonAffineExpr lhs, uint64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().ceilDiv(rhs));
+           })
+      .def("ceildiv",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get().ceilDiv(rhs.get()));
+           })
+      .def("__mod__",
+           [](PythonAffineExpr lhs, uint64_t rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() % rhs);
+           })
+      .def("__mod__",
+           [](PythonAffineExpr lhs, PythonAffineExpr rhs) -> PythonAffineExpr {
+             return PythonAffineExpr(lhs.get() % rhs.get());
+           })
       .def("__str__", &PythonAffineExpr::str);
 
   py::class_<PythonAffineMap>(m, "AffineMap",

@@ -289,22 +289,30 @@ class EdscTest:
     self.setUp()
     a1 = self.module.affine_constant_expr(23)
     a2 = self.module.affine_constant_expr(44)
+    a3 = self.module.affine_dim_expr(1)
     s0 = self.module.affine_symbol_expr(0)
     aMap1 = self.module.affine_map(2, 0, [a1, a2, s0])
     aMap2 = self.module.affine_constant_map(42)
+    aMap3 = self.module.affine_map(
+        2, 0,
+        [a1 + a2 * a3, a1 // a3 % a2,
+         a1.ceildiv(a2), a1 - 2, a2 * 2, -a3])
+
     affineAttr1 = self.module.affineMapAttr(aMap1)
     affineAttr2 = self.module.affineMapAttr(aMap2)
+    affineAttr3 = self.module.affineMapAttr(aMap3)
 
     t = self.module.make_memref_type(self.f32Type, [10])
     t_with_attr = t({
         "affine_attr_1": affineAttr1,
-        "affine_attr_2": affineAttr2
+        "affine_attr_2": affineAttr2,
+        "affine_attr_3": affineAttr3,
     })
 
     f = self.module.declare_function("foo", [t, t_with_attr], [])
     printWithCurrentFunctionName(str(self.module))
     # CHECK-LABEL: testFunctionDeclarationWithAffineAttr
-    #       CHECK:  func @foo(memref<10xf32>, memref<10xf32> {affine_attr_1 = (d0, d1) -> (23, 44, s0), affine_attr_2 = () -> (42)})
+    #       CHECK:  func @foo(memref<10xf32>, memref<10xf32> {affine_attr_1 = (d0, d1) -> (23, 44, s0), affine_attr_2 = () -> (42), affine_attr_3 = (d0, d1) -> (d1 * 44 + 23, (23 floordiv d1) mod 44, 1, 21, 88, -d1)})
 
   def testFunctionDeclarationWithArrayAttr(self):
     self.setUp()
