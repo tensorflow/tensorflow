@@ -75,9 +75,7 @@ class OverrideThreadpoolTest(test_base.DatasetTestBase,
           combinations.combine(
               num_threads=[1, 2, 4, 8, 16], max_intra_op_parallelism=[None]) +
           combinations.combine(
-              num_threads=[4], max_intra_op_parallelism=[0, 1, 4]) +
-          combinations.combine(
-              num_threads=[5], max_intra_op_parallelism=[-1])))
+              num_threads=[4], max_intra_op_parallelism=[-1, 0, 4])))
   def testNumThreadsDeprecated(self, num_threads, max_intra_op_parallelism):
 
     def override_threadpool_fn(dataset):
