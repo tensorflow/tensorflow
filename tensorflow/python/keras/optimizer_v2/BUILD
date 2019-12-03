@@ -114,7 +114,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 4,
-    tags = ["no_rocm"],
 )
 
 cuda_py_test(

@@ -32,7 +32,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
     ],
     python_version = "PY3",
-    tags = ["no_rocm"],
 )
 
 cuda_py_tests(
@@ -79,7 +78,6 @@ cuda_py_tests(
         "//tensorflow/python/ops/signal",
     ],
     python_version = "PY3",
-    tags = ["no_rocm"],
 )
 
 cuda_py_tests(

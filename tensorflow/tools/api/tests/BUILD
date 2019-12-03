@@ -27,10 +27,7 @@ py_test(
     ],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-        "no_rocm",
-    ],
+    tags = ["no_pip"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -66,7 +63,6 @@ py_test(
     srcs = ["module_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = ["no_rocm_v2"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
