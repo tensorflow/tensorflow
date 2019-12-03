@@ -34,49 +34,38 @@ inline void* VoidPtrAdd(void* p, std::ptrdiff_t offset) {
   return reinterpret_cast<void*>(addr);
 }
 
-// Minimum alignment for blocks.
-//
-// Considerations:
-//  - This needs to be at least the alignment of any usual data type.
-//  - It's useful that this is at least the size of a cache line to limit
-//    possible cache side effects (if only on performance behavior).
-//  - It's useful that this is at least the size of SIMD registers, as
-//    some SIMD instruction sets have at least performance behavior
-//    differences (e.g. NEON) or even different requirements (e.g. SSE)
-//    based on that.
-//  - It's useful that this is at least the size of an "exclusive reservation
-//    granule" on ARM, meaning that if we use this Allocator to allocate
-//    an atomic variable, there will be no side effects from other things
-//    contending for exclusive/atomic memory accesses to it. While the
-//    ARM reference manual mentions that this granule size may be as large
-//    as 2048 bytes, in practice we observe it to be 64 bytes. It can
-//    be queried cheaply, at runtime, from userspace, if needed.
-static constexpr std::ptrdiff_t kMinimumBlockAlignment = 64;
-
-// Primitive allocation functions obtaining aligned memory from the
-// operating system.
-void* SystemAlignedAlloc(std::ptrdiff_t num_bytes);
-void SystemAlignedFree(void* ptr);
-
-// Specialized allocator designed to converge to a steady-state where all
+// Simple allocator designed to converge to a steady-state where all
 // allocations are bump-ptr allocations from an already-allocated buffer.
 //
 // To support these constraints, this allocator only supports two
 // operations.
 // - AllocateAlignedBytes: allocates a pointer to storage of a specified
-// size, which must be aligned to kMinimumBlockAlignment.
+// size, which must be aligned to kAlignment.
 // - FreeAll: frees all previous allocations (but retains the internal
 // buffer to minimize future calls into the system allocator).
-//
-// This class is specialized for supporting just those two operations
-// under this specific steady-state usage pattern. Extending this class
-// with new allocation interfaces that don't fit that pattern is probably not
-// the right choice. Instead, build a new class on top of
-// SystemAlignedAlloc/SystemAlignedFree.
 //
 // All operations happen on aligned blocks for simplicity.
 class AlignedAllocator {
  public:
+  // Alignment of allocated blocks.
+  //
+  // Considerations:
+  //  - This needs to be at least the alignment of any usual data type.
+  //  - It's useful that this is at least the size of a cache line to limit
+  //    possible cache side effects (if only on performance behavior).
+  //  - It's useful that this is at least the size of SIMD registers, as
+  //    some SIMD instruction sets have at least performance behavior
+  //    differences (e.g. NEON) or even different requirements (e.g. SSE)
+  //    based on that.
+  //  - It's useful that this is at least the size of an "exclusive reservation
+  //    granule" on ARM, meaning that if we use this Allocator to allocate
+  //    an atomic variable, there will be no side effects from other things
+  //    contending for exclusive/atomic memory accesses to it. While the
+  //    ARM reference manual mentions that this granule size may be as large
+  //    as 2048 bytes, in practice we observe it to be 64 bytes. It can
+  //    be queried cheaply, at runtime, from userspace, if needed.
+  static constexpr std::ptrdiff_t kAlignment = 64;
+
   void operator=(const AlignedAllocator&) = delete;
   ~AlignedAllocator() {
     FreeAll();
@@ -85,7 +74,7 @@ class AlignedAllocator {
 
   void* AllocateAlignedBytes(std::ptrdiff_t num_bytes) {
     RUY_DCHECK_GT(num_bytes, 0);
-    RUY_DCHECK((num_bytes & (kMinimumBlockAlignment - 1)) == 0);
+    RUY_DCHECK((num_bytes & (kAlignment - 1)) == 0);
     if (void* p = AllocateFast(num_bytes)) {
       return p;
     }
@@ -116,7 +105,17 @@ class AlignedAllocator {
     fallback_blocks_total_size_ = 0;
   }
 
- private:
+  void FreeOne(void* ptr) {
+    for (auto p = fallback_blocks_.begin(); p != fallback_blocks_.end(); ++p) {
+      if (*p == ptr) {
+        SystemAlignedFree(ptr);
+        fallback_blocks_.erase(p);
+        return;
+      }
+    }
+    RUY_DCHECK(false);  // Trying to free pointer we did not allocate.
+  }
+
   void* AllocateFast(std::ptrdiff_t num_bytes) {
     if (current_ + num_bytes > size_) {
       return nullptr;
@@ -132,6 +131,12 @@ class AlignedAllocator {
     fallback_blocks_.push_back(p);
     return p;
   }
+
+ private:
+  // Primitive allocation functions obtaining aligned memory from the
+  // operating system.
+  void* SystemAlignedAlloc(std::ptrdiff_t num_bytes);
+  void SystemAlignedFree(void* ptr);
 
   // Theory of operation:
   //
@@ -166,7 +171,7 @@ class Allocator {
       return nullptr;
     }
     return aligned.AllocateAlignedBytes(
-        round_up_pot(num_bytes, detail::kMinimumBlockAlignment));
+        round_up_pot(num_bytes, detail::AlignedAllocator::kAlignment));
   }
   template <typename Pointer>
   void Allocate(std::ptrdiff_t count, Pointer* out) {
