@@ -1040,24 +1040,21 @@ Status EagerKernelExecute(
   profiler::TraceMe activity("EagerKernelExecute",
                              profiler::TraceMeLevel::kInfo);
   std::vector<Tensor> outputs(1);
-  gtl::InlinedVector<TensorValue, 4> input_vector(op_inputs.size());
 
-  std::unique_ptr<ExecuteNodeArgs> inputs;
-  TF_RETURN_IF_ERROR(ExecuteNodeArgs::CreateExecuteNodeArgs(
-      std::move(input_vector), ctx, op_inputs, &inputs));
+  ExecuteNodeArgs inputs(op_inputs.size());
+  TF_RETURN_IF_ERROR(inputs.Init(ctx, op_inputs));
   // TODO(apassos) figure out how to record stats for ops which are a part of
   // functions.
-  // TODO(agarwal): change Run to take vector of handles ?
   // TODO(b/111859745): When we support recovering from kernel/device errors, we
   // would need to call XlaDevice::EnsureDeviceContextOk() before using an XLA
   // device. We don't call it now because it is an unneeded overhead (it
   // acquires a lock) and we can't recover from errors anyway.
   ScopedStepContainer* container = ctx->StepContainer();
   if (container == nullptr) {
-    TF_RETURN_IF_ERROR(kernel->Run(*inputs, &outputs, cancellation_manager,
+    TF_RETURN_IF_ERROR(kernel->Run(inputs, &outputs, cancellation_manager,
                                    remote_func_params));
   } else {
-    TF_RETURN_IF_ERROR(kernel->Run(container, *inputs, &outputs,
+    TF_RETURN_IF_ERROR(kernel->Run(container, inputs, &outputs,
                                    cancellation_manager, remote_func_params));
   }
   if (graph_collector != nullptr) {
