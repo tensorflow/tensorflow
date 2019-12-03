@@ -1506,10 +1506,12 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     if (!sourceElementTy || !targetDescTy)
       return matchFailure();
 
-    // Early exit for 0-D and operands lesser than `rank` corner cases.
+    // Currently, only rank > 0 and full or no operands are supported. Fail to
+    // convert otherwise.
     unsigned rank = sourceMemRefType.getRank();
-    if (viewMemRefType.getRank() == 0 || rank != dynamicOffsets.size() ||
-        rank != dynamicSizes.size() || rank != dynamicStrides.size())
+    if (viewMemRefType.getRank() == 0 || (rank != dynamicOffsets.size()) ||
+        (!dynamicSizes.empty() && rank != dynamicSizes.size()) ||
+        (!dynamicStrides.empty() && rank != dynamicStrides.size()))
       return matchFailure();
 
     int64_t offset;
@@ -1539,6 +1541,17 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i)
       strideValues.push_back(sourceMemRef.stride(rewriter, loc, i));
 
+    // Fill in missing dynamic sizes.
+    auto llvmIndexType = lowering.convertType(rewriter.getIndexType());
+    if (dynamicSizes.empty()) {
+      dynamicSizes.reserve(viewMemRefType.getRank());
+      auto shape = viewMemRefType.getShape();
+      for (auto extent : shape) {
+        dynamicSizes.push_back(rewriter.create<LLVM::ConstantOp>(
+            loc, llvmIndexType, rewriter.getI64IntegerAttr(extent)));
+      }
+    }
+
     // Offset.
     Value *baseOffset = sourceMemRef.offset(rewriter, loc);
     for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i) {
@@ -1552,9 +1565,14 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     // Update sizes and strides.
     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
       targetMemRef.setSize(rewriter, loc, i, dynamicSizes[i]);
-      targetMemRef.setStride(rewriter, loc, i,
-                             rewriter.create<LLVM::MulOp>(
-                                 loc, dynamicStrides[i], strideValues[i]));
+      Value *newStride;
+      if (dynamicStrides.empty())
+        newStride = rewriter.create<LLVM::ConstantOp>(
+            loc, llvmIndexType, rewriter.getI64IntegerAttr(strides[i]));
+      else
+        newStride = rewriter.create<LLVM::MulOp>(loc, dynamicStrides[i],
+                                                 strideValues[i]);
+      targetMemRef.setStride(rewriter, loc, i, newStride);
     }
 
     rewriter.replaceOp(op, {targetMemRef});
