@@ -842,6 +842,70 @@ Type SliceOp::InferOutputTypes(Builder* builder, Value* operand,
 }
 
 //===----------------------------------------------------------------------===//
+// SortOp
+//===----------------------------------------------------------------------===//
+
+void SortOp::build(Builder* builder, OperationState& state,
+                   ArrayRef<Value*> operands, int64_t dimension,
+                   bool is_stable) {
+  state.addOperands(operands);
+  state.addAttribute("dimension", builder->getI64IntegerAttr(dimension));
+  state.addAttribute("is_stable", builder->getBoolAttr(dimension));
+
+  SmallVector<Type, 2> element_types;
+  element_types.reserve(operands.size());
+  for (Value* operand : operands) element_types.push_back(operand->getType());
+  state.addTypes(builder->getTupleType(element_types));
+
+  state.addRegion();
+}
+
+static LogicalResult Verify(SortOp op) {
+  Operation::operand_range operands = op.operands();
+  if (operands.empty()) return op.emitOpError("requires at least one input");
+
+  // TODO(antiagainst): verify partionally dynamic shapes
+  if (llvm::all_of(operands, [](Value* operand) {
+        return operand->getType().cast<ShapedType>().hasRank();
+      })) {
+    ArrayRef<int64_t> input_shape =
+        (*operands.begin())->getType().cast<ShapedType>().getShape();
+
+    if (llvm::any_of(llvm::drop_begin(operands, 1), [&](Value* operand) {
+          return operand->getType().cast<ShapedType>().getShape() !=
+                 input_shape;
+        }))
+      return op.emitOpError("requires all inputs to have the same dimensions");
+
+    if (op.dimension().getSExtValue() >= input_shape.size())
+      return op.emitOpError(
+          "dimension attribute value must be less than input rank");
+  }
+
+  Block& block = op.comparator().front();
+  size_t num_operands = op.getOperation()->getNumOperands();
+  if (block.getNumArguments() != 2 * num_operands)
+    return op.emitOpError("comparator block should have ")
+           << 2 * num_operands << " arguments";
+
+  for (auto indexed_operand : llvm::enumerate(operands)) {
+    int index = indexed_operand.index();
+    Type element_type =
+        indexed_operand.value()->getType().cast<ShapedType>().getElementType();
+    Type tensor_type = RankedTensorType::get({}, element_type);
+    for (int i : {2 * index, 2 * index + 1}) {
+      Type arg_type = block.getArgument(i)->getType();
+      if (arg_type != tensor_type)
+        return op.emitOpError("comparator block argument #")
+               << i << " should be of type " << tensor_type << " but got "
+               << arg_type;
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // TransposeOp
 //===----------------------------------------------------------------------===//
 

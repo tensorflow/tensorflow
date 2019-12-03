@@ -624,6 +624,18 @@ LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
+  xla::XlaComputation comparator;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.comparator(),
+                                                     &comparator)))
+    return failure();
+
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+                            op.dimension().getSExtValue(), op.is_stable());
+  return success();
+}
+
 LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Tuple(ctx.builder, GetTuple(op.val(), ctx));

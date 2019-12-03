@@ -868,6 +868,26 @@ def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_SortOp : HLO_Op<"sort", [NoSideEffect]>, BASE_HLO_SortOp {
+  let arguments = (ins
+    Variadic<HLO_Tensor>:$operands,
+    DefaultValuedAttr<I64Attr, "-1">:$dimension,
+    DefaultValuedAttr<BoolAttr, "false">:$is_stable
+  );
+
+  let results = (outs HLO_TensorOrTuple);
+
+  let regions = (region SizedRegion<1>:$comparator);
+
+  let builders = [OpBuilder<
+    "Builder *builder, OperationState &state, ArrayRef<Value *> operands, "
+    "int64_t dimension, bool is_stable"
+  >];
+
+  // TODO(b/129422361): SortOp has special conversion logic to HLO.
+  let hasCustomHLOConverter = 1;
+}
+
 def HLO_ReverseOp: HLO_Op<"reverse",
       [NoSideEffect, SameOperandsAndResultType]>, BASE_HLO_ReverseOp {
   let arguments = (ins

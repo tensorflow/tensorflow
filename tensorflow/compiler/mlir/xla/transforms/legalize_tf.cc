@@ -439,6 +439,38 @@ static DenseIntElementsAttr TFSliceSizes2HLOSliceSizes(
 }
 
 //===----------------------------------------------------------------------===//
+// Sort op utilities.
+//===----------------------------------------------------------------------===//
+
+// Builds the region `body` for xla_hlo.sort's comparator: for each type in
+// `element_types`, create two block arguments, one for lhs and one for rhs, and
+// generates xla_hlo.compare op to compare them with the given `direction`.
+//
+// Note that this right now only does comparsion on the first pair of block
+// arguments.
+static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
+                                    StringRef direction, Region *body,
+                                    OpBuilder *builder) {
+  OpBuilder::InsertionGuard insertion_point_gurad(*builder);
+
+  Block *block = builder->createBlock(body);
+  // Add two arguments for each element type.
+  for (Type element_type : element_types) {
+    TensorType tensor_type = RankedTensorType::get({}, element_type);
+    block->addArguments({tensor_type, tensor_type});
+  }
+
+  Location loc = body->getLoc();
+  StringAttr compare_direction =
+      StringAttr::get(direction, builder->getContext());
+  Value *compare = builder->create<xla_hlo::CompareOp>(
+      loc, block->getArgument(0), block->getArgument(1),
+      /*broadcast_dimensions=*/nullptr, compare_direction);
+
+  builder->create<xla_hlo::ReturnOp>(loc, compare);
+}
+
+//===----------------------------------------------------------------------===//
 // Op converters.
 //===----------------------------------------------------------------------===//
 
@@ -1873,6 +1905,101 @@ class ConvertOneHotOp : public OpRewritePattern<TF::OneHotOp> {
   }
 };
 
+// Converts tf.TopKV2 to XLA HLO iota, sort, and slice ops when k is a constant.
+//
+// tf.TopKV2 sorts along last dimension of the input tensor and then returns
+// the top K components' values and indices. This is translated into a few
+// ops in XLA HLO: first generating an integer sequence for the indices,
+// then sort both the original input tensor and the indices togheter, and
+// at last slice out the top K components.
+//
+// For example, for the following IR:
+//
+// %k = "tf.Const"() {value = dense<8> : tensor<i32>} : () -> tensor<i32>
+// %0:2 = "tf.TopKV2"(%input, %k): (tensor<16x16xf32>, tensor<i32>) ->
+//                                 (tensor<16x8xf32>, tensor<16x8xi32>)
+//
+// We will get:
+//
+// %1 = "xla_hlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<16x16xi32>
+// %2 = "xla_hlo.sort"(%input, %1) ( {
+// ^bb0(%arg1: tensor<f32>, %arg2: tensor<f32>,
+//      %arg3: tensor<i32>, %arg4: tensor<i32>):
+//   %7 = "xla_hlo.compare"(%arg1, %arg2) {comparison_direction = "GT"}: ...
+//   "xla_hlo.return"(%7) : (tensor<i1>) -> ()
+// }) {dimension = 1 : i64, is_stable = true} : ...
+// %3 = "xla_hlo.get_tuple_element"(%2) {index = 0 : i32} : ...
+// %4 = "xla_hlo.get_tuple_element"(%2) {index = 1 : i32} : ...
+// %5 = "xla_hlo.slice"(%3) {limit_indices = dense<[16, 8]> : tensor<2xi64>,
+//                           start_indices dense<0> : tensor<2xi64>,
+//                           strides = dense<1> : tensor<2xi64>} :
+//                              (tensor<16x16xf32>) -> tensor<16x8xf32>
+// %6 = "xla_hlo.slice"(%4) ...
+class ConvertTopKV2Op : public OpRewritePattern<TF::TopKV2Op> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::TopKV2Op op,
+                                     PatternRewriter &rewriter) const override {
+    // We can only match when the `k` operand is a constant scalar.
+    DenseIntElementsAttr k_attr;
+    if (!matchPattern(op.k(), m_Constant(&k_attr))) return matchFailure();
+
+    // The last dimension of the input tensor's shape should be known so we can
+    // have clamped end_indices for slices.
+    TensorType input_type = op.input()->getType().cast<TensorType>();
+    if (!input_type.hasRank()) return matchFailure();
+    int64_t input_rank = input_type.getRank();
+    int64_t last_dim_index = input_rank - 1;
+    int64_t last_dim_size = input_type.getDimSize(last_dim_index);
+    if (last_dim_size == ShapedType::kDynamicSize) return matchFailure();
+
+    // Create an Itoa op for indices.
+    auto i32_type = rewriter.getIntegerType(32);
+    Type iota_type = RankedTensorType::get(input_type.getShape(), i32_type);
+    Value *iota_op = rewriter.create<xla_hlo::IotaOp>(
+        op.getLoc(), iota_type, rewriter.getI64IntegerAttr(last_dim_index));
+
+    // Create the sort op. It takes two inputs, one for the original input, the
+    // other for the indices.
+    auto sort_op = rewriter.create<xla_hlo::SortOp>(
+        op.getLoc(), llvm::ArrayRef<Value *>{op.input(), iota_op},
+        last_dim_index, /*is_stable=*/true);
+    BuildSortComparisonBody({input_type.getElementType(), i32_type},
+                            /*direction=*/"GT", &sort_op.comparator(),
+                            &rewriter);
+
+    // Get the sorted input and index tuple element.
+    auto tuple_first_element =
+        rewriter.create<xla_hlo::GetTupleElementOp>(op.getLoc(), sort_op, 0);
+    auto tuple_second_element =
+        rewriter.create<xla_hlo::GetTupleElementOp>(op.getLoc(), sort_op, 1);
+
+    SmallVector<int64_t, 4> begin_indices(input_rank, 0);
+    auto end_indices = llvm::to_vector<4>(input_type.getShape());
+    end_indices.back() =
+        std::min((*k_attr.begin()).getSExtValue(), last_dim_size);
+    SmallVector<int64_t, 4> strides(input_rank, 1);
+
+    // Get the slice for the top K elements.
+
+    Value *values = rewriter.create<xla_hlo::SliceOp>(
+        op.getLoc(), tuple_first_element,
+        GetI64ElementsAttr(begin_indices, &rewriter),
+        GetI64ElementsAttr(end_indices, &rewriter),
+        GetI64ElementsAttr(strides, &rewriter));
+
+    Value *indices = rewriter.create<xla_hlo::SliceOp>(
+        op.getLoc(), tuple_second_element,
+        GetI64ElementsAttr(begin_indices, &rewriter),
+        GetI64ElementsAttr(end_indices, &rewriter),
+        GetI64ElementsAttr(strides, &rewriter));
+
+    rewriter.replaceOp(op, {values, indices});
+    return matchSuccess();
+  }
+};
+
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
 LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
@@ -1892,10 +2019,10 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
               ConvertSigmoidOp, ConvertSizeOp, ConvertMaxPoolOp, ConvertRangeOp,
               ConvertSigmoidOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
               ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp,
-              ConvertStridedSliceOp, ConvertMeanOp, ConvertSumOp, ConvertMaxOp,
-              ConvertTileOp, ConvertMaxPoolGradOp, ConvertOneHotOp,
-              ConvertConv2DBackpropInputOp, ConvertConv2DBackpropFilterOp>(
-          op->getContext());
+              ConvertStridedSliceOp, ConvertTopKV2Op, ConvertMeanOp,
+              ConvertSumOp, ConvertMaxOp, ConvertTileOp, ConvertMaxPoolGradOp,
+              ConvertOneHotOp, ConvertConv2DBackpropInputOp,
+              ConvertConv2DBackpropFilterOp>(op->getContext());
 
   ConversionTarget target(*context);
   target.addLegalDialect<XlaHloDialect>();

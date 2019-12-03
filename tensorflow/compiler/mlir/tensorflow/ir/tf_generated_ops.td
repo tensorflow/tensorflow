@@ -5768,6 +5768,8 @@ If two elements are equal, the lower-index element appears first.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TransposeOp : TF_Op<"Transpose", [NoSideEffect]> {
