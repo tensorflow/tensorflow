@@ -2527,6 +2527,28 @@ static LogicalResult verify(spirv::StoreOp storeOp) {
 }
 
 //===----------------------------------------------------------------------===//
+// spv.SubgroupBallotKHROp
+//===----------------------------------------------------------------------===//
+
+static ParseResult parseSubgroupBallotKHROp(OpAsmParser &parser,
+                                            OperationState &state) {
+  OpAsmParser::OperandType operandInfo;
+  Type resultType;
+  IntegerType i1Type = parser.getBuilder().getI1Type();
+  if (parser.parseOperand(operandInfo) || parser.parseColonType(resultType) ||
+      parser.resolveOperand(operandInfo, i1Type, state.operands))
+    return failure();
+
+  return parser.addTypeToList(resultType, state.types);
+}
+
+static void print(spirv::SubgroupBallotKHROp ballotOp, OpAsmPrinter &printer) {
+  printer << spirv::SubgroupBallotKHROp::getOperationName() << ' ';
+  printer.printOperand(ballotOp.predicate());
+  printer << " : " << ballotOp.getType();
+}
+
+//===----------------------------------------------------------------------===//
 // spv.Undef
 //===----------------------------------------------------------------------===//
 
@@ -2595,11 +2617,10 @@ static ParseResult parseVariableOp(OpAsmParser &parser, OperationState &state) {
   state.addTypes(ptrType);
 
   // Resolve the initializer operand
-  SmallVector<Value *, 1> init;
   if (initInfo) {
-    if (parser.resolveOperand(*initInfo, ptrType.getPointeeType(), init))
+    if (parser.resolveOperand(*initInfo, ptrType.getPointeeType(),
+                              state.operands))
       return failure();
-    state.addOperands(init);
   }
 
   auto attr = parser.getBuilder().getI32IntegerAttr(

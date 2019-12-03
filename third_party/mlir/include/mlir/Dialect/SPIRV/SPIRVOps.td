@@ -34,11 +34,10 @@ include "mlir/Dialect/SPIRV/SPIRVArithmeticOps.td"
 include "mlir/Dialect/SPIRV/SPIRVBitOps.td"
 include "mlir/Dialect/SPIRV/SPIRVCastOps.td"
 include "mlir/Dialect/SPIRV/SPIRVControlFlowOps.td"
-include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
-// Pull in ops for defining the SPIR-V module structure
-include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
-// Pull in ops for extended instruction set for GLSL
 include "mlir/Dialect/SPIRV/SPIRVGLSLOps.td"
+include "mlir/Dialect/SPIRV/SPIRVGroupOps.td"
+include "mlir/Dialect/SPIRV/SPIRVLogicalOps.td"
+include "mlir/Dialect/SPIRV/SPIRVStructureOps.td"
 
 // -----
 

@@ -951,6 +951,7 @@ filegroup(
         "include/mlir/Dialect/SPIRV/SPIRVCastOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVControlFlowOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVGLSLOps.td",
+        "include/mlir/Dialect/SPIRV/SPIRVGroupOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVLogicalOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVOps.td",
         "include/mlir/Dialect/SPIRV/SPIRVStructureOps.td",
