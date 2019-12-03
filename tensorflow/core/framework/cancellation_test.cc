@@ -15,7 +15,11 @@ limitations under the License.
 
 #include "tensorflow/core/framework/cancellation.h"
 
+#include <algorithm>
+#include <numeric>
+#include <random>
 #include <vector>
+
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
@@ -197,6 +201,34 @@ TEST(Cancellation, Parent_AlreadyCancelled) {
 
   CancellationManager child(&parent);
   EXPECT_TRUE(child.IsCancelled());
+}
+
+TEST(Cancellation, Parent_RandomDestructionOrder) {
+  CancellationManager parent;
+  std::random_device rd;
+  std::mt19937 g(rd());
+
+  // To cover the linked-list codepaths, perform multiple randomized rounds of
+  // registering and deregistering children with `parent`.
+  for (int rounds = 0; rounds < 100; ++rounds) {
+    std::vector<std::unique_ptr<CancellationManager>> children;
+
+    // 1. Register a random number of children with the parent.
+    std::uniform_int_distribution<int> dist(1, 9);
+    const size_t round_size = dist(rd);
+    for (size_t i = 0; i < round_size; ++i) {
+      children.push_back(absl::make_unique<CancellationManager>(&parent));
+      EXPECT_FALSE(children.back()->IsCancelled());
+    }
+
+    // 2. Deregister the children in a random order.
+    std::vector<size_t> destruction_order(round_size);
+    std::iota(destruction_order.begin(), destruction_order.end(), 0);
+    std::shuffle(destruction_order.begin(), destruction_order.end(), g);
+    for (size_t index : destruction_order) {
+      children[index].reset();
+    }
+  }
 }
 
 }  // namespace tensorflow

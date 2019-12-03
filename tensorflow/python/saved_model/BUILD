@@ -404,8 +404,8 @@ cuda_py_test(
     ],
     shard_count = 10,
     tags = [
+        "no_gpu",  # TODO(b/136560979): flaky
         "no_mac",  # TODO(b/124822121): Re-enable this test.
-        "nogpu",  # TODO(b/136560979): flaky
     ],
 )
 

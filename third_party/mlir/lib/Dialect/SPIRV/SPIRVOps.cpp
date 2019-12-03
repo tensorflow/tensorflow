@@ -26,6 +26,7 @@
 #include "mlir/Dialect/SPIRV/SPIRVTypes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/IR/StandardTypes.h"
@@ -335,6 +336,9 @@ static void printVariableDecorations(Operation *op, OpAsmPrinter &printer,
 // `indices`. Returns a null Attribute if error happens.
 static Attribute extractCompositeElement(Attribute composite,
                                          ArrayRef<unsigned> indices) {
+  // Check that given composite is a constant.
+  if (!composite)
+    return {};
   // Return composite itself if we reach the end of the index chain.
   if (indices.empty())
     return composite;
@@ -1168,6 +1172,35 @@ bool spirv::ConstantOp::isBuildableWith(Type type) {
   return true;
 }
 
+spirv::ConstantOp spirv::ConstantOp::getZero(Type type, Location loc,
+                                             OpBuilder *builder) {
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    unsigned width = intType.getWidth();
+    Attribute val;
+    if (width == 1)
+      return builder->create<spirv::ConstantOp>(loc, type,
+                                                builder->getBoolAttr(false));
+    return builder->create<spirv::ConstantOp>(
+        loc, type, builder->getIntegerAttr(type, APInt(width, 0)));
+  }
+
+  llvm_unreachable("unimplemented types for ConstantOp::getZero()");
+}
+
+spirv::ConstantOp spirv::ConstantOp::getOne(Type type, Location loc,
+                                            OpBuilder *builder) {
+  if (auto intType = type.dyn_cast<IntegerType>()) {
+    unsigned width = intType.getWidth();
+    if (width == 1)
+      return builder->create<spirv::ConstantOp>(loc, type,
+                                                builder->getBoolAttr(true));
+    return builder->create<spirv::ConstantOp>(
+        loc, type, builder->getIntegerAttr(type, APInt(width, 1)));
+  }
+
+  llvm_unreachable("unimplemented types for ConstantOp::getOne()");
+}
+
 //===----------------------------------------------------------------------===//
 // spv.ControlBarrier
 //===----------------------------------------------------------------------===//
@@ -1516,6 +1549,35 @@ static LogicalResult verify(spirv::GlobalVariableOp varOp) {
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// spv.IAdd
+//===----------------------------------------------------------------------===//
+
+OpFoldResult spirv::IAddOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "spv.IAdd expects two operands");
+  // lhs + 0 = lhs
+  if (matchPattern(operand2(), m_Zero()))
+    return operand1();
+
+  return nullptr;
+}
+
+//===----------------------------------------------------------------------===//
+// spv.IMul
+//===----------------------------------------------------------------------===//
+
+OpFoldResult spirv::IMulOp::fold(ArrayRef<Attribute> operands) {
+  assert(operands.size() == 2 && "spv.IMul expects two operands");
+  // lhs * 0 == 0
+  if (matchPattern(operand2(), m_Zero()))
+    return operand2();
+  // lhs * 1 = lhs
+  if (matchPattern(operand2(), m_One()))
+    return operand1();
+
+  return nullptr;
 }
 
 //===----------------------------------------------------------------------===//

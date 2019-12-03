@@ -247,7 +247,7 @@ PatternMatchResult ConvertTFBatchMatMulOp<BatchMatMulOpType>::matchAndRewrite(
   }
 
   if (lhs_shape[dims_a - 1] != rhs_shape[dims_b - 2]) {
-    // Input dimensions must be compatible for multipication.
+    // Input dimensions must be compatible for multiplication.
     return this->matchFailure();
   }
 

@@ -1650,3 +1650,11 @@ func @testSplitSmallSplitDim(%input: tensor<4x8xf32>) {
   %0:3 = "tf.Split"(%cst, %input) : (tensor<i32>, tensor<4x8xf32>) -> (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>)
   return
 }
+
+// -----
+
+func @testTernaryEinsum(%arg0: tensor<2x3xf32>){
+  // expected-error @+1 {{supports at most two operands}}
+  %0 = "tf.Einsum"(%arg0, %arg0, %arg0) {equation = "ab,cd,ef->"} : (tensor<2x3xf32>, tensor<2x3xf32>, tensor<2x3xf32>) -> (tensor<*xf32>)
+  return
+}

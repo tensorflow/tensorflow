@@ -450,7 +450,8 @@ class MemorySpaceAssignment {
       absl::Span<HloInstruction* const> flattened_instructions)
       : module_(module),
         alternate_memory_space_(alternate_memory_space),
-        flattened_instruction_sequence_(flattened_instructions),
+        flattened_instructions_(flattened_instructions.begin(),
+                                flattened_instructions.end()),
         preset_assignments_(absl::make_unique<PresetAssignments>()) {}
 
   // Process calls Process methods of the allocations after the allocations have
@@ -479,7 +480,7 @@ class MemorySpaceAssignment {
 
   HloModule* module_;
   int64 alternate_memory_space_;
-  HloInstructionSequence flattened_instruction_sequence_;
+  std::vector<HloInstruction*> flattened_instructions_;
   AllocationMap allocation_map_;
   std::unique_ptr<PresetAssignments> preset_assignments_;
 

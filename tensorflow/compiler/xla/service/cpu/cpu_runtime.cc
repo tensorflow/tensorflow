@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
@@ -422,10 +423,10 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_AllReduce(
 
   xla::Shape shape =
       DecodeSelfDescribingShapeConstant(shape_ptr, shape_length).ValueOrDie();
+  CHECK(xla::LayoutUtil::IsDenseArray(shape))
+      << "All-reduce on CPU is implemented only for dense arrays";
 
   xla::AllReduceParticipantData participant(rendezvous_key);
-
-  CHECK_LE(shape.dimensions_size(), 1);
   participant.element_count = xla::ShapeUtil::ElementsIn(shape);
   participant.device_ordinal = device_ordinal;
   participant.primitive_type = shape.element_type();

@@ -40,7 +40,7 @@ from tensorflow.python.platform import test
 class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
-  def testShuffleDataset(self):
+  def testBasic(self):
     components = (
         np.array([1, 2, 3, 4]), np.array([5, 6, 7, 8]),
         np.array([9.0, 10.0, 11.0, 12.0])
@@ -160,7 +160,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="graph"),
+          test_base.graph_only_combinations(),
           combinations.combine(reshuffle=[True, False]),
           combinations.combine(graph_seed=38, op_seed=None) +
           combinations.combine(graph_seed=None, op_seed=42) +
@@ -188,7 +188,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
   # TODO(b/117581999): enable this test for eager-mode.
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="graph"),
+          test_base.graph_only_combinations(),
           combinations.combine(
               reshuffle=[True, False], initializable=[True, False])))
   def testMultipleIterators(self, reshuffle, initializable):
@@ -278,7 +278,7 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(
-          combinations.combine(tf_api_version=[1, 2], mode="eager"),
+          test_base.eager_only_combinations(),
           combinations.combine(reshuffle=[True, False], seed=[None, 42])))
   def testReshuffleSeparateTransformations(self, reshuffle, seed):
     dataset = dataset_ops.Dataset.range(10)

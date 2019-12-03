@@ -535,7 +535,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
       auto node_name = node->op_def().name();
       if (node_name != "Placeholder" && node_name != "LegacyFedInput" &&
           node_name != FunctionLibraryDefinition::kArgOp) {
-        // We do not handle the case where the input node has multple outputs
+        // We do not handle the case where the input node has multiple outputs
         if (node->num_outputs() > 1) {
           return errors::FailedPrecondition(absl::StrCat(
               "Input arrays can only have op with single output. Node op:",

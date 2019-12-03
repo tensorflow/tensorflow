@@ -64,6 +64,7 @@ class TfLiteDriver : public TestRunner {
   bool CheckResults() override;
   string ReadOutput(int id) override;
   void SetThreshold(double relative_threshold, double absolute_threshold);
+  void SetQuantizationErrorMultiplier(int quantization_error_multiplier);
 
  protected:
   Interpreter::TfLiteDelegatePtr delegate_;
@@ -95,6 +96,7 @@ class TfLiteDriver : public TestRunner {
   std::map<int, TfLiteTensor*> tensors_to_deallocate_;
   double relative_threshold_;
   double absolute_threshold_;
+  int quantization_error_multiplier_;
 };
 
 }  // namespace testing

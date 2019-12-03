@@ -368,7 +368,7 @@ def ConvOp : LinalgLibrary_Op<"conv", [NInputsAndOutputs<2, 1>]> {
 class GenericOpBase<string mnemonic> : LinalgLibraryBase_Op<mnemonic, []> {
   let arguments = (ins Variadic<AnyStridedMemRef>:$views,
                    AffineMapArrayAttr:$indexing_maps,
-                   I64ArrayAttr:$n_loop_types,
+                   ArrayAttr:$iterator_types,
                    I64ArrayAttr:$n_views,
                    OptionalAttr<StrAttr>:$doc,
                    OptionalAttr<FlatSymbolRefAttr>:$fun,
@@ -377,7 +377,7 @@ class GenericOpBase<string mnemonic> : LinalgLibraryBase_Op<mnemonic, []> {
   let extraClassDeclaration = [{
     SmallVector<StringRef, 8> linalgTraitAttrNames() {
       return SmallVector<StringRef, 8>{
-        "doc", "fun", "indexing_maps", "library_call", "n_loop_types", "n_views"
+        "doc", "fun", "indexing_maps", "library_call", "iterator_types", "n_views"
       };
     }
     unsigned getNumInputs() {
@@ -395,26 +395,35 @@ class GenericOpBase<string mnemonic> : LinalgLibraryBase_Op<mnemonic, []> {
       return val.getZExtValue();
     }
     unsigned getNumParallelLoops() {
-      if (!getAttr("n_loop_types") || n_loop_types().getValue().size() != 3)
+      if (!getAttr("iterator_types") || iterator_types().getValue().size() == 0)
         return 0;
-      auto val = n_loop_types().getValue()[0].cast<IntegerAttr>().getValue();
-      assert(val.getSExtValue() >= 0);
-      return val.getZExtValue();
+      unsigned nPar = 0;
+      for (auto ty : iterator_types()) {
+        if (ty.cast<StringAttr>().getValue() == "parallel")
+          nPar++;
+      }
+      return nPar;
     }
     unsigned getNumReductionLoops() {
-      if (!getAttr("n_loop_types") || n_loop_types().getValue().size() != 3)
+      if (!getAttr("iterator_types") || iterator_types().getValue().size() == 0)
         return 0;
-      auto val = n_loop_types().getValue()[1].cast<IntegerAttr>().getValue();
-      assert(val.getSExtValue() >= 0);
-      return val.getZExtValue();
-    }
-    unsigned getNumWindowLoops() {
-      if (!getAttr("n_loop_types") || n_loop_types().getValue().size() != 3)
+      unsigned nRed = 0;
+      for (auto ty : iterator_types()) {
+        if (ty.cast<StringAttr>().getValue() == "reduction")
+          nRed++;
+      }
+      return nRed;
+   }
+   unsigned getNumWindowLoops() {
+      if (!getAttr("iterator_types") || iterator_types().getValue().size() == 0)
         return 0;
-      auto val = n_loop_types().getValue()[2].cast<IntegerAttr>().getValue();
-      assert(val.getSExtValue() >= 0);
-      return val.getZExtValue();
-    }
+      unsigned nWin = 0;
+      for (auto ty : iterator_types()) {
+        if (ty.cast<StringAttr>().getValue() == "window")
+          nWin++;
+      }
+      return nWin;
+   }
     unsigned getNumLoops() {
       return getNumParallelLoops() + getNumReductionLoops() +
         getNumWindowLoops();
@@ -474,8 +483,9 @@ def GenericOp : GenericOpBase<"generic"> {
         The external library is assumed to be dynamically linked and no strong
         compile-time guarantees are provided. In the absence of such a library
         call, linalg.generic will always lower to loops.
-      - n_loops: a triple of I64Attr representing the number of enclosing
-        [parallel, reduction, window] loops respectively.
+      - iterator_types: an ArrayAttr they type of the enclosing loops; Each element of
+        the list represents and iterator of one of the following types:
+        parallel, reduction, window
       - n_views: a pair of I64Attr representing the number of input (readonly)
         and output (readwrite) views.
 
@@ -498,7 +508,7 @@ def GenericOp : GenericOpBase<"generic"> {
           indexing_maps = #matmul_accesses,
           library_call = "linalg_matmul",
           n_views = [2, 1],
-          n_loop_types = [2, 1, 0]
+          iterator_types = ["parallel", "parallel", "reduction"]
         }
       ```
 
@@ -557,8 +567,8 @@ def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
         To support inplace updates in a generic fashion, the signature of the
         function must be:
         ```
-          fun([input views element types], [output views element types])
-            -> ([output views element types])
+          fun([index types for induction variables], [input views element types],
+              [output views element types]) -> ([output views element types])
         ```
       - indexing_maps: a list of AffineMapAttr, one AffineMapAttr per each input
         and output view. Such AffineMapAttr specifies the mapping between the
@@ -568,15 +578,16 @@ def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
         maps to.  The external library is assumed to be dynamically linked and
         no strong compile-time guarantees are provided. In the absence of such
         a library call, linalg.indexed_generic will always lower to loops.
-      - n_loops: a triple of I64Attr representing the number of enclosing
-        [parallel, reduction, window] loops respectively.
+      - iterator_types: an ArrayAttr they type of the enclosing loops; Each element of
+        the list represents and iterator of one of the following types:
+        parallel, reduction, window
       - n_views: a pair of I64Attr representing the number of input (readonly)
         and output (readwrite) views.
 
     Example:
     Defining a #matmul_trait attribute in MLIR can be done as follows:
       ```mlir
-        func @fma(%a: f32, %b: f32, %c: f32) -> f32 {
+        func @fma(%i: index, %j: index, %k: index, %a: f32, %b: f32, %c: f32) -> f32 {
           %d = mulf %a, %b: f32
           %e = addf %c, %d: f32
           return %e: f32
@@ -592,7 +603,7 @@ def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
           indexing_maps = #matmul_accesses,
           library_call = "linalg_matmul",
           n_views = [2, 1],
-          n_loop_types = [2, 1, 0]
+          iterator_types = ["parallel", "parallel", "reduction"]
         }
       ```
 

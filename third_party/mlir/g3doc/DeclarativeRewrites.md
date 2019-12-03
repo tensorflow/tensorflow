@@ -144,6 +144,13 @@ Also note that we only need to add `TypeConstraint` or `AttributeConstraint`
 when we need to further limit the match criteria. If all valid cases to the op
 are acceptable, then we can leave the constraint unspecified.
 
+`$_` is a special symbol to mean ignore capturing an argument. For example,
+`def : Pat<(AOp $_, $b), ...>` means only `$b` is interesting to capture and
+will be referenced later in result patterns. It's still possible to place
+additional constraints even if the symbol is not to be captured; for such case,
+you can simply use just the `TypeConstraint` or `AttributeConstraint` without a
+bound symbol, for example, `def : Pat<(AOp $a, F32Attr), ...>`.
+
 #### Matching DAG of operations
 
 To match an DAG of ops, use nested `dag` objects:
@@ -479,7 +486,7 @@ on **naming convention**: a `__N` suffix is added to a symbol to indicate the
 
 #### `__N` suffix
 
-The `__N` sufix is specifying the `N`-th result as a whole (which can be
+The `__N` suffix is specifying the `N`-th result as a whole (which can be
 [variadic](#supporting-variadic-ops)). For example, we can bind a symbol to some
 multi-result op and reference a specific result later:
 
@@ -674,7 +681,7 @@ mlir-tblgen --gen-rewriters -I /path/to/mlir/include /path/to/input/td/file
 
 ### Compilation error: no matching member function for call to 'build'
 
-This is because DRR is failing to call a `build()` mehtod with result type
+This is because DRR is failing to call a `build()` method with result type
 deduction ability. See [building operations](#building-operations) for more
 details.
 

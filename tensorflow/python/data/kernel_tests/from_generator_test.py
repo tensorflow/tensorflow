@@ -32,62 +32,83 @@ from tensorflow.python.ops import script_ops
 from tensorflow.python.platform import test
 
 
-class DatasetConstructorTest(test_base.DatasetTestBase, parameterized.TestCase):
+class FromGeneratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def _testFromGenerator(self, generator, elem_sequence, num_repeats,
-                         output_types=None):
-    if output_types is None:
-      output_types = dtypes.int64
-    dataset = dataset_ops.Dataset.from_generator(
-        generator, output_types=output_types).repeat(num_repeats).prefetch(5)
-    self.assertDatasetProduces(
-        dataset,
-        elem_sequence * num_repeats,
-        requires_initialization=True,
-        num_test_iterations=2)
-
-  def _testFromGeneratorOneShot(self, generator, elem_sequence, num_repeats):
+                         requires_initialization):
     dataset = dataset_ops.Dataset.from_generator(
         generator, output_types=dtypes.int64).repeat(num_repeats).prefetch(5)
     self.assertDatasetProduces(
-        dataset, elem_sequence * num_repeats, num_test_iterations=2)
+        dataset,
+        elem_sequence * num_repeats,
+        requires_initialization=requires_initialization,
+        num_test_iterations=2)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromGeneratorUsingFunction(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_repeats=[1, 5], requires_initialization=[True, False])))
+  def testFromGeneratorUsingFn(self, num_repeats, requires_initialization):
+
     def generator():
       for i in range(1, 100):
         yield [i] * i
-    elem_sequence = list(generator())
-    self._testFromGenerator(generator, elem_sequence, 1)
-    self._testFromGenerator(generator, elem_sequence, 5)
-    self._testFromGeneratorOneShot(generator, elem_sequence, 1)
-    self._testFromGeneratorOneShot(generator, elem_sequence, 5)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromGeneratorUsingList(self):
+    elem_sequence = list(generator())
+    self._testFromGenerator(
+        generator,
+        elem_sequence,
+        num_repeats=num_repeats,
+        requires_initialization=requires_initialization)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_repeats=[1, 5], requires_initialization=[True, False])))
+  def testFromGeneratorUsingList(self, num_repeats, requires_initialization):
     generator = lambda: [[i] * i for i in range(1, 100)]
     elem_sequence = list(generator())
-    self._testFromGenerator(generator, elem_sequence, 1)
-    self._testFromGenerator(generator, elem_sequence, 5)
+    self._testFromGenerator(
+        generator,
+        elem_sequence,
+        num_repeats=num_repeats,
+        requires_initialization=requires_initialization)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromGeneratorUsingNdarray(self):
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_repeats=[1, 5], requires_initialization=[True, False])))
+  def testFromGeneratorUsingNdarray(self, num_repeats, requires_initialization):
     generator = lambda: np.arange(100, dtype=np.int64)
     elem_sequence = list(generator())
-    self._testFromGenerator(generator, elem_sequence, 1, output_types=np.int64)
-    self._testFromGenerator(generator, elem_sequence, 5, output_types=np.int64)
+    self._testFromGenerator(
+        generator,
+        elem_sequence,
+        num_repeats=num_repeats,
+        requires_initialization=requires_initialization)
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testFromGeneratorUsingGeneratorExpression(self):
-    # NOTE(mrry): Generator *expressions* are not repeatable (or in
-    # general reusable), because they eagerly evaluate the `for`
-    # expression as `iter(range(1, 100))` and discard the means of
-    # reconstructing `range(1, 100)`. Wrapping the generator
-    # expression in a `lambda` makes it repeatable.
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(
+              num_repeats=[1, 5], requires_initialization=[True, False])))
+  def testFromGeneratorUsingGeneratorExpression(self, num_repeats,
+                                                requires_initialization):
+    # NOTE(mrry): Generator *expressions* are not repeatable (or in general
+    # reusable), because they eagerly evaluate the `for` expression as
+    # `iter(range(1, 100))` and discard the means of reconstructing
+    # `range(1, 100)`. Wrapping the generator expression in a `lambda` makes
+    # it repeatable.
     generator = lambda: ([i] * i for i in range(1, 100))
     elem_sequence = list(generator())
-    self._testFromGenerator(generator, elem_sequence, 1)
-    self._testFromGenerator(generator, elem_sequence, 5)
+    self._testFromGenerator(
+        generator,
+        elem_sequence,
+        num_repeats=num_repeats,
+        requires_initialization=requires_initialization)
 
   @combinations.generate(test_base.default_test_combinations())
   def testFromMultipleConcurrentGenerators(self):
@@ -392,7 +413,6 @@ class DatasetConstructorTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertAllEqual(37, self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
-      self.assertTrue(event.is_set())
 
   @combinations.generate(test_base.default_test_combinations())
   def testSharedName(self):

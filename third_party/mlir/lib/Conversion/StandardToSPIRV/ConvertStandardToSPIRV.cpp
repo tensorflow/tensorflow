@@ -145,8 +145,7 @@ spirv::AccessChainOp getElementPtr(OpBuilder &builder, Location loc,
 
   // Need to add a '0' at the beginning of the index list for accessing into the
   // struct that wraps the nested array types.
-  Value *zero = builder.create<spirv::ConstantOp>(
-      loc, indexType, builder.getIntegerAttr(indexType, 0));
+  Value *zero = spirv::ConstantOp::getZero(indexType, loc, &builder);
   SmallVector<Value *, 4> accessIndices;
   accessIndices.reserve(1 + indices.size());
   accessIndices.push_back(zero);

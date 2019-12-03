@@ -303,7 +303,10 @@ def update_td_enum_attrs(path, operand_kinds, filter_list):
   # Sort alphabetically according to enum name
   defs.sort(key=lambda enum : enum[0])
   # Only keep the definitions from now on
-  defs = [enum[1] for enum in defs]
+  # Put Capability's definition at the very beginning because capability cases
+  # will be referenced later
+  defs = [enum[1] for enum in defs if enum[0] == 'Capability'
+         ] + [enum[1] for enum in defs if enum[0] != 'Capability']
 
   # Substitute the old section
   content = content[0] + AUTOGEN_ENUM_SECTION_MARKER + '\n\n' + \

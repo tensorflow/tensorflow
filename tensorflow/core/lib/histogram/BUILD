@@ -2,6 +2,8 @@ package(
     default_visibility = [
         # tensorflow/core:lib effectively exposes all targets under tensorflow/core/lib/**
         "//tensorflow/core:__pkg__",
+        # tensorflow/core/lib/monitoring:sampler uses histogram
+        "//tensorflow/core/lib/monitoring:__pkg__",
     ],
     licenses = ["notice"],  # Apache 2.0
 )

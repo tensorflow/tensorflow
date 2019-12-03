@@ -103,6 +103,7 @@ cc_library(
     }),
     deps = [
         ":nnapi_delegate",
+        "//tensorflow/lite/nnapi:nnapi_handler",
         "//tensorflow/lite/nnapi:nnapi_implementation",
         "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
@@ -137,6 +138,30 @@ cc_test(
     size = "small",
     srcs = [
         "nnapi_delegate_errno_test.cc",
+    ],
+    tags = [
+        "no_mac",
+        "no_windows",
+        "tflite_not_portable_ios",
+    ],
+    deps = [
+        ":nnapi_delegate",
+        ":nnapi_delegate_mock_test",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite:minimal_logging",
+        "//tensorflow/lite/c:common",
+        "//tensorflow/lite/kernels:test_util",
+        "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/nnapi:nnapi_lib",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "nnapi_delegate_device_selection_test",
+    size = "small",
+    srcs = [
+        "nnapi_delegate_device_selection_test.cc",
     ],
     tags = [
         "no_mac",

@@ -2873,12 +2873,34 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
   const auto delegate_options =
       StatefulNnApiDelegate::GetOptions(params->delegate);
   const char* device_name_ptr = delegate_options.accelerator_name;
-  // user specified an acclelerator to use.
-  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12 &&
-      device_name_ptr != nullptr) {
-    nnapi_device_ = GetDeviceHandle(context, device_name_ptr);
-    if (nnapi_device_ == nullptr) {
-      return kTfLiteError;
+  if (nnapi_->android_sdk_version >= kMinSdkVersionForNNAPI12) {
+    if (device_name_ptr != nullptr) {
+      // User specified an accelerator to use.
+      ANeuralNetworksDevice* nnapi_device =
+          GetDeviceHandle(context, device_name_ptr);
+      if (nnapi_device == nullptr) {
+        return kTfLiteError;
+      }
+      nnapi_devices_.push_back(nnapi_device);
+    } else if (delegate_options.disallow_nnapi_cpu) {
+      std::string nnapi_cpu("nnapi-reference");
+      uint32_t num_devices = 0;
+      NnApiImplementation()->ANeuralNetworks_getDeviceCount(&num_devices);
+
+      for (uint32_t i = 0; i < num_devices; i++) {
+        ANeuralNetworksDevice* device = nullptr;
+        const char* buffer = nullptr;
+        NnApiImplementation()->ANeuralNetworks_getDevice(i, &device);
+        NnApiImplementation()->ANeuralNetworksDevice_getName(device, &buffer);
+        if (nnapi_cpu != buffer) {
+          nnapi_devices_.push_back(device);
+        }
+      }
+      if (nnapi_devices_.empty()) {
+        context->ReportError(
+            context, "NNAPI delegate requested but no accelerators available.");
+        return kTfLiteError;
+      }
     }
   }
 
@@ -2898,12 +2920,13 @@ TfLiteStatus NNAPIDelegateKernel::Init(TfLiteContext* context,
 
   if (!nn_compilation_) {
     ANeuralNetworksCompilation* compilation = nullptr;
-    if (nnapi_device_ != nullptr) {
+    if (!nnapi_devices_.empty()) {
       // Compile for the selected accelerator.
       RETURN_TFLITE_ERROR_IF_NN_ERROR(
           context,
           nnapi_->ANeuralNetworksCompilation_createForDevices(
-              nn_model_.get(), &nnapi_device_, 1, &compilation),
+              nn_model_.get(), nnapi_devices_.data(), nnapi_devices_.size(),
+              &compilation),
           nnapi_errno);
     } else {
       RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
@@ -3587,6 +3610,7 @@ StatefulNnApiDelegate::StatefulNnApiDelegate(Options options)
   if (options.model_token) {
     delegate_data_.model_token = options.model_token;
   }
+  delegate_data_.disallow_nnapi_cpu = options.disallow_nnapi_cpu;
   TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                        "Created TensorFlow Lite delegate for NNAPI.");
   Prepare = DoPrepare;
@@ -3613,6 +3637,7 @@ const StatefulNnApiDelegate::Options StatefulNnApiDelegate::GetOptions(
   options.model_token = delegate_data->model_token.empty()
                             ? nullptr
                             : delegate_data->model_token.c_str();
+  options.disallow_nnapi_cpu = delegate_data->disallow_nnapi_cpu;
   return options;
 }
 
