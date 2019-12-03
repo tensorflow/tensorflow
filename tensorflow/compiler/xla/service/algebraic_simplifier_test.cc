@@ -4706,12 +4706,11 @@ TEST_P(BatchDotStrengthReductionTest, BatchDotStrengthReduction) {
   EXPECT_EQ(has_no_dot, dot_should_be_transformed);
 }
 
-INSTANTIATE_TEST_SUITE_P(BatchDotStrengthReductionTestInstantiation,
-                         BatchDotStrengthReductionTest,
-                         ::testing::Combine(::testing::Values(-1, 1, 2),
-                                            ::testing::Values(-1, 1, 2),
-                                            ::testing::Values(-1, 1, 2),
-                                            ::testing::Values(F64, F32, BF16)));
+INSTANTIATE_TEST_SUITE_P(
+    BatchDotStrengthReductionTestInstantiation, BatchDotStrengthReductionTest,
+    ::testing::Combine(::testing::Values(-1, 1, 2), ::testing::Values(-1, 1, 2),
+                       ::testing::Values(-1, 1, 2),
+                       ::testing::Values(C128, C64, F64, F32, BF16)));
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,
@@ -4775,7 +4774,8 @@ INSTANTIATE_TEST_SUITE_P(
     DotStrengthReductionTestInstantiation, DotStrengthReductionTest,
     ::testing::Combine(::testing::Values(1, 2), ::testing::Values(1, 2),
                        ::testing::Values(1, 2), ::testing::Bool(),
-                       ::testing::Bool(), ::testing::Values(F64, F32, BF16)));
+                       ::testing::Bool(),
+                       ::testing::Values(C128, C64, F64, F32, BF16)));
 
 struct DotOfConcatTestSpec {
   int64 m;

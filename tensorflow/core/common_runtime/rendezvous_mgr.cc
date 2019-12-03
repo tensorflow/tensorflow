@@ -32,23 +32,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-IntraProcessRendezvous::IntraProcessRendezvous(const DeviceMgr* device_mgr)
-    : device_mgr_(device_mgr) {}
-
-IntraProcessRendezvous::~IntraProcessRendezvous() {}
-
-Status IntraProcessRendezvous::Send(const ParsedKey& key,
-                                    const Rendezvous::Args& args,
-                                    const Tensor& val, const bool is_dead) {
-  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << key.FullKey();
-  // Buffers "val" and "device_context" in local_.
-  return local_.Send(key, args, val, is_dead);
-}
-
-void IntraProcessRendezvous::SameWorkerRecvDone(
-    const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& send_args,
-    const Rendezvous::Args& recv_args, const Tensor& in, Tensor* out,
-    StatusCallback done) {
+namespace {
+void SameWorkerRecvDone(const DeviceMgr* device_mgr,
+                        const Rendezvous::ParsedKey& parsed,
+                        const Rendezvous::Args& send_args,
+                        const Rendezvous::Args& recv_args, const Tensor& in,
+                        Tensor* out, StatusCallback done) {
   // Do a quick copy (sharing the underlying buffer) if both tensors
   // are on host memory.
   const bool src_host =
@@ -73,13 +62,13 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
   }
 
   Device* src_device;
-  Status s = device_mgr_->LookupDevice(parsed.src_device, &src_device);
+  Status s = device_mgr->LookupDevice(parsed.src_device, &src_device);
   if (!s.ok()) {
     done(s);
     return;
   }
   Device* dst_device;
-  s = device_mgr_->LookupDevice(parsed.dst_device, &dst_device);
+  s = device_mgr->LookupDevice(parsed.dst_device, &dst_device);
   if (!s.ok()) {
     done(s);
     return;
@@ -116,16 +105,18 @@ void IntraProcessRendezvous::SameWorkerRecvDone(
       out, 0 /*dev_to_dev_stream_index*/, std::move(done), sync_dst_compute);
 }
 
-void IntraProcessRendezvous::RecvAsync(const ParsedKey& key,
-                                       const Rendezvous::Args& args,
-                                       DoneCallback done) {
-  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << key.FullKey();
+void IntraProcessRecvAsyncImpl(const DeviceMgr* device_mgr,
+                               LocalRendezvous* local,
+                               const RendezvousInterface::ParsedKey& parsed,
+                               const Rendezvous::Args& recv_args,
+                               RendezvousInterface::DoneCallback done) {
+  VLOG(1) << "IntraProcessRendezvous Recv " << local << " " << parsed.FullKey();
 
   MEMDEBUG_CACHE_OP("RecvAsync");
   // Recv the tensor from local_.
-  local_.RecvAsync(
-      key, args,
-      [this, key, done = std::move(done)](
+  local->RecvAsync(
+      parsed, recv_args,
+      [device_mgr, parsed, done = std::move(done)](
           const Status& status, const Rendezvous::Args& send_args,
           const Rendezvous::Args& recv_args, const Tensor& in,
           bool is_dead) mutable {
@@ -141,7 +132,7 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& key,
         };
 
         if (status.ok() && in.IsInitialized()) {
-          SameWorkerRecvDone(key, send_args, recv_args, in, out,
+          SameWorkerRecvDone(device_mgr, parsed, send_args, recv_args, in, out,
                              std::move(final_callback));
         } else {
           final_callback(status);
@@ -149,8 +140,56 @@ void IntraProcessRendezvous::RecvAsync(const ParsedKey& key,
       });
 }
 
-void IntraProcessRendezvous::StartAbort(const Status& s) {
-  CHECK(!s.ok());
+}  // namespace
+
+RefCountedIntraProcessRendezvous::RefCountedIntraProcessRendezvous(
+    const DeviceMgr* device_mgr)
+    : device_mgr_(device_mgr) {}
+
+RefCountedIntraProcessRendezvous::~RefCountedIntraProcessRendezvous() {}
+
+Status RefCountedIntraProcessRendezvous::Send(const ParsedKey& key,
+                                              const Rendezvous::Args& args,
+                                              const Tensor& val,
+                                              const bool is_dead) {
+  VLOG(1) << "IntraProcessRendezvous Send " << this << " " << key.FullKey();
+  return local_.Send(key, args, val, is_dead);
+}
+
+void RefCountedIntraProcessRendezvous::RecvAsync(const ParsedKey& key,
+                                                 const Rendezvous::Args& args,
+                                                 DoneCallback done) {
+  VLOG(1) << "IntraProcessRendezvous Recv " << this << " " << key.FullKey();
+  IntraProcessRecvAsyncImpl(device_mgr_, &local_, key, args, std::move(done));
+}
+
+void RefCountedIntraProcessRendezvous::StartAbort(const Status& s) {
+  local_.StartAbort(s);
+}
+
+PrivateIntraProcessRendezvous::PrivateIntraProcessRendezvous(
+    const DeviceMgr* device_mgr)
+    : device_mgr_(device_mgr) {}
+
+PrivateIntraProcessRendezvous::~PrivateIntraProcessRendezvous() {}
+
+Status PrivateIntraProcessRendezvous::Send(const ParsedKey& key,
+                                           const Rendezvous::Args& args,
+                                           const Tensor& val,
+                                           const bool is_dead) {
+  DVLOG(1) << "IntraProcessRendezvous Send " << this << " " << key.FullKey();
+  return local_.Send(key, args, val, is_dead);
+}
+
+void PrivateIntraProcessRendezvous::RecvAsync(const ParsedKey& key,
+                                              const Rendezvous::Args& args,
+                                              DoneCallback done) {
+  DVLOG(1) << "StackAllocatedIntraProcessRendezvous Recv " << this << " "
+           << key.FullKey();
+  IntraProcessRecvAsyncImpl(device_mgr_, &local_, key, args, std::move(done));
+}
+
+void PrivateIntraProcessRendezvous::StartAbort(const Status& s) {
   local_.StartAbort(s);
 }
 

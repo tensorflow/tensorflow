@@ -17,46 +17,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.framework import test_util
+from tensorflow.python.framework import combinations
 from tensorflow.python.platform import test
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class SkipTest(test_base.DatasetTestBase):
+class SkipTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def testSkipTensorDataset(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(count=[-1, 0, 4, 10, 25])))
+  def testBasic(self, count):
     components = (np.arange(10),)
-
-    def do_test(count):
-      dataset = dataset_ops.Dataset.from_tensor_slices(components).skip(count)
-      self.assertEqual(
-          [c.shape[1:] for c in components],
-          [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
-      start_range = min(count, 10) if count != -1 else 10
-      self.assertDatasetProduces(
-          dataset,
-          [tuple(components[0][i:i + 1]) for i in range(start_range, 10)])
-
-    # Skip fewer than input size, we should skip
-    # the first 4 elements and then read the rest.
-    do_test(4)
-
-    # Skip more than input size: get nothing.
-    do_test(25)
-
-    # Skip exactly input size.
-    do_test(10)
-
-    # Set -1 for 'count': skip the entire dataset.
-    do_test(-1)
-
-    # Skip nothing
-    do_test(0)
-
+    dataset = dataset_ops.Dataset.from_tensor_slices(components).skip(count)
+    self.assertEqual(
+        [c.shape[1:] for c in components],
+        [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
+    start_range = min(count, 10) if count != -1 else 10
+    self.assertDatasetProduces(
+        dataset,
+        [tuple(components[0][i:i + 1]) for i in range(start_range, 10)])
 
 
 if __name__ == "__main__":

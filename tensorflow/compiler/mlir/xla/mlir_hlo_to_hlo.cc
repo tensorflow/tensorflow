@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -75,6 +76,10 @@ static double ConvertAPFloat(llvm::APFloat value) {
     value.convert(llvm::APFloat::IEEEdouble(),
                   llvm::APFloat::rmNearestTiesToEven, &losesInfo);
   return value.convertToDouble();
+}
+
+static absl::string_view ConvertStringRef(mlir::StringRef value) {
+  return {value.data(), value.size()};
 }
 
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
@@ -632,6 +637,12 @@ LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
   return success();
 }
 
+LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
+  // Intentional as UnaryEinsumOp is always lowered to the EinsumOp with two
+  // operands.
+  return failure();
+}
+
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
   xla::XlaComputation condition;
   xla::XlaComputation body;
@@ -773,7 +784,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   if (lowered_computation_.count(f)) return success();
   if (f.getBlocks().size() != 1) {
-    return f.emitError("only single block Function suppored");
+    return f.emitError("only single block Function supported");
   }
 
   // Create a sub-builder if this is not the main function.

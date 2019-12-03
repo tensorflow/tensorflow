@@ -21,14 +21,15 @@ import numpy as np
 from six.moves import builtins
 
 from tensorflow.core.framework import types_pb2
-# pywrap_tensorflow must be imported prior to _dtypes for the MacOS linker
-# to resolve the protobufs properly.
-# pylint: disable=unused-import,g-bad-import-order
-from tensorflow.python import pywrap_tensorflow
+# We need to import pywrap_tensorflow prior to the bfloat wrapper to avoid
+# protobuf errors where a file is defined twice on MacOS.
+# pylint: disable=invalid-import-order,g-bad-import-order
+from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
+from tensorflow.python import _pywrap_bfloat16
 from tensorflow.python import _dtypes
 from tensorflow.python.util.tf_export import tf_export
 
-_np_bfloat16 = pywrap_tensorflow.TF_bfloat16_type()
+_np_bfloat16 = _pywrap_bfloat16.TF_bfloat16_type()
 
 
 # pylint: disable=slots-on-old-class

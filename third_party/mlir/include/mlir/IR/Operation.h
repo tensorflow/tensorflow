@@ -63,7 +63,7 @@ public:
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes,
                            ArrayRef<Value *> operands,
-                           const NamedAttributeList &attributes,
+                           NamedAttributeList attributes,
                            ArrayRef<Block *> successors, unsigned numRegions,
                            bool resizableOperandList);
 
@@ -74,7 +74,7 @@ public:
   static Operation *create(Location location, OperationName name,
                            ArrayRef<Type> resultTypes,
                            ArrayRef<Value *> operands,
-                           const NamedAttributeList &attributes,
+                           NamedAttributeList attributes,
                            ArrayRef<Block *> successors = {},
                            ArrayRef<std::unique_ptr<Region>> regions = {},
                            bool resizableOperandList = false);

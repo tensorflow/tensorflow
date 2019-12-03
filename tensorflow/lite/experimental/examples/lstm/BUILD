@@ -35,7 +35,7 @@ py_library(
 
 py_test(
     name = "unidirectional_sequence_lstm_test",
-    size = "large",
+    size = "medium",
     srcs = ["unidirectional_sequence_lstm_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
@@ -58,7 +58,7 @@ py_test(
 
 py_test(
     name = "unidirectional_sequence_rnn_test",
-    size = "large",
+    size = "medium",
     srcs = ["unidirectional_sequence_rnn_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
@@ -81,7 +81,7 @@ py_test(
 
 py_test(
     name = "bidirectional_sequence_lstm_test",
-    size = "large",
+    size = "medium",
     srcs = ["bidirectional_sequence_lstm_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
@@ -104,13 +104,14 @@ py_test(
 
 py_test(
     name = "bidirectional_sequence_rnn_test",
-    size = "large",
+    size = "medium",
     srcs = ["bidirectional_sequence_rnn_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "no_pip",
+        "notap",  # b/141373014
     ],
     deps = [
         ":rnn",

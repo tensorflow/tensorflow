@@ -116,35 +116,72 @@ class DumpingCallbackTestBase(test_util.TensorFlowTestCase):
       op_types: Types of the ops that are created, as a `list` of `str`s with
         the same length as `context_ids`.
       op_name_to_op_type: A `dict` mapping op name to op type.
+      op_name_to_context_id: A `dict` mapping op name to the ID of the innermost
+        containing graph (context).
     """
     reader = debug_events_reader.DebugEventsReader(self.dump_root)
     graphs_iter = reader.graphs_iterator()
     prev_wall_time = 0
     op_types = []
     op_name_to_op_type = dict()
+    op_name_to_context_id = dict()  # Maps op name to ID of innermost context.
     context_ids = set()
     symbolic_tensor_ids = set()
+    # Maps context ID to ID of directly enclosing context (`None` for
+    # outermost contexts).
+    context_id_to_outer_id = dict()
+
     for debug_event in graphs_iter:
       self.assertGreaterEqual(debug_event.wall_time, prev_wall_time)
       prev_wall_time = debug_event.wall_time
-      graph_op_creation = debug_event.graph_op_creation
-      self.assertTrue(graph_op_creation.op_type)
-      op_types.append(graph_op_creation.op_type)
-      self.assertTrue(graph_op_creation.op_name)
-      op_name_to_op_type[graph_op_creation.op_name] = graph_op_creation.op_type
-      self.assertTrue(graph_op_creation.graph_id)
-      context_ids.add(graph_op_creation.graph_id)
-      self.assertTrue(graph_op_creation.code_location)
-      if graph_op_creation.num_outputs:
-        self.assertLen(graph_op_creation.output_tensor_ids,
-                       graph_op_creation.num_outputs)
-        # Check that all symblic tensor IDs are unique.
-        for tensor_id in graph_op_creation.output_tensor_ids:
-          self.assertNotIn(tensor_id, symbolic_tensor_ids)
-          symbolic_tensor_ids.add(tensor_id)
-      for stack_frame_id in graph_op_creation.code_location.stack_frame_ids:
-        self.assertIn(stack_frame_id, stack_frame_by_id)
-    return context_ids, op_types, op_name_to_op_type
+      # A DebugEvent in the .graphs file contains either of the two fields:
+      # - graph_op_creation for creation of a symbolic op in a graph context.
+      # - debugged_graph for information regarding the graph (context).
+      if debug_event.graph_op_creation.ByteSize():
+        graph_op_creation = debug_event.graph_op_creation
+        self.assertTrue(graph_op_creation.op_type)
+        op_types.append(graph_op_creation.op_type)
+        self.assertTrue(graph_op_creation.op_name)
+        op_name_to_op_type[
+            graph_op_creation.op_name] = graph_op_creation.op_type
+        op_name_to_context_id[
+            graph_op_creation.op_name] = graph_op_creation.graph_id
+        self.assertTrue(graph_op_creation.graph_id)
+        context_ids.add(graph_op_creation.graph_id)
+        self.assertTrue(graph_op_creation.code_location)
+        if graph_op_creation.num_outputs:
+          self.assertLen(graph_op_creation.output_tensor_ids,
+                         graph_op_creation.num_outputs)
+          # Check that all symblic tensor IDs are unique.
+          for tensor_id in graph_op_creation.output_tensor_ids:
+            self.assertNotIn(tensor_id, symbolic_tensor_ids)
+            symbolic_tensor_ids.add(tensor_id)
+        for stack_frame_id in graph_op_creation.code_location.stack_frame_ids:
+          self.assertIn(stack_frame_id, stack_frame_by_id)
+      else:
+        debugged_graph = debug_event.debugged_graph
+        if debugged_graph.outer_context_id:
+          inner_id = debugged_graph.graph_id
+          outer_id = debugged_graph.outer_context_id
+          if inner_id in context_id_to_outer_id:
+            # The outer context of a context must be always the same.
+            self.assertEqual(context_id_to_outer_id[inner_id], outer_id)
+          else:
+            context_id_to_outer_id[inner_id] = outer_id
+        else:
+          # This is an outermost context.
+          if debugged_graph.graph_id in context_id_to_outer_id:
+            self.assertIsNone(context_id_to_outer_id[debugged_graph.graph_id])
+          else:
+            context_id_to_outer_id[debugged_graph.graph_id] = None
+
+    # If any graph is created, the graph context hierarchy must be populated.
+    # In addition, the context of each graph op must be locatable within the
+    # graph context hierarchy.
+    for context_id in op_name_to_context_id.values():
+      self.assertIn(context_id, context_id_to_outer_id)
+
+    return context_ids, op_types, op_name_to_op_type, op_name_to_context_id
 
   def _readAndCheckExecutionFile(self, dump_root=None):
     """Read and verify the content of the .execution debug-event file.

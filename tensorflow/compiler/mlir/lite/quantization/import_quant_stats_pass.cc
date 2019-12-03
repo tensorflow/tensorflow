@@ -82,7 +82,7 @@ class ImportQuantStatsPass : public FunctionPass<ImportQuantStatsPass> {
            res->getType().cast<ShapedType>().getElementType().isa<FloatType>();
   }
 
-  // A method to retrive the name for the given op.
+  // A method to retrieve the name for the given op.
   OperationToName op_to_name_;
 
   // We split the normal names and regex names, since the former can use hash

@@ -355,17 +355,6 @@ cc_test(
 )
 
 cc_library(
-    name = "activation_functor",
-    hdrs = [
-        "activation_functor.h",
-    ],
-    copts = tflite_copts(),
-    deps = [
-        "//tensorflow/lite/c:common",
-    ],
-)
-
-cc_library(
     name = "op_macros",
     hdrs = [
         "op_macros.h",
@@ -614,7 +603,6 @@ cc_library(
         "//tensorflow/lite/kernels/internal:kernel_utils",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:tensor_utils",
-        "//third_party/eigen3",
         "@gemmlowp",
     ],
 )

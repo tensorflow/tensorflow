@@ -29,6 +29,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "third_party/nccl/nccl.h"
+#include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/refcounting_hash_map.h"
 #include "tensorflow/compiler/xla/service/collective_ops_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
@@ -454,7 +455,8 @@ struct NcclAllReduceThunk::AuxData {
   return MatchReductionComputation(crs->to_apply()).has_value() &&
          DatatypeToNccl(AllReducePrimitiveType(crs)).has_value() &&
          crs->IsCrossReplicaAllReduce() &&
-         crs->operand_count() == 1;  // One array to reduce.
+         crs->operand_count() == 1 &&  // One array to reduce.
+         LayoutUtil::IsDenseArray(crs->operand(0)->shape());
 }
 
 /*static*/ absl::flat_hash_set<int>

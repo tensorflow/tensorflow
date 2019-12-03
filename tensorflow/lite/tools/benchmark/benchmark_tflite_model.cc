@@ -492,13 +492,15 @@ TfLiteStatus BenchmarkTfLiteModel::PrepareInputData() {
     } else if (t->type == kTfLiteUInt8) {
       int low = has_value_range ? low_range : 0;
       int high = has_value_range ? high_range : 254;
+      // std::uniform_int_distribution is specified not to support char types.
       t_data = CreateInputTensorData<uint8_t>(
-          num_elements, std::uniform_int_distribution<uint8_t>(low, high));
+          num_elements, std::uniform_int_distribution<uint32_t>(low, high));
     } else if (t->type == kTfLiteInt8) {
       int low = has_value_range ? low_range : -127;
       int high = has_value_range ? high_range : 127;
+      // std::uniform_int_distribution is specified not to support char types.
       t_data = CreateInputTensorData<int8_t>(
-          num_elements, std::uniform_int_distribution<int8_t>(low, high));
+          num_elements, std::uniform_int_distribution<int32_t>(low, high));
     } else if (t->type == kTfLiteString) {
       // TODO(haoliang): No need to cache string tensors right now.
     } else {

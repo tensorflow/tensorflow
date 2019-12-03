@@ -1130,7 +1130,15 @@ Status MemorySpaceAssignment::SimplifyGraph() {
           // Ensure the exported preset assignments don't contain a refence to
           // the removed instruction.
           preset_assignments_->RemoveAssignmentForInstruction(instruction);
-          flattened_instruction_sequence_.remove_instruction(instruction);
+          // Instead of deleting the instruction from the schedule, replace it
+          // with a nullptr. This is needed because FixSchedule relies on the
+          // logical time that is the index into flattened_instructions_ for
+          // scheduling asynchronous copies.
+          auto instruction_it =
+              absl::c_find(flattened_instructions_, instruction);
+          if (instruction_it != flattened_instructions_.end()) {
+            *instruction_it = nullptr;
+          }
           TF_RETURN_IF_ERROR(computation->RemoveInstruction(instruction));
           computation_modified = true;
         } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
@@ -1228,12 +1236,12 @@ void MemorySpaceAssignment::ScheduleAsynchronousCopies() {
 
       // If the copy start doesn't happen to be scheduled at the correct
       // computation, delay it until the correct computation starts.
-      const auto& flattened_instructions =
-          flattened_instruction_sequence_.instructions();
       int64 copy_start_schedule_after =
           copy_allocation->copy_start_schedule_after();
+      // Accessing flattened_instructions_ here without checking if it is
+      // nullptr is safe because this method is called before SimplifyGraph.
       while (copy_allocation->instruction()->parent() !=
-             flattened_instructions[copy_start_schedule_after]->parent()) {
+             flattened_instructions_[copy_start_schedule_after]->parent()) {
         VLOG(4) << "Delaying CopyStart (" << copy_start_schedule_after << " to "
                 << (copy_start_schedule_after + 1) << ") for "
                 << copy_allocation->copy_start()->ToString()
@@ -1264,8 +1272,7 @@ Status MemorySpaceAssignment::FixSchedule() {
     VLOG(4) << "Scheduling: " << computation->ToString();
 
     for (int64 instruction_index = 0;
-         instruction_index <
-         flattened_instruction_sequence_.instructions().size();
+         instruction_index < flattened_instructions_.size();
          ++instruction_index) {
       auto insts_before_iter = schedule_before_.find(instruction_index);
       if (insts_before_iter != schedule_before_.end()) {
@@ -1276,10 +1283,11 @@ Status MemorySpaceAssignment::FixSchedule() {
           }
         }
       }
-      HloInstruction* instruction =
-          flattened_instruction_sequence_.instructions()[instruction_index];
-      // Insert only if not previously inserted.
-      if (!inserted_instructions.contains(instruction) &&
+      HloInstruction* instruction = flattened_instructions_[instruction_index];
+      // Insert only if it is not deleted (SimplifyGraph sets it to nullptr if
+      // it was deleted) and not previously inserted.
+      if (instruction != nullptr &&
+          !inserted_instructions.contains(instruction) &&
           instruction->parent() == computation) {
         EnsureInstructionAndOperandsInserted(instruction, &new_sequence,
                                              &inserted_instructions);

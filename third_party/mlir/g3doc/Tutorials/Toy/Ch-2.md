@@ -72,7 +72,7 @@ Let's break down the anatomy of this MLIR operation:
         are always constant. Here we define a boolean attribute named 'inplace'
         that has a constant value of true.
 
--   `(tensor<2x3xf64) -> tensor<3x2xf64>`
+-   `(tensor<2x3xf64>) -> tensor<3x2xf64>`
 
     *   This refers to the type of the operation in a functional form, spelling
         the types of the arguments in parentheses and the type of the return
@@ -395,7 +395,7 @@ documents.
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached
@@ -473,7 +473,7 @@ the implementation inline.
 ```tablegen
 def ConstantOp : Toy_Op<"constant", [NoSideEffect]> {
   // Provide a summary and description for this operation. This can be used to
-  // auto-generate documenatation of the operations within our dialect.
+  // auto-generate documentation of the operations within our dialect.
   let summary = "constant operation";
   let description = [{
     Constant operation turns a literal into an SSA value. The data is attached

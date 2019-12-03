@@ -38,6 +38,15 @@ namespace mlir {
 namespace xla_lhlo {
 namespace {
 
+ArrayAttr GetNParallelLoopsAttrs(unsigned nParallelLoops, Builder b) {
+  auto parallelLoopTypeAttr = b.getStringAttr("parallel");
+  SmallVector<Attribute, 3> iteratorTypes;
+  for (int i = 0; i < nParallelLoops; ++i) {
+    iteratorTypes.push_back(parallelLoopTypeAttr);
+  }
+  return b.getArrayAttr(iteratorTypes);
+}
+
 template <typename LhloOp>
 class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
  public:
@@ -78,11 +87,6 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
       result_or_body_arg.emplace_back(memrefType.getElementType());
     }
 
-    // Pointwise-ops have all surrounding loops parallel, so the loop triple is
-    // [argDim, 0, 0].
-    SmallVector<Attribute, 3> loop_types{rewriter.getI64IntegerAttr(nloops),
-                                         rewriter.getI64IntegerAttr(0),
-                                         rewriter.getI64IntegerAttr(0)};
     // Define the number of input memref/output memrefs.
     SmallVector<Attribute, 2> nmemrefs{
         rewriter.getI64IntegerAttr(bodyArgTypes.size()),
@@ -90,7 +94,8 @@ class PointwiseToLinalgConverter : public OpConversionPattern<LhloOp> {
 
     auto linalgOp = rewriter.create<linalg::GenericOp>(
         loc, args, rewriter.getArrayAttr(indexingMaps),
-        rewriter.getArrayAttr(loop_types), rewriter.getArrayAttr(nmemrefs),
+        GetNParallelLoopsAttrs(nloops, rewriter),
+        rewriter.getArrayAttr(nmemrefs),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -158,11 +163,6 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
     indexingMaps.emplace_back(
         AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
 
-    // Broadcast op has all surrounding loops parallel, so the loop triple is
-    // [argDim, 0, 0].
-    SmallVector<Attribute, 3> loop_types{rewriter.getI64IntegerAttr(nloops),
-                                         rewriter.getI64IntegerAttr(0),
-                                         rewriter.getI64IntegerAttr(0)};
     // Define the number of input memref/output memrefs.
     SmallVector<Attribute, 2> nmemrefs{
         rewriter.getI64IntegerAttr(bodyArgTypes.size()),
@@ -171,7 +171,8 @@ class BroadcastInDimConverter : public OpConversionPattern<BroadcastInDimOp> {
     auto loc = broadcastOp.getLoc();
     auto linalgOp = rewriter.create<linalg::GenericOp>(
         loc, args, rewriter.getArrayAttr(indexingMaps),
-        rewriter.getArrayAttr(loop_types), rewriter.getArrayAttr(nmemrefs),
+        GetNParallelLoopsAttrs(nloops, rewriter),
+        rewriter.getArrayAttr(nmemrefs),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -207,11 +208,6 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
     indexingMaps.emplace_back(
         AffineMapAttr::get(rewriter.getMultiDimIdentityMap(nloops)));
 
-    // Pointwise-ops have all surrounding loops parallel, so the loop triple is
-    // [argDim, 0, 0].
-    SmallVector<Attribute, 3> loop_types{rewriter.getI64IntegerAttr(nloops),
-                                         rewriter.getI64IntegerAttr(0),
-                                         rewriter.getI64IntegerAttr(0)};
     // Define the number of input memref/output memrefs.
     SmallVector<Attribute, 2> nmemrefs{rewriter.getI64IntegerAttr(0),
                                        rewriter.getI64IntegerAttr(1)};
@@ -219,7 +215,8 @@ class IotaConverter : public OpConversionPattern<IotaOp> {
     auto loc = iotaOp.getLoc();
     auto linalgOp = rewriter.create<linalg::IndexedGenericOp>(
         loc, args, rewriter.getArrayAttr(indexingMaps),
-        rewriter.getArrayAttr(loop_types), rewriter.getArrayAttr(nmemrefs),
+        GetNParallelLoopsAttrs(nloops, rewriter),
+        rewriter.getArrayAttr(nmemrefs),
         /*doc=*/nullptr, /*fun=*/nullptr, /*library_call=*/nullptr);
 
     // Add a block to the region.
@@ -277,7 +274,7 @@ void populateLHLOToLinalgConversionPattern(MLIRContext* context,
 //     "linalg.yield"(%0) : (f32) -> ()
 //   }) {
 //     indexing_maps = [#map0, #map0, #map0],
-//     n_loop_types = [2, 0, 0],
+//     iterator_types = ["parallel", "parallel"],
 //     n_views = [2, 1]
 //   } : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
 // }

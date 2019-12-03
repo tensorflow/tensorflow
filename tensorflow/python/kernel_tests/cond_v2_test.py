@@ -119,6 +119,29 @@ class CondV2Test(test.TestCase):
     output = build_cond_with_indexed_slices()
     self.assertAllEqual(output, [1.])
 
+  def testReturnsNonesAndIndexedSlices(self):
+
+    @def_function.function
+    def build_cond_with_indexed_slices():
+      pred = constant_op.constant(True)
+
+      def true_fn():
+        return (None, None, None,
+                math_ops._as_indexed_slices(constant_op.constant([1.])))
+
+      def false_fn():
+        return (None, None, None,
+                math_ops._as_indexed_slices(constant_op.constant([2.])))
+
+      result = cond_v2.cond_v2(pred, true_fn, false_fn)
+      self.assertIsNone(result[0])
+      self.assertIsNone(result[1])
+      self.assertIsNone(result[2])
+      return ops.convert_to_tensor(result[3])
+
+    output = build_cond_with_indexed_slices()
+    self.assertAllEqual(output, [1.])
+
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)

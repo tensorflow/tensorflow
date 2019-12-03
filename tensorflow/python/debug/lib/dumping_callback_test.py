@@ -225,7 +225,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     self.assertIn("AddV2", op_types)
     self.assertIn("Log", op_types)
     self.assertIn("Sin", op_types)
@@ -276,7 +276,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     self.assertIn("AddV2", op_types)
     self.assertIn("Log", op_types)
     self.assertIn("Sin", op_types)
@@ -354,7 +354,7 @@ class TracingCallbackTest(
     writer.FlushExecutionFiles()
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, _,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     (op_names, _, _,
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
     executed_op_types = [op_name_to_op_type[op_name] for op_name in op_names]
@@ -417,7 +417,7 @@ class TracingCallbackTest(
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
 
     # Verify the content of the .graphs file.
-    context_ids, op_types, op_name_to_op_type = (
+    context_ids, op_types, op_name_to_op_type, _ = (
         self._readAndCheckGraphsFile(stack_frame_by_id))
     self.assertIn("Less", op_types)
     self.assertIn("Mul", op_types)
@@ -555,7 +555,7 @@ class TracingCallbackTest(
     writer.FlushNonExecutionFiles()
     writer.FlushExecutionFiles()
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
-    context_ids, _, _ = self._readAndCheckGraphsFile(stack_frame_by_id)
+    context_ids, _, _, _ = self._readAndCheckGraphsFile(stack_frame_by_id)
     _, _, _, _, tensor_values = self._readAndCheckExecutionFile()
     self.assertEqual(tensor_values, [[]])
     (_, _, _,
@@ -638,7 +638,7 @@ class TracingCallbackTest(
       prev_wall_time = debug_event.wall_time
 
     (context_ids, _,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
 
     (op_names, _, output_slots,
      tensor_values) = self._readAndCheckGraphExecutionTracesFile(context_ids)
@@ -718,6 +718,57 @@ class TracingCallbackTest(
     v2_squared_values = tensor_values[executed_op_types.index("Pow")]
     self.assertAllClose(v2_squared_values, [9.0])
 
+  @test_util.run_in_graph_and_eager_modes
+  def testNestedContextIsCapturedByGraphOpCreationHistory(self):
+    writer = dumping_callback.enable_dump_debug_info(
+        self.dump_root, tensor_debug_mode="NO_TENSOR")
+
+    @def_function.function
+    def iterative_doubling(x, times):
+      i = constant_op.constant(0, dtype=dtypes.int32)
+      while i < times:
+        x = x * 2.0 - 1.0
+        i += 1
+      return x
+
+    x = constant_op.constant(2.0, dtype=dtypes.float32)
+    times = constant_op.constant(4, dtype=dtypes.int32)
+    # 2 * 2 - 1 = 3; 3 * 2 - 1 = 5; 5 * 2 - 1 = 9; 9 * 2 - 1 = 17.
+    self.assertAllClose(self.evaluate(iterative_doubling(x, times)), 17.0)
+
+    writer.FlushNonExecutionFiles()
+    writer.FlushExecutionFiles()
+
+    stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
+    (_, _, op_name_to_op_type,
+     op_name_to_context_id) = self._readAndCheckGraphsFile(stack_frame_by_id)
+
+    less_op_names = [op_name for op_name in op_name_to_op_type
+                     if op_name_to_op_type[op_name] == "Less"]
+    less_context_ids = [op_name_to_context_id[op_name]
+                        for op_name in less_op_names]
+    mul_op_names = [op_name for op_name in op_name_to_op_type
+                    if op_name_to_op_type[op_name] == "Mul"]
+    mul_context_ids = [op_name_to_context_id[op_name]
+                       for op_name in mul_op_names]
+    sub_op_names = [op_name for op_name in op_name_to_op_type
+                    if op_name_to_op_type[op_name] == "Sub"]
+    sub_context_ids = [op_name_to_context_id[op_name]
+                       for op_name in sub_op_names]
+    self.assertLen(less_context_ids, 1)
+    self.assertLen(mul_context_ids, 1)
+    self.assertLen(sub_context_ids, 1)
+    self.assertTrue(less_context_ids[0])
+    self.assertTrue(mul_context_ids[0])
+    self.assertTrue(sub_context_ids[0])
+    # The Less op is from the while-loop cond context and hence should have
+    # a different innermost context ID from the mul and sub ops, which are both
+    # from the while-loop body context.
+    self.assertNotEqual(less_context_ids[0], mul_context_ids[0])
+    self.assertNotEqual(less_context_ids[0], sub_context_ids[0])
+    # The Mul and Sub ops are from the same innermost context.
+    self.assertEqual(mul_context_ids[0], sub_context_ids[0])
+
   @parameterized.named_parameters(
       ("NoTensor", "NO_TENSOR"),
       ("FullTensor", "FULL_TENSOR"),
@@ -736,7 +787,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     # Simply assert that graph are recorded and refrain from asserting on the
     # internal details of the Keras model.
     self.assertTrue(context_ids)
@@ -803,7 +854,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     # Simply assert that graph are recorded and refrain from asserting on the
     # internal details of the Keras model.
     self.assertTrue(context_ids)
@@ -876,7 +927,7 @@ class TracingCallbackTest(
 
     stack_frame_by_id = self._readAndCheckSourceFilesAndStackFrames()
     (context_ids, op_types,
-     op_name_to_op_type) = self._readAndCheckGraphsFile(stack_frame_by_id)
+     op_name_to_op_type, _) = self._readAndCheckGraphsFile(stack_frame_by_id)
     # Simply assert that graph are recorded and refrain from asserting on the
     # internal details of the Keras model.
     self.assertTrue(context_ids)

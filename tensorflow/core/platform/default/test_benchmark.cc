@@ -15,14 +15,14 @@ limitations under the License.
 
 #include "tensorflow/core/platform/test_benchmark.h"
 
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
-
-#include <algorithm>
 #include <vector>
-#include "tensorflow/core/lib/strings/str_util.h"
+
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/util/reporter.h"
 
 namespace tensorflow {

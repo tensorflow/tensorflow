@@ -22,6 +22,7 @@
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/FunctionImplementation.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
@@ -861,9 +862,13 @@ static ParseResult parseConstantOp(OpAsmParser &parser,
 // Builder, printer and verifier for LLVM::GlobalOp.
 //===----------------------------------------------------------------------===//
 
+/// Returns the name used for the linkge attribute. This *must* correspond to
+/// the name of the attribute in ODS.
+static StringRef getLinkageAttrName() { return "linkage"; }
+
 void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
-                     bool isConstant, StringRef name, Attribute value,
-                     ArrayRef<NamedAttribute> attrs) {
+                     bool isConstant, Linkage linkage, StringRef name,
+                     Attribute value, ArrayRef<NamedAttribute> attrs) {
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
   result.addAttribute("type", TypeAttr::get(type));
@@ -871,12 +876,50 @@ void GlobalOp::build(Builder *builder, OperationState &result, LLVMType type,
     result.addAttribute("constant", builder->getUnitAttr());
   if (value)
     result.addAttribute("value", value);
+  result.addAttribute(getLinkageAttrName(), builder->getI64IntegerAttr(
+                                                static_cast<int64_t>(linkage)));
   result.attributes.append(attrs.begin(), attrs.end());
   result.addRegion();
 }
 
+// Returns the textual representation of the given linkage.
+static StringRef linkageToStr(LLVM::Linkage linkage) {
+  switch (linkage) {
+  case LLVM::Linkage::Private:
+    return "private";
+  case LLVM::Linkage::Internal:
+    return "internal";
+  case LLVM::Linkage::AvailableExternally:
+    return "available_externally";
+  case LLVM::Linkage::Linkonce:
+    return "linkonce";
+  case LLVM::Linkage::Weak:
+    return "weak";
+  case LLVM::Linkage::Common:
+    return "common";
+  case LLVM::Linkage::Appending:
+    return "appending";
+  case LLVM::Linkage::ExternWeak:
+    return "extern_weak";
+  case LLVM::Linkage::LinkonceODR:
+    return "linkonce_odr";
+  case LLVM::Linkage::WeakODR:
+    return "weak_odr";
+  case LLVM::Linkage::External:
+    return "external";
+  }
+  llvm_unreachable("unknown linkage type");
+}
+
+// Prints the keyword for the linkage type using the printer.
+static void printLinkage(OpAsmPrinter &p, LLVM::Linkage linkage) {
+  p << linkageToStr(linkage);
+}
+
 static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   p << op.getOperationName() << ' ';
+  printLinkage(p, op.linkage());
+  p << ' ';
   if (op.constant())
     p << "constant ";
   p.printSymbolName(op.sym_name());
@@ -884,8 +927,9 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
   if (auto value = op.getValueOrNull())
     p.printAttribute(value);
   p << ')';
-  p.printOptionalAttrDict(op.getAttrs(), {SymbolTable::getSymbolAttrName(),
-                                          "type", "constant", "value"});
+  p.printOptionalAttrDict(op.getAttrs(),
+                          {SymbolTable::getSymbolAttrName(), "type", "constant",
+                           "value", getLinkageAttrName()});
 
   // Print the trailing type unless it's a string global.
   if (op.getValueOrNull().dyn_cast_or_null<StringAttr>())
@@ -898,12 +942,46 @@ static void printGlobalOp(OpAsmPrinter &p, GlobalOp op) {
     p.printRegion(initializer, /*printEntryBlockArgs=*/false);
 }
 
-// <operation> ::= `llvm.mlir.global` `constant`? `@` identifier
-//                 `(` attribute? `)` attribute-list? (`:` type)? region?
+// Parses one of the keywords provided in the list `keywords` and returns the
+// position of the parsed keyword in the list. If none of the keywords from the
+// list is parsed, returns -1.
+static int parseOptionalKeywordAlternative(OpAsmParser &parser,
+                                           ArrayRef<StringRef> keywords) {
+  for (auto en : llvm::enumerate(keywords)) {
+    if (succeeded(parser.parseOptionalKeyword(en.value())))
+      return en.index();
+  }
+  return -1;
+}
+
+// Parses one of the linkage keywords and, if succeeded, appends the "linkage"
+// integer attribute with the corresponding value to `result`.
+//
+// linkage ::= `private` | `internal` | `available_externally` | `linkonce`
+//           | `weak` | `common` | `appending` | `extern_weak`
+//           | `linkonce_odr` | `weak_odr` | `external
+static ParseResult parseOptionalLinkageKeyword(OpAsmParser &parser,
+                                               OperationState &result) {
+  int index = parseOptionalKeywordAlternative(
+      parser, {"private", "internal", "available_externally", "linkonce",
+               "weak", "common", "appending", "extern_weak", "linkonce_odr",
+               "weak_odr", "external"});
+  if (index == -1)
+    return failure();
+  result.addAttribute(getLinkageAttrName(),
+                      parser.getBuilder().getI64IntegerAttr(index));
+  return success();
+}
+
+// operation ::= `llvm.mlir.global` linkage `constant`? `@` identifier
+//               `(` attribute? `)` attribute-list? (`:` type)? region?
 //
 // The type can be omitted for string attributes, in which case it will be
 // inferred from the value of the string as [strlen(value) x i8].
 static ParseResult parseGlobalOp(OpAsmParser &parser, OperationState &result) {
+  if (failed(parseOptionalLinkageKeyword(parser, result)))
+    return parser.emitError(parser.getCurrentLocation(), "expected linkage");
+
   if (succeeded(parser.parseOptionalKeyword("constant")))
     result.addAttribute("constant", parser.getBuilder().getUnitAttr());
 
@@ -1039,12 +1117,15 @@ static ParseResult parseShuffleVectorOp(OpAsmParser &parser,
 //===----------------------------------------------------------------------===//
 
 void LLVMFuncOp::build(Builder *builder, OperationState &result, StringRef name,
-                       LLVMType type, ArrayRef<NamedAttribute> attrs,
+                       LLVMType type, LLVM::Linkage linkage,
+                       ArrayRef<NamedAttribute> attrs,
                        ArrayRef<NamedAttributeList> argAttrs) {
   result.addRegion();
   result.addAttribute(SymbolTable::getSymbolAttrName(),
                       builder->getStringAttr(name));
   result.addAttribute("type", TypeAttr::get(type));
+  result.addAttribute(getLinkageAttrName(), builder->getI64IntegerAttr(
+                                                static_cast<int64_t>(linkage)));
   result.attributes.append(attrs.begin(), attrs.end());
   if (argAttrs.empty())
     return;
@@ -1058,15 +1139,16 @@ void LLVMFuncOp::build(Builder *builder, OperationState &result, StringRef name,
       result.addAttribute(getArgAttrName(i, argAttrName), argDict);
 }
 
-// Build an LLVM function type from the given lists of input and output types.
+// Builds an LLVM function type from the given lists of input and output types.
 // Returns a null type if any of the types provided are non-LLVM types, or if
 // there is more than one output type.
-static Type buildLLVMFunctionType(Builder &b, ArrayRef<Type> inputs,
-                                  ArrayRef<Type> outputs,
-                                  impl::VariadicFlag variadicFlag,
-                                  std::string &errorMessage) {
+static Type buildLLVMFunctionType(OpAsmParser &parser, llvm::SMLoc loc,
+                                  ArrayRef<Type> inputs, ArrayRef<Type> outputs,
+                                  impl::VariadicFlag variadicFlag) {
+  Builder &b = parser.getBuilder();
   if (outputs.size() > 1) {
-    errorMessage = "expected zero or one function result";
+    parser.emitError(loc, "failed to construct function type: expected zero or "
+                          "one function result");
     return {};
   }
 
@@ -1075,7 +1157,8 @@ static Type buildLLVMFunctionType(Builder &b, ArrayRef<Type> inputs,
   for (auto t : inputs) {
     auto llvmTy = t.dyn_cast<LLVMType>();
     if (!llvmTy) {
-      errorMessage = "expected LLVM type for function arguments";
+      parser.emitError(loc, "failed to construct function type: expected LLVM "
+                            "type for function arguments");
       return {};
     }
     llvmInputs.push_back(llvmTy);
@@ -1091,16 +1174,71 @@ static Type buildLLVMFunctionType(Builder &b, ArrayRef<Type> inputs,
   LLVMType llvmOutput = outputs.empty() ? LLVMType::getVoidTy(dialect)
                                         : outputs.front().dyn_cast<LLVMType>();
   if (!llvmOutput) {
-    errorMessage = "expected LLVM type for function results";
+    parser.emitError(loc, "failed to construct function type: expected LLVM "
+                          "type for function results");
     return {};
   }
   return LLVMType::getFunctionTy(llvmOutput, llvmInputs,
                                  variadicFlag.isVariadic());
 }
 
-// Print the LLVMFuncOp.  Collects argument and result types and passes them
-// to the trait printer.  Drops "void" result since it cannot be parsed back.
+// Parses an LLVM function.
+//
+// operation ::= `llvm.func` linkage? function-signature function-attributes?
+//               function-body
+//
+static ParseResult parseLLVMFuncOp(OpAsmParser &parser,
+                                   OperationState &result) {
+  // Default to external linkage if no keyword is provided.
+  if (failed(parseOptionalLinkageKeyword(parser, result)))
+    result.addAttribute(getLinkageAttrName(),
+                        parser.getBuilder().getI64IntegerAttr(
+                            static_cast<int64_t>(LLVM::Linkage::External)));
+
+  StringAttr nameAttr;
+  SmallVector<OpAsmParser::OperandType, 8> entryArgs;
+  SmallVector<SmallVector<NamedAttribute, 2>, 1> argAttrs;
+  SmallVector<SmallVector<NamedAttribute, 2>, 1> resultAttrs;
+  SmallVector<Type, 8> argTypes;
+  SmallVector<Type, 4> resultTypes;
+  bool isVariadic;
+
+  auto signatureLocation = parser.getCurrentLocation();
+  if (parser.parseSymbolName(nameAttr, SymbolTable::getSymbolAttrName(),
+                             result.attributes) ||
+      impl::parseFunctionSignature(parser, /*allowVariadic=*/true, entryArgs,
+                                   argTypes, argAttrs, isVariadic, resultTypes,
+                                   resultAttrs))
+    return failure();
+
+  auto type =
+      buildLLVMFunctionType(parser, signatureLocation, argTypes, resultTypes,
+                            impl::VariadicFlag(isVariadic));
+  if (!type)
+    return failure();
+  result.addAttribute(impl::getTypeAttrName(), TypeAttr::get(type));
+
+  if (failed(parser.parseOptionalAttrDictWithKeyword(result.attributes)))
+    return failure();
+  impl::addArgAndResultAttrs(parser.getBuilder(), result, argAttrs,
+                             resultAttrs);
+
+  auto *body = result.addRegion();
+  return parser.parseOptionalRegion(
+      *body, entryArgs, entryArgs.empty() ? llvm::ArrayRef<Type>() : argTypes);
+}
+
+// Print the LLVMFuncOp. Collects argument and result types and passes them to
+// helper functions. Drops "void" result since it cannot be parsed back. Skips
+// the external linkage since it is the default value.
 static void printLLVMFuncOp(OpAsmPrinter &p, LLVMFuncOp op) {
+  p << op.getOperationName() << ' ';
+  if (op.linkage() != LLVM::Linkage::External) {
+    printLinkage(p, op.linkage());
+    p << ' ';
+  }
+  p.printSymbolName(op.getName());
+
   LLVMType fnType = op.getType();
   SmallVector<Type, 8> argTypes;
   SmallVector<Type, 1> resTypes;
@@ -1112,7 +1250,15 @@ static void printLLVMFuncOp(OpAsmPrinter &p, LLVMFuncOp op) {
   if (!returnType.getUnderlyingType()->isVoidTy())
     resTypes.push_back(returnType);
 
-  impl::printFunctionLikeOp(p, op, argTypes, op.isVarArg(), resTypes);
+  impl::printFunctionSignature(p, op, argTypes, op.isVarArg(), resTypes);
+  impl::printFunctionAttributes(p, op, argTypes.size(), resTypes.size(),
+                                {getLinkageAttrName()});
+
+  // Print the body if this is not an external function.
+  Region &body = op.body();
+  if (!body.empty())
+    p.printRegion(body, /*printEntryBlockArgs=*/false,
+                  /*printBlockTerminators=*/true);
 }
 
 // Hook for OpTrait::FunctionLike, called after verifying that the 'type'
@@ -1148,9 +1294,26 @@ unsigned LLVMFuncOp::getNumFuncResults() {
   return 1;
 }
 
+// Verifies LLVM- and implementation-specific properties of the LLVM func Op:
+// - functions don't have 'common' linkage
+// - external functions have 'external' or 'extern_weak' linkage;
+// - vararg is (currently) only supported for external functions;
+// - entry block arguments are of LLVM types and match the function signature.
 static LogicalResult verify(LLVMFuncOp op) {
-  if (op.isExternal())
+  if (op.linkage() == LLVM::Linkage::Common)
+    return op.emitOpError()
+           << "functions cannot have '" << linkageToStr(LLVM::Linkage::Common)
+           << "' linkage";
+
+  if (op.isExternal()) {
+    if (op.linkage() != LLVM::Linkage::External &&
+        op.linkage() != LLVM::Linkage::ExternWeak)
+      return op.emitOpError()
+             << "external functions must have '"
+             << linkageToStr(LLVM::Linkage::External) << "' or '"
+             << linkageToStr(LLVM::Linkage::ExternWeak) << "' linkage";
     return success();
+  }
 
   if (op.isVarArg())
     return op.emitOpError("only external functions can be variadic");
@@ -1488,6 +1651,7 @@ LLVMType LLVMType::getVoidTy(LLVMDialect *dialect) {
 
 Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
                                       StringRef name, StringRef value,
+                                      LLVM::Linkage linkage,
                                       LLVM::LLVMDialect *llvmDialect) {
   assert(builder.getInsertionBlock() &&
          builder.getInsertionBlock()->getParentOp() &&
@@ -1501,7 +1665,8 @@ Value *mlir::LLVM::createGlobalString(Location loc, OpBuilder &builder,
   auto type = LLVM::LLVMType::getArrayTy(LLVM::LLVMType::getInt8Ty(llvmDialect),
                                          value.size());
   auto global = moduleBuilder.create<LLVM::GlobalOp>(
-      loc, type, /*isConstant=*/true, name, builder.getStringAttr(value));
+      loc, type, /*isConstant=*/true, linkage, name,
+      builder.getStringAttr(value));
 
   // Get the pointer to the first character in the global string.
   Value *globalPtr = builder.create<LLVM::AddressOfOp>(loc, global);

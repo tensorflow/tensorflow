@@ -36,7 +36,7 @@ xla::StatusOr<xla::Shape> TestShapeRepresentation(const TensorShape& shape,
   return xla_shape;
 }
 
-TEST(CompileSerializedMlirToXlaHloTest, InvalidSerliazedMlirModule) {
+TEST(CompileSerializedMlirToXlaHloTest, InvalidSerializedMlirModule) {
   string invalid_mlir_module = "totally @invalid MLIR module {here} <-";
   std::vector<TensorShape> arg_shapes;
   XlaCompiler::CompilationResult compilation_result;
@@ -101,7 +101,7 @@ ENTRY %main.6 (arg_tuple.1: (f32[], f32[])) -> (f32[]) {
       xla::ShapeUtil::MakeTupleShape({output_shape});
   EXPECT_EQ(compilation_result.xla_output_shape, tuple_output_shape);
 
-  // Expect exactly 1 OutputDescrpition.
+  // Expect exactly 1 OutputDescription.
   EXPECT_EQ(compilation_result.outputs.size(), 1);
   const XlaCompiler::OutputDescription& output_desc =
       compilation_result.outputs.front();

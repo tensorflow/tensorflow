@@ -532,7 +532,9 @@ struct Bfloat16GeFunctor {
 
 // Initializes the module.
 bool Initialize() {
-  // It's critical to import umath to avoid crash in open source build.
+  // It's critical to ImportNumpy and import umath
+  // to avoid crash in open source build.
+  ImportNumpy();
   import_umath1(false);
 
   Safe_PyObjectPtr numpy_str = make_safe(MakePyString("numpy"));

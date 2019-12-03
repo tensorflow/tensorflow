@@ -229,15 +229,6 @@ void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
   PortableVectorBatchVectorAdd(vector, v_size, n_batch, batch_vector);
 }
 
-void ApplySigmoidToVector(const float* vector, int v_size, float* result) {
-  PortableApplySigmoidToVector(vector, v_size, result);
-}
-
-void ApplyActivationToVector(const float* vector, int v_size,
-                             TfLiteFusedActivation activation, float* result) {
-  PortableApplyActivationToVector(vector, v_size, activation, result);
-}
-
 void Sub1Vector(const float* vector, int v_size, float* result) {
   PortableSub1Vector(vector, v_size, result);
 }

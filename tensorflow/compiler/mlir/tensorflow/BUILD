@@ -217,6 +217,7 @@ cc_library(
         "transforms/shape_inference.cc",
         "transforms/shape_inference_pass.cc",
         "transforms/sink_constant.cc",
+        "transforms/test_side_effect_analysis.cc",
         "transforms/tpu_cluster_formation.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_rewrite_pass.cc",
@@ -239,6 +240,7 @@ cc_library(
         ":error_util",
         ":export_tf_dialect_op",
         ":mangling_util",
+        ":side_effect_analysis",
         ":tensorflow",
         ":tensorflow_optimize_inc_gen",
         ":tpu_rewrite_device_util",
@@ -979,5 +981,21 @@ cc_library(
         "@llvm//:support",
         "@local_config_mlir//:IR",
         "@local_config_mlir//:Pass",
+    ],
+)
+
+cc_library(
+    name = "side_effect_analysis",
+    srcs = ["analysis/side_effect_analysis.cc"],
+    hdrs = ["analysis/side_effect_analysis.h"],
+    deps = [
+        ":tensorflow",
+        "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/strings",
+        "@llvm//:support",
+        "@local_config_mlir//:IR",
+        "@local_config_mlir//:Pass",
+        "@local_config_mlir//:Support",
     ],
 )

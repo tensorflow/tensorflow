@@ -93,6 +93,26 @@ def isbuiltin(f):
     return False
 
 
+def isconstructor(cls):
+  """Returns True if the argument is an object constructor.
+
+  In general, any object of type class is a constructor, with the exception
+  of classes created using a callable metaclass.
+  See below for why a callable metaclass is not a trivial combination:
+  https://docs.python.org/2.7/reference/datamodel.html#customizing-class-creation
+
+  Args:
+    cls: Any
+  Returns:
+    Bool
+  """
+  return (
+      inspect.isclass(cls)
+      and not (issubclass(cls.__class__, type)
+               and hasattr(cls.__class__, '__call__')
+               and cls.__class__.__call__ is not type.__call__))
+
+
 def _fix_linecache_record(obj):
   """Fixes potential corruption of linecache in the presence of functools.wraps.
 
@@ -351,4 +371,3 @@ def getfutureimports(entity):
     return tuple()
   return tuple(sorted(name for name, value in entity.__globals__.items()
                       if getattr(value, '__module__', None) == '__future__'))
-

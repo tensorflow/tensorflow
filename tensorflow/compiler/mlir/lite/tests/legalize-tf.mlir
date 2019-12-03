@@ -1,22 +1,22 @@
 // RUN: tf-opt %s -tfl-legalize-tf | FileCheck %s --dump-input-on-failure
 
-func @addRelu(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
-  %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %1 = "tf.Add"(%arg0, %0) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %2 = "tf.Relu"(%1) : (tensor<1xi32>) -> tensor<1xi32>
-  %3 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
-  %4 = "tf.Add"(%3, %2) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %5 = "tf.Relu6"(%4) : (tensor<1xi32>) -> tensor<1xi32>
-  %6 = "tfl.add"(%5, %3) {fused_activation_function = "NONE"} : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %7 = "tf.Relu6"(%6) : (tensor<1xi32>) -> tensor<1xi32>
-  return %7: tensor<1xi32>
+func @addRelu(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tf.Add"(%arg0, %0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %2 = "tf.Relu"(%1) : (tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tf.Relu"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+  %4 = "tf.Add"(%3, %2) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %5 = "tf.Relu6"(%4) : (tensor<1xf32>) -> tensor<1xf32>
+  %6 = "tfl.add"(%5, %3) {fused_activation_function = "NONE"} : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %7 = "tf.Relu6"(%6) : (tensor<1xf32>) -> tensor<1xf32>
+  return %7: tensor<1xf32>
 
 // CHECK-LABEL: addRelu
-// CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
-// CHECK:  %1 = tfl.add %arg0, %0 {fused_activation_function = "RELU"} : tensor<1xi32>
-// CHECK:  %2 = "tfl.relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
-// CHECK:  %3 = tfl.add %2, %1 {fused_activation_function = "RELU6"} : tensor<1xi32>
-// CHECK:  %4 = tfl.add %3, %2 {fused_activation_function = "RELU6"} : tensor<1xi32>
+// CHECK:  tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xf32>
+// CHECK:  %1 = tfl.add %arg0, %0 {fused_activation_function = "RELU"} : tensor<1xf32>
+// CHECK:  %2 = "tfl.relu"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+// CHECK:  %3 = tfl.add %2, %1 {fused_activation_function = "RELU6"} : tensor<1xf32>
+// CHECK:  %4 = tfl.add %3, %2 {fused_activation_function = "RELU6"} : tensor<1xf32>
 // CHECK:  return
 }
 
@@ -244,32 +244,32 @@ func @zeros_like(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
 // CHECK:  "tfl.zeros_like"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
 }
 
-func @divRelu(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>) -> tensor<1xi32> {
-  %0 = "tf.Div"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %1 = "tf.Div"(%arg0, %0) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %2 = "tf.Relu"(%1) : (tensor<1xi32>) -> tensor<1xi32>
-  %3 = "tf.Relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
-  %4 = "tf.Div"(%3, %2) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %5 = "tf.Relu6"(%4) : (tensor<1xi32>) -> tensor<1xi32>
-  return %5: tensor<1xi32>
+func @divRelu(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>) -> tensor<1xf32> {
+  %0 = "tf.Div"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tf.Div"(%arg0, %0) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %2 = "tf.Relu"(%1) : (tensor<1xf32>) -> tensor<1xf32>
+  %3 = "tf.Relu"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+  %4 = "tf.Div"(%3, %2) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %5 = "tf.Relu6"(%4) : (tensor<1xf32>) -> tensor<1xf32>
+  return %5: tensor<1xf32>
 
 // CHECK-LABEL: divRelu
-// CHECK:  tfl.div %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xi32>
-// CHECK:  %1 = tfl.div %arg0, %0 {fused_activation_function = "RELU"} : tensor<1xi32>
-// CHECK:  %2 = "tfl.relu"(%arg0) : (tensor<1xi32>) -> tensor<1xi32>
-// CHECK:  %3 = tfl.div %2, %1 {fused_activation_function = "RELU6"} : tensor<1xi32>
+// CHECK:  tfl.div %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<1xf32>
+// CHECK:  %1 = tfl.div %arg0, %0 {fused_activation_function = "RELU"} : tensor<1xf32>
+// CHECK:  %2 = "tfl.relu"(%arg0) : (tensor<1xf32>) -> tensor<1xf32>
+// CHECK:  %3 = tfl.div %2, %1 {fused_activation_function = "RELU6"} : tensor<1xf32>
 // CHECK:  return
 }
 
-func @squaredDifferenceRelu(tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32> {
-^bb0(%arg0: tensor<1xi32>, %arg1: tensor<1xi32>):
-  %0 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<1xi32>, tensor<1xi32>) -> tensor<1xi32>
-  %1 = "tf.Relu6"(%0) : (tensor<1xi32>) -> tensor<1xi32>
-  return %1: tensor<1xi32>
+func @squaredDifferenceRelu(tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32> {
+^bb0(%arg0: tensor<1xf32>, %arg1: tensor<1xf32>):
+  %0 = "tf.SquaredDifference"(%arg0, %arg1) : (tensor<1xf32>, tensor<1xf32>) -> tensor<1xf32>
+  %1 = "tf.Relu6"(%0) : (tensor<1xf32>) -> tensor<1xf32>
+  return %1: tensor<1xf32>
 
 // CHECK-LABEL: squaredDifferenceRelu
-// CHECK:  tfl.squared_difference %arg0, %arg1 : tensor<1xi32>
-// CHECK:  %1 = "tfl.relu6"(%0) : (tensor<1xi32>) -> tensor<1xi32>
+// CHECK:  tfl.squared_difference %arg0, %arg1 : tensor<1xf32>
+// CHECK:  %1 = "tfl.relu6"(%0) : (tensor<1xf32>) -> tensor<1xf32>
 // CHECK:  return
 }
 

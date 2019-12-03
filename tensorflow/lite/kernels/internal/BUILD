@@ -577,7 +577,6 @@ cc_library(
         ":compatibility",
         ":round",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "@gemmlowp",
     ],
@@ -670,14 +669,10 @@ cc_library(
     ],
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
-        ":common",
-        ":compatibility",
         ":cpu_check",
-        ":types",
+        "//third_party/eigen3",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
-        "//tensorflow/lite/kernels:op_macros",
-        "@gemmlowp//:fixedpoint",
     ] + select({
         ":aarch64": [
             ":neon_tensor_utils",

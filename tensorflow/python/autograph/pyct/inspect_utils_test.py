@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 import functools
 import imp
@@ -517,14 +518,14 @@ class InspectUtilsTest(test.TestCase):
       def baz(self):
         pass
 
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.foo, Subclass) is Subclass)
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.bar, Subclass) is Superclass)
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.baz, Subclass) is Subclass)
-    self.assertTrue(
-        inspect_utils.getdefiningclass(Subclass.class_method, Subclass) is
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.foo, Subclass), Subclass)
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.bar, Subclass), Superclass)
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.baz, Subclass), Subclass)
+    self.assertIs(
+        inspect_utils.getdefiningclass(Subclass.class_method, Subclass),
         Superclass)
 
   def test_isbuiltin(self):
@@ -536,6 +537,53 @@ class InspectUtilsTest(test.TestCase):
     self.assertTrue(inspect_utils.isbuiltin(range))
     self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
+
+  def test_isconstructor(self):
+
+    class OrdinaryClass(object):
+      pass
+
+    class OrdinaryCallableClass(object):
+
+      def __call__(self):
+        pass
+
+    class Metaclass(type):
+      pass
+
+    class CallableMetaclass(type):
+
+      def __call__(cls):
+        pass
+
+    self.assertTrue(inspect_utils.isconstructor(OrdinaryClass))
+    self.assertTrue(inspect_utils.isconstructor(OrdinaryCallableClass))
+    self.assertTrue(inspect_utils.isconstructor(Metaclass))
+    self.assertTrue(inspect_utils.isconstructor(Metaclass('TestClass', (), {})))
+    self.assertTrue(inspect_utils.isconstructor(CallableMetaclass))
+
+    self.assertFalse(inspect_utils.isconstructor(
+        CallableMetaclass('TestClass', (), {})))
+
+  def test_isconstructor_abc_callable(self):
+
+    @six.add_metaclass(abc.ABCMeta)
+    class AbcBase(object):
+
+      @abc.abstractmethod
+      def __call__(self):
+        pass
+
+    class AbcSubclass(AbcBase):
+
+      def __init__(self):
+        pass
+
+      def __call__(self):
+        pass
+
+    self.assertTrue(inspect_utils.isconstructor(AbcBase))
+    self.assertTrue(inspect_utils.isconstructor(AbcSubclass))
 
   def test_getfutureimports_functions(self):
     self.assertEqual(
