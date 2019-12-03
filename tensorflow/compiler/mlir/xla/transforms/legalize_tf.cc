@@ -232,11 +232,14 @@ static DenseIntElementsAttr Get2DTransposePerm(BoolAttr transpose, Builder *b) {
 // Pad op utilities.
 //===----------------------------------------------------------------------===//
 
+// Slices input attribute of rank two and returns the specified column.
+//
+// Always returns 64 bit integer attribute regardless of bitwidth of the input
+// attribute.
 static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
-    Builder *b, ElementsAttr input, int column) {
+    ElementsAttr input, int column) {
   auto int_attr = input.cast<DenseIntElementsAttr>();
   auto shaped_type = int_attr.getType();
-  auto element_type = shaped_type.getElementType();
   auto shape = shaped_type.getShape();
 
   if (shape.size() != 2) return DenseIntElementsAttr();
@@ -250,8 +253,18 @@ static DenseIntElementsAttr SliceDenseIntElementsAttrColumn2D(
     }
   }
 
+  auto element_type = IntegerType::get(64, input.getContext());
   return DenseIntElementsAttr::get(
       RankedTensorType::get({shape[0]}, element_type), values);
+}
+
+// Returns interior padding to use in HLO Pad op based on the TensorFlow padding
+// in TensorFlow PadV2 op.
+static DenseIntElementsAttr GetInteriorPadding(ElementsAttr tf_padding) {
+  auto length = tf_padding.getType().getShape()[0];
+  auto element_type = IntegerType::get(64, tf_padding.getContext());
+  return DenseIntElementsAttr::get<int64_t>(
+      RankedTensorType::get({length}, element_type), 0);
 }
 
 //===----------------------------------------------------------------------===//

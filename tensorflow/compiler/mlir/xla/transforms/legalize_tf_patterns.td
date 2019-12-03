@@ -256,25 +256,21 @@ def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
-def ZeroPaddingAttr : NativeCodeCall <
-  "DenseIntElementsAttr::get("
-    "RankedTensorType::get($0.getType().getShape()[0],"
-    "                      getElementTypeOrSelf($0.getType())), "
-    "{$_builder.getZeroAttr(getElementTypeOrSelf($0.getType()))})">;
-
 class SliceDenseIntElementsAttrColumn2D<string column> : NativeCodeCall<
-  "SliceDenseIntElementsAttrColumn2D("
-    "&$_builder, $0, " # column # " )">;
+  "SliceDenseIntElementsAttrColumn2D($0, " # column # " )">;
 
 class SliceDenseIntElementsAttr<string index, string axis> : NativeCodeCall<
-  "SliceDenseIntElementsAttr(&$_builder, $0, " # index # ", " # axis # ")">;
+  "SliceDenseIntElementsAttr($0, " # index # ", " # axis # ")">;
 
+// Interior padding attribute based on the TF padding.
+def GetInteriorPadding : NativeCodeCall <
+  "GetInteriorPadding($0)">;
 
-def : Pat<(TF_PadV2Op $input, (TF_ConstOp I64ElementsAttr:$padding), $c),
+def : Pat<(TF_PadV2Op $input, (TF_ConstOp $padding), $c),
           (HLO_PadOp $input, $c,
            (SliceDenseIntElementsAttrColumn2D<"0"> $padding),
            (SliceDenseIntElementsAttrColumn2D<"1"> $padding),
-           (ZeroPaddingAttr $padding))>;
+           (GetInteriorPadding $padding))>;
 
 //===----------------------------------------------------------------------===//
 // Identity op patterns.
