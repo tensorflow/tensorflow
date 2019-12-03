@@ -2111,6 +2111,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
     "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
     "lib/wav/wav_io.h",
+    "//tensorflow/core/platform:blocking_counter.h",
     "//tensorflow/core/platform:demangle.h",
     "//tensorflow/core/platform:denormal.h",
     "//tensorflow/core/platform:host_info.h",
