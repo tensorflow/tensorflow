@@ -345,13 +345,17 @@ class Sequential(training.Model):
     layer_configs = []
     for layer in self.layers:
       layer_configs.append(generic_utils.serialize_keras_object(layer))
-    # When constructed using an `InputLayer` the first non-input layer may not
-    # have the shape information to reconstruct `Sequential` as a graph network.
-    if (self._is_graph_network and layer_configs and
-        'batch_input_shape' not in layer_configs[0]['config'] and
-        isinstance(self._layers[0], input_layer.InputLayer)):
-      batch_input_shape = self._layers[0]._batch_input_shape
-      layer_configs[0]['config']['batch_input_shape'] = batch_input_shape
+
+    if layer_configs and layer_configs[0]['config'] is not None:
+      # layer_configs[0]['config'] may be None only when saving SavedModel.
+
+      # Check to see whether the first non-input layer has the shape information
+      # to reconstruct `Sequential` as a graph network. If not, add it.
+      if (self._is_graph_network and
+          'batch_input_shape' not in layer_configs[0]['config'] and
+          isinstance(self._layers[0], input_layer.InputLayer)):
+        batch_input_shape = self._layers[0]._batch_input_shape
+        layer_configs[0]['config']['batch_input_shape'] = batch_input_shape
 
     config = {
         'name': self.name,
