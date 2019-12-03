@@ -274,8 +274,8 @@ def internal_gen_well_known_protos_java(srcs):
     Args:
       srcs: the well known protos
     """
-    root = Label("%s//protobuf_java" % (REPOSITORY_NAME)).workspace_root
-    pkg = PACKAGE_NAME + "/" if PACKAGE_NAME else ""
+    root = Label("%s//protobuf_java" % (native.repository_name())).workspace_root
+    pkg = native.package_name() + "/" if native.package_name() else ""
     if root == "":
         include = " -I%ssrc " % pkg
     else:
