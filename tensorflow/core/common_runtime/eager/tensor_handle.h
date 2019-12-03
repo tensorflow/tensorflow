@@ -167,8 +167,6 @@ class TensorHandle : public core::RefCounted {
   // on a non-ready tensor.
   void Poison(Status status);
 
-  bool IsReady();
-
   Status CopyToDevice(EagerContext* ctx, tensorflow::Device* dstd,
                       tensorflow::Tensor* output);
 
@@ -207,6 +205,12 @@ class TensorHandle : public core::RefCounted {
       std::vector<DtypeAndPartialTensorShape>* result);
 
  private:
+  // The TensorHandleData can either represent a local or remote tensor handle.
+  // Further, it can be in a non-ready state. It would become ready with a call
+  // to either SetTensor or SetRemoteShape which replaces the underlying data
+  // with a ready version of the tensor handle data.
+  bool IsReady() const;
+
   // If the contents of the Tensor pointed to by this handle is yet to be
   // computed by a EagerNode, this function will block till that computation is
   // done and the handle is "ready".
@@ -232,9 +236,9 @@ class TensorHandle : public core::RefCounted {
   // backing the resource. Else resource_device_ is nullptr.
   tensorflow::Device* const resource_device_;
 
-#if !defined(IS_MOBILE_PLATFORM)
   mutable mutex mu_;
 
+#if !defined(IS_MOBILE_PLATFORM)
   // TODO(yujingzhang): Remove resource_shape_mirrors_ once scalable per-replica
   // variable is ready, since we could get the shape locally without remote copy
   // then.
@@ -263,25 +267,18 @@ class TensorHandle : public core::RefCounted {
   // `ctx` object is not owned and should outlive this handle.
   EagerContext* const ctx_;
 
-  // Explanation for NOLINT below: absl has clang-tidy macro to rename
-  // 'tensorflow::Notification' to 'absl::Notification'. TF does not use
-  // absl::Notification in open source now, so we can't follow clang-tidy
-  tensorflow::Notification is_ready_notification_;  // NOLINT
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, is_poisoned_ is immutable.
   Status is_poisoned_;
   const bool is_remote_;
   const bool is_async_;
+  bool is_ready_ GUARDED_BY(mu_);
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
   // refers to a remote resource handle, we store data types and shapes for
   // the underlying resource.
   std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
 
-  // The TensorHandleData can either represent a local or remote tensor handle.
-  // Further, it can be in a non-ready state. It would become ready with a call
-  // to either SetTensor or SetRemoteShape which replaces the underlying data
-  // with a ready version of the tensor handle data.
   // Does not need synchronization because it can be accessed only after
   // WaitReady() has returned. At that point, tensor_handle_data_ is immutable.
   std::unique_ptr<TensorHandleData> tensor_handle_data_;
