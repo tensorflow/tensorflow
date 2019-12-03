@@ -1517,7 +1517,7 @@ def resize_image_with_pad_v2(image,
     If `images` was 4-D, a 4-D float Tensor of shape
     `[batch, new_height, new_width, channels]`.
     If `images` was 3-D, a 3-D float Tensor of shape
-    `[new_height, new_width, channels]`
+    `[new_height, new_width, channels]`.
   """
 
   def _resize_fn(im, new_size):
