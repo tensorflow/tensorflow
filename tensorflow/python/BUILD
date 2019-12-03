@@ -400,6 +400,17 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_bfloat16",
+    srcs = ["lib/core/bfloat16_wrapper.cc"],
+    hdrs = ["lib/core/bfloat16.h"],
+    module_name = "_pywrap_bfloat16",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
@@ -1158,6 +1169,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_dtypes",
+        ":_pywrap_bfloat16",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
@@ -5442,7 +5454,6 @@ tf_py_wrap_cc(
         "grappler/cost_analyzer.i",
         "grappler/item.i",
         "grappler/tf_optimizer.i",
-        "lib/core/bfloat16.i",
         "lib/core/strings.i",
         "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
@@ -5528,6 +5539,7 @@ WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
     ":numpy_lib",  # checkpoint_reader
     ":safe_ptr",  # checkpoint_reader
     ":python_op_gen",  # python_op_gen
+    ":bfloat16_lib",  # bfloat16
     "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
 ]
 
