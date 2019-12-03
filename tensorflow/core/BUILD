@@ -237,6 +237,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
+        ":test_log_proto_impl",
         ":core_protos",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
@@ -567,6 +568,24 @@ cc_library(
     ],
 )
 
+# TODO(gunan): Move this to core/util/BUILD once the  file is created
+cc_library(
+    name = "util_reporter",
+    srcs = ["util/reporter.cc"],
+    hdrs = ["util/reporter.h"],
+    # Not to be used outside this file.
+    visibility = ["//visibility:private"],
+    deps = [
+        ":test_log_proto_impl_cc",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
 # Test support library needed for all tests
 # This is currently public, but may be made internal in the
 # future.  Try to avoid depending on it.
@@ -574,7 +593,6 @@ cc_library(
     name = "test",
     testonly = 1,
     srcs = [
-        "util/reporter.cc",
         "//tensorflow/core/platform:legacy_test_srcs",
     ],
     hdrs = [
@@ -2156,6 +2174,7 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
         ":lib_proto_parsing",
+        ":util_reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
@@ -2451,6 +2470,15 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "test_log_proto_impl",
+    srcs = ["util/test_log.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    # Not to be used outside this file.
+    visibility = ["//visibility:private"],
+)
+
+tf_proto_library(
     name = "core_protos",
     srcs = COMMON_PROTO_SRCS + [
         # Protos which are not needed on mobile builds, but should be included
@@ -2473,12 +2501,12 @@ tf_proto_library(
         "protobuf/tensorflow_server.proto",
         "protobuf/trackable_object_graph.proto",
         "protobuf/transport_options.proto",
-        "util/test_log.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
+        ":test_log_proto_impl",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
