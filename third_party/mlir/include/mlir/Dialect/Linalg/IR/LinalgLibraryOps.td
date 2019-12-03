@@ -567,8 +567,8 @@ def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
         To support inplace updates in a generic fashion, the signature of the
         function must be:
         ```
-          fun([input views element types], [output views element types])
-            -> ([output views element types])
+          fun([index types for induction variables], [input views element types],
+              [output views element types]) -> ([output views element types])
         ```
       - indexing_maps: a list of AffineMapAttr, one AffineMapAttr per each input
         and output view. Such AffineMapAttr specifies the mapping between the
@@ -587,7 +587,7 @@ def IndexedGenericOp : GenericOpBase<"indexed_generic"> {
     Example:
     Defining a #matmul_trait attribute in MLIR can be done as follows:
       ```mlir
-        func @fma(%a: f32, %b: f32, %c: f32) -> f32 {
+        func @fma(%i: index, %j: index, %k: index, %a: f32, %b: f32, %c: f32) -> f32 {
           %d = mulf %a, %b: f32
           %e = addf %c, %d: f32
           return %e: f32
