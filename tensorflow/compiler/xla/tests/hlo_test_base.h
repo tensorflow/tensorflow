@@ -274,6 +274,7 @@ class HloTestBase : public ::testing::Test {
   // inspect a particular computation or instruction.
   HloComputation* FindComputation(HloModule* module, absl::string_view name);
   HloInstruction* FindInstruction(HloModule* module, absl::string_view name);
+  // Gets the instruction from the given module with the given opcode.
   HloInstruction* FindInstruction(HloModule* module, HloOpcode opcode);
 
   // Return an HLO verifier constructed for the test backend.

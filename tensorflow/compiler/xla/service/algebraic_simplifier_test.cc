@@ -5983,7 +5983,7 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationBatchnormTraining) {
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  // Verify that the graph build do not have abs node.
+  // Verify that the module doesn't have any abs node.
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kAbs), nullptr);
   EXPECT_EQ(m->entry_computation()->root_instruction()->operand(2)->opcode(),
             HloOpcode::kGetTupleElement);
@@ -6042,8 +6042,8 @@ TEST_F(AlgebraicSimplifierTest, AbsEliminationPower2) {
   )";
   TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  // Pow(A, 2) gets transformed to A*A, hence the final pattern transform is
-  // Abs(Power(A, 2)) => A*A.
+  // Pow(A, 2) is transformed to AA. As a result, Abs(Power(A, 2)) is
+  // transformed to AA.
   EXPECT_THAT(m->entry_computation()->root_instruction(),
               GmockMatch(m::Multiply(m::Parameter(0), m::Parameter(0))));
 }
