@@ -180,3 +180,27 @@
 +}  // end namespace Eigen
 +
 +#endif  // HIP_VECTOR_COMPATIBILITY_H
+--- a/Eigen/src/Core/GenericPacketMath.h
++++ b/Eigen/src/Core/GenericPacketMath.h
+@@ -247,7 +247,8 @@
+ template <typename Packet>
+ EIGEN_DEVICE_FUNC inline Packet pfrexp(const Packet& a, Packet& exponent) {
+   int exp;
+-  Packet result = std::frexp(a, &exp);
++  EIGEN_USING_STD_MATH(frexp);
++  Packet result = frexp(a, &exp);
+   exponent = static_cast<Packet>(exp);
+   return result;
+ }
+@@ -256,7 +257,10 @@
+   * See https://en.cppreference.com/w/cpp/numeric/math/ldexp
+   */
+ template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
+-pldexp(const Packet &a, const Packet &exponent) { return std::ldexp(a, static_cast<int>(exponent)); }
++pldexp(const Packet &a, const Packet &exponent) {
++  EIGEN_USING_STD_MATH(ldexp);
++  return ldexp(a, static_cast<int>(exponent));
++}
+
+ /** \internal \returns zeros */
+ template<typename Packet> EIGEN_DEVICE_FUNC inline Packet
