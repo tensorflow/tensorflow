@@ -185,46 +185,60 @@ class AutoCastVariable(variables.Variable):
     return self._variable.constraint
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
-    return self._variable.assign(value, use_locking, name, read_value)
+    assign_op = self._variable.assign(value, use_locking, name, read_value)
+    return create_autocast_variable(assign_op) if read_value else assign_op
 
   def assign_add(self, delta, use_locking=None, name=None, read_value=True):
-    return self._variable.assign_add(delta, use_locking, name, read_value)
+    assign_op = self._variable.assign_add(delta, use_locking, name, read_value)
+    return create_autocast_variable(assign_op) if read_value else assign_op
 
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
-    return self._variable.assign_sub(delta, use_locking, name, read_value)
+    assign_op = self._variable.assign_sub(delta, use_locking, name, read_value)
+    return create_autocast_variable(assign_op) if read_value else assign_op
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_sub(sparse_delta, use_locking, name)
+    var = self._variable.scatter_sub(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def scatter_add(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_add(sparse_delta, use_locking, name)
+    var = self._variable.scatter_add(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def scatter_max(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_max(sparse_delta, use_locking, name)
+    var = self._variable.scatter_max(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def scatter_min(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_min(sparse_delta, use_locking, name)
+    var = self._variable.scatter_min(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def scatter_mul(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_mul(sparse_delta, use_locking, name)
+    var = self._variable.scatter_mul(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def scatter_div(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_div(sparse_delta, use_locking, name)
+    var = self._variable.scatter_div(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def scatter_update(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.scatter_update(sparse_delta, use_locking, name)
+    var = self._variable.scatter_update(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def batch_scatter_update(self, sparse_delta, use_locking=False, name=None):
-    return self._variable.batch_scatter_update(sparse_delta, use_locking, name)
+    var = self._variable.batch_scatter_update(sparse_delta, use_locking, name)
+    return create_autocast_variable(var)
 
   def scatter_nd_sub(self, indices, updates, name=None):
-    return self._variable.scatter_nd_sub(indices, updates, name)
+    var = self._variable.scatter_nd_sub(indices, updates, name)
+    return create_autocast_variable(var)
 
   def scatter_nd_add(self, indices, updates, name=None):
-    return self._variable.scatter_nd_add(indices, updates, name)
+    var = self._variable.scatter_nd_add(indices, updates, name)
+    return create_autocast_variable(var)
 
   def scatter_nd_update(self, indices, updates, name=None):
-    return self._variable.scatter_nd_update(indices, updates, name)
+    var = self._variable.scatter_nd_update(indices, updates, name)
+    return create_autocast_variable(var)
 
   def load(self, value, session=None):
     return self._variable.load(value, session)

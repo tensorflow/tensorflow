@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+from functools import partial
 
 from absl.testing import parameterized
 import numpy as np
@@ -71,6 +72,11 @@ def get_var(val, dtype, name=None):
 
 @test_util.run_all_in_graph_and_eager_modes
 class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
+  def check_and_evaluate(self, var, dtype=None):
+    self.assertIsInstance(var, autocast_variable.AutoCastVariable)
+    if dtype:
+      self.assertEqual(var.dtype, dtype)
+    return self.evaluate(var)
 
   @parameterized.named_parameters(*TESTCASES)
   def test_read(self, distribute):
@@ -157,25 +163,25 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     # Test AutoCastVariable correctly delegates Variable methods to the
     # underlying variable.
     with get_distribute_scope(distribute):
-      evaluate = self.evaluate
       for read_dtype in (dtypes.float32, dtypes.float16):
+        evaluate = partial(self.check_and_evaluate, dtype=read_dtype)
         x = get_var(7., dtypes.float32)
         x = autocast_variable.create_autocast_variable(x)
         with ops.get_default_graph()._enable_auto_casting_variables(
             read_dtype):
-          evaluate(x.initializer)
-          self.assertEqual(evaluate(x.value()), 7)
-          self.assertEqual(evaluate(x.read_value()), 7)
+          self.evaluate(x.initializer)
+          self.assertEqual(self.evaluate(x.value()), 7)
+          self.assertEqual(self.evaluate(x.read_value()), 7)
           self.assertTrue(x.trainable)
           self.assertEqual(x.synchronization, x._variable.synchronization)
           self.assertEqual(x.aggregation, x._variable.aggregation)
-          self.assertEqual(evaluate(x.initialized_value()), 7)
+          self.assertEqual(self.evaluate(x.initialized_value()), 7)
           if not context.executing_eagerly():
             if not distribute:
               # These functions are not supported for DistributedVariables
               x.load(9)
               self.assertEqual(x.eval(), 9)
-            self.assertEqual(evaluate(x.initial_value), 7)
+            self.assertEqual(self.evaluate(x.initial_value), 7)
             self.assertEqual(x.op, x._variable.op)
             self.assertEqual(x.graph, x._variable.graph)
           if not distribute:
@@ -197,8 +203,8 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
           x = autocast_variable.create_autocast_variable(x)
           with ops.get_default_graph()._enable_auto_casting_variables(
               read_dtype):
-            evaluate(x.initializer)
-            self.assertAllEqual(evaluate(x.value()), [7, 8])
+            self.evaluate(x.initializer)
+            self.assertAllEqual(self.evaluate(x.value()), [7, 8])
 
             def slices(val, index):
               return indexed_slices.IndexedSlices(
