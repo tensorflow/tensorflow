@@ -750,9 +750,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = [
-	    "no_cuda",
-    ],
 )
 
 cuda_py_test(
@@ -1706,7 +1703,6 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     tags = [
-        "no_rocm",
         "nomac",  # TODO(mihaimaruseac): b/127695564
     ],
 )
@@ -1855,7 +1851,6 @@ tf_py_test(
     ],
     shard_count = 4,
     tags = [
-        "no_cuda",
         "no_windows",
     ],
 )

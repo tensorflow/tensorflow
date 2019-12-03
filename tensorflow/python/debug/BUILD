@@ -728,7 +728,6 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_rocm",
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
         "no_windows_gpu",  # TODO(b/130551176)
     ],
@@ -1361,10 +1360,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-    tags = [
-        "no_cuda",
-        "no_rocm",
-    ],
 )
 
 py_test(
@@ -1393,10 +1388,6 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
-    ],
-    tags = [
-        "no_cuda",
-        "no_rocm",
     ],
 )
 
