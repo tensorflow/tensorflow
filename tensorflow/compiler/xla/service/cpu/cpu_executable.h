@@ -55,9 +55,9 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 
-  StatusOr<ExecutionOutput> ExecuteAsyncOnStream(
+  StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+      absl::Span<const ShapedBuffer* const> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
   // This should be called after set_ir_module_string.
@@ -96,15 +96,11 @@ class CpuExecutable : public Executable {
   //    allocated by this routine.  This routine allocates buffers for temporary
   //    storage and the live-out buffer into which the computation writes it
   //    result.
-  //
-  //  - buffers_to_free: buffers whose ownership was donated by the caller that
-  //    are to be freed by the caller.
-  StatusOr<std::tuple<std::vector<se::DeviceMemoryBase>,
-                      std::vector<se::OwningDeviceMemory>,
-                      std::vector<se::OwningDeviceMemory>>>
+  StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
+                     std::vector<se::OwningDeviceMemory>>>
   CreateBufferTable(se::DeviceMemoryAllocator* memory_allocator,
                     int device_ordinal,
-                    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments);
+                    absl::Span<const ShapedBuffer* const> arguments);
 
   // Calls the generated function performing the computation with the given
   // arguments using the supplied buffers.

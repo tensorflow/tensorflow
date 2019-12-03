@@ -32,7 +32,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/logical_buffer.h"
-#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -45,7 +44,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
-#include "tensorflow/stream_executor/device_memory_allocator.h"
 #include "tensorflow/stream_executor/host/host_stream.h"
 
 namespace xla {
@@ -75,12 +73,11 @@ CpuExecutable::CpuExecutable(
           << reinterpret_cast<void*>(compute_function_);
 }
 
-StatusOr<std::tuple<std::vector<se::DeviceMemoryBase>,
-                    std::vector<se::OwningDeviceMemory>,
-                    std::vector<se::OwningDeviceMemory>>>
+StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
+                   std::vector<se::OwningDeviceMemory>>>
 CpuExecutable::CreateBufferTable(
     se::DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   std::vector<se::DeviceMemoryBase> unowning_buffers(
       assignment_->Allocations().size());
   std::vector<se::OwningDeviceMemory> owning_buffers(
@@ -94,9 +91,8 @@ CpuExecutable::CreateBufferTable(
     VLOG(3) << allocation.ToString();
 
     if (allocation.is_entry_computation_parameter()) {
-      unowning_buffers[i] = arguments[allocation.parameter_number()]
-                                .element(allocation.param_shape_index())
-                                .AsDeviceMemoryBase();
+      unowning_buffers[i] = arguments[allocation.parameter_number()]->buffer(
+          allocation.param_shape_index());
       CHECK_EQ(allocation.size(), unowning_buffers[i].size())
           << "Size mismatch on param " << allocation.parameter_number()
           << " at shape index " << allocation.param_shape_index().ToString();
@@ -138,17 +134,7 @@ CpuExecutable::CreateBufferTable(
                       assignment_->GetUniqueTopLevelOutputSlice());
   VLOG(3) << "result index: " << result_slice.index();
 
-  std::vector<se::OwningDeviceMemory> buffers_to_free;
-  for (ShapeTree<MaybeOwningDeviceMemory>& argument : arguments) {
-    for (std::pair<ShapeIndex, MaybeOwningDeviceMemory>& buffer : argument) {
-      auto maybe_owning_buffer = buffer.second.Release();
-      if (maybe_owning_buffer) {
-        buffers_to_free.push_back(std::move(*maybe_owning_buffer));
-      }
-    }
-  }
-  return {{std::move(unowning_buffers), std::move(owning_buffers),
-           std::move(buffers_to_free)}};
+  return {{std::move(unowning_buffers), std::move(owning_buffers)}};
 }
 
 Status CpuExecutable::ExecuteComputeFunction(
@@ -282,9 +268,9 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
   return std::move(result_buffer);
 }
 
-StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
+StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   if (GetRootValueSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -297,7 +283,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
     for (int64 i = 0; i < entry_comp->num_parameters(); ++i) {
       const Shape& expected_shape =
           entry_comp->parameter_instruction(i)->shape();
-      const Shape& actual_shape = arguments[i].shape();
+      const Shape& actual_shape = arguments[i]->on_device_shape();
       CHECK(expected_shape == actual_shape) << absl::StreamFormat(
           "Shape mismatch on argument %d.  Expected %s, but was %s.", i,
           expected_shape.ToString(/*print_layout=*/true),
@@ -311,11 +297,10 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
   se::DeviceMemoryAllocator* memory_allocator = run_options->allocator();
   std::vector<se::OwningDeviceMemory> owning_buffers;
   std::vector<se::DeviceMemoryBase> unowning_buffers;
-  std::vector<se::OwningDeviceMemory> buffers_to_release;
   TF_ASSIGN_OR_RETURN(
-      std::tie(unowning_buffers, owning_buffers, buffers_to_release),
+      std::tie(unowning_buffers, owning_buffers),
       CreateBufferTable(memory_allocator, stream->parent()->device_ordinal(),
-                        std::move(arguments)));
+                        arguments));
 
   TF_ASSIGN_OR_RETURN(
       ScopedShapedBuffer result,
@@ -354,8 +339,7 @@ StatusOr<ExecutionOutput> CpuExecutable::ExecuteAsyncOnStream(
                        std::move(owning_buffers)),
                    hlo_execution_profile});
 
-  return ExecutionOutput(std::move(result), std::move(buffers_to_release), {},
-                         se::OwningDeviceMemory());
+  return std::move(result);
 }
 
 /*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {

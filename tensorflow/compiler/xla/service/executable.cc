@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
-#include "tensorflow/compiler/xla/service/maybe_owning_device_memory.h"
 #include "tensorflow/compiler/xla/status.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -44,36 +43,9 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
   return result;
 }
 
-static ShapeTree<MaybeOwningDeviceMemory> MakeMaybeOwningDeviceMemoryTree(
-    const ShapedBuffer& shaped_buffer) {
-  ShapeTree<MaybeOwningDeviceMemory> result(shaped_buffer.on_device_shape());
-  auto in_it = shaped_buffer.buffers().begin();
-  auto out_it = result.begin();
-  for (; in_it != shaped_buffer.buffers().end(); ++in_it, ++out_it) {
-    DCHECK(out_it != result.end());
-    out_it->second = MaybeOwningDeviceMemory(in_it->second);
-  }
-  return result;
-}
-
-StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
-    const ServiceExecutableRunOptions* run_options,
-    absl::Span<const ShapedBuffer* const> arguments,
-    HloExecutionProfile* hlo_execution_profile) {
-  std::vector<ShapeTree<MaybeOwningDeviceMemory>> args(arguments.size());
-  auto out_it = args.begin();
-  for (const ShapedBuffer* arg : arguments) {
-    *out_it++ = MakeMaybeOwningDeviceMemoryTree(*arg);
-  }
-  TF_ASSIGN_OR_RETURN(ExecutionOutput out,
-                      ExecuteAsyncOnStream(run_options, std::move(args),
-                                           hlo_execution_profile));
-  return out.ConsumeResult();
-}
-
 StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    std::vector<ShapeTree<MaybeOwningDeviceMemory>> arguments,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   StatusOr<ExecutionOutput> result = ExecuteAsyncOnStream(
       run_options, std::move(arguments), hlo_execution_profile);
@@ -81,6 +53,14 @@ StatusOr<ExecutionOutput> Executable::ExecuteOnStream(
   TF_RETURN_IF_ERROR(result.status());
   TF_RETURN_IF_ERROR(blocking_status);
   return result;
+}
+
+StatusOr<ExecutionOutput> Executable::ExecuteAsyncOnStream(
+    const ServiceExecutableRunOptions* /*run_options*/,
+    std::vector<ShapeTree<xla::MaybeOwningDeviceMemory>> /*arguments*/,
+    HloExecutionProfile* /*hlo_execution_profile*/) {
+  return Unimplemented(
+      "MaybeOwningDeviceMemory version of overload is not implemented ");
 }
 
 StatusOr<std::vector<ScopedShapedBuffer>> Executable::ExecuteOnStreams(
