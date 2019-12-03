@@ -710,7 +710,7 @@ class AddOperationParser : public TFLiteOperationParser {
     const auto* tf_options =
         reinterpret_cast<const TfLiteAddParams*>(tflite_node->builtin_data);
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteAddParams");
     }
     return MaybeFuseActivationToTheSingleOutput(tf_options->activation, graph,
                                                 node);
@@ -787,7 +787,7 @@ class ConcatenationOperationParser : public TFLiteOperationParser {
     const auto* tf_options = reinterpret_cast<const TfLiteConcatenationParams*>(
         tflite_node->builtin_data);
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteConcatenationParams");
     }
     RETURN_IF_ERROR(MaybeFuseActivationToTheSingleOutput(tf_options->activation,
                                                          graph, node));
@@ -870,7 +870,7 @@ class Conv2DOperationParser : public TFLiteOperationParser {
     const auto* tf_options =
         reinterpret_cast<const TfLiteConvParams*>(tflite_node->builtin_data);
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteConvParams");
     }
     attr.strides = ToHW(tf_options->stride_height, tf_options->stride_width);
     attr.dilations = HW(tf_options->dilation_height_factor,
@@ -1294,7 +1294,7 @@ class LSTMOperationParser : public TFLiteOperationParser {
     const auto* params =
         reinterpret_cast<const TfLiteLSTMParams*>(tflite_node->builtin_data);
     if (!params) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteLSTMParams");
     }
     RETURN_IF_ERROR(CheckParameters(params));
 
@@ -1410,9 +1410,7 @@ class MulOperationParser : public TFLiteOperationParser {
         input_tensor1 = 0;
       }
       RETURN_IF_ERROR(ParseApplyMask(input_tensor0, input_tensor1, node, graph, reader));
-    }
-    else
-    {
+    } else {
       // Parse for MULTIPLY_SCALAR.  The runtime input tensor must be bound to 1st
       // input and the constant input tensor must be bound to 2nd input.
       int runtime_tensor = 0;
@@ -1430,7 +1428,7 @@ class MulOperationParser : public TFLiteOperationParser {
     const auto* tf_options =
         reinterpret_cast<const TfLiteMulParams*>(tflite_node->builtin_data);
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteMulParams");
     }
     return MaybeFuseActivationToTheSingleOutput(
       tf_options->activation, graph, node);
@@ -1593,7 +1591,7 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
           reinterpret_cast<const TfLitePoolParams*>(tflite_node->builtin_data);
     }
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLitePoolParams");
     }
 
     std::vector<uint32_t> max_tensor_id{0};
@@ -1711,7 +1709,7 @@ class ResizeBilinearOperationParser : public TFLiteOperationParser {
         reinterpret_cast<const TfLiteResizeBilinearParams*>(
             tflite_node->builtin_data);
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteResizeBilinearParams");
     }
     Upsample2DAttributes attr;
     attr.align_corners = tf_options->align_corners;
@@ -1751,7 +1749,7 @@ class SoftmaxOperationParser : public TFLiteOperationParser {
     const auto* tf_options =
         reinterpret_cast<const TfLiteSoftmaxParams*>(tflite_node->builtin_data);
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteSoftmaxParams");
     }
     if (tf_options->beta != 1) {
       // there is multiply by scalar operation fused in softmax. Make a layer
@@ -1882,7 +1880,7 @@ class StridedSliceOperationParser : public TFLiteOperationParser {
         tflite_node->builtin_data);
     auto out_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLiteStridedSliceParams");
     }
     RETURN_IF_ERROR(CheckOptionsSupport(tf_options));
 
@@ -2055,7 +2053,7 @@ class TransposeConvOperationParser : public TFLiteOperationParser {
     const auto* tf_options = reinterpret_cast<const TfLiteTransposeConvParams*>(
         tflite_node->builtin_data);
     if (!tf_options) {
-      return InternalError("Missing tflite options.");
+      return InternalError("Missing TfLiteTransposeConvParams");
     }
     ConvolutionTransposedAttributes attr;
     attr.stride = tf_options
@@ -2137,7 +2135,7 @@ class Unpooling2DOperationParser : public TFLiteOperationParser {
     const auto* tf_options = reinterpret_cast<const TfLitePoolParams*>(
         tflite_node->custom_initial_data);
     if (!tf_options) {
-      return InternalError("Missing tflite params");
+      return InternalError("Missing TfLitePoolParams (Unpooling)");
     }
     attr.kernel = ToHW(tf_options->filter_height, tf_options->filter_width);
     attr.strides = ToHW(tf_options->stride_height, tf_options->stride_width);
