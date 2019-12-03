@@ -627,7 +627,37 @@ def Vector_TypeCastOp :
   }];
 }
 
-// TODO(andydavis) Morph this operation into a Vector_MaskOp.
+// TODO(andydavis) Add constant folding support.
+def Vector_CreateMaskOp :
+  Vector_Op<"create_mask", [NoSideEffect]>,
+    Arguments<(ins Variadic<Index>:$operands)>, Results<(outs VectorOf<[I1]>)> {
+  let summary = "creates a vector mask";
+  let description = [{
+    Creates and returns a vector mask where elements of the result vector
+    are set to '0' or '1', based on whether the element indices are contained
+    within a hyper-rectangular region specified by the operands. Specifically,
+    each operand specifies a range [0, operand-value) for a unique dimension in
+    the vector result. The conjunction of the operand ranges define
+    hyper-rectangular region within which elements values are set to 1
+    (otherwise element values are set to 0).
+
+    Example: create a vector mask of size 4x3xi1 where elements in range
+             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+
+      %1 = vector.create_mask %c3, %c2 : vector<4x3xi1>
+
+      print %1
+                    columns
+                  0    1    2
+                |------------
+              0 | 1    1    0
+        rows  1 | 1    1    0
+              2 | 1    1    0
+              3 | 0    0    0
+  }];
+}
+
+// TODO(andydavis) Delete this op once ContractOp is converted to use VectorMask
 def Vector_IndexTupleOp :
   Vector_Op<"make_index_tuple", [NoSideEffect]>,
     Arguments<(ins Variadic<Index>:$operands)>,

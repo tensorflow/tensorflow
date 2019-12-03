@@ -996,6 +996,37 @@ static LogicalResult verify(TypeCastOp &op) {
 }
 
 //===----------------------------------------------------------------------===//
+// CreateMaskOp
+//===----------------------------------------------------------------------===//
+
+ParseResult parseCreateMaskOp(OpAsmParser &parser, OperationState &result) {
+  auto indexType = parser.getBuilder().getIndexType();
+  Type resultType;
+  SmallVector<OpAsmParser::OperandType, 4> operandInfo;
+  return failure(
+      parser.parseOperandList(operandInfo) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(resultType) ||
+      parser.resolveOperands(operandInfo, indexType, result.operands) ||
+      parser.addTypeToList(resultType, result.types));
+}
+
+static void print(OpAsmPrinter &p, CreateMaskOp &op) {
+  p << op.getOperationName() << ' ';
+  p.printOperands(op.operands());
+  p << " : " << op.getResult()->getType();
+}
+
+static LogicalResult verify(CreateMaskOp &op) {
+  // Verify that an operand was specified for each result vector each dimension.
+  if (op.getNumOperands() !=
+      op.getResult()->getType().cast<VectorType>().getRank())
+    return op.emitOpError(
+        "must specify an operand for each result vector dimension");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // IndexTupleOp
 //===----------------------------------------------------------------------===//
 
