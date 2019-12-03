@@ -33,19 +33,16 @@ limitations under the License.
 namespace tensorflow {
 
 Status ParseOutputArrayInfo(absl::string_view array_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order) {
+                            std::vector<string>* outputs) {
   std::vector<string> output_names = absl::StrSplit(array_names, ',');
-  return ParseOutputArrayInfo(output_names, array, order);
+  return ParseOutputArrayInfo(output_names, outputs);
 }
 
 Status ParseOutputArrayInfo(const std::vector<string>& output_names,
-                            absl::flat_hash_set<string>* array,
-                            std::vector<string>* order) {
+                            std::vector<string>* outputs) {
   for (auto& output_name : output_names) {
     if (output_name.empty()) continue;
-    array->insert(string(*absl::StrSplit(output_name, ':').begin()));
-    order->push_back(output_name);
+    outputs->push_back(output_name);
   }
   return Status::OK();
 }

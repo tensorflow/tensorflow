@@ -77,8 +77,7 @@ Status ConvertOutputInfo(const tf2xla::Config& config,
     array_names.push_back(fetch.id().node_name());
   }
 
-  return ParseOutputArrayInfo(array_names, &specs->output_arrays,
-                              &specs->output_arrays_order);
+  return ParseOutputArrayInfo(array_names, &specs->outputs);
 }
 
 }  // namespace
