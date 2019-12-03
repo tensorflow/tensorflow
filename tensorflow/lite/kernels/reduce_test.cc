@@ -458,6 +458,26 @@ TEST(ConstInt8MeanOpTest, QuantizedDifferentScale) {
                   kQuantizedTolerance)));
 }
 
+TEST(ConstFloatMeanOpTest, KeepDims4DMeanLargeDepthInt8) {
+  float kQuantizedTolerance = GetTolerance(-5.0, 5.0);
+  std::vector<float> data = {
+      0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1, 0.1, 0.1, 0.1, 0.4, 0.2, 0.2,
+      0.2, 0.9, 0.9, 0.9, 0.9, 0.2, 0.3, 0.7, 0.7, 0.1, 0.1, 0.3, 0.3, 0.1, 0.2,
+      0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4, 0.2, 0.3, 0.4, 0.5, 0.1,
+      0.1, 0.1, 0.1, 0.4, 0.2, 0.2, 0.2, 0.9, 0.9, 0.9, 0.9, 0.2, 0.3, 0.7, 0.7,
+      0.1, 0.1, 0.3, 0.3, 0.1, 0.2, 0.3, 0.4, 0.1, 0.2, 0.3, 0.4};
+  MeanOpConstModel m({TensorType_INT8, {1, 2, 2, 18}, -1.0, 1.0},
+                     {TensorType_INT8, {2}, -1.0, 1.0}, {2}, {1, 2}, true);
+  m.QuantizeAndPopulate<int8_t>(m.Input(), data);
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 1, 1, 18}));
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {0.5, 0.55, 0.25, 0.35, 0.45, 0.5, 0.25, 0.3, 0.2, 0.2, 0.1,
+                   0.15, 0.35, 0.3, 0.15, 0.2, 0.6, 0.65},
+                  kQuantizedTolerance)));
+}
+
 TEST(DynamicUint8MeanOpTest, NotKeepDims) {
   float kQuantizedTolerance = GetTolerance(-5.0, 2.0);
   std::vector<float> data = {1.3, -4.8, -3.6, 0.24};
