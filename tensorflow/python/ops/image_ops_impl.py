@@ -939,6 +939,13 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
   If `width` or `height` is smaller than the specified `target_width` or
   `target_height` respectively, this op centrally pads with 0 along that
   dimension.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.resize_with_crop_or_pad(x, 200, 200)
+    ```
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -955,13 +962,6 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     `[batch, new_height, new_width, channels]`.
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
-	
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.resize_with_crop_or_pad(x, 200, 200)
-    ```
   """
   with ops.name_scope(None, 'resize_image_with_crop_or_pad', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1493,6 +1493,13 @@ def resize_image_with_pad_v2(image,
   dimensions don't match the image dimensions, the image
   is resized and then padded with zeroes to match requested
   dimensions.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.resize_with_pad(x, 200, 200, tf.image.ResizeMethod.BILINEAR, False)
+    ```
 
   Args:
     image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
@@ -1510,14 +1517,7 @@ def resize_image_with_pad_v2(image,
     If `images` was 4-D, a 4-D float Tensor of shape
     `[batch, new_height, new_width, channels]`.
     If `images` was 3-D, a 3-D float Tensor of shape
-    `[new_height, new_width, channels]`.
-	
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.resize_with_pad(x, 200, 200, tf.image.ResizeMethod.BILINEAR, False)
-    ```
+    `[new_height, new_width, channels]`
   """
 
   def _resize_fn(im, new_size):
@@ -1578,6 +1578,13 @@ def random_brightness(image, max_delta, seed=None):
 
   Equivalent to `adjust_brightness()` using a `delta` randomly picked in the
   interval `[-max_delta, max_delta)`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_brightness(x, 0.8, 1)
+    ```
 
   Args:
     image: An image or images to adjust.
@@ -1590,13 +1597,6 @@ def random_brightness(image, max_delta, seed=None):
 
   Raises:
     ValueError: if `max_delta` is negative.
-	
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.random_brightness(x, 0.8, 1)
-    ```
   """
   if max_delta < 0:
     raise ValueError('max_delta must be non-negative.')
@@ -1611,6 +1611,13 @@ def random_contrast(image, lower, upper, seed=None):
 
   Equivalent to `adjust_contrast()` but uses a `contrast_factor` randomly
   picked in the interval `[lower, upper]`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_contrast(x, 0.2, 0.8, 1)
+    ```
 
   Args:
     image: An image tensor with 3 or more dimensions.
@@ -1624,13 +1631,6 @@ def random_contrast(image, lower, upper, seed=None):
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
-	
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.random_contrast(x, 0.2, 0.8, 1)
-    ```
   """
   if upper <= lower:
     raise ValueError('upper must be > lower.')

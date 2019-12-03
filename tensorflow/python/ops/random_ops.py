@@ -351,6 +351,13 @@ def random_crop(value, size, seed=None, name=None):
   If a dimension should not be cropped, pass the full size of that dimension.
   For example, RGB images can be cropped with
   `size = [crop_height, crop_width, 3]`.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_crop(x, size=[200, 200, 3])
+    ```
 
   Args:
     value: Input tensor to crop.
@@ -362,13 +369,6 @@ def random_crop(value, size, seed=None, name=None):
 
   Returns:
     A cropped tensor of the same rank as `value` and shape `size`.
-	
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.random.normal(shape=(256, 256, 3))
-    >> tf.image.random_crop(x, size=[200, 200, 3])
-    ```
   """
   # TODO(shlens): Implement edge case to guarantee output size dimensions.
   # If size > value.shape, zero pad the result so that it always has shape

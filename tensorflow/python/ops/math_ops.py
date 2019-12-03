@@ -1136,6 +1136,14 @@ def div_no_nan(x, y, name=None):
 @dispatch.add_dispatch_support
 def multiply_no_nan(x, y, name=None):
   """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.constant([[1.0, 3.0], [5.0, 4.0]])
+    >> y = tf.constant([[7.0, 2.0], [1.0, 9.0]])
+    >> tf.math.multiply_no_nan(x, y) # [[7, 6] [5, 36]]
+    ```
 
   Args:
     x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
@@ -1144,14 +1152,6 @@ def multiply_no_nan(x, y, name=None):
 
   Returns:
     The element-wise value of the x times y.
-
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.constant([[1.0, 3.0], [5.0, 4.0]])
-    >> y = tf.constant([[7.0, 2.0], [1.0, 9.0]])
-    >> tf.math.multiply_no_nan(x, y) # [[7, 6] [5, 36]]
-    ```
   """
 
   with ops.name_scope(name, "multiply_no_nan", [x, y]) as name:
@@ -4208,6 +4208,13 @@ def reciprocal_no_nan(x, name=None):
   x = tf.constant([2.0, 0.5, 0, 1], dtype=tf.float32)
   tf.math.reciprocal_no_nan(x)  # [ 0.5, 2, 0.0, 1.0 ]
   ```
+  
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.constant([1.0, 2.0, 4.0])
+    >> tf.math.reciprocal_no_nan(x) # [1, 0.5, 0.25]
+    ```
 
   Args:
     x: A `Tensor` of type `float16`, `float32`, `float64` `complex64` or
@@ -4219,13 +4226,6 @@ def reciprocal_no_nan(x, name=None):
 
   Raises:
     TypeError: x must be of a valid dtype.
-
-  Usage Example:
-    ```python
-    >> import tensorflow as tf
-    >> x = tf.constant([1.0, 2.0, 4.0])
-    >> tf.math.reciprocal_no_nan(x) # [1, 0.5, 0.25]
-    ```
   """
 
   with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:
