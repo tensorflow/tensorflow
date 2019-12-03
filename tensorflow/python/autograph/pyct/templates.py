@@ -120,6 +120,7 @@ class ReplaceTransformer(gast.NodeTransformer):
     self.preserved_annos = {
         anno.Basic.ORIGIN,
         anno.Basic.SKIP_PROCESSING,
+        anno.Basic.DIRECTIVES,
         anno.Static.ORIG_DEFINITIONS,
         'extra_test',
         'function_context_name',

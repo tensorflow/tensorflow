@@ -354,15 +354,6 @@ class AnnotatedDef(reaching_definitions.Definition):
     self.directives = {}
 
 
-class AgAnno(enum.Enum):
-  """Annotation labels specific to AutoGraph. See anno.py."""
-
-  DIRECTIVES = 'User directives associated with the annotated statement.'
-
-  def __repr__(self):
-    return self.name
-
-
 def standard_analysis(node, context, is_initial=False):
   """Performs a complete static analysis of the given code.
 
