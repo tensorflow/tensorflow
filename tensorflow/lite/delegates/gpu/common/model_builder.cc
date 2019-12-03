@@ -1393,7 +1393,11 @@ class MulOperationParser : public TFLiteOperationParser {
     const bool runtime_tensor0 = !constant_tensor0;
     const bool runtime_tensor1 = !constant_tensor1;
 
-    Node* node = graph->NewNode();
+    const auto* tf_options =
+        reinterpret_cast<const TfLiteMulParams*>(tflite_node->builtin_data);
+    if (!tf_options) {
+      return InternalError("Missing TfLiteMulParams");
+    }
 
     // Parse for APPLY_MASK.  The "larger" input tensor must be bound to 1st
     // input and the "smaller" input tensor ("mask") must be bound to 2nd input.
@@ -1409,43 +1413,40 @@ class MulOperationParser : public TFLiteOperationParser {
         input_tensor0 = 1;
         input_tensor1 = 0;
       }
-      RETURN_IF_ERROR(ParseApplyMask(input_tensor0, input_tensor1, node, graph, reader));
-    } else {
-      // Parse for MULTIPLY_SCALAR.  The runtime input tensor must be bound to 1st
-      // input and the constant input tensor must be bound to 2nd input.
-      int runtime_tensor = 0;
-      int constant_tensor = 1;
-      TfLiteIntArray* constant_dims = input1->dims;
-      if (constant_tensor0 && runtime_tensor1) {
-        runtime_tensor = 1;
-        constant_tensor = 0;
-        constant_dims = input0->dims;
-      }
-      RETURN_IF_ERROR(ParseMultiplyScalar(runtime_tensor, constant_tensor,
-        constant_dims, node, graph, reader));
+      return ParseApplyMask(
+        input_tensor0, input_tensor1, tf_options, graph, reader);
     }
-
-    const auto* tf_options =
-        reinterpret_cast<const TfLiteMulParams*>(tflite_node->builtin_data);
-    if (!tf_options) {
-      return InternalError("Missing TfLiteMulParams");
+    
+    // Parse for MULTIPLY_SCALAR.  The runtime input tensor must be bound to 1st
+    // input and the constant input tensor must be bound to 2nd input.
+    int runtime_tensor = 0;
+    int constant_tensor = 1;
+    TfLiteIntArray* constant_dims = input1->dims;
+    if (constant_tensor0 && runtime_tensor1) {
+      runtime_tensor = 1;
+      constant_tensor = 0;
+      constant_dims = input0->dims;
     }
-    return MaybeFuseActivationToTheSingleOutput(
-      tf_options->activation, graph, node);
+    return ParseMultiplyScalar(runtime_tensor, constant_tensor,
+      constant_dims, tf_options, graph, reader);
   }
 
  private:
   Status ParseApplyMask(int input_tensor0, int input_tensor1,
-                        Node* node, GraphFloat32* graph, ObjectReader* reader) {
+                        const TfLiteMulParams* params, GraphFloat32* graph, ObjectReader* reader) {
+    Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::APPLY_MASK);
     RETURN_IF_ERROR(reader->AddInput(node, input_tensor0));
     RETURN_IF_ERROR(reader->AddInput(node, input_tensor1));
+    RETURN_IF_ERROR(MaybeFuseActivationToTheSingleOutput(
+      params->activation, graph, node));
     return reader->AddOutputs(node);
   }
 
   Status ParseMultiplyScalar(int runtime_tensor, int constant_tensor,
                              const TfLiteIntArray* constant_dims,
-                             Node* node, GraphFloat32* graph, ObjectReader* reader) {
+                             const TfLiteMulParams* params, GraphFloat32* graph, ObjectReader* reader) {
+    Node* node = graph->NewNode();
     node->operation.type = ToString(OperationType::MULTIPLY_SCALAR);
     RETURN_IF_ERROR(reader->AddInput(node, runtime_tensor));
     MultiplyScalarAttributes attr;
@@ -1459,6 +1460,8 @@ class MulOperationParser : public TFLiteOperationParser {
       attr.param = std::move(tensor);
     }
     node->operation.attributes = std::move(attr);
+    RETURN_IF_ERROR(MaybeFuseActivationToTheSingleOutput(
+      params->activation, graph, node));
     return reader->AddOutputs(node);
   }
 };
