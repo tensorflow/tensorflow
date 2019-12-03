@@ -1144,6 +1144,14 @@ def multiply_no_nan(x, y, name=None):
 
   Returns:
     The element-wise value of the x times y.
+
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.constant([[1.0, 3.0], [5.0, 4.0]])
+    >> y = tf.constant([[7.0, 2.0], [1.0, 9.0]])
+    >> tf.math.multiply_no_nan(x, y) # [[7, 6] [5, 36]]
+    ```
   """
 
   with ops.name_scope(name, "multiply_no_nan", [x, y]) as name:
@@ -4212,6 +4220,12 @@ def reciprocal_no_nan(x, name=None):
   Raises:
     TypeError: x must be of a valid dtype.
 
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.constant([1.0, 2.0, 4.0])
+    >> tf.math.reciprocal_no_nan(x) # [1, 0.5, 0.25]
+    ```
   """
 
   with ops.name_scope(name, "reciprocal_no_nan", [x]) as scope:

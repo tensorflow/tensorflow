@@ -955,6 +955,13 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     `[batch, new_height, new_width, channels]`.
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
+	
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.resize_with_crop_or_pad(x, 200, 200)
+    ```
   """
   with ops.name_scope(None, 'resize_image_with_crop_or_pad', [image]):
     image = ops.convert_to_tensor(image, name='image')
@@ -1504,6 +1511,13 @@ def resize_image_with_pad_v2(image,
     `[batch, new_height, new_width, channels]`.
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
+	
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.resize_with_pad(x, 200, 200, tf.image.ResizeMethod.BILINEAR, False)
+    ```
   """
 
   def _resize_fn(im, new_size):
@@ -1576,6 +1590,13 @@ def random_brightness(image, max_delta, seed=None):
 
   Raises:
     ValueError: if `max_delta` is negative.
+	
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_brightness(x, 0.8, 1)
+    ```
   """
   if max_delta < 0:
     raise ValueError('max_delta must be non-negative.')
@@ -1603,6 +1624,13 @@ def random_contrast(image, lower, upper, seed=None):
 
   Raises:
     ValueError: if `upper <= lower` or if `lower < 0`.
+	
+  Usage Example:
+    ```python
+    >> import tensorflow as tf
+    >> x = tf.random.normal(shape=(256, 256, 3))
+    >> tf.image.random_contrast(x, 0.2, 0.8, 1)
+    ```
   """
   if upper <= lower:
     raise ValueError('upper must be > lower.')
