@@ -18,9 +18,7 @@ limitations under the License.
 #ifndef HLO_UTILS
 #define HLO_UTILS
 
-#ifndef OP_BASE
 include "mlir/IR/OpBase.td"
-#endif // OP_BASE
 
 def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 
@@ -33,5 +31,10 @@ def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def BinBroadcastDimensions : NativeCodeCall<
     "xla::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
+
+// Here, the element type can be any integer or float type. But, note that only
+// 32 bit integers are supported for the value.
+class GetScalarOfType<int value> : NativeCodeCall<
+  "xla::GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 #endif // HLO_UTILS

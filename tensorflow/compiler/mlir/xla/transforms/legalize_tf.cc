@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "mlir/Dialect/StandardOps/Ops.h"  // TF:local_config_mlir
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Diagnostics.h"  // TF:local_config_mlir
@@ -168,20 +169,9 @@ static ConstOp GetMinValueForType(Type ty, Location loc,
 
 // Returns int or float scalar DenseElementsAttr attribute with the given
 // element type and the value.
-static ConstOp GetScalarOfType(Type ty, Location loc, int64_t raw_value,
-                               PatternRewriter *rewriter) {
-  RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
-
-  DenseElementsAttr attr;
-  if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
-    APFloat value(float_ty.getFloatSemantics(), raw_value);
-    attr = DenseElementsAttr::get(scalar_ty, value);
-  } else {
-    auto int_ty = ty.cast<IntegerType>();
-    APInt value(int_ty.getWidth(), static_cast<int64_t>(raw_value), true);
-    attr = DenseElementsAttr::get(scalar_ty, value);
-  }
-  return rewriter->create<ConstOp>(loc, attr);
+static ConstOp GetScalarConstOfType(Type ty, Location loc, int64_t raw_value,
+                                    PatternRewriter *rewriter) {
+  return rewriter->create<ConstOp>(loc, xla::GetScalarOfType(ty, raw_value));
 }
 
 // Builds body for reduce op by using the using the template binary op as the
@@ -639,6 +629,31 @@ class ConvertBF16FloorDivOp : public OpRewritePattern<TF::FloorDivOp> {
   }
 };
 
+// Converts TensorFlow EinsumOp to either HLO EinsumOp or UnaryEinsumOp
+// depending on arity of the op.
+class ConvertEinsumOp : public OpRewritePattern<TF::EinsumOp> {
+ public:
+  using OpRewritePattern::OpRewritePattern;
+
+  PatternMatchResult matchAndRewrite(TF::EinsumOp op,
+                                     PatternRewriter &rewriter) const override {
+    StringAttr equation = op.getAttrOfType<StringAttr>("equation");
+    if (op.N() == 1) {
+      rewriter.replaceOpWithNewOp<UnaryEinsumOp>(
+          op, op.getType(), *op.inputs().begin(), equation);
+    } else if (op.N() == 2) {
+      auto inputs = llvm::to_vector<2>(op.inputs());
+      rewriter.replaceOpWithNewOp<EinsumOp>(op, op.getType(), inputs[0],
+                                            inputs[1], equation);
+    } else {
+      // TensorFlow EinsumOp verifies that the number of operands are at most
+      // two.
+      return Pattern::matchFailure();
+    }
+    return Pattern::matchSuccess();
+  }
+};
+
 // Converts MaxPool op to HLO ReduceWindow op by setting appropriate window
 // dimensions with max as the reduction function.
 //
@@ -847,8 +862,8 @@ class ConvertSizeOp : public OpRewritePattern<TF::SizeOp> {
     const int64_t rank = input_ty.getRank();
     auto result_type = op.getResult()->getType();
     Operation *size =
-        GetScalarOfType(result_type.cast<TensorType>().getElementType(),
-                        op.getLoc(), 1, &rewriter);
+        GetScalarConstOfType(result_type.cast<TensorType>().getElementType(),
+                             op.getLoc(), 1, &rewriter);
     for (int64_t i = 0; i < rank; ++i) {
       auto dim = rewriter.create<GetDimensionSizeOp>(
           op.getLoc(), result_type, input,
@@ -1169,8 +1184,8 @@ class GenericConvertReductionOp : public OpRewritePattern<OpTy> {
           divisor_count *= input_shape[i];
         }
       }
-      auto divisor =
-          GetScalarOfType(reduce_element_type, loc, divisor_count, &rewriter);
+      auto divisor = GetScalarConstOfType(reduce_element_type, loc,
+                                          divisor_count, &rewriter);
       auto broadcast_dims = GetI64ElementsAttr({}, &rewriter);
       result = rewriter.create<DivOp>(loc, result, divisor.getResult(),
                                       broadcast_dims);
@@ -1203,7 +1218,7 @@ class ConvertMeanOp
 
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
-    return GetScalarOfType(reduce_element_type, loc, 0, &rewriter);
+    return GetScalarConstOfType(reduce_element_type, loc, 0, &rewriter);
   }
 };
 
@@ -1219,7 +1234,7 @@ class ConvertSumOp
 
   static Value *GetInitialValue(Type reduce_element_type, Location loc,
                                 PatternRewriter &rewriter) {
-    return GetScalarOfType(reduce_element_type, loc, 0, &rewriter);
+    return GetScalarConstOfType(reduce_element_type, loc, 0, &rewriter);
   }
 };
 
@@ -1274,7 +1289,7 @@ class ConvertArgMinMaxOp : public OpRewritePattern<OpTy> {
 
     Type index_element_type = output_type.getElementType();
     Value *index_init_value =
-        GetScalarOfType(index_element_type, loc, 0, &rewriter);
+        GetScalarConstOfType(index_element_type, loc, 0, &rewriter);
 
     RankedTensorType index_type =
         RankedTensorType::get(input_type.getShape(), index_element_type);
@@ -1418,7 +1433,7 @@ class ConvertMaxPoolGradOp : public OpRewritePattern<TF::MaxPoolGradOp> {
 
     auto result = rewriter.create<SelectAndScatterOp>(
         loc, op.getType(), op.orig_input(), op.grad(),
-        GetScalarOfType(element_type, loc, 0, &rewriter),
+        GetScalarConstOfType(element_type, loc, 0, &rewriter),
         GetI64ElementsAttr(op.ksize()), GetI64ElementsAttr(op.strides()),
         nullptr);
 
@@ -1860,8 +1875,9 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion) {
   TF::PopulateLoweringTFPatterns(context, &patterns);
   patterns
       .insert<ConvertArgMaxOp, ConvertBF16FloorDivOp, ConvertConv2D,
-              ConvertMaxPoolOp, ConvertRangeOp, ConvertSigmoidOp, ConvertSizeOp,
-              ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
+              ConvertEinsumOp, ConvertMaxPoolOp, ConvertRangeOp,
+              ConvertSigmoidOp, ConvertSizeOp, ConvertMaxPoolOp, ConvertRangeOp,
+              ConvertSigmoidOp, ConvertSoftmaxOp<TF::LogSoftmaxOp, true>,
               ConvertSoftmaxOp<TF::SoftmaxOp, false>, ConvertSplitOp,
               ConvertStridedSliceOp, ConvertMeanOp, ConvertSumOp, ConvertMaxOp,
               ConvertTileOp, ConvertMaxPoolGradOp, ConvertOneHotOp,

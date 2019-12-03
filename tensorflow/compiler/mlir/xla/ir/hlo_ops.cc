@@ -47,10 +47,10 @@ limitations under the License.
 #include "mlir/Transforms/InliningUtils.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h.inc"
+#include "tensorflow/compiler/mlir/xla/ir/hlo_utils.h"
 
 namespace mlir {
 #include "tensorflow/compiler/mlir/xla/ir/hlo_structs.cc.inc"
-
 namespace xla_hlo {
 
 Operation* XlaHloDialect::materializeConstant(OpBuilder& builder,
@@ -934,6 +934,15 @@ void TupleOp::build(Builder* builder, OperationState& result,
   }
 
   build(builder, result, builder->getTupleType(types), values);
+}
+
+//===----------------------------------------------------------------------===//
+// UnaryEinsumOp
+//===----------------------------------------------------------------------===//
+
+void UnaryEinsumOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<UnaryEinsumToEinsum>(context);
 }
 
 //===----------------------------------------------------------------------===//

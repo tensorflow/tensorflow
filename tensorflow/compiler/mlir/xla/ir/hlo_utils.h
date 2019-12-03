@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "mlir/IR/Attributes.h"  // TF:local_config_mlir
 #include "mlir/IR/Builders.h"  // TF:local_config_mlir
+#include "mlir/IR/PatternMatch.h"  // TF:local_config_mlir
 #include "mlir/IR/StandardTypes.h"  // TF:local_config_mlir
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/convert_op_folder.h"
@@ -48,6 +49,12 @@ static ElementsAttr getSplat(Builder* b, Value* val, T constant) {
 
   return DenseElementsAttr::get(valType, elementAttr);
 }
+
+// Returns DenseElementsAttr of rank zero with the given element type and the
+// value.
+// Requires `ty` to be either FloatType of IntegerType.
+DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value);
+
 }  // namespace xla
 }  // namespace mlir
 

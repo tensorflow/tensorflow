@@ -675,6 +675,21 @@ void DivOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// EinsumOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+// * Arity of the op is at most two.
+//
+// TODO(hinsu): Verify einsum equation attribute.
+static LogicalResult Verify(EinsumOp op) {
+  if (op.N() > 2) {
+    return op.emitOpError("supports at most two operands");
+  }
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // EmptyTensorListOp
 //===----------------------------------------------------------------------===//
 

@@ -215,6 +215,20 @@ func @pow_dynamic(%arg0: tensor<?xf32>) -> tensor<?xf32> {
   return %0: tensor<?xf32>
 }
 
+// CHECK-LABEL: func @einsum
+func @einsum(%arg0: tensor<2x3xf32>, %arg1: tensor<3x4xf32>) -> tensor<2x4xf32> {
+  // CHECK:  xla_hlo.einsum
+  %0 = "tf.Einsum"(%arg0, %arg1) {equation = "ab,bc->ac"} : (tensor<2x3xf32>, tensor<3x4xf32>) -> tensor<2x4xf32>
+  return %0: tensor<2x4xf32>
+}
+
+// CHECK-LABEL: func @unary_einsum
+func @unary_einsum(%arg0: tensor<2x3xf32>) -> tensor<2x2xf32> {
+  // CHECK:  xla_hlo.unary_einsum
+  %0 = "tf.Einsum"(%arg0) {equation = "ab->aa"} : (tensor<2x3xf32>) -> tensor<2x2xf32>
+  return %0: tensor<2x2xf32>
+}
+
 // CHECK-LABEL: func @floordiv_broadcast_i32
 func @floordiv_broadcast_i32(%arg0: tensor<2x3xi32>, %arg1: tensor<3xi32>) -> tensor<2x3xi32> {
   // CHECK-DAG: [[ZEROS1:%.+]] = xla_hlo.constant dense<0>
