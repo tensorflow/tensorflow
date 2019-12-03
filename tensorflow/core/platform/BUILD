@@ -84,8 +84,39 @@ cc_library(
 )
 
 cc_library(
+    name = "base64",
+    srcs = ["base64.cc"],
+    hdrs = ["base64.h"],
+    deps = [
+        ":errors",
+        ":status",
+    ],
+)
+
+cc_library(
+    name = "blocking_counter",
+    hdrs = ["blocking_counter.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+    ],
+)
+
+cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
+)
+
+cc_library(
+    name = "coding",
+    srcs = ["coding.cc"],
+    hdrs = ["coding.h"],
+    deps = [
+        ":byte_order",
+        ":raw_coding",
+        ":stringpiece",
+        ":types",
+    ],
 )
 
 cc_library(
@@ -173,9 +204,22 @@ cc_library(
     hdrs = ["error.h"],
     deps = [
         ":platform",
+        ":status",
+        ":strcat",
         ":types",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:strcat",
+    ],
+)
+
+cc_library(
+    name = "errors",
+    hdrs = ["errors.h"],
+    deps = [
+        ":logging",
+        ":macros",
+        ":status",
+        ":str_util",
+        ":strcat",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -203,12 +247,14 @@ cc_library(
 )
 
 cc_library(
-    name = "grpc_services",
-    hdrs = ["grpc_services.h"],
+    name = "hash",
+    srcs = ["hash.cc"],
+    hdrs = ["hash.h"],
     deps = [
-        ":platform",
-        "//tensorflow/core/profiler:profiler_analysis_proto_cc",
-        "//tensorflow/core/profiler:profiler_service_proto_cc",
+        ":macros",
+        ":raw_coding",
+        ":stringpiece",
+        ":types",
     ],
 )
 
@@ -301,6 +347,21 @@ cc_library(
 )
 
 cc_library(
+    name = "path",
+    srcs = ["path.cc"],
+    hdrs = ["path.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+        ":scanner",
+        ":strcat",
+        ":stringpiece",
+        ":types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "platform",
     hdrs = ["platform.h"],
 )
@@ -366,11 +427,21 @@ cc_library(
     name = "protobuf_internal",
     hdrs = ["protobuf_internal.h"],
     deps = [
+        ":errors",
         ":platform",
         ":protobuf",
         ":types",
-        "//tensorflow/core/lib/core:errors",
     ] + if_static(["@com_google_protobuf//:protobuf"]),
+)
+
+cc_library(
+    name = "random",
+    srcs = ["random.cc"],
+    hdrs = ["random.h"],
+    deps = [
+        ":mutex",
+        ":types",
+    ],
 )
 
 cc_library(
@@ -428,6 +499,16 @@ cc_library(
 )
 
 cc_library(
+    name = "setround",
+    srcs = ["setround.cc"],
+    hdrs = ["setround.h"],
+    deps = [
+        ":logging",
+        ":macros",
+    ],
+)
+
+cc_library(
     name = "stacktrace",
     hdrs = ["stacktrace.h"],
     deps = [
@@ -453,12 +534,20 @@ cc_library(
 )
 
 cc_library(
-    name = "setround",
-    srcs = ["setround.cc"],
-    hdrs = ["setround.h"],
+    name = "status",
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
     deps = [
         ":logging",
         ":macros",
+        ":mutex",
+        ":str_util",
+        ":strcat",
+        ":stringpiece",
+        ":stringprintf",
+        ":types",
+        "//tensorflow/core:error_codes_proto_impl_cc",
+        "@com_google_absl//absl/base",
     ],
 )
 
@@ -529,13 +618,13 @@ cc_library(
     srcs = ["tensor_coding.cc"],
     hdrs = ["tensor_coding.h"],
     deps = [
+        ":coding",
         ":platform",
         ":protobuf",
+        ":refcount",
         ":stringpiece",
         ":strcat",
         ":types",
-        "//tensorflow/core/lib/core:coding",
-        "//tensorflow/core/lib/core:refcount",
     ] + tf_additional_tensor_coding_deps(),
 )
 
@@ -688,10 +777,14 @@ filegroup(
             "**/unbounded_work_queue.cc",
             "**/windows_file_system.cc",
             "abi.cc",
+            "coding.cc",
             "cpu_info.cc",
+            "hash.cc",
             "numbers.cc",
+            "path.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "random.cc",
             "scanner.cc",
             "strcat.cc",
             "stringprintf.cc",
@@ -791,6 +884,7 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",
+            "coding.cc",
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",
@@ -798,13 +892,17 @@ filegroup(
             "error.cc",
             "file_system.cc",
             "file_system_helper.cc",
+            "hash.cc",
             "logger.cc",
             "numbers.cc",
+            "path.cc",
             "platform_strings.cc",
             "protobuf.cc",
             "protobuf_util.cc",
+            "random.cc",
             "scanner.cc",
             "setround.cc",
+            "status.cc",
             "strcat.cc",
             "stringprintf.cc",
             "str_util.cc",

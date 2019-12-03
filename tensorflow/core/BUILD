@@ -390,11 +390,6 @@ filegroup(
 )
 
 alias(
-    name = "grpc_services",
-    actual = "//tensorflow/core/platform:grpc_services",
-)
-
-alias(
     name = "human_readable_json",
     actual = "//tensorflow/core/platform:human_readable_json",
 )
@@ -405,6 +400,7 @@ filegroup(
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_statistics.h",
         "//tensorflow/core/platform:file_system.h",
+        "//tensorflow/core/platform:path.h",
     ],
     visibility = ["//visibility:private"],
 )
@@ -437,6 +433,7 @@ filegroup(
         "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
         "//tensorflow/core/platform:stacktrace.h",
         "//tensorflow/core/platform:stacktrace_handler.h",
+        "//tensorflow/core/platform:status.h",
         "//tensorflow/core/platform:stringpiece.h",
         "//tensorflow/core/platform:stringprintf.h",
         "//tensorflow/core/platform:strcat.h",
@@ -495,6 +492,7 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:protobuf",
         "//tensorflow/core/platform:platform",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:tstring",
         "//tensorflow/core/platform:types",
@@ -508,13 +506,6 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
-        "lib/histogram/histogram.h",
-        "lib/monitoring/collected_metrics.h",
-        "lib/monitoring/collection_registry.h",
-        "lib/monitoring/counter.h",
-        "lib/monitoring/gauge.h",
-        "lib/monitoring/metric_def.h",
-        "lib/monitoring/sampler.h",
         ":platform_base_hdrs",
         ":platform_env_hdrs",
         ":platform_file_system_hdrs",
@@ -525,17 +516,16 @@ cc_library(
         "//tensorflow/core/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
+        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
         "//tensorflow/core/lib/io:legacy_lib_io_headers",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
     ],
     visibility = ["//visibility:public"],
     deps = [
         ":lib_internal",
-        "//tensorflow/core/platform:str_util",
-        "//tensorflow/core/platform:stringpiece",
-        "//tensorflow/core/platform:stringprintf",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -1553,11 +1543,15 @@ filegroup(
         "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
         "//tensorflow/core/lib/core:legacy_lib_core_all_srcs",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
+        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_srcs",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_srcs",
         "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
         "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_headers",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_srcs",
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
@@ -1989,32 +1983,6 @@ tf_pyclif_proto_library(
     ]
 ]
 
-# The following targets were moved to core/framework. The aliases are only temporary
-# since moving existing users will require several CLs over several projects.
-
-[
-    alias(
-        name = "framework_%s_pyclif%s" % (proto_name, target_suffix),
-        actual = "//tensorflow/core/framework:%s_pyclif%s" % (proto_name, target_suffix),
-        visibility = ["//visibility:public"],
-    )
-    for target_suffix in [
-        "",
-        "_pb2",
-    ]
-    for proto_name in [
-        "cost_graph",
-        "tensor",
-        "kernel_def",
-        "node_def",
-        "function",
-        "graph",
-        "step_stats",
-        "types",
-        "variable",
-    ]
-]
-
 # -----------------------------------------------------------------------------
 # Internal targets
 
@@ -2103,7 +2071,9 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/lib/bfloat16:bfloat16.h",
     "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
+    "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
     "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
+    "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_headers",
     "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
     "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
     "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
@@ -2125,9 +2095,7 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
     "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
     "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
-    "lib/monitoring/mobile_counter.h",
-    "lib/monitoring/mobile_gauge.h",
-    "lib/monitoring/mobile_sampler.h",
+    "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
     "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
     "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
     "lib/wav/wav_io.h",
@@ -2166,7 +2134,6 @@ cc_library(
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
         "@com_google_absl//absl/base:core_headers",
-        "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform/default/build_config:platformlib",
     ] + if_static([":lib_internal_impl"]),
 )
@@ -2230,6 +2197,7 @@ cc_library(
         "//tensorflow/core/lib/gtl:top_n",
         "//tensorflow/core/lib/hash:crc32c",
         "//tensorflow/core/lib/hash:hash",
+        "//tensorflow/core/lib/histogram",
         "//tensorflow/core/lib/io:block",
         "//tensorflow/core/lib/io:buffered_inputstream",
         "//tensorflow/core/lib/io:compression",
@@ -2249,6 +2217,15 @@ cc_library(
         "//tensorflow/core/lib/io:zlib_inputstream",
         "//tensorflow/core/lib/io:zlib_outputbuffer",
         "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/core/lib/monitoring:collected_metrics",
+        "//tensorflow/core/lib/monitoring:collection_registry",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:gauge",
+        "//tensorflow/core/lib/monitoring:metric_def",
+        "//tensorflow/core/lib/monitoring:mobile_counter",
+        "//tensorflow/core/lib/monitoring:mobile_gauge",
+        "//tensorflow/core/lib/monitoring:mobile_sampler",
+        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/random:exact_uniform_int",
         "//tensorflow/core/lib/random:philox",
         "//tensorflow/core/lib/random:philox_random",
@@ -2264,6 +2241,8 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:context",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:cpu_feature_guard",
@@ -2271,8 +2250,10 @@ cc_library(
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:error",
+        "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",
@@ -2280,6 +2261,7 @@ cc_library(
         "//tensorflow/core/platform:net",
         "//tensorflow/core/platform:null_file_system",
         "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
@@ -2287,9 +2269,11 @@ cc_library(
         "//tensorflow/core/platform:regexp",
         "//tensorflow/core/platform:scanner",
         "//tensorflow/core/platform:setround",
-        "//tensorflow/core/platform:strong_hash",
+        "//tensorflow/core/platform:status",
         "//tensorflow/core/platform:strcat",
+        "//tensorflow/core/platform:stringpiece",
         "//tensorflow/core/platform:stringprintf",
+        "//tensorflow/core/platform:strong_hash",
         "//tensorflow/core/platform:str_util",
         "//tensorflow/core/platform:subprocess",
         "//tensorflow/core/platform:tensor_coding",
@@ -2683,6 +2667,7 @@ tf_cuda_library(
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "//third_party/eigen3",
@@ -3462,18 +3447,18 @@ tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "lib/histogram/histogram_test.cc",
-        "lib/monitoring/collection_registry_test.cc",
-        "lib/monitoring/counter_test.cc",
-        "lib/monitoring/gauge_test.cc",
-        "lib/monitoring/metric_def_test.cc",
-        "lib/monitoring/sampler_test.cc",
         "lib/wav/wav_io_test.cc",
         "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
         "//tensorflow/core/lib/hash:legacy_lib_hash_all_tests",
+        "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_tests",
         "//tensorflow/core/lib/io:legacy_lib_io_all_tests",
         "//tensorflow/core/lib/math:math_util_test.cc",
+        "//tensorflow/core/lib/monitoring:collection_registry_test.cc",
+        "//tensorflow/core/lib/monitoring:counter_test.cc",
+        "//tensorflow/core/lib/monitoring:gauge_test.cc",
+        "//tensorflow/core/lib/monitoring:metric_def_test.cc",
+        "//tensorflow/core/lib/monitoring:sampler_test.cc",
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
         "//tensorflow/core/platform:fingerprint_test.cc",
@@ -3579,8 +3564,8 @@ tf_cc_test(
     ],
     tags = [
         "local",
+        "no_gpu",
         "no_windows",
-        "nogpu",
         "nomac",
         "notap",
     ],

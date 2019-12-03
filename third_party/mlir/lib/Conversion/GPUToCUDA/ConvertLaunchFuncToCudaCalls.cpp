@@ -320,7 +320,7 @@ Value *GpuLaunchFuncToCudaCallsPass::generateKernelNameConstant(
   std::string globalName = llvm::formatv("{0}_kernel_name", name);
   return LLVM::createGlobalString(
       loc, builder, globalName, StringRef(kernelName.data(), kernelName.size()),
-      llvmDialect);
+      LLVM::Linkage::Internal, llvmDialect);
 }
 
 // Emits LLVM IR to launch a kernel function. Expects the module that contains
@@ -368,7 +368,8 @@ void GpuLaunchFuncToCudaCallsPass::translateGpuLaunchCalls(
   SmallString<128> nameBuffer(*kernelModule.getName());
   nameBuffer.append(kCubinStorageSuffix);
   Value *data = LLVM::createGlobalString(
-      loc, builder, nameBuffer.str(), cubinAttr.getValue(), getLLVMDialect());
+      loc, builder, nameBuffer.str(), cubinAttr.getValue(),
+      LLVM::Linkage::Internal, getLLVMDialect());
 
   // Emit the load module call to load the module data. Error checking is done
   // in the called helper function.

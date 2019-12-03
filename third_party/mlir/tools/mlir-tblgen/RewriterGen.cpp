@@ -315,7 +315,8 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int argIndex, int depth,
 
   // Capture the value
   auto name = tree.getArgName(argIndex);
-  if (!name.empty()) {
+  // `$_` is a special symbol to ignore op argument matching.
+  if (!name.empty() && name != "_") {
     // We need to subtract the number of attributes before this operand to get
     // the index in the operand list.
     auto numPrevAttrs = std::count_if(
@@ -329,6 +330,7 @@ void PatternEmitter::emitOperandMatch(DagNode tree, int argIndex, int depth,
 
 void PatternEmitter::emitAttributeMatch(DagNode tree, int argIndex, int depth,
                                         int indent) {
+
   Operator &op = tree.getDialectOp(opMap);
   auto *namedAttr = op.getArg(argIndex).get<NamedAttribute *>();
   const auto &attr = namedAttr->attr;
@@ -371,7 +373,8 @@ void PatternEmitter::emitAttributeMatch(DagNode tree, int argIndex, int depth,
 
   // Capture the value
   auto name = tree.getArgName(argIndex);
-  if (!name.empty()) {
+  // `$_` is a special symbol to ignore op argument matching.
+  if (!name.empty() && name != "_") {
     os.indent(indent) << formatv("{0} = tblgen_attr;\n", name);
   }
 

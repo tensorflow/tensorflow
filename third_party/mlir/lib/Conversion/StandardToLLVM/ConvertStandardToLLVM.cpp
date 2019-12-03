@@ -1476,7 +1476,6 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto viewOp = cast<SubViewOp>(op);
-    SubViewOpOperandAdaptor adaptor(operands);
     // TODO(b/144779634, ravishankarm) : After Tblgen is adapted to support
     // having multiple variadic operands where each operand can have different
     // number of entries, clean all of this up.
@@ -1518,7 +1517,7 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
       return matchFailure();
 
     // Create the descriptor.
-    MemRefDescriptor sourceMemRef(adaptor.source());
+    MemRefDescriptor sourceMemRef(operands.front());
     auto targetMemRef = MemRefDescriptor::undef(rewriter, loc, targetDescTy);
 
     // Copy the buffer pointer from the old descriptor to the new one.

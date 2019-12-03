@@ -285,11 +285,6 @@ LogicalResult AffineApplyOp::verify() {
   if (!getResult()->getType().isIndex())
     return emitOpError("result must be of type 'index'");
 
-  // Verify that the operands are valid dimension and symbol identifiers.
-  if (failed(verifyDimAndSymbolIdentifiers(*this, getOperands(),
-                                           map.getNumDims())))
-    return failure();
-
   // Verify that the map only produces one result.
   if (map.getNumResults() != 1)
     return emitOpError("mapping must produce one value");

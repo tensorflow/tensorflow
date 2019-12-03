@@ -245,6 +245,14 @@ static xla::ConvolutionDimensionNumbers Convert_convolution_dimension_numbers(
   return output;
 }
 
+xla::ChannelHandle Convert_channel_handle(mlir::xla_hlo::ChannelHandle attr) {
+  xla::ChannelHandle channel_handle;
+  channel_handle.set_handle(ConvertAPInt(attr.handle().getValue()));
+  channel_handle.set_type(static_cast<xla::ChannelHandle::ChannelType>(
+      ConvertAPInt(attr.type().getValue())));
+  return channel_handle;
+}
+
 // Converts the comparison_direction string attribute into the XLA enum. The
 // string is assumed to correspond to exactly one of the allowed strings
 // representing the enum. This should have been checked in the op verify method.
@@ -385,6 +393,26 @@ llvm::SmallVector<xla::XlaOp, 4> GetTuple(mlir::Operation::operand_range values,
 namespace mlir {
 namespace xla_hlo {
 namespace {
+
+LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  xla::XlaComputation computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.computation(),
+                                                     &computation))) {
+    return failure();
+  }
+  auto replica_groups = Convert_replica_groups(op.replica_groups());
+  if (!op.channel_id().hasValue()) {
+    value_map[op] =
+        xla::AllReduce(value_map[op.operand()], computation, replica_groups,
+                       /*channel_id=*/absl::nullopt);
+    return success();
+  }
+  auto channel_id = Convert_channel_handle(op.channel_id().getValue());
+  value_map[op] = xla::AllReduce(value_map[op.operand()], computation,
+                                 replica_groups, channel_id);
+  return success();
+}
 
 LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   auto type = op.getType().dyn_cast<RankedTensorType>();

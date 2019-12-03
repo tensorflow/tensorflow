@@ -34,6 +34,9 @@ StatusOr<bool> AllReduceSimplifier::Run(HloModule* module) {
     for (HloInstruction* inst : computation->MakeInstructionPostOrder()) {
       if (!inst->shape().IsArray()) {
         // We currently do not change tuple-shaped all-reduce.
+        // Until XLA will support Token fed AllReduce(), the PyTorch client code
+        // uses a fake data token (constant) which relies on this pass to not
+        // optimize out (being fed within a tuple input).
         continue;
       }
       if (inst->IsCrossReplicaAllReduce() &&

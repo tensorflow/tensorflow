@@ -62,4 +62,15 @@ class TileLinalgOp<list<int> sizes, string value> : NativeCodeCall<
   StrJoinInt<sizes>.result # "}, \"" # value # "\")))" #
   "  return matchFailure();">;
 
+//===----------------------------------------------------------------------===//
+// Linalg to loop patterns.
+//===----------------------------------------------------------------------===//
+class LinalgOpToLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToLoops<" # OpType # ">($_builder, $0))) " #
+  "  return matchFailure();">;
+
+class LinalgOpToAffineLoops<string OpType> : NativeCodeCall<
+  "if (failed(linalgOpToAffineLoops<" # OpType # ">($_builder, $0))) " #
+  "  return matchFailure();">;
+
 #endif // LINALG_TRANSFORMS

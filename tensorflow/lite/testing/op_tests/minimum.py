@@ -31,6 +31,7 @@ def make_minimum_tests(options):
       "input_dtype": [tf.float32],
       "input_shape_1": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
       "input_shape_2": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+      "fully_quantize": [False, True],
   }]
 
   def build_graph(parameters):
@@ -48,11 +49,18 @@ def make_minimum_tests(options):
     return [input_tensor_1, input_tensor_2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    """Builds the inputs for the model above."""
     values = [
-        create_tensor_data(parameters["input_dtype"],
-                           parameters["input_shape_1"]),
-        create_tensor_data(parameters["input_dtype"],
-                           parameters["input_shape_2"])
+        create_tensor_data(
+            parameters["input_dtype"],
+            parameters["input_shape_1"],
+            min_value=-1,
+            max_value=1),
+        create_tensor_data(
+            parameters["input_dtype"],
+            parameters["input_shape_2"],
+            min_value=-1,
+            max_value=1)
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
@@ -61,4 +69,4 @@ def make_minimum_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=8)
+      expected_tf_failures=16)

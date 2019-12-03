@@ -419,9 +419,9 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
     ],
     tags = [
+        "no_gpu",  #TODO(b/141255188): Enable test after bug is resolved.
         "no_oss",
         "no_windows_gpu",
-        "nogpu",  #TODO(b/141255188): Enable test after bug is resolved.
     ],
 )
 
@@ -438,6 +438,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    tags = ["notsan"],  # b/144706539
 )
 
 tf_py_test(

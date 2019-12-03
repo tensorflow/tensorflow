@@ -720,7 +720,8 @@ static LogicalResult Verify(PackOp op) {
   for (Value *operand : op.getOperands()) {
     auto other_type = operand->getType().cast<ShapedType>();
     if (input_type != other_type)
-      return op.emitOpError("operands should be of the same type");
+      return op.emitOpError("operands should be of the same type. got ")
+             << input_type << ", " << other_type;
   }
 
   return success();

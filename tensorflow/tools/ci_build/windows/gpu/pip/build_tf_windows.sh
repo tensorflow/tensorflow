@@ -121,7 +121,7 @@ if [[ "$TF_NIGHTLY" == 1 ]]; then
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME} --nightly_flag"
   fi
 else
-  if [[ -v ${PROJECT_NAME}  ]]; then
+  if [[ -v PROJECT_NAME  ]]; then
     EXTRA_PIP_FLAGS="--project_name ${PROJECT_NAME}"
   fi
 fi

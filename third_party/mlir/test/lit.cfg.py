@@ -66,8 +66,8 @@ tools.extend([
     ToolSubst('toy-ch3', unresolved='ignore'),
     ToolSubst('toy-ch4', unresolved='ignore'),
     ToolSubst('toy-ch5', unresolved='ignore'),
-    ToolSubst('%test_lib_dir', config.test_lib_dir, unresolved='ignore'),
-    ToolSubst('%tools_lib_dir', config.tools_lib_dir, unresolved='ignore')
+    ToolSubst('%linalg_test_lib_dir', config.linalg_test_lib_dir, unresolved='ignore'),
+    ToolSubst('%cuda_wrapper_library_dir', config.cuda_wrapper_library_dir, unresolved='ignore')
 ])
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)

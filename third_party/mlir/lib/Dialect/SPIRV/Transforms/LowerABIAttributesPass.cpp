@@ -57,10 +57,6 @@ createGlobalVariableForArg(FuncOp funcOp, OpBuilder &builder, unsigned argNum,
   if (isScalarOrVectorType(varType)) {
     varType =
         spirv::PointerType::get(spirv::StructType::get(varType), storageClass);
-  } else {
-    auto varPtrType = varType.cast<spirv::PointerType>();
-    varType = spirv::PointerType::get(
-        spirv::StructType::get(varPtrType.getPointeeType()), storageClass);
   }
   auto varPtrType = varType.cast<spirv::PointerType>();
   auto varPointeeType = varPtrType.getPointeeType().cast<spirv::StructType>();
@@ -180,17 +176,15 @@ FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
     }
     auto var =
         createGlobalVariableForArg(funcOp, rewriter, argType.index(), abiInfo);
+    if (!var) {
+      return matchFailure();
+    }
 
     OpBuilder::InsertionGuard funcInsertionGuard(rewriter);
     rewriter.setInsertionPointToStart(&funcOp.front());
-    // Inserts spirv::AddressOf and spirv::AccessChain operations.
-    auto addressOf = rewriter.create<spirv::AddressOfOp>(funcOp.getLoc(), var);
-    auto indexType =
-        typeConverter.convertType(IndexType::get(funcOp.getContext()));
-    auto zero = rewriter.create<spirv::ConstantOp>(
-        funcOp.getLoc(), indexType, rewriter.getIntegerAttr(indexType, 0));
-    Value *replacement = rewriter.create<spirv::AccessChainOp>(
-        funcOp.getLoc(), addressOf.pointer(), zero.constant());
+    // Insert spirv::AddressOf and spirv::AccessChain operations.
+    Value *replacement =
+        rewriter.create<spirv::AddressOfOp>(funcOp.getLoc(), var);
     // Check if the arg is a scalar or vector type. In that case, the value
     // needs to be loaded into registers.
     // TODO(ravishankarm) : This is loading value of the scalar into registers
@@ -198,7 +192,13 @@ FuncOpLowering::matchAndRewrite(FuncOp funcOp, ArrayRef<Value *> operands,
     // before the use. There might be multiple loads and currently there is no
     // easy way to replace all uses with a sequence of operations.
     if (isScalarOrVectorType(argType.value())) {
-      replacement = rewriter.create<spirv::LoadOp>(funcOp.getLoc(), replacement,
+      auto indexType =
+          typeConverter.convertType(IndexType::get(funcOp.getContext()));
+      auto zero =
+          spirv::ConstantOp::getZero(indexType, funcOp.getLoc(), &rewriter);
+      auto loadPtr = rewriter.create<spirv::AccessChainOp>(
+          funcOp.getLoc(), replacement, zero.constant());
+      replacement = rewriter.create<spirv::LoadOp>(funcOp.getLoc(), loadPtr,
                                                    /*memory_access=*/nullptr,
                                                    /*alignment=*/nullptr);
     }

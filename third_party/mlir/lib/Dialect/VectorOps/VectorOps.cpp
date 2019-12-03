@@ -369,6 +369,45 @@ static LogicalResult verify(ExtractElementOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// BroadcastOp
+//===----------------------------------------------------------------------===//
+
+static void print(OpAsmPrinter &p, BroadcastOp op) {
+  p << op.getOperationName() << " " << *op.source();
+  p << " : " << op.getSourceType();
+  p << " to " << op.getVectorType();
+}
+
+static LogicalResult verify(BroadcastOp op) {
+  VectorType srcVectorType = op.getSourceType().dyn_cast<VectorType>();
+  VectorType dstVectorType = op.getVectorType();
+  // Scalar to vector broadcast is always valid. A vector
+  // to vector broadcast needs some additional checking.
+  if (srcVectorType) {
+    const int64_t srcRank = srcVectorType.getRank();
+    const int64_t dstRank = dstVectorType.getRank();
+    // TODO(ajcbik): implement proper rank testing for broadcast;
+    // this is just a temporary placeholder check.
+    if (srcRank > dstRank) {
+      return op.emitOpError("source rank higher than destination rank");
+    }
+  }
+  return success();
+}
+
+static ParseResult parseBroadcastOp(OpAsmParser &parser,
+                                    OperationState &result) {
+  OpAsmParser::OperandType source;
+  Type sourceType;
+  VectorType vectorType;
+  return failure(parser.parseOperand(source) ||
+                 parser.parseColonType(sourceType) ||
+                 parser.parseKeywordType("to", vectorType) ||
+                 parser.resolveOperand(source, sourceType, result.operands) ||
+                 parser.addTypeToList(vectorType, result.types));
+}
+
+//===----------------------------------------------------------------------===//
 // InsertElementOp
 //===----------------------------------------------------------------------===//
 

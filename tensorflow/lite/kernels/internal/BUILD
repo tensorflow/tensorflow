@@ -49,6 +49,15 @@ cc_library(
 )
 
 cc_library(
+    name = "scoped_profiling_label_wrapper",
+    hdrs = ["scoped_profiling_label_wrapper.h"],
+    copts = tflite_copts(),
+    deps = [
+        "@gemmlowp//:profiler",
+    ],
+)
+
+cc_library(
     name = "types",
     hdrs = ["types.h"],
     copts = tflite_copts(),
@@ -450,8 +459,8 @@ cc_library(
         ":tensor",
         ":tensor_utils",
         ":types",
+        ":scoped_profiling_label_wrapper",
         "@gemmlowp//:fixedpoint",
-        "@gemmlowp//:profiler",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:op_macros",
@@ -504,6 +513,7 @@ cc_library(
         ":compatibility",
         ":quantization_util",
         ":round",
+        ":scoped_profiling_label_wrapper",
         ":strided_slice_logic",
         ":legacy_types",
         ":tensor",
@@ -569,7 +579,6 @@ cc_library(
         ":compatibility",
         ":round",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels:activation_functor",
         "//tensorflow/lite/kernels:cpu_backend_context",
         "@gemmlowp",
     ],
@@ -662,14 +671,10 @@ cc_library(
     ],
     copts = tflite_copts() + NEON_FLAGS_IF_APPLICABLE,
     deps = [
-        ":common",
-        ":compatibility",
         ":cpu_check",
-        ":types",
+        "//third_party/eigen3",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels:cpu_backend_context",
-        "//tensorflow/lite/kernels:op_macros",
-        "@gemmlowp//:fixedpoint",
     ] + select({
         ":aarch64": [
             ":neon_tensor_utils",

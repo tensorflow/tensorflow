@@ -230,6 +230,7 @@ struct ResizeBilinear<CPUDevice, T> {
     std::vector<CachedInterpolation> ys(out_height + 1);
     std::vector<CachedInterpolation> xs(out_width + 1);
 
+    // Compute the cached interpolation weights on the x and y dimensions.
     if (half_pixel_centers) {
       compute_interpolation_weights(HalfPixelScaler(), out_height, in_height,
                                     height_scale, ys.data());
@@ -237,7 +238,6 @@ struct ResizeBilinear<CPUDevice, T> {
                                     width_scale, xs.data());
 
     } else {
-      // Compute the cached interpolation weights on the x and y dimensions.
       compute_interpolation_weights(LegacyScaler(), out_height, in_height,
                                     height_scale, ys.data());
       compute_interpolation_weights(LegacyScaler(), out_width, in_width,
