@@ -5849,7 +5849,7 @@ TEST_F(AlgebraicSimplifierTest, RsqrtOfRPower) {
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  // Expected transformation: rsqrt(power(gte.2,-2)) -> abs(gte.2)
+  // Expect transformation: rsqrt(power(gte.2,-2)) -> abs(gte.2)
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kPower), nullptr);
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
   auto computation = m->entry_computation();
@@ -5884,7 +5884,7 @@ TEST_F(AlgebraicSimplifierTest, RsqrtDivide) {
   default_options_.set_cudnn_batchnorm_forward_training_metadata(
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
-  // Expected transformation: rsqrt(divide(1,gte.2)) -> sqrt(gte.2)
+  // Expect transformation: rsqrt(divide(1,gte.2)) -> sqrt(gte.2)
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kDivide), nullptr);
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
   auto computation = m->entry_computation();
@@ -5918,7 +5918,7 @@ TEST_F(AlgebraicSimplifierTest, MultiplySelfRsqrt) {
       "__cudnn$batchNormalizationForwardTraining");
   ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
 
-  // Expected transformation: multiply(rsqrt(gte.2), rsqrt(gte.2)) -> divide(1,
+  // Expect transformation: multiply(rsqrt(gte.2), rsqrt(gte.2)) -> divide(1,
   // gte.2)
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kMultiply), nullptr);
   EXPECT_EQ(FindInstruction(m.get(), HloOpcode::kRsqrt), nullptr);
