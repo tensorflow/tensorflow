@@ -70,9 +70,9 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.version = 2;
       break;
     case BuiltinOperator_SPLIT:
-      property.arbitrary_outputs = true;
       // We skip input 0 since it is the split dim which is not real valued.
       property.inputs = {{1, {}}};
+      property.arbitrary_outputs = true;
       property.restrict_same_input_output_scale = true;
       property.version = 2;
       break;
@@ -388,6 +388,12 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.outputs = {{0, {}}};
       property.restrict_same_input_output_scale = true;
       property.version = 2;
+      break;
+    case BuiltinOperator_UNPACK:
+      property.inputs = {{0, {}}};
+      property.arbitrary_outputs = true;
+      property.restrict_same_input_output_scale = true;
+      property.version = 1;
       break;
     default:
       // No quantized implementation exists for this operation.
