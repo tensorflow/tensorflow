@@ -1118,7 +1118,7 @@ absl::flat_hash_map<string, std::vector<string>> *CreateWhitelist() {
       "_FusedBatchNormEx", "FusedBatchNormGrad", "FusedBatchNormGradV2",
       "FusedBatchNormGradV3"}},
     {"SORT", {"TopKV2"}}, // XLA version much faster then TF version.
-    {"SMALL",
+    {"MISC",
      // clang-format off
      {"BroadcastTo", "ExpandDims", "Fill", "NoOp",
       "Range", "Rank", "Reshape", "Shape", "ShapeN", "Size", "Squeeze",

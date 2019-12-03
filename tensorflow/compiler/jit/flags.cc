@@ -96,7 +96,7 @@ void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
            "If multiple, separate them with commas. Shortcuts: "
            " PW: All point-wise operations."
            " RED: All reduction operations."
-           " SMALL: Mixed small operations."
+           " MISC: Mixed operations."
            " PWRED: TF operations that get converted to PW+RED operation in XLA."
            " REDUCEWINDOW: TF operations like MaxPool/AvgPool that get "
            "converted to ReduceWindow in XLA."
