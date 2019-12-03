@@ -695,7 +695,7 @@ TEST(HashtableOpsTest, TestHashtable) {
 
 template <typename T>
 TfLiteTensor CreateTensor(TfLiteType type, std::vector<T> vec) {
-  TfLiteTensor tensor;
+  TfLiteTensor tensor = {};
   TfLiteIntArray* dims = TfLiteIntArrayCreate(1);
   dims->data[0] = vec.size();
   tensor.dims = dims;
