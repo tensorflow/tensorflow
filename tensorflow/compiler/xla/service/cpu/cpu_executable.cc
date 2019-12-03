@@ -147,8 +147,8 @@ CpuExecutable::CreateBufferTable(
       }
     }
   }
-  return {{std::move(unowning_buffers), std::move(owning_buffers),
-           std::move(buffers_to_free)}};
+  return std::make_tuple(std::move(unowning_buffers), std::move(owning_buffers),
+                         std::move(buffers_to_free));
 }
 
 Status CpuExecutable::ExecuteComputeFunction(
