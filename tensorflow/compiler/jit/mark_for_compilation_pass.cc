@@ -1076,7 +1076,8 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-const absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
+absl::flat_hash_map<string, std::vector<string>> *CreateWhitelist() {
+  absl::flat_hash_map<string, std::vector<string>>* result = new absl::flat_hash_map<string, std::vector<string>>{
     // Unary
     {"PW",
      {"ComplexAbs", "Angle", "Conj", "Abs", "Acos", "Acosh", "Asin", "Atan",
@@ -1128,18 +1129,21 @@ const absl::flat_hash_map<string, std::vector<string>> whitelist_table = {
       "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
       "Tile", "Transpose", "InvertPermutation", "Unpack"}}};
 // clang-format on
+  return result;
+}
 
-absl::flat_hash_set<string> GetWhitelist() {
+absl::flat_hash_set<string> GetOrCreateWhitelist() {
+  static absl::flat_hash_map<string, std::vector<string>>* whitelist_table = CreateWhitelist();
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
   absl::flat_hash_set<string> whitelist;
 
   for (auto s : absl::StrSplit(flags->tf_xla_ops_to_cluster, ",")) {
     if (s == "FUSIBLE") {
-      for (auto pair : whitelist_table) {
+      for (auto pair : *whitelist_table) {
         whitelist.insert(pair.second.begin(), pair.second.end());
       }
-    } else if (whitelist_table.contains(s)) {
-      auto v = whitelist_table.at(s);
+    } else if (whitelist_table->contains(s)) {
+      auto v = whitelist_table->at(s);
       whitelist.insert(v.begin(), v.end());
     } else if (!s.empty()) {
       // Should be a user provided TF operation.
@@ -1187,7 +1191,7 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
-  auto whitelist = GetWhitelist();
+  auto whitelist = GetOrCreateWhitelist();
 
   std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
