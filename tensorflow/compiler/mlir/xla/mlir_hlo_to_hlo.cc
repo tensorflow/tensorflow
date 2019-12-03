@@ -499,13 +499,6 @@ LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(GetTupleElementOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::GetTupleElement(value_map[op.getOperand()],
-                                       op.index().getSExtValue());
-  return success();
-}
-
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),

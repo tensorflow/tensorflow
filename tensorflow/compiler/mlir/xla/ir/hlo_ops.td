@@ -437,9 +437,6 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
   let builders = [OpBuilder<
                   "Builder *builder, OperationState &results, "
                   "Value* value, int32_t index">];
-
-  // GetTupleElementOp has special conversion logic to HLO.
-  let hasCustomHLOConverter = 1;
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
