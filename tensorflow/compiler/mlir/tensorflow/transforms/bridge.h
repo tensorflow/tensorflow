@@ -31,11 +31,13 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging);
 
 namespace TF {
 
-// Run all passes involved in transforming or optimizing an MLIR graph without
+// Runs all passes involved in transforming or optimizing an MLIR graph without
 // any target specialization. When enable_logging is true, enables
-// tensorflow::BridgeLogger.
+// tensorflow::BridgeLogger. When enable_inliner is true, enables the inliner
+// pass.
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging);
+                                                 bool enable_logging,
+                                                 bool enable_inliner);
 
 }  // namespace TF
 
