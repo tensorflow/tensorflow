@@ -72,6 +72,11 @@ llvm.func @foo(%arg0: !llvm.i64) {
   llvm.return
 }
 
+// A function with `internal` linkage.
+llvm.func internal @internal_func() {
+  llvm.return
+}
+
 ```
 
 ### LLVM IR operations

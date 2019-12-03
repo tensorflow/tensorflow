@@ -71,7 +71,8 @@ parseArgumentList(OpAsmParser &parser, bool allowVariadic,
   };
 
   // Parse the function arguments.
-  if (parser.parseOptionalRParen()) {
+  isVariadic = false;
+  if (failed(parser.parseOptionalRParen())) {
     do {
       unsigned numTypedArguments = argTypes.size();
       if (parseArgument())
