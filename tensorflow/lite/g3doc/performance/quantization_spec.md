@@ -87,7 +87,7 @@ $$a_j \cdot b_k = \sum_{i=0}^{n} a_{j}^{(i)} b_{k}^{(i)} =
 The \\(\sum_{i=0}^{n} q_{a}^{(i)} q_{b}^{(i)}\\) term is unavoidable since it’s
 performing the dot product of the input value and the weight value.
 
-The $$\sum_{i=0}^{n} q_{b}^{(i)} z_a and \sum_{i=0}^{n} z_a z_b$$ terms are made
+The $$\sum_{i=0}^{n} q_{b}^{(i)} z_a$$ and $$\sum_{i=0}^{n} z_a z_b$$ terms are made
 up of constants that remain the same per inference invocation, and thus can be
 pre-calculated.
 
