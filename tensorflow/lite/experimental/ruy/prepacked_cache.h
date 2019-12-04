@@ -106,6 +106,12 @@ class PrepackedCache {
   // Returns the total size (in bytes) of data held in this cache.
   int TotalSize() const { return cache_size_; }
 
+  // All calls to get current TimePoints go through here.
+  // TODO(b/145625614) Profile timestamps on relevant models to see if
+  // this level of granularity is sufficient. CoarseNow is cheap so
+  // it would be nice to keep it.
+  TimePoint CacheNow() const { return CoarseNow(); }
+
   // Performs the memory allocation for the `data` and `sums` members of a
   // PrepackedMatrix.
   void AllocatePrepackedMatrix(PrepackedMatrix *pmatrix);
