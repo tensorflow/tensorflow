@@ -38,11 +38,11 @@ yes "" | $PYTHON_BIN_PATH configure.py
 bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=gpu,-no_gpu,-no_rocm,-benchmark-test,-no_oss,-oss_serial,-rocm_multi_gpu, \
-      --test_timeout 600,900,2400,7200 \
-      --test_output=errors \
+      --test_tag_filters=gpu,-no_gpu,-no_rocm,-benchmark-test,-no_oss,-oss_serial,-rocm_multi_gpu,-v1only \
       --jobs=${N_JOBS} \
       --local_test_jobs=${TF_GPU_COUNT} \
+      --test_timeout 600,900,2400,7200 \
+      --test_output=errors \
       --test_sharding_strategy=disabled \
       --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
       -- \
@@ -53,11 +53,11 @@ bazel test \
 && bazel test \
       --config=rocm \
       -k \
-      --test_tag_filters=gpu \
-      --test_timeout 600,900,2400,7200 \
-      --test_output=errors \
+      --test_tag_filters=-no_gpu,-no_rocm,-v1only \
       --jobs=${N_JOBS} \
       --local_test_jobs=1 \
+      --test_timeout 600,900,2400,7200 \
+      --test_output=errors \
       --test_sharding_strategy=disabled \
       -- \
       //tensorflow/core/nccl:nccl_manager_test
