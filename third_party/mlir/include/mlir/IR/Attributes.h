@@ -1373,6 +1373,13 @@ public:
       : attrs((attrs && !attrs.empty()) ? attrs : nullptr) {}
   NamedAttributeList(ArrayRef<NamedAttribute> attributes);
 
+  bool operator!=(const NamedAttributeList &other) const {
+    return !(*this == other);
+  }
+  bool operator==(const NamedAttributeList &other) const {
+    return attrs == other.attrs;
+  }
+
   /// Return the underlying dictionary attribute. This may be null, if this list
   /// has no attributes.
   DictionaryAttr getDictionary() const { return attrs; }
