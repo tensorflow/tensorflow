@@ -377,20 +377,10 @@ def saved_model_format_scope(value):
     _thread_local_data.saved_model_format = previous_value
 
 
-def get_saved_model_format():
-  """Gets the saved model format that should be tested."""
-  if _thread_local_data.saved_model_format is None:
-    raise ValueError(
-        'Cannot call `get_saved_model_format()` outside of a '
-        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
-        'decorator.')
-  return _thread_local_data.saved_model_format
-
-
 def get_save_format():
   if _thread_local_data.saved_model_format is None:
     raise ValueError(
-        'Cannot call `get_saved_model_format()` outside of a '
+        'Cannot call `get_save_format()` outside of a '
         '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
         'decorator.')
   return _thread_local_data.saved_model_format
