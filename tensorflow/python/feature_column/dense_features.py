@@ -31,7 +31,7 @@ class DenseFeatures(fc._BaseFeaturesLayer):  # pylint: disable=protected-access
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
-  At the first layer of the model, this column oriented data should be converted
+  At the first layer of the model, this column-oriented data should be converted
   to a single `Tensor`.
 
   This layer can be called multiple times with different features.
