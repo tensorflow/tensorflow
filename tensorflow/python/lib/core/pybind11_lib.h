@@ -52,7 +52,7 @@ inline py::object pyo_or_throw(PyObject* ptr) {
   if (PyErr_Occurred() || ptr == nullptr) {
     throw py::error_already_set();
   }
-  return py::reinterpret_steal<py::object>(ptr);
+  return pyo(ptr);
 }
 
 void throwTypeError(const char* error_message) {
