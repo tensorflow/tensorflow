@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import six
 
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
@@ -266,11 +265,10 @@ def random_uniform(shape,
     shape = tensor_util.shape_tensor(shape)
     # TODO(b/143079601): Remove this once the compatible window is passed.
     if compat.forward_compatible(2019, 12, 3):
-      # In case of [0,1) floating results, minval and maxval is unused.
-      minval_is_zero = isinstance(minval, six.integer_types +
-                                  (float,)) and minval == 0
-      maxval_is_one = isinstance(maxval, six.integer_types +
-                                 (float,)) and maxval == 1
+      # In case of [0,1) floating results, minval and maxval is unused. We do an
+      # `is` comparison here since this is cheaper than isinstance or  __eq__.
+      minval_is_zero = minval is 0  # pylint: disable=literal-comparison
+      maxval_is_one = maxval is 1  # pylint: disable=literal-comparison
       if not minval_is_zero or not maxval_is_one or dtype.is_integer:
         minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
         maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
