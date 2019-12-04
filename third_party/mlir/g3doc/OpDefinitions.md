@@ -263,7 +263,7 @@ TODO: Design and implement more primitive constraints
 Similar to operands, results are specified inside the `dag`-typed `results`, led
 by `outs`:
 
-```tablgen
+```tablegen
 let results = (outs
   <type-constraint>:$<result-name>,
   ...
