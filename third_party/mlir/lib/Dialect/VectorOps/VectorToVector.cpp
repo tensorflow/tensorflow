@@ -549,8 +549,8 @@ struct ConvertMatchingFakeForkFakeJoinOp : public RewritePattern {
 
 // Rewrites a fakeFork, whose (unique) operand is a blockArgument, into multiple
 // vector.strided_slice ops.
-struct ConvertFakeForkFromBlockArgsOp : public RewritePattern {
-  ConvertFakeForkFromBlockArgsOp(MLIRContext *context)
+struct ConvertFakeForkFromBlockArgsOrTransferReadOp : public RewritePattern {
+  ConvertFakeForkFromBlockArgsOrTransferReadOp(MLIRContext *context)
       // low-benefit to kick-in late
       : RewritePattern(kFakeForkOp, 0, context) {}
 
@@ -564,8 +564,9 @@ struct ConvertFakeForkFromBlockArgsOp : public RewritePattern {
       return matchSuccess();
     }
 
-    auto *blockArg = op->getOperand(0);
-    if (!isa<BlockArgument>(blockArg))
+    auto *arg = op->getOperand(0);
+    if (!isa<BlockArgument>(arg) &&
+        !isa<vector::TransferReadOp>(arg->getDefiningOp()))
       return matchFailure();
 
     LLVM_DEBUG(dbgs() << "\n[" DEBUG_TYPE
@@ -579,14 +580,14 @@ struct ConvertFakeForkFromBlockArgsOp : public RewritePattern {
     if (unrollFactors.empty()) {
       // No more unrollFactors, just sanity check + forward the unique operand.
       assert(op->getNumResults() == 1);
-      assert(op->getOperand(0)->getType() == op->getResult(0)->getType());
-      rewriter.replaceOp(op, op->getOperand(0));
+      assert(arg->getType() == op->getResult(0)->getType());
+      rewriter.replaceOp(op, arg);
       return matchSuccess();
     }
 
     // Strides are always 1 for now.
     // TODO(b/144845578) support non-1 strides.
-    auto forkedVectorType = op->getOperand(0)->getType().cast<VectorType>();
+    auto forkedVectorType = arg->getType().cast<VectorType>();
     SmallVector<int64_t, 4> strides(unrollFactors.size(), 1);
     auto nUnrolled = computeMaxLinearIndex(unrollFactors);
     SmallVector<Value *, 4> extractedVectors;
@@ -602,8 +603,8 @@ struct ConvertFakeForkFromBlockArgsOp : public RewritePattern {
                           leadingSize, unrollFactors);
       extractedVectors.push_back(
           rewriter
-              .create<vector::StridedSliceOp>(op->getLoc(), blockArg, offsets,
-                                              sizes, strides)
+              .create<vector::StridedSliceOp>(op->getLoc(), arg, offsets, sizes,
+                                              strides)
               .getResult());
     }
     rewriter.replaceOp(op, extractedVectors);
@@ -679,8 +680,8 @@ void mlir::populateVectorToVectorConversionPatterns(
     MLIRContext *context, OwningRewritePatternList &patterns,
     ArrayRef<int64_t> coarseVectorShape, ArrayRef<int64_t> fineVectorShape) {
   vector::populateWithGenerated(context, &patterns);
-  patterns.insert<ConvertMatchingFakeForkFakeJoinOp,
-                  ConvertFakeForkFromBlockArgsOp, ConvertFakeJoinOp,
-                  DCEPattern<FakeForkTrait>, DCEPattern<FakeJoinTrait>>(
-      context);
+  patterns
+      .insert<ConvertMatchingFakeForkFakeJoinOp,
+              ConvertFakeForkFromBlockArgsOrTransferReadOp, ConvertFakeJoinOp,
+              DCEPattern<FakeForkTrait>, DCEPattern<FakeJoinTrait>>(context);
 }

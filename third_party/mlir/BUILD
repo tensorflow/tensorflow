@@ -1281,7 +1281,6 @@ cc_library(
         "lib/Transforms/LoopTiling.cpp",
         "lib/Transforms/LoopUnroll.cpp",
         "lib/Transforms/LoopUnrollAndJam.cpp",
-        "lib/Transforms/MaterializeVectors.cpp",
         "lib/Transforms/MemRefDataFlowOpt.cpp",
         "lib/Transforms/PipelineDataTransfer.cpp",
         "lib/Transforms/SimplifyAffineStructures.cpp",
