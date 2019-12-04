@@ -36,6 +36,17 @@ def to_categorical(y, num_classes=None, dtype='float32'):
   Returns:
       A binary matrix representation of the input. The classes axis is placed
       last.
+
+  Usage Example:
+    ```python
+    import tensorflow as tf
+    y = [0, 2, 4, 3, 5, 0, 1, 1, 2]
+    tf.keras.utils.to_categorical(y, 6)
+    ```  
+
+  Raises:
+      Value Error: If input contains string value
+      
   """
   y = np.array(y, dtype='int')
   input_shape = y.shape
