@@ -197,20 +197,6 @@ void VectorVectorCwiseProductAccumulate(const float* vector1,
   PortableVectorVectorCwiseProductAccumulate(vector1, vector2, v_size, result);
 }
 
-void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                   const float* batch_vector, int n_batch,
-                                   float* result) {
-  PortableVectorBatchVectorCwiseProduct(vector, v_size, batch_vector, n_batch,
-                                        result);
-}
-
-void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
-                                             const float* batch_vector,
-                                             int n_batch, float* result) {
-  PortableVectorBatchVectorCwiseProductAccumulate(vector, v_size, batch_vector,
-                                                  n_batch, result);
-}
-
 float VectorVectorDotProduct(const float* vector1, const float* vector2,
                              int v_size) {
   return PortableVectorVectorDotProduct(vector1, vector2, v_size);

@@ -127,19 +127,6 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
 float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
                                  int v_size);
 
-// Cwise product of a vector and a batch-vector.
-void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                       const float* batch_vector, int n_batch,
-                                       float* result);
-
-// Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
-// operation, the assumption here is that result array is initialized to valid
-// values.
-void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                 int v_size,
-                                                 const float* batch_vector,
-                                                 int n_batch, float* result);
-
 // Compute "1.0f - elements of vector" (used in CIFG).
 void NeonSub1Vector(const float* vector, int v_size, float* result);
 

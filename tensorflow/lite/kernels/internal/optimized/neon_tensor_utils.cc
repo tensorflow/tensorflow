@@ -1831,13 +1831,14 @@ void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
     // Load 4 float values from vector1 and vector2.
-    float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
+    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
+    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
     // Vector multiply 4 float
-    float32x4_t mul_32x4 = vmulq_f32(v1_f32x4, v2_f32x4);
+    const float32x4_t mul_32x4 = vmulq_f32(v1_f32x4, v2_f32x4);
     // Save to result array.
-    vst1q_f32(&result[v], mul_32x4);
+    vst1q_f32(result + v, mul_32x4);
   }
+#pragma clang loop vectorize(disable) unroll(disable)
   for (; v < v_size; v++) {
     result[v] = vector1[v] * vector2[v];
   }
@@ -1854,80 +1855,17 @@ void NeonVectorVectorCwiseProductAccumulate(const float* vector1,
   int v = 0;
   for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
     // Load 4 float values from vector1 and vector2 and accumulator.
-    float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
-    float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
+    const float32x4_t v1_f32x4 = vld1q_f32(vector1 + v);
+    const float32x4_t v2_f32x4 = vld1q_f32(vector2 + v);
     float32x4_t acc_32x4 = vld1q_f32(result + v);
     // Vector multiply-accumulate 4 float
     acc_32x4 = vmlaq_f32(acc_32x4, v1_f32x4, v2_f32x4);
     // Save to result array.
-    vst1q_f32(&result[v], acc_32x4);
+    vst1q_f32(result + v, acc_32x4);
   }
+#pragma clang loop vectorize(disable) unroll(disable)
   for (; v < v_size; v++) {
     result[v] += vector1[v] * vector2[v];
-  }
-}
-
-void NeonVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                       const float* batch_vector, int n_batch,
-                                       float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-
-  for (int b = 0; b < n_batch; b++) {
-    int v = 0;
-    for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-      // Load from memory to vectors.
-      float32x4_t batch_vector_f32x4 = vld1q_f32(batch_vector + v);
-      float32x4_t vector_f32x4 = vld1q_f32(vector + v);
-      // Multiply.
-      float32x4_t result_f32x4 = vmulq_f32(batch_vector_f32x4, vector_f32x4);
-      // Store.
-      vst1q_f32(result + v, result_f32x4);
-    }
-    // Postamble loop
-    for (; v < v_size; v++) {
-      result[v] = vector[v] * batch_vector[v];
-    }
-    // Update the pointers.
-    result += v_size;
-    batch_vector += v_size;
-  }
-}
-
-void NeonVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                 int v_size,
-                                                 const float* batch_vector,
-                                                 int n_batch, float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-
-  float* result_ptr = result;
-  const float* batch_vector_ptr = batch_vector;
-  for (int b = 0; b < n_batch; b++) {
-    int v = 0;
-    for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-      // Load from memory to vectors.
-      float32x4_t result_f32x4 = vld1q_f32(result_ptr + v);
-      float32x4_t batch_vector_f32x4 = vld1q_f32(batch_vector_ptr + v);
-      float32x4_t vector_f32x4 = vld1q_f32(vector + v);
-      // Multiply-accumulate.
-      result_f32x4 = vmlaq_f32(result_f32x4, batch_vector_f32x4, vector_f32x4);
-      // Store.
-      vst1q_f32(result_ptr + v, result_f32x4);
-    }
-    // Postamble loop
-    for (; v < v_size; v++) {
-      result_ptr[v] += vector[v] * batch_vector_ptr[v];
-    }
-    // Update the pointers.
-    result_ptr += v_size;
-    batch_vector_ptr += v_size;
   }
 }
 

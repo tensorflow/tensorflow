@@ -513,7 +513,7 @@ void PortableVectorVectorCwiseProduct(const float* vector1,
                                       const float* vector2, int v_size,
                                       float* result) {
   for (int v = 0; v < v_size; v++) {
-    *result++ = *vector1++ * *vector2++;
+    result[v] = vector1[v] * vector2[v];
   }
 }
 
@@ -554,29 +554,7 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
                                                 const float* vector2,
                                                 int v_size, float* result) {
   for (int v = 0; v < v_size; v++) {
-    *result++ += *vector1++ * *vector2++;
-  }
-}
-
-void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                           const float* batch_vector,
-                                           int n_batch, float* result) {
-  for (int b = 0; b < n_batch; b++) {
-    for (int v = 0; v < v_size; v++) {
-      *result++ = vector[v] * *batch_vector++;
-    }
-  }
-}
-
-void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                     int v_size,
-                                                     const float* batch_vector,
-                                                     int n_batch,
-                                                     float* result) {
-  for (int b = 0; b < n_batch; b++) {
-    for (int v = 0; v < v_size; v++) {
-      *result++ += vector[v] * *batch_vector++;
-    }
+    result[v] += vector1[v] * vector2[v];
   }
 }
 

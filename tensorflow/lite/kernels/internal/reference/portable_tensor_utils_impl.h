@@ -99,20 +99,6 @@ void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               int32_t* result,
                                               int result_stride);
 
-// Cwise product of a vector and a batch-vector.
-void PortableVectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                           const float* batch_vector,
-                                           int n_batch, float* result);
-
-// Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
-// operation, the assumption here is that result array is initialized to valid
-// values.
-void PortableVectorBatchVectorCwiseProductAccumulate(const float* vector,
-                                                     int v_size,
-                                                     const float* batch_vector,
-                                                     int n_batch,
-                                                     float* result);
-
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,

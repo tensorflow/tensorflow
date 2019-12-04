@@ -379,16 +379,32 @@ void BatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                       int result_stride);
 
 // Cwise product of a vector and a batch-vector.
-void VectorBatchVectorCwiseProduct(const float* vector, int v_size,
-                                   const float* batch_vector, int n_batch,
-                                   float* result);
+template <typename T>
+inline void VectorBatchVectorCwiseProduct(const T* vector, int v_size,
+                                          const T* batch_vector, int n_batch,
+                                          T* result) {
+  for (int b = 0; b < n_batch; b++) {
+    VectorVectorCwiseProduct(vector, batch_vector, v_size, result);
+    // Update the pointers.
+    result += v_size;
+    batch_vector += v_size;
+  }
+}
 
 // Cwise product and accumulate of a vector and a batch-vector. Since it's a MAC
 // operation, the assumption here is that result array is initialized to valid
 // values.
-void VectorBatchVectorCwiseProductAccumulate(const float* vector, int v_size,
-                                             const float* batch_vector,
-                                             int n_batch, float* result);
+template <typename T>
+inline void VectorBatchVectorCwiseProductAccumulate(const T* vector, int v_size,
+                                                    const T* batch_vector,
+                                                    int n_batch, T* result) {
+  for (int b = 0; b < n_batch; b++) {
+    VectorVectorCwiseProductAccumulate(vector, batch_vector, v_size, result);
+    // Update the pointers.
+    result += v_size;
+    batch_vector += v_size;
+  }
+}
 
 // Add another vector for each batch in the batch vector.
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
