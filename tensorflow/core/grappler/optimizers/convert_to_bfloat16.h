@@ -21,8 +21,8 @@ limitations under the License.
 #endif
 
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
-#include "tensorflow/core/util/env_var.h"
 
 #include <fstream>
 
@@ -36,23 +36,8 @@ namespace grappler {
 class BFloat16Converter : public GraphOptimizer {
  public:
   explicit BFloat16Converter(
-      RewriterConfig::Toggle opt_level = RewriterConfig::OFF) {
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_CONVERT_TO_BFLOAT16_ENABLE_LOG", false,
-                                   &do_logging_));
-    string log_file_name;
-    TF_CHECK_OK(ReadStringFromEnvVar("TF_CONVERT_TO_BFLOAT16_LOGFILE", "",
-                                     &log_file_name));
-    if (do_logging_ && log_file_name != "") {
-      log_file_.open(log_file_name.c_str(),
-                     std::ofstream::out | std::ofstream::app);
-    }
-  }
-
-  ~BFloat16Converter() override {
-    if (do_logging_) {
-      log_file_.close();
-    }
-  }
+      RewriterConfig::Toggle opt_level = RewriterConfig::OFF) {}
+  ~BFloat16Converter() override {}
 
   string name() const override { return "bfloat16_converter"; };
 
@@ -65,15 +50,7 @@ class BFloat16Converter : public GraphOptimizer {
                 const GraphDef& optimize_output, double result) override {}
 
  private:
-  bool do_logging_;
-  std::ofstream log_file_;
-
- private:
-  std::ostream& CONVERTER_LOG() {
-    return log_file_.is_open() ? log_file_ : std::cout;
-  }
-
-  inline bool CanOpRunOnCPUDevice(const Node* n) const {
+  bool CanOpRunOnCPUDevice(const Node* n) const {
     bool result = true;
     string reason;
 
@@ -94,7 +71,7 @@ class BFloat16Converter : public GraphOptimizer {
       reason = "User has assigned a device that is not CPU.";
     }
 
-    if (result == false) {
+    if (!result) {
       VLOG(1) << name() << ": Skipping rewriting of the node "
               << n->type_string() << ", reason: " << reason;
     }
@@ -213,8 +190,7 @@ class BFloat16Converter : public GraphOptimizer {
                   GraphDef* output) override {
     VLOG(WARNING) << "BFloat16Converter is currently supported only for "
                   << "Intel MKL backend. Skipping it for other backends.";
-    *output = item.graph;
-    return Status::OK();
+    return errors::Aborted("Nothing to do.");
   };
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimize_output, double result) override {}

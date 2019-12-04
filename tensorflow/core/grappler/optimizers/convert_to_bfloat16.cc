@@ -87,11 +87,6 @@ Status BFloat16Converter::ConvertToBFloat16(Graph* g) {
       }
       VLOG(1) << name() << ": " << action << ": op=" << n->name()
               << ", op_type=" << n->type_string();
-      ;
-      if (do_logging_) {
-        CONVERTER_LOG() << name() << ": " << action << ": op=" << n->name()
-                        << ", op_type=" << n->type_string() << std::endl;
-      }
     }
 
     // Traverse all input edges and insert cast nodes on an edge if its
@@ -115,13 +110,6 @@ Status BFloat16Converter::ConvertToBFloat16(Graph* g) {
         VLOG(1) << name() << ": inserting " << cast_type << " Cast on edge "
                 << e->src()->name() << ":" << e->src_output() << " and "
                 << e->dst()->name() << ":" << e->dst_input();
-        if (do_logging_) {
-          CONVERTER_LOG() << name() << ": inserting " << cast_type
-                          << " Cast on edge " << e->src()->name() << ":"
-                          << e->src_output() << " and " << e->dst()->name()
-                          << ":" << e->dst_input() << std::endl;
-        }
-
         TF_RETURN_IF_ERROR(InsertCastNode(g, e, src_dtype, dst_dtype));
       }
     }
@@ -131,30 +119,22 @@ Status BFloat16Converter::ConvertToBFloat16(Graph* g) {
 
 Status BFloat16Converter::Optimize(Cluster* cluster, const GrapplerItem& item,
                                    GraphDef* output_graphdef) {
-  if (do_logging_) {
-    CONVERTER_LOG() << name() << ": is enabled" << std::endl;
-  }
-
   // TODO(nhasabni): what to do with other args?
   Graph output_graph(OpRegistry::Global());
+  // TODO(nhasabni): Transformation of GraphDef (using MutableGraphView) is much
+  // more efficient than of Graph. See if we can use that approach.
   Status status = ConvertGraphDefToGraph(GraphConstructorOptions(), item.graph,
                                          &output_graph);
   if (status != Status::OK()) {
-    // Restore the original graph.
-    *output_graphdef = item.graph;
     LOG(WARNING) << name() << " graph optimizer FAILED: " << status.ToString();
-    return status;
+    return errors::Aborted("Nothing to do.");
   }
 
-  DumpGraph("Graph before converting to BFloat16", &output_graph);
   status = ConvertToBFloat16(&output_graph);
   if (status != Status::OK()) {
-    // Restore the original graph.
-    *output_graphdef = item.graph;
     LOG(WARNING) << name() << " graph optimizer FAILED: " << status.ToString();
-    return status;
+    return errors::Aborted("Nothing to do.");
   }
-  DumpGraph("Graph after converting to BFloat16", &output_graph);
 
   output_graph.ToGraphDef(output_graphdef);
   return status;
