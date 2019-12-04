@@ -383,7 +383,6 @@ foreach Mapping = [
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
           (HLO_ConvertOp $arg)>;
 
-
 def : Pat<(TF_TransposeOp:$res $arg, (TF_ConstOp $permutation)),
           (HLO_TransposeOp $arg, (CastElementsToI64Elements $permutation))>;
 

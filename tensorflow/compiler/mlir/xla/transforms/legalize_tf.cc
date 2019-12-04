@@ -962,9 +962,9 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
   PatternMatchResult matchAndRewrite(TF::SplitOp op,
                                      PatternRewriter &rewriter) const override {
-    // We can only match when the tensor to be split has fully static shape.
+    // We can only split along static dimensions.
     auto input_type = op.value()->getType().dyn_cast<RankedTensorType>();
-    if (!input_type || !input_type.hasStaticShape()) return matchFailure();
+    if (!input_type) return matchFailure();
 
     // We can only match when the split dimension is a constant scalar.
     DenseIntElementsAttr split_dim_attr;
@@ -978,6 +978,10 @@ class ConvertSplitOp : public OpRewritePattern<TF::SplitOp> {
 
     // Calculate the dimension size for each slice along the split dimension.
     int64_t input_dim_size = input_type.getDimSize(dim_index);
+    // If we are splitting along the dynamic dimension then we cannot compute
+    // the static dimension length.
+    if (TensorType::isDynamic(input_dim_size)) return matchFailure();
+
     int64_t num_splits = op.getNumResults();
     int64_t slice_size = input_dim_size / num_splits;
 
