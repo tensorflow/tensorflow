@@ -26,6 +26,9 @@ namespace {
 // TODO(jianlijianli): extend it to support ops that has multiple variants.
 struct OpVariant {
   BuiltinOperator op_code;
+  bool use_layer_norm = false;
+  bool use_projection = false;
+  bool use_peephole = false;
 };
 
 const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
@@ -34,6 +37,19 @@ const OpVariant GetOperatorVariant(const ModelT* model, int subgraph_index,
   OperatorT* op =
       model->subgraphs.at(subgraph_index)->operators[op_index].get();
   op_variant.op_code = model->operator_codes[op->opcode_index]->builtin_code;
+  if (op_variant.op_code == BuiltinOperator_LSTM) {
+    const int cell_to_output_weight_index = 11;
+    const int forget_layer_norm_coefficients_index = 21;
+    const int projection_weights_index = 16;
+    op_variant.use_projection = op->inputs[projection_weights_index] != -1;
+    op_variant.use_peephole = op->inputs[cell_to_output_weight_index] != -1;
+    if (op->inputs.size() == 20) {
+      op_variant.use_layer_norm = false;
+    } else {
+      op_variant.use_layer_norm =
+          op->inputs[forget_layer_norm_coefficients_index] != -1;
+    }
+  }
   return op_variant;
 }
 }  // namespace
@@ -180,72 +196,74 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       // TODO(jianlijianli): extend this to other variants of LSTM.
       // LSTM needs 5 intermediate tensors. This agrees with the fully quantized
       // kernels in lstm_eval.cc
-      static const float alpha = static_cast<float>(std::pow(2, -10));
+      if (op_variant.use_layer_norm && op_variant.use_projection &&
+          !op_variant.use_peephole) {
+        static const float alpha = static_cast<float>(std::pow(2, -10));
 
-      TensorProperty tensor_property_12;
-      tensor_property_12.use_derived_scale = true;
-      tensor_property_12.number_of_bits = 32;
-      tensor_property_12.derived_scale = {{20}, {}, {alpha}};
-      TensorProperty tensor_property_13;
-      tensor_property_13.use_derived_scale = true;
-      tensor_property_13.number_of_bits = 32;
-      tensor_property_13.derived_scale = {{21}, {}, {alpha}};
-      TensorProperty tensor_property_14;
-      tensor_property_14.use_derived_scale = true;
-      tensor_property_14.number_of_bits = 32;
-      tensor_property_14.derived_scale = {{22}, {}, {alpha}};
-      TensorProperty tensor_property_15;
-      tensor_property_15.use_derived_scale = true;
-      tensor_property_15.number_of_bits = 32;
-      tensor_property_15.derived_scale = {{23}, {}, {alpha}};
-      TensorProperty tensor_property_17;
-      tensor_property_17.use_derived_scale = true;
-      tensor_property_17.number_of_bits = 32;
-      tensor_property_17.derived_scale = {{16}, {4}, {}};
-      TensorProperty tensor_property_19;
-      tensor_property_19.extend_to_power_of_two = true;
-      tensor_property_19.number_of_bits = 16;
-      tensor_property_19.state_tensor = true;
-      tensor_property_19.symmetric = true;
-      TensorProperty tensor_property_20;
-      tensor_property_20.number_of_bits = 16;
-      tensor_property_20.symmetric = true;
+        TensorProperty tensor_property_12;
+        tensor_property_12.use_derived_scale = true;
+        tensor_property_12.number_of_bits = 32;
+        tensor_property_12.derived_scale = {{20}, {}, {alpha}};
+        TensorProperty tensor_property_13;
+        tensor_property_13.use_derived_scale = true;
+        tensor_property_13.number_of_bits = 32;
+        tensor_property_13.derived_scale = {{21}, {}, {alpha}};
+        TensorProperty tensor_property_14;
+        tensor_property_14.use_derived_scale = true;
+        tensor_property_14.number_of_bits = 32;
+        tensor_property_14.derived_scale = {{22}, {}, {alpha}};
+        TensorProperty tensor_property_15;
+        tensor_property_15.use_derived_scale = true;
+        tensor_property_15.number_of_bits = 32;
+        tensor_property_15.derived_scale = {{23}, {}, {alpha}};
+        TensorProperty tensor_property_17;
+        tensor_property_17.use_derived_scale = true;
+        tensor_property_17.number_of_bits = 32;
+        tensor_property_17.derived_scale = {{16}, {4}, {}};
+        TensorProperty tensor_property_19;
+        tensor_property_19.extend_to_power_of_two = true;
+        tensor_property_19.number_of_bits = 16;
+        tensor_property_19.state_tensor = true;
+        tensor_property_19.symmetric = true;
+        TensorProperty tensor_property_20;
+        tensor_property_20.number_of_bits = 16;
+        tensor_property_20.symmetric = true;
 
-      property.inputs = {
-          {0, {}},
-          {1, {}},
-          {2, {}},
-          {3, {}},
-          {4, {}},
-          {5, {}},
-          {6, {}},
-          {7, {}},
-          {8, {}},
-          {9, {}},
-          {10, {}},
-          {11, {}},
-          {16, {}},
-          {19, tensor_property_19},
-          {20, tensor_property_20},
-          {21, tensor_property_20},
-          {22, tensor_property_20},
-          {23, tensor_property_20},
-          {12, tensor_property_12},
-          {13, tensor_property_13},
-          {14, tensor_property_14},
-          {15, tensor_property_15},
-          {17, tensor_property_17},
-      };
-      property.outputs = {{0, {}}};
-      property.intermediates = {
-          {0, tensor_property_20},
-          {1, tensor_property_20},
-          {2, tensor_property_20},
-          {3, tensor_property_20},
-          {4, {}},
-      };
-      property.restrict_scale = {{18, 0}};
-      property.version = 2;
+        property.inputs = {
+            {0, {}},
+            {1, {}},
+            {2, {}},
+            {3, {}},
+            {4, {}},
+            {5, {}},
+            {6, {}},
+            {7, {}},
+            {8, {}},
+            {16, {}},
+            {19, tensor_property_19},
+            {20, tensor_property_20},
+            {21, tensor_property_20},
+            {22, tensor_property_20},
+            {23, tensor_property_20},
+            {12, tensor_property_12},
+            {13, tensor_property_13},
+            {14, tensor_property_14},
+            {15, tensor_property_15},
+            {17, tensor_property_17},
+        };
+        property.outputs = {{0, {}}};
+        property.intermediates = {
+            {0, tensor_property_20},
+            {1, tensor_property_20},
+            {2, tensor_property_20},
+            {3, tensor_property_20},
+            {4, {}},
+        };
+        property.restrict_scale = {{18, 0}};
+        property.version = 2;
+      } else {
+        property.quantizable = false;
+      }
       break;
     }
     case BuiltinOperator_L2_NORMALIZATION: {
