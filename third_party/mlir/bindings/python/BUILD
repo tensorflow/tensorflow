@@ -7,14 +7,7 @@ licenses(["notice"])  # Apache 2.0
 exports_files(["BUILD"])
 
 package(
-    default_visibility = [":friends"],
-)
-
-package_group(
-    name = "friends",
-    packages = [
-        "@local_config_mlir//bindings/...",
-    ],
+    default_visibility = ["@local_config_mlir//:friends"],
 )
 
 #
