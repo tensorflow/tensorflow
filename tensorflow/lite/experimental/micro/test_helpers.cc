@@ -150,6 +150,29 @@ const Tensor* Create1dFlatbufferTensor(int size) {
   return tensor;
 }
 
+const Tensor* CreateQuantizedFlatbufferTensor(int size) {
+  using flatbuffers::Offset;
+  flatbuffers::FlatBufferBuilder* builder = BuilderInstance();
+  const Offset<QuantizationParameters> quant_params =
+      CreateQuantizationParameters(
+          *builder,
+          /*min=*/builder->CreateVector<float>({0.1f}),
+          /*max=*/builder->CreateVector<float>({0.2f}),
+          /*scale=*/builder->CreateVector<float>({0.3f}),
+          /*zero_point=*/builder->CreateVector<int64_t>({100ll}));
+
+  constexpr size_t tensor_shape_size = 1;
+  const int32_t tensor_shape[tensor_shape_size] = {size};
+  const Offset<Tensor> tensor_offset = CreateTensor(
+      *builder, builder->CreateVector(tensor_shape, tensor_shape_size),
+      TensorType_INT32, 0, builder->CreateString("test_tensor"), quant_params,
+      false);
+  builder->Finish(tensor_offset);
+  void* tensor_pointer = builder->GetBufferPointer();
+  const Tensor* tensor = flatbuffers::GetRoot<Tensor>(tensor_pointer);
+  return tensor;
+}
+
 const Tensor* CreateMissingQuantizationFlatbufferTensor(int size) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* builder = BuilderInstance();

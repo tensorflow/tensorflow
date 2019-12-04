@@ -31,6 +31,10 @@ const Model* GetMockModel();
 // Builds a one-dimensional flatbuffer tensor of the given size.
 const Tensor* Create1dFlatbufferTensor(int size);
 
+// Builds a one-dimensional flatbuffer tensor of the given size with
+// quantization metadata.
+const Tensor* CreateQuantizedFlatbufferTensor(int size);
+
 // Creates a one-dimensional tensor with no quantization metadata.
 const Tensor* CreateMissingQuantizationFlatbufferTensor(int size);
 
