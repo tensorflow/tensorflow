@@ -186,15 +186,21 @@ class AutoCastVariable(variables.Variable):
 
   def assign(self, value, use_locking=None, name=None, read_value=True):
     assign_op = self._variable.assign(value, use_locking, name, read_value)
-    return create_autocast_variable(assign_op) if read_value else assign_op
+    if read_value and resource_variable_ops.is_resource_variable(assign_op):
+      return create_autocast_variable(assign_op)
+    return assign_op
 
   def assign_add(self, delta, use_locking=None, name=None, read_value=True):
     assign_op = self._variable.assign_add(delta, use_locking, name, read_value)
-    return create_autocast_variable(assign_op) if read_value else assign_op
+    if read_value and resource_variable_ops.is_resource_variable(assign_op):
+      return create_autocast_variable(assign_op)
+    return assign_op
 
   def assign_sub(self, delta, use_locking=None, name=None, read_value=True):
     assign_op = self._variable.assign_sub(delta, use_locking, name, read_value)
-    return create_autocast_variable(assign_op) if read_value else assign_op
+    if read_value and resource_variable_ops.is_resource_variable(assign_op):
+      return create_autocast_variable(assign_op)
+    return assign_op
 
   def scatter_sub(self, sparse_delta, use_locking=False, name=None):
     var = self._variable.scatter_sub(sparse_delta, use_locking, name)

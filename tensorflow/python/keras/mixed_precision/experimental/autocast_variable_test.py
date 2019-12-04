@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-from functools import partial
 
 from absl.testing import parameterized
 import numpy as np
@@ -72,11 +71,6 @@ def get_var(val, dtype, name=None):
 
 @test_util.run_all_in_graph_and_eager_modes
 class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
-  def check_and_evaluate(self, var, dtype=None):
-    self.assertIsInstance(var, autocast_variable.AutoCastVariable)
-    if dtype:
-      self.assertEqual(var.dtype, dtype)
-    return self.evaluate(var)
 
   @parameterized.named_parameters(*TESTCASES)
   def test_read(self, distribute):
@@ -164,7 +158,17 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     # underlying variable.
     with get_distribute_scope(distribute):
       for read_dtype in (dtypes.float32, dtypes.float16):
-        evaluate = partial(self.check_and_evaluate, dtype=read_dtype)
+        if distribute:
+          # MirroredVariable.assign will (incorrectly) return a Mirrored value
+          # instead of a MirroredVariable. So we cannot properly wrap it in an
+          # AutoCastVariable.
+          evaluate = self.evaluate
+        else:
+          def evaluate(var):
+            self.assertIsInstance(var, autocast_variable.AutoCastVariable)
+            self.assertEqual(var.dtype, read_dtype)
+            return self.evaluate(var)
+
         x = get_var(7., dtypes.float32)
         x = autocast_variable.create_autocast_variable(x)
         with ops.get_default_graph()._enable_auto_casting_variables(
