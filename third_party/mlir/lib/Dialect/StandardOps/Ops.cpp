@@ -2761,6 +2761,42 @@ SmallVector<SubViewOp::Range, 8> SubViewOp::getRanges() {
   return res;
 }
 
+LogicalResult
+SubViewOp::getStaticStrides(SmallVectorImpl<int64_t> &staticStrides) {
+  // If the strides are dynamic return failure.
+  if (getNumStrides())
+    return failure();
+
+  // When static, the stride operands can be retrieved by taking the strides of
+  // the result of the subview op, and dividing the strides of the base memref.
+  int64_t resultOffset, baseOffset;
+  SmallVector<int64_t, 2> resultStrides, baseStrides;
+  if (failed(
+          getStridesAndOffset(getBaseMemRefType(), baseStrides, baseOffset)) ||
+      llvm::is_contained(baseStrides, MemRefType::getDynamicStrideOrOffset()) ||
+      failed(getStridesAndOffset(getType(), resultStrides, resultOffset)))
+    return failure();
+
+  assert(static_cast<int64_t>(resultStrides.size()) == getType().getRank() &&
+         baseStrides.size() == resultStrides.size() &&
+         "base and result memrefs must have the same rank");
+  assert(!llvm::is_contained(resultStrides,
+                             MemRefType::getDynamicStrideOrOffset()) &&
+         "strides of subview op must be static, when there are no dynamic "
+         "strides specified");
+  staticStrides.resize(getType().getRank());
+  for (auto resultStride : enumerate(resultStrides)) {
+    auto baseStride = baseStrides[resultStride.index()];
+    // The result stride is expected to be a multiple of the base stride. Abort
+    // if that is not the case.
+    if (resultStride.value() < baseStride ||
+        resultStride.value() % baseStride != 0)
+      return failure();
+    staticStrides[resultStride.index()] = resultStride.value() / baseStride;
+  }
+  return success();
+}
+
 static bool hasConstantOffsetSizesAndStrides(MemRefType memrefType) {
   if (memrefType.getNumDynamicDims() > 0)
     return false;

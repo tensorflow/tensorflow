@@ -1397,6 +1397,11 @@ def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
     /// Returns the dynamic sizes for this subview operation if specified.
     operand_range getDynamicSizes() { return sizes(); }
 
+    /// Returns in `staticStrides` the static value of the stride
+    /// operands. Returns failure() if the static value of the stride
+    /// operands could not be retrieved.
+    LogicalResult getStaticStrides(SmallVectorImpl<int64_t> &staticStrides);
+
     // Auxiliary range data structure and helper function that unpacks the
     // offset, size and stride operands of the SubViewOp into a list of triples.
     // Such a list of triple is sometimes more convenient to manipulate.

@@ -262,8 +262,8 @@ namespace mlir {
 void populateStandardToSPIRVPatterns(MLIRContext *context,
                                      SPIRVTypeConverter &typeConverter,
                                      OwningRewritePatternList &patterns) {
+  // Add patterns that lower operations into SPIR-V dialect.
   populateWithGenerated(context, &patterns);
-  // Add the return op conversion.
   patterns
       .insert<ConstantIndexOpConversion, CmpIOpConversion,
               IntegerOpConversion<AddIOp, spirv::IAddOp>,
