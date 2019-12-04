@@ -91,6 +91,23 @@ class Backend(object):
   def compile(self, computation, compile_options):
     """Compiles a computation. Returns an executable."""
 
+  @abc.abstractmethod
+  def get_default_device_assignment(self, num_replicas):
+    """Returns the default device assignment that `compile` would use.
+
+    If `compile_options.device_assignment` isn't set, `compile` will pick a
+    deterministic device assignment based on the number of replicas, possibly
+    optimizing for device locality. This method returns that assignment, which
+    is useful for e.g. manually replicating a value before passing it to a
+    compiled executable.
+
+    Args:
+      num_replicas: the number of replicas needed.
+
+    Returns:
+      A list of Devices of length `num_replicas` indexed by replica ID.
+    """
+
 
 class LocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
@@ -142,6 +159,9 @@ class LocalBackend(Backend):
                                         compile_options.argument_layouts,
                                         options, self.client,
                                         compile_options.device_assignment)
+
+  def get_default_device_assignment(self, num_replicas):
+    return self.client.GetDefaultDeviceAssignment(num_replicas)
 
   def serialize(self, executable):
     return self.client.SerializeExecutable(executable)

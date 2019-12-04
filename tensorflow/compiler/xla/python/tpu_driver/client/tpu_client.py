@@ -104,6 +104,9 @@ class TpuBackend(xla_client.Backend):
                                              options, self.client,
                                              compile_options.device_assignment)
 
+  def get_default_device_assignment(self, num_replicas):
+    return self.client.GetDefaultDeviceAssignment(num_replicas)
+
   def serialize(self, executable):
     return self.client.SerializeExecutable(executable)
 
