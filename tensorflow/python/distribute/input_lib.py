@@ -278,6 +278,9 @@ class DistributedIterator(object):
     except errors.OutOfRangeError:
       raise StopIteration
 
+  def __iter__(self):
+    return self
+
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
     if not self._enable_get_next_as_optional:

@@ -419,6 +419,27 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
 
   @combinations.generate(
       combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu
+          ]))
+  def testIterableIterator(self, distribution):
+    worker_device_pairs = [("", ["/device:CPU:0"])]
+    devices = nest.flatten([ds for _, ds in worker_device_pairs])
+    device_map = values.ReplicaDeviceMap(devices)
+    input_workers = input_lib.InputWorkers(device_map, worker_device_pairs)
+
+    dataset = dataset_ops.DatasetV2.range(10)
+    dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
+                                                     distribution)
+
+    iterator = iter(dist_dataset)
+    for i, element in enumerate(iterator):
+      self.assertEqual(i, element.numpy())
+
+  @combinations.generate(
+      combinations.combine(
           mode=["graph", "eager"],
           input_type=["input_fn", "dataset"],
           api_type=["wrap_into_iterator", "wrap_into_dataset"],
