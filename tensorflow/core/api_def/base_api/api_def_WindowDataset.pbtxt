@@ -4,14 +4,14 @@ op {
   in_arg {
     name: "size"
     description: <<END
-A `tf.int64` scalar `tf.Tensor`, representing the number of elements
+An integer scalar, representing the number of elements
 of the input dataset to combine into a window. Must be positive.
 END
   }
   in_arg {
     name: "shift"
     description: <<END
-A `tf.int64` scalar `tf.Tensor`, representing the number of input elements
+An integer scalar, representing the number of input elements
 by which the window moves in each iteration.  Defaults to `size`.
 Must be positive.
 END
@@ -19,7 +19,7 @@ END
   in_arg {
     name: "stride"
     description: <<END
-A `tf.int64` scalar `tf.Tensor`, representing the stride of the input elements
+An integer scalar, representing the stride of the input elements
 in the sliding window. Must be positive. The default value of 1 means
 "retain every input element".
 END
@@ -27,13 +27,11 @@ END
   in_arg {
     name: "drop_remainder"
     description: <<END
-A `tf.bool` scalar `tf.Tensor`, representing whether the last window should be
+A Boolean scalar, representing whether the last window should be
 dropped if its size is smaller than `window_size`.
 END
   }
   summary: <<END
-  C++ implementation of the Python API `tf.data.Dataset.window()`.
-
   Combines (nests of) input elements into a dataset of (nests of) windows.
 
   A "window" is a finite dataset of flat elements of size `size` (or possibly
@@ -43,9 +41,11 @@ END
   The `shift` argument determines the number of input elements by which
   the window moves on each iteration.  The first element in the `k`th window
   will be element
+
   ```
   1 + (k-1) * shift
   ```
+
   of the input dataset. In particular, the first element of the first window
   will always be the first element of the input dataset.  
 
@@ -75,11 +75,5 @@ END
     produces `{({0, 1}, {0, 1}), ({2, 3}, {2, 3})}`
   - `tf.data.Dataset.from_tensor_slices({"a": range(4)}).window(2)`
     produces `{{"a": {0, 1}}, {"a": {2, 3}}}`
-
-  If this dataset returns elements in a deterministic order, then the
-  dataset that this function returns will also be deterministic. Otherwise,
-  the output of the windowed dataset will depend on the input order, but the 
-  contents of the windows will be consistent with a single ordering of the
-  input dataset's elements.
 END
 }

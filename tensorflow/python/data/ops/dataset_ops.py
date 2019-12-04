@@ -1758,9 +1758,11 @@ name=None))
     The `shift` argument determines the number of input elements by which
     the window moves on each iteration.  The first element in the `k`th window
     will be element
+
     ```
     1 + (k-1) * shift
     ```
+
     of the input dataset. In particular, the first element of the first window
     will always be the first element of the input dataset.
 
@@ -1814,12 +1816,6 @@ name=None))
     ...   print({'a': to_numpy(window['a'])})
     {'a': [1, 2]}
     {'a': [3, 4]}
-
-    If this dataset returns elements in a deterministic order, then the
-    dataset that this function returns will also be deterministic. Otherwise,
-    the output of the windowed dataset will depend on the input order, but the
-    contents of the windows will be consistent with a single ordering of the
-    input dataset's elements.
 
     Args:
       size: A `tf.int64` scalar `tf.Tensor`, representing the number of elements
