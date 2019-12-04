@@ -3,6 +3,7 @@ ifeq ($(TARGET),$(filter $(TARGET),\
   apollo3evb\
   sparkfun_edge\
   sparkfun_edge2\
+  sparkfun_redboard_artemis\
   ))
   export PATH := $(MAKEFILE_DIR)/downloads/gcc_embedded/bin/:$(PATH)
   TARGET_ARCH := cortex-m4
