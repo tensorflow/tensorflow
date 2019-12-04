@@ -321,12 +321,12 @@ public:
   }
 
   /// Verify the construction invariants for a double value.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
-                               Type type, double value);
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc, MLIRContext *ctx,
-                               Type type, const APFloat &value);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *ctx, Type type,
+                                                    double value);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *ctx, Type type,
+                                                    const APFloat &value);
 };
 
 //===----------------------------------------------------------------------===//
@@ -403,10 +403,11 @@ public:
   StringRef getAttrData() const;
 
   /// Verify the construction of an opaque attribute.
-  static LogicalResult
-  verifyConstructionInvariants(llvm::Optional<Location> loc,
-                               MLIRContext *context, Identifier dialect,
-                               StringRef attrData, Type type);
+  static LogicalResult verifyConstructionInvariants(Optional<Location> loc,
+                                                    MLIRContext *context,
+                                                    Identifier dialect,
+                                                    StringRef attrData,
+                                                    Type type);
 
   static bool kindof(unsigned kind) {
     return kind == StandardAttributes::Opaque;
