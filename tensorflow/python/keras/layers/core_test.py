@@ -236,6 +236,17 @@ class LambdaLayerTest(keras_parameterized.TestCase):
     self.assertLen(layer.trainable_weights, 1)
     self.assertEqual(layer.trainable_weights[0].name, 'lambda/multiplier:0')
 
+  def test_lambda_with_duplicate_variable_names(self):
+
+    def fn(x):
+      v1 = variables.Variable(2.)
+      v2 = variables.Variable(1.)
+      return x * v1 * v2
+
+    layer = keras.layers.Lambda(fn)
+    with self.assertRaisesRegexp(RuntimeError, 'must have unique names'):
+      layer(np.ones((10, 10), 'float32'))
+
   def test_lambda_with_training_arg(self):
 
     def fn(x, training=True):

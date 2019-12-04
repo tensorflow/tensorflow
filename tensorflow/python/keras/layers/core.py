@@ -818,6 +818,8 @@ class Lambda(Layer):
     return nest.map_structure(_add_batch, output_shapes)
 
   def call(self, inputs, mask=None, training=None):
+    # Disallow two variables with the same name.
+    self._variables_added_in_call = set()
     arguments = self.arguments
     if self._fn_expects_mask_arg:
       arguments['mask'] = mask
@@ -828,8 +830,18 @@ class Lambda(Layer):
 
   def _variable_creator(self, next_creator, **kwargs):
     name = kwargs['name']
+
+    # Variable named "name" already created in this invocation of `call`.
+    if name in self._variables_added_in_call:
+      raise RuntimeError('`Variable`s in a `Lambda` layer must have unique '
+                         'names, found duplicate name: {}'.format(name))
+    self._variables_added_in_call.add(name)
+
+    # Reuse Variables across invocations of `call`.
     if name in self._variable_dict:
       return self._variable_dict[name]
+
+    # Variable was never created before.
     var = next_creator(**kwargs)
     self._variable_dict[name] = var
     if var.trainable:
