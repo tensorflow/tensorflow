@@ -1858,18 +1858,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "model_serialization_test",
-    size = "medium",
-    srcs = ["saving/saved_model/model_serialization_test.py"],
-    additional_deps = [
-        ":keras",
-        "@absl_py//absl/testing:parameterized",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python:client_testlib",
-    ],
-)
-
-tf_py_test(
     name = "saving_utils_test",
     size = "medium",
     srcs = ["saving/saving_utils_test.py"],
