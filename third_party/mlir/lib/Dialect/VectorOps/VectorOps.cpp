@@ -386,10 +386,17 @@ static LogicalResult verify(BroadcastOp op) {
   if (srcVectorType) {
     const int64_t srcRank = srcVectorType.getRank();
     const int64_t dstRank = dstVectorType.getRank();
-    // TODO(ajcbik): implement proper rank testing for broadcast;
-    // this is just a temporary placeholder check.
-    if (srcRank > dstRank) {
+    if (srcRank > dstRank)
       return op.emitOpError("source rank higher than destination rank");
+    // Source has an exact match or singleton value for all trailing dimensions
+    // (all leading dimensions are simply duplicated).
+    const int64_t lead = dstRank - srcRank;
+    for (int64_t i = 0; i < srcRank; i++) {
+      const int64_t srcDim = srcVectorType.getDimSize(i);
+      const int64_t dstDim = dstVectorType.getDimSize(lead + i);
+      if (srcDim != 1 && srcDim != dstDim)
+        return op.emitOpError("dimension mismatch (")
+               << srcDim << " vs. " << dstDim << ")";
     }
   }
   return success();
@@ -985,6 +992,37 @@ static LogicalResult verify(TypeCastOp &op) {
   auto resultType = inferVectorTypeCastResultType(op.getMemRefType());
   if (op.getResultMemRefType() != resultType)
     return op.emitOpError("expects result type to be: ") << resultType;
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CreateMaskOp
+//===----------------------------------------------------------------------===//
+
+ParseResult parseCreateMaskOp(OpAsmParser &parser, OperationState &result) {
+  auto indexType = parser.getBuilder().getIndexType();
+  Type resultType;
+  SmallVector<OpAsmParser::OperandType, 4> operandInfo;
+  return failure(
+      parser.parseOperandList(operandInfo) ||
+      parser.parseOptionalAttrDict(result.attributes) ||
+      parser.parseColonType(resultType) ||
+      parser.resolveOperands(operandInfo, indexType, result.operands) ||
+      parser.addTypeToList(resultType, result.types));
+}
+
+static void print(OpAsmPrinter &p, CreateMaskOp &op) {
+  p << op.getOperationName() << ' ';
+  p.printOperands(op.operands());
+  p << " : " << op.getResult()->getType();
+}
+
+static LogicalResult verify(CreateMaskOp &op) {
+  // Verify that an operand was specified for each result vector each dimension.
+  if (op.getNumOperands() !=
+      op.getResult()->getType().cast<VectorType>().getRank())
+    return op.emitOpError(
+        "must specify an operand for each result vector dimension");
   return success();
 }
 

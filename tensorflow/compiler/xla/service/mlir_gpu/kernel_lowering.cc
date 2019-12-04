@@ -46,7 +46,7 @@ Status LowerLHLOToGPU(mlir::ModuleOp module) {
   // Transform element-wise operations to LinAlg.
   pm.addPass(::mlir::xla_lhlo::createLegalizeToLinalgPass());
   // Go from affine to normal loops.
-  pm.addPass(::mlir::linalg::createLowerLinalgToLoopsPass());
+  pm.addPass(::mlir::linalg::createConvertLinalgToLoopsPass());
   // Lower affine to ordinary loops.
   pm.addPass(::mlir::createLowerAffinePass());
   // Move constants out of the loop.

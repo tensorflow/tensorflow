@@ -55,6 +55,13 @@ class DebugEventsReader(object):
     self._readers = dict()  # A map from file path to reader.
     self._readers_lock = threading.Lock()
 
+  def __enter__(self):
+    return self
+
+  def __exit__(self, exception_type, exception_value, traceback):
+    del exception_type, exception_value, traceback  # Unused
+    self.close()
+
   def _generic_iterator(self, file_path):
     """A helper method that makes an iterator given a debug-events file path."""
     # The following code uses the double-checked locking pattern to optimize
@@ -93,3 +100,7 @@ class DebugEventsReader(object):
 
   def graph_execution_traces_iterator(self):
     return self._generic_iterator(self._graph_execution_traces_path)
+
+  def close(self):
+    for reader in self._readers.values():
+      reader.Close()

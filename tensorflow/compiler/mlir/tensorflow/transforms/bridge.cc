@@ -68,14 +68,17 @@ tensorflow::Status TPUBridge(ModuleOp module, bool enable_logging) {
 namespace TF {
 
 tensorflow::Status RunBridgeWithStandardPipeline(ModuleOp module,
-                                                 bool enable_logging) {
+                                                 bool enable_logging,
+                                                 bool enable_inliner) {
   PassManager bridge(module.getContext());
 
   // Add logger to bridge passmanager.
   if (enable_logging)
     bridge.addInstrumentation(std::make_unique<tensorflow::BridgeLogger>());
 
-  CreateTFStandardPipeline(bridge);
+  StandardPipelineOptions pipeline_options;
+  pipeline_options.enable_inliner.setValue(enable_inliner);
+  CreateTFStandardPipeline(bridge, pipeline_options);
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   LogicalResult result = bridge.run(module);
   (void)result;

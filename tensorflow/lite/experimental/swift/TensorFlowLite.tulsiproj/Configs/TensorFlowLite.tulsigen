@@ -1,6 +1,6 @@
 {
   "sourceFilters" : [
-    "tensorflow/lite/experimental/c",
+    "tensorflow/lite/c",
     "tensorflow/lite/experimental/swift",
     "tensorflow/lite/experimental/swift/Sources",
     "tensorflow/lite/experimental/swift/TestApp/TestApp",

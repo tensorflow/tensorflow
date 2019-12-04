@@ -3,6 +3,21 @@
 # Public targets:
 #  ":platform" - Low-level and platform-specific Python code.
 
+load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
+load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
+load("//tensorflow:tensorflow.bzl", "cuda_py_test")
+load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
+load("//tensorflow:tensorflow.bzl", "tf_external_workspace_visible")
+load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
+load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps")
+load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
+load(
+    "//third_party/ngraph:build_defs.bzl",
+    "if_ngraph",
+)
+
 visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
     "//third_party/cloud_tpu/convergence_tools:__subpackages__",
@@ -18,20 +33,6 @@ visibility = [
     # TODO(aselle): to pass open source test.
     "//bazel_pip/tensorflow/lite/toco/python:__pkg__",
 ]
-
-load("//tensorflow:tensorflow.bzl", "cc_header_only_library", "if_mlir", "if_not_windows", "py_test", "py_tests", "tf_cc_shared_object", "tf_cuda_library", "tf_gen_op_wrapper_py", "tf_py_build_info_genrule", "tf_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
-load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
-load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "cuda_py_tests")
-load("//tensorflow/core/platform:build_config.bzl", "pyx_library", "tf_additional_all_protos", "tf_additional_cupti_test_flags", "tf_additional_lib_deps", "tf_proto_library", "tf_proto_library_py", "tf_protos_grappler")  # @unused
-load("//tensorflow/core/platform:build_config_root.bzl", "if_static", "tf_additional_plugin_deps")
-load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
-load(
-    "//third_party/ngraph:build_defs.bzl",
-    "if_ngraph",
-)
 
 package(
     default_visibility = visibility,
@@ -400,13 +401,26 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "_pywrap_bfloat16",
+    srcs = ["lib/core/bfloat16_wrapper.cc"],
+    hdrs = ["lib/core/bfloat16.h"],
+    module_name = "_pywrap_bfloat16",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
 cc_library(
     name = "ndarray_tensor_bridge",
     srcs = ["lib/core/ndarray_tensor_bridge.cc"],
     hdrs = ["lib/core/ndarray_tensor_bridge.h"],
-    visibility = visibility + [
-        "//learning/deepmind/courier:__subpackages__",
-    ],
+    visibility = tf_external_workspace_visible(
+        visibility + [
+            "//learning/deepmind/courier:__subpackages__",
+        ],
+    ),
     deps = [
         ":bfloat16_lib",
         ":numpy_lib",
@@ -421,7 +435,7 @@ cc_library(
     srcs = ["lib/core/py_exception_registry.cc"],
     hdrs = ["lib/core/py_exception_registry.h"],
     deps = [
-        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
@@ -432,6 +446,7 @@ cc_library(
     name = "pybind11_absl",
     hdrs = ["lib/core/pybind11_absl.h"],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         "//tensorflow/core/platform:stringpiece",
         "@pybind11",
@@ -442,6 +457,7 @@ cc_library(
     name = "pybind11_lib",
     hdrs = ["lib/core/pybind11_lib.h"],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         "@pybind11",
     ],
@@ -454,9 +470,10 @@ cc_library(
         "//tensorflow/c:headers",
     ],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         ":py_exception_registry",
-        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//third_party/python_runtime:headers",
@@ -468,6 +485,7 @@ cc_library(
     name = "pybind11_proto",
     hdrs = ["lib/core/pybind11_proto.h"],
     features = ["-parse_headers"],
+    visibility = tf_external_workspace_visible(visibility),
     deps = [
         "@com_google_absl//absl/strings",
         "@pybind11",
@@ -769,9 +787,9 @@ cc_library(
     name = "ndarray_tensor",
     srcs = ["lib/core/ndarray_tensor.cc"],
     hdrs = ["lib/core/ndarray_tensor.h"],
-    visibility = visibility + [
+    visibility = tf_external_workspace_visible(visibility + [
         "//learning/deepmind/courier:__subpackages__",
-    ],
+    ]),
     deps = [
         ":bfloat16_lib",
         ":ndarray_tensor_bridge",
@@ -1158,6 +1176,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":_dtypes",
+        ":_pywrap_bfloat16",
         ":pywrap_tensorflow",
         "//tensorflow/core:protos_all_py",
     ],
@@ -3687,9 +3706,9 @@ py_library(
     srcs = ["ops/math_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "constant_op",
         ":array_ops",
         ":common_shapes",
+        ":constant_op",
         ":control_flow_ops_gen",
         ":data_flow_ops_gen",
         ":dtypes",
@@ -5442,7 +5461,6 @@ tf_py_wrap_cc(
         "grappler/cost_analyzer.i",
         "grappler/item.i",
         "grappler/tf_optimizer.i",
-        "lib/core/bfloat16.i",
         "lib/core/strings.i",
         "lib/io/file_io.i",
         "lib/io/py_record_reader.i",
@@ -5528,6 +5546,7 @@ WIN_LIB_FILES_FOR_EXPORTED_SYMBOLS = [
     ":numpy_lib",  # checkpoint_reader
     ":safe_ptr",  # checkpoint_reader
     ":python_op_gen",  # python_op_gen
+    ":bfloat16_lib",  # bfloat16
     "//tensorflow/core/util/tensor_bundle",  # checkpoint_reader
 ]
 
@@ -5586,17 +5605,20 @@ filegroup(
 cc_import(
     name = "_pywrap_tensorflow_internal_linux",
     shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.so",
+    visibility = tf_external_workspace_visible(visibility),
 )
 
 cc_import(
     name = "_pywrap_tensorflow_internal_macos",
     shared_library = "//tensorflow/python:lib_pywrap_tensorflow_internal.dylib",
+    visibility = tf_external_workspace_visible(visibility),
 )
 
 cc_import(
     name = "_pywrap_tensorflow_internal_windows",
     interface_library = "//tensorflow/python:pywrap_tensorflow_import_lib_file",
     shared_library = "//tensorflow/python:_pywrap_tensorflow_internal.dll",
+    visibility = tf_external_workspace_visible(visibility),
 )
 
 # Rename the import library for _pywrap_tensorflow_internal.pyd to _pywrap_tensorflow_internal.lib

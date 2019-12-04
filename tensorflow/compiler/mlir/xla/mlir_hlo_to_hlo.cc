@@ -33,6 +33,7 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // TF:local_config_mlir
 #include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -75,6 +76,10 @@ static double ConvertAPFloat(llvm::APFloat value) {
     value.convert(llvm::APFloat::IEEEdouble(),
                   llvm::APFloat::rmNearestTiesToEven, &losesInfo);
   return value.convertToDouble();
+}
+
+static absl::string_view ConvertStringRef(mlir::StringRef value) {
+  return {value.data(), value.size()};
 }
 
 static std::vector<int64> ConvertDenseIntAttr(mlir::DenseIntElementsAttr attr) {
@@ -494,13 +499,6 @@ LogicalResult ExportXlaOp(GatherOp op, OpLoweringContext ctx) {
   return failure();
 }
 
-LogicalResult ExportXlaOp(GetTupleElementOp op, OpLoweringContext ctx) {
-  auto& value_map = *ctx.values;
-  value_map[op] = xla::GetTupleElement(value_map[op.getOperand()],
-                                       op.index().getSExtValue());
-  return success();
-}
-
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
@@ -626,10 +624,28 @@ LogicalResult ExportXlaOp(SliceOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
+  xla::XlaComputation comparator;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.comparator(),
+                                                     &comparator)))
+    return failure();
+
+  auto& value_map = *ctx.values;
+  value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
+                            op.dimension().getSExtValue(), op.is_stable());
+  return success();
+}
+
 LogicalResult ExportXlaOp(TupleOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Tuple(ctx.builder, GetTuple(op.val(), ctx));
   return success();
+}
+
+LogicalResult ExportXlaOp(UnaryEinsumOp op, OpLoweringContext ctx) {
+  // Intentional as UnaryEinsumOp is always lowered to the EinsumOp with two
+  // operands.
+  return failure();
 }
 
 LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
@@ -773,7 +789,7 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
 LogicalResult ConvertToHloModule::RunOnFunction(mlir::FuncOp f) {
   if (lowered_computation_.count(f)) return success();
   if (f.getBlocks().size() != 1) {
-    return f.emitError("only single block Function suppored");
+    return f.emitError("only single block Function supported");
   }
 
   // Create a sub-builder if this is not the main function.

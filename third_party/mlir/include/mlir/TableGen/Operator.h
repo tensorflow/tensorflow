@@ -103,6 +103,7 @@ public:
   llvm::iterator_range<attribute_iterator> getAttributes() const;
 
   int getNumAttributes() const { return attributes.size(); }
+  int getNumNativeAttributes() const { return numNativeAttributes; }
 
   // Op attribute accessors.
   NamedAttribute &getAttribute(int index) { return attributes[index]; }

@@ -25,18 +25,21 @@ limitations under the License.
 
 namespace xla {
 
-// When the HLO graph contains a cross-module AllReduce, followed by some simple
-// linear operations, followed by a cross-replica AllReduce (also known as
-// cross-replica sum, or CRS), we can combine the CMAR and the CRAR, to use an
-// efficient AllReduce implementation that fully utilizes the interconnect
-// bandwidth.
-// Such sequences appear in spatially partitioned models.
+// When the HLO graph contains a cross-module AllReduce (N separate AllReduce
+// ops that share the same channel_id for MPMD partitioning, or 1 AllReduce op
+// for SPMD partitioning), followed by some simple linear operations, followed
+// by a cross-replica AllReduce (also known as cross-replica sum, or CRS), we
+// can combine the CMAR and the CRAR, to use an efficient AllReduce
+// implementation that fully utilizes the interconnect bandwidth.
+//
+// Such sequences appear in spatially partitioned models (either MPMD or SPMD).
 // This pass must run right after spatial partitioning, when the code is still
 // in a single HLO module.
 //
 // The steps are:
 // 1) Find CMARs followed by simple ops followed by CRARs.
-// 2) Group CMARs by channel_id. They must all be rewritten.
+// 2) Group CMARs by channel_id. They must all be rewritten. For SPMD
+//    partitioning, there will only be a single CMAR for each channel_id.
 // 3) Prove that the CMAR patterns in each core produce the same result.
 // 4) Eliminate the CMAR, and if it feeds an addition/subtraction, divide the
 //    other operand by the number of spatial partitions.
@@ -69,9 +72,11 @@ namespace xla {
 //
 class ArCrsCombiner : public HloModulePass {
  public:
-  ArCrsCombiner(int num_spatial_partitions, int num_replicas)
+  ArCrsCombiner(int num_spatial_partitions, int num_replicas,
+                bool spmd_partition)
       : num_spatial_partitions_(num_spatial_partitions),
-        num_replicas_(num_replicas) {}
+        num_replicas_(num_replicas),
+        spmd_partition_(spmd_partition) {}
   absl::string_view name() const override { return "ar-crs-combiner"; }
   StatusOr<bool> Run(HloModule* module) override;
 
@@ -153,7 +158,10 @@ class ArCrsCombiner : public HloModulePass {
 
   // Looks at each AllReduce group in all_reduce_map_, and keeps only the
   // groups for which it's safe to move the AllReduce later in the HLO graph.
-  void KeepProvablyEqualInstructionGroups();
+  Status KeepProvablyEqualInstructionGroupsMPMD();
+
+  // Same as above, but runs on SPMD partitioned module instead of MPMD.
+  Status KeepProvablyEqualInstructionGroupsSPMD(HloModule* module);
 
   // Performs the graph rewrite that eliminates the early AllReduce and turns
   // the later CRS into an AllReduce.
@@ -162,6 +170,15 @@ class ArCrsCombiner : public HloModulePass {
   int num_spatial_partitions_;
 
   int num_replicas_;
+
+  // Run this combiner pass assuming the input module is an SPMD partitioned
+  // module (as opposed to MPMD partitioned).
+  //
+  // The main difference between the two w.r.t. this pass is that there would be
+  // N all-reduce ops for each channel in MPMD mode, whereas there is only 1
+  // for each channel in SPMD mode. Also we use HloReplicationAnalysis for HLO
+  // equivalence check in SPMD mode.
+  bool spmd_partition_;
 
   // Map from all-reduce ids to the AR/CRS pairs.
   absl::flat_hash_map<int64, std::vector<ArCrsPair>> all_reduce_map_;

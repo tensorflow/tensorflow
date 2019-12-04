@@ -708,7 +708,7 @@ class BASE_HLO_ClampOp  {
 }
 
 class BASE_HLO_ConcatenateOp {
-   string summary = "XLA's concantenate op";
+   string summary = "XLA's concatenate op";
 
    string description = [{
      Concatenates a set of tensors along the specified dimension.
@@ -829,6 +829,17 @@ class BASE_HLO_SelectAndScatterOp {
     combined using the `scatter` function.
 
     See https://www.tensorflow.org/xla/operation_semantics#selectandscatter.
+  }];
+}
+
+class BASE_HLO_SortOp {
+  string summary = "Sort operator";
+
+  string description = [{
+    Sorts the given `operands` at the given `dimension` with the given
+    `comparator`.
+
+    See https://www.tensorflow.org/xla/operation_semantics#sort.
   }];
 }
 

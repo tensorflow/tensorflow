@@ -140,6 +140,8 @@ ElementsAttr ExpandTo4DForDepthwiseConv(Attribute a) {
   return ExpandTo4DForConvImpl(a, true);
 }
 
+// Returns shape of a ranked tensor.
+// Precondition: output_val's is ranked tensor.
 DenseElementsAttr GetShape(Value *output_val) {
   auto output_type = output_val->getType().cast<RankedTensorType>();
   auto shape_vector = output_type.getShape();

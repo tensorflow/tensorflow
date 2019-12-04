@@ -86,6 +86,9 @@ extern const char* kModelWithMinimumOp;
 // Test model with a maximum op.
 extern const char* kModelWithMaximumOp;
 
+// Test model with an unpack op.
+extern const char* kModelWithUnpack;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

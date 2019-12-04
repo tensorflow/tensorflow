@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "fixedpoint/fixedpoint.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/activation_functor.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -588,23 +587,6 @@ void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
       batch_vector[i] += vector[i];
     }
     batch_vector += v_size;
-  }
-}
-
-void PortableApplySigmoidToVector(const float* vector, int v_size,
-                                  float* result) {
-  auto sigmoid_func = ActivationFunctor(kTfLiteActSigmoid);
-  for (int v = 0; v < v_size; v++) {
-    *result++ = (sigmoid_func)(*vector++);
-  }
-}
-
-void PortableApplyActivationToVector(const float* vector, int v_size,
-                                     TfLiteFusedActivation activation,
-                                     float* result) {
-  auto activation_func = ActivationFunctor(activation);
-  for (int v = 0; v < v_size; v++) {
-    *result++ = (activation_func)(*vector++);
   }
 }
 

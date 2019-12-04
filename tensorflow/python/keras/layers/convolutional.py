@@ -54,6 +54,9 @@ class Conv(Layer):
   a bias vector is created and added to the outputs. Finally, if
   `activation` is not `None`, it is applied to the outputs as well.
 
+  Note: layer attributes cannot be modified after the layer has been called
+  once (except the `trainable` attribute).
+
   Arguments:
     rank: An integer, the rank of the convolution, e.g. "2" for 2D convolution.
     filters: Integer, the dimensionality of the output space (i.e. the number

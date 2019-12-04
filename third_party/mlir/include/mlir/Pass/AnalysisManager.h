@@ -76,9 +76,36 @@ private:
   SmallPtrSet<const void *, 2> preservedIDs;
 };
 
+namespace analysis_impl {
+/// Trait to check if T provides a static 'isInvalidated' method.
+template <typename T, typename... Args>
+using has_is_invalidated = decltype(std::declval<T &>().isInvalidated(
+    std::declval<const PreservedAnalyses &>()));
+
+/// Implementation of 'isInvalidated' if the analysis provides a definition.
+template <typename AnalysisT>
+std::enable_if_t<is_detected<has_is_invalidated, AnalysisT>::value, bool>
+isInvalidated(AnalysisT &analysis, const PreservedAnalyses &pa) {
+  return analysis.isInvalidated(pa);
+}
+/// Default implementation of 'isInvalidated'.
+template <typename AnalysisT>
+std::enable_if_t<!is_detected<has_is_invalidated, AnalysisT>::value, bool>
+isInvalidated(AnalysisT &analysis, const PreservedAnalyses &pa) {
+  return !pa.isPreserved<AnalysisT>();
+}
+} // end namespace analysis_impl
+
 /// The abstract polymorphic base class representing an analysis.
 struct AnalysisConcept {
   virtual ~AnalysisConcept() = default;
+
+  /// A hook used to query analyses for invalidation. Given a preserved analysis
+  /// set, returns true if it should truly be invalidated. This allows for more
+  /// fine-tuned invalidation in cases where an analysis wasn't explicitly
+  /// marked preserved, but may be preserved(or invalidated) based upon other
+  /// properties such as analyses sets.
+  virtual bool isInvalidated(const PreservedAnalyses &pa) = 0;
 };
 
 /// A derived analysis model used to hold a specific analysis object.
@@ -87,6 +114,12 @@ template <typename AnalysisT> struct AnalysisModel : public AnalysisConcept {
   explicit AnalysisModel(Args &&... args)
       : analysis(std::forward<Args>(args)...) {}
 
+  /// A hook used to query analyses for invalidation.
+  bool isInvalidated(const PreservedAnalyses &pa) final {
+    return analysis_impl::isInvalidated(analysis, pa);
+  }
+
+  /// The actual analysis object.
   AnalysisT analysis;
 };
 
@@ -147,11 +180,11 @@ public:
 
   /// Invalidate any cached analyses based upon the given set of preserved
   /// analyses.
-  void invalidate(const detail::PreservedAnalyses &pa) {
-    // Remove any analyses not marked as preserved.
+  void invalidate(const PreservedAnalyses &pa) {
+    // Remove any analyses that were invalidated.
     for (auto it = analyses.begin(), e = analyses.end(); it != e;) {
       auto curIt = it++;
-      if (!pa.isPreserved(curIt->first))
+      if (curIt->second->isInvalidated(pa))
         analyses.erase(curIt);
     }
   }
@@ -170,7 +203,7 @@ struct NestedAnalysisMap {
   Operation *getOperation() const { return analyses.getOperation(); }
 
   /// Invalidate any non preserved analyses.
-  void invalidate(const detail::PreservedAnalyses &pa);
+  void invalidate(const PreservedAnalyses &pa);
 
   /// The cached analyses for nested operations.
   llvm::DenseMap<Operation *, std::unique_ptr<NestedAnalysisMap>> childAnalyses;
@@ -195,6 +228,8 @@ class AnalysisManager {
                                             const AnalysisManager *>;
 
 public:
+  using PreservedAnalyses = detail::PreservedAnalyses;
+
   // Query for a cached analysis on the given parent operation. The analysis may
   // not exist and if it does it may be out-of-date.
   template <typename AnalysisT>
@@ -240,7 +275,7 @@ public:
   AnalysisManager slice(Operation *op);
 
   /// Invalidate any non preserved analyses,
-  void invalidate(const detail::PreservedAnalyses &pa) { impl->invalidate(pa); }
+  void invalidate(const PreservedAnalyses &pa) { impl->invalidate(pa); }
 
   /// Clear any held analyses.
   void clear() {

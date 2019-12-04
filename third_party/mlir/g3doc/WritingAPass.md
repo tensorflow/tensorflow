@@ -116,11 +116,19 @@ the following:
 *   Provide a valid constructor taking an `Operation*`.
 *   Must not modify the given operation.
 
-The base `OperationPass` class provide utilities for querying and preserving
-analyses for the current operation being processed. Using the example passes
-defined above, let's see some examples:
+An analysis may provide additional hooks to control various behavior:
+
+*   `bool isInvalidated(const AnalysisManager::PreservedAnalyses &)`
+
+Given a preserved analysis set, the analysis returns true if it should truly be
+invalidated. This allows for more fine-tuned invalidation in cases where an
+analysis wasn't explicitly marked preserved, but may be preserved(or
+invalidated) based upon other properties such as analyses sets.
 
 ### Querying Analyses
+
+The base `OperationPass` class provide utilities for querying and preserving
+analyses for the current operation being processed.
 
 *   OperationPass automatically provides the following utilities for querying
     analyses:
@@ -137,7 +145,7 @@ defined above, let's see some examples:
         -   Get an analysis for a given child operation, constructing it if
             necessary.
 
-A few example usages are shown below:
+Using the example passes defined above, let's see some examples:
 
 ```c++
 /// An interesting analysis.

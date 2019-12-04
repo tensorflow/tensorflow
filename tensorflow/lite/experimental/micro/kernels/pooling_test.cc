@@ -54,7 +54,7 @@ void TestAveragePoolingFloat(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLiteConvParams builtin_data = {padding,      stride_width,  stride_height,
+  TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
                                    filter_width, filter_height, activation};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
@@ -125,7 +125,7 @@ void TestAveragePoolingUint8(
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLiteConvParams builtin_data = {padding,      stride_width,  stride_height,
+  TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
                                    filter_width, filter_height, activation};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;
@@ -198,7 +198,7 @@ void TestAveragePoolingInt8(std::initializer_list<int> input_dims_data,
       resolver.FindOp(tflite::BuiltinOperator_AVERAGE_POOL_2D, 1);
   TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
-  TfLiteConvParams builtin_data = {padding,      stride_width,  stride_height,
+  TfLitePoolParams builtin_data = {padding,      stride_width,  stride_height,
                                    filter_width, filter_height, activation};
   const char* init_data = reinterpret_cast<const char*>(&builtin_data);
   size_t init_data_size = 0;

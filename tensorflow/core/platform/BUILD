@@ -70,6 +70,7 @@ tf_instantiate_platform_libraries(names = [
     "strong_hash",
     "subprocess",
     "test",
+    "test_benchmark",
     "tracing",
     "types",
     "unbounded_work_queue",
@@ -84,8 +85,39 @@ cc_library(
 )
 
 cc_library(
+    name = "base64",
+    srcs = ["base64.cc"],
+    hdrs = ["base64.h"],
+    deps = [
+        ":errors",
+        ":status",
+    ],
+)
+
+cc_library(
+    name = "blocking_counter",
+    hdrs = ["blocking_counter.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+    ],
+)
+
+cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
+)
+
+cc_library(
+    name = "coding",
+    srcs = ["coding.cc"],
+    hdrs = ["coding.h"],
+    deps = [
+        ":byte_order",
+        ":raw_coding",
+        ":stringpiece",
+        ":types",
+    ],
 )
 
 cc_library(
@@ -173,9 +205,9 @@ cc_library(
     hdrs = ["error.h"],
     deps = [
         ":platform",
+        ":status",
+        ":strcat",
         ":types",
-        "//tensorflow/core/lib/core:status",
-        "//tensorflow/core/platform:strcat",
     ],
 )
 
@@ -212,6 +244,18 @@ cc_library(
     hdrs = ["gif.h"],
     deps = [
         "@gif",
+    ],
+)
+
+cc_library(
+    name = "hash",
+    srcs = ["hash.cc"],
+    hdrs = ["hash.h"],
+    deps = [
+        ":macros",
+        ":raw_coding",
+        ":stringpiece",
+        ":types",
     ],
 )
 
@@ -304,6 +348,21 @@ cc_library(
 )
 
 cc_library(
+    name = "path",
+    srcs = ["path.cc"],
+    hdrs = ["path.h"],
+    deps = [
+        ":logging",
+        ":mutex",
+        ":scanner",
+        ":strcat",
+        ":stringpiece",
+        ":types",
+    ],
+    alwayslink = True,
+)
+
+cc_library(
     name = "platform",
     hdrs = ["platform.h"],
 )
@@ -369,11 +428,21 @@ cc_library(
     name = "protobuf_internal",
     hdrs = ["protobuf_internal.h"],
     deps = [
+        ":errors",
         ":platform",
         ":protobuf",
         ":types",
-        "//tensorflow/core/lib/core:errors",
     ] + if_static(["@com_google_protobuf//:protobuf"]),
+)
+
+cc_library(
+    name = "random",
+    srcs = ["random.cc"],
+    hdrs = ["random.h"],
+    deps = [
+        ":mutex",
+        ":types",
+    ],
 )
 
 cc_library(
@@ -473,7 +542,6 @@ cc_library(
         ":logging",
         ":macros",
         ":mutex",
-        ":stacktrace",
         ":str_util",
         ":strcat",
         ":stringpiece",
@@ -551,13 +619,13 @@ cc_library(
     srcs = ["tensor_coding.cc"],
     hdrs = ["tensor_coding.h"],
     deps = [
+        ":coding",
         ":platform",
         ":protobuf",
+        ":refcount",
         ":stringpiece",
         ":strcat",
         ":types",
-        "//tensorflow/core/lib/core:coding",
-        "//tensorflow/core/lib/core:refcount",
     ] + tf_additional_tensor_coding_deps(),
 )
 
@@ -566,6 +634,16 @@ cc_library(
     testonly = True,
     textual_hdrs = ["test.h"],
     deps = tf_mobile_aware_deps("test_impl"),
+)
+
+cc_library(
+    name = "test_benchmark",
+    testonly = True,
+    hdrs = ["test_benchmark.h"],
+    deps = [
+        ":platform",
+        ":test_benchmark_impl",
+    ],
 )
 
 cc_library(
@@ -710,10 +788,14 @@ filegroup(
             "**/unbounded_work_queue.cc",
             "**/windows_file_system.cc",
             "abi.cc",
+            "coding.cc",
             "cpu_info.cc",
+            "hash.cc",
             "numbers.cc",
+            "path.cc",
             "platform_strings.cc",
             "protobuf.cc",
+            "random.cc",
             "scanner.cc",
             "strcat.cc",
             "stringprintf.cc",
@@ -813,6 +895,7 @@ filegroup(
             "**/human_readable_json.cc",
             "**/rocm_rocdl_path.cc",
             "abi.cc",
+            "coding.cc",
             "cpu_info.cc",
             "cpu_feature_guard.cc",
             "denormal.cc",
@@ -820,11 +903,14 @@ filegroup(
             "error.cc",
             "file_system.cc",
             "file_system_helper.cc",
+            "hash.cc",
             "logger.cc",
             "numbers.cc",
+            "path.cc",
             "platform_strings.cc",
             "protobuf.cc",
             "protobuf_util.cc",
+            "random.cc",
             "scanner.cc",
             "setround.cc",
             "status.cc",

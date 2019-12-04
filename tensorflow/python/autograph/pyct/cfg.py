@@ -38,7 +38,7 @@ from enum import Enum
 import gast
 # pylint:enable=g-bad-import-order
 
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import parser
 
 
 class Node(object):
@@ -77,10 +77,9 @@ class Node(object):
     elif isinstance(self.ast_node, gast.ClassDef):
       return 'class %s' % self.ast_node.name
     elif isinstance(self.ast_node, gast.withitem):
-      return compiler.ast_to_source(
+      return parser.unparse(
           self.ast_node.context_expr, include_encoding_marker=False).strip()
-    return compiler.ast_to_source(
-        self.ast_node, include_encoding_marker=False).strip()
+    return parser.unparse(self.ast_node, include_encoding_marker=False).strip()
 
 
 class Graph(

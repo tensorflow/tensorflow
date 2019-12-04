@@ -377,20 +377,10 @@ def saved_model_format_scope(value):
     _thread_local_data.saved_model_format = previous_value
 
 
-def get_saved_model_format():
-  """Gets the saved model format that should be tested."""
-  if _thread_local_data.saved_model_format is None:
-    raise ValueError(
-        'Cannot call `get_saved_model_format()` outside of a '
-        '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
-        'decorator.')
-  return _thread_local_data.saved_model_format
-
-
 def get_save_format():
   if _thread_local_data.saved_model_format is None:
     raise ValueError(
-        'Cannot call `get_saved_model_format()` outside of a '
+        'Cannot call `get_save_format()` outside of a '
         '`saved_model_format_scope()` or `run_with_all_saved_model_formats` '
         'decorator.')
   return _thread_local_data.saved_model_format
@@ -608,8 +598,8 @@ class _MultiIOSubclassModel(keras.Model):
   """Multi IO Keras subclass model."""
 
   def __init__(self, branch_a, branch_b, shared_input_branch=None,
-               shared_output_branch=None):
-    super(_MultiIOSubclassModel, self).__init__()
+               shared_output_branch=None, name=None):
+    super(_MultiIOSubclassModel, self).__init__(name=name)
     self._shared_input_branch = shared_input_branch
     self._branch_a = branch_a
     self._branch_b = branch_b

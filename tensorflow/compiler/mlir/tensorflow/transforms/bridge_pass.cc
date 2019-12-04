@@ -29,10 +29,4 @@ mlir::PassPipelineRegistration<> tpu_pipeline(
     "that it is suitable for targeting TPUs.",
     mlir::TFTPU::CreateTPUBridge);
 
-mlir::PassPipelineRegistration<> standard_pipeline(
-    "tf-standard-bridge",
-    "Run all passes involved in transforming or optimizing an MLIR graph"
-    "without any target specialization.",
-    mlir::TF::CreateTFStandardPipeline);
-
 }  // anonymous namespace

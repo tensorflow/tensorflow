@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
@@ -75,6 +76,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -500,7 +502,8 @@ Status ImporterBase::GetInputOutputNodes(
     TF_RETURN_IF_ERROR(add_node(input.first));
   }
 
-  for (const auto& output_node_name : specs_.output_arrays) {
+  for (const auto& output : specs_.outputs) {
+    auto output_node_name = std::string(ParseTensorName(output).first);
     TF_RETURN_IF_ERROR(add_node(output_node_name));
   }
 
@@ -535,7 +538,7 @@ Status ImporterBase::AddNodesToShapeRefiner() {
       auto node_name = node->op_def().name();
       if (node_name != "Placeholder" && node_name != "LegacyFedInput" &&
           node_name != FunctionLibraryDefinition::kArgOp) {
-        // We do not handle the case where the input node has multple outputs
+        // We do not handle the case where the input node has multiple outputs
         if (node->num_outputs() > 1) {
           return errors::FailedPrecondition(absl::StrCat(
               "Input arrays can only have op with single output. Node op:",
@@ -1588,7 +1591,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
   llvm::SmallVector<mlir::NamedAttribute, 1> attrs;
   if (specs.graph_as_function) {
     if (specs.prune_unused_nodes || !specs.inputs.empty() ||
-        !specs.output_arrays.empty() || !specs.output_arrays_order.empty())
+        !specs.outputs.empty())
       return errors::InvalidArgument(
           "Pruning of graph is currently unsupported when the main graph is "
           "converted to a function.");
@@ -1622,7 +1625,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     // TODO(prakalps): Refactor to keep attribute strings (tf.entry_function,
     // tf.versions) shared by importer and exporter in a centralized place.
     // Record the input and output mapping.
-    if (!specs.inputs.empty() || !specs.output_arrays.empty()) {
+    if (!specs.inputs.empty() || !specs.outputs.empty()) {
       mlir::Builder b(context);
       std::string s;
       llvm::raw_string_ostream ss(s);
@@ -1632,7 +1635,7 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
           ",");
       auto inputs = b.getNamedAttr("inputs", b.getStringAttr(ss.str()));
       s.clear();
-      mlir::interleave(specs.output_arrays_order, ss, ",");
+      mlir::interleave(specs.outputs, ss, ",");
       auto outputs = b.getNamedAttr("outputs", b.getStringAttr(ss.str()));
 
       attrs.push_back(b.getNamedAttr("tf.entry_function",
@@ -1665,9 +1668,13 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
     absl::InlinedVector<OutputTensor, 4>* arg_nodes,
     absl::InlinedVector<OutputTensor, 4>* ret_nodes) {
   // Finds out all the input nodes and output nodes.
-  if (!specs.inputs.empty() || !specs.output_arrays.empty()) {
+  absl::flat_hash_set<absl::string_view> output_node_names;
+  for (const auto& output_tensor : specs.outputs) {
+    output_node_names.insert(ParseTensorName(output_tensor).node());
+  }
+  if (!specs.inputs.empty() || !specs.outputs.empty()) {
     arg_nodes->resize(specs.inputs.size());
-    ret_nodes->resize(specs.output_arrays_order.size());
+    ret_nodes->resize(specs.outputs.size());
 
     for (Node* n : GetOrderedNodes()) {
       // Handle inputs/arguments.
@@ -1677,17 +1684,17 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
       }
 
       // Handle outputs/returns.
-      if (specs.output_arrays.find(n->name()) != specs.output_arrays.end()) {
-        for (int i = 0, e = specs.output_arrays_order.size(); i != e; ++i) {
+      if (output_node_names.contains(n->name())) {
+        for (int i = 0, e = specs.outputs.size(); i != e; ++i) {
           std::pair<std::string, std::string> name_and_port =
-              absl::StrSplit(specs.output_arrays_order[i], ':');
+              absl::StrSplit(specs.outputs[i], ':');
           auto name = name_and_port.first;
           if (name != n->name()) continue;
           int port = 0;
           if (!name_and_port.second.empty() &&
               !absl::SimpleAtoi(name_and_port.second, &port)) {
             return errors::InvalidArgument("Invalid port specification: ",
-                                           specs.output_arrays_order[i]);
+                                           specs.outputs[i]);
           }
           (*ret_nodes)[i] = {n, port};
         }
@@ -1726,10 +1733,10 @@ StatusOr<mlir::FunctionType> GraphDefImporter::InferMainFunctionType(
   }
 
   llvm::SmallVector<mlir::Type, 4> ret_types;
-  ret_types.reserve(specs.output_arrays.size());
-  for (int i = 0, e = specs.output_arrays_order.size(); i != e; ++i) {
+  ret_types.reserve(specs.outputs.size());
+  for (int i = 0, e = specs.outputs.size(); i != e; ++i) {
     if (ret_nodes->at(i).node == nullptr) {
-      return errors::InvalidArgument("Output ", specs.output_arrays_order[i],
+      return errors::InvalidArgument("Output ", specs.outputs[i],
                                      " was not found in graph");
     }
   }

@@ -25,7 +25,6 @@
 #include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/Dialect/AffineOps/AffineOps.h"
-#include "mlir/Dialect/VectorOps/VectorOps.h"
 #include "mlir/Support/MathExtras.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -273,15 +272,12 @@ static bool isVectorElement(LoadOrStoreOpPointer memoryOp) {
   return memRefType.getElementType().template isa<VectorType>();
 }
 
-static bool isVectorTransferReadOrWrite(Operation &op) {
-  return isa<vector::TransferReadOp>(op) || isa<vector::TransferWriteOp>(op);
-}
-
 using VectorizableOpFun = std::function<bool(AffineForOp, Operation &)>;
 
 static bool
 isVectorizableLoopBodyWithOpCond(AffineForOp loop,
-                                 VectorizableOpFun isVectorizableOp) {
+                                 VectorizableOpFun isVectorizableOp,
+                                 NestedPattern &vectorTransferMatcher) {
   auto *forOp = loop.getOperation();
 
   // No vectorization across conditionals for now.
@@ -303,9 +299,8 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
     return false;
   }
 
-  auto vectorTransfers = matcher::Op(isVectorTransferReadOrWrite);
   SmallVector<NestedMatch, 8> vectorTransfersMatched;
-  vectorTransfers.match(forOp, &vectorTransfersMatched);
+  vectorTransferMatcher.match(forOp, &vectorTransfersMatched);
   if (!vectorTransfersMatched.empty()) {
     return false;
   }
@@ -331,18 +326,20 @@ isVectorizableLoopBodyWithOpCond(AffineForOp loop,
   return true;
 }
 
-bool mlir::isVectorizableLoopBody(AffineForOp loop, int *memRefDim) {
+bool mlir::isVectorizableLoopBody(AffineForOp loop, int *memRefDim,
+                                  NestedPattern &vectorTransferMatcher) {
   VectorizableOpFun fun([memRefDim](AffineForOp loop, Operation &op) {
     auto load = dyn_cast<AffineLoadOp>(op);
     auto store = dyn_cast<AffineStoreOp>(op);
     return load ? isContiguousAccess(loop.getInductionVar(), load, memRefDim)
                 : isContiguousAccess(loop.getInductionVar(), store, memRefDim);
   });
-  return isVectorizableLoopBodyWithOpCond(loop, fun);
+  return isVectorizableLoopBodyWithOpCond(loop, fun, vectorTransferMatcher);
 }
 
-bool mlir::isVectorizableLoopBody(AffineForOp loop) {
-  return isVectorizableLoopBodyWithOpCond(loop, nullptr);
+bool mlir::isVectorizableLoopBody(AffineForOp loop,
+                                  NestedPattern &vectorTransferMatcher) {
+  return isVectorizableLoopBodyWithOpCond(loop, nullptr, vectorTransferMatcher);
 }
 
 /// Checks whether SSA dominance would be violated if a for op's body

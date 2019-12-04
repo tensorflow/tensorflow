@@ -73,4 +73,11 @@ def : Pattern<(DotOp:$op $a, $b, $c),
               [(TileLinalgOp<[8], "REG"> $op)],
               [(Constraint<HasLinalgTransformMarker<"L1">> $op)]>;
 
+//===----------------------------------------------------------------------===//
+// Linalg to loops patterns.
+//===----------------------------------------------------------------------===//
+def : Pattern<(DotOp:$op $a, $b, $c),
+              [(LinalgOpToLoops<"DotOp"> $op)],
+              [(Constraint<HasLinalgTransformMarker<"REG">> $op)]>;
+
 #endif // TEST_LINALG_TRANSFORMS_PATTERNS

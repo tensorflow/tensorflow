@@ -118,6 +118,13 @@ def SPV_ConstantOp : SPV_Op<"constant", [NoSideEffect]> {
   let extraClassDeclaration = [{
     // Returns true if a constant can be built for the given `type`.
     static bool isBuildableWith(Type type);
+
+    // Creates a constant zero/one of the given `type` at the current insertion
+    // point of `builder` and returns it.
+    static spirv::ConstantOp getZero(Type type, Location loc,
+                                     OpBuilder *builder);
+    static spirv::ConstantOp getOne(Type type, Location loc,
+                                    OpBuilder *builder);
   }];
 
   let hasOpcode = 0;

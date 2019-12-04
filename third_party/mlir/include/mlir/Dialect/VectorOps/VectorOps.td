@@ -171,7 +171,24 @@ def Vector_BroadcastOp :
   let summary = "broadcast operation";
   let description = [{
     Broadcasts the scalar or k-D vector value in the source operand
-    to a n-D result vector such that the broadcast makes sense.
+    to a n-D result vector such that the broadcast makes sense, i.e.,
+    the source operand is duplicated to match the given rank and sizes
+    in the result vector. The legality rules are:
+    * the source operand must have the same element type as the result type
+    * a k-D vector <s_1 x .. x s_k x type> can be broadcast to
+      a n-D vector <t_1 x .. x t_n x type> if
+       * k <= n, and
+       * the sizes in the trailing dimensions n-k < i <= n with j=i+k-n
+          match exactly as s_j = t_i or s_j = 1:
+       ```
+           t_1 x   ..  t_n-k x t_n-k+1 x .. x t_i x .. x t_n
+                               s_1     x .. x s_j x .. x s_k
+               <duplication>         <potential stretch>
+       ```
+    The source operand is duplicated over all the missing leading dimensions
+    and streched over the trailing dimensions where the source has a non-equal
+    dimension of 1. These rules imply that any scalar broadcast (k=0) to any
+    shaped vector with the same element type is always legal.
 
     Examples:
     ```
@@ -610,7 +627,37 @@ def Vector_TypeCastOp :
   }];
 }
 
-// TODO(andydavis) Morph this operation into a Vector_MaskOp.
+// TODO(andydavis) Add constant folding support.
+def Vector_CreateMaskOp :
+  Vector_Op<"create_mask", [NoSideEffect]>,
+    Arguments<(ins Variadic<Index>:$operands)>, Results<(outs VectorOf<[I1]>)> {
+  let summary = "creates a vector mask";
+  let description = [{
+    Creates and returns a vector mask where elements of the result vector
+    are set to '0' or '1', based on whether the element indices are contained
+    within a hyper-rectangular region specified by the operands. Specifically,
+    each operand specifies a range [0, operand-value) for a unique dimension in
+    the vector result. The conjunction of the operand ranges define
+    hyper-rectangular region within which elements values are set to 1
+    (otherwise element values are set to 0).
+
+    Example: create a vector mask of size 4x3xi1 where elements in range
+             0 <= row <= 2 and 0 <= col <= 1 are set to 1 (others to 0).
+
+      %1 = vector.create_mask %c3, %c2 : vector<4x3xi1>
+
+      print %1
+                    columns
+                  0    1    2
+                |------------
+              0 | 1    1    0
+        rows  1 | 1    1    0
+              2 | 1    1    0
+              3 | 0    0    0
+  }];
+}
+
+// TODO(andydavis) Delete this op once ContractOp is converted to use VectorMask
 def Vector_IndexTupleOp :
   Vector_Op<"make_index_tuple", [NoSideEffect]>,
     Arguments<(ins Variadic<Index>:$operands)>,
