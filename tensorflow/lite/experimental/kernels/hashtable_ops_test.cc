@@ -808,7 +808,8 @@ class HashtableLookupOpModel : public BaseHashtableOpModel {
 
 TEST(HashtableOpsTest, TestHashtableLookupIntToInt) {
   const int kResourceId = 42;
-  HashtableLookupOpModel<int32, int32> m(TensorType_INT32, TensorType_INT32, 3);
+  HashtableLookupOpModel<std::int32_t, std::int32_t> m(TensorType_INT32,
+                                                       TensorType_INT32, 3);
 
   m.SetResourceId({kResourceId});
   m.SetLookup({5, 6, 7});
@@ -818,14 +819,14 @@ TEST(HashtableOpsTest, TestHashtableLookupIntToInt) {
                         kTfLiteInt32, {4, 5, 6}, {1, 2, 3});
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutput<int32>(), ElementsAreArray({2, 3, 4}));
+  EXPECT_THAT(m.GetOutput<std::int32_t>(), ElementsAreArray({2, 3, 4}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3}));
 }
 
 TEST(HashtableOpsTest, TestHashtableLookupIntToFloat) {
   const int kResourceId = 42;
-  HashtableLookupOpModel<int32, float> m(TensorType_INT32, TensorType_FLOAT32,
-                                         3);
+  HashtableLookupOpModel<std::int32_t, float> m(TensorType_INT32,
+                                                TensorType_FLOAT32, 3);
 
   m.SetResourceId({kResourceId});
   m.SetLookup({5, 6, 7});
@@ -869,8 +870,8 @@ class HashtableImportOpModel : public BaseHashtableOpModel {
 
 TEST(HashtableOpsTest, TestHashtableImport) {
   const int kResourceId = 42;
-  HashtableImportOpModel<int32, float> m(TensorType_INT32, TensorType_FLOAT32,
-                                         3);
+  HashtableImportOpModel<std::int32_t, float> m(TensorType_INT32,
+                                                TensorType_FLOAT32, 3);
   EXPECT_EQ(m.GetResources().size(), 0);
   m.SetResourceId({kResourceId});
   m.SetKeys({1, 2, 3});
@@ -890,8 +891,8 @@ TEST(HashtableOpsTest, TestHashtableImport) {
 
 TEST(HashtableOpsTest, TestHashtableImportTwice) {
   const int kResourceId = 42;
-  HashtableImportOpModel<int32, float> m(TensorType_INT32, TensorType_FLOAT32,
-                                         3);
+  HashtableImportOpModel<std::int32_t, float> m(TensorType_INT32,
+                                                TensorType_FLOAT32, 3);
   EXPECT_EQ(m.GetResources().size(), 0);
   m.SetResourceId({kResourceId});
   m.SetKeys({1, 2, 3});
@@ -929,7 +930,8 @@ class HashtableSizeOpModel : public BaseHashtableOpModel {
 
 TEST(HashtableOpsTest, TestHashtableSize) {
   const int kResourceId = 42;
-  HashtableSizeOpModel<int32, int32> m(TensorType_INT32, TensorType_INT32);
+  HashtableSizeOpModel<std::int32_t, std::int32_t> m(TensorType_INT32,
+                                                     TensorType_INT32);
 
   m.SetResourceId({kResourceId});
 
@@ -937,13 +939,14 @@ TEST(HashtableOpsTest, TestHashtableSize) {
                         kTfLiteInt32, {4, 5, 6}, {1, 2, 3});
   m.Invoke();
 
-  EXPECT_THAT(m.GetOutput<int32>(), ElementsAreArray({3}));
+  EXPECT_THAT(m.GetOutput<std::int32_t>(), ElementsAreArray({3}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1}));
 }
 
 TEST(HashtableOpsTest, TestHashtableSizeNonInitialized) {
   const int kResourceId = 42;
-  HashtableSizeOpModel<int32, int32> m(TensorType_INT32, TensorType_INT32);
+  HashtableSizeOpModel<std::int32_t, std::int32_t> m(TensorType_INT32,
+                                                     TensorType_INT32);
   m.SetResourceId({kResourceId});
 
   // Invoke without hash table initialization.
