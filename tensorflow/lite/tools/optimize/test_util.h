@@ -83,6 +83,9 @@ extern const char* kModelPack;
 extern const char* kLstmCalibrated;
 extern const char* kLstmQuantized;
 
+// Test model with an unpack op.
+extern const char* kModelWithUnpack;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:

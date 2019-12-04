@@ -21,31 +21,31 @@ import gzip
 import os
 import zlib
 
+from absl.testing import parameterized
+
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
+from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import test_util
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
 
 
-@test_util.run_all_in_graph_and_eager_modes
-class TFRecordDatasetTest(test_base.DatasetTestBase):
+class TFRecordDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   def setUp(self):
     super(TFRecordDatasetTest, self).setUp()
     self._num_files = 2
     self._num_records = 7
-
     self.test_filenames = self._createFiles()
 
-  def dataset_fn(self,
-                 filenames,
-                 compression_type="",
-                 num_epochs=1,
-                 batch_size=None):
+  def _dataset_factory(self,
+                       filenames,
+                       compression_type="",
+                       num_epochs=1,
+                       batch_size=None):
 
     repeat_dataset = readers.TFRecordDataset(
         filenames, compression_type).repeat(num_epochs)
@@ -67,6 +67,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
       writer.close()
     return filenames
 
+  @combinations.generate(test_base.default_test_combinations())
   def testTFRecordDatasetConstructorErrorsTensorInput(self):
     with self.assertRaisesRegex(TypeError,
                                 "filenames.*must be.*Tensor.*string"):
@@ -78,37 +79,40 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     with self.assertRaises(Exception):
       readers.TFRecordDataset(object())
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadOneEpoch(self):
     # Basic test: read from file 0.
-    dataset = self.dataset_fn(self.test_filenames[0])
+    dataset = self._dataset_factory(self.test_filenames[0])
     self.assertDatasetProduces(
         dataset,
         expected_output=[self._record(0, i) for i in range(self._num_records)])
 
     # Basic test: read from file 1.
-    dataset = self.dataset_fn(self.test_filenames[1])
+    dataset = self._dataset_factory(self.test_filenames[1])
     self.assertDatasetProduces(
         dataset,
         expected_output=[self._record(1, i) for i in range(self._num_records)])
 
     # Basic test: read from both files.
-    dataset = self.dataset_fn(self.test_filenames)
+    dataset = self._dataset_factory(self.test_filenames)
     expected_output = []
     for j in range(self._num_files):
       expected_output.extend(
           [self._record(j, i) for i in range(self._num_records)])
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadTenEpochs(self):
-    dataset = self.dataset_fn(self.test_filenames, num_epochs=10)
+    dataset = self._dataset_factory(self.test_filenames, num_epochs=10)
     expected_output = []
     for j in range(self._num_files):
       expected_output.extend(
           [self._record(j, i) for i in range(self._num_records)])
     self.assertDatasetProduces(dataset, expected_output=expected_output * 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadTenEpochsOfBatches(self):
-    dataset = self.dataset_fn(
+    dataset = self._dataset_factory(
         self.test_filenames, num_epochs=10, batch_size=self._num_records)
     expected_output = []
     for j in range(self._num_files):
@@ -116,6 +120,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
           [self._record(j, i) for i in range(self._num_records)])
     self.assertDatasetProduces(dataset, expected_output=expected_output * 10)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadZlibFiles(self):
     zlib_files = []
     for i, fn in enumerate(self.test_filenames):
@@ -130,9 +135,10 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     for j in range(self._num_files):
       expected_output.extend(
           [self._record(j, i) for i in range(self._num_records)])
-    dataset = self.dataset_fn(zlib_files, compression_type="ZLIB")
+    dataset = self._dataset_factory(zlib_files, compression_type="ZLIB")
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadGzipFiles(self):
     gzip_files = []
     for i, fn in enumerate(self.test_filenames):
@@ -145,9 +151,10 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     for j in range(self._num_files):
       expected_output.extend(
           [self._record(j, i) for i in range(self._num_records)])
-    dataset = self.dataset_fn(gzip_files, compression_type="GZIP")
+    dataset = self._dataset_factory(gzip_files, compression_type="GZIP")
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadWithBuffer(self):
     one_mebibyte = 2**20
     dataset = readers.TFRecordDataset(
@@ -158,6 +165,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
           [self._record(j, i) for i in range(self._num_records)])
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadFromDatasetOfFiles(self):
     files = dataset_ops.Dataset.from_tensor_slices(self.test_filenames)
     expected_output = []
@@ -167,6 +175,7 @@ class TFRecordDatasetTest(test_base.DatasetTestBase):
     dataset = readers.TFRecordDataset(files)
     self.assertDatasetProduces(dataset, expected_output=expected_output)
 
+  @combinations.generate(test_base.default_test_combinations())
   def testReadTenEpochsFromDatasetOfFilesInParallel(self):
     files = dataset_ops.Dataset.from_tensor_slices(
         self.test_filenames).repeat(10)

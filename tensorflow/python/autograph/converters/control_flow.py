@@ -383,6 +383,9 @@ class ControlFlowTransformer(converter.Base):
     composite_symbol_names = tuple(
         gast.Str(str(symbol)) for symbol in composite_loop_vars)
 
+    # TODO(b/140125096): Populate.
+    opts = gast.Dict([], [])
+
     # TODO(mdan): Use a single template.
     # If the body and test functions took a single tuple for loop_vars, instead
     # of *loop_vars, then a single template could be used.
@@ -401,7 +404,8 @@ class ControlFlowTransformer(converter.Base):
             state_setter_name,
             (loop_vars,),
             (basic_symbol_names,),
-            (composite_symbol_names,))
+            (composite_symbol_names,),
+            opts)
       """
       node = templates.replace(
           template,
@@ -415,7 +419,8 @@ class ControlFlowTransformer(converter.Base):
           state_getter_name=state_getter_name,
           state_setter_name=state_setter_name,
           basic_symbol_names=basic_symbol_names,
-          composite_symbol_names=composite_symbol_names)
+          composite_symbol_names=composite_symbol_names,
+          opts=opts)
     else:
       template = """
         state_functions
@@ -431,7 +436,8 @@ class ControlFlowTransformer(converter.Base):
             state_setter_name,
             (),
             (),
-            (composite_symbol_names,))
+            (composite_symbol_names,),
+            opts)
       """
       node = templates.replace(
           template,
@@ -442,7 +448,8 @@ class ControlFlowTransformer(converter.Base):
           state_functions=state_functions,
           state_getter_name=state_getter_name,
           state_setter_name=state_setter_name,
-          composite_symbol_names=composite_symbol_names)
+          composite_symbol_names=composite_symbol_names,
+          opts=opts)
 
     undefined_assigns = self._create_undefined_assigns(possibly_undefs)
     return undefined_assigns + node
@@ -500,6 +507,9 @@ class ControlFlowTransformer(converter.Base):
     composite_symbol_names = tuple(
         gast.Str(str(symbol)) for symbol in composite_loop_vars)
 
+    # TODO(b/140125096): Populate.
+    opts = gast.Dict([], [])
+
     # TODO(mdan): Use a single template.
     # If the body and test functions took a single tuple for loop_vars, instead
     # of *loop_vars, then a single template could be used.
@@ -520,7 +530,8 @@ class ControlFlowTransformer(converter.Base):
             state_setter_name,
             (loop_vars,),
             (basic_symbol_names,),
-            (composite_symbol_names,))
+            (composite_symbol_names,),
+            opts)
       """
       return templates.replace(
           template,
@@ -538,7 +549,8 @@ class ControlFlowTransformer(converter.Base):
           state_getter_name=state_getter_name,
           state_setter_name=state_setter_name,
           basic_symbol_names=basic_symbol_names,
-          composite_symbol_names=composite_symbol_names)
+          composite_symbol_names=composite_symbol_names,
+          opts=opts)
     else:
       template = """
         undefined_assigns
@@ -556,7 +568,8 @@ class ControlFlowTransformer(converter.Base):
             state_setter_name,
             (),
             (),
-            (composite_symbol_names,))
+            (composite_symbol_names,),
+            opts)
       """
       return templates.replace(
           template,
@@ -571,7 +584,8 @@ class ControlFlowTransformer(converter.Base):
           state_functions=state_functions,
           state_getter_name=state_getter_name,
           state_setter_name=state_setter_name,
-          composite_symbol_names=composite_symbol_names)
+          composite_symbol_names=composite_symbol_names,
+          opts=opts)
 
 
 def transform(node, ctx):

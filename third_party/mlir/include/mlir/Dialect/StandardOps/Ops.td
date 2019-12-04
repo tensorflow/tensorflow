@@ -1206,7 +1206,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
 
     // ViewOp with dynamic offset and one dynamic size.
     %2 = view %0[%offset_1024][%size0]
-      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)
+      : memref<2048xi8> to memref<?x4xf32, (d0, d1)[s0] -> (d0 * 4 + d1 + s0)>
 
     // ViewOp creating 3D shape where two of the dim sizes are dynamic.
     // *) The dynamic offset specified in the ViewOp is applied to the
@@ -1219,7 +1219,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
     //    shape and dynamic sizes.
     %3 = view %0[%offset_1024][%size0, %size1]
       : memref<2048xi8> to memref<?x?x4xf32,
-        (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * 4 + d2 + s0)
+        (d0, d1, d2)[s0, s1] -> (d0 * s1 + d1 * 4 + d2 + s0)>
   }];
 
   let arguments = (ins MemRefRankOf<[I8], [1]>:$source,
@@ -1248,7 +1248,7 @@ def ViewOp : Std_Op<"view", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
-def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
+def SubViewOp : Std_Op<"subview", [AttrSizedOperandSegments, NoSideEffect]> {
   let summary = "memref subview operation";
   let description = [{
     The "subview" operation converts a memref type to another memref type
@@ -1356,23 +1356,25 @@ def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
 
   // TODO(b/144779634, ravishankarm) : Use different arguments for
   // offsets, sizes and strides.
-  let arguments = (ins AnyMemRef:$source, I32Attr:$num_offsets,
-                   I32Attr:$num_sizes, I32Attr:$num_strides,
-                   Variadic<Index>:$operands);
+  let arguments = (ins
+    AnyMemRef:$source,
+    Variadic<Index>:$offsets,
+    Variadic<Index>:$sizes,
+    Variadic<Index>:$strides,
+    I32ElementsAttr:$operand_segment_sizes
+  );
   let results = (outs AnyMemRef);
 
-  let builders = [OpBuilder<
-    "Builder *b, OperationState &result, Value *source, "
-    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
-    "ArrayRef<Value *> strides, Type resultType = Type(), "
-    "ArrayRef<NamedAttribute> attrs = {}">,
+  let builders = [
     OpBuilder<
-    "Builder *builder, OperationState &result, Type resultType, Value *source">,
+      "Builder *b, OperationState &result, Value *source, "
+      "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
+      "ArrayRef<Value *> strides, Type resultType = Type(), "
+      "ArrayRef<NamedAttribute> attrs = {}">,
     OpBuilder<
-    "Builder *builder, OperationState &result, Type resultType, Value *source, "
-    "unsigned num_offsets, unsigned num_sizes, unsigned num_strides, "
-    "ArrayRef<Value *> offsets, ArrayRef<Value *> sizes, "
-    "ArrayRef<Value *> strides">];
+      "Builder *builder, OperationState &result, "
+      "Type resultType, Value *source">
+  ];
 
   let extraClassDeclaration = [{
     /// Returns the type of the base memref operand.
@@ -1384,28 +1386,21 @@ def SubViewOp : Std_Op<"subview", [NoSideEffect]> {
     MemRefType getType() { return getResult()->getType().cast<MemRefType>(); }
 
     /// Returns as integer value the number of offset operands.
-    int64_t getNumOffsets() {
-      return num_offsets().getSExtValue();
-    }
+    int64_t getNumOffsets() { return llvm::size(offsets()); }
 
     /// Returns as integer value the number of size operands.
-    int64_t getNumSizes() {
-      return num_sizes().getSExtValue();
-    }
+    int64_t getNumSizes() { return llvm::size(sizes()); }
 
     /// Returns as integer value the number of stride operands.
-    int64_t getNumStrides() {
-      return num_strides().getSExtValue();
-    }
-
-    /// Returns the dynamic offsets for this subview operation.
-    operand_range getDynamicOffsets();
+    int64_t getNumStrides() { return llvm::size(strides()); }
 
     /// Returns the dynamic sizes for this subview operation if specified.
-    operand_range getDynamicSizes();
+    operand_range getDynamicSizes() { return sizes(); }
 
-    /// Returns the dynamic strides for this subview operation if specified.
-    operand_range getDynamicStrides();
+    /// Returns in `staticStrides` the static value of the stride
+    /// operands. Returns failure() if the static value of the stride
+    /// operands could not be retrieved.
+    LogicalResult getStaticStrides(SmallVectorImpl<int64_t> &staticStrides);
 
     // Auxiliary range data structure and helper function that unpacks the
     // offset, size and stride operands of the SubViewOp into a list of triples.

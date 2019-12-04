@@ -21,7 +21,7 @@ set(LIBS
   MLIRAffineToStandard
   MLIRLoopsToGPU
   MLIRLinalgToLLVM
-  
+
   MLIRLoopToStandard
   MLIREDSC
   MLIRFxpMathOps
@@ -51,7 +51,8 @@ set(LIBS
   MLIRTestTransforms
   MLIRSupport
   MLIRVectorOps
-  MLIRVectorConversions
+  MLIRVectorToLLVM
+  MLIRVectorToLoops
 )
 if(MLIR_CUDA_CONVERSIONS_ENABLED)
   list(APPEND LIBS

@@ -576,6 +576,44 @@ endian orderings will give different results.
   let hasCanonicalizer = 1;
 }
 
+def TF_BitwiseOrOp : TF_Op<"BitwiseOr", [Broadcastable, Commutative, NoSideEffect]>,
+                     WithBroadcastableBinOpBuilder {
+  let summary = "Elementwise computes the bitwise OR of `x` and `y`.";
+
+  let description = [{
+The result will have those bits set, that are set in `x`, `y` or both. The
+computation is performed on the underlying representations of `x` and `y`.
+
+For example:
+
+```python
+import tensorflow as tf
+from tensorflow.python.ops import bitwise_ops
+dtype_list = [tf.int8, tf.int16, tf.int32, tf.int64,
+              tf.uint8, tf.uint16, tf.uint32, tf.uint64]
+
+for dtype in dtype_list:
+  lhs = tf.constant([0, 5, 3, 14], dtype=dtype)
+  rhs = tf.constant([5, 0, 7, 11], dtype=dtype)
+  exp = tf.constant([5, 5, 7, 15], dtype=tf.float32)
+
+  res = bitwise_ops.bitwise_or(lhs, rhs)
+  tf.assert_equal(tf.cast(res,  tf.float32), exp)  # TRUE
+```
+  }];
+
+  let arguments = (ins
+    TF_IntTensor:$x,
+    TF_IntTensor:$y
+  );
+
+  let results = (outs
+    TF_IntTensor:$z
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_BroadcastGradientArgsOp : TF_Op<"BroadcastGradientArgs", [NoSideEffect]> {
   let summary = [{
 Return the reduction indices for computing gradients of s0 op s1 with broadcast.
@@ -1320,6 +1358,10 @@ Comparison with `numpy.einsum`:
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_EluOp : TF_Op<"Elu", [NoSideEffect, SameOperandsAndResultType]> {
@@ -5726,6 +5768,8 @@ If two elements are equal, the lower-index element appears first.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_TransposeOp : TF_Op<"Transpose", [NoSideEffect]> {

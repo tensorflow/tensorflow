@@ -279,6 +279,35 @@ LogicalResult ModuleTranslation::convertBlock(Block &bb, bool ignoreArguments) {
   return success();
 }
 
+// Convert the LLVM dialect linkage type to LLVM IR linkage type.
+llvm::GlobalVariable::LinkageTypes convertLinkageType(LLVM::Linkage linkage) {
+  switch (linkage) {
+  case LLVM::Linkage::Private:
+    return llvm::GlobalValue::PrivateLinkage;
+  case LLVM::Linkage::Internal:
+    return llvm::GlobalValue::InternalLinkage;
+  case LLVM::Linkage::AvailableExternally:
+    return llvm::GlobalValue::AvailableExternallyLinkage;
+  case LLVM::Linkage::Linkonce:
+    return llvm::GlobalValue::LinkOnceAnyLinkage;
+  case LLVM::Linkage::Weak:
+    return llvm::GlobalValue::WeakAnyLinkage;
+  case LLVM::Linkage::Common:
+    return llvm::GlobalValue::CommonLinkage;
+  case LLVM::Linkage::Appending:
+    return llvm::GlobalValue::AppendingLinkage;
+  case LLVM::Linkage::ExternWeak:
+    return llvm::GlobalValue::ExternalWeakLinkage;
+  case LLVM::Linkage::LinkonceODR:
+    return llvm::GlobalValue::LinkOnceODRLinkage;
+  case LLVM::Linkage::WeakODR:
+    return llvm::GlobalValue::WeakODRLinkage;
+  case LLVM::Linkage::External:
+    return llvm::GlobalValue::ExternalLinkage;
+  }
+  llvm_unreachable("unknown linkage type");
+}
+
 // Create named global variables that correspond to llvm.mlir.global
 // definitions.
 void ModuleTranslation::convertGlobals() {
@@ -308,11 +337,15 @@ void ModuleTranslation::convertGlobals() {
       cst = cast<llvm::Constant>(valueMapping.lookup(ret.getOperand(0)));
     }
 
+    auto linkage = convertLinkageType(op.linkage());
+    bool anyExternalLinkage =
+        (linkage == llvm::GlobalVariable::ExternalLinkage ||
+         linkage == llvm::GlobalVariable::ExternalWeakLinkage);
     auto addrSpace = op.addr_space().getLimitedValue();
     auto *var = new llvm::GlobalVariable(
-        *llvmModule, type, op.constant(), llvm::GlobalValue::InternalLinkage,
-        cst, op.sym_name(), /*InsertBefore=*/nullptr,
-        llvm::GlobalValue::NotThreadLocal, addrSpace);
+        *llvmModule, type, op.constant(), linkage,
+        anyExternalLinkage ? nullptr : cst, op.sym_name(),
+        /*InsertBefore=*/nullptr, llvm::GlobalValue::NotThreadLocal, addrSpace);
 
     globalsMapping.try_emplace(op, var);
   }

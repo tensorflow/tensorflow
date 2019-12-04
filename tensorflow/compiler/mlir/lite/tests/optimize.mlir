@@ -278,7 +278,7 @@ func @notFuseMulIntoDepthwiseConv2d(%arg0: tensor<1x112x112x2xf32>) -> tensor<1x
   %cst2 = constant dense<3.0> : tensor<112x2xf32>
 
   %0 = "tfl.depthwise_conv_2d"(%arg0, %cst0, %cst1) {depth_multiplier = 1 : i32, dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x112x112x2xf32>, tensor<1x3x3x2xf32>, tensor<2xf32>) -> tensor<1x112x112x2xf32>
-  // We cannot fuse this tfl.mul into the preceding conv op becuase %cst2 is not broadcast-compatible to %cst0.
+  // We cannot fuse this tfl.mul into the preceding conv op because %cst2 is not broadcast-compatible to %cst0.
   %1 = "tfl.mul"(%0, %cst2) {fused_activation_function = "RELU6"} : (tensor<1x112x112x2xf32>, tensor<112x2xf32>) -> tensor<1x112x112x2xf32>
 
   return %1 : tensor<1x112x112x2xf32>
@@ -599,4 +599,26 @@ func @squeezeToReshape(%arg0: tensor<1x1x2xf32>) -> tensor<2xf32> {
   // CHECK: [[CONST:.*]] = constant dense<2> : tensor<1xi32>
   // CHECK: %[[RESULT:.*]] = "tfl.reshape"(%arg0, %[[CONST:.*]]) : (tensor<1x1x2xf32>, tensor<1xi32>) -> tensor<2xf32>
   // CHECK: return %[[RESULT]]
+}
+
+// CHECK-LABEL: Relu1
+func @Relu1(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense<-1.0> : tensor<f32>
+  %cst1 = constant dense<1.0> : tensor<f32>
+  %0 = "tfl.maximum"(%arg0, %cst) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %1 = "tfl.minimum"(%0, %cst1) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  return %1 : tensor<2x3xf32>
+
+  // CHECK: %[[relu_n1_to_1:[0-9].*]] = "tfl.relu_n1_to_1"
+}
+
+// CHECK-LABEL: Relu1_2
+func @Relu1_2(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense<-1.0> : tensor<f32>
+  %cst1 = constant dense<1.0> : tensor<f32>
+  %0 = "tfl.minimum"(%arg0, %cst1) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  %1 = "tfl.maximum"(%0, %cst) : (tensor<2x3xf32>, tensor<f32>) -> tensor<2x3xf32>
+  return %1 : tensor<2x3xf32>
+
+  // CHECK: %[[relu_n1_to_1:[0-9].*]] = "tfl.relu_n1_to_1"
 }

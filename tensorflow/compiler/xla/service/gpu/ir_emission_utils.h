@@ -200,6 +200,11 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
 // block 0 of the kernel.
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
+// Returns whether the outputs of a fusion with reduction are consistent.
+bool AreFusedReductionOutputsConsistent(
+    absl::Span<const HloInstruction* const> output_instructions,
+    const HloInstruction* first_reduce);
+
 }  // namespace gpu
 }  // namespace xla
 

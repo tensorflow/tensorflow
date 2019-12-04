@@ -243,6 +243,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/single_softmax_min_minus_5_max_plus_5.bin",
         "//tensorflow/lite/tools/optimize:testdata/split.bin",
         "//tensorflow/lite/tools/optimize:testdata/pack.bin",
+        "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [
         "tflite_not_portable_android",

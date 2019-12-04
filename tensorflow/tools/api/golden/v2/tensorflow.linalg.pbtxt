@@ -76,6 +76,10 @@ tf_module {
     name: "LinearOperatorZeros"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "adjoint"
     argspec: "args=[\'matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "

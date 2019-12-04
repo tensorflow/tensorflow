@@ -443,9 +443,11 @@ struct FuncOpConversion : public LLVMLegalizationPattern<FuncOp> {
       attributes.push_back(attr);
     }
 
-    // Create an LLVM funcion.
+    // Create an LLVM funcion, use external linkage by default until MLIR
+    // functions have linkage.
     auto newFuncOp = rewriter.create<LLVM::LLVMFuncOp>(
-        op->getLoc(), funcOp.getName(), llvmType, attributes);
+        op->getLoc(), funcOp.getName(), llvmType, LLVM::Linkage::External,
+        attributes);
     rewriter.inlineRegionBefore(funcOp.getBody(), newFuncOp.getBody(),
                                 newFuncOp.end());
 
@@ -1476,7 +1478,6 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op->getLoc();
     auto viewOp = cast<SubViewOp>(op);
-    SubViewOpOperandAdaptor adaptor(operands);
     // TODO(b/144779634, ravishankarm) : After Tblgen is adapted to support
     // having multiple variadic operands where each operand can have different
     // number of entries, clean all of this up.
@@ -1505,10 +1506,12 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     if (!sourceElementTy || !targetDescTy)
       return matchFailure();
 
-    // Early exit for 0-D and operands lesser than `rank` corner cases.
+    // Currently, only rank > 0 and full or no operands are supported. Fail to
+    // convert otherwise.
     unsigned rank = sourceMemRefType.getRank();
-    if (viewMemRefType.getRank() == 0 || rank != dynamicOffsets.size() ||
-        rank != dynamicSizes.size() || rank != dynamicStrides.size())
+    if (viewMemRefType.getRank() == 0 || (rank != dynamicOffsets.size()) ||
+        (!dynamicSizes.empty() && rank != dynamicSizes.size()) ||
+        (!dynamicStrides.empty() && rank != dynamicStrides.size()))
       return matchFailure();
 
     int64_t offset;
@@ -1518,7 +1521,7 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
       return matchFailure();
 
     // Create the descriptor.
-    MemRefDescriptor sourceMemRef(adaptor.source());
+    MemRefDescriptor sourceMemRef(operands.front());
     auto targetMemRef = MemRefDescriptor::undef(rewriter, loc, targetDescTy);
 
     // Copy the buffer pointer from the old descriptor to the new one.
@@ -1538,6 +1541,17 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i)
       strideValues.push_back(sourceMemRef.stride(rewriter, loc, i));
 
+    // Fill in missing dynamic sizes.
+    auto llvmIndexType = lowering.convertType(rewriter.getIndexType());
+    if (dynamicSizes.empty()) {
+      dynamicSizes.reserve(viewMemRefType.getRank());
+      auto shape = viewMemRefType.getShape();
+      for (auto extent : shape) {
+        dynamicSizes.push_back(rewriter.create<LLVM::ConstantOp>(
+            loc, llvmIndexType, rewriter.getI64IntegerAttr(extent)));
+      }
+    }
+
     // Offset.
     Value *baseOffset = sourceMemRef.offset(rewriter, loc);
     for (int i = 0, e = viewMemRefType.getRank(); i < e; ++i) {
@@ -1551,9 +1565,14 @@ struct SubViewOpLowering : public LLVMLegalizationPattern<SubViewOp> {
     // Update sizes and strides.
     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
       targetMemRef.setSize(rewriter, loc, i, dynamicSizes[i]);
-      targetMemRef.setStride(rewriter, loc, i,
-                             rewriter.create<LLVM::MulOp>(
-                                 loc, dynamicStrides[i], strideValues[i]));
+      Value *newStride;
+      if (dynamicStrides.empty())
+        newStride = rewriter.create<LLVM::ConstantOp>(
+            loc, llvmIndexType, rewriter.getI64IntegerAttr(strides[i]));
+      else
+        newStride = rewriter.create<LLVM::MulOp>(loc, dynamicStrides[i],
+                                                 strideValues[i]);
+      targetMemRef.setStride(rewriter, loc, i, newStride);
     }
 
     rewriter.replaceOp(op, {targetMemRef});
@@ -1644,13 +1663,14 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
     // Field 3: Copy the offset in aligned pointer.
     unsigned numDynamicSizes = llvm::size(viewOp.getDynamicSizes());
     (void)numDynamicSizes;
+    bool hasDynamicOffset = offset == MemRefType::getDynamicStrideOrOffset();
     auto sizeAndOffsetOperands = adaptor.operands();
-    assert(llvm::size(sizeAndOffsetOperands) == numDynamicSizes + 1 ||
-           offset != MemRefType::getDynamicStrideOrOffset());
-    Value *baseOffset = (offset != MemRefType::getDynamicStrideOrOffset())
+    assert(llvm::size(sizeAndOffsetOperands) ==
+           numDynamicSizes + (hasDynamicOffset ? 1 : 0));
+    Value *baseOffset = !hasDynamicOffset
                             ? createIndexConstant(rewriter, loc, offset)
                             // TODO(ntv): better adaptor.
-                            : sizeAndOffsetOperands.back();
+                            : sizeAndOffsetOperands.front();
     targetMemRef.setOffset(rewriter, loc, baseOffset);
 
     // Early exit for 0-D corner case.
@@ -1662,10 +1682,14 @@ struct ViewOpLowering : public LLVMLegalizationPattern<ViewOp> {
       return op->emitWarning("cannot cast to non-contiguous shape"),
              matchFailure();
     Value *stride = nullptr, *nextSize = nullptr;
+    // Drop the dynamic stride from the operand list, if present.
+    ArrayRef<Value *> sizeOperands(sizeAndOffsetOperands);
+    if (hasDynamicOffset)
+      sizeOperands = sizeOperands.drop_front();
     for (int i = viewMemRefType.getRank() - 1; i >= 0; --i) {
       // Update size.
-      Value *size = getSize(rewriter, loc, viewMemRefType.getShape(),
-                            sizeAndOffsetOperands, i);
+      Value *size =
+          getSize(rewriter, loc, viewMemRefType.getShape(), sizeOperands, i);
       targetMemRef.setSize(rewriter, loc, i, size);
       // Update stride.
       stride = getStride(rewriter, loc, strides, nextSize, stride, i);

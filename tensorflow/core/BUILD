@@ -237,6 +237,7 @@ tf_proto_library(
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
+        ":test_log_proto_impl",
         ":core_protos",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
@@ -396,6 +397,7 @@ filegroup(
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_statistics.h",
         "//tensorflow/core/platform:file_system.h",
+        "//tensorflow/core/platform:path.h",
     ],
     visibility = ["//visibility:private"],
 )
@@ -501,12 +503,6 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
-        "lib/monitoring/collected_metrics.h",
-        "lib/monitoring/collection_registry.h",
-        "lib/monitoring/counter.h",
-        "lib/monitoring/gauge.h",
-        "lib/monitoring/metric_def.h",
-        "lib/monitoring/sampler.h",
         ":platform_base_hdrs",
         ":platform_env_hdrs",
         ":platform_file_system_hdrs",
@@ -520,6 +516,7 @@ cc_library(
         "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
         "//tensorflow/core/lib/io:legacy_lib_io_headers",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_headers",
         "//tensorflow/core/lib/strings:legacy_lib_string_headers",
     ],
@@ -571,6 +568,24 @@ cc_library(
     ],
 )
 
+# TODO(gunan): Move this to core/util/BUILD once the  file is created
+cc_library(
+    name = "util_reporter",
+    srcs = ["util/reporter.cc"],
+    hdrs = ["util/reporter.h"],
+    # This should only be used in tensorflow/core/platform:test_benchmark
+    visibility = ["//tensorflow/core/platform:__subpackages__"],
+    deps = [
+        ":test_log_proto_impl_cc",
+        "//tensorflow/core/platform:env",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:mutex",
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:types",
+    ],
+)
+
 # Test support library needed for all tests
 # This is currently public, but may be made internal in the
 # future.  Try to avoid depending on it.
@@ -578,7 +593,6 @@ cc_library(
     name = "test",
     testonly = 1,
     srcs = [
-        "util/reporter.cc",
         "//tensorflow/core/platform:legacy_test_srcs",
     ],
     hdrs = [
@@ -1548,6 +1562,8 @@ filegroup(
         "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
         "//tensorflow/core/lib/io:legacy_lib_io_all_srcs",
         "//tensorflow/core/lib/math:math_util.h",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_headers",
+        "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_srcs",
         "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
         "//tensorflow/core/lib/random:legacy_lib_random_all_srcs",
         "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
@@ -1979,32 +1995,6 @@ tf_pyclif_proto_library(
     ]
 ]
 
-# The following targets were moved to core/framework. The aliases are only temporary
-# since moving existing users will require several CLs over several projects.
-
-[
-    alias(
-        name = "framework_%s_pyclif%s" % (proto_name, target_suffix),
-        actual = "//tensorflow/core/framework:%s_pyclif%s" % (proto_name, target_suffix),
-        visibility = ["//visibility:public"],
-    )
-    for target_suffix in [
-        "",
-        "_pb2",
-    ]
-    for proto_name in [
-        "cost_graph",
-        "tensor",
-        "kernel_def",
-        "node_def",
-        "function",
-        "graph",
-        "step_stats",
-        "types",
-        "variable",
-    ]
-]
-
 # -----------------------------------------------------------------------------
 # Internal targets
 
@@ -2095,6 +2085,7 @@ LIB_INTERNAL_PRIVATE_HEADERS = [
     "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
     "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
     "//tensorflow/core/lib/hash:legacy_lib_hash_all_headers",
+    "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_all_headers",
     "//tensorflow/core/lib/io:legacy_lib_io_all_headers",
     "//tensorflow/core/lib/random:legacy_lib_random_all_headers",
     "//tensorflow/core/lib/strings:legacy_lib_strings_all_headers",
@@ -2116,12 +2107,11 @@ LIB_INTERNAL_PUBLIC_HEADERS = [
     "//tensorflow/core/lib/gtl:legacy_lib_internal_public_gtl_headers",
     "//tensorflow/core/lib/hash:legacy_lib_internal_public_headers",
     "//tensorflow/core/lib/io:legacy_lib_internal_public_headers",
-    "lib/monitoring/mobile_counter.h",
-    "lib/monitoring/mobile_gauge.h",
-    "lib/monitoring/mobile_sampler.h",
+    "//tensorflow/core/lib/monitoring:legacy_lib_monitoring_lib_internal_public_headers",
     "//tensorflow/core/lib/random:legacy_lib_internal_public_random_headers",
     "//tensorflow/core/lib/strings:legacy_lib_internal_public_string_headers",
     "lib/wav/wav_io.h",
+    "//tensorflow/core/platform:blocking_counter.h",
     "//tensorflow/core/platform:demangle.h",
     "//tensorflow/core/platform:denormal.h",
     "//tensorflow/core/platform:host_info.h",
@@ -2185,6 +2175,7 @@ cc_library(
     deps = tf_additional_lib_deps() + [
         ":core_stringpiece",
         ":lib_proto_parsing",
+        ":util_reporter",  # TODO(gunan): REMOVE as soon as cc_shared_library is supported.
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
@@ -2240,6 +2231,15 @@ cc_library(
         "//tensorflow/core/lib/io:zlib_inputstream",
         "//tensorflow/core/lib/io:zlib_outputbuffer",
         "//tensorflow/core/lib/math:math_util",
+        "//tensorflow/core/lib/monitoring:collected_metrics",
+        "//tensorflow/core/lib/monitoring:collection_registry",
+        "//tensorflow/core/lib/monitoring:counter",
+        "//tensorflow/core/lib/monitoring:gauge",
+        "//tensorflow/core/lib/monitoring:metric_def",
+        "//tensorflow/core/lib/monitoring:mobile_counter",
+        "//tensorflow/core/lib/monitoring:mobile_gauge",
+        "//tensorflow/core/lib/monitoring:mobile_sampler",
+        "//tensorflow/core/lib/monitoring:sampler",
         "//tensorflow/core/lib/random:exact_uniform_int",
         "//tensorflow/core/lib/random:philox",
         "//tensorflow/core/lib/random:philox_random",
@@ -2255,6 +2255,8 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:blocking_counter",
+        "//tensorflow/core/platform:coding",
         "//tensorflow/core/platform:context",
         "//tensorflow/core/platform:cord",
         "//tensorflow/core/platform:cpu_feature_guard",
@@ -2265,6 +2267,7 @@ cc_library(
         "//tensorflow/core/platform:errors",
         "//tensorflow/core/platform:file_statistics",
         "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/platform:hash",
         "//tensorflow/core/platform:load_library",
         "//tensorflow/core/platform:logger",
         "//tensorflow/core/platform:mutex",
@@ -2272,6 +2275,7 @@ cc_library(
         "//tensorflow/core/platform:net",
         "//tensorflow/core/platform:null_file_system",
         "//tensorflow/core/platform:numbers",
+        "//tensorflow/core/platform:path",
         "//tensorflow/core/platform:platform_port",
         "//tensorflow/core/platform:platform_strings",
         "//tensorflow/core/platform:prefetch",
@@ -2467,6 +2471,15 @@ tf_proto_library(
 )
 
 tf_proto_library(
+    name = "test_log_proto_impl",
+    srcs = ["util/test_log.proto"],
+    cc_api_version = 2,
+    make_default_target_header_only = True,
+    # Not to be used outside this file.
+    visibility = ["//visibility:private"],
+)
+
+tf_proto_library(
     name = "core_protos",
     srcs = COMMON_PROTO_SRCS + [
         # Protos which are not needed on mobile builds, but should be included
@@ -2489,12 +2502,12 @@ tf_proto_library(
         "protobuf/tensorflow_server.proto",
         "protobuf/trackable_object_graph.proto",
         "protobuf/transport_options.proto",
-        "util/test_log.proto",
     ],
     cc_api_version = 2,
     make_default_target_header_only = True,
     protodeps = [
         ":error_codes_proto_impl",
+        ":test_log_proto_impl",
         "//tensorflow/core/framework:protos_all",
         "//tensorflow/core/lib/core:error_codes_proto",
         "//tensorflow/core/profiler/protobuf:xplane_proto",
@@ -3455,11 +3468,6 @@ tf_cc_tests(
     name = "low_level_library_tests",
     size = "small",
     srcs = [
-        "lib/monitoring/collection_registry_test.cc",
-        "lib/monitoring/counter_test.cc",
-        "lib/monitoring/gauge_test.cc",
-        "lib/monitoring/metric_def_test.cc",
-        "lib/monitoring/sampler_test.cc",
         "lib/wav/wav_io_test.cc",
         "//tensorflow/core/lib/core:legacy_lib_core_all_tests",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_tests",
@@ -3467,6 +3475,11 @@ tf_cc_tests(
         "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_tests",
         "//tensorflow/core/lib/io:legacy_lib_io_all_tests",
         "//tensorflow/core/lib/math:math_util_test.cc",
+        "//tensorflow/core/lib/monitoring:collection_registry_test.cc",
+        "//tensorflow/core/lib/monitoring:counter_test.cc",
+        "//tensorflow/core/lib/monitoring:gauge_test.cc",
+        "//tensorflow/core/lib/monitoring:metric_def_test.cc",
+        "//tensorflow/core/lib/monitoring:sampler_test.cc",
         "//tensorflow/core/lib/random:legacy_lib_random_tests",
         "//tensorflow/core/lib/strings:legacy_low_level_library_tests",
         "//tensorflow/core/platform:fingerprint_test.cc",

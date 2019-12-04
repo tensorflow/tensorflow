@@ -22,7 +22,7 @@ import textwrap
 
 import gast
 
-from tensorflow.python.autograph.pyct import compiler
+from tensorflow.python.autograph.pyct import loader
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.autograph.pyct.common_transformers import anf
@@ -76,9 +76,9 @@ class AnfTestBase(test.TestCase):
     return transformer.Context(entity_info)
 
   def assert_same_ast(self, expected_node, node, msg=None):
-    expected_source = compiler.ast_to_source(expected_node, indentation='  ')
+    expected_source = parser.unparse(expected_node, indentation='  ')
     expected_str = textwrap.dedent(expected_source).strip()
-    got_source = compiler.ast_to_source(node, indentation='  ')
+    got_source = parser.unparse(node, indentation='  ')
     got_str = textwrap.dedent(got_source).strip()
     self.assertEqual(expected_str, got_str, msg=msg)
 
@@ -112,7 +112,7 @@ class AnfTransformerTest(AnfTestBase):
 
     node, _ = parser.parse_entity(test_function, future_features=())
     node = anf.transform(node, self._simple_context())
-    result, _, _ = compiler.ast_to_object(node)
+    result, _, _ = loader.load_ast(node)
     self.assertEqual(test_function(), result.test_function())
 
   def test_binop_basic(self):
@@ -463,13 +463,13 @@ class AnfNonTransformationTest(AnfTransformerTest):
     # syntax highlights nicely, but Python doesn't try to execute the
     # statements.
     node, _ = parser.parse_entity(test_fn, future_features=())
-    orig_source = compiler.ast_to_source(node, indentation='  ')
+    orig_source = parser.unparse(node, indentation='  ')
     orig_str = textwrap.dedent(orig_source).strip()
     config = [(anf.ANY, anf.LEAVE)]  # Configuration to trasform nothing
     node = anf.transform(
         node, self._simple_context(),
         config=config, gensym_source=DummyGensym)
-    new_source = compiler.ast_to_source(node, indentation='  ')
+    new_source = parser.unparse(node, indentation='  ')
     new_str = textwrap.dedent(new_source).strip()
     self.assertEqual(orig_str, new_str)
 

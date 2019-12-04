@@ -282,7 +282,7 @@ struct OphintCompositeOp {
   // Since we have different aggregation strategies, e.g., "first", "last",
   // "stack". We don't somehow aggregated to get the outputs for the funcOp.
   // This function is simply compute the RankedTensorType (shape & element type)
-  std::map<int, Type> GetAggregatedOuputTypes(OpBuilder* builder) {
+  std::map<int, Type> GetAggregatedOutputTypes(OpBuilder* builder) {
     std::map<int, Type> aggregated_output_types;
     for (const auto& kv : outputs) {
       const AggregatedOperand& operand = kv.second;
@@ -387,11 +387,12 @@ struct OphintCompositeOp {
 // inputs/outputs indicate edges) Assume the graph is acyclic. The preprocess
 // does the following:
 //   Compute each operations's in-degress (how many input nodes they're taken)
-//   Get all consumer operations for every operations. (operation_to_ouputs)
+//   Get all consumer operations for every operations. (operation_to_outputs)
 //   Get the init_queue (those operations will be processed first).
 void PreprocessTopoSortGraph(
     Block* block, std::queue<Operation*>* init_queue,
-    llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>>* operation_to_ouputs,
+    llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>>*
+        operation_to_outputs,
     llvm::DenseMap<Operation*, int>* operation_to_in_degrees) {
   for (auto& op : *block) {
     if (&op == block->getTerminator()) continue;
@@ -412,9 +413,9 @@ void PreprocessTopoSortGraph(
       }
       operation_to_in_degrees->try_emplace(&op, input_ops.size());
       for (auto* input_op : input_ops) {
-        auto preceeding_op_it = operation_to_ouputs->find(input_op);
-        if (preceeding_op_it == operation_to_ouputs->end()) {
-          auto result = operation_to_ouputs->try_emplace(
+        auto preceeding_op_it = operation_to_outputs->find(input_op);
+        if (preceeding_op_it == operation_to_outputs->end()) {
+          auto result = operation_to_outputs->try_emplace(
               input_op, llvm::DenseSet<Operation*>());
           preceeding_op_it = result.first;
         }
@@ -442,19 +443,19 @@ bool IsSideEffectOp(Operation* op) {
 // Also assume the block has no arguments.
 LogicalResult TopoSortOperations(OpBuilder* builder) {
   std::queue<Operation*> init_queue;
-  llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>> operation_to_ouputs;
+  llvm::DenseMap<Operation*, llvm::DenseSet<Operation*>> operation_to_outputs;
   llvm::DenseMap<Operation*, int> operation_to_in_degrees;
   std::vector<Operation*> sorted_ops;
 
   PreprocessTopoSortGraph(builder->getBlock(), &init_queue,
-                          &operation_to_ouputs, &operation_to_in_degrees);
+                          &operation_to_outputs, &operation_to_in_degrees);
   while (!init_queue.empty()) {
     Operation* current_op = init_queue.front();
     init_queue.pop();
     sorted_ops.push_back(current_op);
 
-    auto current_op_to_output_it = operation_to_ouputs.find(current_op);
-    if (current_op_to_output_it == operation_to_ouputs.end()) {
+    auto current_op_to_output_it = operation_to_outputs.find(current_op);
+    if (current_op_to_output_it == operation_to_outputs.end()) {
       continue;
     }
     for (Operation* output_op : current_op_to_output_it->second) {
@@ -467,7 +468,7 @@ LogicalResult TopoSortOperations(OpBuilder* builder) {
         operation_to_in_degrees.erase(output_op_it);
       }
     }
-    operation_to_ouputs.erase(current_op_to_output_it);
+    operation_to_outputs.erase(current_op_to_output_it);
   }
 
   // Before we performs the sort. We need to make sure we didn't mess the
@@ -629,11 +630,11 @@ LogicalResult ConvertOphintToStub(StringRef stub_name,
 
   // Step 4, get aggregated output types.
   const std::map<int, Type>& aggregated_output_types =
-      ophint_composite_op.GetAggregatedOuputTypes(builder);
+      ophint_composite_op.GetAggregatedOutputTypes(builder);
 
   // Step 5, create & place the fused op and rewire the inputs.
   // Here we use a funcOp to represent the fused op. This "funcOp" will be
-  // coonverted to other ops (like UnidirectionalSequenceRNNOp) in the
+  // converted to other ops (like UnidirectionalSequenceRNNOp) in the
   // legalization phase.
   Operation* inserted_before_op = ophint_composite_op.GetFirstOutputOp();
   Operation* fused_op = BuildFusedFuncOp(

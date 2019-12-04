@@ -23,8 +23,8 @@ from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_
 from tensorflow.python.data.experimental.ops import distribute
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import interleave_ops
-from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops

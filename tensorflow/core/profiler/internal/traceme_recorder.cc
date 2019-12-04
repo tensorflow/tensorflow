@@ -199,7 +199,9 @@ void TraceMeRecorder::RegisterThread(int32 tid, ThreadLocalRecorder* thread) {
 void TraceMeRecorder::UnregisterThread(TraceMeRecorder::ThreadEvents&& events) {
   mutex_lock lock(mutex_);
   threads_.erase(events.thread.tid);
-  orphaned_events_.push_back(std::move(events));
+  if (!events.events.empty()) {
+    orphaned_events_.push_back(std::move(events));
+  }
 }
 
 // This method is performance critical and should be kept fast. It is called
@@ -211,7 +213,10 @@ TraceMeRecorder::Events TraceMeRecorder::Clear() {
   std::swap(orphaned_events_, result);
   for (const auto& entry : threads_) {
     auto* recorder = entry.second;
-    result.push_back(recorder->Clear());
+    TraceMeRecorder::ThreadEvents events = recorder->Clear();
+    if (!events.events.empty()) {
+      result.push_back(std::move(events));
+    }
   }
   return result;
 }

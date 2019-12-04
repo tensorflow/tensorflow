@@ -45,15 +45,11 @@ namespace tensorflow {
 
 class ExecuteNodeArgs : public EagerKernelArgs {
  public:
-  static Status CreateExecuteNodeArgs(
-      gtl::InlinedVector<TensorValue, 4>&& tensor_args, EagerContext* ctx,
-      const gtl::InlinedVector<TensorHandle*, 4>& op_inputs,
-      std::unique_ptr<ExecuteNodeArgs>* args) {
-    args->reset(new ExecuteNodeArgs(std::move(tensor_args)));
-    return (*args)->Init(ctx, op_inputs);
-  }
-
+  explicit ExecuteNodeArgs(int count) : EagerKernelArgs(count) {}
   ~ExecuteNodeArgs() override;
+
+  Status Init(EagerContext* ctx,
+              const gtl::InlinedVector<TensorHandle*, 4>& op_inputs);
 
   bool HasRemoteInputs() const override { return has_remote_inputs_; };
 
@@ -65,12 +61,6 @@ class ExecuteNodeArgs : public EagerKernelArgs {
 #endif  // IS_MOBILE_PLATFORM
 
  private:
-  explicit ExecuteNodeArgs(gtl::InlinedVector<TensorValue, 4>&& tensor_args)
-      : EagerKernelArgs(std::move(tensor_args)) {}
-
-  Status Init(EagerContext* ctx,
-              const gtl::InlinedVector<TensorHandle*, 4>& op_inputs);
-
   bool has_remote_inputs_ = false;
   TensorReferenceVector protected_tensors_;
 #if !defined(IS_MOBILE_PLATFORM)

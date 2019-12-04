@@ -90,8 +90,9 @@ class BenchmarkTfLiteModel : public BenchmarkModel {
     InputTensorData tmp;
     tmp.bytes = sizeof(T) * num_elements;
     T* raw = new T[num_elements];
-    std::generate_n(raw, num_elements,
-                    [&]() { return distribution(random_engine_); });
+    std::generate_n(raw, num_elements, [&]() {
+      return static_cast<T>(distribution(random_engine_));
+    });
     // Now initialize the type-erased unique_ptr (with custom deleter) from
     // 'raw'.
     tmp.data = std::unique_ptr<void, void (*)(void*)>(

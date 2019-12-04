@@ -125,17 +125,17 @@ Operation *Operation::create(Location location, OperationName name,
 
 /// Create a new Operation from operation state.
 Operation *Operation::create(const OperationState &state) {
-  return Operation::create(
-      state.location, state.name, state.types, state.operands,
-      NamedAttributeList(state.attributes).getDictionary(), state.successors,
-      state.regions, state.resizableOperandList);
+  return Operation::create(state.location, state.name, state.types,
+                           state.operands, NamedAttributeList(state.attributes),
+                           state.successors, state.regions,
+                           state.resizableOperandList);
 }
 
 /// Create a new Operation with the specific fields.
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
-                             const NamedAttributeList &attributes,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors,
                              ArrayRef<std::unique_ptr<Region>> regions,
                              bool resizableOperandList) {
@@ -153,7 +153,7 @@ Operation *Operation::create(Location location, OperationName name,
 Operation *Operation::create(Location location, OperationName name,
                              ArrayRef<Type> resultTypes,
                              ArrayRef<Value *> operands,
-                             const NamedAttributeList &attributes,
+                             NamedAttributeList attributes,
                              ArrayRef<Block *> successors, unsigned numRegions,
                              bool resizableOperandList) {
   unsigned numSuccessors = successors.size();
@@ -901,18 +901,21 @@ LogicalResult OpTrait::impl::verifySameOperandsAndResultType(Operation *op) {
   return success();
 }
 
-static LogicalResult verifyBBArguments(Operation::operand_range operands,
-                                       Block *destBB, Operation *op) {
-  unsigned operandCount = std::distance(operands.begin(), operands.end());
+static LogicalResult verifySuccessor(Operation *op, unsigned succNo) {
+  Operation::operand_range operands = op->getSuccessorOperands(succNo);
+  unsigned operandCount = op->getNumSuccessorOperands(succNo);
+  Block *destBB = op->getSuccessor(succNo);
   if (operandCount != destBB->getNumArguments())
     return op->emitError() << "branch has " << operandCount
-                           << " operands, but target block has "
+                           << " operands for successor #" << succNo
+                           << ", but target block has "
                            << destBB->getNumArguments();
 
   auto operandIt = operands.begin();
   for (unsigned i = 0, e = operandCount; i != e; ++i, ++operandIt) {
     if ((*operandIt)->getType() != destBB->getArgument(i)->getType())
-      return op->emitError() << "type mismatch in bb argument #" << i;
+      return op->emitError() << "type mismatch for bb argument #" << i
+                             << " of successor #" << succNo;
   }
 
   return success();
@@ -926,7 +929,7 @@ static LogicalResult verifyTerminatorSuccessors(Operation *op) {
     auto *succ = op->getSuccessor(i);
     if (succ->getParent() != parent)
       return op->emitError("reference to block defined in another region");
-    if (failed(verifyBBArguments(op->getSuccessorOperands(i), succ, op)))
+    if (failed(verifySuccessor(op, i)))
       return failure();
   }
   return success();

@@ -96,6 +96,14 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
+    name = "replay_computation_mlir_gpu",
+    deps = [
+        ":replay_computation_library",
+        "//tensorflow/compiler/xla/service:mlir_gpu_plugin",
+    ],
+)
+
+tf_cc_binary(
     name = "replay_computation_interpreter",
     deps = [
         ":replay_computation_library",

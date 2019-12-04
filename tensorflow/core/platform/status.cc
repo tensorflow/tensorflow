@@ -22,7 +22,6 @@ limitations under the License.
 
 #include "absl/base/call_once.h"
 #include "tensorflow/core/platform/mutex.h"
-#include "tensorflow/core/platform/stacktrace.h"
 #include "tensorflow/core/platform/str_util.h"
 #include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/platform/stringprintf.h"
@@ -92,8 +91,6 @@ Status::Status(tensorflow::error::Code code, StringPiece msg) {
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
   state_->msg = string(msg);
-  VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
-          << CurrentStackTrace();
 }
 
 void Status::Update(const Status& new_status) {

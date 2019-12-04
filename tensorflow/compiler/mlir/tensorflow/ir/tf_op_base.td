@@ -39,7 +39,7 @@ This dialect maps to TensorFlow operations.
 Invariants:
 
 * All values are of Tensor type (in particular, scalars are
-  represented using zero-dimentional tensors);
+  represented using zero-dimensional tensors);
 
 TODO: Make invariants more structured so that we can reference them in ops.
   }];

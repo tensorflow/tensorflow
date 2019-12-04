@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import keras
+from tensorflow.python.keras import testing_utils
 
 
 # pylint: disable=missing-docstring,not-callable
@@ -62,31 +63,23 @@ class SimpleConvTestModel(keras.Model):
     return self.dense1(x)
 
 
-class MultiIOTestModel(keras.Model):
+def get_multi_io_subclass_model(use_bn=False, use_dp=False, num_classes=(2, 3)):
+  """Creates MultiIOModel for the tests of subclass model."""
+  shared_layer = keras.layers.Dense(32, activation='relu')
+  branch_a = [shared_layer]
+  if use_dp:
+    branch_a.append(keras.layers.Dropout(0.5))
+  branch_a.append(keras.layers.Dense(num_classes[0], activation='softmax'))
 
-  def __init__(self, use_bn=False, use_dp=False, num_classes=(2, 3)):
-    super(MultiIOTestModel, self).__init__(name='test_model')
-    self.use_bn = use_bn
-    self.use_dp = use_dp
-    self.num_classes = num_classes
+  branch_b = [shared_layer]
+  if use_bn:
+    branch_b.append(keras.layers.BatchNormalization())
+  branch_b.append(keras.layers.Dense(num_classes[1], activation='softmax'))
 
-    self.dense1 = keras.layers.Dense(32, activation='relu')
-    self.dense2 = keras.layers.Dense(num_classes[0], activation='softmax')
-    self.dense3 = keras.layers.Dense(num_classes[1], activation='softmax')
-    if use_dp:
-      self.dp = keras.layers.Dropout(0.5)
-    if use_bn:
-      self.bn = keras.layers.BatchNormalization()
-
-  def call(self, inputs):
-    x1, x2 = inputs
-    x1 = self.dense1(x1)
-    x2 = self.dense1(x2)
-    if self.use_dp:
-      x1 = self.dp(x1)
-    if self.use_bn:
-      x2 = self.bn(x2)
-    return [self.dense2(x1), self.dense3(x2)]
+  model = (
+      testing_utils._MultiIOSubclassModel(   # pylint: disable=protected-access
+          branch_a, branch_b, name='test_model'))
+  return model
 
 
 class NestedTestModel1(keras.Model):

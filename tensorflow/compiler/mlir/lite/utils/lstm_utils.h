@@ -126,7 +126,7 @@ class ConvertLSTMCellSimpleToFusedLSTM {
   Value* input2cell_;
   Value* input2output_;
 
-  // reccurrent -> cifg
+  // recurrent -> cifg
   Value* rec2input_;
   Value* rec2forget_;
   Value* rec2cell_;

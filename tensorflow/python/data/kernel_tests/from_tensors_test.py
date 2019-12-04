@@ -237,8 +237,8 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertEqual([3], get_next().shape)
 
   # TODO(b/121264236): needs mechanism for multiple device in eager mode.
-  @combinations.generate(test_base.default_test_combinations())
-  def testSkipEagerSplitPipeline(self):
+  @combinations.generate(test_base.graph_only_combinations())
+  def testSplitPipeline(self):
     with session.Session(
         target="",
         config=config_pb2.ConfigProto(device_count={"CPU": 2})) as sess:

@@ -758,7 +758,17 @@ TfLiteStatus Subgraph::Invoke() {
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
-    TFLITE_SCOPED_OPERATOR_PROFILE(profiler_.get(), node_index);
+
+    const char* op_name = nullptr;
+    if (profiler_) {
+      if (registration.builtin_code == tflite::BuiltinOperator_CUSTOM) {
+        const char* const custom_name = registration.custom_name;
+        op_name = custom_name ? custom_name : "UnknownCustomOp";
+      } else {
+        op_name = tflite::EnumNamesBuiltinOperator()[registration.builtin_code];
+      }
+    }
+    TFLITE_SCOPED_TAGGED_OPERATOR_PROFILE(profiler_.get(), op_name, node_index);
 
     // TODO(ycling): This is an extra loop through inputs to check if the data
     // need to be copied from Delegate buffer to raw memory, which is often not

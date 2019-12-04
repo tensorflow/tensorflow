@@ -1005,17 +1005,19 @@ static Value *createPrivateMemRef(AffineForOp forOp, Operation *srcStoreOpInst,
 
 // Checks if node 'srcId' can be safely fused into node 'dstId'. Node 'srcId'
 // may write to multiple memrefs but it is required that only one of them,
-// 'srcLiveOutStoreOp', have an output edge.
+// 'srcLiveOutStoreOp', has output edges.
 // Returns true if 'dstNode's read/write region to 'memref' is a super set of
-// 'srcNode's write region to 'memref'.
+// 'srcNode's write region to 'memref' and 'srcId' has only one output edge.
 // TODO(andydavis) Generalize this to handle more live in/out cases.
 static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
                                            AffineStoreOp srcLiveOutStoreOp,
                                            MemRefDependenceGraph *mdg) {
   assert(srcLiveOutStoreOp && "Expected a valid store op");
-  assert(mdg->getOutEdgeCount(srcId) == 1 && "Expected only one output edge");
   auto *dstNode = mdg->getNode(dstId);
   Value *memref = srcLiveOutStoreOp.getMemRef();
+  // Return false if 'srcNode' has more than one output edge on 'memref'.
+  if (mdg->getOutEdgeCount(srcId, memref) > 1)
+    return false;
 
   // Compute MemRefRegion 'srcWriteRegion' for 'srcStoreOp' on 'memref'.
   MemRefRegion srcWriteRegion(srcLiveOutStoreOp.getLoc());
