@@ -839,7 +839,7 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX(T, int32); \
   DECLARE_GPU_SPECS_INDEX(T, int64)
 
-#define DECLARE_GPU_SPECS(T)                  \
+#define DECLARE_GPU_SPECS_MIN_MAX(T)          \
   DECLARE_GPU_SPECS_INDEX_MIN_MAX(T, int32);  \
   DECLARE_GPU_SPECS_INDEX_MIN_MAX(T, int64)
 
