@@ -99,6 +99,10 @@ void PortableBatchVectorBatchVectorDotProduct(const int16_t* vector1,
                                               int32_t* result,
                                               int result_stride);
 
+void PortableVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result);
+
 void PortableMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,

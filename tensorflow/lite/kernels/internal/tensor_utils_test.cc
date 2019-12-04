@@ -1424,7 +1424,60 @@ TEST(uKernels, Sub1VectorInt16Test) {
       }));
 }
 
-TEST(uKernels, VectorBatchVectorCwiseProductAccumulate) {
+TEST(uKernels, VectorBatchVectorCwiseProductAccumulateInteger) {
+  constexpr int kVectorSize = 29;
+  constexpr int kBatchSize = 4;
+  static int16_t vector[kVectorSize] = {-10, 9,  8,  7,  6,  5,  4,  3,  2, 1,
+                                        0,   1,  2,  3,  4,  5,  6,  7,  8, 9,
+                                        10,  11, 12, 13, 14, 15, 16, 17, 18};
+  const std::vector<int16_t> batch_vector = {
+      /* batch 0 */
+      10, 11, 12, 13, 14, 15, 16, 17, 18, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 1 */
+      -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 2 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18,
+      /* batch 3 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18};
+  std::vector<int16_t> batch_output = {
+      /* batch 0 */
+      -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12, 13, 14, 15, 16, 17, 18, 0, 1,
+      2, 3, 4, 5, 6, 7, 8, 9,
+      /* batch 1 */
+      2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5,
+      4, 3, 2, 1, 10, 11, 12,
+      /* batch 2 */
+      0, 1, 2, 3, 4, 5, 6, 7, 8, 9, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 10, 11, 12,
+      13, 14, 15, 16, 17, 18,
+      /* batch 3 */
+      10, 11, 12, 13, 14, 15, 16, 17, 18, -10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1,
+      13, 14, 15, 16, 17, 18};
+  // Test with 0.25 scale, which is decomposed into (1073741824, -1).
+  VectorBatchVectorCwiseProductAccumulate(vector, kVectorSize,
+                                          batch_vector.data(), kBatchSize,
+                                          1073741824, -1, batch_output.data());
+
+  const std::vector<int16_t> expected_output = {
+      /* batch 0 */
+      -35, 34, 32, 30, 27, 24, 20, 16, 11, -2, 10, 13, 16, 18, 19, 20, 21, 21,
+      20, 0, 4, 8, 12, 17, 23, 29, 35, 42, 50,
+      /* batch 1 */
+      27, 24, 20, 18, 15, 14, 12, 12, 1, 2, 2, 6, 10, 15, 20, 26, 32, 39, 26, 9,
+      11, 13, 15, 18, 22, 26, 30, 35, 51,
+      /* batch 2 */
+      11, 15, 4, 7, 8, 10, 10, 11, 10, 10, 8, 12, -6, 15, 14, 14, 12, 11, 8, 6,
+      27, 32, 46, 54, 61, 70, 78, 88, 97,
+      /* batch 3 */
+      17, 21, 14, 17, 18, 20, 20, 21, 20, 20, 18, -7, 13, 14, 13, 13, 11, 10, 7,
+      5, 26, 31, 37, 56, 63, 72, 80, 90, 99};
+  EXPECT_THAT(batch_output, testing::ElementsAreArray(expected_output));
+}
+
+TEST(uKernels, VectorBatchVectorCwiseProductAccumulateFloat) {
   constexpr int kVectorSize = 29;
   constexpr int kBatchSize = 4;
   static float input[kVectorSize] = {

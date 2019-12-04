@@ -558,6 +558,20 @@ void PortableVectorVectorCwiseProductAccumulate(const float* vector1,
   }
 }
 
+void PortableVectorBatchVectorCwiseProductAccumulate(
+    const int16_t* vector, int v_size, const int16_t* batch_vector, int n_batch,
+    int32_t multiplier, int shift, int16_t* result) {
+  for (int b = 0; b < n_batch; b++) {
+    for (int v = 0; v < v_size; v++) {
+      int32_t prod = vector[v] * *batch_vector++;
+      prod = MultiplyByQuantizedMultiplier(prod, multiplier, shift);
+      int32_t output = prod + *result;
+      output = std::max(std::min(32767, output), -32768);
+      *result++ = output;
+    }
+  }
+}
+
 void PortableVectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                                   float* batch_vector) {
   for (int b = 0; b < n_batch; b++) {

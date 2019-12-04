@@ -406,6 +406,12 @@ inline void VectorBatchVectorCwiseProductAccumulate(const T* vector, int v_size,
   }
 }
 
+// Same as above, but inputs are 16bit integer and output is 16bit integer.
+void VectorBatchVectorCwiseProductAccumulate(const int16_t* vector, int v_size,
+                                             const int16_t* batch_vector,
+                                             int n_batch, int32_t multiplier,
+                                             int shift, int16_t* result);
+
 // Add another vector for each batch in the batch vector.
 void VectorBatchVectorAdd(const float* vector, int v_size, int n_batch,
                           float* batch_vector);
