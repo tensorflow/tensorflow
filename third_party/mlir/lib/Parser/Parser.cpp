@@ -324,7 +324,7 @@ public:
 
   /// Parse an optional trailing location.
   ///
-  ///   trailing-location     ::= location?
+  ///   trailing-location     ::= (`loc` `(` location `)`)?
   ///
   ParseResult parseOptionalTrailingLocation(Location &loc) {
     // If there is a 'loc' we parse a trailing location.
@@ -3519,10 +3519,14 @@ Value *OperationParser::createForwardRefPlaceholder(SMLoc loc, Type type) {
 
 /// Parse an operation.
 ///
-///  operation ::=
-///    operation-result? string '(' ssa-use-list? ')' attribute-dict?
-///    `:` function-type trailing-location?
-///  operation-result ::= ssa-id ((`:` integer-literal) | (`,` ssa-id)*) `=`
+///  operation         ::= op-result-list?
+///                        (generic-operation | custom-operation)
+///                        trailing-location?
+///  generic-operation ::= string-literal '(' ssa-use-list? ')' attribute-dict?
+///                        `:` function-type
+///  custom-operation  ::= bare-id custom-operation-format
+///  op-result-list    ::= op-result (`,` op-result)* `=`
+///  op-result         ::= ssa-id (`:` integer-literal)
 ///
 ParseResult OperationParser::parseOperation() {
   auto loc = getToken().getLoc();
