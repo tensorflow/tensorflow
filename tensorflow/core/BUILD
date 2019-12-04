@@ -573,8 +573,8 @@ cc_library(
     name = "util_reporter",
     srcs = ["util/reporter.cc"],
     hdrs = ["util/reporter.h"],
-    # Not to be used outside this file.
-    visibility = ["//visibility:private"],
+    # This should only be used in tensorflow/core/platform:test_benchmark
+    visibility = ["//tensorflow/core/platform:__subpackages__"],
     deps = [
         ":test_log_proto_impl_cc",
         "//tensorflow/core/platform:env",

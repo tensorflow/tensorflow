@@ -70,6 +70,7 @@ tf_instantiate_platform_libraries(names = [
     "strong_hash",
     "subprocess",
     "test",
+    "test_benchmark",
     "tracing",
     "types",
     "unbounded_work_queue",
@@ -633,6 +634,16 @@ cc_library(
     testonly = True,
     textual_hdrs = ["test.h"],
     deps = tf_mobile_aware_deps("test_impl"),
+)
+
+cc_library(
+    name = "test_benchmark",
+    testonly = True,
+    hdrs = ["test_benchmark.h"],
+    deps = [
+        ":platform",
+        ":test_benchmark_impl",
+    ],
 )
 
 cc_library(
