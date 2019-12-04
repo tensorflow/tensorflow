@@ -265,7 +265,8 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
   def testEval(self):
     if not is_tensorrt_enabled():
       return
-    model_dir = test.test_src_dir_path('python/compiler/tensorrt/test/testdata/mnist')
+    model_dir = test.test_src_dir_path(
+        'python/compiler/tensorrt/test/testdata/mnist')
 
     accuracy_tf_native = self._Run(
         is_training=False,
