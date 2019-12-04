@@ -66,6 +66,29 @@ class MicroBuiltinDataAllocator : public BuiltinDataAllocator {
 
 }  // namespace
 
+// Allocate a TfLiteIntArray and copy the contents of a FlatBuffers Vector
+// into it.
+template <class T>
+TfLiteStatus MicroAllocator::FlatBufferIntArrayToTfLiteIntArray(
+    const flatbuffers::Vector<T>* flat_array, TfLiteIntArray** result) {
+  TfLiteIntArray* ret =
+      reinterpret_cast<TfLiteIntArray*>(memory_allocator_.AllocateFromTail(
+          TfLiteIntArrayGetSizeInBytes(flat_array->Length()),
+          alignof(TfLiteIntArray)));
+  if (nullptr == ret) {
+    error_reporter_->Report(
+        "Failed to allocate %d bytes of memory to copy an array.",
+        TfLiteIntArrayGetSizeInBytes(flat_array->Length()));
+    return kTfLiteError;
+  }
+  ret->size = flat_array->Length();
+  for (int i = 0; i < flat_array->Length(); i++) {
+    ret->data[i] = flat_array->Get(i);
+  }
+  *result = ret;
+  return kTfLiteOk;
+}
+
 MicroAllocator::MicroAllocator(TfLiteContext* context, const Model* model,
                                uint8_t* tensor_arena, size_t arena_size,
                                ErrorReporter* error_reporter)
@@ -450,14 +473,8 @@ TfLiteStatus MicroAllocator::InitializeRuntimeTensor(
       flatbuffer_tensor, &result->bytes, &type_size, error_reporter));
   // Copy the shape of the tensor from the serialized data into the runtime
   // form. We have to allocate memory for this.
-  result->dims =
-      reinterpret_cast<TfLiteIntArray*>(memory_allocator_.AllocateFromTail(
-          TfLiteIntArrayGetSizeInBytes(flatbuffer_tensor.shape()->Length()),
-          alignof(TfLiteIntArray)));
-  result->dims->size = flatbuffer_tensor.shape()->Length();
-  for (size_t n = 0; n < flatbuffer_tensor.shape()->Length(); ++n) {
-    result->dims->data[n] = flatbuffer_tensor.shape()->Get(n);
-  }
+  TF_LITE_ENSURE_STATUS(FlatBufferIntArrayToTfLiteIntArray(
+      flatbuffer_tensor.shape(), &(result->dims)));
   // Copy the quantization information from the serialized data.
   const auto* src_quantization = flatbuffer_tensor.quantization();
   if (src_quantization && src_quantization->scale() &&

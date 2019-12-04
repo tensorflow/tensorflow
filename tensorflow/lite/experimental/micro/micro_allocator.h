@@ -75,6 +75,11 @@ class MicroAllocator {
       NodeAndRegistration** node_and_registrations);
 
  private:
+  template <class T>
+  TfLiteStatus FlatBufferIntArrayToTfLiteIntArray(
+      const flatbuffers::Vector<T>* flat_array, TfLiteIntArray** result);
+
+ private:
   const Model* model_;
   SimpleMemoryAllocator memory_allocator_;
   ErrorReporter* error_reporter_;
